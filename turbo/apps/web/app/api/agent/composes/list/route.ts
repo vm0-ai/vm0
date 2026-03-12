@@ -12,16 +12,43 @@ import { resolveOrg } from "../../../../../src/lib/scope/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
-interface ComposeContent {
-  agents?: Record<string, { metadata?: { displayName?: string } }>;
-}
-
 function extractDisplayName(content: unknown): string | null {
-  const c = content as ComposeContent | null;
-  if (!c?.agents) return null;
-  const agentKeys = Object.keys(c.agents);
+  if (
+    content === null ||
+    content === undefined ||
+    typeof content !== "object"
+  ) {
+    return null;
+  }
+  const record = content as Record<string, unknown>;
+  const agents = record["agents"];
+  if (agents === null || agents === undefined || typeof agents !== "object") {
+    return null;
+  }
+  const agentKeys = Object.keys(agents);
   if (agentKeys.length === 0) return null;
-  return c.agents[agentKeys[0]!]?.metadata?.displayName ?? null;
+  const agentsRecord = agents as Record<string, unknown>;
+  const firstAgent = agentsRecord[agentKeys[0]!];
+  if (
+    firstAgent === null ||
+    firstAgent === undefined ||
+    typeof firstAgent !== "object"
+  ) {
+    return null;
+  }
+  const agentRecord = firstAgent as Record<string, unknown>;
+  const metadata = agentRecord["metadata"];
+  if (
+    metadata === null ||
+    metadata === undefined ||
+    typeof metadata !== "object"
+  ) {
+    return null;
+  }
+  const metadataRecord = metadata as Record<string, unknown>;
+  const displayName = metadataRecord["displayName"];
+  if (typeof displayName !== "string") return null;
+  return displayName;
 }
 
 const router = tsr.router(composesListContract, {

@@ -51,7 +51,7 @@ const fetchScopeAgents$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const resp = await fetchFn("/api/agent/composes/list");
   if (!resp.ok) {
-    return;
+    throw new Error(`Failed to fetch scope agents: ${resp.statusText}`);
   }
   const data = (await resp.json()) as { composes: ComposeListItem[] };
   const agents: AgentOption[] = data.composes.map((c) => ({
