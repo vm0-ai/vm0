@@ -93,3 +93,15 @@ if (DSN) {
     os_release: os.release(),
   });
 }
+
+// Handle EPIPE gracefully — occurs when piped output is closed early
+// (e.g., `vm0 logs ... | head`). Exit cleanly per Unix convention.
+function handleEpipe(err: NodeJS.ErrnoException) {
+  if (err.code === "EPIPE") {
+    process.exit(0);
+  }
+  throw err;
+}
+
+process.stdout.on("error", handleEpipe);
+process.stderr.on("error", handleEpipe);
