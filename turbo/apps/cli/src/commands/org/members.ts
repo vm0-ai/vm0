@@ -1,17 +1,17 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getScopeMembers } from "../../lib/api";
+import { getOrgMembers } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
 
 export const membersCommand = new Command()
   .name("members")
-  .description("View scope members")
+  .description("View organization members")
   .action(
     withErrorHandler(async () => {
       try {
-        const status = await getScopeMembers();
+        const status = await getOrgMembers();
 
-        console.log(chalk.bold(`Scope: ${status.slug}`));
+        console.log(chalk.bold(`Organization: ${status.slug}`));
         console.log(`  Role: ${status.role}`);
         console.log(
           `  Created: ${new Date(status.createdAt).toLocaleDateString()}`,
@@ -30,8 +30,8 @@ export const membersCommand = new Command()
           error instanceof Error &&
           error.message.includes("Organization access token required")
         ) {
-          throw new Error("No active scope selected", {
-            cause: new Error("Run: vm0 scope use <slug>"),
+          throw new Error("No active organization selected", {
+            cause: new Error("Run: vm0 org use <slug>"),
           });
         }
         throw error;

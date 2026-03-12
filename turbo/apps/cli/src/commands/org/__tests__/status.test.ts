@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { statusCommand } from "../status";
 
-describe("scope status command", () => {
+describe("org status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -39,8 +39,8 @@ describe("scope status command", () => {
     });
   });
 
-  describe("no scope configured", () => {
-    it("should show helpful message when user has no scope", async () => {
+  describe("no organization configured", () => {
+    it("should show helpful message when user has no organization", async () => {
       server.use(
         http.get("http://localhost:3000/api/scope", () => {
           return HttpResponse.json(
@@ -55,17 +55,17 @@ describe("scope status command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No scope configured"),
+        expect.stringContaining("No organization configured"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 scope set"),
+        expect.stringContaining("vm0 org set"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 
-  describe("scope display", () => {
-    it("should display scope information", async () => {
+  describe("organization display", () => {
+    it("should display organization information", async () => {
       server.use(
         http.get("http://localhost:3000/api/scope", () => {
           return HttpResponse.json({
@@ -80,7 +80,7 @@ describe("scope status command", () => {
       await statusCommand.parseAsync(["node", "cli"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Scope Information"),
+        expect.stringContaining("Organization Information"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("testuser"),

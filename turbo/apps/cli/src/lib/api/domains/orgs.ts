@@ -16,7 +16,7 @@ import type { ScopeResponse } from "../core/types";
 
 /**
  * Get client config that always uses the user token (vm0_live_),
- * not the org token. Used for scope list/create operations.
+ * not the org token. Used for org list/create operations.
  */
 async function getUserTokenClientConfig(): Promise<{
   baseUrl: string;
@@ -39,9 +39,9 @@ async function getUserTokenClientConfig(): Promise<{
 }
 
 /**
- * Get current user's default scope
+ * Get current user's default organization
  */
-export async function getScope(): Promise<ScopeResponse> {
+export async function getOrg(): Promise<ScopeResponse> {
   const config = await getClientConfig();
   const client = initClient(scopeContract, config);
 
@@ -51,13 +51,13 @@ export async function getScope(): Promise<ScopeResponse> {
     return result.body;
   }
 
-  handleError(result, "Failed to get scope");
+  handleError(result, "Failed to get organization");
 }
 
 /**
- * Update user's default scope slug
+ * Update user's default organization slug
  */
-export async function updateScope(body: {
+export async function updateOrg(body: {
   slug: string;
   force?: boolean;
 }): Promise<ScopeResponse> {
@@ -70,13 +70,13 @@ export async function updateScope(body: {
     return result.body;
   }
 
-  handleError(result, "Failed to update scope");
+  handleError(result, "Failed to update organization");
 }
 
 /**
- * Get scope members and status
+ * Get organization members and status
  */
-export async function getScopeMembers(): Promise<ScopeMembersResponse> {
+export async function getOrgMembers(): Promise<ScopeMembersResponse> {
   const config = await getClientConfig();
   const client = initClient(scopeMembersContract, config);
 
@@ -86,13 +86,13 @@ export async function getScopeMembers(): Promise<ScopeMembersResponse> {
     return result.body;
   }
 
-  handleError(result, "Failed to get scope members");
+  handleError(result, "Failed to get organization members");
 }
 
 /**
- * Invite a member to the scope
+ * Invite a member to the organization
  */
-export async function inviteScopeMember(email: string): Promise<void> {
+export async function inviteOrgMember(email: string): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(scopeMembersContract, config);
 
@@ -108,9 +108,9 @@ export async function inviteScopeMember(email: string): Promise<void> {
 }
 
 /**
- * Remove a member from the scope
+ * Remove a member from the organization
  */
-export async function removeScopeMember(email: string): Promise<void> {
+export async function removeOrgMember(email: string): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(scopeMembersContract, config);
 
@@ -126,9 +126,9 @@ export async function removeScopeMember(email: string): Promise<void> {
 }
 
 /**
- * Leave the current scope
+ * Leave the current organization
  */
-export async function leaveScope(): Promise<void> {
+export async function leaveOrg(): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(scopeMembersContract, config);
 
@@ -140,13 +140,13 @@ export async function leaveScope(): Promise<void> {
     return;
   }
 
-  handleError(result, "Failed to leave scope");
+  handleError(result, "Failed to leave organization");
 }
 
 /**
- * List all accessible scopes (always uses user token)
+ * List all accessible organizations (always uses user token)
  */
-export async function listScopes(): Promise<ScopeListResponse> {
+export async function listOrgs(): Promise<ScopeListResponse> {
   const config = await getUserTokenClientConfig();
   const client = initClient(scopeListContract, config);
 
@@ -156,5 +156,5 @@ export async function listScopes(): Promise<ScopeListResponse> {
     return result.body;
   }
 
-  handleError(result, "Failed to list scopes");
+  handleError(result, "Failed to list organizations");
 }

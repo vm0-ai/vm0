@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { setCommand } from "../set";
 
-describe("scope set command", () => {
+describe("org set command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -31,7 +31,7 @@ describe("scope set command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should require --force to update existing scope", async () => {
+  it("should require --force to update existing organization", async () => {
     server.use(
       http.get("http://localhost:3000/api/scope", () => {
         return HttpResponse.json({
@@ -48,7 +48,7 @@ describe("scope set command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("already have a scope: oldslug"),
+      expect.stringContaining("already have an organization: oldslug"),
     );
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining("--force"),
@@ -56,7 +56,7 @@ describe("scope set command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should update scope with --force", async () => {
+  it("should update organization with --force", async () => {
     server.use(
       http.get("http://localhost:3000/api/scope", () => {
         return HttpResponse.json({
@@ -79,7 +79,7 @@ describe("scope set command", () => {
     await setCommand.parseAsync(["node", "cli", "newslug", "--force"]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith(
-      expect.stringContaining("Scope updated to newslug"),
+      expect.stringContaining("Organization updated to newslug"),
     );
   });
 

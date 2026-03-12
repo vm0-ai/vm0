@@ -1,38 +1,40 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listScopes } from "../../lib/api";
+import { listOrgs } from "../../lib/api";
 import { saveConfig } from "../../lib/api/config";
 import { withErrorHandler } from "../../lib/command";
 
 export const useCommand = new Command()
   .name("use")
-  .description("Switch to a different scope")
-  .argument("[slug]", "Scope slug to switch to")
+  .description("Switch to a different organization")
+  .argument("[slug]", "Organization slug to switch to")
   .option("--personal", "Switch to personal scope")
   .action(
     withErrorHandler(
       async (slug: string | undefined, options: { personal?: boolean }) => {
         if (options.personal) {
           await saveConfig({ activeScope: undefined });
-          console.log(chalk.green("✓ Switched to default scope."));
+          console.log(chalk.green("✓ Switched to personal scope."));
           return;
         }
 
         if (!slug) {
           throw new Error(
-            "Scope slug is required. Use --personal to switch to default scope.",
+            "Organization slug is required. Use --personal to switch to personal scope.",
           );
         }
 
-        // Verify the scope exists and user has access
-        const scopeList = await listScopes();
-        const target = scopeList.scopes.find((s) => s.slug === slug);
+        // Verify the organization exists and user has access
+        const orgList = await listOrgs();
+        const target = orgList.scopes.find((s) => s.slug === slug);
         if (!target) {
-          throw new Error(`Scope '${slug}' not found or not accessible.`);
+          throw new Error(
+            `Organization '${slug}' not found or not accessible.`,
+          );
         }
 
         await saveConfig({ activeScope: slug });
-        console.log(chalk.green(`✓ Switched to scope: ${slug}`));
+        console.log(chalk.green(`✓ Switched to organization: ${slug}`));
       },
     ),
   );

@@ -22,16 +22,16 @@ export { createRun, getEvents, listRuns, cancelRun } from "./domains/runs";
 // Domain modules - Sessions
 export { getSession, getCheckpoint } from "./domains/sessions";
 
-// Domain modules - Scopes
+// Domain modules - Organizations
 export {
-  getScope,
-  updateScope,
-  getScopeMembers,
-  inviteScopeMember,
-  removeScopeMember,
-  leaveScope,
-  listScopes,
-} from "./domains/scopes";
+  getOrg,
+  updateOrg,
+  getOrgMembers,
+  inviteOrgMember,
+  removeOrgMember,
+  leaveOrg,
+  listOrgs,
+} from "./domains/orgs";
 
 // Domain modules - Storages
 export {

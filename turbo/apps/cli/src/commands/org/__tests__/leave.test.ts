@@ -17,7 +17,7 @@ import * as os from "os";
 import chalk from "chalk";
 
 // Mock os.homedir to use temp directory
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-scope-leave-"));
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-org-leave-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return { ...original, homedir: () => TEST_HOME };
@@ -50,8 +50,8 @@ describe("org leave command", () => {
     await leaveCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("Left scope");
-    expect(logCalls).toContain("default scope");
+    expect(logCalls).toContain("Left organization");
+    expect(logCalls).toContain("personal scope");
   });
 
   it("should handle admin-cannot-leave error", async () => {
