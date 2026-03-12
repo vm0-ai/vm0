@@ -57,7 +57,7 @@ gh pr view <PR> --json mergeable --jq '.mergeable'
    git checkout <branch>
    git fetch origin main
    git merge origin/main
-   # Resolve conflicts in the shared files (connectors.ts, provider-registry.ts, connector-icons.tsx, connectorTypeSchema)
+   # Resolve conflicts in the shared files (connectors.ts, services.ts, provider-registry.ts, connector-icons.tsx, connectorTypeSchema)
    # These are always additive — keep ALL entries from both sides, maintain alphabetical order
    git add <resolved files>
    git commit -m "chore: resolve merge conflict with main"
@@ -166,16 +166,18 @@ git checkout -b feat/add-<name>-connector
 
 Edit these files (use existing connectors like `twenty`, `qiita`, `zeptomail` as templates):
 
-#### 4a. `turbo/packages/core/src/contracts/connectors.ts` (3 spots)
+#### 4a. `turbo/packages/core/src/contracts/connectors.ts` (2 spots)
 
 1. **CONNECTOR_TYPES_DEF** — Add connector config with label, helpText, authMethods (api-token), defaultAuthMethod. Insert alphabetically.
 
-2. **CONNECTOR_PROXY_CONFIGS** — Add proxy service definition if the API uses header-based auth:
-   - Bearer auth: `service("https://api.example.com", bearerAuth("XXX_TOKEN"))`
-   - Custom header: `service("https://api.example.com", { headers: { "x-api-key": "${secrets.XXX_TOKEN}" } })`
-   - **Skip proxy** if auth is query-param-based or requires base64 encoding (Basic auth)
+2. **connectorTypeSchema z.enum** — Add the connector type string
 
-3. **connectorTypeSchema z.enum** — Add the connector type string
+#### 4a2. `turbo/packages/core/src/contracts/services.ts` (1 spot)
+
+- **SERVICE_CONFIGS** — Add service configuration if the API uses header-based auth:
+  - Bearer auth: `api("https://api.example.com", bearerAuth("XXX_TOKEN"))`
+  - Custom header: `api("https://api.example.com", { headers: { "x-api-key": "${secrets.XXX_TOKEN}" } })`
+  - **Skip** if auth is query-param-based or requires base64 encoding (Basic auth)
 
 #### 4b. `turbo/apps/web/src/lib/connector/providers/<name>-handler.ts` (new file)
 
@@ -238,7 +240,7 @@ git push -u origin feat/add-<name>-connector
 gh pr create --title "feat: add <name> api-token connector" --body "$(cat <<'EOF'
 ## Summary
 - Add <Name> as an api-token connector
-- <Proxy config description or "No proxy config (query param auth)">
+- <Service config description or "No service config (query param auth)">
 - <Secret rename description if applicable>
 
 Closes #<issue-number>
@@ -268,7 +270,7 @@ git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
 - **15+ SUCCESS checks required before merging** — in_progress is not sufficient
 - **Secret naming:** Always `XXX_TOKEN` — never `_API_KEY`, `_SECRET_KEY`, `_ACCESS_TOKEN`
 - **Logo:** Must be from a real internet source — never self-created
-- **Proxy:** Only for header-based auth (Bearer, custom headers). Skip for query param auth or Basic auth requiring base64
+- **Service config:** Only for header-based auth (Bearer, custom headers) in `services.ts`. Skip for query param auth or Basic auth requiring base64
 - **No `check-types` locally** — it gets stuck. Rely on CI
 - **Always pull after returning to main**
 - **Conflict resolution for shared files:** These connectors only add new entries to shared files. Conflicts are always additive — keep ALL entries from both sides, maintain alphabetical order
