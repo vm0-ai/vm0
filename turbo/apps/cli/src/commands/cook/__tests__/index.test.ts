@@ -556,9 +556,9 @@ agents:
         .map((call) => call[0])
         .filter((log): log is string => typeof log === "string");
 
-      // Should show escaped rerun command
+      // Should show escaped rerun command (single-quote escaping)
       expect(
-        allLogs.some((log) => log.includes('vm0 cook "say \\"hello\\""')),
+        allLogs.some((log) => log.includes("vm0 cook 'say \"hello\"'")),
       ).toBe(true);
     });
 
