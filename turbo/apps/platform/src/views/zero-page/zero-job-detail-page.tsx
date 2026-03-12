@@ -38,27 +38,32 @@ export interface JobItem {
   scope: "personal" | "team";
 }
 
-const DUMMY_SKILLS: {
-  type: ConnectorType;
-  label: string;
-  connected: boolean;
-  statusText: string;
-}[] = [
+const DUMMY_SKILLS = [
   {
-    type: "notion",
+    type: "notion" as ConnectorType,
     label: "Notion",
     connected: true,
     statusText: "Connected",
   },
-  { type: "github", label: "GitHub", connected: false, statusText: "" },
   {
-    type: "axiom",
+    type: "github" as ConnectorType,
+    label: "GitHub",
+    connected: false,
+    statusText: "",
+  },
+  {
+    type: "axiom" as ConnectorType,
     label: "Axiom",
     connected: true,
     statusText: "Connected",
   },
-  { type: "slack", label: "Slack", connected: false, statusText: "" },
-];
+  {
+    type: "slack" as ConnectorType,
+    label: "Slack",
+    connected: false,
+    statusText: "",
+  },
+] as const;
 
 function SubAgentSkillsTab() {
   const removedTypes$ = useCCState<ConnectorType[]>([]);

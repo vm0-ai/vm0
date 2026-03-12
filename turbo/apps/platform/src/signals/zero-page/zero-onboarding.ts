@@ -341,7 +341,9 @@ export const completeZeroOnboarding$ = command(
 
       // Force JWT refresh so updated org metadata is available immediately
       const clerk = await get(clerk$);
+      signal.throwIfAborted();
       await clerk.session?.getToken({ skipCache: true });
+      signal.throwIfAborted();
 
       // Reload status and mark done
       set(internalReload$, (x) => x + 1);
