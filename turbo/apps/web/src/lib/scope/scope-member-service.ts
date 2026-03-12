@@ -1,6 +1,4 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { scopes } from "../../db/schema/scope";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
 import { getOrgData } from "./org-cache-service";
@@ -11,22 +9,16 @@ const log = logger("service:scope-member");
 
 /**
  * Require a user to be a member of a scope, or throw 403.
- * Verifies membership via Clerk API.
+ * Verifies membership via Clerk API using the org ID directly.
  */
-export async function requireScopeMember(scopeId: string, userId: string) {
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.id, scopeId))
-    .limit(1);
-
-  if (!scope?.orgId || scope.orgId.startsWith("pending_")) {
+export async function requireScopeMember(orgId: string, userId: string) {
+  if (!orgId || orgId.startsWith("pending_")) {
     throw forbidden("You are not a member of this scope");
   }
 
   const client = await clerkClient();
   const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId: scope.orgId,
+    organizationId: orgId,
   });
 
   const membership = memberships.data.find(
@@ -39,7 +31,7 @@ export async function requireScopeMember(scopeId: string, userId: string) {
   return {
     role: mapClerkRole(membership.role),
     userId,
-    scopeId,
+    orgId,
   };
 }
 

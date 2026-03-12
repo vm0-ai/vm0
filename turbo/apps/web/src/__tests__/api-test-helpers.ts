@@ -48,7 +48,7 @@ import { VOLUME_SCOPE_USER_ID, type StoredExecutionContext } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
-import { POST as createScopeRoute } from "../../app/api/scope/route";
+// POST /api/scope removed in 5b-5 — scope creation is now Clerk's responsibility
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
@@ -307,7 +307,12 @@ export async function findTestCliToken(token: string) {
 }
 
 /**
- * Create a test scope via API route handler.
+ * Create a test scope by inserting directly into scopes table and org_cache.
+ *
+ * Production code no longer writes to the scopes table (5b-5), but test
+ * infrastructure still needs scope records for FK references until Phase 6
+ * (DROP TABLE). This helper creates both the legacy scope record and the
+ * org_cache entry that production code reads.
  *
  * @param slug - The scope slug
  * @returns The created scope with id and slug
@@ -315,45 +320,40 @@ export async function findTestCliToken(token: string) {
 export async function createTestScope(
   slug: string,
 ): Promise<{ id: string; slug: string }> {
-  const request = createTestRequest("http://localhost:3000/api/scope", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slug }),
-  });
-  const response = await createScopeRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
+  initServices();
+
+  // Use the mock Clerk orgId pattern from clerk-mock.ts
+  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
+  const orgId = `org_mock_${userId}`;
+
+  // Insert into scopes table (legacy, for FK references in tests)
+  const [scope] = await globalThis.services.db
+    .insert(scopes)
+    .values({ slug, orgId })
+    .onConflictDoNothing({ target: scopes.slug })
+    .returning();
+
+  if (!scope) {
     throw new Error(
-      `Failed to create scope: ${error.error?.message || response.status}`,
+      `Failed to create test scope: slug "${slug}" already exists`,
     );
   }
-  const scopeData = await response.json();
 
-  // Pre-populate org cache so getOrgData() works without Clerk API calls.
-  // This is necessary because mockClerk() resets createdOrgs, making
-  // organizations from previously created scopes invisible to Clerk mock.
-  initServices();
-  const [scope] = await globalThis.services.db
-    .select({ orgId: scopes.orgId })
-    .from(scopes)
-    .where(eq(scopes.id, scopeData.id))
-    .limit(1);
-  if (scope) {
-    await globalThis.services.db
-      .insert(orgCache)
-      .values({
-        orgId: scope.orgId,
-        slug,
-        tier: "free",
-        cachedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: orgCache.orgId,
-        set: { slug, tier: "free", cachedAt: new Date() },
-      });
-  }
+  // Pre-populate org_cache so getOrgData() works without Clerk API calls
+  await globalThis.services.db
+    .insert(orgCache)
+    .values({
+      orgId,
+      slug,
+      tier: "free",
+      cachedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: orgCache.orgId,
+      set: { slug, tier: "free", cachedAt: new Date() },
+    });
 
-  return scopeData;
+  return { id: scope.id, slug: scope.slug };
 }
 
 /**
@@ -3057,6 +3057,7 @@ export async function insertOrgCacheEntry(entry: {
   tier?: string;
   cachedAt?: Date;
 }): Promise<void> {
+  initServices();
   await globalThis.services.db
     .insert(orgCache)
     .values({

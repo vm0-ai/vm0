@@ -166,13 +166,11 @@ export {
   scopeDefaultAgentContract,
   scopeSlugSchema,
   scopeResponseSchema,
-  createScopeRequestSchema,
   updateScopeRequestSchema,
   scopeTierSchema,
   type ScopeContract,
   type ScopeDefaultAgentContract,
   type ScopeResponse,
-  type CreateScopeRequest,
   type UpdateScopeRequest,
   type ScopeTier,
 } from "./scopes";

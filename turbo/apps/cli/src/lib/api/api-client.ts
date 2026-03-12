@@ -506,36 +506,6 @@ class ApiClient {
   }
 
   /**
-   * Create user's default scope
-   */
-  async createScope(body: {
-    slug: string;
-    displayName?: string;
-  }): Promise<ScopeResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
-
-    // Create ts-rest client with config
-    const client = initClient(scopeContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
-
-    const result = await client.create({ body });
-
-    // ts-rest returns discriminated union based on status code
-    if (result.status === 201) {
-      return result.body;
-    }
-
-    // Error cases
-    const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to create scope";
-    throw new Error(message);
-  }
-
-  /**
    * Update user's default scope slug
    */
   async updateScope(body: {

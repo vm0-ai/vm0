@@ -15,10 +15,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import {
-  getDefaultScopeByUserId,
-  getScopeByOrgId,
-} from "../../../../../../src/lib/scope/scope-service";
+import { getDefaultScopeByUserId } from "../../../../../../src/lib/scope/scope-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -94,20 +91,6 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       };
     }
 
-    // Look up full scope record for scopeId (needed for storage upsert)
-    const runtimeScope = await getScopeByOrgId(resolvedScope.orgId);
-    if (!runtimeScope) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: "Scope record not found",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
-
     // Volumes use sentinel userId (scope-level shared); artifacts/memory use real userId
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
@@ -117,8 +100,8 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        scopeId: runtimeScope.id,
-        orgId: runtimeScope.orgId,
+        scopeId: null,
+        orgId: resolvedScope.orgId,
         name: storageName,
         type: storageType,
         s3Prefix: `${resolvedScope.slug}/${storageType}/${storageName}`,

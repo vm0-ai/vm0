@@ -55,24 +55,6 @@ export async function getScope(): Promise<ScopeResponse> {
 }
 
 /**
- * Create user's default scope
- */
-export async function createScope(body: {
-  slug: string;
-}): Promise<ScopeResponse> {
-  const config = await getClientConfig();
-  const client = initClient(scopeContract, config);
-
-  const result = await client.create({ body });
-
-  if (result.status === 201) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to create scope");
-}
-
-/**
  * Update user's default scope slug
  */
 export async function updateScope(body: {
