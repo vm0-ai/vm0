@@ -338,7 +338,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const [run] = await globalThis.services.db
       .select({
         userId: agentRuns.userId,
-        clerkOrgId: agentRuns.clerkOrgId,
+        orgId: agentRuns.orgId,
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId))
@@ -349,7 +349,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         artifactFiles = await getNewArtifactFiles(
           runResult,
           run.userId,
-          run.clerkOrgId,
+          run.orgId,
         );
       } catch (err) {
         log.error("Failed to extract artifact files", { runId, error: err });

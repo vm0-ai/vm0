@@ -163,7 +163,7 @@ export async function extractFilesFromArchive(
 export async function getNewArtifactFiles(
   runResult: RunResult,
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
 ): Promise<ArtifactFile[]> {
   if (!runResult.artifact) return [];
 
@@ -178,7 +178,7 @@ export async function getNewArtifactFiles(
     .from(storages)
     .where(
       and(
-        eq(storages.clerkOrgId, clerkOrgId),
+        eq(storages.orgId, orgId),
         eq(storages.userId, userId),
         eq(storages.name, artifactName),
         eq(storages.type, "artifact"),
