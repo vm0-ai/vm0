@@ -96,7 +96,6 @@ import {
   agentComposeVersions,
 } from "../db/schema/agent-compose";
 import { agentPermissions } from "../db/schema/agent-permission";
-import { scopes } from "../db/schema/scope";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId, uniqueNumericId } from "./test-helpers";
 
@@ -312,12 +311,10 @@ export async function findTestCliToken(token: string) {
 }
 
 /**
- * Create a test scope by inserting directly into scopes table and org_cache.
+ * Create a test scope by inserting into org_cache.
  *
- * Production code no longer writes to the scopes table (5b-5), but test
- * infrastructure still needs scope records for FK references until Phase 6
- * (DROP TABLE). This helper creates both the legacy scope record and the
- * org_cache entry that production code reads.
+ * Pre-populates org_cache so getOrgData() works without Clerk API calls.
+ * The scopes table has been dropped (Phase 6 🆉).
  *
  * @param slug - The scope slug
  * @returns The created scope with id and slug
@@ -330,19 +327,6 @@ export async function createTestScope(
   // Use the mock Clerk orgId pattern from clerk-mock.ts
   const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
   const orgId = `org_mock_${userId}`;
-
-  // Insert into scopes table (legacy, for FK references in tests)
-  const [scope] = await globalThis.services.db
-    .insert(scopes)
-    .values({ slug, orgId })
-    .onConflictDoNothing({ target: scopes.slug })
-    .returning();
-
-  if (!scope) {
-    throw new Error(
-      `Failed to create test scope: slug "${slug}" already exists`,
-    );
-  }
 
   // Pre-populate org_cache so getOrgData() works without Clerk API calls
   await globalThis.services.db
@@ -358,69 +342,7 @@ export async function createTestScope(
       set: { slug, tier: "free", cachedAt: new Date() },
     });
 
-  return { id: scope.id, slug: scope.slug };
-}
-
-/**
- * Set the tier for a scope directly in the database.
- *
- * @param orgId - The org ID to look up the scope for
- * @param tier - The tier to set ("free", "pro", or "max")
- */
-export async function setScopeTier(
-  orgId: string,
-  tier: "free" | "pro" | "max",
-): Promise<void> {
-  await globalThis.services.db
-    .update(scopes)
-    .set({ tier, updatedAt: new Date() })
-    .where(eq(scopes.orgId, orgId));
-
-  // Also update org_cache so getOrgData returns the correct tier
-  const [scope] = await globalThis.services.db
-    .select()
-    .from(scopes)
-    .where(eq(scopes.orgId, orgId))
-    .limit(1);
-  if (scope) {
-    await globalThis.services.db
-      .insert(orgCache)
-      .values({
-        orgId: scope.orgId,
-        slug: scope.slug,
-        tier,
-        cachedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: orgCache.orgId,
-        set: { tier, cachedAt: new Date() },
-      });
-  }
-}
-
-/**
- * Get a scope record by org ID directly from the database.
- *
- * @param orgId - The org ID to look up the scope for
- * @returns The scope record with slug and tier
- */
-export async function getTestScope(
-  orgId: string,
-): Promise<{ id: string; slug: string; tier: string; orgId: string }> {
-  const [scope] = await globalThis.services.db
-    .select({
-      id: scopes.id,
-      slug: scopes.slug,
-      tier: scopes.tier,
-      orgId: scopes.orgId,
-    })
-    .from(scopes)
-    .where(eq(scopes.orgId, orgId))
-    .limit(1);
-  if (!scope) {
-    throw new Error(`Scope for org ${orgId} not found`);
-  }
-  return scope;
+  return { id: orgId, slug };
 }
 
 /**
@@ -2368,10 +2290,10 @@ export async function findTestComposeWithScope(composeId: string) {
     .select({
       composeId: agentComposes.id,
       composeName: agentComposes.name,
-      scopeSlug: scopes.slug,
+      scopeSlug: orgCache.slug,
     })
     .from(agentComposes)
-    .innerJoin(scopes, eq(scopes.orgId, agentComposes.orgId))
+    .innerJoin(orgCache, eq(orgCache.orgId, agentComposes.orgId))
     .where(eq(agentComposes.id, composeId))
     .limit(1);
   return row;
@@ -2681,13 +2603,6 @@ export async function createTestTelegramInstallation(options?: {
 
   const scopeSlug = uniqueId("scope");
   const orgId = uniqueId("org");
-  const [scope] = await globalThis.services.db
-    .insert(scopes)
-    .values({
-      slug: scopeSlug,
-      orgId,
-    })
-    .returning();
 
   // Pre-populate org cache for getOrgData()
   await globalThis.services.db
@@ -2702,7 +2617,7 @@ export async function createTestTelegramInstallation(options?: {
     .insert(agentComposes)
     .values({
       userId: adminUserId,
-      orgId: scope!.orgId,
+      orgId,
       name: uniqueId("compose"),
     })
     .returning();

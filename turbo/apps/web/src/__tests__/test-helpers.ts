@@ -44,18 +44,17 @@ export function uniqueNumericId(): string {
   return String(Math.floor(Math.random() * 900_000_000) + 100_000_000);
 }
 
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
-import { createTestScope, insertOrgCacheEntry } from "./api-test-helpers";
+import { insertOrgCacheEntry } from "./api-test-helpers";
 import * as s3Client from "../lib/s3/s3-client";
 import * as axiomClient from "../lib/axiom/client";
 import { slackInstallations } from "../db/schema/slack-installation";
 import { slackUserLinks } from "../db/schema/slack-user-link";
 import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
-import { scopes } from "../db/schema/scope";
 import { userCache } from "../db/schema/user-cache";
 import { encryptSecretValue } from "../lib/crypto/secrets-encryption";
 import { env } from "../env";
@@ -458,27 +457,16 @@ export function testContext(): TestContext {
 
       // Pre-populate org_cache for the default Clerk org so that
       // getOrgData() works without hitting the Clerk API mock.
+      // Use scope-${suffix} as slug to match test conventions that derive
+      // scope slug from userId suffix.
       const defaultOrgId = `org_mock_${userId}`;
-      const defaultOrgSlug = `org-${userId}`
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-")
-        .slice(0, 64);
+      const defaultOrgSlug = `scope-${suffix}`;
       await insertOrgCacheEntry({ orgId: defaultOrgId, slug: defaultOrgSlug });
-
-      // Create scope via API (uses same suffix for derivability)
-      const scopeData = await createTestScope(`scope-${suffix}`);
       controller.signal.throwIfAborted();
-
-      // Look up orgId from the created scope
-      const [scope] = await globalThis.services.db
-        .select({ orgId: scopes.orgId })
-        .from(scopes)
-        .where(eq(scopes.id, scopeData.id))
-        .limit(1);
 
       return {
         userId,
-        orgId: scope!.orgId,
+        orgId: defaultOrgId,
       };
     })();
 
@@ -510,23 +498,12 @@ export function testContext(): TestContext {
 
     const { SECRETS_ENCRYPTION_KEY } = env();
 
-    // Create a scope + compose for the default workspace agent
+    // Create a compose for the default workspace agent
     const adminUserId = optVm0UserId ?? uniqueId("test-admin");
     let composeId = options.composeId;
     if (!composeId) {
       const scopeSlug = uniqueId("scope");
       const orgId = uniqueId("org");
-      const [scopeData] = await globalThis.services.db
-        .insert(scopes)
-        .values({
-          slug: scopeSlug,
-          orgId,
-        })
-        .returning();
-
-      if (!scopeData) {
-        throw new Error("Failed to create scope for installation");
-      }
 
       // Pre-populate org cache for getOrgData()
       await insertOrgCacheEntry({ orgId, slug: scopeSlug });
@@ -535,7 +512,7 @@ export function testContext(): TestContext {
         .insert(agentComposes)
         .values({
           userId: adminUserId,
-          orgId: scopeData.orgId,
+          orgId,
           name: uniqueId("default-agent"),
         })
         .returning();
@@ -619,20 +596,9 @@ export function testContext(): TestContext {
 
     initServices();
 
-    // Create a scope directly in the database (bypass API to avoid Clerk auth)
+    // Create org cache and compose for this user
     const scopeSlug = uniqueId("scope");
     const orgId = uniqueId("org");
-    const [scopeData] = await globalThis.services.db
-      .insert(scopes)
-      .values({
-        slug: scopeSlug,
-        orgId,
-      })
-      .returning();
-
-    if (!scopeData) {
-      throw new Error("Failed to create scope");
-    }
 
     // Pre-populate org cache for getOrgData()
     await insertOrgCacheEntry({ orgId, slug: scopeSlug });
@@ -642,7 +608,7 @@ export function testContext(): TestContext {
       .insert(agentComposes)
       .values({
         userId: vm0UserId,
-        orgId: scopeData.orgId,
+        orgId,
         name,
       })
       .returning();
@@ -654,7 +620,7 @@ export function testContext(): TestContext {
     return {
       id: compose.id,
       name: compose.name,
-      orgId: scopeData.orgId,
+      orgId,
     };
   }
 

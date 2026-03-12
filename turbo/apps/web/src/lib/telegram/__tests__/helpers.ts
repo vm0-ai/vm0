@@ -5,7 +5,6 @@ import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { scopes } from "../../../db/schema/scope";
 import { encryptSecretValue } from "../../crypto/secrets-encryption";
 import { PENDING_TELEGRAM_USER_ID } from "../handlers/shared";
 import { uniqueId } from "../../../__tests__/test-helpers";
@@ -17,21 +16,13 @@ import { uniqueId } from "../../../__tests__/test-helpers";
 export async function createTelegramInstallation(): Promise<string> {
   initServices();
 
-  const suffix = uniqueId("tg");
-
-  const [scope] = await globalThis.services.db
-    .insert(scopes)
-    .values({
-      slug: suffix,
-      orgId: uniqueId("org"),
-    })
-    .returning();
+  const orgId = uniqueId("org");
 
   const [compose] = await globalThis.services.db
     .insert(agentComposes)
     .values({
       userId: uniqueId("test-user"),
-      orgId: scope!.orgId,
+      orgId,
       name: uniqueId("test-compose"),
     })
     .returning();

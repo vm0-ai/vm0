@@ -17,7 +17,8 @@ import {
   completeTestRun,
   createTestPermission,
   insertStalePendingRun,
-  setScopeTier,
+  insertOrgCacheEntry,
+  getOrgCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -652,7 +653,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should allow 2 concurrent runs for pro tier scopes", async () => {
       // Set scope to pro tier (allows 2 concurrent runs)
-      await setScopeTier(user.orgId, "pro");
+      const orgEntry = (await getOrgCacheEntry(user.orgId))!;
+      await insertOrgCacheEntry({
+        orgId: user.orgId,
+        slug: orgEntry.slug,
+        tier: "pro",
+      });
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");
@@ -663,7 +669,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should queue 3rd concurrent run for pro tier scopes", async () => {
       // Pro tier only allows 2 concurrent runs
-      await setScopeTier(user.orgId, "pro");
+      const orgEntry = (await getOrgCacheEntry(user.orgId))!;
+      await insertOrgCacheEntry({
+        orgId: user.orgId,
+        slug: orgEntry.slug,
+        tier: "pro",
+      });
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");

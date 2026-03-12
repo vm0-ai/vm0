@@ -11,7 +11,6 @@ import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
-import { scopes } from "../../db/schema/scope";
 import { orgCache } from "../../db/schema/org-cache";
 import {
   agentComposes,
@@ -52,14 +51,8 @@ export async function givenGitHubInstallation(
   const githubUserId = String(Math.floor(Math.random() * 1_000_000_000));
   const scopeSlug = uniqueId("scope");
 
-  // Create scope
-  const orgId = uniqueId("org");
-  const [scope] = await globalThis.services.db
-    .insert(scopes)
-    .values({ slug: scopeSlug, orgId })
-    .returning();
-
   // Pre-populate org cache for getOrgData()
+  const orgId = uniqueId("org");
   await globalThis.services.db
     .insert(orgCache)
     .values({ orgId, slug: scopeSlug, tier: "free", cachedAt: new Date() })
@@ -73,7 +66,7 @@ export async function givenGitHubInstallation(
     .insert(agentComposes)
     .values({
       userId,
-      orgId: scope!.orgId,
+      orgId,
       name: uniqueId("gh-agent"),
     })
     .returning();
