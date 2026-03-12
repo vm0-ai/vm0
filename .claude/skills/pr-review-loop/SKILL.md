@@ -1,27 +1,32 @@
 ---
 name: pr-review-loop
-description: Iteratively review PR, fix high-priority issues, and re-review until clean
+description: Iteratively review PR, post comment, fix issues, and re-review until LGTM
 context: fork
 ---
 
-You are a PR review-and-fix specialist for the vm0 project. Your role is to iteratively review a pull request, fix all high-priority issues found, and re-review until no high-priority issues remain.
+You are a PR review-and-fix specialist for the vm0 project. Your role is to iteratively review a pull request, post findings as a PR comment each round, fix all high-priority issues, and repeat until the review verdict is LGTM.
 
 ## Architecture
 
-Loop control is handled by a **bash driver script**, not by your memory. You MUST follow the ACTION output from the driver script at every step. The driver script is deterministic — it enforces the review-fix-review cycle and prevents skipping re-review after fixes.
+Loop control is handled by a **bash driver script**, not by your memory. You MUST follow the ACTION output from the driver script at every step. The driver script is deterministic — it enforces the review-comment-fix cycle.
 
 ```
 ┌──────────┐     ACTION: REVIEW      ┌─────────┐
-│  Driver   │ ──────────────────────→ │   LLM   │
+│  Driver   │ ──────────────────────→ │   LLM   │  ← run code-quality + test review
 │  Script   │ ←────────────────────── │ (you)   │
 │           │   review-done {p0} {p1} │         │
 │           │                         │         │
-│           │     ACTION: FIX         │         │
+│           │     ACTION: COMMENT     │         │  ← post PR comment with findings
+│           │ ──────────────────────→ │         │
+│           │ ←────────────────────── │         │
+│           │       comment-done      │         │
+│           │                         │         │
+│           │     ACTION: FIX         │         │  ← fix P0/P1 issues, commit, push
 │           │ ──────────────────────→ │         │
 │           │ ←────────────────────── │         │
 │           │       fix-done          │         │
 │           │                         │         │
-│           │     ACTION: FINALIZE    │         │
+│           │     ACTION: LGTM        │         │  ← post LGTM comment, done
 │           │ ──────────────────────→ │         │
 └──────────┘                          └─────────┘
 ```
@@ -76,12 +81,15 @@ case "$CMD" in
     ITER=$((ITER + 1))
     echo "$ITER" > "$STATE"
     if [ "$P0" -eq 0 ] && [ "$P1" -eq 0 ]; then
-      echo "ACTION: FINALIZE"
+      echo "ACTION: LGTM"
     elif [ "$ITER" -ge 5 ]; then
-      echo "ACTION: FINALIZE_WITH_REMAINING"
+      echo "ACTION: COMMENT_FINAL"
     else
-      echo "ACTION: FIX"
+      echo "ACTION: COMMENT"
     fi
+    ;;
+  comment-done)
+    echo "ACTION: FIX"
     ;;
   fix-done)
     echo "ACTION: REVIEW"
@@ -141,6 +149,65 @@ ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" review-done "$P0_COUNT" "$P1
 
 ---
 
+### On `ACTION: COMMENT`
+
+Post a PR comment with the current iteration's review findings. Read the current iteration number from the state file.
+
+```bash
+ITER=$(cat /tmp/pr-review-loop-${PR_NUMBER}.state)
+```
+
+Structure the comment:
+
+```markdown
+## Code Review: PR #<number> (Round <ITER>)
+
+### Summary
+<Brief summary based on code-quality analysis>
+
+### Key Findings
+
+#### Critical Issues (P0)
+<List from code-quality review AND testing review>
+
+#### High Priority (P1)
+<List from code-quality review AND testing review>
+
+### Testing Review
+
+#### Coverage
+<For each new feature or bug fix, state whether tests exist>
+
+#### Convention Compliance
+<List any violations found, with file:line references>
+
+#### Testing Verdict: <Adequate / Insufficient Coverage / Convention Violations>
+
+### Verdict: Changes Requested
+
+Fixing P0/P1 issues and will re-review.
+
+---
+*Round <ITER> of automated review-fix loop*
+```
+
+Post the comment:
+
+```bash
+gh pr comment "$PR_NUMBER" --body "$REVIEW_CONTENT"
+```
+
+Report completion to the driver script:
+
+```bash
+ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" comment-done)
+# Output is ALWAYS: ACTION: FIX
+```
+
+Follow the returned ACTION.
+
+---
+
 ### On `ACTION: FIX`
 
 1. Fix all P0 issues first, then P1 issues:
@@ -175,7 +242,7 @@ cd turbo && pnpm vitest
 
 ```bash
 git add <fixed-files>
-git commit -m "fix: address PR review findings"
+git commit -m "fix: address PR review findings (round <ITER>)"
 git push
 ```
 
@@ -190,24 +257,67 @@ ACTION=$(/tmp/pr-review-loop-driver.sh "$PR_NUMBER" fix-done)
 
 ---
 
-### On `ACTION: FINALIZE` or `ACTION: FINALIZE_WITH_REMAINING`
+### On `ACTION: LGTM`
+
+Post a LGTM comment and go to Phase 3.
+
+```bash
+ITER=$(cat /tmp/pr-review-loop-${PR_NUMBER}.state)
+```
+
+```markdown
+## Code Review: PR #<number> (Round <ITER>) — LGTM :tada:
+
+All P0 and P1 issues have been resolved.
+
+### Summary
+<Brief summary of the final state>
+
+### Verdict: LGTM :white_check_mark:
+
+No critical or high-priority issues remaining. This PR is ready for merge.
+
+---
+*Completed after <ITER> round(s) of automated review-fix loop*
+```
+
+```bash
+gh pr comment "$PR_NUMBER" --body "$LGTM_CONTENT"
+```
 
 Go to Phase 3.
 
 ---
 
-## Phase 3: Finalize
+### On `ACTION: COMMENT_FINAL`
 
-1. Run `/pr-review` to post the final review comment:
+Max iterations reached. Post a final comment with remaining issues:
 
-```typescript
-await Skill({
-  skill: "pr-review",
-  args: `${PR_NUMBER}`
-});
+```markdown
+## Code Review: PR #<number> (Round 5) — Max Iterations Reached
+
+### Remaining Issues
+<List unresolved P0/P1 issues that need manual intervention>
+
+### Verdict: Changes Requested
+
+Automated review-fix loop reached maximum iterations (5). The remaining issues above need manual attention.
+
+---
+*Final round of automated review-fix loop*
 ```
 
-2. Display summary:
+```bash
+gh pr comment "$PR_NUMBER" --body "$FINAL_CONTENT"
+```
+
+Go to Phase 3.
+
+---
+
+## Phase 3: Summary
+
+Display a local summary (do NOT post another comment):
 
 ```
 PR Review Loop Complete
@@ -215,11 +325,11 @@ PR Review Loop Complete
 PR: #{number} - {title}
 Iterations: {count}
 Issues fixed: {count}
+Verdict: {LGTM / Changes Requested (max iterations)}
 
-[If FINALIZE_WITH_REMAINING]
-Max iterations reached. Remaining issues need manual intervention:
+[If max iterations reached]
+Remaining issues need manual intervention:
 - {issue}
 
-Final review posted.
-Comment URL: {url}
+All review comments posted to PR.
 ```
