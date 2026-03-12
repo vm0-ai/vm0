@@ -10,7 +10,6 @@ def registry_file(tmp_path):
             "10.200.0.1": {
                 "runId": "run-abc-123",
                 "sandboxToken": "tok-xyz",
-
                 "registeredAt": 1700000000000,
                 "firewallRules": [
                     {"domain": "*.vm0.ai", "action": "ALLOW"},
@@ -22,7 +21,6 @@ def registry_file(tmp_path):
             "10.200.0.2": {
                 "runId": "run-def-456",
                 "sandboxToken": "tok-abc",
-
                 "registeredAt": 1700000000000,
                 "firewallRules": [],
                 "networkLogPath": str(tmp_path / "network-2.jsonl"),
