@@ -1,0 +1,15 @@
+title = "Gitleaks Configuration"
+
+[allowlist]
+  description = "Allowlist for known false positives"
+  paths = [
+    '''__tests__/''',
+    '''\.test\.ts$''',
+    '''\.test\.tsx$''',
+    '''\.spec\.ts$''',
+    '''\.spec\.tsx$''',
+    '''turbo/apps/docs/content/''',
+    '''\.mdx$''',
+    '''\.md$''',
+    '''feature-switch-key\.ts$''',
+  ]
