@@ -110,7 +110,7 @@ describe("connector list command", () => {
   });
 
   describe("error handling", () => {
-    it("should handle authentication error", async () => {
+    it("should show auth login hint for UNAUTHORIZED error", async () => {
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
           return HttpResponse.json(
@@ -132,10 +132,13 @@ describe("connector list command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
       );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run: vm0 auth login"),
+      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should handle generic API error", async () => {
+    it("should show status code and message for non-auth API error", async () => {
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
           return HttpResponse.json(
@@ -155,7 +158,41 @@ describe("connector list command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Internal server error"),
+        expect.stringContaining("500: Internal server error"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should handle network error", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.error();
+        }),
+      );
+
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      // Network error from HttpResponse.error() manifests as "Failed to fetch"
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to fetch"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should show auth login hint when token is missing", async () => {
+      vi.stubEnv("VM0_TOKEN", "");
+
+      await expect(async () => {
+        await listCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Not authenticated"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Run: vm0 auth login"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
