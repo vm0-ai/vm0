@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { randomBytes, createHmac } from "crypto";
 import { eq, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { scopes } from "../../db/schema/scope";
@@ -37,7 +37,7 @@ const SLUG_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/;
  * @returns A slug in format "user-xxxxxxxx" (13 chars total)
  */
 export function generateDefaultScopeSlug(userId: string): string {
-  const hash = createHash("sha256").update(userId).digest("hex");
+  const hash = createHmac("sha256", "scope-slug").update(userId).digest("hex");
   return `user-${hash.slice(0, 8)}`;
 }
 
