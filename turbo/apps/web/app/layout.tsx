@@ -143,7 +143,7 @@ export default function RootLayout({
       <html lang="en" data-theme="dark" suppressHydrationWarning>
         <head>
           <Script
-            src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433?autoBlock=on"
+            src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433?autoBlock=off"
             strategy="beforeInteractive"
           />
           <link rel="preconnect" href="https://fonts.googleapis.com" />
