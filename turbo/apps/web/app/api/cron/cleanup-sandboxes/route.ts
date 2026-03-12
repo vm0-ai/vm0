@@ -6,8 +6,10 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "../../../../src/db/schema/agent-compose";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, lt, isNotNull } from "drizzle-orm";
 import { composeJobs } from "../../../../src/db/schema/compose-job";
+import { exportJobs } from "../../../../src/db/schema/export-job";
+import { deleteS3Objects } from "../../../../src/lib/s3/s3-client";
 import {
   cleanupExpiredQueueEntries,
   drainStaleQueues,
@@ -28,6 +30,83 @@ const PENDING_TIMEOUT_MS = 5 * 60 * 1000;
 const COMPOSE_JOB_TIMEOUT_MS = 10 * 60 * 1000;
 // Compose names starting with this prefix use debug timeout
 const DEBUG_COMPOSE_PREFIX = "debug-";
+
+// Export job timeout: 10 minutes
+const EXPORT_JOB_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * Clean up expired export jobs (delete R2 objects) and fail stuck jobs.
+ */
+async function cleanupExportJobs(
+  now: number,
+): Promise<{ exportJobsCleaned: number; exportJobsStuck: number }> {
+  let exportJobsCleaned = 0;
+  let exportJobsStuck = 0;
+
+  // 1. Clean up expired completed exports
+  const expiredExports = await globalThis.services.db
+    .select({ id: exportJobs.id, s3Key: exportJobs.s3Key })
+    .from(exportJobs)
+    .where(
+      and(
+        eq(exportJobs.status, "completed"),
+        isNotNull(exportJobs.expiresAt),
+        lt(exportJobs.expiresAt, new Date()),
+      ),
+    );
+
+  if (expiredExports.length > 0) {
+    const s3Keys = expiredExports
+      .map((e) => e.s3Key)
+      .filter((k): k is string => k !== null);
+    if (s3Keys.length > 0) {
+      await deleteS3Objects(env().R2_USER_STORAGES_BUCKET_NAME, s3Keys);
+    }
+
+    const expiredIds = expiredExports.map((e) => e.id);
+    await globalThis.services.db
+      .delete(exportJobs)
+      .where(inArray(exportJobs.id, expiredIds));
+
+    exportJobsCleaned = expiredExports.length;
+    log.debug(`Cleaned up ${exportJobsCleaned} expired export jobs`);
+  }
+
+  // 2. Fail stuck export jobs (pending/running > 10 minutes)
+  const exportJobCutoffTime = new Date(now - EXPORT_JOB_TIMEOUT_MS);
+  const stuckExportJobs = await globalThis.services.db
+    .select({ id: exportJobs.id })
+    .from(exportJobs)
+    .where(
+      and(
+        inArray(exportJobs.status, ["pending", "running"]),
+        lt(exportJobs.createdAt, exportJobCutoffTime),
+      ),
+    );
+
+  for (const job of stuckExportJobs) {
+    await globalThis.services.db
+      .update(exportJobs)
+      .set({
+        status: "failed",
+        completedAt: new Date(),
+        error: "Export job timed out",
+      })
+      .where(
+        and(
+          eq(exportJobs.id, job.id),
+          inArray(exportJobs.status, ["pending", "running"]),
+        ),
+      );
+    exportJobsStuck++;
+  }
+
+  if (exportJobsStuck > 0) {
+    log.debug(`Failed ${exportJobsStuck} stuck export jobs`);
+  }
+
+  return { exportJobsCleaned, exportJobsStuck };
+}
 
 interface CleanupResult {
   runId: string;
@@ -223,6 +302,9 @@ const router = tsr.router(cronCleanupSandboxesContract, {
       }
     }
 
+    // Export job cleanup
+    const { exportJobsCleaned, exportJobsStuck } = await cleanupExportJobs(now);
+
     return {
       status: 200 as const,
       body: {
@@ -231,6 +313,8 @@ const router = tsr.router(cronCleanupSandboxesContract, {
         results,
         composeJobsCleaned,
         composeJobErrors,
+        exportJobsCleaned,
+        exportJobsStuck,
       },
     };
   },

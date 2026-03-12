@@ -39,6 +39,7 @@ import * as telegramMessageSchema from "./schema/telegram-message";
 import * as orgCacheSchema from "./schema/org-cache";
 import * as orgMembersCacheSchema from "./schema/org-members-cache";
 import * as userCacheSchema from "./schema/user-cache";
+import * as exportJobSchema from "./schema/export-job";
 
 export const schema = {
   ...userSchema,
@@ -82,4 +83,5 @@ export const schema = {
   ...orgCacheSchema,
   ...orgMembersCacheSchema,
   ...userCacheSchema,
+  ...exportJobSchema,
 };

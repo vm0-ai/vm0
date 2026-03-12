@@ -911,6 +911,13 @@
       "when": 1773400000040,
       "tag": "0129_rename_clerk_org_id",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1773400000050,
+      "tag": "0130_gdpr_export_jobs",
+      "breakpoints": true
     }
   ]
 }

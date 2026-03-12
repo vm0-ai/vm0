@@ -20,6 +20,7 @@ import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
 import { runnerJobQueue } from "../db/schema/runner-job-queue";
 import { composeJobs } from "../db/schema/compose-job";
+import { exportJobs } from "../db/schema/export-job";
 import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
@@ -80,12 +81,16 @@ import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/c
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
+import { hashFileContent } from "../lib/storage/content-hash";
 import {
   encryptSecretValue,
   decryptSecretValue,
 } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
-import { agentSessions } from "../db/schema/agent-session";
+import {
+  agentSessions,
+  type StoredChatMessage,
+} from "../db/schema/agent-session";
 import {
   agentComposes,
   agentComposeVersions,
@@ -3152,4 +3157,116 @@ export async function insertUserCacheEntry(entry: {
     email: entry.email,
     cachedAt: entry.cachedAt ?? new Date(),
   });
+}
+
+// ============================================================================
+// Export Job Helpers
+// ============================================================================
+
+/**
+ * Find an export job by ID.
+ *
+ * Direct DB read is required to verify job state after async export execution.
+ */
+export async function findTestExportJobById(id: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(exportJobs)
+    .where(eq(exportJobs.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Insert a test compose with a version for export testing.
+ *
+ * Direct DB insert is required because the export test needs compose data
+ * without going through the full compose creation API flow.
+ */
+export async function insertTestComposeWithVersion(
+  userId: string,
+  orgId: string,
+  name: string,
+  content: Record<string, unknown>,
+) {
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({ userId, orgId, name })
+    .returning();
+
+  const versionId = hashFileContent(Buffer.from(uniqueId("ver")));
+  await globalThis.services.db.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId: compose!.id,
+    content,
+    createdBy: userId,
+  });
+
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ headVersionId: versionId })
+    .where(eq(agentComposes.id, compose!.id));
+
+  return { composeId: compose!.id, versionId };
+}
+
+/**
+ * Insert a test agent session with chat messages for export testing.
+ *
+ * Direct DB insert is required because agent sessions are created by
+ * the run flow, not by a standalone API endpoint.
+ */
+export async function insertTestAgentSessionWithMessages(
+  userId: string,
+  agentComposeId: string,
+  chatMessages: StoredChatMessage[],
+) {
+  const [session] = await globalThis.services.db
+    .insert(agentSessions)
+    .values({ userId, agentComposeId, chatMessages })
+    .returning({ id: agentSessions.id });
+  return session!;
+}
+
+/**
+ * Insert a test artifact storage with a version for export testing.
+ *
+ * Direct DB insert is required because storage creation normally goes
+ * through the prepare/commit flow, but we need a minimal record.
+ */
+export async function insertTestArtifactStorage(
+  userId: string,
+  orgId: string,
+  name: string,
+) {
+  const versionId = hashFileContent(Buffer.from(uniqueId("sv")));
+
+  const [storage] = await globalThis.services.db
+    .insert(storages)
+    .values({
+      userId,
+      orgId,
+      name,
+      type: "artifact",
+      s3Prefix: `${userId}/artifact/${name}`,
+      size: 1024,
+      fileCount: 3,
+    })
+    .returning();
+
+  await globalThis.services.db.insert(storageVersions).values({
+    id: versionId,
+    storageId: storage!.id,
+    s3Key: `${userId}/artifact/${name}/${versionId}`,
+    size: 1024,
+    fileCount: 3,
+    createdBy: userId,
+  });
+
+  await globalThis.services.db
+    .update(storages)
+    .set({ headVersionId: versionId })
+    .where(eq(storages.id, storage!.id));
+
+  return { storageId: storage!.id, versionId };
 }

@@ -4,6 +4,7 @@ import { AgentReplyEmail } from "./templates/agent-reply";
 import { InboundErrorEmail } from "./templates/inbound-error";
 import { ScheduleCompletedEmail } from "./templates/schedule-completed";
 import { ScheduleFailedEmail } from "./templates/schedule-failed";
+import { DataExportReadyEmail } from "./templates/data-export-ready";
 
 /**
  * Resolve an EmailTemplate discriminated union to a React element.
@@ -19,5 +20,7 @@ export function resolveTemplate(template: EmailTemplate): ReactElement {
       return ScheduleCompletedEmail(template.props);
     case "schedule-failed":
       return ScheduleFailedEmail(template.props);
+    case "data-export-ready":
+      return DataExportReadyEmail(template.props);
   }
 }

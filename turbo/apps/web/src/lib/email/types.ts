@@ -24,11 +24,17 @@ interface ScheduleFailedTemplate {
   props: { agentName: string; errorMessage: string; logsUrl: string };
 }
 
+interface DataExportReadyTemplate {
+  template: "data-export-ready";
+  props: { downloadUrl: string; expiresAt: string; artifactCount: number };
+}
+
 export type EmailTemplate =
   | AgentReplyTemplate
   | InboundErrorTemplate
   | ScheduleCompletedTemplate
-  | ScheduleFailedTemplate;
+  | ScheduleFailedTemplate
+  | DataExportReadyTemplate;
 
 // ============================================================================
 // Post-Send Action Types (discriminated union)
