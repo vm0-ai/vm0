@@ -21,25 +21,6 @@ const log = logger("slack:shared");
 export type SlackClient = ReturnType<typeof createSlackClient>;
 
 /**
- * Remove the thinking reaction from a message
- */
-export async function removeThinkingReaction(
-  client: SlackClient,
-  channelId: string,
-  messageTs: string,
-): Promise<void> {
-  await client.reactions
-    .remove({
-      channel: channelId,
-      timestamp: messageTs,
-      name: "thought_balloon",
-    })
-    .catch(() => {
-      // Ignore errors when removing reaction
-    });
-}
-
-/**
  * Fetch conversation context with deduplication support.
  * Returns separate contexts for routing (text-only, full history) and
  * execution (with images, only new messages since lastProcessedMessageTs).
@@ -228,22 +209,13 @@ export function buildAgentLogsUrl(agentName: string): string {
 export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
   const scope = await ensureDefaultScope(vm0UserId);
 
-  // Preserve original Slack behavior: log but don't throw on artifact creation failure.
-  // Slack callers (server actions, OAuth callback) don't have error handling for this.
-  try {
-    await ensureStorageExists(
-      scope.orgId,
-      vm0UserId,
-      "artifact",
-      scope.slug,
-      "artifact",
-    );
-  } catch (err) {
-    log.error("Failed to ensure artifact exists for Slack user", {
-      userId: vm0UserId,
-      err,
-    });
-  }
+  await ensureStorageExists(
+    scope.orgId,
+    vm0UserId,
+    "artifact",
+    scope.slug,
+    "artifact",
+  );
 }
 
 /**
