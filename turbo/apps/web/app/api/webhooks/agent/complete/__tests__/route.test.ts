@@ -18,6 +18,8 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 import { getAgentSessionWithConversation } from "../../../../../../src/lib/agent-session";
+import { agentSessions } from "../../../../../../src/db/schema/agent-session";
+import { eq } from "drizzle-orm";
 import {
   testContext,
   uniqueId,
@@ -395,6 +397,156 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
+    });
+  });
+
+  describe("Chat Persistence", () => {
+    it("should persist chat messages to session after successful completion", async () => {
+      // Create checkpoint (which creates a session)
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-chat",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+      const checkpointData = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Mock Axiom to return a result event for this run
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventData: { result: "Here is the agent response." },
+        },
+      ]);
+
+      // Complete the run
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Flush after() callbacks which trigger persistChatMessages
+      await context.mocks.flushAfter();
+
+      // Verify session now has chat messages by querying DB directly
+      const [sessionRow] = await globalThis.services.db
+        .select({ chatMessages: agentSessions.chatMessages })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, checkpointData.agentSessionId))
+        .limit(1);
+      expect(sessionRow).toBeDefined();
+
+      type StoredMessage = { role: string; content: string; runId?: string };
+      const chatMessages = (sessionRow!.chatMessages ?? []) as StoredMessage[];
+      expect(chatMessages.length).toBeGreaterThanOrEqual(2);
+
+      // Verify user message from prompt
+      const userMsg = chatMessages.find((m) => m.role === "user");
+      expect(userMsg).toBeDefined();
+      expect(userMsg!.content).toBe("Test prompt");
+
+      // Verify assistant message from Axiom result
+      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      expect(assistantMsg).toBeDefined();
+      expect(assistantMsg!.content).toBe("Here is the agent response.");
+      expect(assistantMsg!.runId).toBe(testRunId);
+    });
+
+    it("should persist only user message when no result found in Axiom", async () => {
+      // Create checkpoint
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-no-result",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+      const checkpointData = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Axiom returns no events (default mock)
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      // Complete the run
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // Verify session has only user message by querying DB directly
+      const [sessionRow] = await globalThis.services.db
+        .select({ chatMessages: agentSessions.chatMessages })
+        .from(agentSessions)
+        .where(eq(agentSessions.id, checkpointData.agentSessionId))
+        .limit(1);
+      expect(sessionRow).toBeDefined();
+
+      type StoredMessage = { role: string; content: string };
+      const chatMessages = (sessionRow!.chatMessages ?? []) as StoredMessage[];
+      expect(chatMessages).toHaveLength(1);
+      expect(chatMessages[0]!.role).toBe("user");
+      expect(chatMessages[0]!.content).toBe("Test prompt");
     });
   });
 

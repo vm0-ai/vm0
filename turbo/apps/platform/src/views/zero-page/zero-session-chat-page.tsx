@@ -10,12 +10,15 @@ import {
   IconUsers,
   IconCalendar,
   IconX,
-  IconFile,
   IconPhoto,
 } from "@tabler/icons-react";
 import { Button, Card, CardContent, Skeleton } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  FileAttachmentChip,
+  AttachmentChip,
+} from "./zero-attachment-chips.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroChatMessages$,
@@ -30,7 +33,6 @@ import {
   uploadZeroAttachment$,
   removeZeroAttachment$,
   type ZeroChatMessage,
-  type ZeroChatAttachment,
 } from "../../signals/zero-page/zero-chat.ts";
 
 // ---------------------------------------------------------------------------
@@ -359,29 +361,6 @@ function isImageFilename(filename: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
 }
 
-function getFileTypeIcon(filename: string): string | null {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "pdf": {
-      return "/doc-types/PDF.svg";
-    }
-    case "doc":
-    case "docx":
-    case "md":
-    case "txt":
-    case "json":
-    case "html": {
-      return "/doc-types/DOC.svg";
-    }
-    case "csv": {
-      return "/doc-types/CSV.svg";
-    }
-    default: {
-      return null;
-    }
-  }
-}
-
 function UserMessage({ message }: { message: ZeroChatMessage }) {
   const { cleanContent, parsed } = parseInlineAttachments(message.content);
   const lightboxUrl$ = useCCState<string | null>(null);
@@ -554,104 +533,6 @@ function AssistantMessage({
           <span className="text-muted-foreground">Thinking...</span>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// File attachment chip (shown in sent messages)
-// ---------------------------------------------------------------------------
-
-function FileAttachmentChip({
-  filename,
-  url,
-}: {
-  filename: string;
-  url: string;
-}) {
-  const iconSrc = getFileTypeIcon(filename);
-  return (
-    <a
-      href={url}
-      download={filename}
-      title={filename}
-      className="inline-flex items-center justify-center rounded-md hover:bg-foreground/10 transition-colors p-0.5"
-    >
-      {iconSrc ? (
-        <img
-          alt=""
-          className="h-6 w-6 object-contain opacity-80"
-          aria-hidden="true"
-          src={iconSrc}
-        />
-      ) : (
-        <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
-      )}
-    </a>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Attachment chip (shown in composer before sending)
-// ---------------------------------------------------------------------------
-
-function AttachmentChip({
-  attachment,
-  onRemove,
-}: {
-  attachment: ZeroChatAttachment;
-  onRemove: () => void;
-}) {
-  const isImage = attachment.contentType.startsWith("image/");
-  const iconSrc = isImage ? null : getFileTypeIcon(attachment.filename);
-  return (
-    <div
-      className="relative inline-flex items-center justify-center"
-      title={attachment.filename}
-    >
-      {isImage ? (
-        <div className="relative h-6 w-6 rounded-md overflow-hidden border border-foreground/10">
-          {attachment.url ? (
-            <img
-              src={attachment.url}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <IconPhoto
-              size={16}
-              stroke={1.5}
-              className="text-muted-foreground m-auto h-full"
-            />
-          )}
-        </div>
-      ) : iconSrc ? (
-        <img
-          alt=""
-          className="h-6 w-6 object-contain opacity-80"
-          aria-hidden="true"
-          src={iconSrc}
-        />
-      ) : (
-        <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
-      )}
-      {attachment.uploading ? (
-        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
-          <IconLoader2
-            size={10}
-            className="animate-spin text-muted-foreground"
-          />
-        </span>
-      ) : (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
-          aria-label={`Remove ${attachment.filename}`}
-        >
-          <IconX size={9} stroke={2.5} />
-        </button>
-      )}
     </div>
   );
 }

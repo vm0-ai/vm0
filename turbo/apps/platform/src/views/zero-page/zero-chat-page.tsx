@@ -6,15 +6,10 @@ import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
-  type ZeroChatAttachment,
 } from "../../signals/zero-page/zero-chat.ts";
 import {
   IconSend,
   IconPaperclip,
-  IconX,
-  IconFile,
-  IconPhoto,
-  IconLoader2,
   IconBriefcase,
   IconSettings,
   IconPlug,
@@ -31,6 +26,7 @@ import {
 import { Button, Card, CardContent, cn } from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { AttachmentChips } from "./zero-attachment-chips.tsx";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -1219,101 +1215,6 @@ export function ZeroChatPage({
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-function getFileTypeIcon(filename: string): string | null {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "pdf": {
-      return "/doc-types/PDF.svg";
-    }
-    case "doc":
-    case "docx":
-    case "md":
-    case "txt":
-    case "json":
-    case "html": {
-      return "/doc-types/DOC.svg";
-    }
-    case "csv": {
-      return "/doc-types/CSV.svg";
-    }
-    default: {
-      return null;
-    }
-  }
-}
-
-function AttachmentChips({
-  attachments,
-  onRemove,
-}: {
-  attachments: ZeroChatAttachment[];
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2 px-4 pt-3">
-      {attachments.map((a) => {
-        const isImage = a.contentType.startsWith("image/");
-        const iconSrc = isImage ? null : getFileTypeIcon(a.filename);
-        return (
-          <div
-            key={a.id}
-            className="relative inline-flex items-center justify-center"
-            title={a.filename}
-          >
-            {isImage ? (
-              <div className="relative h-6 w-6 rounded-md overflow-hidden border border-foreground/10">
-                {a.url ? (
-                  <img
-                    src={a.url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <IconPhoto
-                    size={16}
-                    stroke={1.5}
-                    className="text-muted-foreground m-auto h-full"
-                  />
-                )}
-              </div>
-            ) : iconSrc ? (
-              <img
-                alt=""
-                className="h-6 w-6 object-contain opacity-80"
-                aria-hidden="true"
-                src={iconSrc}
-              />
-            ) : (
-              <IconFile
-                size={20}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            )}
-            {a.uploading ? (
-              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
-                <IconLoader2
-                  size={10}
-                  className="animate-spin text-muted-foreground"
-                />
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onRemove(a.id)}
-                className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
-                aria-label={`Remove ${a.filename}`}
-              >
-                <IconX size={9} stroke={2.5} />
-              </button>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }
