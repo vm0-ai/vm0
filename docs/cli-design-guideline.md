@@ -667,7 +667,7 @@ if (!isValid(value)) {
 }
 
 // Configuration
-if (error.message.includes("No scope configured")) {
+if (error.message.includes("No org configured")) {
   console.log(chalk.yellow("No organization configured"));
   console.log();
   console.log("Set your organization with:");

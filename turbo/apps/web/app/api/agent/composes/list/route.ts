@@ -66,7 +66,7 @@ const router = tsr.router(composesListContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    // Resolve scope: use ?scope= query param or default scope
+    // Resolve org: use ?scope= query param or default org
     let orgId: string;
     try {
       const { org: resolvedOrg } = await resolveOrg(
@@ -90,7 +90,7 @@ const router = tsr.router(composesListContract, {
           status: 403 as const,
           body: {
             error: {
-              message: "You don't have access to this scope",
+              message: "You don't have access to this org",
               code: "FORBIDDEN",
             },
           },
@@ -99,7 +99,7 @@ const router = tsr.router(composesListContract, {
       throw error;
     }
 
-    // Query own composes for this scope (join head version for displayName)
+    // Query own composes for this org (join head version for displayName)
     const ownComposes = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -116,7 +116,7 @@ const router = tsr.router(composesListContract, {
       .where(eq(agentComposes.orgId, orgId))
       .orderBy(desc(agentComposes.updatedAt));
 
-    // When using default scope (no ?scope= param), also include email-shared agents
+    // When using default org (no ?scope= param), also include email-shared agents
     let sharedComposes: {
       name: string;
       headVersionId: string | null;
@@ -130,7 +130,7 @@ const router = tsr.router(composesListContract, {
       sharedComposes = shared;
     }
 
-    // Combine: own agents first, then shared agents with scope/name format
+    // Combine: own agents first, then shared agents with org/name format
     const allComposes = [
       ...ownComposes.map((c) => ({
         name: c.name,

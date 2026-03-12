@@ -31,7 +31,7 @@ const router = tsr.router(storagesListContract, {
 
     const { type: storageType } = query;
 
-    // Resolve user's default scope
+    // Resolve user's default org
     const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
     const { org: runtimeOrg } = await resolveOrg(
@@ -45,9 +45,9 @@ const router = tsr.router(storagesListContract, {
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
 
-    log.debug(`Listing ${storageType}s for scope ${runtimeOrg.slug}`);
+    log.debug(`Listing ${storageType}s for org ${runtimeOrg.slug}`);
 
-    // Query storages filtered by scope, userId, and type
+    // Query storages filtered by org, userId, and type
     const results = await globalThis.services.db
       .select({
         name: storages.name,

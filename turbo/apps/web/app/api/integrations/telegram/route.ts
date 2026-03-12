@@ -88,7 +88,7 @@ export async function GET(request: Request) {
     );
   }
 
-  // Get default agent with scope info
+  // Get default agent with org info
   const [compose] = await db
     .select({
       id: agentComposes.id,
@@ -121,7 +121,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve user's default scope and get existing secrets, vars, connectors
+  // Resolve user's default org and get existing secrets, vars, connectors
   const { org } = await resolveOrg(userId, null, null, tokenOrgId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
@@ -247,7 +247,7 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Parse scope/agentName format
+  // Parse org/agentName format
   const slashIndex = body.agentName.indexOf("/");
   const agentName =
     slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);
@@ -260,7 +260,7 @@ export async function PATCH(request: Request) {
     const resolved = await getOrgBySlug(orgSlug);
     if (!resolved) {
       return NextResponse.json(
-        { error: { message: "Scope not found", code: "BAD_REQUEST" } },
+        { error: { message: "Org not found", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
@@ -271,7 +271,7 @@ export async function PATCH(request: Request) {
     } catch (error) {
       if (isNotFound(error)) {
         return NextResponse.json(
-          { error: { message: "No scope configured", code: "BAD_REQUEST" } },
+          { error: { message: "No org configured", code: "BAD_REQUEST" } },
           { status: 400 },
         );
       }

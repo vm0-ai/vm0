@@ -230,7 +230,7 @@ export async function removeMember(
 
   // Cannot remove self
   if (targetUserId === callerUserId) {
-    throw badRequest("Cannot remove yourself. Use 'scope leave' instead.");
+    throw badRequest("Cannot remove yourself. Use 'org leave' instead.");
   }
 
   // Find membership to get membershipId
@@ -257,12 +257,12 @@ export async function removeMember(
 
 /**
  * Leave the org.
- * Admins cannot leave (they must add another admin or delete the scope).
+ * Admins cannot leave (they must add another admin or delete the org).
  */
 export async function leaveOrg(userId: string, orgId: string, role: OrgRole) {
   if (role === "admin") {
     throw forbidden(
-      "Admins cannot leave a scope. Add another admin or delete the scope.",
+      "Admins cannot leave an org. Add another admin or delete the org.",
     );
   }
 
@@ -273,7 +273,7 @@ export async function leaveOrg(userId: string, orgId: string, role: OrgRole) {
     userId: userId,
   });
 
-  log.debug("User left scope", { orgId, userId });
+  log.debug("User left org", { orgId, userId });
 }
 
 /**

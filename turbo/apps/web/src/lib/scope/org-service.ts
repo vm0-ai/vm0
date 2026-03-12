@@ -34,7 +34,7 @@ const SLUG_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/;
  * @returns A slug in format "user-xxxxxxxx" (13 chars total)
  */
 export function generateDefaultOrgSlug(userId: string): string {
-  const hash = createHmac("sha256", "scope-slug").update(userId).digest("hex");
+  const hash = createHmac("sha256", "org-slug").update(userId).digest("hex");
   return `user-${hash.slice(0, 8)}`;
 }
 
@@ -101,7 +101,7 @@ export async function updateOrgSlug(
   // Check if new slug already exists via org_cache
   const existing = await getOrgBySlug(newSlug);
   if (existing && existing.orgId !== orgId) {
-    throw badRequest(`Scope "${newSlug}" already exists`);
+    throw badRequest(`Org "${newSlug}" already exists`);
   }
 
   log.debug("updating org slug", { orgId, newSlug });
@@ -123,7 +123,7 @@ export async function updateOrgSlug(
  * Check if a runner group belongs to the official vm0 org.
  * Official runner groups (vm0/production, vm0/development) can be used by any user.
  *
- * @param group - Runner group in format "scope/name"
+ * @param group - Runner group in format "org/name"
  * @returns true if the group is an official runner group (vm0/*)
  */
 export function isOfficialRunnerGroup(group: string): boolean {
@@ -134,12 +134,12 @@ export function isOfficialRunnerGroup(group: string): boolean {
 
 /**
  * Validate that a runner group's org matches the user's org.
- * Runner groups are in format "scope/name" (e.g., "e2e-stable/pr-851").
+ * Runner groups are in format "org/name" (e.g., "e2e-stable/pr-851").
  *
  * For official runner groups (vm0/*), any authenticated user is allowed.
- * For user runner groups, the org part must match the user's personal scope slug.
+ * For user runner groups, the org part must match the user's personal org slug.
  *
- * @throws ForbiddenError if scope doesn't match (for non-official groups)
+ * @throws ForbiddenError if org doesn't match (for non-official groups)
  */
 export async function validateRunnerGroupOrg(
   userId: string,
@@ -162,19 +162,19 @@ export async function validateRunnerGroupOrg(
     if (orgData.slug === orgSlug) {
       return;
     }
-    throw forbidden(`Runner group org "${orgSlug}" does not match your scope`);
+    throw forbidden(`Runner group org "${orgSlug}" does not match your org`);
   }
 
-  const defaultScope = await getDefaultOrgByUserId(userId);
-  if (!defaultScope) {
+  const defaultOrg = await getDefaultOrgByUserId(userId);
+  if (!defaultOrg) {
     throw forbidden(
-      `Runner group org "${orgSlug}" requires you to have a scope configured`,
+      `Runner group org "${orgSlug}" requires you to have an org configured`,
     );
   }
 
-  if (defaultScope.slug !== orgSlug) {
+  if (defaultOrg.slug !== orgSlug) {
     throw forbidden(
-      `Runner group org "${orgSlug}" does not match your scope "${defaultScope.slug}"`,
+      `Runner group org "${orgSlug}" does not match your org "${defaultOrg.slug}"`,
     );
   }
 }

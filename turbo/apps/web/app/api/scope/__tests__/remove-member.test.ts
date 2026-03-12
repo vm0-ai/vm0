@@ -155,7 +155,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     // Add member via invite API
     await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
 
-    // Verify member can access scope members
+    // Verify member can access org members
     setupClerkOrgMock({
       userId: memberUserId,
       orgId,
@@ -206,7 +206,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     expect(removeRes.status).toBe(200);
 
     // Verify member is no longer in the Clerk org membership list.
-    // Use admin user to check — the removed member can no longer access the scope.
+    // Use admin user to check — the removed member can no longer access the org.
     setupClerkOrgMock({
       userId: adminUserId,
       orgId,

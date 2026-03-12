@@ -24,10 +24,10 @@ function resolvedOrgToResponse(resolved: ResolvedOrg) {
 
 const router = tsr.router(scopeContract, {
   /**
-   * GET /api/scope - Get current user's default scope
+   * GET /api/scope - Get current user's default org
    *
-   * Resolves the active scope via orgId from Clerk session,
-   * or falls back to the user's default scope (first admin membership).
+   * Resolves the active org via orgId from Clerk session,
+   * or falls back to the user's default org (first admin membership).
    */
   get: async ({ headers }) => {
     initServices();
@@ -59,10 +59,10 @@ const router = tsr.router(scopeContract, {
   },
 
   /**
-   * PUT /api/scope - Update active scope slug
+   * PUT /api/scope - Update active org slug
    *
-   * Resolves the active scope via orgId from Clerk session,
-   * or falls back to the user's default scope (first admin membership).
+   * Resolves the active org via orgId from Clerk session,
+   * or falls back to the user's default org (first admin membership).
    */
   update: async ({ body, headers }) => {
     initServices();
@@ -75,7 +75,7 @@ const router = tsr.router(scopeContract, {
 
     const { slug, force } = body;
 
-    log.debug("updating scope", { userId, slug, force });
+    log.debug("updating org", { userId, slug, force });
 
     let resolvedOrg;
     try {
@@ -84,7 +84,7 @@ const router = tsr.router(scopeContract, {
       if (isNotFound(error)) {
         return createErrorResponse(
           "NOT_FOUND",
-          "No scope configured. Set your scope with: vm0 scope set <slug>",
+          "No org configured. Set your org with: vm0 org set <slug>",
         );
       }
       throw error;

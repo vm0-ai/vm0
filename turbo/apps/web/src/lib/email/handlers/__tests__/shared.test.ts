@@ -7,24 +7,24 @@ import {
 } from "../shared";
 
 describe("parseEmailTriggerAddress", () => {
-  it("should parse valid scope+agent address", () => {
+  it("should parse valid org+agent address", () => {
     const result = parseEmailTriggerAddress("lancy+my-agent@vm0.bot");
-    expect(result).toEqual({ scope: "lancy", agent: "my-agent" });
+    expect(result).toEqual({ org: "lancy", agent: "my-agent" });
   });
 
   it("should normalize to lowercase", () => {
     const result = parseEmailTriggerAddress("LANCY+MY-AGENT@vm0.bot");
-    expect(result).toEqual({ scope: "lancy", agent: "my-agent" });
+    expect(result).toEqual({ org: "lancy", agent: "my-agent" });
   });
 
-  it("should handle scope and agent with numbers", () => {
+  it("should handle org and agent with numbers", () => {
     const result = parseEmailTriggerAddress("user123+agent456@vm0.bot");
-    expect(result).toEqual({ scope: "user123", agent: "agent456" });
+    expect(result).toEqual({ org: "user123", agent: "agent456" });
   });
 
-  it("should handle scope and agent with hyphens", () => {
+  it("should handle org and agent with hyphens", () => {
     const result = parseEmailTriggerAddress("my-scope+my-agent@vm0.bot");
-    expect(result).toEqual({ scope: "my-scope", agent: "my-agent" });
+    expect(result).toEqual({ org: "my-scope", agent: "my-agent" });
   });
 
   it("should return null for reply address", () => {
@@ -37,7 +37,7 @@ describe("parseEmailTriggerAddress", () => {
     expect(result).toBeNull();
   });
 
-  it("should return null for address with only scope", () => {
+  it("should return null for address with only org", () => {
     const result = parseEmailTriggerAddress("scope+@vm0.bot");
     expect(result).toBeNull();
   });
@@ -47,7 +47,7 @@ describe("parseEmailTriggerAddress", () => {
     expect(result).toBeNull();
   });
 
-  it("should return null for scope starting with hyphen", () => {
+  it("should return null for org starting with hyphen", () => {
     const result = parseEmailTriggerAddress("-invalid+agent@vm0.bot");
     expect(result).toBeNull();
   });

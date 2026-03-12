@@ -392,7 +392,7 @@ describe("requireOrgFromRequest", () => {
     const request = new Request("http://localhost/api/test");
 
     await expect(requireOrgFromRequest(request, userId)).rejects.toThrow(
-      "scope or org query parameter is required",
+      "org query parameter is required",
     );
   });
 
@@ -405,7 +405,7 @@ describe("requireOrgFromRequest", () => {
     );
 
     await expect(requireOrgFromRequest(request, userId)).rejects.toThrow(
-      "Scope not found",
+      "Org not found",
     );
   });
 });

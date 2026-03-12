@@ -122,7 +122,7 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve user's scope for resource queries
+  // Resolve user's org for resource queries
   const { org } = await resolveOrg(userId, null, null, tokenOrgId);
 
   // Get user's existing secrets, vars, connectors
@@ -325,20 +325,20 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Parse scope/agentName format (shared agents use "orgSlug/agentName")
+  // Parse org/agentName format (shared agents use "orgSlug/agentName")
   const slashIndex = body.agentName.indexOf("/");
   const agentName =
     slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);
   const orgSlug =
     slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
 
-  // Resolve target scope
+  // Resolve target org
   let targetOrgId: string;
   if (orgSlug) {
     const targetOrg = await getOrgBySlug(orgSlug);
     if (!targetOrg) {
       return NextResponse.json(
-        { error: { message: "Scope not found", code: "BAD_REQUEST" } },
+        { error: { message: "Org not found", code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
@@ -348,7 +348,7 @@ export async function PATCH(request: Request) {
     targetOrgId = org.orgId;
   }
 
-  // Find agent compose by name in target scope
+  // Find agent compose by name in target org
   const [compose] = await db
     .select({ id: agentComposes.id })
     .from(agentComposes)

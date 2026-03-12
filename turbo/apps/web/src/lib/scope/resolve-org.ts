@@ -35,13 +35,13 @@ function mapOrgRole(clerkRole: string | undefined | null): OrgRole {
 /**
  * Verify a user's membership in a Clerk organization.
  *
- * Fast path: if the scope's orgId matches the JWT's active org,
+ * Fast path: if the org's orgId matches the JWT's active org,
  * trust the JWT claims and skip the Clerk API call entirely.
  *
  * Slow path: for cross-org access (e.g. ?scope= pointing to a non-active org),
  * fall back to Clerk Backend API.
  *
- * CLI token path: if tokenOrgId is provided and matches the scope,
+ * CLI token path: if tokenOrgId is provided and matches the org,
  * trust the token (membership was verified at token creation time).
  */
 async function verifyMembership(
@@ -143,7 +143,7 @@ export async function resolveOrg(
   // 1. Explicit org selection via ?scope= query param (highest priority)
   if (orgSlug) {
     const orgData = await getOrgBySlug(orgSlug);
-    if (!orgData) throw notFound("Scope not found");
+    if (!orgData) throw notFound("Org not found");
 
     const member = await verifyMembership(
       orgData,
@@ -173,7 +173,7 @@ export async function resolveOrg(
       if (error instanceof Error && error.message.includes("not a member")) {
         throw error;
       }
-      // Org not found in Clerk — fall through to default scope
+      // Org not found in Clerk — fall through to default org
       log.debug("orgId lookup failed, falling through to default", {
         orgId: effectiveOrgId,
       });
@@ -186,10 +186,10 @@ export async function resolveOrg(
 
 /**
  * Extract and validate org from a request's ?scope= or ?org= query parameter.
- * Throws if the scope param is missing, the scope doesn't exist, or the user
+ * Throws if the param is missing, the org doesn't exist, or the user
  * is not a member.
  *
- * Use this in org routes that always require an explicit scope parameter.
+ * Use this in org routes that always require an explicit org parameter.
  */
 export async function requireOrgFromRequest(
   request: Request,
@@ -211,11 +211,11 @@ export async function requireOrgFromRequest(
       orgData = null;
     }
   } else {
-    throw badRequest("scope or org query parameter is required");
+    throw badRequest("org query parameter is required");
   }
 
   if (!orgData) {
-    throw notFound("Scope not found");
+    throw notFound("Org not found");
   }
 
   const authResult = await auth();

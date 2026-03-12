@@ -34,7 +34,7 @@ interface InboundEmailEvent {
 }
 
 interface ResolvedTrigger {
-  triggerAddress: { scope: string; agent: string };
+  triggerAddress: { org: string; agent: string };
   triggerLocalPart: string;
   userId: string;
 }
@@ -42,14 +42,14 @@ interface ResolvedTrigger {
 /**
  * Parse trigger address from recipients and resolve the sender's user ID.
  * Supports two formats:
- * - scope+agent@domain (explicit scope)
- * - agent@domain (scope auto-detected from sender's personal scope)
+ * - org+agent@domain (explicit org)
+ * - agent@domain (org auto-detected from sender's personal org)
  */
 async function resolveTrigger(
   to: string[],
   senderEmail: string,
 ): Promise<ResolvedTrigger | HandlerResult> {
-  // 1a. Try scope+agent format first
+  // 1a. Try org+agent format first
   for (const addr of to) {
     const parsed = parseEmailTriggerAddress(addr);
     if (parsed) {
@@ -65,7 +65,7 @@ async function resolveTrigger(
       }
       return {
         triggerAddress: parsed,
-        triggerLocalPart: `${parsed.scope}+${parsed.agent}`,
+        triggerLocalPart: `${parsed.org}+${parsed.agent}`,
         userId,
       };
     }
@@ -90,7 +90,7 @@ async function resolveTrigger(
     };
   }
 
-  // For agent-only format, we need the sender's scope
+  // For agent-only format, we need the sender's org
   const userId = await getUserIdByEmail(senderEmail);
   if (!userId) {
     log.debug("Sender email not registered", { from: senderEmail });
@@ -102,7 +102,7 @@ async function resolveTrigger(
 
   const runtimeOrg = await getDefaultOrgByUserId(userId);
   if (!runtimeOrg) {
-    log.debug("Sender has no scope", { from: senderEmail, userId });
+    log.debug("Sender has no org", { from: senderEmail, userId });
     return {
       ok: false,
       errorMessage: "Your account does not have a workspace configured.",
@@ -110,7 +110,7 @@ async function resolveTrigger(
   }
 
   return {
-    triggerAddress: { scope: runtimeOrg.slug, agent: agentName },
+    triggerAddress: { org: runtimeOrg.slug, agent: agentName },
     triggerLocalPart: agentName,
     userId,
   };
@@ -120,9 +120,9 @@ async function resolveTrigger(
  * Handle an inbound email that triggers an agent run.
  *
  * Flow:
- * 1. Parse trigger address from recipients (scope+agent or agent-only)
+ * 1. Parse trigger address from recipients (org+agent or agent-only)
  * 2. Look up sender email in Clerk to get user ID
- * 3. Resolve agent by scope slug + agent name
+ * 3. Resolve agent by org slug + agent name
  * 4. Check if user has permission to access the agent
  * 5. Fetch full email and verify sender via DMARC
  * 6. Create agent run with callback for response delivery
@@ -141,24 +141,24 @@ export async function handleInboundEmailTrigger(
   const { triggerAddress, triggerLocalPart, userId } = resolved;
 
   log.debug("Processing email trigger", {
-    scope: triggerAddress.scope,
+    org: triggerAddress.org,
     agent: triggerAddress.agent,
     from: senderEmail,
   });
 
   // 3. Resolve agent
   const compose = await resolveAgentByAddress(
-    triggerAddress.scope,
+    triggerAddress.org,
     triggerAddress.agent,
   );
   if (!compose) {
     log.debug("Agent not found", {
-      scope: triggerAddress.scope,
+      org: triggerAddress.org,
       agent: triggerAddress.agent,
     });
     return {
       ok: false,
-      errorMessage: `Agent "${triggerAddress.agent}" was not found in scope "${triggerAddress.scope}".`,
+      errorMessage: `Agent "${triggerAddress.agent}" was not found in org "${triggerAddress.org}".`,
     };
   }
 
@@ -282,7 +282,7 @@ export async function handleInboundEmailTrigger(
   log.info("Dispatched agent run from email trigger", {
     runId: result.runId,
     emailId,
-    scope: triggerAddress.scope,
+    org: triggerAddress.org,
     agent: triggerAddress.agent,
   });
 

@@ -44,7 +44,7 @@ describe("org status command", () => {
       server.use(
         http.get("http://localhost:3000/api/scope", () => {
           return HttpResponse.json(
-            { error: { message: "No scope configured", code: "NOT_FOUND" } },
+            { error: { message: "No org configured", code: "NOT_FOUND" } },
             { status: 404 },
           );
         }),

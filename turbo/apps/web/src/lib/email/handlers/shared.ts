@@ -18,36 +18,36 @@ export type HandlerResult = { ok: true } | { ok: false; errorMessage: string };
 // ============================================================================
 
 interface EmailTriggerAddress {
-  scope: string;
+  org: string;
   agent: string;
 }
 
 /**
- * Parse a trigger email address in the format: scope+agent@domain
+ * Parse a trigger email address in the format: org+agent@domain
  * Returns null if the address doesn't match the expected format.
  *
  * Examples:
- * - "lancy+my-agent@vm0.bot" → { scope: "lancy", agent: "my-agent" }
+ * - "lancy+my-agent@vm0.bot" → { org: "lancy", agent: "my-agent" }
  * - "reply+token@vm0.bot" → null (reply address, not trigger)
  * - "invalid@vm0.bot" → null (no plus sign)
  */
 export function parseEmailTriggerAddress(
   toAddress: string,
 ): EmailTriggerAddress | null {
-  // Match: scope+agent@domain (case-insensitive)
-  // Scope and agent must start with alphanumeric, can contain hyphens
+  // Match: org+agent@domain (case-insensitive)
+  // Org and agent must start with alphanumeric, can contain hyphens
   const match = toAddress.match(
     /^([a-z0-9][a-z0-9-]*)\+([a-z0-9][a-z0-9-]*)@/i,
   );
   if (!match || !match[1] || !match[2]) return null;
 
-  const scope = match[1].toLowerCase();
+  const org = match[1].toLowerCase();
   const agent = match[2].toLowerCase();
 
   // Exclude reply addresses (reply+token@domain)
-  if (scope === "reply") return null;
+  if (org === "reply") return null;
 
-  return { scope, agent };
+  return { org, agent };
 }
 
 /**
@@ -57,7 +57,7 @@ export function parseEmailTriggerAddress(
  *
  * Examples:
  * - "my-agent@vm0.bot" → "my-agent"
- * - "scope+agent@vm0.bot" → null (has plus sign, use parseEmailTriggerAddress)
+ * - "org+agent@vm0.bot" → null (has plus sign, use parseEmailTriggerAddress)
  * - "reply+token@vm0.bot" → null (has plus sign)
  * - "@vm0.bot" → null (empty local part)
  */
@@ -177,7 +177,7 @@ interface ResolvedAgent {
 }
 
 /**
- * Resolve an agent compose by scope slug and agent name.
+ * Resolve an agent compose by org slug and agent name.
  * Returns compose details if found, null otherwise.
  */
 export async function resolveAgentByAddress(

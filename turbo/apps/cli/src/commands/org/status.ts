@@ -16,7 +16,7 @@ export const statusCommand = new Command()
       } catch (error) {
         if (
           error instanceof Error &&
-          error.message.includes("No scope configured")
+          error.message.includes("No org configured")
         ) {
           throw new Error("No organization configured", {
             cause: new Error("Set your organization with: vm0 org set <slug>"),

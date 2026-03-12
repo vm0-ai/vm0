@@ -10,7 +10,7 @@ import {
 } from "../../../../src/lib/errors";
 
 /**
- * POST /api/scope/leave - Leave the current scope
+ * POST /api/scope/leave - Leave the current org
  */
 export async function POST(request: Request) {
   initServices();
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       tokenOrgId,
     );
     await leaveOrg(userId, org.orgId, member.role);
-    return NextResponse.json({ message: "Left scope" });
+    return NextResponse.json({ message: "Left org" });
   } catch (error) {
     if (isBadRequest(error)) {
       return NextResponse.json(
