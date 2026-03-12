@@ -506,11 +506,14 @@ impl Sandbox for FirecrackerSandbox {
         ));
 
         // Spawn balloon controller to reclaim unused guest memory.
-        self.balloon_controller = Some(crate::balloon::spawn(
-            self.sock_paths.api_sock().to_owned(),
-            self.config.resources.memory_mb,
-            Arc::clone(&self.crash_notify),
-        ));
+        // Only in snapshot mode — fresh boot uses --no-api so no API socket exists.
+        if self.factory_config.snapshot.is_some() {
+            self.balloon_controller = Some(crate::balloon::spawn(
+                self.sock_paths.api_sock().to_owned(),
+                self.config.resources.memory_mb,
+                Arc::clone(&self.crash_notify),
+            ));
+        }
 
         info!(id = %self.id, "sandbox started");
         Ok(())
