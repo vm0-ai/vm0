@@ -100,7 +100,7 @@ export async function automateCliAuth(apiHost?: string) {
     });
 
     // Wait for device code
-    const { deviceCode, authUrl } = await new Promise<{ deviceCode: string; authUrl: string }>((resolve, reject) => {
+    const { deviceCode } = await new Promise<{ deviceCode: string }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("Timeout: Unable to get device code"));
       }, 10000);
@@ -108,14 +108,12 @@ export async function automateCliAuth(apiHost?: string) {
       // Poll for device code in accumulated output
       const checkInterval = setInterval(() => {
         const codeMatch = cliOutput.match(/enter this code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i);
-        const urlMatch = cliOutput.match(/visit:\s*(https?:\/\/[^\s]+\/cli-auth)/i);
 
         if (codeMatch) {
           clearTimeout(timeout);
           clearInterval(checkInterval);
           resolve({
             deviceCode: codeMatch[1],
-            authUrl: urlMatch ? urlMatch[1] : `${apiUrl}/cli-auth`
           });
         }
       }, 100);
