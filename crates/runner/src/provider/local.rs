@@ -142,7 +142,6 @@ impl JobProvider for LocalProvider {
             prompt: req.prompt,
             agent_compose_version_id: None,
             vars: req.vars,
-            secret_names: None,
             checkpoint_id: None,
             sandbox_token: String::new(),
             working_dir: req.working_dir,

@@ -321,8 +321,6 @@ function buildPreparedContext(
     // Environment & Secrets
     environment: context.environment || null,
     secrets: context.secrets || null,
-    secretNames: context.secretNames || null,
-
     // Resume support
     resumeSession: context.resumeSession || null,
     resumeArtifact: context.resumeArtifact || null,

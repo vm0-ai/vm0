@@ -69,7 +69,6 @@ const router = tsr.router(runnersPollContract, {
         prompt: agentRuns.prompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
-        secretNames: agentRuns.secretNames,
         resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       })
       .from(runnerJobQueue)
@@ -87,7 +86,6 @@ const router = tsr.router(runnersPollContract, {
             prompt: pendingJob.prompt,
             agentComposeVersionId: pendingJob.agentComposeVersionId,
             vars: (pendingJob.vars as Record<string, string>) ?? null,
-            secretNames: pendingJob.secretNames ?? null,
             checkpointId: pendingJob.resumedFromCheckpointId ?? null,
           },
         },

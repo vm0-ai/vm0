@@ -186,7 +186,6 @@ const router = tsr.router(runnersJobClaimContract, {
         prompt: run.prompt,
         agentComposeVersionId: run.agentComposeVersionId,
         vars: (run.vars as Record<string, string>) ?? null,
-        secretNames: run.secretNames ?? null,
         checkpointId: run.resumedFromCheckpointId ?? null,
         sandboxToken,
         // From stored context (prepared at job creation):

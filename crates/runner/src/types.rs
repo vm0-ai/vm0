@@ -34,10 +34,6 @@ pub struct ExecutionContext {
     pub agent_compose_version_id: Option<String>,
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
-    // TODO: remove allow(dead_code) when secret injection is implemented
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub secret_names: Option<Vec<String>>,
     // TODO: remove allow(dead_code) when checkpoint resume is implemented
     #[allow(dead_code)]
     #[serde(default)]

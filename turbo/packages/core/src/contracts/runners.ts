@@ -48,7 +48,6 @@ export const jobSchema = z.object({
   prompt: z.string(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  secretNames: z.array(z.string()).nullable(),
   checkpointId: z.string().uuid().nullable(),
 });
 
@@ -167,7 +166,6 @@ export const executionContextSchema = z.object({
   prompt: z.string(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  secretNames: z.array(z.string()).nullable(),
   checkpointId: z.string().uuid().nullable(),
   sandboxToken: z.string(),
   // New fields for E2B parity:
