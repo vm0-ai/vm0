@@ -85,7 +85,7 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return needsOnboarding=false when all conditions met", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
     await createTestModelProvider("anthropic-api-key", "test-secret-key");
 
     // Create a compose and set as default via API
@@ -101,6 +101,13 @@ describe("GET /api/onboarding/status", () => {
     );
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
+
+    // Re-mock Clerk so the JWT session claim includes the compose ID
+    // (in production, Clerk propagates org metadata to JWT claims)
+    mockClerk({
+      userId: user.userId,
+      orgDefaultAgentComposeId: compose.composeId,
+    });
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
@@ -121,7 +128,7 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return defaultAgentMetadata when compose has metadata", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
     await createTestModelProvider("anthropic-api-key", "test-secret-key");
 
     // Create a compose with metadata
@@ -139,6 +146,12 @@ describe("GET /api/onboarding/status", () => {
     );
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
+
+    // Re-mock Clerk so the JWT session claim includes the compose ID
+    mockClerk({
+      userId: user.userId,
+      orgDefaultAgentComposeId: compose.composeId,
+    });
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",

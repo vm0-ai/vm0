@@ -51,6 +51,7 @@ let createdOrgs: Array<{
  * @param options.membershipTimezone - Timezone to include in JWT sessionClaims.membership_timezone (optional)
  * @param options.membershipNotifyEmail - Flag to include in JWT sessionClaims.membership_notify_email (optional)
  * @param options.membershipNotifySlack - Flag to include in JWT sessionClaims.membership_notify_slack (optional)
+ * @param options.orgDefaultAgentComposeId - Default agent compose ID to include in JWT sessionClaims.org_default_agent_compose_id (optional)
  */
 export function mockClerk(options: {
   userId: string | null;
@@ -62,6 +63,7 @@ export function mockClerk(options: {
   membershipTimezone?: string;
   membershipNotifyEmail?: boolean;
   membershipNotifySlack?: boolean;
+  orgDefaultAgentComposeId?: string | null;
   clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
 }) {
   const email = options.email ?? "test@example.com";
@@ -107,6 +109,9 @@ export function mockClerk(options: {
       }),
       ...(options.membershipNotifySlack !== undefined && {
         membership_notify_slack: options.membershipNotifySlack,
+      }),
+      ...(options.orgDefaultAgentComposeId !== undefined && {
+        org_default_agent_compose_id: options.orgDefaultAgentComposeId,
       }),
     },
   } as Awaited<ReturnType<typeof auth>>);
