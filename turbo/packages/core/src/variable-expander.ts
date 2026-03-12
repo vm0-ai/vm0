@@ -10,7 +10,6 @@
 export interface VariableReference {
   source: "env" | "vars" | "secrets";
   name: string;
-  fullMatch: string;
 }
 
 /**
@@ -51,11 +50,7 @@ export function extractVariableReferencesFromString(
   for (const match of matches) {
     const source = match[1] as "env" | "vars" | "secrets";
     const name = match[2]!;
-    refs.push({
-      source,
-      name,
-      fullMatch: match[0]!,
-    });
+    refs.push({ source, name });
   }
 
   return refs;
@@ -116,7 +111,7 @@ export function expandVariablesInString(
       const key = `${typedSource}.${name}`;
       if (!seenMissing.has(key)) {
         seenMissing.add(key);
-        missingVars.push({ source: typedSource, name, fullMatch });
+        missingVars.push({ source: typedSource, name });
       }
       return fullMatch;
     }
@@ -229,8 +224,8 @@ export function groupVariablesBySource(refs: VariableReference[]): {
  *   STATIC: "hello",
  * };
  * const grouped = extractAndGroupVariables(env);
- * // grouped.secrets => [{ source: "secrets", name: "OPENAI_KEY", fullMatch: "${{ secrets.OPENAI_KEY }}" }]
- * // grouped.vars    => [{ source: "vars", name: "AWS_REGION", fullMatch: "${{ vars.AWS_REGION }}" }]
+ * // grouped.secrets => [{ source: "secrets", name: "OPENAI_KEY" }]
+ * // grouped.vars    => [{ source: "vars", name: "AWS_REGION" }]
  * // grouped.env     => []
  * ```
  */
