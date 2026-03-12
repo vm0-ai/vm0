@@ -55,6 +55,8 @@ const platformLogEntrySchema = z.object({
   framework: z.string().nullable(),
   status: platformLogStatusSchema,
   createdAt: z.string(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
 });
 
 /**

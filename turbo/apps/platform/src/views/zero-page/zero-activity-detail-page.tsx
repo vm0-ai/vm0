@@ -29,7 +29,6 @@ import { Markdown } from "../components/markdown.tsx";
 // ---------------------------------------------------------------------------
 
 interface ZeroActivityDetailPageProps {
-  logId: string;
   onBack: () => void;
 }
 

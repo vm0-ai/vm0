@@ -10,6 +10,7 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
+import { zeroTabSub$ } from "./zero-nav.ts";
 import { delay } from "signal-timers";
 
 const EVENTS_PAGE_LIMIT = 30;
@@ -40,6 +41,12 @@ const cachedAgentName$ = computed((get) => get(internalAgentName$));
 export const initZeroActivityAgentName$ = command(async ({ get, set }) => {
   const status = await get(zeroOnboardingStatus$);
   set(internalAgentName$, status.defaultAgentName);
+});
+
+/** Initialize activity page: load agent name and seed cursor history. */
+export const initZeroActivity$ = command(async ({ set }) => {
+  await set(initZeroActivityAgentName$);
+  set(seedZeroActivityCursorHistory$);
 });
 
 export const {
@@ -113,12 +120,45 @@ export const setZeroActivityFilter$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Detail state
+// Detail state — driven by URL sub-route
 // ---------------------------------------------------------------------------
 
-const internalSelectedLogId$ = state<string | null>(null);
 const internalPollingAbort$ = state<AbortController | null>(null);
+const lastSyncedLogId$ = state<string | null>(null);
 
+/**
+ * Sync the URL sub-route to the detail polling lifecycle.
+ * Idempotent: only restarts polling when the log ID actually changes.
+ */
+export const syncZeroActivitySub$ = command(({ get, set }) => {
+  const sub = get(zeroTabSub$);
+  const prev = get(lastSyncedLogId$);
+  if (sub === prev) {
+    return;
+  }
+
+  // Abort previous polling
+  const prevAbort = get(internalPollingAbort$);
+  if (prevAbort) {
+    prevAbort.abort();
+  }
+  set(internalPollingAbort$, null);
+  set(pagedEvents$, []);
+  set(lastSyncedLogId$, sub);
+
+  if (sub) {
+    const controller = new AbortController();
+    set(internalPollingAbort$, controller);
+    detach(
+      set(setupZeroActivityEventPolling$, controller.signal),
+      Reason.Daemon,
+    );
+  }
+});
+
+/**
+ * Set selected log ID directly (used by tests).
+ */
 export const setZeroActivitySelectedLogId$ = command(
   ({ get, set }, logId: string | null) => {
     // Abort any running polling before changing log
@@ -128,7 +168,7 @@ export const setZeroActivitySelectedLogId$ = command(
     }
     set(internalPollingAbort$, null);
     set(pagedEvents$, []);
-    set(internalSelectedLogId$, logId);
+    set(lastSyncedLogId$, logId);
 
     if (logId) {
       const controller = new AbortController();
@@ -149,7 +189,7 @@ const detailReloadTick$ = state(0);
 
 export const zeroActivityDetail$ = computed(async (get) => {
   get(detailReloadTick$);
-  const logId = get(internalSelectedLogId$);
+  const logId = get(lastSyncedLogId$);
   if (!logId) {
     return null;
   }
@@ -239,7 +279,7 @@ const pollNewEvents$ = command(async ({ get, set }, runId: string) => {
 
 const setupZeroActivityEventPolling$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const logId = get(internalSelectedLogId$);
+    const logId = get(lastSyncedLogId$);
     if (!logId) {
       return;
     }
@@ -307,28 +347,6 @@ const setupZeroActivityEventPolling$ = command(
 // ---------------------------------------------------------------------------
 // Helpers for display conversion
 // ---------------------------------------------------------------------------
-
-export function logStatusToActivityStatus(
-  status: LogStatus,
-): "success" | "error" | "warning" | "running" {
-  switch (status) {
-    case "completed": {
-      return "success";
-    }
-    case "failed": {
-      return "error";
-    }
-    case "timeout":
-    case "cancelled": {
-      return "warning";
-    }
-    case "queued":
-    case "pending":
-    case "running": {
-      return "running";
-    }
-  }
-}
 
 export function formatLogTime(createdAt: string): string {
   const date = new Date(createdAt);

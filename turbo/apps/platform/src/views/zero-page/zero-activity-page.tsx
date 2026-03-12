@@ -1,5 +1,4 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import {
   IconFilter,
   IconClock,
@@ -27,14 +26,12 @@ import {
   zeroActivityLimit$,
   zeroActivityHasPrev$,
   zeroActivityCurrentPage$,
-  initZeroActivityAgentName$,
-  seedZeroActivityCursorHistory$,
+  syncZeroActivitySub$,
   goToNextZeroActivityPage$,
   goToPrevZeroActivityPage$,
   goForwardTwoZeroActivityPages$,
   goBackTwoZeroActivityPages$,
   setZeroActivityRowsPerPage$,
-  setZeroActivitySelectedLogId$,
   formatLogTime,
   formatDuration,
 } from "../../signals/zero-page/zero-activity.ts";
@@ -126,10 +123,7 @@ export function ZeroActivityPage() {
   const hasPrev = useGet(zeroActivityHasPrev$);
   const currentPage = useGet(zeroActivityCurrentPage$);
   const rowsPerPage = useGet(zeroActivityLimit$);
-  const setSelectedLogId = useSet(setZeroActivitySelectedLogId$);
   const navigate = useSet(updatePathname$);
-  const initAgentName = useSet(initZeroActivityAgentName$);
-  const seedCursorHistory = useSet(seedZeroActivityCursorHistory$);
   const goToNext = useSet(goToNextZeroActivityPage$);
   const goToPrev = useSet(goToPrevZeroActivityPage$);
   const goForwardTwo = useSet(goForwardTwoZeroActivityPages$);
@@ -138,20 +132,12 @@ export function ZeroActivityPage() {
 
   // URL-driven detail: /zero/activity/:logId
   const sub = useGet(zeroTabSub$);
+  const syncSub = useSet(syncZeroActivitySub$);
+  syncSub();
 
   const agentFilter = useGet(zeroActivityAgentFilter$);
   const statusFilter = useGet(zeroActivityStatusFilter$);
   const setFilter = useSet(setZeroActivityFilter$);
-
-  // Initialize agent name and seed cursor history on mount
-  const initialized$ = useCCState(false);
-  const initialized = useGet(initialized$);
-  const setInitialized = useSet(initialized$);
-  if (!initialized) {
-    setInitialized(true);
-    detach(initAgentName(), Reason.DomCallback);
-    seedCursorHistory();
-  }
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
   const hasNext =
@@ -167,26 +153,12 @@ export function ZeroActivityPage() {
     { value: "all", label: "All Agents" },
     ...Array.from(new Set(logs.map((e) => e.agentName)))
       .sort()
-      .map((name) => ({ value: name, label: agentName })),
+      .map((name) => ({ value: name, label: name })),
   ];
-
-  // Sync URL-driven detail selection into signals (manages polling lifecycle)
-  const prevSub$ = useCCState<string | null>(null);
-  const prevSub = useGet(prevSub$);
-  const setPrevSub = useSet(prevSub$);
-  if (sub !== prevSub) {
-    setPrevSub(sub ?? null);
-    setSelectedLogId(sub ?? null);
-  }
 
   // Detail view when sub-route is present
   if (sub) {
-    return (
-      <ZeroActivityDetailPage
-        logId={sub}
-        onBack={() => navigate("/zero/activity")}
-      />
-    );
+    return <ZeroActivityDetailPage onBack={() => navigate("/zero/activity")} />;
   }
 
   return (

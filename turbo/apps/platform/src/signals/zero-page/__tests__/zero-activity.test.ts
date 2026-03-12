@@ -10,7 +10,6 @@ import {
   setZeroActivityFilter$,
   setZeroActivitySelectedLogId$,
   zeroActivityDetail$,
-  logStatusToActivityStatus,
   formatLogTime,
   formatDuration,
 } from "../zero-activity.ts";
@@ -217,14 +216,6 @@ describe("zero-activity signals", () => {
   });
 
   describe("helper functions", () => {
-    it("should convert log status to activity status", () => {
-      expect(logStatusToActivityStatus("completed")).toBe("success");
-      expect(logStatusToActivityStatus("failed")).toBe("error");
-      expect(logStatusToActivityStatus("timeout")).toBe("warning");
-      expect(logStatusToActivityStatus("cancelled")).toBe("warning");
-      expect(logStatusToActivityStatus("running")).toBe("running");
-    });
-
     it("should format log time", () => {
       const result = formatLogTime("2026-03-10T14:56:00Z");
       // Time is locale-dependent, just check it's a non-empty string
