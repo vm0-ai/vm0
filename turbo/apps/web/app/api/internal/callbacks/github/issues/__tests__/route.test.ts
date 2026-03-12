@@ -8,7 +8,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import {
   createTestRequest,
-  createTestScope,
+  createTestOrg,
   createTestCompose,
   createTestRun,
   createTestCallback,
@@ -117,7 +117,7 @@ async function givenGitHubCallbackSetup(overrides?: {
 }) {
   const userId = uniqueId("gh-cb-user");
   mockClerk({ userId });
-  await createTestScope(uniqueId("gh-cb-scope"));
+  await createTestOrg(uniqueId("gh-cb-org"));
   const { composeId } = await createTestCompose("gh-callback-agent");
 
   const { runId } = await createTestRun(composeId, "Test GitHub prompt");
@@ -330,7 +330,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
     it("should return 404 when GitHub installation is missing", async () => {
       const userId = uniqueId("gh-missing-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-missing-scope"));
+      await createTestOrg(uniqueId("gh-missing-org"));
       const { composeId } = await createTestCompose("gh-missing-agent");
 
       const { runId } = await createTestRun(composeId, "Test prompt");

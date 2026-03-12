@@ -6,7 +6,7 @@ import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("GET /api/scope/list - Scope List", () => {
+describe("GET /api/scope/list - Org List", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -22,9 +22,9 @@ describe("GET /api/scope/list - Scope List", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should return personal scope from Clerk memberships", async () => {
+  it("should return personal org from Clerk memberships", async () => {
     const userId = uniqueId("list-user");
-    const orgSlug = uniqueId("scope");
+    const orgSlug = uniqueId("org");
 
     mockClerk({
       userId,
@@ -43,7 +43,7 @@ describe("GET /api/scope/list - Scope List", () => {
 
   it("should return org scopes with correct roles", async () => {
     const memberUserId = uniqueId("list-member");
-    const orgSlug = uniqueId("scope");
+    const orgSlug = uniqueId("org");
     const orgId = uniqueId("org");
 
     // Mock Clerk to return the member's org membership with "member" role
@@ -64,9 +64,9 @@ describe("GET /api/scope/list - Scope List", () => {
     expect(data.scopes[0].role).toBe("member");
   });
 
-  it("should only return scopes the user is a Clerk member of", async () => {
+  it("should only return orgs the user is a Clerk member of", async () => {
     const userBId = uniqueId("user-b");
-    const userBOrgSlug = uniqueId("scope-b");
+    const userBOrgSlug = uniqueId("org-b");
 
     // User B only has their own org
     mockClerk({

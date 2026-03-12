@@ -163,9 +163,9 @@ describe("POST /api/runners/realtime/token", () => {
       reloadEnv();
       const token = await createTestCliToken(user.userId);
 
-      // Derive scope slug from user context - setupUser creates scope-{suffix}
+      // Derive scope slug from user context - setupUser creates org-{suffix}
       const suffix = user.userId.replace("test-user-", "");
-      const orgSlug = `scope-${suffix}`;
+      const orgSlug = `org-${suffix}`;
 
       const response = await POST(
         makeRequest({ group: `${orgSlug}/default` }, `Bearer ${token}`),

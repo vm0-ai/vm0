@@ -3,7 +3,7 @@ import { WebClient } from "@slack/web-api";
 import { GET } from "../route";
 import {
   createTestRequest,
-  createTestScope,
+  createTestOrg,
   createTestCompose,
   findTestSlackInstallation,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -52,7 +52,7 @@ describe("/api/slack/oauth/callback", () => {
       // Create a compose to use as the default workspace agent
       const adminUserId = uniqueId("admin");
       mockClerk({ userId: adminUserId });
-      await createTestScope(uniqueId("scope"));
+      await createTestOrg(uniqueId("org"));
       const { composeId } = await createTestCompose("test-agent");
 
       // Configure the WebClient singleton's oauth.v2.access to return expected values
@@ -146,7 +146,7 @@ describe("/api/slack/oauth/callback", () => {
       // First install: admin is U-admin-original
       const adminUserId = uniqueId("admin");
       mockClerk({ userId: adminUserId });
-      await createTestScope(uniqueId("scope"));
+      await createTestOrg(uniqueId("org"));
       const { composeId } = await createTestCompose("original-agent");
 
       const mockClient = vi.mocked(new WebClient(), true);

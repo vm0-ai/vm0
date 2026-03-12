@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../members/route";
 import {
   createTestRequest,
-  createTestScope as createTestScopeHelper,
+  createTestOrg as createTestOrgHelper,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -12,10 +12,10 @@ import { clerkClient } from "@clerk/nextjs/server";
 const context = testContext();
 
 /**
- * Helper to create a scope via the test helper
+ * Helper to create an org via the test helper
  */
-async function createTestScope(userId: string) {
-  const slug = uniqueId("scope");
+async function createTestOrg(userId: string) {
+  const slug = uniqueId("org");
   setupClerkOrgMock({
     userId,
     orgId: `org_mock_${userId}`,
@@ -23,11 +23,11 @@ async function createTestScope(userId: string) {
     memberships: [{ userId, role: "org:admin" }],
   });
 
-  await createTestScopeHelper(slug);
+  await createTestOrgHelper(slug);
   return { slug, orgId: `org_mock_${userId}` };
 }
 
-describe("GET /api/scope/members - Scope Members", () => {
+describe("GET /api/scope/members - Org Members", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -45,7 +45,7 @@ describe("GET /api/scope/members - Scope Members", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should require scope query parameter", async () => {
+  it("should require org query parameter", async () => {
     const userId = uniqueId("members-user");
     mockClerk({ userId });
 
@@ -59,9 +59,9 @@ describe("GET /api/scope/members - Scope Members", () => {
     expect(data.error.code).toBe("BAD_REQUEST");
   });
 
-  it("should return scope members", async () => {
+  it("should return org members", async () => {
     const userId = uniqueId("members-admin");
-    const { slug, orgId } = await createTestScope(userId);
+    const { slug, orgId } = await createTestOrg(userId);
 
     setupClerkOrgMock({
       userId,
@@ -87,7 +87,7 @@ describe("GET /api/scope/members - Scope Members", () => {
     it("should auto-sync org membership from Clerk when user is not yet known locally", async () => {
       const adminUserId = uniqueId("admin");
       const memberUserId = uniqueId("member");
-      const { slug, orgId } = await createTestScope(adminUserId);
+      const { slug, orgId } = await createTestOrg(adminUserId);
 
       // Switch to member user who is in Clerk org but not yet synced locally
       setupClerkOrgMock({
@@ -114,7 +114,7 @@ describe("GET /api/scope/members - Scope Members", () => {
     it("should return 403 when user is not in Clerk org", async () => {
       const adminUserId = uniqueId("admin");
       const outsiderUserId = uniqueId("outsider");
-      const { slug, orgId } = await createTestScope(adminUserId);
+      const { slug, orgId } = await createTestOrg(adminUserId);
 
       setupClerkOrgMock({
         userId: outsiderUserId,
@@ -133,7 +133,7 @@ describe("GET /api/scope/members - Scope Members", () => {
     it("should return 403 when Clerk API fails during lazy sync", async () => {
       const adminUserId = uniqueId("admin");
       const memberUserId = uniqueId("member");
-      const { slug, orgId } = await createTestScope(adminUserId);
+      const { slug, orgId } = await createTestOrg(adminUserId);
 
       setupClerkOrgMock({
         userId: memberUserId,

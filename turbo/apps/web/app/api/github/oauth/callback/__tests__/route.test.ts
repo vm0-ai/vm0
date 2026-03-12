@@ -5,7 +5,7 @@ import { server } from "../../../../../../src/mocks/server";
 import { GET } from "../route";
 import {
   createTestRequest,
-  createTestScope,
+  createTestOrg,
   createTestCompose,
   findTestGitHubInstallations,
   findTestGitHubInstallationsByTargetId,
@@ -68,7 +68,7 @@ describe("/api/github/oauth/callback", () => {
   it("should redirect with error when installation_id is missing for install action", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("gh-scope"));
+    await createTestOrg(uniqueId("gh-org"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const state = buildSignedState(userId, composeId);
@@ -116,7 +116,7 @@ describe("/api/github/oauth/callback", () => {
   it("should propagate error when GitHub API fails", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("gh-scope"));
+    await createTestOrg(uniqueId("gh-org"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const installationId = uniqueNumericId();
@@ -145,7 +145,7 @@ describe("/api/github/oauth/callback", () => {
   it("should create installation on valid callback", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("gh-scope"));
+    await createTestOrg(uniqueId("gh-org"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const installationId = uniqueNumericId();
@@ -175,7 +175,7 @@ describe("/api/github/oauth/callback", () => {
   it("should create pending record when setup_action is request", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("gh-scope"));
+    await createTestOrg(uniqueId("gh-org"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const state = buildSignedState(userId, composeId);
@@ -218,7 +218,7 @@ describe("/api/github/oauth/callback", () => {
   it("should skip creation when installation already exists", async () => {
     const userId = uniqueId("gh-user");
     mockClerk({ userId });
-    await createTestScope(uniqueId("gh-scope"));
+    await createTestOrg(uniqueId("gh-org"));
     const { composeId } = await createTestCompose("gh-test-agent");
 
     const installationId = uniqueNumericId();

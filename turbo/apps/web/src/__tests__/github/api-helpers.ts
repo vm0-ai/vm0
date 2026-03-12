@@ -49,7 +49,7 @@ export async function givenGitHubInstallation(
 
   const userId = uniqueId("gh-user");
   const githubUserId = String(Math.floor(Math.random() * 1_000_000_000));
-  const orgSlug = uniqueId("scope");
+  const orgSlug = uniqueId("org");
 
   // Pre-populate org cache for getOrgData()
   const orgId = uniqueId("org");

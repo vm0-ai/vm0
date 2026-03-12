@@ -3,7 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import {
-  createTestScope,
+  createTestOrg,
   insertOrgCacheEntry,
   deleteOrgCacheEntry,
   getOrgCacheEntry,
@@ -19,13 +19,13 @@ describe("getOrgData", () => {
 
   it("fetches from Clerk and caches on miss", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     // Set up Clerk org with slug-based ID BEFORE creating scope
     mockClerk({
       userId,
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
     });
-    await createTestScope(slug);
+    await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
     // Delete pre-populated orgCache to test cache-miss behavior
@@ -53,9 +53,9 @@ describe("getOrgData", () => {
 
   it("returns cached data without Clerk call when fresh", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     mockClerk({ userId });
-    await createTestScope(slug);
+    await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
     // Pre-populate cache with fresh entry
@@ -80,16 +80,16 @@ describe("getOrgData", () => {
 
   it("refetches from Clerk when cache is stale", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     // Set up Clerk org with slug-based ID BEFORE creating scope
     mockClerk({
       userId,
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
     });
-    await createTestScope(slug);
+    await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
-    // Overwrite the fresh orgCache entry from createTestScope with a stale one
+    // Overwrite the fresh orgCache entry from createTestOrg with a stale one
     const twoMinutesAgo = new Date(Date.now() - 120_000);
     await insertOrgCacheEntry({
       orgId,
@@ -118,9 +118,9 @@ describe("getOrgData", () => {
 
   it("reads tier from Clerk publicMetadata", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     mockClerk({ userId });
-    await createTestScope(slug);
+    await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
     // Override getOrganization to return tier in publicMetadata
@@ -141,9 +141,9 @@ describe("getOrgData", () => {
 
   it("throws when Clerk org has no slug", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     mockClerk({ userId });
-    await createTestScope(slug);
+    await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
     // Override getOrganization to return null slug
@@ -170,7 +170,7 @@ describe("getOrgBySlug", () => {
 
   it("fetches from Clerk by slug and caches on miss", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     const orgId = `org_mock_${slug}`;
     mockClerk({
       userId,
@@ -200,7 +200,7 @@ describe("getOrgBySlug", () => {
 
   it("returns cached data without Clerk call when fresh", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     const orgId = `org_mock_${slug}`;
     mockClerk({
       userId,
@@ -230,7 +230,7 @@ describe("getOrgBySlug", () => {
 
   it("refetches from Clerk when cache is stale", async () => {
     const userId = uniqueId("test-user");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     const orgId = `org_mock_${slug}`;
     mockClerk({
       userId,

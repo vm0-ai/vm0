@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { GET, DELETE, PATCH } from "../route";
 import {
   createTestRequest,
-  createTestScope,
+  createTestOrg,
   createTestCompose,
   insertTestGitHubInstallation,
   insertTestGitHubInstallationWithAdmin,
@@ -38,7 +38,7 @@ describe("/api/integrations/github", () => {
     it("should return 404 with installUrl when no installation exists", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -55,7 +55,7 @@ describe("/api/integrations/github", () => {
     it("should return installation data when installed", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
 
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
@@ -77,7 +77,7 @@ describe("/api/integrations/github", () => {
     it("should return environment data in response", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
 
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
@@ -114,7 +114,7 @@ describe("/api/integrations/github", () => {
     it("should return 404 when no installation exists", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -131,7 +131,7 @@ describe("/api/integrations/github", () => {
     it("should delete installation and return ok", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
 
       const { installation } = await insertTestGitHubInstallationWithAdmin(
@@ -161,7 +161,7 @@ describe("/api/integrations/github", () => {
       // Create installation WITHOUT setting an admin (simulates org install where admin is unset)
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
 
       const installation = await insertTestGitHubInstallation(composeId);
@@ -194,7 +194,7 @@ describe("/api/integrations/github", () => {
       // Create installation with admin user
       const adminUserId = uniqueId("admin-user");
       mockClerk({ userId: adminUserId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
       const { installation } = await insertTestGitHubInstallationWithAdmin(
         composeId,
@@ -204,7 +204,7 @@ describe("/api/integrations/github", () => {
       // Create a non-admin user linked to the same installation
       const nonAdminUserId = uniqueId("nonadmin-user");
       mockClerk({ userId: nonAdminUserId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       await insertTestGitHubUserLink(
         uniqueId("gh-other-uid"),
         installation.id,
@@ -250,7 +250,7 @@ describe("/api/integrations/github", () => {
     it("should return 400 when agentName is missing", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
@@ -275,7 +275,7 @@ describe("/api/integrations/github", () => {
     it("should return 404 when no installation exists", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",
@@ -297,7 +297,7 @@ describe("/api/integrations/github", () => {
       // Create installation WITHOUT setting an admin (simulates org install where admin is unset)
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
 
       const installation = await insertTestGitHubInstallation(composeId);
@@ -330,7 +330,7 @@ describe("/api/integrations/github", () => {
       // Create installation with admin user
       const adminUserId = uniqueId("admin-user");
       mockClerk({ userId: adminUserId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
       const { installation } = await insertTestGitHubInstallationWithAdmin(
         composeId,
@@ -340,7 +340,7 @@ describe("/api/integrations/github", () => {
       // Create a non-admin user linked to the same installation
       const nonAdminUserId = uniqueId("nonadmin-user");
       mockClerk({ userId: nonAdminUserId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       await insertTestGitHubUserLink(
         uniqueId("gh-other-uid"),
         installation.id,
@@ -368,7 +368,7 @@ describe("/api/integrations/github", () => {
     it("should return 404 when agent does not exist", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
@@ -393,7 +393,7 @@ describe("/api/integrations/github", () => {
     it("should update default agent successfully", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
@@ -431,14 +431,14 @@ describe("/api/integrations/github", () => {
     it("should update default agent with scoped name", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
-      await createTestScope(uniqueId("gh-scope"));
+      await createTestOrg(uniqueId("gh-org"));
       const { composeId } = await createTestCompose("gh-agent");
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
       // Create a compose in a different scope (simulating a shared agent)
       const otherUserId = uniqueId("other-user");
       mockClerk({ userId: otherUserId });
-      await createTestScope(uniqueId("other-scope"));
+      await createTestOrg(uniqueId("other-org"));
       const { composeId: otherComposeId } =
         await createTestCompose("shared-agent");
 

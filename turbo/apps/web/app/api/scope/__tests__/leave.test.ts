@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../leave/route";
 import {
   createTestRequest,
-  createTestScope as createTestScopeHelper,
+  createTestOrg as createTestOrgHelper,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -10,7 +10,7 @@ import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
 
 const context = testContext();
 
-describe("POST /api/scope/leave - Leave Scope", () => {
+describe("POST /api/scope/leave - Leave Org", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -33,7 +33,7 @@ describe("POST /api/scope/leave - Leave Scope", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should require scope query parameter", async () => {
+  it("should require org query parameter", async () => {
     const userId = uniqueId("leave-user");
     mockClerk({ userId });
 
@@ -51,7 +51,7 @@ describe("POST /api/scope/leave - Leave Scope", () => {
 
   it("should prevent admin from leaving", async () => {
     const userId = uniqueId("leave-admin");
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     const orgId = `org_${userId}`;
     setupClerkOrgMock({
       userId,
@@ -60,8 +60,8 @@ describe("POST /api/scope/leave - Leave Scope", () => {
       memberships: [{ userId, role: "org:admin" }],
     });
 
-    // Create scope
-    await createTestScopeHelper(slug);
+    // Create org
+    await createTestOrgHelper(slug);
 
     // Try to leave as admin
     const leaveReq = createTestRequest(

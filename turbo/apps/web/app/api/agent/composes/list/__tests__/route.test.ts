@@ -43,7 +43,7 @@ describe("GET /api/agent/composes/list", () => {
   it("should return no own composes when none exist in scope", async () => {
     // Use explicit scope param to only get own agents (excludes shared)
     const uniqueSuffix = user.userId.replace("test-user-", "");
-    const orgSlug = `scope-${uniqueSuffix}`;
+    const orgSlug = `org-${uniqueSuffix}`;
 
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
@@ -65,7 +65,7 @@ describe("GET /api/agent/composes/list", () => {
 
     // Use explicit scope param to get only own agents
     const uniqueSuffix = user.userId.replace("test-user-", "");
-    const orgSlug = `scope-${uniqueSuffix}`;
+    const orgSlug = `org-${uniqueSuffix}`;
 
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
@@ -149,14 +149,14 @@ describe("GET /api/agent/composes/list", () => {
 
     // Derive the other user's scope slug from their userId
     // userId format: {prefix}-{timestamp}-{uuid}
-    // scope slug format: scope-{timestamp}-{uuid}
+    // scope slug format: org-{timestamp}-{uuid}
     const uniqueSuffix = otherUser.userId.replace("forbidden-user-", "");
-    const otherScopeSlug = `scope-${uniqueSuffix}`;
+    const otherOrgSlug = `org-${uniqueSuffix}`;
 
     // Switch back to original user and try to access the other user's scope
     mockClerk({ userId: user.userId });
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${otherScopeSlug}`,
+      `http://localhost:3000/api/agent/composes/list?scope=${otherOrgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -173,9 +173,9 @@ describe("GET /api/agent/composes/list", () => {
 
     // Derive the user's scope slug from their userId
     // userId format: test-user-{timestamp}-{uuid}
-    // scope slug format: scope-{timestamp}-{uuid}
+    // scope slug format: org-{timestamp}-{uuid}
     const uniqueSuffix = user.userId.replace("test-user-", "");
-    const orgSlug = `scope-${uniqueSuffix}`;
+    const orgSlug = `org-${uniqueSuffix}`;
 
     // List by scope slug
     const request = createTestRequest(
@@ -199,7 +199,7 @@ describe("GET /api/agent/composes/list", () => {
 
       // Derive the Agent Scope slug
       const ownerSuffix = owner.userId.replace("owner-", "");
-      const agentScopeSlug = `scope-${ownerSuffix}`;
+      const agentOrgSlug = `org-${ownerSuffix}`;
 
       // Switch to recipient (original user) and list
       mockClerk({ userId: user.userId });
@@ -211,7 +211,7 @@ describe("GET /api/agent/composes/list", () => {
 
       expect(response.status).toBe(200);
       const names = data.composes.map((c: { name: string }) => c.name);
-      expect(names).toContain(`${agentScopeSlug}/${agentName}`);
+      expect(names).toContain(`${agentOrgSlug}/${agentName}`);
     });
 
     it("should not show unshared agents from other users", async () => {
@@ -246,7 +246,7 @@ describe("GET /api/agent/composes/list", () => {
       await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
       const ownerSuffix = owner.userId.replace("combo-owner-", "");
-      const agentScopeSlug = `scope-${ownerSuffix}`;
+      const agentOrgSlug = `org-${ownerSuffix}`;
 
       // Switch back to original user
       mockClerk({ userId: user.userId });
@@ -261,7 +261,7 @@ describe("GET /api/agent/composes/list", () => {
       // Own agent has plain name
       expect(names).toContain(ownAgentName);
       // Shared agent has scope/name format
-      expect(names).toContain(`${agentScopeSlug}/${sharedAgentName}`);
+      expect(names).toContain(`${agentOrgSlug}/${sharedAgentName}`);
     });
 
     it("should not include shared agents when scope param is provided", async () => {
@@ -274,7 +274,7 @@ describe("GET /api/agent/composes/list", () => {
       // Switch back to original user, list with explicit scope
       mockClerk({ userId: user.userId });
       const uniqueSuffix = user.userId.replace("test-user-", "");
-      const orgSlug = `scope-${uniqueSuffix}`;
+      const orgSlug = `org-${uniqueSuffix}`;
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,

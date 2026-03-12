@@ -11,7 +11,7 @@ describe("getDefaultOrgByUserId", () => {
     context.setupMocks();
   });
 
-  it("should return null when user has no scope", async () => {
+  it("should return null when user has no org", async () => {
     const userId = uniqueId("no-scope-user");
     mockClerk({ userId, clerkOrgs: [] });
 
@@ -20,10 +20,10 @@ describe("getDefaultOrgByUserId", () => {
     expect(result).toBeNull();
   });
 
-  it("should return scope from org_cache for user with Clerk org", async () => {
+  it("should return org from org_cache for user with Clerk org", async () => {
     const userId = uniqueId("test-user");
     const orgId = `org_mock_${userId}`;
-    const slug = uniqueId("scope");
+    const slug = uniqueId("org");
     mockClerk({ userId });
 
     // Pre-populate org_cache
