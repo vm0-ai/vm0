@@ -40,6 +40,35 @@ async function extractResultFromEvents(
   return result;
 }
 
+/** Start an agent run and return the runId, or null on failure. */
+async function startAgentRun(
+  fetchFn: typeof fetch,
+  composeId: string,
+  prompt: string,
+  sessionId?: string | null,
+): Promise<string | null> {
+  const body: Record<string, string> = {
+    agentComposeId: composeId,
+    prompt: prompt.trim(),
+  };
+  if (sessionId) {
+    body.sessionId = sessionId;
+  }
+
+  const response = await fetchFn("/api/agent/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = (await response.json()) as { runId: string };
+  return data.runId;
+}
+
 // ---------------------------------------------------------------------------
 // Chat message types
 // ---------------------------------------------------------------------------
@@ -234,44 +263,20 @@ export const sendZeroChatMessage$ = command(
       const fetchFn = get(fetch$);
       const sessionId = get(internalSessionId$);
 
-      const body: {
-        agentComposeId: string;
-        prompt: string;
-        sessionId?: string;
-      } = {
-        agentComposeId: composeId,
-        prompt: prompt.trim(),
-      };
-      if (sessionId) {
-        body.sessionId = sessionId;
-      }
+      const runId = await startAgentRun(fetchFn, composeId, prompt, sessionId);
 
-      const response = await fetchFn("/api/agent/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => null)) as {
-          message?: string;
-        } | null;
-        const errorMsg =
-          errorData?.message ?? `Run failed: ${response.statusText}`;
+      if (!runId) {
         set(internalMessages$, (prev) => {
           const updated = [...prev];
           updated[updated.length - 1] = {
             ...updated[updated.length - 1],
-            error: errorMsg,
+            error: "Failed to start agent run",
           };
           return updated;
         });
         set(internalSending$, false);
         return;
       }
-
-      const data = (await response.json()) as { runId: string };
-      const runId = data.runId;
 
       set(internalMessages$, (prev) => {
         const updated = [...prev];
@@ -456,22 +461,12 @@ export const sendZeroIntroMessage$ = command(
     try {
       const fetchFn = get(fetch$);
 
-      const response = await fetchFn("/api/agent/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentComposeId: composeId,
-          prompt: prompt.trim(),
-        }),
-      });
+      const runId = await startAgentRun(fetchFn, composeId, prompt);
 
-      if (!response.ok) {
-        L.error("Intro message run failed:", response.statusText);
+      if (!runId) {
+        L.error("Intro message run failed");
         return;
       }
-
-      const data = (await response.json()) as { runId: string };
-      const runId = data.runId;
 
       const runEvents$ = state<Computed<Promise<PageResult>>[]>([]);
       const runStatus$ = state<LogStatus | null>(null);
