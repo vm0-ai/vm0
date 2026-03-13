@@ -1001,7 +1001,16 @@ mod tests {
                         "headers": {
                             "Authorization": "Bearer ${secrets.GITHUB_TOKEN}"
                         }
-                    }
+                    },
+                    "permissions": [
+                        {
+                            "name": "issues-read",
+                            "rules": [
+                                "GET /repos/{owner}/{repo}/issues",
+                                "GET /repos/{owner}/{repo}/issues/{issue_number}"
+                            ]
+                        }
+                    ]
                 }]
             }]
         });
@@ -1012,6 +1021,11 @@ mod tests {
         assert_eq!(svcs[0].ref_key, "github");
         assert_eq!(svcs[0].apis.len(), 1);
         assert_eq!(svcs[0].apis[0].base, "https://api.github.com");
+        let perms = svcs[0].apis[0].permissions.as_ref().unwrap();
+        assert_eq!(perms.len(), 1);
+        assert_eq!(perms[0].name, "issues-read");
+        assert_eq!(perms[0].rules.len(), 2);
+        assert_eq!(perms[0].rules[0], "GET /repos/{owner}/{repo}/issues");
     }
 
     #[test]

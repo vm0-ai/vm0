@@ -786,7 +786,14 @@ mod tests {
                         "Bearer ${secrets.GMAIL_TOKEN}".to_string(),
                     )]),
                 },
-                permissions: None,
+                permissions: Some(vec![crate::types::ServiceApiPermission {
+                    name: "mail-read".to_string(),
+                    description: None,
+                    rules: vec![
+                        "GET /messages".to_string(),
+                        "GET /messages/{id}".to_string(),
+                    ],
+                }]),
             }],
         }];
 
@@ -830,6 +837,12 @@ mod tests {
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
         assert_eq!(svc["apis"][0]["id"], "run-svc:0");
+
+        // Verify permissions are preserved in JSON for the Python addon.
+        let perms = &svc["apis"][0]["permissions"];
+        assert_eq!(perms[0]["name"], "mail-read");
+        assert_eq!(perms[0]["rules"][0], "GET /messages");
+        assert_eq!(perms[0]["rules"][1], "GET /messages/{id}");
     }
 
     #[tokio::test]
