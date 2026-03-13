@@ -245,21 +245,6 @@ export async function upsertOAuthConnector(
       ? new Date(Date.now() + options.expiresIn * 1000)
       : null;
 
-  // Check if connector exists
-  const existingConnector = await db
-    .select({ id: connectors.id })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, orgId),
-        eq(connectors.userId, userId),
-        eq(connectors.type, type),
-      ),
-    )
-    .limit(1);
-
-  const isUpdate = existingConnector.length > 0;
-
   // Upsert access token secret
   await upsertSecretByOrg(
     orgId,
@@ -283,27 +268,22 @@ export async function upsertOAuthConnector(
   }
 
   // Upsert connector
-  let connectorRow: {
-    id: string;
-    type: string;
-    authMethod: string;
-    externalId: string | null;
-    externalUsername: string | null;
-    externalEmail: string | null;
-    oauthScopes: string | null;
-    tokenExpiresAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  };
-
-  if (isUpdate) {
-    const existingId = existingConnector[0]?.id;
-    if (!existingId) {
-      throw new Error("Existing connector not found during update");
-    }
-    const [updated] = await db
-      .update(connectors)
-      .set({
+  const [connectorRow] = await db
+    .insert(connectors)
+    .values({
+      userId,
+      type,
+      authMethod: "oauth",
+      externalId: userInfo.id,
+      externalUsername: userInfo.username,
+      externalEmail: userInfo.email,
+      oauthScopes: JSON.stringify(oauthScopes),
+      tokenExpiresAt,
+      orgId,
+    })
+    .onConflictDoUpdate({
+      target: [connectors.orgId, connectors.userId, connectors.type],
+      set: {
         authMethod: "oauth",
         externalId: userInfo.id,
         externalUsername: userInfo.username,
@@ -311,35 +291,14 @@ export async function upsertOAuthConnector(
         oauthScopes: JSON.stringify(oauthScopes),
         tokenExpiresAt,
         updatedAt: new Date(),
-      })
-      .where(eq(connectors.id, existingId))
-      .returning();
-    if (!updated) {
-      throw new Error("Failed to update connector");
-    }
-    connectorRow = updated;
-    log.debug("connector updated", { connectorId: connectorRow.id, type });
-  } else {
-    const [created] = await db
-      .insert(connectors)
-      .values({
-        userId,
-        type,
-        authMethod: "oauth",
-        externalId: userInfo.id,
-        externalUsername: userInfo.username,
-        externalEmail: userInfo.email,
-        oauthScopes: JSON.stringify(oauthScopes),
-        tokenExpiresAt,
-        orgId,
-      })
-      .returning();
-    if (!created) {
-      throw new Error("Failed to create connector");
-    }
-    connectorRow = created;
-    log.debug("connector created", { connectorId: connectorRow.id, type });
+      },
+    })
+    .returning();
+
+  if (!connectorRow) {
+    throw new Error("Failed to upsert connector");
   }
+  log.debug("connector upserted", { connectorId: connectorRow.id, type });
 
   return {
     connector: {
@@ -355,7 +314,10 @@ export async function upsertOAuthConnector(
       createdAt: connectorRow.createdAt.toISOString(),
       updatedAt: connectorRow.updatedAt.toISOString(),
     },
-    created: !isUpdate,
+    // New insert: both timestamps use DB DEFAULT NOW() (same value).
+    // Conflict update: updatedAt is set to new Date() in the set clause, so they differ.
+    created:
+      connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
   };
 }
 

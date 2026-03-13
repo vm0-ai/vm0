@@ -189,34 +189,20 @@ export async function upsertSecretByOrg(
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedValue = encryptSecretValue(value, encryptionKey);
 
-  const [existing] = await globalThis.services.db
-    .select({ id: secrets.id })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.userId, userId),
-        eq(secrets.name, name),
-        eq(secrets.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    await globalThis.services.db
-      .update(secrets)
-      .set({ encryptedValue, updatedAt: new Date() })
-      .where(eq(secrets.id, existing.id));
-  } else {
-    await globalThis.services.db.insert(secrets).values({
+  await globalThis.services.db
+    .insert(secrets)
+    .values({
       userId,
       name,
       encryptedValue,
       type,
       description,
       orgId,
+    })
+    .onConflictDoUpdate({
+      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      set: { encryptedValue, description, updatedAt: new Date() },
     });
-  }
 }
 
 /**
@@ -236,56 +222,23 @@ export async function setSecret(
 
   log.debug("setting secret", { orgId, name });
 
-  // Check if user secret exists with same name
-  // Note: We only check for user type to allow coexistence with model-provider secrets
-  const existing = await globalThis.services.db
-    .select({ id: secrets.id })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.userId, userId),
-        eq(secrets.name, name),
-        eq(secrets.type, "user"),
-      ),
-    )
-    .limit(1);
-
-  if (existing[0]) {
-    // Update existing secret
-    const [updated] = await globalThis.services.db
-      .update(secrets)
-      .set({
-        encryptedValue,
-        description: description ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(secrets.id, existing[0].id))
-      .returning({
-        id: secrets.id,
-        name: secrets.name,
-        description: secrets.description,
-        type: secrets.type,
-        createdAt: secrets.createdAt,
-        updatedAt: secrets.updatedAt,
-      });
-
-    log.debug("secret updated", { secretId: updated!.id, name });
-    return {
-      ...updated!,
-      type: updated!.type as SecretType,
-    };
-  }
-
-  // Create new secret
-  const [created] = await globalThis.services.db
+  const [result] = await globalThis.services.db
     .insert(secrets)
     .values({
       name,
       encryptedValue,
       description: description ?? null,
+      type: "user",
       userId,
       orgId,
+    })
+    .onConflictDoUpdate({
+      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      set: {
+        encryptedValue,
+        description: description ?? null,
+        updatedAt: new Date(),
+      },
     })
     .returning({
       id: secrets.id,
@@ -296,10 +249,14 @@ export async function setSecret(
       updatedAt: secrets.updatedAt,
     });
 
-  log.debug("secret created", { secretId: created!.id, name });
+  if (!result) {
+    throw new Error("Expected upsert to return a row");
+  }
+
+  log.debug("secret upserted", { secretId: result.id, name });
   return {
-    ...created!,
-    type: created!.type as SecretType,
+    ...result,
+    type: result.type as SecretType,
   };
 }
 
