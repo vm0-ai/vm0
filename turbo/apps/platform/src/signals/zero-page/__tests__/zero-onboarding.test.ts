@@ -186,7 +186,7 @@ describe("completeZeroOnboarding$", () => {
           },
         });
       }),
-      http.put("*/api/scopes/default-agent", () => {
+      http.put("*/api/orgs/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
