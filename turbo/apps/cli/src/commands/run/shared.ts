@@ -128,17 +128,17 @@ export function loadValues(
 }
 
 /**
- * Parse identifier with optional scope and version specifier
- * Format: [scope/]name[:version]
+ * Parse identifier with optional org and version specifier
+ * Format: [org/]name[:version]
  * Examples:
  *   "demo:d084948d"      → { name: "demo", version: "d084948d" }
  *   "demo:latest"        → { name: "demo", version: "latest" }
  *   "demo"               → { name: "demo" }
- *   "lancy/demo"         → { scope: "lancy", name: "demo" }
- *   "lancy/demo:abc123"  → { scope: "lancy", name: "demo", version: "abc123" }
+ *   "lancy/demo"         → { org: "lancy", name: "demo" }
+ *   "lancy/demo:abc123"  → { org: "lancy", name: "demo", version: "abc123" }
  */
 export function parseIdentifier(identifier: string): {
-  scope?: string;
+  org?: string;
   name: string;
   version?: string;
 } {
@@ -147,13 +147,13 @@ export function parseIdentifier(identifier: string): {
     return { name: identifier };
   }
 
-  let scope: string | undefined;
+  let org: string | undefined;
   let rest = identifier;
 
-  // Check for scope (contains "/")
+  // Check for org (contains "/")
   const slashIndex = identifier.indexOf("/");
   if (slashIndex > 0) {
-    scope = identifier.slice(0, slashIndex);
+    org = identifier.slice(0, slashIndex);
     rest = identifier.slice(slashIndex + 1);
   }
 
@@ -161,13 +161,13 @@ export function parseIdentifier(identifier: string): {
   const colonIndex = rest.indexOf(":");
   if (colonIndex > 0 && colonIndex < rest.length - 1) {
     return {
-      scope,
+      org,
       name: rest.slice(0, colonIndex),
       version: rest.slice(colonIndex + 1),
     };
   }
 
-  return { scope, name: rest };
+  return { org, name: rest };
 }
 
 /**

@@ -1578,7 +1578,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "user-scope/missing-agent",
+          "user-org/missing-agent",
           "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
@@ -1598,12 +1598,11 @@ describe("run command", () => {
           const name = url.searchParams.get("name");
           const org = url.searchParams.get("org");
 
-          if (org === "other-user-scope" && name === "my-agent") {
+          if (org === "other-user-org" && name === "my-agent") {
             return HttpResponse.json(
               {
                 error: {
-                  message:
-                    "Compose not found: my-agent in scope other-user-scope",
+                  message: "Compose not found: my-agent in org other-user-org",
                   code: "NOT_FOUND",
                 },
               },
@@ -1621,7 +1620,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "other-user-scope/my-agent",
+          "other-user-org/my-agent",
           "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
@@ -1654,7 +1653,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "another-scope/secret-agent",
+          "another-org/secret-agent",
           "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",

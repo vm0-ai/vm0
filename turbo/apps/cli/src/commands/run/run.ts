@@ -31,7 +31,7 @@ export const mainRunCommand = new Command()
   .description("Run an agent")
   .argument(
     "<agent-name>",
-    "Agent reference: [scope/]name[:version] (e.g., 'my-agent', 'lancy/my-agent:abc123', 'my-agent:latest')",
+    "Agent reference: [org/]name[:version] (e.g., 'my-agent', 'lancy/my-agent:abc123', 'my-agent:latest')",
   )
   .argument("<prompt>", "Prompt for the agent")
   .option(
@@ -73,7 +73,7 @@ export const mainRunCommand = new Command()
   .option("--verbose", "Show full tool inputs and outputs")
   .option(
     "--experimental-shared-agent",
-    "Allow running agents shared by other users (required when running scope/agent format)",
+    "Allow running agents shared by other users (required when running org/agent format)",
   )
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -105,16 +105,16 @@ export const mainRunCommand = new Command()
           await startSilentUpgrade(__CLI_VERSION__);
         }
 
-        // 1. Parse identifier for optional scope and version specifier
-        const { scope, name, version } = parseIdentifier(identifier);
+        // 1. Parse identifier for optional org and version specifier
+        const { org, name, version } = parseIdentifier(identifier);
 
         // 1.5. Validate: running another user's agent requires explicit opt-in
-        if (scope && !options.experimentalSharedAgent) {
-          // Check if it's the user's own scope
-          const defaultScope = await getOrg();
-          const isOwnScope = defaultScope.slug === scope;
+        if (org && !options.experimentalSharedAgent) {
+          // Check if it's the user's own org
+          const defaultOrg = await getOrg();
+          const isOwnOrg = defaultOrg.slug === org;
 
-          if (!isOwnScope) {
+          if (!isOwnOrg) {
             throw new Error(
               "Running shared agents requires --experimental-shared-agent flag",
               {
@@ -137,7 +137,7 @@ export const mainRunCommand = new Command()
           composeContent = compose.content;
         } else {
           // It's an agent name - resolve to compose ID
-          const compose = await getComposeByName(name, scope);
+          const compose = await getComposeByName(name, org);
           if (!compose) {
             throw new Error(`Agent not found: ${identifier}`, {
               cause: new Error(
