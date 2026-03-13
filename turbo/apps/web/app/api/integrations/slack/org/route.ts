@@ -206,7 +206,7 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Revoke agent permission
+  // Revoke agent permission (best-effort: failure must not block disconnect)
   const composeId = await resolveDefaultComposeId(org.orgId);
   if (composeId) {
     const email = await getUserEmail(userId);
@@ -222,7 +222,7 @@ export async function DELETE(request: Request) {
     .delete(slackOrgConnections)
     .where(eq(slackOrgConnections.id, connection.id));
 
-  // Refresh App Home to reflect disconnected state
+  // Refresh App Home to reflect disconnected state (best-effort: failure must not block disconnect)
   const [installation] = await db
     .select()
     .from(slackOrgInstallations)

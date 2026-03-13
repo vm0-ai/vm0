@@ -1,10 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort } from "../utils.ts";
-import { logger } from "../log.ts";
-
-const L = logger("ZeroSlack");
 
 interface SlackOrgData {
   isConnected: boolean;
@@ -96,10 +92,5 @@ export const disconnectSlackOrg$ = command(async ({ get, set }) => {
 });
 
 export const initSlackOrg$ = command(async ({ set }) => {
-  try {
-    await set(fetchSlackOrg$);
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to initialize Slack org integration:", error);
-  }
+  await set(fetchSlackOrg$);
 });
