@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { mkdtempSync } from "fs";
 import { mkdir, writeFile, readdir, copyFile, rm } from "fs/promises";
 import { checkDirectoryStatus } from "../../lib/utils/file-utils";
-import { join, dirname } from "path";
+import { join, dirname, resolve, sep } from "path";
 import { tmpdir } from "os";
 import * as tar from "tar";
 import { stringify as yamlStringify } from "yaml";
@@ -47,6 +47,17 @@ async function downloadInstructions(
   instructionsPath: string,
   destination: string,
 ): Promise<boolean> {
+  // Validate that instructionsPath doesn't escape the destination directory
+  const destPath = join(destination, instructionsPath);
+  const resolvedDest = resolve(destPath);
+  const resolvedBase = resolve(destination);
+  if (
+    resolvedDest !== resolvedBase &&
+    !resolvedDest.startsWith(resolvedBase + sep)
+  ) {
+    throw new Error("Invalid instructions path: path traversal detected");
+  }
+
   const volumeName = getInstructionsStorageName(agentName);
 
   console.log(chalk.dim("Downloading instructions..."));
@@ -86,8 +97,7 @@ async function downloadInstructions(
     return false;
   }
 
-  // Determine destination path (preserve original path from YAML)
-  const destPath = join(destination, instructionsPath);
+  // destPath was already validated at the top of this function
   await mkdir(dirname(destPath), { recursive: true });
 
   // Copy file to destination with original filename
