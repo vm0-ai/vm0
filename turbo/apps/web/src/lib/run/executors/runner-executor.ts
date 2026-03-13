@@ -1,7 +1,7 @@
 import type { StoredExecutionContext } from "@vm0/core";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
 import { encryptSecretsMap } from "../../crypto/secrets-encryption";
-import { validateRunnerGroupOrg } from "../../scope/org-service";
+import { validateRunnerGroupOrg } from "../../org/org-service";
 import { publishJobNotification } from "../../realtime/client";
 import { logger } from "../../logger";
 import { recordSandboxOperation } from "../../metrics";

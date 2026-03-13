@@ -9,7 +9,7 @@ import {
   getUserAgents,
   batchFetchVersionContents,
 } from "../../../../../src/lib/agent/get-user-agents";
-import { getDefaultOrgByUserId } from "../../../../../src/lib/scope/org-service";
+import { getDefaultOrgByUserId } from "../../../../../src/lib/org/org-service";
 
 const log = logger("api:agents:missing-secrets");
 

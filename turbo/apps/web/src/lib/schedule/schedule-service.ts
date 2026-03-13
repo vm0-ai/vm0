@@ -13,7 +13,7 @@ import {
 import { agentRuns } from "../../db/schema/agent-run";
 import { connectors } from "../../db/schema/connector";
 import { decryptSecretsMap } from "../crypto";
-import { getOrgData } from "../scope/org-cache-service";
+import { getOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createRun } from "../run/run-service";

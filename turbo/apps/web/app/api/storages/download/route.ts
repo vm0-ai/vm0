@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/storage/version-resolver";

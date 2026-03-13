@@ -6,7 +6,7 @@ import { generateRunnerGroupToken } from "../../../../../src/lib/realtime/client
 import {
   validateRunnerGroupOrg,
   isOfficialRunnerGroup,
-} from "../../../../../src/lib/scope/org-service";
+} from "../../../../../src/lib/org/org-service";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:runners:realtime:token");

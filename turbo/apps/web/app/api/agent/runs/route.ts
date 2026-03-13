@@ -29,7 +29,7 @@ import {
   isBadRequest,
   isNotFound,
 } from "../../../../src/lib/errors";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
 const log = logger("api:runs");
 

@@ -19,7 +19,7 @@ import { decryptSecretsMap } from "../../../../../../src/lib/crypto/secrets-encr
 import {
   validateRunnerGroupOrg,
   isOfficialRunnerGroup,
-} from "../../../../../../src/lib/scope/org-service";
+} from "../../../../../../src/lib/org/org-service";
 import { recordSandboxOperation } from "../../../../../../src/lib/metrics";
 
 const log = logger("api:runners:jobs:claim");

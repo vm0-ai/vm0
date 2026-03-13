@@ -4,7 +4,7 @@ import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
-import { getDefaultOrgByUserId } from "../../scope/org-service";
+import { getDefaultOrgByUserId } from "../../org/org-service";
 import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {

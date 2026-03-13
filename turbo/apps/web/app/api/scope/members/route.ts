@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { requireOrgFromRequest } from "../../../../src/lib/scope/resolve-org";
+import { requireOrgFromRequest } from "../../../../src/lib/org/resolve-org";
 import {
   getOrgMembers,
   removeMember,
-} from "../../../../src/lib/scope/org-member-service";
+} from "../../../../src/lib/org/org-member-service";
 import {
   isBadRequest,
   isNotFound,

@@ -4,7 +4,7 @@ import { agentComposes } from "../../db/schema/agent-compose";
 import { agentPermissions } from "../../db/schema/agent-permission";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { logger } from "../logger";
-import { getOrgData } from "../scope/org-cache-service";
+import { getOrgData } from "../org/org-cache-service";
 
 const log = logger("agent:permission");
 

@@ -19,7 +19,7 @@ import { conversations } from "../../../../src/db/schema/conversation";
 import {
   getOrgData,
   getOrgBySlug,
-} from "../../../../src/lib/scope/org-cache-service";
+} from "../../../../src/lib/org/org-cache-service";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";

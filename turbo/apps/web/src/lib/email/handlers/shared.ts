@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { eq, and } from "drizzle-orm";
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { getOrgBySlug } from "../../scope/org-cache-service";
+import { getOrgBySlug } from "../../org/org-cache-service";
 import { env } from "../../../env";
 import { getPlatformUrl } from "../../url";
 import { enqueueEmail } from "../outbox-service";

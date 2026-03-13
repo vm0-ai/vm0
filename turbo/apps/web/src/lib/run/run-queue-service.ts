@@ -9,7 +9,7 @@ import {
   decryptSecretsMap,
 } from "../crypto/secrets-encryption";
 import { PENDING_RUN_TTL_MS } from "./run-service";
-import { getDefaultOrg } from "../scope/org-member-service";
+import { getDefaultOrg } from "../org/org-member-service";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
 
 const log = logger("service:run-queue");

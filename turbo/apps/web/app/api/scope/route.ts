@@ -6,9 +6,9 @@ import {
 import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
-import { updateOrgSlug } from "../../../src/lib/scope/org-service";
-import { resolveOrg } from "../../../src/lib/scope/resolve-org";
-import type { ResolvedOrg } from "../../../src/lib/scope/resolve-org";
+import { updateOrgSlug } from "../../../src/lib/org/org-service";
+import { resolveOrg } from "../../../src/lib/org/resolve-org";
+import type { ResolvedOrg } from "../../../src/lib/org/resolve-org";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 

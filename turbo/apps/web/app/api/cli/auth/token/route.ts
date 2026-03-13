@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { getDefaultOrg } from "../../../../../src/lib/scope/org-member-service";
+import { getDefaultOrg } from "../../../../../src/lib/org/org-member-service";
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {

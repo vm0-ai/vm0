@@ -7,7 +7,7 @@ import {
   resolveTestUserId,
   isTestVariant,
 } from "../../../../../src/lib/auth/test-user";
-import { getDefaultOrgByUserId } from "../../../../../src/lib/scope/org-service";
+import { getDefaultOrgByUserId } from "../../../../../src/lib/org/org-service";
 import { env } from "../../../../../src/env";
 
 const bodySchema = z.object({

@@ -18,7 +18,7 @@ import {
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { badRequest, notFound } from "../errors";
-import { getOrgData } from "../scope/org-cache-service";
+import { getOrgData } from "../org/org-cache-service";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession, RuntimeOrg } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
@@ -29,7 +29,7 @@ import {
   type ConversationResolution,
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
-import { getDefaultOrg } from "../scope/org-member-service";
+import { getDefaultOrg } from "../org/org-member-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";

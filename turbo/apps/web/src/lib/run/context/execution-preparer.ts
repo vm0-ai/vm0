@@ -18,7 +18,7 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
-import { getOrgData } from "../../scope/org-cache-service";
+import { getOrgData } from "../../org/org-cache-service";
 import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");

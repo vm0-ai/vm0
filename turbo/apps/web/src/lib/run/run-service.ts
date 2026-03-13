@@ -31,8 +31,8 @@ import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
-import { getDefaultOrgByUserId } from "../scope/org-service";
-import { getDefaultOrg } from "../scope/org-member-service";
+import { getDefaultOrgByUserId } from "../org/org-service";
+import { getDefaultOrg } from "../org/org-member-service";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
 import type { OrgTier } from "@vm0/core";

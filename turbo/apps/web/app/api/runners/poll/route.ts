@@ -13,7 +13,7 @@ import { logger } from "../../../../src/lib/logger";
 import {
   validateRunnerGroupOrg,
   isOfficialRunnerGroup,
-} from "../../../../src/lib/scope/org-service";
+} from "../../../../src/lib/org/org-service";
 
 const log = logger("api:runners:poll");
 

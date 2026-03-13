@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { connectorsByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   getConnector,
   deleteConnector,

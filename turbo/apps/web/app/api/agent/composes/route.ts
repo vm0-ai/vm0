@@ -21,8 +21,8 @@ import {
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
-import { getOrgBySlug } from "../../../../src/lib/scope/org-cache-service";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";

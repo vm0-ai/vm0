@@ -19,11 +19,11 @@ import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import {
   getOrgData,
   getOrgBySlug,
-} from "../../../../src/lib/scope/org-cache-service";
+} from "../../../../src/lib/org/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { deleteInstallation } from "../../../../src/lib/github/github-app";
 import { logger } from "../../../../src/lib/logger";
 

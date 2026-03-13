@@ -8,7 +8,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
 import { eq, and, desc } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:list");

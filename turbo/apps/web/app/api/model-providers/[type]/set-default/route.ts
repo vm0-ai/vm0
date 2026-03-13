@@ -5,7 +5,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { setModelProviderDefault } from "../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";

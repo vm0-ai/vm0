@@ -18,13 +18,13 @@ import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import {
   getOrgData,
   getOrgBySlug,
-} from "../../../../src/lib/scope/org-cache-service";
+} from "../../../../src/lib/org/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/telegram/client";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";

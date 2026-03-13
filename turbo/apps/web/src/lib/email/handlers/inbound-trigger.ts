@@ -15,7 +15,7 @@ import { createRun } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
-import { getDefaultOrgByUserId } from "../../scope/org-service";
+import { getDefaultOrgByUserId } from "../../org/org-service";
 import { canAccessCompose } from "../../agent/permission-service";
 import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";

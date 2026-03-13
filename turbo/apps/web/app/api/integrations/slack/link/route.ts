@@ -17,7 +17,7 @@ import {
 } from "../../../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { addPermission } from "../../../../../src/lib/agent/permission-service";
-import { getDefaultOrgByUserId } from "../../../../../src/lib/scope/org-service";
+import { getDefaultOrgByUserId } from "../../../../../src/lib/org/org-service";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
 import { syncWorkspaceAgentPermissions } from "../../../../../src/lib/slack/permission-sync";

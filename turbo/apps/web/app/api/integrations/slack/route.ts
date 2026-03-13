@@ -18,7 +18,7 @@ import { listSecrets } from "../../../../src/lib/secret/secret-service";
 import {
   getOrgData,
   getOrgBySlug,
-} from "../../../../src/lib/scope/org-cache-service";
+} from "../../../../src/lib/org/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -30,7 +30,7 @@ import {
 import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { removePermission } from "../../../../src/lib/agent/permission-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permission-sync";
 import { logger } from "../../../../src/lib/logger";
 

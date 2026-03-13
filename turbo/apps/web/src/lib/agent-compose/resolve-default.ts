@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { env } from "../../env";
 import { agentComposes } from "../../db/schema/agent-compose";
-import { getOrgBySlug } from "../scope/org-cache-service";
+import { getOrgBySlug } from "../org/org-cache-service";
 import { logger } from "../logger";
 
 const log = logger("agent-compose:resolve-default");

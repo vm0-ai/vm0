@@ -13,7 +13,7 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   generatePresignedPutUrl,
   downloadManifest,

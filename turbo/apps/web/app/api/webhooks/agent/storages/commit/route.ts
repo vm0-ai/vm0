@@ -12,7 +12,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getDefaultOrgByUserId } from "../../../../../../src/lib/scope/org-service";
+import { getDefaultOrgByUserId } from "../../../../../../src/lib/org/org-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,

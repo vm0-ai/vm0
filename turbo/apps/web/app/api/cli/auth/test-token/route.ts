@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { generateDefaultOrgSlug } from "../../../../../src/lib/scope/org-service";
-import { getDefaultOrg } from "../../../../../src/lib/scope/org-member-service";
+import { generateDefaultOrgSlug } from "../../../../../src/lib/org/org-service";
+import { getDefaultOrg } from "../../../../../src/lib/org/org-member-service";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { isNotFound } from "../../../../../src/lib/errors";
 import {

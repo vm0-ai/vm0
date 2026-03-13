@@ -6,7 +6,7 @@ import {
 import { secretsMainContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import { listSecrets, setSecret } from "../../../src/lib/secret/secret-service";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest } from "../../../src/lib/errors";

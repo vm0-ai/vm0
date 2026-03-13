@@ -8,7 +8,7 @@ import {
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
-import { resolveOrg } from "../../../../../src/lib/scope/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
