@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.102.5](https://github.com/vm0-ai/vm0/compare/web-v12.102.4...web-v12.102.5) (2026-03-13)
+
+
+### Refactoring
+
+* **web:** route model provider env vars through expansion ([#4674](https://github.com/vm0-ai/vm0/issues/4674)) ([f4bfb75](https://github.com/vm0-ai/vm0/commit/f4bfb7559796ab3a4b673a6f5d59aaa227aa74a9))
+
 ## [12.102.4](https://github.com/vm0-ai/vm0/compare/web-v12.102.3...web-v12.102.4) (2026-03-13)
 
 

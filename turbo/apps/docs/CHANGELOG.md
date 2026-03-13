@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.17.0](https://github.com/vm0-ai/vm0/compare/docs-v2.16.5...docs-v2.17.0) (2026-03-13)
+
+
+### Features
+
+* **docs:** upgrade fumadocs to v16 and next.js to v16 ([#4677](https://github.com/vm0-ai/vm0/issues/4677)) ([5a6c22f](https://github.com/vm0-ai/vm0/commit/5a6c22f7435bc3d4ddad0fbbaa10a6528b1b4858)), closes [#4671](https://github.com/vm0-ai/vm0/issues/4671)
+
 ## [2.16.5](https://github.com/vm0-ai/vm0/compare/docs-v2.16.4...docs-v2.16.5) (2026-03-12)
 
 
