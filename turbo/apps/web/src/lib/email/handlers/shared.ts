@@ -31,7 +31,7 @@ interface EmailTriggerAddress {
  * - "reply+token@vm0.bot" → null (reply address, not trigger)
  * - "invalid@vm0.bot" → null (no plus sign)
  */
-export function parseEmailTriggerAddress(
+function parseEmailTriggerAddress(
   toAddress: string,
 ): EmailTriggerAddress | null {
   // Match: org+agent@domain (case-insensitive)
@@ -61,7 +61,7 @@ export function parseEmailTriggerAddress(
  * - "reply+token@vm0.bot" → null (has plus sign)
  * - "@vm0.bot" → null (empty local part)
  */
-export function parseAgentOnlyAddress(toAddress: string): string | null {
+function parseAgentOnlyAddress(toAddress: string): string | null {
   if (toAddress.includes("+")) return null;
 
   const match = toAddress.match(/^([a-z0-9][a-z0-9-]*)@/i);
