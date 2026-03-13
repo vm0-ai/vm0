@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.8...runner-rs-v0.23.0) (2026-03-13)
+
+
+### Features
+
+* **services:** add permission type definitions ([#4659](https://github.com/vm0-ai/vm0/issues/4659)) ([5c7e96a](https://github.com/vm0-ai/vm0/commit/5c7e96ab41040602ca40a55fd966e2ba2b5dab7d))
+
 ## [0.22.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.7...runner-rs-v0.22.8) (2026-03-12)
 
 

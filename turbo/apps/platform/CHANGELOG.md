@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.107.4](https://github.com/vm0-ai/vm0/compare/platform-v0.107.3...platform-v0.107.4) (2026-03-13)
+
+
+### Bug Fixes
+
+* **platform:** increase compose job polling timeout and handle onboarding errors ([#4655](https://github.com/vm0-ai/vm0/issues/4655)) ([215bfe1](https://github.com/vm0-ai/vm0/commit/215bfe19a82d001f897239a4af959782f0f9dcc5)), closes [#4654](https://github.com/vm0-ai/vm0/issues/4654)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.60.0
+
 ## [0.107.3](https://github.com/vm0-ai/vm0/compare/platform-v0.107.2...platform-v0.107.3) (2026-03-13)
 
 

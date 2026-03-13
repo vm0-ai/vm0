@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.56.10](https://github.com/vm0-ai/vm0/compare/cli-v9.56.9...cli-v9.56.10) (2026-03-13)
+
+
+### Bug Fixes
+
+* **cli:** add path traversal guard to agent clone instructions download ([#4660](https://github.com/vm0-ai/vm0/issues/4660)) ([7f6799b](https://github.com/vm0-ai/vm0/commit/7f6799bdb6d2f4e3bbcca848b1f35e963049f260)), closes [#4620](https://github.com/vm0-ai/vm0/issues/4620)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.60.0
+
 ## [9.56.9](https://github.com/vm0-ai/vm0/compare/cli-v9.56.8...cli-v9.56.9) (2026-03-13)
 
 

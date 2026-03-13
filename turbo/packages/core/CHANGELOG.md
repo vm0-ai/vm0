@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.60.0](https://github.com/vm0-ai/vm0/compare/core-v8.59.2...core-v8.60.0) (2026-03-13)
+
+
+### Features
+
+* **services:** add full-access catch-all permissions to all service configs ([#4665](https://github.com/vm0-ai/vm0/issues/4665)) ([cfde72c](https://github.com/vm0-ai/vm0/commit/cfde72c41df1a6b38eea92bd25ad1479d0f69a9e)), closes [#4664](https://github.com/vm0-ai/vm0/issues/4664)
+* **services:** add permission type definitions ([#4659](https://github.com/vm0-ai/vm0/issues/4659)) ([5c7e96a](https://github.com/vm0-ai/vm0/commit/5c7e96ab41040602ca40a55fd966e2ba2b5dab7d))
+
+
+### Bug Fixes
+
+* **cli:** add path traversal guard to agent clone instructions download ([#4660](https://github.com/vm0-ai/vm0/issues/4660)) ([7f6799b](https://github.com/vm0-ai/vm0/commit/7f6799bdb6d2f4e3bbcca848b1f35e963049f260)), closes [#4620](https://github.com/vm0-ai/vm0/issues/4620)
+
 ## [8.59.2](https://github.com/vm0-ai/vm0/compare/core-v8.59.1...core-v8.59.2) (2026-03-12)
 
 

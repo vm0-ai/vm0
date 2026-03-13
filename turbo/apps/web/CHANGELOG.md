@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.102.4](https://github.com/vm0-ai/vm0/compare/web-v12.102.3...web-v12.102.4) (2026-03-13)
+
+
+### Refactoring
+
+* rename export_jobs.clerk_org_id to org_id for consistency ([#4652](https://github.com/vm0-ai/vm0/issues/4652)) ([3bac035](https://github.com/vm0-ai/vm0/commit/3bac035db39cf617cc7217ad2c7718f855241f91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.60.0
+
 ## [12.102.3](https://github.com/vm0-ai/vm0/compare/web-v12.102.2...web-v12.102.3) (2026-03-13)
 
 
