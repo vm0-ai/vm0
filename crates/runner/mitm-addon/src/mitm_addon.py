@@ -605,6 +605,15 @@ def response(flow: http.HTTPFlow) -> None:
             "response_size": response_size,
         }
 
+        # Add service match info if this was a service request
+        svc_base = flow.metadata.get("service_base")
+        if svc_base:
+            log_entry["service_base"] = svc_base
+            log_entry["service_name"] = flow.metadata.get("service_name", "")
+            log_entry["service_ref"] = flow.metadata.get("service_ref", "")
+            log_entry["service_permission"] = flow.metadata.get("service_permission", "")
+            log_entry["service_rule"] = flow.metadata.get("service_rule", "")
+
         # Add response headers useful for debugging gzip/encoding issues
         if flow.response:
             for h in ("content-type", "content-encoding", "transfer-encoding"):
