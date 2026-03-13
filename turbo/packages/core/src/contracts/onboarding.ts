@@ -9,7 +9,7 @@ const c = initContract();
  */
 export const onboardingStatusResponseSchema = z.object({
   needsOnboarding: z.boolean(),
-  hasScope: z.boolean(),
+  hasOrg: z.boolean(),
   hasModelProvider: z.boolean(),
   hasDefaultAgent: z.boolean(),
   defaultAgentName: z.string().nullable(),

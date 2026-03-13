@@ -190,9 +190,9 @@ const createComposeResponseSchema = z.object({
  */
 export const composesMainContract = c.router({
   /**
-   * GET /api/agent/composes?name={name}&scope={scope}
+   * GET /api/agent/composes?name={name}&org={org}
    * Get agent compose by name with HEAD version content
-   * If scope is not provided, uses the authenticated user's default scope
+   * If org is not provided, uses the authenticated user's default org
    */
   getByName: {
     method: "GET",
@@ -200,7 +200,6 @@ export const composesMainContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       name: z.string().min(1, "Missing name query parameter"),
-      scope: z.string().optional(),
       org: z.string().optional(),
     }),
     responses: {
@@ -326,16 +325,15 @@ const composeListItemSchema = z.object({
  */
 export const composesListContract = c.router({
   /**
-   * GET /api/agent/composes/list?scope={scope}
-   * List all agent composes for a scope
-   * If scope is not provided, uses the authenticated user's default scope
+   * GET /api/agent/composes/list?org={org}
+   * List all agent composes for an org
+   * If org is not provided, uses the authenticated user's default org
    */
   list: {
     method: "GET",
     path: "/api/agent/composes/list",
     headers: authHeadersSchema,
     query: z.object({
-      scope: z.string().optional(),
       org: z.string().optional(),
     }),
     responses: {

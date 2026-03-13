@@ -51,7 +51,7 @@ const platformLogEntrySchema = z.object({
   id: z.string().uuid(),
   sessionId: z.string().nullable(),
   agentName: z.string(),
-  scopeSlug: z.string().nullable(),
+  orgSlug: z.string().nullable(),
   framework: z.string().nullable(),
   status: platformLogStatusSchema,
   createdAt: z.string(),
@@ -104,7 +104,7 @@ export const platformLogsListContract = c.router({
       search: z.string().optional(),
       agent: z.string().optional(),
       name: z.string().optional(),
-      scope: z.string().optional(),
+      org: z.string().optional(),
       status: platformLogStatusSchema.optional(),
     }),
     responses: {

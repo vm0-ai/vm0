@@ -97,7 +97,7 @@ const scheduleResponseSchema = z.object({
   id: z.string().uuid(),
   composeId: z.string().uuid(),
   composeName: z.string(),
-  scopeSlug: z.string(),
+  orgSlug: z.string(),
   userId: z.string(),
   name: z.string(),
   triggerType: z.enum(["cron", "once", "loop"]),

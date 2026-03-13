@@ -5,80 +5,80 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
- * Scope tier values
+ * Org tier values
  */
 export const orgTierSchema = z.enum(["free", "pro", "max"]);
 export type OrgTier = z.infer<typeof orgTierSchema>;
 
 /**
- * Scope slug validation
+ * Org slug validation
  * - 3-64 characters (or 1-2 for single/double char slugs)
  * - lowercase letters, numbers, and hyphens only
  * - must start and end with alphanumeric
  */
-export const scopeSlugSchema = z
+export const orgSlugSchema = z
   .string()
-  .min(3, "Scope slug must be at least 3 characters")
-  .max(64, "Scope slug must be at most 64 characters")
+  .min(3, "Org slug must be at least 3 characters")
+  .max(64, "Org slug must be at most 64 characters")
   .regex(
     /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/,
-    "Scope slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
+    "Org slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
   )
   .transform((s) => s.toLowerCase());
 
 /**
- * Scope response schema
+ * Org response schema
  */
-export const scopeResponseSchema = z.object({
+export const orgResponseSchema = z.object({
   id: z.string(),
   slug: z.string(),
   tier: z.string().optional(),
 });
 
-export type ScopeResponse = z.infer<typeof scopeResponseSchema>;
+export type OrgResponse = z.infer<typeof orgResponseSchema>;
 
 /**
- * Update scope request schema
+ * Update org request schema
  */
-export const updateScopeRequestSchema = z.object({
-  slug: scopeSlugSchema,
+export const updateOrgRequestSchema = z.object({
+  slug: orgSlugSchema,
   force: z.boolean().optional().default(false),
 });
 
-export type UpdateScopeRequest = z.infer<typeof updateScopeRequestSchema>;
+export type UpdateOrgRequest = z.infer<typeof updateOrgRequestSchema>;
 
 /**
- * Scope contract for /api/scope
+ * Org contract for /api/org
  */
-export const scopeContract = c.router({
+export const orgContract = c.router({
   /**
-   * GET /api/scope
-   * Get current user's default scope
+   * GET /api/org
+   * Get current user's default org
    */
   get: {
     method: "GET",
-    path: "/api/scope",
+    path: "/api/org",
     headers: authHeadersSchema,
     responses: {
-      200: scopeResponseSchema,
+      200: orgResponseSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get current user's default scope",
+    summary: "Get current user's default org",
   },
 
   /**
-   * PUT /api/scope
-   * Update scope slug
+   * PUT /api/org
+   * Update org slug
    */
   update: {
     method: "PUT",
-    path: "/api/scope",
+    path: "/api/org",
     headers: authHeadersSchema,
-    body: updateScopeRequestSchema,
+    body: updateOrgRequestSchema,
     responses: {
-      200: scopeResponseSchema,
+      200: orgResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -86,28 +86,27 @@ export const scopeContract = c.router({
       409: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Update scope slug",
+    summary: "Update org slug",
   },
 });
 
-export type ScopeContract = typeof scopeContract;
+export type OrgContract = typeof orgContract;
 
 /**
- * Scope default agent contract for /api/scopes/default-agent
+ * Org default agent contract for /api/orgs/default-agent
  */
-export const scopeDefaultAgentContract = c.router({
+export const orgDefaultAgentContract = c.router({
   /**
-   * PUT /api/scopes/default-agent?scope={slug}
-   * Set or unset the default agent for a scope.
-   * Only scope admins can perform this action.
-   * The agent must belong to the same scope.
+   * PUT /api/orgs/default-agent?org={slug}
+   * Set or unset the default agent for an org.
+   * Only org admins can perform this action.
+   * The agent must belong to the same org.
    */
   setDefaultAgent: {
     method: "PUT",
-    path: "/api/scopes/default-agent",
+    path: "/api/orgs/default-agent",
     headers: authHeadersSchema,
     query: z.object({
-      scope: z.string().optional(),
       org: z.string().optional(),
     }),
     body: z.object({
@@ -122,8 +121,8 @@ export const scopeDefaultAgentContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Set or unset the default agent for a scope",
+    summary: "Set or unset the default agent for an org",
   },
 });
 
-export type ScopeDefaultAgentContract = typeof scopeDefaultAgentContract;
+export type OrgDefaultAgentContract = typeof orgDefaultAgentContract;

@@ -158,18 +158,18 @@ export {
   type CronCleanupSandboxesContract,
 } from "./cron";
 export {
-  scopeContract,
-  scopeDefaultAgentContract,
-  scopeSlugSchema,
-  scopeResponseSchema,
-  updateScopeRequestSchema,
+  orgContract,
+  orgDefaultAgentContract,
+  orgSlugSchema,
+  orgResponseSchema,
+  updateOrgRequestSchema,
   orgTierSchema,
-  type ScopeContract,
-  type ScopeDefaultAgentContract,
-  type ScopeResponse,
-  type UpdateScopeRequest,
+  type OrgContract,
+  type OrgDefaultAgentContract,
+  type OrgResponse,
+  type UpdateOrgRequest,
   type OrgTier,
-} from "./scopes";
+} from "./orgs";
 export {
   secretsMainContract,
   secretsByNameContract,
@@ -443,29 +443,29 @@ export {
   type UpdateUserPreferencesRequest,
 } from "./user-preferences";
 export {
-  scopeListContract,
-  scopeListItemSchema,
-  scopeListResponseSchema,
-  type ScopeListContract,
-  type ScopeListItem,
-  type ScopeListResponse,
-} from "./scope-list";
+  orgListContract,
+  orgListItemSchema,
+  orgListResponseSchema,
+  type OrgListContract,
+  type OrgListItem,
+  type OrgListResponse,
+} from "./org-list";
 export {
-  scopeMembersContract,
+  orgMembersContract,
   orgRoleSchema,
-  scopeMemberSchema,
-  scopeMembersResponseSchema,
-  inviteScopeMemberRequestSchema,
-  removeScopeMemberRequestSchema,
-  scopeMessageResponseSchema,
-  type ScopeMembersContract,
+  orgMemberSchema,
+  orgMembersResponseSchema,
+  inviteOrgMemberRequestSchema,
+  removeOrgMemberRequestSchema,
+  orgMessageResponseSchema,
+  type OrgMembersContract,
   type OrgRole,
-  type ScopeMember,
-  type ScopeMembersResponse,
-  type InviteScopeMemberRequest,
-  type RemoveScopeMemberRequest,
-  type ScopeMessageResponse,
-} from "./scope-members";
+  type OrgMember,
+  type OrgMembersResponse,
+  type InviteOrgMemberRequest,
+  type RemoveOrgMemberRequest,
+  type OrgMessageResponse,
+} from "./org-members";
 export {
   onboardingStatusContract,
   onboardingStatusResponseSchema,
