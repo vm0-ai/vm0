@@ -63,7 +63,7 @@ pub struct VmRegistration<'a> {
     pub sandbox_token: &'a str,
     pub firewall_rules: &'a [FirewallRule],
     pub network_log_path: &'a std::path::Path,
-    pub services: Option<&'a Vec<crate::types::ServiceEntry>>,
+    pub services: Option<&'a [crate::types::ServiceEntry]>,
     pub encrypted_secrets: Option<&'a str>,
 }
 
@@ -426,12 +426,14 @@ impl ProxyRegistryHandle {
         let mut registry = read_registry(&self.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
         let services = registration.services.map(|s| {
-            let mut s = s.clone();
+            let mut s = s.to_vec();
+            let mut idx = 0usize;
             for svc in &mut s {
-                for (i, api) in svc.apis.iter_mut().enumerate() {
+                for api in &mut svc.apis {
                     if api.id.is_empty() {
-                        api.id = format!("{}:{}:{}", registration.run_id, svc.name, i);
+                        api.id = format!("{}:{}", registration.run_id, idx);
                     }
+                    idx += 1;
                 }
             }
             s
@@ -813,8 +815,8 @@ mod tests {
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
 
-        // Verify id was assigned by register_vm: "{run_id}:{service_name}:{index}".
-        assert_eq!(stored[0].apis[0].id, "run-svc:gmail:0");
+        // Verify id was assigned by register_vm: "{run_id}:{global_index}".
+        assert_eq!(stored[0].apis[0].id, "run-svc:0");
 
         // Verify JSON shape matches what the Python addon expects.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
@@ -827,7 +829,7 @@ mod tests {
             svc["apis"][0]["base"],
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
-        assert_eq!(svc["apis"][0]["id"], "run-svc:gmail:0");
+        assert_eq!(svc["apis"][0]["id"], "run-svc:0");
     }
 
     #[tokio::test]

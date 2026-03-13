@@ -812,7 +812,7 @@ interface BuildContextResult {
  * Returns null if no services are declared.
  *
  * Reads pre-expanded ExpandedServiceConfig objects (resolved at compose time)
- * and maps them to nested services format: { services: [{ name, ref, apis }] }.
+ * and maps them to a flat service entry array: [{ name, ref, apis }].
  *
  * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */

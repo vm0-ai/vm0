@@ -128,7 +128,7 @@ async fn execute_inner(
             sandbox_token: &context.sandbox_token,
             firewall_rules: fw.and_then(|f| f.rules.as_deref()).unwrap_or(&[]),
             network_log_path: &network_log_path,
-            services: context.experimental_services.as_ref(),
+            services: context.experimental_services.as_deref(),
             encrypted_secrets: context.encrypted_secrets.as_deref(),
         };
         if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {

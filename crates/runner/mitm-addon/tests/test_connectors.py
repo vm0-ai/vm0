@@ -178,7 +178,7 @@ class TestHandleServiceRequest:
 
     def test_success_injects_headers(self):
         flow = _make_http_flow()
-        api_entry = {"id": "run-1:github:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
+        api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
         vm_info = {
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
@@ -201,7 +201,7 @@ class TestHandleServiceRequest:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_rule"] == "service:https://api.github.com"
         assert flow.metadata["service_base"] == "https://api.github.com"
-        assert flow.metadata["service_api_id"] == "run-1:github:0"
+        assert flow.metadata["service_api_id"] == "run-1:0"
         assert flow.metadata["vm_run_id"] == "run-1"
 
     def test_failure_returns_502(self):
