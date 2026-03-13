@@ -12,6 +12,7 @@ import {
   testContext,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
+import { encryptSecretsMap } from "../../../../../../../src/lib/crypto/secrets-encryption";
 
 const context = testContext();
 
@@ -306,6 +307,133 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const data = await response.json();
       expect(data.agentName).toBeUndefined();
       expect(data.agentScopeSlug).toBeUndefined();
+    });
+  });
+
+  describe("Claim flow - secretValues filtering", () => {
+    it("should only include secret values present in environment", async () => {
+      const { composeId, versionId } =
+        await createTestCompose("test-secret-filter");
+      const composeInfo = await findTestComposeWithScope(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const encryptedSecrets = encryptSecretsMap(
+        {
+          API_KEY: "sk-real-key",
+          AUTH_TOKEN: "placeholder-token",
+          UNUSED_SECRET: "should-not-appear",
+        },
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+        {
+          encryptedSecrets,
+          environment: {
+            API_KEY: "sk-real-key",
+            AUTH_TOKEN: "placeholder-token",
+            LITERAL_VAR: "not-a-secret",
+          },
+        },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      // Values present in environment are included
+      expect(data.secretValues).toContain("sk-real-key");
+      expect(data.secretValues).toContain("placeholder-token");
+      // Values NOT in environment are excluded
+      expect(data.secretValues).not.toContain("should-not-appear");
+    });
+
+    it("should return empty array when no secrets match environment", async () => {
+      const { composeId, versionId } = await createTestCompose("test-no-match");
+      const composeInfo = await findTestComposeWithScope(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const encryptedSecrets = encryptSecretsMap(
+        { SECRET: "not-in-env" },
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+        {
+          encryptedSecrets,
+          environment: { SOME_VAR: "other-value" },
+        },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.secretValues).toEqual([]);
+    });
+
+    it("should return null when no encrypted secrets exist", async () => {
+      const { composeId, versionId } =
+        await createTestCompose("test-no-secrets");
+      const composeInfo = await findTestComposeWithScope(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.secretValues).toBeNull();
     });
   });
 });
