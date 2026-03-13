@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { testContext } from "../../../__tests__/test-helpers";
 import {
   insertOrgCacheEntry,
@@ -87,11 +87,10 @@ describe("verifyMembershipCached", () => {
     const result = await verifyMembershipCached(foreignOrgId, userId);
     expect(result).toBeNull();
 
-    // Allow fire-and-forget cache delete to complete
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    // Verify cache entry was deleted
-    const cached = await findOrgMembersCacheEntry(foreignOrgId, userId);
-    expect(cached).toBeUndefined();
+    // Wait for fire-and-forget cache delete to complete
+    await vi.waitFor(async () => {
+      const cached = await findOrgMembersCacheEntry(foreignOrgId, userId);
+      expect(cached).toBeUndefined();
+    });
   });
 });

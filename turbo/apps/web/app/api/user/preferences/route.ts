@@ -21,13 +21,8 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { sessionClaims, orgId: authOrgId } = await auth();
+    const { sessionClaims, orgId } = await auth();
 
-    // Clerk session → orgId from JWT; CLI token → use orgId from token
-    let orgId = authOrgId;
-    if (!orgId && ctx.orgId) {
-      orgId = ctx.orgId;
-    }
     if (!orgId) {
       return createErrorResponse("BAD_REQUEST", "No organization context");
     }
@@ -60,12 +55,7 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    // Clerk session → orgId from JWT; CLI token → use orgId from token
-    const { orgId } = await auth();
-    let resolvedOrgId = orgId;
-    if (!resolvedOrgId && ctx.orgId) {
-      resolvedOrgId = ctx.orgId;
-    }
+    const { orgId: resolvedOrgId } = await auth();
     if (!resolvedOrgId) {
       return createErrorResponse("BAD_REQUEST", "No organization context");
     }

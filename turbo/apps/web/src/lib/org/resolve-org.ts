@@ -80,25 +80,11 @@ async function verifyMembership(
   }
 
   // Cache-backed path: check org_members_cache, fall back to Clerk API
-  try {
-    const result = await verifyMembershipCached(resolved.orgId, userId);
-    if (!result) {
-      throw forbidden("You are not a member of this organization");
-    }
-    return { role: result.role, userId };
-  } catch (error) {
-    // Re-throw our own forbidden errors
-    if (error instanceof Error && error.message.includes("not a member")) {
-      throw error;
-    }
-    // Clerk API failure — deny access (security-first)
-    log.error("verifyMembership failed", {
-      userId,
-      orgId: resolved.orgId,
-      error,
-    });
+  const result = await verifyMembershipCached(resolved.orgId, userId);
+  if (!result) {
     throw forbidden("You are not a member of this organization");
   }
+  return { role: result.role, userId };
 }
 
 /**

@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { logger } from "../logger";
-import type { OrgRole } from "@vm0/core";
+import { orgRoleSchema, type OrgRole } from "@vm0/core";
 
 const log = logger("org:membership-cache");
 
@@ -29,7 +29,7 @@ export async function verifyMembershipCached(
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return { role: cached.role as OrgRole };
+    return { role: orgRoleSchema.parse(cached.role) };
   }
 
   // 2. Cache miss/stale → Clerk API
@@ -59,7 +59,7 @@ export async function verifyMembershipCached(
   }
 
   // 3. Update cache (fire-and-forget)
-  const role = membership.role === "org:admin" ? "admin" : "member";
+  const role: OrgRole = membership.role === "org:admin" ? "admin" : "member";
   const now = new Date();
   void globalThis.services.db
     .insert(orgMembersCache)
@@ -72,5 +72,5 @@ export async function verifyMembershipCached(
       log.warn("Failed to update org_members_cache", { err });
     });
 
-  return { role: role as OrgRole };
+  return { role };
 }

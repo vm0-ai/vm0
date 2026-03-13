@@ -24,9 +24,8 @@ export async function POST(request: Request) {
 
   const { userId } = ctx;
 
-  // Resolve orgId from Clerk session or CLI token
-  const { orgId: sessionOrgId } = await auth();
-  const resolvedOrgId = sessionOrgId ?? ctx.orgId;
+  // Resolve orgId from Clerk session
+  const { orgId: resolvedOrgId } = await auth();
   if (!resolvedOrgId) {
     return NextResponse.json(
       { error: { code: "BAD_REQUEST", message: "No organization context" } },
