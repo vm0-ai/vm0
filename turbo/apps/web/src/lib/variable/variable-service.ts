@@ -133,44 +133,7 @@ export async function setVariable(
 
   log.debug("setting variable", { orgId, name });
 
-  // Check if variable exists
-  const existing = await globalThis.services.db
-    .select({ id: variables.id })
-    .from(variables)
-    .where(
-      and(
-        eq(variables.orgId, orgId),
-        eq(variables.userId, userId),
-        eq(variables.name, name),
-      ),
-    )
-    .limit(1);
-
-  if (existing[0]) {
-    // Update existing variable
-    const [updated] = await globalThis.services.db
-      .update(variables)
-      .set({
-        value,
-        description: description ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(variables.id, existing[0].id))
-      .returning({
-        id: variables.id,
-        name: variables.name,
-        value: variables.value,
-        description: variables.description,
-        createdAt: variables.createdAt,
-        updatedAt: variables.updatedAt,
-      });
-
-    log.debug("variable updated", { variableId: updated!.id, name });
-    return updated!;
-  }
-
-  // Create new variable
-  const [created] = await globalThis.services.db
+  const [result] = await globalThis.services.db
     .insert(variables)
     .values({
       name,
@@ -178,6 +141,14 @@ export async function setVariable(
       description: description ?? null,
       userId,
       orgId,
+    })
+    .onConflictDoUpdate({
+      target: [variables.orgId, variables.userId, variables.name],
+      set: {
+        value,
+        description: description ?? null,
+        updatedAt: new Date(),
+      },
     })
     .returning({
       id: variables.id,
@@ -188,8 +159,12 @@ export async function setVariable(
       updatedAt: variables.updatedAt,
     });
 
-  log.debug("variable created", { variableId: created!.id, name });
-  return created!;
+  if (!result) {
+    throw new Error("Expected upsert to return a row");
+  }
+
+  log.debug("variable upserted", { variableId: result.id, name });
+  return result;
 }
 
 /**
