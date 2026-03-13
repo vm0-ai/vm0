@@ -168,12 +168,19 @@ const router = tsr.router(runnersJobClaimContract, {
 
     log.debug(`Deleted job queue entry for ${runId}`);
 
-    // Decrypt secrets map and extract values for runner log masking
+    // Decrypt secrets map and extract values for runner log masking.
+    // Only include secret values that actually appear in the environment —
+    // secrets replaced with service placeholders should not be exposed via VM0_SECRET_VALUES.
     const secretsMap = decryptSecretsMap(
       storedContext.encryptedSecrets,
       globalThis.services.env.SECRETS_ENCRYPTION_KEY,
     );
-    const secretValues = secretsMap ? Object.values(secretsMap) : null;
+    const envValues = storedContext.environment
+      ? new Set(Object.values(storedContext.environment))
+      : new Set<string>();
+    const secretValues = secretsMap
+      ? Object.values(secretsMap).filter((v) => envValues.has(v))
+      : null;
 
     // Return execution context (context already prepared at job creation)
     // Note: apiUrl is not returned - runner uses its configured server.url
