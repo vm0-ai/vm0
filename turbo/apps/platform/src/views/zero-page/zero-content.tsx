@@ -18,7 +18,7 @@ interface ZeroContentProps {
   onSendMessage?: (message: string) => void;
   onNavigateToActivity?: () => void;
   onNavigateToSchedule?: () => void;
-  onNavigateToJob?: () => void;
+  onNavigateToTeam?: () => void;
   onNavigateToChat?: () => void;
   selectedAgentName?: string | null;
   onNavigateToMeet?: (tab?: string) => void;
@@ -34,7 +34,7 @@ function getSectionTitles(
     chat: `Chat with ${agentName}`,
     meet: `Meet ${agentName}`,
     schedule: "Schedule",
-    job: `${agentName}'s team`,
+    team: `${agentName}'s team`,
     activity: "Activities",
     works: `Where ${agentName} works`,
     settings: "Settings",
@@ -48,7 +48,7 @@ export function ZeroContent({
   onSendMessage,
   onNavigateToActivity,
   onNavigateToSchedule,
-  onNavigateToJob,
+  onNavigateToTeam,
   onNavigateToChat,
   selectedAgentName,
   onNavigateToMeet,
@@ -66,7 +66,7 @@ export function ZeroContent({
           zeroAvatarSrc={zeroAvatarSrc}
           onAvatarClick={onAvatarClick}
           onBack={onBackFromSession}
-          onNavigateToJob={onNavigateToJob}
+          onNavigateToTeam={onNavigateToTeam}
           onNavigateToSchedule={onNavigateToSchedule}
         />
       );
@@ -76,7 +76,7 @@ export function ZeroContent({
         onSendMessage={onSendMessage}
         onNavigateToActivity={onNavigateToActivity}
         onNavigateToSchedule={onNavigateToSchedule}
-        onNavigateToJob={onNavigateToJob}
+        onNavigateToTeam={onNavigateToTeam}
         onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={zeroAvatarSrc}
         onAvatarClick={onAvatarClick}
@@ -94,7 +94,7 @@ export function ZeroContent({
   if (sectionId === "schedule") {
     return <ZeroSchedulePage />;
   }
-  if (sectionId === "job") {
+  if (sectionId === "team") {
     return (
       <ZeroJobsPage
         onNavigateToChat={onNavigateToChat}

@@ -43,7 +43,7 @@ interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
   onAvatarClick?: () => void;
   onBack?: () => void;
-  onNavigateToJob?: () => void;
+  onNavigateToTeam?: () => void;
   onNavigateToSchedule?: () => void;
 }
 
@@ -51,7 +51,7 @@ export function ZeroSessionChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
   onBack,
-  onNavigateToJob,
+  onNavigateToTeam,
   onNavigateToSchedule,
 }: ZeroSessionChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
@@ -149,7 +149,7 @@ export function ZeroSessionChatPage({
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={onNavigateToJob}
+            onClick={onNavigateToTeam}
             aria-label="Sub-agents"
           >
             <IconUsers size={18} stroke={1.5} />

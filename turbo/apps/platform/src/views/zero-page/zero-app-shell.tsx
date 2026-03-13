@@ -353,7 +353,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             selectedAgentName={initialJobAgent}
             onNavigateToActivity={() => setActiveId("activity")}
             onNavigateToSchedule={() => setActiveId("schedule")}
-            onNavigateToJob={() => setActiveId("job")}
+            onNavigateToTeam={() => setActiveId("team")}
             onNavigateToChat={() => setActiveId("chat")}
             onNavigateToMeet={(section) => {
               setActiveId("meet");

@@ -33,9 +33,9 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("schedule");
     });
 
-    it("should resolve /zero/job to 'job'", () => {
-      mockLocation({ pathname: "/zero/job", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("job");
+    it("should resolve /zero/team to 'team'", () => {
+      mockLocation({ pathname: "/zero/team", search: "" }, context.signal);
+      expect(context.store.get(zeroActiveId$)).toBe("team");
     });
 
     it("should resolve /zero/activity to 'activity'", () => {

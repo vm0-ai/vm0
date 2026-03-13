@@ -27,5 +27,6 @@ export const zeroSubagents$ = computed(async (get) => {
   const agents = await get(agentsList$);
   const status = await get(zeroOnboardingStatus$);
   const defaultName = status.defaultAgentName;
-  return agents.filter((a) => a.name !== defaultName);
+  const defaultId = status.defaultAgentComposeId;
+  return agents.filter((a) => a.name !== defaultName && a.id !== defaultId);
 });

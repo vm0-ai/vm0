@@ -118,6 +118,7 @@ const router = tsr.router(composesListContract, {
 
     // When using default org (no ?scope= param), also include email-shared agents
     let sharedComposes: {
+      id: string;
       name: string;
       headVersionId: string | null;
       updatedAt: Date;
@@ -133,6 +134,7 @@ const router = tsr.router(composesListContract, {
     // Combine: own agents first, then shared agents with org/name format
     const allComposes = [
       ...ownComposes.map((c) => ({
+        id: c.id,
         name: c.name,
         displayName: extractDisplayName(c.headContent),
         headVersionId: c.headVersionId,
@@ -140,6 +142,7 @@ const router = tsr.router(composesListContract, {
         isOwner: true,
       })),
       ...sharedComposes.map((c) => ({
+        id: c.id,
         name: `${c.orgSlug}/${c.name}`,
         displayName: null as string | null,
         headVersionId: c.headVersionId,

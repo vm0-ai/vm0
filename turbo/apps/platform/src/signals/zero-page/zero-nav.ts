@@ -7,7 +7,7 @@ function isValidTab(tab: string): tab is ZeroNavId {
     tab === "chat" ||
     tab === "meet" ||
     tab === "schedule" ||
-    tab === "job" ||
+    tab === "team" ||
     tab === "activity" ||
     tab === "works" ||
     tab === "settings" ||

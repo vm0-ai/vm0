@@ -651,7 +651,7 @@ interface ZeroChatPageProps {
   onClearScenario?: () => void;
   onNavigateToActivity?: () => void;
   onNavigateToSchedule?: () => void;
-  onNavigateToJob?: () => void;
+  onNavigateToTeam?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (message: string) => void;
   zeroAvatarSrc?: string;
@@ -663,7 +663,7 @@ export function ZeroChatPage({
   onClearScenario,
   onNavigateToActivity,
   onNavigateToSchedule,
-  onNavigateToJob,
+  onNavigateToTeam,
   onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = "/zero-avatar.png",
@@ -1010,7 +1010,7 @@ export function ZeroChatPage({
                       variant="outline"
                       size="sm"
                       className="w-fit rounded-lg"
-                      onClick={onNavigateToJob}
+                      onClick={onNavigateToTeam}
                     >
                       Manage in {agentName}&apos;s team
                     </Button>

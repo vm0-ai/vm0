@@ -41,7 +41,7 @@ export type ZeroNavId =
   | "chat"
   | "meet"
   | "schedule"
-  | "job"
+  | "team"
   | "activity"
   | "works"
   | "settings"
@@ -51,7 +51,7 @@ type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MAIN_NAV = [
   { id: "chat", label: "Chat with Zero", icon: IconMessageCircle as NavIcon },
   { id: "meet", label: "Meet Zero", icon: IconRobot as NavIcon },
-  { id: "job", label: "Zero's team", icon: IconUsers as NavIcon },
+  { id: "team", label: "Zero's team", icon: IconUsers as NavIcon },
   { id: "schedule", label: "Schedule", icon: IconCalendar as NavIcon },
   { id: "activity", label: "Activities", icon: IconChartLine as NavIcon },
 ] as const;

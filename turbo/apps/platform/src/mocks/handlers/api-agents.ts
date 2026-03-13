@@ -13,11 +13,12 @@ export const apiAgentsHandlers = [
     return HttpResponse.json({
       composes: [
         {
-          id: "compose_1",
-          name: "default-agent",
+          id: "mock-compose-id",
+          name: "zero",
+          displayName: null,
           headVersionId: "version_1",
-          createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-01T00:00:00Z",
+          isOwner: true,
         },
       ],
     });

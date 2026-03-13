@@ -28,13 +28,11 @@ import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
 interface ZeroJobsPageProps {
   onNavigateToChat?: () => void;
   selectedAgentName?: string | null;
-  onClearSelectedAgent?: () => void;
 }
 
 export function ZeroJobsPage({
   onNavigateToChat,
   selectedAgentName,
-  onClearSelectedAgent,
 }: ZeroJobsPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
@@ -49,15 +47,7 @@ export function ZeroJobsPage({
   const missingMap = new Map(missingItems?.map((a) => [a.agentName, a]));
 
   if (selectedAgentName) {
-    return (
-      <ZeroJobDetailPage
-        agentName={selectedAgentName}
-        onBack={() => {
-          onClearSelectedAgent?.();
-          navigate("/zero");
-        }}
-      />
-    );
+    return <ZeroJobDetailPage agentName={selectedAgentName} />;
   }
 
   return (
@@ -147,13 +137,13 @@ export function ZeroJobsPage({
                 tabIndex={0}
                 className="zero-card cursor-pointer hover:border-border transition-colors"
                 onClick={() =>
-                  navigate("/zero/job/:name", {
+                  navigate("/zero/team/:name", {
                     pathParams: { name: agent.name },
                   })
                 }
                 onKeyDown={(e) =>
                   e.key === "Enter" &&
-                  navigate("/zero/job/:name", {
+                  navigate("/zero/team/:name", {
                     pathParams: { name: agent.name },
                   })
                 }
@@ -163,7 +153,7 @@ export function ZeroJobsPage({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-sm font-semibold tracking-tight text-foreground">
-                          {agent.name}
+                          {agent.displayName ?? agent.name}
                         </h2>
                         <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium">
                           {hasSchedule ? (

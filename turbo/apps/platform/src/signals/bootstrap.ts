@@ -51,7 +51,7 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
-    path: "/zero/job/:name",
+    path: "/zero/team/:name",
     setup: setupAuthPageWrapper(setupZeroJobDetailRoute$),
   },
   {

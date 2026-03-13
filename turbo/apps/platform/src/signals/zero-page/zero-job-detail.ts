@@ -4,6 +4,9 @@ import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import type { AgentDetail, AgentInstructions } from "../agent-detail/types.ts";
+import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
+import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
+import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 import {
   buildCronExpression,
   buildAtTime,
@@ -154,6 +157,340 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
       error:
         error instanceof Error ? error.message : "Failed to load instructions",
     });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Compose reload trigger
+// ---------------------------------------------------------------------------
+
+const internalComposeReload$ = state(0);
+
+function refetchDetail(
+  set: (atom: typeof fetchZeroJobDetail$) => Promise<void>,
+) {
+  return set(fetchZeroJobDetail$);
+}
+
+// ---------------------------------------------------------------------------
+// Instructions editing
+// ---------------------------------------------------------------------------
+
+const editedContent$ = state<string | null>(null);
+
+export const zeroJobEditedContent$ = computed((get) => get(editedContent$));
+
+export const zeroJobInstructionsDirty$ = computed((get) => {
+  const edited = get(editedContent$);
+  const instructions = get(instructionsState$).instructions;
+  const savedBody = stripMetadataFrontmatter(instructions?.content ?? "");
+  return edited !== null && edited !== savedBody;
+});
+
+export const setZeroJobEditedContent$ = command(({ set }, value: string) => {
+  set(editedContent$, value);
+});
+
+export const discardZeroJobEdit$ = command(({ set }) => {
+  set(editedContent$, null);
+});
+
+const jobBuilding$ = state(false);
+export const zeroJobBuilding$ = computed((get) => get(jobBuilding$));
+
+const internalBuildError$ = state<string | null>(null);
+export const zeroJobBuildError$ = computed((get) => get(internalBuildError$));
+
+export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
+  const detail = get(zeroJobDetail$);
+  const edited = get(editedContent$);
+  if (!detail?.content || edited === null) {
+    return;
+  }
+
+  set(jobBuilding$, true);
+  set(internalBuildError$, null);
+
+  try {
+    const fetchFn = get(fetch$);
+    const agentKey = Object.keys(detail.content.agents)[0];
+    const agent = agentKey ? detail.content.agents[agentKey] : undefined;
+
+    const contentWithInstructions =
+      agentKey && agent
+        ? {
+            ...detail.content,
+            agents: {
+              ...detail.content.agents,
+              [agentKey]: {
+                ...agent,
+                instructions: getInstructionsFilename(agent.framework),
+              },
+            },
+          }
+        : detail.content;
+
+    const job = await triggerAndPollComposeJob(
+      fetchFn,
+      contentWithInstructions,
+      edited,
+    );
+    if (!job.result) {
+      throw new Error("Build completed without result");
+    }
+
+    // Optimistically update instructions state
+    const current = get(instructionsState$).instructions;
+    set(instructionsState$, {
+      instructions: { content: edited, filename: current?.filename ?? null },
+      loading: false,
+      error: null,
+    });
+
+    set(editedContent$, null);
+    set(internalComposeReload$, (x) => x + 1);
+    await refetchDetail(set);
+  } catch (error) {
+    throwIfAbort(error);
+    set(internalBuildError$, "Failed to build instructions. Please try again.");
+  } finally {
+    set(jobBuilding$, false);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Settings: update agent metadata (displayName, sound)
+// ---------------------------------------------------------------------------
+
+const internalSaving$ = state(false);
+export const zeroJobSettingsSaving$ = computed((get) => get(internalSaving$));
+
+interface ZeroJobSettingsUpdate {
+  displayName?: string;
+  sound?: string;
+}
+
+export const zeroJobUpdateSettings$ = command(
+  async ({ get, set }, update: ZeroJobSettingsUpdate) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail?.content) {
+      throw new Error("No compose content found");
+    }
+
+    const agentKey = Object.keys(detail.content.agents)[0];
+    if (!agentKey) {
+      throw new Error("No agent found in compose");
+    }
+
+    const agentConfig = detail.content.agents[agentKey];
+    const currentMetadata = agentConfig.metadata ?? {};
+    const newMetadata = { ...currentMetadata };
+    if (update.displayName !== undefined) {
+      newMetadata.displayName = update.displayName;
+    }
+    if (update.sound !== undefined) {
+      newMetadata.sound = update.sound;
+    }
+
+    if (
+      newMetadata.displayName === currentMetadata.displayName &&
+      newMetadata.sound === currentMetadata.sound
+    ) {
+      return;
+    }
+
+    set(internalSaving$, true);
+    try {
+      const fetchFn = get(fetch$);
+      const newContent = {
+        ...detail.content,
+        agents: {
+          [agentKey]: { ...agentConfig, metadata: newMetadata },
+        },
+      };
+
+      // Resolve existing instructions so the compose job keeps them
+      let instructions: string | undefined;
+      const instrContent = get(instructionsState$).instructions?.content;
+      if (instrContent) {
+        instructions = stripMetadataFrontmatter(instrContent);
+      } else {
+        const resp = await fetchFn(
+          `/api/agent/composes/${detail.id}/instructions`,
+        );
+        if (resp.ok) {
+          const data = (await resp.json()) as AgentInstructions;
+          instructions = data.content
+            ? stripMetadataFrontmatter(data.content)
+            : undefined;
+        }
+      }
+
+      // Ensure instructions field in content
+      const agent = newContent.agents[agentKey];
+      if (agent && !("instructions" in agent)) {
+        newContent.agents[agentKey] = {
+          ...agent,
+          instructions: getInstructionsFilename(agent.framework),
+        };
+      }
+
+      const job = await triggerAndPollComposeJob(
+        fetchFn,
+        newContent,
+        instructions ?? "",
+      );
+      if (!job.result) {
+        throw new Error("Build completed without result");
+      }
+
+      set(internalComposeReload$, (x) => x + 1);
+      await refetchDetail(set);
+      await set(fetchZeroJobInstructions$);
+      toast.success("Settings saved");
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to update settings:", error);
+      toast.error(error instanceof Error ? error.message : "Save failed");
+    } finally {
+      set(internalSaving$, false);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Skills management
+// ---------------------------------------------------------------------------
+
+const internalAddedSkills$ = state<string[] | null>(null);
+
+const seededSkills$ = computed((get) => {
+  const detail = get(zeroJobDetail$);
+  if (!detail?.content) {
+    return [];
+  }
+  const agentKey = Object.keys(detail.content.agents)[0];
+  if (!agentKey) {
+    return [];
+  }
+  const agent = detail.content.agents[agentKey];
+  return (agent?.skills ?? []).map(skillUrlToValue);
+});
+
+export const zeroJobAddedSkills$ = computed((get) => {
+  const local = get(internalAddedSkills$);
+  if (local !== null) {
+    return local;
+  }
+  return get(seededSkills$);
+});
+
+export const zeroJobSkillsDirty$ = computed((get) => {
+  const local = get(internalAddedSkills$);
+  if (local === null) {
+    return false;
+  }
+  const seeded = get(seededSkills$);
+  if (local.length !== seeded.length) {
+    return true;
+  }
+  const sorted = [...local].sort();
+  const seededSorted = [...seeded].sort();
+  return sorted.some((s, i) => s !== seededSorted[i]);
+});
+
+export const addZeroJobSkill$ = command(({ get, set }, name: string) => {
+  if (get(internalAddedSkills$) === null) {
+    set(internalAddedSkills$, get(seededSkills$));
+  }
+  set(internalAddedSkills$, (prev) => [...(prev ?? []), name]);
+});
+
+export const removeZeroJobSkill$ = command(({ get, set }, name: string) => {
+  if (get(internalAddedSkills$) === null) {
+    set(internalAddedSkills$, get(seededSkills$));
+  }
+  set(internalAddedSkills$, (prev) => (prev ?? []).filter((s) => s !== name));
+});
+
+export const discardZeroJobSkills$ = command(({ set }) => {
+  set(internalAddedSkills$, null);
+});
+
+export const saveZeroJobSkills$ = command(async ({ get, set }) => {
+  const detail = get(zeroJobDetail$);
+  if (!detail?.content) {
+    throw new Error("No compose content found");
+  }
+
+  const agentKey = Object.keys(detail.content.agents)[0];
+  if (!agentKey) {
+    throw new Error("No agent found in compose");
+  }
+
+  set(internalSaving$, true);
+  try {
+    const newSkills = get(internalAddedSkills$) ?? [];
+    const agent = detail.content.agents[agentKey];
+    const newContent = {
+      ...detail.content,
+      agents: {
+        [agentKey]: {
+          ...agent,
+          skills:
+            newSkills.length > 0 ? newSkills.map(skillValueToUrl) : undefined,
+        },
+      },
+    };
+
+    const fetchFn = get(fetch$);
+    // Resolve existing instructions
+    let instructions: string | undefined;
+    const instrContent = get(instructionsState$).instructions?.content;
+    if (instrContent) {
+      instructions = stripMetadataFrontmatter(instrContent);
+    } else {
+      const resp = await fetchFn(
+        `/api/agent/composes/${detail.id}/instructions`,
+      );
+      if (resp.ok) {
+        const data = (await resp.json()) as AgentInstructions;
+        instructions = data.content
+          ? stripMetadataFrontmatter(data.content)
+          : undefined;
+      }
+    }
+
+    // Ensure instructions field
+    const updatedAgent = newContent.agents[agentKey];
+    if (updatedAgent && !("instructions" in updatedAgent)) {
+      newContent.agents[agentKey] = {
+        ...updatedAgent,
+        instructions: getInstructionsFilename(updatedAgent.framework),
+      };
+    }
+
+    const job = await triggerAndPollComposeJob(
+      fetchFn,
+      newContent,
+      instructions ?? "",
+    );
+    if (!job.result) {
+      throw new Error("Build completed without result");
+    }
+
+    set(internalAddedSkills$, null);
+    set(internalComposeReload$, (x) => x + 1);
+    await refetchDetail(set);
+    toast.success("Skills saved");
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to save skills:", error);
+    toast.error(
+      error instanceof Error ? error.message : "Failed to save skills",
+    );
+  } finally {
+    set(internalSaving$, false);
   }
 });
 
@@ -463,6 +800,16 @@ export const deleteZeroJobSchedule$ = command(
 // ---------------------------------------------------------------------------
 
 export const fetchZeroJobData$ = command(async ({ set }, agentName: string) => {
+  // Reset all state so the skeleton screen shows while loading new data
+  set(detailState$, { detail: null, loading: false, error: null });
+  set(instructionsState$, { instructions: null, loading: false, error: null });
+  set(scheduleState$, { schedules: [], error: null });
+  set(editedContent$, null);
+  set(internalAddedSkills$, null);
+  set(internalBuildError$, null);
+  set(jobBuilding$, false);
+  set(internalSaving$, false);
+
   set(setZeroJobAgentName$, agentName);
   await set(fetchZeroJobDetail$);
   await Promise.all([
