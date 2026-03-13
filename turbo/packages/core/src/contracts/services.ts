@@ -12,14 +12,26 @@ import type { ConnectorType } from "./connectors";
  * NOTE: Currently hardcoded in SERVICE_CONFIGS below.
  * Will be migrated to GitHub-hosted connector.yaml definitions in Phase 2.
  */
+/**
+ * A named permission group with matching rules for request authorization.
+ * Rules use the format `METHOD /path` where path is relative to the api entry's base URL.
+ */
+interface ServicePermission {
+  name: string;
+  description?: string;
+  rules: string[];
+}
+
 interface ServiceApi {
   base: string;
   auth: {
     headers: Record<string, string>;
   };
+  permissions?: ServicePermission[];
 }
 
 export interface ServiceConfig {
+  description?: string;
   apis: ServiceApi[];
   /**
    * Custom placeholder values keyed by secret name (matching `${secrets.XXX}` in auth templates).

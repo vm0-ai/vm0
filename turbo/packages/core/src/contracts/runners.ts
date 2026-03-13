@@ -79,11 +79,18 @@ export const runnersPollContract = c.router({
 /**
  * Service API entry for proxy-side token replacement
  */
+const servicePermissionSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  rules: z.array(z.string()),
+});
+
 export const serviceApiEntrySchema = z.object({
   base: z.string(),
   auth: z.object({
     headers: z.record(z.string(), z.string()),
   }),
+  permissions: z.array(servicePermissionSchema).optional(),
 });
 
 /**

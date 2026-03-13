@@ -104,6 +104,17 @@ pub struct ServiceApiEntry {
     pub id: String,
     pub base: String,
     pub auth: ServiceApiAuth,
+    #[serde(default)]
+    pub permissions: Option<Vec<ServiceApiPermission>>,
+}
+
+/// A named permission group with matching rules for request authorization.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ServiceApiPermission {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub rules: Vec<String>,
 }
 
 /// Auth configuration for a service API entry.

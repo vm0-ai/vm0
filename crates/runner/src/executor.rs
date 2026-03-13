@@ -967,6 +967,7 @@ mod tests {
                         "Bearer ${secrets.GMAIL_TOKEN}".into(),
                     )]),
                 },
+                permissions: None,
             }],
         });
         let env = build_env_json(&ctx, "http://localhost");

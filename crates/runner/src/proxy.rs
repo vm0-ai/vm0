@@ -780,6 +780,7 @@ mod tests {
                         "Bearer ${secrets.GMAIL_TOKEN}".to_string(),
                     )]),
                 },
+                permissions: None,
             }],
         };
 
