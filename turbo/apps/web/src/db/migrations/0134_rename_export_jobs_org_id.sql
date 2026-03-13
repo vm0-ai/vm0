@@ -1,0 +1,1 @@
+ALTER TABLE "export_jobs" RENAME COLUMN "clerk_org_id" TO "org_id";

@@ -30,7 +30,7 @@ export const exportJobs = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
-    clerkOrgId: text("clerk_org_id").notNull(),
+    orgId: text("org_id").notNull(),
     // pending -> running -> completed | failed
     status: varchar("status", { length: 20 }).notNull(),
     s3Key: text("s3_key"),

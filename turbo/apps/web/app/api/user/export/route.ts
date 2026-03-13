@@ -25,8 +25,8 @@ export async function POST(request: Request) {
   const { userId } = ctx;
 
   // Resolve orgId from Clerk session or CLI token
-  const { orgId: clerkOrgId } = await auth();
-  const resolvedOrgId = clerkOrgId ?? ctx.orgId;
+  const { orgId: sessionOrgId } = await auth();
+  const resolvedOrgId = sessionOrgId ?? ctx.orgId;
   if (!resolvedOrgId) {
     return NextResponse.json(
       { error: { code: "BAD_REQUEST", message: "No organization context" } },
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     .insert(exportJobs)
     .values({
       userId,
-      clerkOrgId: resolvedOrgId,
+      orgId: resolvedOrgId,
       status: "pending",
     })
     .returning({ id: exportJobs.id });
