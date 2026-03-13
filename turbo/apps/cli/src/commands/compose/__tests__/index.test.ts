@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { createMockChildProcess } from "../../../mocks/spawn-helpers";
+import { connectorTypeSchema, getServiceConfig } from "@vm0/core";
 import type { ExpandedServiceConfig } from "@vm0/core";
 import {
   composeCommand,
@@ -3414,9 +3415,10 @@ describe("expandServiceConfigs", () => {
   });
 
   it("should validate all built-in service configs pass rule validation", () => {
-    // Every built-in service should pass validation with permissions: all
-    for (const ref of ["github", "slack", "linear", "notion"]) {
-      const config = makeConfig({ [ref]: { permissions: "all" } });
+    // Every built-in service with a service config should pass validation
+    for (const type of connectorTypeSchema.options) {
+      if (!getServiceConfig(type)) continue;
+      const config = makeConfig({ [type]: { permissions: "all" } });
       expect(() => expandServiceConfigs(config)).not.toThrow();
     }
   });
@@ -3458,6 +3460,24 @@ describe("validateRule", () => {
   it("should reject unknown method", () => {
     expect(() => validateRule("INVALID /foo", "read", "github")).toThrow(
       'unknown method "INVALID"',
+    );
+  });
+
+  it("should reject lowercase method", () => {
+    expect(() => validateRule("get /foo", "read", "github")).toThrow(
+      "must be uppercase",
+    );
+  });
+
+  it("should reject path with query string", () => {
+    expect(() => validateRule("GET /foo?bar=1", "read", "github")).toThrow(
+      "must not contain query string or fragment",
+    );
+  });
+
+  it("should reject path with fragment", () => {
+    expect(() => validateRule("GET /foo#section", "read", "github")).toThrow(
+      "must not contain query string or fragment",
     );
   });
 

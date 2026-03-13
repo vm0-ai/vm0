@@ -413,14 +413,19 @@ export function validateRule(
     );
   }
   const [method, path] = parts as [string, string];
-  if (!VALID_RULE_METHODS.has(method.toUpperCase())) {
+  if (!VALID_RULE_METHODS.has(method)) {
     throw new Error(
-      `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": unknown method "${method}"`,
+      `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": unknown method "${method}" (must be uppercase)`,
     );
   }
   if (!path.startsWith("/")) {
     throw new Error(
       `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": path must start with "/"`,
+    );
+  }
+  if (path.includes("?") || path.includes("#")) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": path must not contain query string or fragment`,
     );
   }
   const segments = path.split("/").filter(Boolean);
