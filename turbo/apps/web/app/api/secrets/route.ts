@@ -27,8 +27,7 @@ const router = tsr.router(secretsMainContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const orgParam = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+    const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
     const secrets = await listSecrets(org.orgId, userId);
 
     return {
@@ -64,8 +63,7 @@ const router = tsr.router(secretsMainContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const orgParam = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+      const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
       const secret = await setSecret(
         org.orgId,
         userId,

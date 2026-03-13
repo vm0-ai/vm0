@@ -32,8 +32,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const orgParam = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
+      const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
       const provider = await setModelProviderDefault(
         org.orgId,
         userId,

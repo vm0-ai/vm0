@@ -38,11 +38,10 @@ const router = tsr.router(storagesCommitContract, {
 
     // Resolve user's default org
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const orgParam = new URL(request.url).searchParams.get("org");
     const { org: runtimeOrg } = await resolveOrg(
       userId,
       orgSlug,
-      orgParam,
+      null,
       tokenOrgId,
     );
 
