@@ -199,7 +199,7 @@ export const buildZeroInstructions$ = command(async ({ get, set }) => {
     }
 
     // Update default agent to point to the new compose
-    const resp = await fetchFn("/api/scopes/default-agent", {
+    const resp = await fetchFn("/api/orgs/default-agent", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agentComposeId: job.result.composeId }),
@@ -401,7 +401,7 @@ async function buildAndSetDefaultAgent(
     throw new Error("Build completed without result");
   }
 
-  const resp = await fetchFn("/api/scopes/default-agent", {
+  const resp = await fetchFn("/api/orgs/default-agent", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agentComposeId: job.result.composeId }),

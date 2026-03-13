@@ -67,7 +67,7 @@ export const platformLogsHandlers = [
         id: log.id,
         sessionId: log.sessionId,
         agentName: log.agentName,
-        scopeSlug: null,
+        orgSlug: null,
         framework: log.framework,
         status: log.status,
         createdAt: log.createdAt,

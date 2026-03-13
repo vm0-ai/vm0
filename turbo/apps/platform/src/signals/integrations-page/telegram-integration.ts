@@ -14,7 +14,7 @@ const L = logger("TelegramIntegration");
 interface TelegramIntegrationData {
   installationId: string;
   bot: { id: string; username: string };
-  agent: { id: string; name: string; scopeSlug: string } | null;
+  agent: { id: string; name: string; orgSlug: string } | null;
   isAdmin: boolean;
   isConnected: boolean;
   domainConfigured: boolean;
@@ -125,7 +125,7 @@ export const updateTelegramDefaultAgent$ = command(
           ...prev.data,
           agent: prev.data.agent
             ? { ...prev.data.agent, name: agentName }
-            : { id: "", name: agentName, scopeSlug: "" },
+            : { id: "", name: agentName, orgSlug: "" },
         },
       };
     });

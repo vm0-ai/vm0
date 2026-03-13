@@ -41,8 +41,8 @@ export function LogsTableRow({ entry }: LogsTableRowProps) {
       </TableCell>
       <TableCell className="px-3 py-2 text-sm w-[15%] min-w-[120px]">
         <span className="block truncate whitespace-nowrap">
-          {entry.scopeSlug
-            ? `${entry.scopeSlug}/${entry.agentName}`
+          {entry.orgSlug
+            ? `${entry.orgSlug}/${entry.agentName}`
             : entry.agentName}
         </span>
       </TableCell>

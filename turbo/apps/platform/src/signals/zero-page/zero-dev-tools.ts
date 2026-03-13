@@ -14,7 +14,7 @@ export const resetDefaultAgent$ = command(async ({ get }) => {
   const composeId = status.defaultAgentComposeId;
 
   // Clear default agent
-  const resp = await fetchFn("/api/scopes/default-agent", {
+  const resp = await fetchFn("/api/orgs/default-agent", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agentComposeId: null }),

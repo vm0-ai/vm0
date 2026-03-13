@@ -15,7 +15,7 @@ interface GitHubIntegrationData {
     targetType: string | null;
     isAdmin: boolean;
   };
-  agent: { id: string; name: string; scopeSlug: string } | null;
+  agent: { id: string; name: string; orgSlug: string } | null;
   environment: {
     requiredSecrets: string[];
     requiredVars: string[];
@@ -140,7 +140,7 @@ export const updateGithubDefaultAgent$ = command(
           ...prev.data,
           agent: prev.data.agent
             ? { ...prev.data.agent, name: agentName }
-            : { id: "", name: agentName, scopeSlug: "" },
+            : { id: "", name: agentName, orgSlug: "" },
         },
       };
     });

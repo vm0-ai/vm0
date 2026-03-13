@@ -59,7 +59,7 @@ describe("telegram settings page", () => {
           agent: {
             id: "compose_1",
             name: "default-agent",
-            scopeSlug: "test-scope",
+            orgSlug: "test-scope",
           },
           isAdmin: false,
           environment: {
@@ -92,7 +92,7 @@ describe("telegram settings page", () => {
           agent: {
             id: "compose_1",
             name: "default-agent",
-            scopeSlug: "test-scope",
+            orgSlug: "test-scope",
           },
           isAdmin: true,
           environment: {

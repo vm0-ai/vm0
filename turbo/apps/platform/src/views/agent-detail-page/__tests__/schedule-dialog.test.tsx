@@ -11,7 +11,7 @@ function makeSchedule(overrides?: Record<string, unknown>) {
     id: "schedule_1",
     composeId: "compose_1",
     composeName: "my-agent",
-    scopeSlug: "test-user",
+    orgSlug: "test-user",
     name: "default",
     triggerType: "cron",
     cronExpression: "30 14 * * 1-5",

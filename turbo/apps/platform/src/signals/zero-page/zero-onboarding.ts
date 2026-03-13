@@ -321,7 +321,7 @@ export const completeZeroOnboarding$ = command(
       }
 
       // Set as default agent
-      const defaultResp = await fetchFn("/api/scopes/default-agent", {
+      const defaultResp = await fetchFn("/api/orgs/default-agent", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

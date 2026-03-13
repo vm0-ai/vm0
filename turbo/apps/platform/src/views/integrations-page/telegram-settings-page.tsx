@@ -314,7 +314,7 @@ export function TelegramSettingsPage() {
     if (!data?.agent) {
       return undefined;
     }
-    const fullName = `${data.agent.scopeSlug}/${data.agent.name}`;
+    const fullName = `${data.agent.orgSlug}/${data.agent.name}`;
     if (agents.some((a) => a.name === fullName)) {
       return fullName;
     }

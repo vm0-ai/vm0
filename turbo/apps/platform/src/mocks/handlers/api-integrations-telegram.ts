@@ -9,7 +9,7 @@ import { http, HttpResponse } from "msw";
 
 interface MockTelegramIntegrationData {
   bot: { id: string; username: string };
-  agent: { id: string; name: string; scopeSlug: string } | null;
+  agent: { id: string; name: string; orgSlug: string } | null;
   isAdmin: boolean;
   environment: {
     requiredSecrets: string[];
@@ -21,7 +21,7 @@ interface MockTelegramIntegrationData {
 
 let mockTelegramData: MockTelegramIntegrationData = {
   bot: { id: "bot_123", username: "test_bot" },
-  agent: { id: "compose_1", name: "default-agent", scopeSlug: "test-scope" },
+  agent: { id: "compose_1", name: "default-agent", orgSlug: "test-scope" },
   isAdmin: true,
   environment: {
     requiredSecrets: ["ANTHROPIC_API_KEY"],
@@ -37,7 +37,7 @@ export function resetMockTelegramIntegration(): void {
     agent: {
       id: "compose_1",
       name: "default-agent",
-      scopeSlug: "test-scope",
+      orgSlug: "test-scope",
     },
     isAdmin: true,
     environment: {

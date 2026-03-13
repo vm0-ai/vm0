@@ -21,10 +21,10 @@ const context = testContext();
 describe("startOnboarding$", () => {
   it("visit an org protected page without an org will redirect to the onboarding page", async () => {
     server.use(
-      http.get("/api/scope", () => {
+      http.get("/api/org", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", () => {
+      http.post("/api/org", () => {
         return HttpResponse.json({}, { status: 201 });
       }),
     );
@@ -42,10 +42,10 @@ describe("startOnboarding$", () => {
 describe("needsOnboarding$", () => {
   it("should return true when no org exists", async () => {
     server.use(
-      http.get("/api/scope", () => {
+      http.get("/api/org", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", () => {
+      http.post("/api/org", () => {
         return new HttpResponse(null, { status: 201 });
       }),
     );
@@ -83,10 +83,10 @@ describe("saveOnboardingConfig$", () => {
     let orgSlug: string | undefined;
 
     server.use(
-      http.get("/api/scope", () => {
+      http.get("/api/org", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", async ({ request }) => {
+      http.post("/api/org", async ({ request }) => {
         const body = (await request.json()) as { slug: string };
         orgSlug = body.slug;
         return HttpResponse.json({}, { status: 201 });
@@ -112,10 +112,10 @@ describe("saveOnboardingConfig$", () => {
     let providerCreated = false;
 
     server.use(
-      http.get("/api/scope", () => {
+      http.get("/api/org", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", () => {
+      http.post("/api/org", () => {
         orgCreated = true;
         return HttpResponse.json({}, { status: 201 });
       }),
@@ -284,10 +284,10 @@ describe("closeOnboardingModal$", () => {
     let providerCreated = false;
 
     server.use(
-      http.get("/api/scope", () => {
+      http.get("/api/org", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", () => {
+      http.post("/api/org", () => {
         orgCreated = true;
         return HttpResponse.json({}, { status: 201 });
       }),
@@ -312,7 +312,7 @@ describe("closeOnboardingModal$", () => {
     let orgCreated = false;
 
     server.use(
-      http.post("/api/scope", () => {
+      http.post("/api/org", () => {
         orgCreated = true;
         return HttpResponse.json({}, { status: 201 });
       }),

@@ -33,9 +33,9 @@ export const org$ = computed(async (get) => {
   }
 
   const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/scope");
+  const response = await fetchFn("/api/org");
 
-  L.debug(`Fetched /api/scope with status ${response.status}`);
+  L.debug(`Fetched /api/org with status ${response.status}`);
   if (response.status === 404) {
     return undefined;
   }
@@ -86,7 +86,7 @@ export const initOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/scope", {
+  const response = await fetchFn("/api/org", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ slug }),

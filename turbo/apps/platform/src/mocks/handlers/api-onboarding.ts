@@ -12,7 +12,7 @@ export const apiOnboardingHandlers = [
   http.get("/api/onboarding/status", () => {
     return HttpResponse.json({
       needsOnboarding: false,
-      hasScope: true,
+      hasOrg: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
       defaultAgentName: "zero",

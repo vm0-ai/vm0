@@ -22,7 +22,7 @@ interface ScheduleResponse {
   id: string;
   composeId: string;
   composeName: string;
-  scopeSlug: string;
+  orgSlug: string;
   name: string;
   triggerType: "cron" | "once" | "loop";
   cronExpression: string | null;
