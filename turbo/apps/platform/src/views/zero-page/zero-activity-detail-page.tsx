@@ -20,6 +20,7 @@ import {
 import {
   groupEventsIntoMessages,
   groupedMessageMatchesSearch,
+  type GroupedMessage,
 } from "../logs-page/log-detail/utils.ts";
 import { GroupedMessageCard } from "../logs-page/components/grouped-message-card.tsx";
 import { StatusDot } from "../logs-page/components/status-dot.tsx";
@@ -29,8 +30,58 @@ import { Markdown } from "../components/markdown.tsx";
 // Component
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns true if a grouped message should be shown (filters out text-only
+ * assistant messages immediately before a result message).
+ */
+function isVisibleMessage(
+  message: GroupedMessage,
+  nextMessage: GroupedMessage | undefined,
+): boolean {
+  if (message.type !== "assistant") {
+    return true;
+  }
+  if (!nextMessage || nextMessage.type !== "result") {
+    return true;
+  }
+  return (message.toolOperations?.length ?? 0) > 0;
+}
+
 interface ZeroActivityDetailPageProps {
   onBack: () => void;
+}
+
+function ActivityNotFound({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="h-full flex flex-col min-h-0">
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
+        <div className="mb-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 -ml-2"
+            onClick={onBack}
+            aria-label="Back to activity"
+          >
+            <IconArrowLeft size={20} stroke={1.5} />
+          </Button>
+        </div>
+      </header>
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+          <IconLock size={24} stroke={1.5} className="text-muted-foreground" />
+        </div>
+        <h2 className="text-lg font-semibold text-foreground">Log not found</h2>
+        <p className="text-sm text-muted-foreground text-center max-w-sm">
+          This log doesn&apos;t exist or you don&apos;t have permission to view
+          it in the current organization.
+        </p>
+        <Button variant="outline" size="sm" className="mt-2" onClick={onBack}>
+          Back to activity
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function ZeroActivityDetailPage({
@@ -49,42 +100,7 @@ export function ZeroActivityDetailPage({
 
   // Detail not found or no permission
   if (detailLoadable.state === "hasError") {
-    return (
-      <div className="h-full flex flex-col min-h-0">
-        <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
-          <div className="mb-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 -ml-2"
-              onClick={onBack}
-              aria-label="Back to activity"
-            >
-              <IconArrowLeft size={20} stroke={1.5} />
-            </Button>
-          </div>
-        </header>
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <IconLock
-              size={24}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          </div>
-          <h2 className="text-lg font-semibold text-foreground">
-            Log not found
-          </h2>
-          <p className="text-sm text-muted-foreground text-center max-w-sm">
-            This log doesn&apos;t exist or you don&apos;t have permission to
-            view it in the current organization.
-          </p>
-          <Button variant="outline" size="sm" className="mt-2" onClick={onBack}>
-            Back to activity
-          </Button>
-        </div>
-      </div>
-    );
+    return <ActivityNotFound onBack={onBack} />;
   }
 
   const detail =
@@ -95,18 +111,9 @@ export function ZeroActivityDetailPage({
   const allMessages = groupEventsIntoMessages(events);
 
   // Filter out text-only assistant messages right before result (redundant)
-  const visibleMessages = allMessages.filter((message, index) => {
-    if (message.type !== "assistant") {
-      return true;
-    }
-    const nextMessage = allMessages[index + 1];
-    if (!nextMessage || nextMessage.type !== "result") {
-      return true;
-    }
-    const hasTools =
-      message.toolOperations && message.toolOperations.length > 0;
-    return hasTools;
-  });
+  const visibleMessages = allMessages.filter((message, index) =>
+    isVisibleMessage(message, allMessages[index + 1]),
+  );
 
   const messages = visibleMessages.filter((m) =>
     groupedMessageMatchesSearch(m, stepSearch.trim()),
@@ -220,40 +227,60 @@ export function ZeroActivityDetailPage({
                 </div>
               </div>
 
-              <div>
-                {prompt.trim().length > 0 && (
-                  <PromptCard
-                    prompt={prompt}
-                    showConnector={messages.length > 0}
-                  />
-                )}
-                {eventsLoadable.state === "loading" && events.length === 0 ? (
-                  <div className="flex justify-center py-8">
-                    <IconLoader2
-                      size={20}
-                      stroke={1.5}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                ) : messages.length === 0 && prompt.trim().length === 0 ? (
-                  <div className="py-8 text-center text-muted-foreground">
-                    No events available
-                  </div>
-                ) : (
-                  messages.map((message, index) => (
-                    <GroupedMessageCard
-                      key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
-                      message={message}
-                      searchTerm={stepSearch}
-                      showConnector={index < messages.length - 1}
-                    />
-                  ))
-                )}
-              </div>
+              <StepsList
+                prompt={prompt}
+                messages={messages}
+                stepSearch={stepSearch}
+                isLoading={
+                  eventsLoadable.state === "loading" && events.length === 0
+                }
+              />
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StepsList({
+  prompt,
+  messages,
+  stepSearch,
+  isLoading,
+}: {
+  prompt: string;
+  messages: GroupedMessage[];
+  stepSearch: string;
+  isLoading: boolean;
+}) {
+  return (
+    <div>
+      {prompt.trim().length > 0 && (
+        <PromptCard prompt={prompt} showConnector={messages.length > 0} />
+      )}
+      {isLoading ? (
+        <div className="flex justify-center py-8">
+          <IconLoader2
+            size={20}
+            stroke={1.5}
+            className="animate-spin text-muted-foreground"
+          />
+        </div>
+      ) : messages.length === 0 && prompt.trim().length === 0 ? (
+        <div className="py-8 text-center text-muted-foreground">
+          No events available
+        </div>
+      ) : (
+        messages.map((message, index) => (
+          <GroupedMessageCard
+            key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
+            message={message}
+            searchTerm={stepSearch}
+            showConnector={index < messages.length - 1}
+          />
+        ))
+      )}
     </div>
   );
 }

@@ -556,14 +556,18 @@ function ManagePinnedAgentsDialog({
   const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
 
   const moveUp = (idx: number) => {
-    if (idx <= 0) return;
+    if (idx <= 0) {
+      return;
+    }
     const next = [...pinnedIds];
     [next[idx - 1], next[idx]] = [next[idx]!, next[idx - 1]!];
     onPinnedIdsChange(next);
   };
 
   const moveDown = (idx: number) => {
-    if (idx >= pinnedIds.length - 1) return;
+    if (idx >= pinnedIds.length - 1) {
+      return;
+    }
     const next = [...pinnedIds];
     [next[idx], next[idx + 1]] = [next[idx + 1]!, next[idx]!];
     onPinnedIdsChange(next);

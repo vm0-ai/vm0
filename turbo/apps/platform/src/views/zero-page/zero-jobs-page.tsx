@@ -13,21 +13,7 @@ import {
 import { navigateInReact$ } from "../../signals/route.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
-
-const AGENT_AVATARS = [
-  "/avatars/avatar-1.png",
-  "/avatars/avatar-2.png",
-  "/avatars/avatar-3.png",
-  "/avatars/avatar-4.png",
-] as const;
-
-function getAgentAvatar(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
-  return AGENT_AVATARS[Math.abs(hash) % AGENT_AVATARS.length];
-}
+import { getAgentAvatar } from "./zero-sidebar.tsx";
 
 interface ZeroJobsPageProps {
   onNavigateToChat?: () => void;

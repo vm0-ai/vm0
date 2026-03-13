@@ -75,7 +75,10 @@ export const initTheme$ = command(({ set }) => {
         "theme",
       ) as ThemePreference | null;
       if (!currentPref || currentPref === "system") {
-        const newResolved = resolveTheme("system");
+        const newResolved = window.matchMedia("(prefers-color-scheme: dark)")
+          .matches
+          ? "dark"
+          : "light";
         set(internalResolved$, newResolved);
         applyTheme(newResolved);
       }

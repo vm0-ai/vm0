@@ -11,17 +11,16 @@ import {
   type ThemePreference,
 } from "../../signals/theme.ts";
 
-const THEME_OPTIONS: {
-  value: ThemePreference;
-  label: string;
-  icon: typeof IconSun;
-}[] = [
-  { value: "light", label: "Light", icon: IconSun },
-  { value: "dark", label: "Dark", icon: IconMoon },
-  { value: "system", label: "System", icon: IconDeviceDesktop },
-];
-
 function AppearanceSettings() {
+  const THEME_OPTIONS = [
+    { value: "light" as ThemePreference, label: "Light", icon: IconSun },
+    { value: "dark" as ThemePreference, label: "Dark", icon: IconMoon },
+    {
+      value: "system" as ThemePreference,
+      label: "System",
+      icon: IconDeviceDesktop,
+    },
+  ] as const;
   const prefLoadable = useLoadable(themePreference$);
   const currentPref =
     prefLoadable.state === "hasData" ? prefLoadable.data : "system";

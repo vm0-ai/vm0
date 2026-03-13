@@ -167,9 +167,10 @@ export async function GET(
   // Strip any metadata the CLI may have baked in, then inject fresh metadata
   // from the compose content so it always reflects the latest agent settings.
   const rawContent = fileContent.toString("utf-8");
-  const strippedContent = stripMetadataFrontmatter(rawContent);
   const metadata = extractAgentMetadata(content);
-  const finalContent = injectMetadataFrontmatter(strippedContent, metadata);
+  const finalContent = metadata
+    ? injectMetadataFrontmatter(stripMetadataFrontmatter(rawContent), metadata)
+    : rawContent;
 
   return NextResponse.json({
     content: finalContent,

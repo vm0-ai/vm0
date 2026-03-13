@@ -525,4 +525,148 @@ describe("PUT /api/user/preferences", () => {
 
     expect(response.status).toBe(400);
   });
+
+  it("should update pinnedAgentIds successfully", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinnedAgentIds: ["agent-1", "agent-2"] }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pinnedAgentIds).toEqual(["agent-1", "agent-2"]);
+  });
+
+  it("should return empty pinnedAgentIds by default", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pinnedAgentIds).toEqual([]);
+  });
+
+  it("should persist pinnedAgentIds across GET after PUT", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    // Update pinnedAgentIds
+    const putRequest = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pinnedAgentIds: ["agent-a", "agent-b", "agent-c"],
+        }),
+      },
+    );
+    await PUT(putRequest);
+
+    // Clear JWT claims so it falls back to cache
+    vi.mocked(auth).mockResolvedValue({
+      userId: user.userId,
+      orgId: user.orgId,
+      sessionClaims: {},
+    } as Awaited<ReturnType<typeof auth>>);
+
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(getRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pinnedAgentIds).toEqual(["agent-a", "agent-b", "agent-c"]);
+  });
+
+  it("should enforce max 4 pinned agents", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pinnedAgentIds: ["a1", "a2", "a3", "a4", "a5"],
+        }),
+      },
+    );
+    const response = await PUT(request);
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should update pinnedAgentIds without affecting other preferences", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    // Set timezone first
+    const setupReq = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "America/New_York" }),
+      },
+    );
+    await PUT(setupReq);
+
+    // Update only pinnedAgentIds
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinnedAgentIds: ["agent-x"] }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.pinnedAgentIds).toEqual(["agent-x"]);
+    expect(data.timezone).toBe("America/New_York");
+  });
+
+  it("should dual-write pinnedAgentIds to Clerk membership metadata", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinnedAgentIds: ["agent-1", "agent-2"] }),
+      },
+    );
+    const response = await PUT(request);
+    expect(response.status).toBe(200);
+
+    const client = await vi.mocked(clerkClient)();
+    expect(
+      client.organizations.updateOrganizationMembershipMetadata,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: user.userId,
+        publicMetadata: { pinned_agent_ids: ["agent-1", "agent-2"] },
+      }),
+    );
+  });
 });

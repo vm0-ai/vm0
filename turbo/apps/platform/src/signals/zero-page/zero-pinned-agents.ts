@@ -27,7 +27,9 @@ const serverPinnedIds$ = computed(async (get) => {
  */
 export const pinnedAgentIds$ = computed((get) => {
   const optimistic = get(optimisticPinnedIds$);
-  if (optimistic !== null) return optimistic;
+  if (optimistic !== null) {
+    return optimistic;
+  }
   return get(serverPinnedIds$);
 });
 

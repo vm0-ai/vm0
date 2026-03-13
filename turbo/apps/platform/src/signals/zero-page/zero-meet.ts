@@ -513,7 +513,7 @@ export const zeroUpdateSettings$ = command(
       };
 
       const fetchFn = get(fetch$);
-      let instructions = await resolveInstructionsContent(
+      const instructions = await resolveInstructionsContent(
         fetchFn,
         compose.id,
         get(instructionsState$).instructions?.content,

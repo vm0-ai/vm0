@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 
 /**
@@ -123,6 +123,7 @@ export const platformLogsByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/platform/logs/:id",
+    headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().uuid("Invalid log ID"),
     }),

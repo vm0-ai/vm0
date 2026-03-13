@@ -184,6 +184,34 @@ function useSessionLifecycle(
   return { recentSessions, recentSessionsLoading, recentSessionsError };
 }
 
+/**
+ * Sync URL session ID to the chat signal, avoiding redundant switches.
+ */
+function useUrlSessionSync(
+  urlSessionId: string | null,
+  currentSessionId: string | null,
+  switchSession: (id: string) => Promise<void>,
+) {
+  const prevUrlSessionId$ = useCCState<string | null>(null);
+  const prevUrlSessionId = useGet(prevUrlSessionId$);
+  const setPrevUrlSessionId = useSet(prevUrlSessionId$);
+
+  if (
+    urlSessionId &&
+    urlSessionId !== prevUrlSessionId &&
+    urlSessionId !== currentSessionId
+  ) {
+    queueMicrotask(() => {
+      setPrevUrlSessionId(urlSessionId);
+      detach(switchSession(urlSessionId), Reason.DomCallback);
+    });
+  } else if (urlSessionId && urlSessionId !== prevUrlSessionId) {
+    queueMicrotask(() => setPrevUrlSessionId(urlSessionId));
+  } else if (!urlSessionId && prevUrlSessionId) {
+    queueMicrotask(() => setPrevUrlSessionId(null));
+  }
+}
+
 interface ZeroAppShellProps {
   initialJobAgent?: string | null;
 }
@@ -252,23 +280,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     useSessionLifecycle(isLoggedIn, onboardingReady, needsOnboarding);
 
   // Sync URL session ID to chat signal (skip if signal already matches)
-  const prevUrlSessionId$ = useCCState<string | null>(null);
-  const prevUrlSessionId = useGet(prevUrlSessionId$);
-  const setPrevUrlSessionId = useSet(prevUrlSessionId$);
-  if (
-    urlSessionId &&
-    urlSessionId !== prevUrlSessionId &&
-    urlSessionId !== currentSessionId
-  ) {
-    queueMicrotask(() => {
-      setPrevUrlSessionId(urlSessionId);
-      detach(switchSession(urlSessionId), Reason.DomCallback);
-    });
-  } else if (urlSessionId && urlSessionId !== prevUrlSessionId) {
-    queueMicrotask(() => setPrevUrlSessionId(urlSessionId));
-  } else if (!urlSessionId && prevUrlSessionId) {
-    queueMicrotask(() => setPrevUrlSessionId(null));
-  }
+  useUrlSessionSync(urlSessionId, currentSessionId, switchSession);
 
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
     set(navigateToZeroSession$, sessionId);

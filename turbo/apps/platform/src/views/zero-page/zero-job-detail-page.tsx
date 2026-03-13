@@ -57,25 +57,11 @@ import {
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { getAgentAvatar } from "./zero-sidebar.tsx";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
 // ---------------------------------------------------------------------------
-
-const AGENT_AVATARS = [
-  "/avatars/avatar-1.png",
-  "/avatars/avatar-2.png",
-  "/avatars/avatar-3.png",
-  "/avatars/avatar-4.png",
-] as const;
-
-function getAgentAvatar(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
-  return AGENT_AVATARS[Math.abs(hash) % AGENT_AVATARS.length];
-}
 
 interface ZeroJobDetailPageProps {
   agentName: string;
