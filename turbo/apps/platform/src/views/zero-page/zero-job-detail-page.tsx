@@ -27,6 +27,7 @@ import {
   zeroJobDetailError$,
   zeroJobInstructions$,
   zeroJobInstructionsLoading$,
+  zeroJobInstructionsError$,
   zeroJobScheduleEntries$,
   zeroJobScheduleError$,
   saveZeroJobSchedule$,
@@ -238,6 +239,7 @@ function JobScheduleTab({ agentName }: { agentName: string }) {
 function JobInstructionsTab() {
   const instructionsLoadable = useLoadable(zeroJobInstructions$);
   const loadingLoadable = useLoadable(zeroJobInstructionsLoading$);
+  const instructionsErrorLoadable = useLoadable(zeroJobInstructionsError$);
   const editedLoadable = useLoadable(zeroJobEditedContent$);
   const dirtyLoadable = useLoadable(zeroJobInstructionsDirty$);
   const buildingLoadable = useLoadable(zeroJobBuilding$);
@@ -247,6 +249,10 @@ function JobInstructionsTab() {
     instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
   const loading =
     loadingLoadable.state === "hasData" && loadingLoadable.data === true;
+  const fetchError =
+    instructionsErrorLoadable.state === "hasData"
+      ? instructionsErrorLoadable.data
+      : null;
   const edited =
     editedLoadable.state === "hasData" ? editedLoadable.data : null;
   const isDirty =
@@ -264,7 +270,7 @@ function JobInstructionsTab() {
     <ZeroInstructionsTab
       instructions={instructions}
       loading={loading}
-      fetchError={null}
+      fetchError={fetchError}
       editedContent={edited}
       isDirty={isDirty}
       isBuilding={isBuilding}

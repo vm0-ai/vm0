@@ -16,6 +16,21 @@ import {
   saveZeroJobSchedule$,
   deleteZeroJobSchedule$,
   toggleZeroJobScheduleEnabled$,
+  setZeroJobEditedContent$,
+  zeroJobEditedContent$,
+  zeroJobInstructionsDirty$,
+  discardZeroJobEdit$,
+  buildZeroJobInstructions$,
+  zeroJobBuilding$,
+  zeroJobBuildError$,
+  zeroJobUpdateSettings$,
+  zeroJobSettingsSaving$,
+  zeroJobAddedSkills$,
+  zeroJobSkillsDirty$,
+  addZeroJobSkill$,
+  removeZeroJobSkill$,
+  saveZeroJobSkills$,
+  discardZeroJobSkills$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
 
@@ -31,7 +46,7 @@ function mockAgentResponse() {
       agents: {
         main: {
           description: "A test agent",
-          framework: "claude",
+          framework: "claude-code",
           skills: ["search"],
         },
       },
@@ -583,6 +598,387 @@ describe("zero-job-detail signals", () => {
           enabled: true,
         }),
       ).rejects.toThrow("Server error");
+    });
+  });
+
+  describe("instructions editing", () => {
+    async function setupWithAgent() {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+    }
+
+    it("should track edited content and dirty state", async () => {
+      await setupWithAgent();
+
+      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+      expect(context.store.get(zeroJobInstructionsDirty$)).toBeFalsy();
+
+      context.store.set(setZeroJobEditedContent$, "New instructions");
+
+      expect(context.store.get(zeroJobEditedContent$)).toBe("New instructions");
+      expect(context.store.get(zeroJobInstructionsDirty$)).toBeTruthy();
+    });
+
+    it("should reset edited content on discard", async () => {
+      await setupWithAgent();
+
+      context.store.set(setZeroJobEditedContent$, "New instructions");
+      expect(context.store.get(zeroJobInstructionsDirty$)).toBeTruthy();
+
+      context.store.set(discardZeroJobEdit$);
+
+      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+      expect(context.store.get(zeroJobInstructionsDirty$)).toBeFalsy();
+    });
+
+    it("should build instructions via compose job and update state", async () => {
+      let capturedJobBody: Record<string, unknown> = {};
+
+      await setupWithAgent();
+
+      server.use(
+        http.post("*/api/compose/jobs", async ({ request }) => {
+          capturedJobBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json({
+            jobId: "job-1",
+            status: "completed",
+            result: {
+              composeId: "compose-1",
+              composeName: "my-agent",
+              versionId: "v2",
+              warnings: [],
+            },
+          });
+        }),
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+      );
+
+      context.store.set(setZeroJobEditedContent$, "Updated instructions");
+      await context.store.set(buildZeroJobInstructions$);
+
+      // Build should succeed without errors
+      expect(context.store.get(zeroJobBuildError$)).toBeNull();
+
+      // Should have sent the edited content in the compose job
+      expect(capturedJobBody).toHaveProperty("instructions");
+      expect(capturedJobBody["instructions"]).toBe("Updated instructions");
+
+      // After build, edited content should be cleared
+      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+      expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
+      expect(context.store.get(zeroJobBuildError$)).toBeNull();
+
+      // Instructions state should be optimistically updated
+      const instructions = context.store.get(zeroJobInstructions$);
+      expect(instructions?.content).toBe("Updated instructions");
+    });
+
+    it("should set build error on compose job failure", async () => {
+      await setupWithAgent();
+
+      server.use(
+        http.post("http://localhost:3000/api/compose/jobs", () => {
+          return HttpResponse.json(
+            { error: { message: "Build quota exceeded" } },
+            { status: 429, statusText: "Too Many Requests" },
+          );
+        }),
+      );
+
+      context.store.set(setZeroJobEditedContent$, "Updated instructions");
+      await context.store.set(buildZeroJobInstructions$);
+
+      expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
+      expect(context.store.get(zeroJobBuildError$)).toBe(
+        "Failed to build instructions. Please try again.",
+      );
+
+      // Edited content should NOT be cleared on failure
+      expect(context.store.get(zeroJobEditedContent$)).toBe(
+        "Updated instructions",
+      );
+    });
+
+    it("should not build when no edited content", async () => {
+      let composeJobCalled = false;
+
+      await setupWithAgent();
+
+      server.use(
+        http.post("http://localhost:3000/api/compose/jobs", () => {
+          composeJobCalled = true;
+          return HttpResponse.json({ jobId: "job-1", status: "completed" });
+        }),
+      );
+
+      await context.store.set(buildZeroJobInstructions$);
+      expect(composeJobCalled).toBeFalsy();
+    });
+  });
+
+  describe("zeroJobUpdateSettings$", () => {
+    async function setupWithAgent() {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+    }
+
+    it("should update settings via compose job and refetch", async () => {
+      let capturedJobBody: Record<string, unknown> = {};
+
+      await setupWithAgent();
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/compose/jobs",
+          async ({ request }) => {
+            capturedJobBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({
+              jobId: "job-1",
+              status: "completed",
+              result: {
+                composeId: "compose-1",
+                composeName: "my-agent",
+                versionId: "v2",
+                warnings: [],
+              },
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+      );
+
+      await context.store.set(zeroJobUpdateSettings$, {
+        displayName: "New Name",
+        sound: "friendly",
+      });
+
+      // Should have sent updated content with new metadata
+      const content = capturedJobBody["content"] as Record<string, unknown>;
+      const agents = content["agents"] as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const mainAgent = agents["main"];
+      const metadata = mainAgent["metadata"] as Record<string, string>;
+      expect(metadata["displayName"]).toBe("New Name");
+      expect(metadata["sound"]).toBe("friendly");
+
+      // Saving state should be reset
+      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
+    });
+
+    it("should skip update when metadata has not changed", async () => {
+      let composeJobCalled = false;
+
+      await setupWithAgent();
+
+      server.use(
+        http.post("http://localhost:3000/api/compose/jobs", () => {
+          composeJobCalled = true;
+          return HttpResponse.json({ jobId: "job-1", status: "completed" });
+        }),
+      );
+
+      // Default sound is "professional" (from extractAgentFields fallback)
+      // and no displayName is set — pass same values
+      await context.store.set(zeroJobUpdateSettings$, {});
+
+      expect(composeJobCalled).toBeFalsy();
+    });
+
+    it("should show error toast on compose job failure", async () => {
+      await setupWithAgent();
+
+      server.use(
+        http.post("http://localhost:3000/api/compose/jobs", () => {
+          return HttpResponse.json(
+            { error: { message: "Internal error" } },
+            { status: 500, statusText: "Internal Server Error" },
+          );
+        }),
+      );
+
+      // Should not throw — errors are caught and shown via toast
+      await context.store.set(zeroJobUpdateSettings$, {
+        displayName: "New Name",
+      });
+
+      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
+    });
+  });
+
+  describe("skills management", () => {
+    async function setupWithAgent() {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+    }
+
+    it("should seed skills from agent detail", async () => {
+      await setupWithAgent();
+
+      const skills = context.store.get(zeroJobAddedSkills$);
+      // mockAgentResponse has skills: ["search"], skillUrlToValue returns the value as-is
+      // since "search" doesn't start with the GitHub URL prefix
+      expect(skills).toStrictEqual(["search"]);
+      expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
+    });
+
+    it("should add and remove skills with dirty tracking", async () => {
+      await setupWithAgent();
+
+      context.store.set(addZeroJobSkill$, "gmail");
+
+      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual([
+        "search",
+        "gmail",
+      ]);
+      expect(context.store.get(zeroJobSkillsDirty$)).toBeTruthy();
+
+      context.store.set(removeZeroJobSkill$, "search");
+
+      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual(["gmail"]);
+      expect(context.store.get(zeroJobSkillsDirty$)).toBeTruthy();
+    });
+
+    it("should discard skill changes", async () => {
+      await setupWithAgent();
+
+      context.store.set(addZeroJobSkill$, "gmail");
+      expect(context.store.get(zeroJobSkillsDirty$)).toBeTruthy();
+
+      context.store.set(discardZeroJobSkills$);
+
+      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual(["search"]);
+      expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
+    });
+
+    it("should save skills via compose job", async () => {
+      let capturedJobBody: Record<string, unknown> = {};
+
+      await setupWithAgent();
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/compose/jobs",
+          async ({ request }) => {
+            capturedJobBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({
+              jobId: "job-1",
+              status: "completed",
+              result: {
+                composeId: "compose-1",
+                composeName: "my-agent",
+                versionId: "v2",
+                warnings: [],
+              },
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+      );
+
+      context.store.set(addZeroJobSkill$, "gmail");
+      await context.store.set(saveZeroJobSkills$);
+
+      // Verify skills were sent in the compose content
+      const content = capturedJobBody["content"] as Record<string, unknown>;
+      const agents = content["agents"] as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const mainAgent = agents["main"];
+      const skills = mainAgent["skills"] as string[];
+      expect(skills).toHaveLength(2);
+      // Skills should be converted to URLs via skillValueToUrl
+      expect(skills[0]).toContain("search");
+      expect(skills[1]).toContain("gmail");
+
+      // After save, dirty state should be reset
+      expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
+      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
+    });
+
+    it("should show error toast on save failure", async () => {
+      await setupWithAgent();
+
+      server.use(
+        http.post("http://localhost:3000/api/compose/jobs", () => {
+          return HttpResponse.json(
+            { error: { message: "Build failed" } },
+            { status: 500, statusText: "Internal Server Error" },
+          );
+        }),
+      );
+
+      context.store.set(addZeroJobSkill$, "gmail");
+
+      // Should not throw — errors are caught and shown via toast
+      await context.store.set(saveZeroJobSkills$);
+
+      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
   });
 });
