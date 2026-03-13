@@ -12,15 +12,15 @@ load '../../helpers/setup'
 
 setup_file() {
     export AGENT_NAME="e2e-t36-$(date +%s%3N)-$RANDOM"
-}
+    export TEST_DIR="$(mktemp -d)"
 
-setup() {
+    # Create volume and compose ONCE so parallel tests don't race
     create_test_volume "e2e-vol-t36"
+    export SHARED_VOLUME_NAME="$VOLUME_NAME"
+    export SHARED_VOLUME_DIR="$TEST_VOLUME_DIR"
 
-    export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    export ARTIFACT_NAME="e2e-search-test-$(date +%s%3N)-$RANDOM"
-    export TEST_CONFIG="$(mktemp --suffix=.yaml)"
-    cat > "$TEST_CONFIG" <<EOF
+    export SHARED_CONFIG="$TEST_DIR/vm0.yaml"
+    cat > "$SHARED_CONFIG" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
@@ -31,19 +31,30 @@ agents:
     working_dir: /home/user/workspace
 volumes:
   claude-files:
-    name: $VOLUME_NAME
+    name: $SHARED_VOLUME_NAME
     version: latest
 EOF
+    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
+}
+
+teardown_file() {
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
+        rm -rf "$TEST_DIR"
+    fi
+    if [ -n "$SHARED_VOLUME_DIR" ] && [ -d "$SHARED_VOLUME_DIR" ]; then
+        rm -rf "$SHARED_VOLUME_DIR"
+    fi
+}
+
+setup() {
+    export TEST_ARTIFACT_DIR="$(mktemp -d)"
+    export ARTIFACT_NAME="e2e-search-test-$(date +%s%3N)-$RANDOM"
 }
 
 teardown() {
     if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
         rm -rf "$TEST_ARTIFACT_DIR"
     fi
-    if [ -n "$TEST_CONFIG" ] && [ -f "$TEST_CONFIG" ]; then
-        rm -f "$TEST_CONFIG"
-    fi
-    cleanup_test_volume
 }
 
 @test "logs search --help shows command options" {
@@ -60,7 +71,7 @@ teardown() {
 }
 
 @test "Build logs search test agent configuration" {
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $CLI_COMMAND compose "$SHARED_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
