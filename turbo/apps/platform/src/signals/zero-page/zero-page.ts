@@ -5,12 +5,17 @@ import { updatePage$ } from "../react-router.ts";
 import { fetchAgentsList$ } from "./zero-agents.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initZeroActivity$ } from "./zero-activity.ts";
+import { initSlackOrg$ } from "./zero-slack.ts";
 import { Reason, detach } from "../utils.ts";
 
 export const setupZeroPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroPage));
 
-  await Promise.all([set(fetchAgentsList$), set(initZeroOnboarding$, signal)]);
+  await Promise.all([
+    set(fetchAgentsList$),
+    set(initZeroOnboarding$, signal),
+    set(initSlackOrg$),
+  ]);
   signal.throwIfAborted();
   detach(set(initZeroActivity$), Reason.Daemon);
 });

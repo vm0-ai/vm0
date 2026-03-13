@@ -3232,3 +3232,68 @@ export async function findTestSystemStorages() {
     .from(storages)
     .where(eq(storages.orgId, SYSTEM_ORG_ID));
 }
+
+/**
+ * Create an org-aware Slack installation for testing.
+ *
+ * Direct DB insert is required because the org Slack OAuth callback
+ * requires real Slack API interaction that cannot be easily mocked.
+ */
+export async function createTestSlackOrgInstallation(opts: {
+  workspaceId?: string;
+  workspaceName?: string;
+  orgId: string;
+}): Promise<{
+  slackWorkspaceId: string;
+  slackWorkspaceName: string;
+}> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+
+  const workspaceId = opts.workspaceId ?? `T-${randomUUID().slice(0, 8)}`;
+  const workspaceName = opts.workspaceName ?? "Test Org Workspace";
+
+  const encryptedBotToken = encryptSecretValue(
+    "xoxb-test-bot-token",
+    SECRETS_ENCRYPTION_KEY,
+  );
+
+  await globalThis.services.db.insert(slackOrgInstallations).values({
+    slackWorkspaceId: workspaceId,
+    slackWorkspaceName: workspaceName,
+    orgId: opts.orgId,
+    encryptedBotToken,
+    botUserId: `B-${randomUUID().slice(0, 8)}`,
+  });
+
+  return { slackWorkspaceId: workspaceId, slackWorkspaceName: workspaceName };
+}
+
+/**
+ * Create an org-aware Slack connection for testing.
+ *
+ * Direct DB insert is required because the connect API requires
+ * Slack workspace context that is only available during real OAuth.
+ */
+export async function createTestSlackOrgConnection(opts: {
+  slackUserId?: string;
+  slackWorkspaceId: string;
+  vm0UserId: string;
+  orgId: string;
+}): Promise<{ slackUserId: string; connectionId: string }> {
+  initServices();
+
+  const slackUserId = opts.slackUserId ?? `U-${randomUUID().slice(0, 8)}`;
+
+  const [connection] = await globalThis.services.db
+    .insert(slackOrgConnections)
+    .values({
+      slackUserId,
+      slackWorkspaceId: opts.slackWorkspaceId,
+      vm0UserId: opts.vm0UserId,
+      orgId: opts.orgId,
+    })
+    .returning({ id: slackOrgConnections.id });
+
+  return { slackUserId, connectionId: connection!.id };
+}

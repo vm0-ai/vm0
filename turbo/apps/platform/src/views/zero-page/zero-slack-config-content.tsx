@@ -1,5 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
   getConnectorProvidedSecretNames,
@@ -7,13 +7,6 @@ import {
 } from "@vm0/core";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@vm0/ui/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -24,16 +17,13 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  slackIntegrationData$,
-  slackIntegrationLoading$,
-  disconnectSlack$,
-  updateSlackDefaultAgent$,
-  slackDisconnectDialogOpen$,
-  openSlackDisconnectDialog$,
-  closeSlackDisconnectDialog$,
-} from "../../signals/integrations-page/slack-integration.ts";
-import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
+  slackOrgData$,
+  slackOrgLoading$,
+  disconnectSlackOrg$,
+  slackOrgDisconnectDialogOpen$,
+  openSlackOrgDisconnectDialog$,
+  closeSlackOrgDisconnectDialog$,
+} from "../../signals/zero-page/zero-slack.ts";
 import { Link } from "../router/link.tsx";
 
 function getAllConnectorEnvVars(): Set<string> {
@@ -100,45 +90,27 @@ function MissingEnvBanner({
   );
 }
 
-/** Slack config content for Zero app only (Where Zero works → Configure dialog). Uses same signals as platform but lives under zero-page so platform is untouched. */
+/** Slack config content for Zero app — org-aware integration. Agent is managed via org default, not changeable here. */
 export function ZeroSlackConfigContent({
   onAfterDisconnect,
 }: {
   onAfterDisconnect?: () => void;
 } = {}) {
-  const data = useGet(slackIntegrationData$);
-  const loading = useGet(slackIntegrationLoading$);
-  const agents = useGet(agentsList$);
-  const navigate = useSet(navigateInReact$);
-  const disconnect = useSet(disconnectSlack$);
-  const updateAgent = useSet(updateSlackDefaultAgent$);
-  const confirmOpen = useGet(slackDisconnectDialogOpen$);
-  const openConfirm = useSet(openSlackDisconnectDialog$);
-  const closeConfirm = useSet(closeSlackDisconnectDialog$);
+  const data = useGet(slackOrgData$);
+  const loading = useGet(slackOrgLoading$);
+  const disconnect = useSet(disconnectSlackOrg$);
+  const confirmOpen = useGet(slackOrgDisconnectDialogOpen$);
+  const openConfirm = useSet(openSlackOrgDisconnectDialog$);
+  const closeConfirm = useSet(closeSlackOrgDisconnectDialog$);
 
   const qualifiedAgentName = (() => {
-    if (!data?.agent) {
+    if (!data?.defaultAgentName) {
       return undefined;
     }
-    const fullName = `${data.agent.orgSlug}/${data.agent.name}`;
-    if (agents.some((a) => a.name === fullName)) {
-      return fullName;
+    if (data.agentOrgSlug) {
+      return `${data.agentOrgSlug}/${data.defaultAgentName}`;
     }
-    return data.agent.name;
-  })();
-
-  const agentOptions = (() => {
-    if (!qualifiedAgentName) {
-      return agents;
-    }
-    const hasCurrentAgent = agents.some((a) => a.name === qualifiedAgentName);
-    if (hasCurrentAgent) {
-      return agents;
-    }
-    return [
-      { name: qualifiedAgentName, headVersionId: null, updatedAt: "" },
-      ...agents,
-    ];
+    return data.defaultAgentName;
   })();
 
   const handleDisconnect = () => {
@@ -146,20 +118,10 @@ export function ZeroSlackConfigContent({
       (async () => {
         await disconnect();
         closeConfirm();
-        if (onAfterDisconnect) {
-          onAfterDisconnect();
-        } else {
-          navigate("/settings", {
-            searchParams: new URLSearchParams({ tab: "integrations" }),
-          });
-        }
+        onAfterDisconnect?.();
       })(),
       Reason.DomCallback,
     );
-  };
-
-  const handleAgentChange = (agentName: string) => {
-    detach(updateAgent(agentName), Reason.DomCallback);
   };
 
   return (
@@ -178,62 +140,40 @@ export function ZeroSlackConfigContent({
               <h3 className="text-base font-medium">Default agent</h3>
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                 <div className="flex flex-1 flex-col gap-1">
-                  {data?.isAdmin ? (
-                    <p className="text-sm text-muted-foreground">
-                      <Link
-                        pathname="/settings"
-                        options={{
-                          searchParams: new URLSearchParams({
-                            tab: "providers",
-                          }),
-                        }}
-                        className="text-primary hover:underline"
-                      >
-                        Settings
-                      </Link>{" "}
-                      for model, secrets, and connectors.
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Managed by your workspace admin. Contact them to change
-                      it.
-                    </p>
-                  )}
+                  <p className="text-sm text-muted-foreground">
+                    Managed by your org default agent setting.
+                    {data?.isAdmin && (
+                      <>
+                        {" "}
+                        Change it in{" "}
+                        <Link
+                          pathname="/settings"
+                          options={{
+                            searchParams: new URLSearchParams({
+                              tab: "providers",
+                            }),
+                          }}
+                          className="text-primary hover:underline"
+                        >
+                          Settings
+                        </Link>
+                        .
+                      </>
+                    )}
+                  </p>
                 </div>
-                {data?.isAdmin ? (
-                  <Select
-                    value={qualifiedAgentName ?? ""}
-                    onValueChange={handleAgentChange}
-                  >
-                    <SelectTrigger className="w-full sm:w-[280px] sm:shrink-0">
-                      <SelectValue placeholder="Select an agent" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {agentOptions.map((agent) => (
-                        <SelectItem key={agent.name} value={agent.name}>
-                          {agent.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-muted px-3 py-2 sm:w-[280px] sm:shrink-0">
-                    <span className="truncate text-sm">
-                      {qualifiedAgentName ?? "No agent"}
-                    </span>
-                    <IconChevronDown
-                      size={16}
-                      className="shrink-0 opacity-50"
-                    />
-                  </div>
-                )}
+                <div className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-muted px-3 py-2 sm:w-[280px] sm:shrink-0">
+                  <span className="truncate text-sm">
+                    {qualifiedAgentName ?? "No agent"}
+                  </span>
+                </div>
               </div>
             </div>
 
             <MissingEnvBanner
               agentName={qualifiedAgentName}
-              missingSecrets={data?.environment.missingSecrets ?? []}
-              missingVars={data?.environment.missingVars ?? []}
+              missingSecrets={data?.environment?.missingSecrets ?? []}
+              missingVars={data?.environment?.missingVars ?? []}
             />
 
             <div className="flex flex-col gap-4">
@@ -263,17 +203,17 @@ export function ZeroSlackConfigContent({
             </div>
 
             <div className="flex flex-col gap-4">
-              <h3 className="text-base font-medium">Uninstall Slack</h3>
+              <h3 className="text-base font-medium">Disconnect Slack</h3>
               <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                 <p className="flex-1 text-sm text-muted-foreground">
-                  Remove the agent from your Slack workspace.
+                  Disconnect your account from this Slack workspace.
                 </p>
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={() => openConfirm()}
                 >
-                  Uninstall
+                  Disconnect
                 </Button>
               </div>
             </div>
@@ -291,9 +231,9 @@ export function ZeroSlackConfigContent({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Uninstall Slack</DialogTitle>
+            <DialogTitle>Disconnect Slack</DialogTitle>
             <DialogDescription>
-              You can reinstall at any time.
+              You can reconnect at any time using /vm0 connect in Slack.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -301,7 +241,7 @@ export function ZeroSlackConfigContent({
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDisconnect}>
-              Uninstall
+              Disconnect
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,38 +2,23 @@ import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSearch,
-  IconSettings,
   IconCircleCheck,
   IconDotsVertical,
+  IconDownload,
 } from "@tabler/icons-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  Button,
-  Input,
-} from "@vm0/ui";
+import { Button, Input } from "@vm0/ui";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
-import { ZeroSlackConfigContent } from "./zero-slack-config-content";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-
-const CONNECTED_TOOLS: readonly Readonly<{
-  id: string;
-  name: string;
-  description: string;
-}>[] = [
-  {
-    id: "slack",
-    name: "Slack",
-    description: "Team communication and collaboration",
-  },
-];
+import {
+  slackOrgData$,
+  disconnectSlackOrg$,
+  uninstallSlackOrg$,
+} from "../../signals/zero-page/zero-slack.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 export function ZeroWorksPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
@@ -42,9 +27,15 @@ export function ZeroWorksPage() {
   const search$ = useCCState("");
   const search = useGet(search$);
   const setSearch = useSet(search$);
-  const slackConfigOpen$ = useCCState(false);
-  const slackConfigOpen = useGet(slackConfigOpen$);
-  const setSlackConfigOpen = useSet(slackConfigOpen$);
+  const slackData = useGet(slackOrgData$);
+  const disconnect = useSet(disconnectSlackOrg$);
+  const uninstall = useSet(uninstallSlackOrg$);
+
+  const isConnected = slackData?.isConnected ?? false;
+  const isInstalled = slackData?.isInstalled ?? isConnected;
+  const isAdmin = slackData?.isAdmin ?? false;
+  const installUrl = slackData?.installUrl;
+  const connectUrl = slackData?.connectUrl;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -74,35 +65,53 @@ export function ZeroWorksPage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          {CONNECTED_TOOLS.map((tool) => (
-            <div
-              key={tool.id}
-              className="zero-card flex items-center gap-4 p-4"
-            >
-              <div className="shrink-0">
-                <img src="/slack-icon.svg" alt="" className="h-7 w-7" />
+          <div className="zero-card flex items-center gap-4 p-4">
+            <div className="shrink-0">
+              <img src="/slack-icon.svg" alt="" className="h-7 w-7" />
+            </div>
+            <div className="flex flex-1 flex-col gap-1 min-w-0">
+              <div className="text-sm font-medium text-foreground">
+                Slack
+                {isConnected && slackData?.workspaceName && (
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    ({slackData.workspaceName})
+                  </span>
+                )}
               </div>
-              <div className="flex flex-1 flex-col gap-1 min-w-0">
-                <div className="text-sm font-medium text-foreground">
-                  {tool.name}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {tool.description}
-                </div>
+              <div className="text-sm text-muted-foreground">
+                {!isInstalled && !isAdmin
+                  ? "Ask your admin to install the Slack integration"
+                  : "Team communication and collaboration"}
               </div>
+            </div>
+            {isConnected ? (
               <span className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
                 <IconCircleCheck className="h-3 w-3 text-green-600" />
                 Connected
               </span>
+            ) : null}
+            {!isInstalled && isAdmin && installUrl && (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 shrink-0 gap-1.5 rounded-lg"
-                onClick={() => tool.id === "slack" && setSlackConfigOpen(true)}
+                onClick={() => window.open(installUrl, "_blank")}
               >
-                <IconSettings size={14} stroke={1.5} />
-                Configure
+                <IconDownload size={14} stroke={1.5} />
+                Install to Slack
               </Button>
+            )}
+            {isInstalled && !isConnected && connectUrl && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 gap-1.5 rounded-lg"
+                onClick={() => window.open(connectUrl, "_blank")}
+              >
+                Connect
+              </Button>
+            )}
+            {isInstalled && (
               <Popover>
                 <PopoverTrigger asChild>
                   <button
@@ -117,34 +126,34 @@ export function ZeroWorksPage() {
                   align="end"
                   className="flex flex-col gap-0.5 w-40 p-2"
                 >
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
-                  >
-                    Disconnect
-                  </button>
+                  {isConnected && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
+                      onClick={() => {
+                        detach(disconnect(), Reason.DomCallback);
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+                      onClick={() => {
+                        detach(uninstall(), Reason.DomCallback);
+                      }}
+                    >
+                      Uninstall
+                    </button>
+                  )}
                 </PopoverContent>
               </Popover>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
       </main>
-
-      <Dialog open={slackConfigOpen} onOpenChange={setSlackConfigOpen}>
-        <DialogContent className="max-w-[600px] max-h-[90vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-            <DialogTitle>VM0 in Slack</DialogTitle>
-            <DialogDescription>
-              Configure your settings how to run VM0 in Slack Workspace.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
-            <ZeroSlackConfigContent
-              onAfterDisconnect={() => setSlackConfigOpen(false)}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
