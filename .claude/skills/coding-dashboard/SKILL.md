@@ -26,6 +26,16 @@ If no argument is provided, default to `MAX_WORKERS=4`.
 
 ## Steps
 
+### Step 0: Reset to Main
+
+Ensure a clean, up-to-date working tree before querying:
+
+```bash
+git checkout main
+git pull
+git checkout -- .
+```
+
 ### Step 1: Determine Parameters
 
 ```bash
@@ -109,7 +119,7 @@ Combine results, sort by `mergedAt` descending, take the top 20.
 - Titles should be translated to Chinese
 - Items with `pending` label get a `[Pending]` marker
 - Empty lanes show `-- idle`
-- Merged PRs shown in a table with columns: Time, #, Lane, Title
+- Merged PRs shown as a list, each line: `Time #ID Lane — Title`
 
 ### Output Example
 
@@ -137,13 +147,8 @@ vm04
 ---
 近期完成 (最近 20 个已合并 PR，按时间倒序)
 
-┌────────────┬───────┬──────┬──────────────────────────────────────────────────────┐
-│    时间    │   #   │ 通道 │                        标题                          │
-├────────────┼───────┼──────┼──────────────────────────────────────────────────────┤
-│ 3/13 08:35 │ #4728 │ vm03 │ 升级平台 vite 从 v6 到 v7                            │
-├────────────┼───────┼──────┼──────────────────────────────────────────────────────┤
-│ 3/13 08:01 │ #4719 │ vm01 │ 通过 tsx/tsup 升级去重 esbuild 版本                  │
-└────────────┴───────┴──────┴──────────────────────────────────────────────────────┘
+- 3/13 08:35 #4728 vm03 — 升级平台 vite 从 v6 到 v7
+- 3/13 08:01 #4719 vm01 — 通过 tsx/tsup 升级去重 esbuild 版本
 ---
 ```
 
