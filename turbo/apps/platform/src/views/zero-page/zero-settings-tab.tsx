@@ -14,17 +14,19 @@ import type { Command } from "ccstate";
 
 interface ZeroSettingsTabProps {
   agentName: string;
+  description: string;
   sound: Tone;
   saving: boolean;
   updateSettings$: Command<
     Promise<void>,
-    [{ displayName: string; sound: string }]
+    [{ displayName: string; sound: string; description: string }]
   >;
   inputId?: string;
 }
 
 export function ZeroSettingsTab({
   agentName: resolvedAgentName,
+  description: initialDescription,
   sound: initialSound,
   saving,
   updateSettings$,
@@ -33,11 +35,19 @@ export function ZeroSettingsTab({
   const agentName$ = useCCState(resolvedAgentName);
   const agentName = useGet(agentName$);
   const setAgentName = useSet(agentName$);
+  const desc$ = useCCState(initialDescription);
+  const desc = useGet(desc$);
+  const setDesc = useSet(desc$);
   const tone$ = useCCState<Tone>(initialSound);
   const tone = useGet(tone$);
   const setTone = useSet(tone$);
-  const savedSettings$ = useCCState<{ name: string; tone: Tone }>({
+  const savedSettings$ = useCCState<{
+    name: string;
+    description: string;
+    tone: Tone;
+  }>({
     name: resolvedAgentName,
+    description: initialDescription,
     tone: initialSound,
   });
   const savedSettings = useGet(savedSettings$);
@@ -46,35 +56,58 @@ export function ZeroSettingsTab({
   // Sync local state when props change (e.g. metadata finishes loading)
   const prevProps$ = useCCState({
     name: resolvedAgentName,
+    description: initialDescription,
     tone: initialSound,
   });
   const prevProps = useGet(prevProps$);
   const setPrevProps = useSet(prevProps$);
-  if (resolvedAgentName !== prevProps.name || initialSound !== prevProps.tone) {
+  if (
+    resolvedAgentName !== prevProps.name ||
+    initialDescription !== prevProps.description ||
+    initialSound !== prevProps.tone
+  ) {
     queueMicrotask(() => {
-      setPrevProps({ name: resolvedAgentName, tone: initialSound });
+      setPrevProps({
+        name: resolvedAgentName,
+        description: initialDescription,
+        tone: initialSound,
+      });
       setAgentName(resolvedAgentName);
+      setDesc(initialDescription);
       setTone(initialSound);
-      setSavedSettings({ name: resolvedAgentName, tone: initialSound });
+      setSavedSettings({
+        name: resolvedAgentName,
+        description: initialDescription,
+        tone: initialSound,
+      });
     });
   }
 
   const isSettingsDirty =
-    agentName !== savedSettings.name || tone !== savedSettings.tone;
+    agentName !== savedSettings.name ||
+    desc !== savedSettings.description ||
+    tone !== savedSettings.tone;
 
   const handleResetSettings = () => {
     setAgentName(savedSettings.name);
+    setDesc(savedSettings.description);
     setTone(savedSettings.tone);
   };
 
   const handleSaveSettings$ = useCommand(async ({ get, set }) => {
     const currentName = get(agentName$);
+    const currentDesc = get(desc$);
     const currentTone = get(tone$);
     await set(updateSettings$, {
       displayName: currentName,
+      description: currentDesc,
       sound: currentTone,
     });
-    set(savedSettings$, { name: currentName, tone: currentTone });
+    set(savedSettings$, {
+      name: currentName,
+      description: currentDesc,
+      tone: currentTone,
+    });
   });
   const handleSaveSettings = useSet(handleSaveSettings$);
 
@@ -97,6 +130,22 @@ export function ZeroSettingsTab({
                   onChange={(e) => setAgentName(e.target.value)}
                   placeholder="What should we call them?"
                   className="h-9"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor={`${inputId}-description`}
+                  className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  Description
+                </label>
+                <textarea
+                  id={`${inputId}-description`}
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  placeholder="What does this agent do?"
+                  rows={3}
+                  className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
                 />
               </div>
               <div

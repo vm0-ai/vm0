@@ -5,6 +5,7 @@ import {
   IconSearch,
   IconLoader2,
   IconDownload,
+  IconLock,
 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
 import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
@@ -45,6 +46,46 @@ export function ZeroActivityDetailPage({
   const stepSearch$ = useCCState("");
   const stepSearch = useGet(stepSearch$);
   const setStepSearch = useSet(stepSearch$);
+
+  // Detail not found or no permission
+  if (detailLoadable.state === "hasError") {
+    return (
+      <div className="h-full flex flex-col min-h-0">
+        <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
+          <div className="mb-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 -ml-2"
+              onClick={onBack}
+              aria-label="Back to activity"
+            >
+              <IconArrowLeft size={20} stroke={1.5} />
+            </Button>
+          </div>
+        </header>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <IconLock
+              size={24}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </div>
+          <h2 className="text-lg font-semibold text-foreground">
+            Log not found
+          </h2>
+          <p className="text-sm text-muted-foreground text-center max-w-sm">
+            This log doesn&apos;t exist or you don&apos;t have permission to
+            view it in the current organization.
+          </p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={onBack}>
+            Back to activity
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;

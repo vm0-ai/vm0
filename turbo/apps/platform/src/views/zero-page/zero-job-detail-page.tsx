@@ -3,15 +3,20 @@ import { useCCState } from "ccstate-react/experimental";
 import {
   IconArrowLeft,
   IconFileText,
-  IconUser,
+  IconUserCircle,
   IconPlug,
   IconCalendar,
+  IconMessageCircle,
 } from "@tabler/icons-react";
 import {
   Button,
   Tabs,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   Card,
   CardContent,
 } from "@vm0/ui";
@@ -56,6 +61,21 @@ import { detach, Reason } from "../../signals/utils.ts";
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
 // ---------------------------------------------------------------------------
+
+const AGENT_AVATARS = [
+  "/avatars/avatar-1.png",
+  "/avatars/avatar-2.png",
+  "/avatars/avatar-3.png",
+  "/avatars/avatar-4.png",
+] as const;
+
+function getAgentAvatar(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return AGENT_AVATARS[Math.abs(hash) % AGENT_AVATARS.length];
+}
 
 interface ZeroJobDetailPageProps {
   agentName: string;
@@ -145,20 +165,20 @@ const TAB_TRIGGER_CLASS =
 
 function isValidTab(tab: string): boolean {
   return (
-    tab === "skills" ||
+    tab === "connectors" ||
     tab === "schedule" ||
-    tab === "settings" ||
+    tab === "profile" ||
     tab === "instructions"
   );
 }
 
 function getInitialTab(): string {
   if (typeof window === "undefined") {
-    return "skills";
+    return "connectors";
   }
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab") ?? "";
-  return isValidTab(tab) ? tab : "skills";
+  return isValidTab(tab) ? tab : "connectors";
 }
 
 function syncTabToUrl(tab: string) {
@@ -166,7 +186,7 @@ function syncTabToUrl(tab: string) {
     return;
   }
   const url = new URL(window.location.href);
-  if (tab === "skills") {
+  if (tab === "connectors") {
     url.searchParams.delete("tab");
   } else {
     url.searchParams.set("tab", tab);
@@ -179,7 +199,7 @@ function extractAgentFields(detail: AgentDetail | null, fallbackName: string) {
     ? Object.values(detail.content.agents)[0]
     : null;
   return {
-    description: agentDef?.description ?? null,
+    description: agentDef?.metadata?.description ?? agentDef?.description ?? "",
     framework: agentDef?.framework ?? null,
     sound: agentDef?.metadata?.sound ?? "professional",
     displayName:
@@ -287,6 +307,8 @@ function JobInstructionsTab() {
 // ---------------------------------------------------------------------------
 
 export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
+  const navigate = useSet(navigateInReact$);
+  const navigateBack = useNavigateBack();
   const detail = useGet(zeroJobDetail$);
   const loading = useGet(zeroJobDetailLoading$);
   const error = useGet(zeroJobDetailError$);
@@ -321,38 +343,53 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <header className="shrink-0 bg-transparent px-4 pt-4 pb-4 sm:px-6">
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
+        <div className="mb-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 -ml-2"
+            onClick={navigateBack}
+            aria-label="Back to agents"
+          >
+            <IconArrowLeft size={20} stroke={1.5} />
+          </Button>
+        </div>
         <div className="mx-auto max-w-[900px] px-7">
-          <BackButton />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <h1 className="text-xl font-semibold tracking-tight text-foreground leading-tight">
-              {displayName}
-            </h1>
-            {description && (
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-[36rem]">
-                {description}
+          <div className="flex items-center gap-3 text-base">
+            <img
+              src={getAgentAvatar(agentName)}
+              alt={displayName}
+              className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+            />
+            <div className="min-w-0">
+              <h1 className="font-semibold tracking-tight text-foreground">
+                {displayName}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5 leading-tight">
+                {description || "Your AI teammate, tuned to you"}
               </p>
-            )}
+            </div>
           </div>
 
-          <div className="mt-6 flex h-9 items-center">
+          <div className="mt-4 flex h-9 items-center justify-between gap-6">
             <Tabs
               value={activeTab}
               onValueChange={setActiveTab}
               className="flex-1 min-w-0"
             >
               <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
-                <TabsTrigger value="skills" className={TAB_TRIGGER_CLASS}>
+                <TabsTrigger value="connectors" className={TAB_TRIGGER_CLASS}>
                   <IconPlug size={14} stroke={1.5} />
-                  Skills
+                  Connectors
                 </TabsTrigger>
                 <TabsTrigger value="schedule" className={TAB_TRIGGER_CLASS}>
                   <IconCalendar size={14} stroke={1.5} />
                   Schedule
                 </TabsTrigger>
-                <TabsTrigger value="settings" className={TAB_TRIGGER_CLASS}>
-                  <IconUser size={14} stroke={1.5} />
-                  Settings
+                <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
+                  <IconUserCircle size={14} stroke={1.5} />
+                  Profile
                 </TabsTrigger>
                 <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
                   <IconFileText size={14} stroke={1.5} />
@@ -360,18 +397,42 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+                    onClick={() =>
+                      navigate("/zero/:tab", { pathParams: { tab: "chat" } })
+                    }
+                  >
+                    <IconMessageCircle size={14} stroke={1.5} />
+                    Chat with {displayName}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="max-w-[220px] text-center"
+                >
+                  Make updates or assign tasks
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        {activeTab === "skills" && <JobSkillsTab />}
+        {activeTab === "connectors" && <JobSkillsTab />}
 
         {activeTab === "schedule" && <JobScheduleTab agentName={displayName} />}
 
-        {activeTab === "settings" && (
+        {activeTab === "profile" && (
           <ZeroSettingsTab
             agentName={displayName}
+            description={description ?? ""}
             sound={resolvedSound}
             saving={saving}
             updateSettings$={zeroJobUpdateSettings$}

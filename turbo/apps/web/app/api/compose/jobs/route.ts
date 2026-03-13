@@ -7,7 +7,8 @@ import { composeJobsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { composeJobs } from "../../../../src/db/schema/compose-job";
 import { eq } from "drizzle-orm";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { logger } from "../../../../src/lib/logger";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
 import type { ComposeJobResult } from "../../../../src/db/schema/compose-job";
@@ -45,8 +46,8 @@ const router = tsr.router(composeJobsMainContract, {
   create: async ({ body, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -54,6 +55,10 @@ const router = tsr.router(composeJobsMainContract, {
         },
       };
     }
+    const { userId, orgId: tokenOrgId } = authCtx;
+
+    // Resolve the caller's org so the CLI token carries the correct orgId
+    const { org } = await resolveOrg(userId, null, null, tokenOrgId);
 
     // Dispatch based on input type: GitHub URL or platform content
     const isGitHubInput = "githubUrl" in body;
@@ -61,12 +66,14 @@ const router = tsr.router(composeJobsMainContract, {
     const result = isGitHubInput
       ? await triggerComposeJob({
           userId,
+          orgId: org.orgId,
           source: "github",
           githubUrl: body.githubUrl,
           overwrite: body.overwrite,
         })
       : await triggerComposeJob({
           userId,
+          orgId: org.orgId,
           source: "platform",
           content: body.content,
           instructions: body.instructions,

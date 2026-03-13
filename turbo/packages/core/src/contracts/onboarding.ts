@@ -17,6 +17,7 @@ export const onboardingStatusResponseSchema = z.object({
   defaultAgentMetadata: z
     .object({
       displayName: z.string().optional(),
+      description: z.string().optional(),
       sound: z.string().optional(),
     })
     .nullable(),

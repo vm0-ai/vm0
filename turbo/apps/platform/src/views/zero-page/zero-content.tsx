@@ -24,6 +24,10 @@ interface ZeroContentProps {
   onNavigateToMeet?: (tab?: string) => void;
   onBackFromSession?: () => void;
   zeroAvatarSrc?: string;
+  /** Override agent name for the chat page when a sub-agent is selected. */
+  chatAgentName?: string;
+  /** Override avatar for the chat page when a sub-agent is selected. */
+  chatAvatarSrc?: string;
   onAvatarClick?: () => void;
 }
 
@@ -54,6 +58,8 @@ export function ZeroContent({
   onNavigateToMeet,
   onBackFromSession,
   zeroAvatarSrc = "/zero-avatar.png",
+  chatAgentName,
+  chatAvatarSrc,
   onAvatarClick,
 }: ZeroContentProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
@@ -78,7 +84,8 @@ export function ZeroContent({
         onNavigateToSchedule={onNavigateToSchedule}
         onNavigateToTeam={onNavigateToTeam}
         onNavigateToMeet={onNavigateToMeet}
-        zeroAvatarSrc={zeroAvatarSrc}
+        zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
+        chatAgentName={chatAgentName}
         onAvatarClick={onAvatarClick}
       />
     );
@@ -99,6 +106,7 @@ export function ZeroContent({
       <ZeroJobsPage
         onNavigateToChat={onNavigateToChat}
         selectedAgentName={selectedAgentName}
+        zeroAvatarSrc={zeroAvatarSrc}
       />
     );
   }

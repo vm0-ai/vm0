@@ -28,7 +28,12 @@ import {
   downloadS3Buffer,
 } from "../../../../../../src/lib/s3/s3-client";
 import { env } from "../../../../../../src/env";
-import { getInstructionsStorageName, getInstructionsFilename } from "@vm0/core";
+import {
+  getInstructionsStorageName,
+  getInstructionsFilename,
+  injectMetadataFrontmatter,
+  stripMetadataFrontmatter,
+} from "@vm0/core";
 import type { AgentComposeYaml } from "../../../../../../src/types/agent-compose";
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 
@@ -159,8 +164,30 @@ export async function GET(
     });
   }
 
+  // Strip any metadata the CLI may have baked in, then inject fresh metadata
+  // from the compose content so it always reflects the latest agent settings.
+  const rawContent = fileContent.toString("utf-8");
+  const strippedContent = stripMetadataFrontmatter(rawContent);
+  const metadata = extractAgentMetadata(content);
+  const finalContent = injectMetadataFrontmatter(strippedContent, metadata);
+
   return NextResponse.json({
-    content: fileContent.toString("utf-8"),
+    content: finalContent,
     filename: instructionsFilename,
   });
+}
+
+/**
+ * Extract agent metadata from compose content for the first agent.
+ */
+function extractAgentMetadata(
+  content: AgentComposeYaml,
+): { displayName?: string; description?: string; sound?: string } | undefined {
+  if (!content.agents) return undefined;
+  const agentKey = Object.keys(content.agents)[0];
+  if (!agentKey) return undefined;
+  const agent = content.agents[agentKey];
+  return agent?.metadata as
+    | { displayName?: string; description?: string; sound?: string }
+    | undefined;
 }

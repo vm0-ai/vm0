@@ -13,13 +13,15 @@ export function ClerkOrgSwitcher() {
       <OrganizationSwitcher
         appearance={{
           elements: {
-            rootBox: "w-full",
+            rootBox: "!w-full !block overflow-hidden",
             organizationSwitcherTrigger:
-              "!w-full !px-2 !py-2 !rounded-lg !gap-2.5 hover:bg-sidebar-accent/50 !text-sidebar-foreground",
-            organizationPreviewAvatarBox: "!w-7 !h-7",
+              "!w-full !px-2 !py-2 !rounded-lg !gap-2.5 hover:bg-sidebar-accent/50 !text-sidebar-foreground !overflow-hidden",
+            organizationPreviewAvatarBox: "!w-7 !h-7 !shrink-0",
             organizationPreviewMainIdentifier:
-              "!text-sm !font-semibold !leading-tight",
-            organizationSwitcherTriggerIcon: "!w-4 !h-4 !ml-auto",
+              "!text-sm !font-semibold !leading-tight !truncate",
+            organizationPreviewTextContainer: "!min-w-0 !overflow-hidden",
+            organizationSwitcherTriggerIcon: "!w-4 !h-4 !ml-auto !shrink-0",
+            organizationSwitcherPopoverCard: "!left-2",
           },
         }}
       />

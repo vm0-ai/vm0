@@ -4,6 +4,7 @@ import {
   boolean,
   timestamp,
   primaryKey,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -19,6 +20,7 @@ export const orgMembersCache = pgTable(
     timezone: text("timezone"),
     notifyEmail: boolean("notify_email").notNull().default(false),
     notifySlack: boolean("notify_slack").notNull().default(true),
+    pinnedAgentIds: jsonb("pinned_agent_ids").$type<string[]>().default([]),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
   },
   (table) => [primaryKey({ columns: [table.orgId, table.userId] })],

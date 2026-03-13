@@ -75,7 +75,7 @@ export function ZeroSkillsTab({
       skillMap.get(type)?.label ??
       connectorMap.get(type as ConnectorType)?.label ??
       type;
-    toast.success(`${label} added to skills`);
+    toast.success(`${label} added to connectors`);
   };
 
   const handleRemoveSkill = (name: string) => {
@@ -84,13 +84,13 @@ export function ZeroSkillsTab({
       skillMap.get(name)?.label ??
       connectorMap.get(name as ConnectorType)?.label ??
       name;
-    toast.success(`${label} removed from skills`);
+    toast.success(`${label} removed from connectors`);
   };
 
   return (
     <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Skills manage your connections and help you get more out of these
+        Connectors manage your connections and help you get more out of these
         services.
       </p>
 
@@ -110,12 +110,12 @@ export function ZeroSkillsTab({
               />
             </span>
             <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
-              Add skill
+              Add connector
             </span>
           </div>
           <div className="flex h-11 items-center border-t border-dashed border-border/80 px-5 group-hover:border-border">
             <span className="text-xs text-muted-foreground/70">
-              Browse 100+ popular skills
+              Browse 100+ popular connectors
             </span>
           </div>
         </button>

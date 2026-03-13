@@ -90,6 +90,7 @@ interface AgentDefinition {
    */
   metadata?: {
     displayName?: string;
+    description?: string;
     sound?: string;
   };
 }

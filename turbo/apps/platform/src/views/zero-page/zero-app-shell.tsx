@@ -2,8 +2,10 @@ import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   ZeroSidebar,
+  getAgentAvatar,
   type ZeroNavId,
   type ZeroAccountAction,
+  type SubagentInfo,
 } from "./zero-sidebar.tsx";
 import { Button } from "@vm0/ui";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
@@ -13,12 +15,15 @@ import { user$ } from "../../signals/auth.ts";
 import { zeroNeedsOnboarding$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { resetDefaultAgent$ } from "../../signals/zero-page/zero-dev-tools.ts";
+import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroActiveId$,
   zeroInChat$,
   zeroSessionId$,
+  zeroChatAgentId$,
   setZeroActiveId$,
+  setZeroChatAgentId$,
   navigateToZeroSession$,
   navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
@@ -164,6 +169,7 @@ function useSessionLifecycle(
       const wasOnboarding = lifecycle === "onboarding";
       queueMicrotask(() => {
         setLifecycle("ready");
+        // fetchZeroSessionList$ reads zeroChatAgentId$ from localStorage
         detach(fetchSessionList(), Reason.DomCallback);
         if (wasOnboarding) {
           detach(
@@ -198,6 +204,18 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const agentDisplayName = agentNameReady
     ? agentDisplayNameLoadable.data
     : "Zero";
+  const subagentsLoadable = useLastLoadable(zeroSubagents$);
+  const subagents: SubagentInfo[] =
+    subagentsLoadable.state === "hasData"
+      ? subagentsLoadable.data.map((a) => ({
+          id: a.id,
+          name: a.name,
+          displayName: a.displayName,
+        }))
+      : [];
+  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const setChatAgentId = useSet(setZeroChatAgentId$);
+
   const activeId = useGet(zeroActiveId$);
   const setActiveId = useSet(setZeroActiveId$);
   const avatarIndex$ = useCCState(0);
@@ -206,6 +224,17 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const showAboutPage = useGet(showAboutPage$);
   const setShowAboutPage = useSet(showAboutPage$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+
+  // Resolve the effective agent name/avatar for the chat page
+  const selectedSubagent = currentChatAgentId
+    ? subagents.find((a) => a.id === currentChatAgentId)
+    : null;
+  const chatAgentName = selectedSubagent
+    ? (selectedSubagent.displayName ?? selectedSubagent.name)
+    : agentDisplayName;
+  const chatAvatarSrc = selectedSubagent
+    ? getAgentAvatar(selectedSubagent.name)
+    : zeroAvatarSrc;
   const cycleAvatar$ = useCommand(({ set }) => {
     set(avatarIndex$, (i: number) => (i + 1) % ZERO_AVATARS.length);
   });
@@ -246,11 +275,14 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
 
-  const handleNewChat$ = useCommand(({ set }) => {
-    set(updatePathname$, "/zero/chat");
+  const fetchSessionList = useSet(fetchZeroSessionList$);
+  const handleNewChat = (agentId: string | null) => {
+    setActiveId("chat");
+    // Persist agent selection to localStorage first, so fetchZeroSessionList$ reads it
+    setChatAgentId(agentId);
     startNewSession();
-  });
-  const handleNewChat = useSet(handleNewChat$);
+    detach(fetchSessionList(), Reason.DomCallback);
+  };
 
   const handleSendFromDemo$ = useCommand(({ set }, message: string) => {
     set(updatePathname$, "/zero/chat");
@@ -285,6 +317,10 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const updateSearchParams = useSet(updateSearchParams$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
 
+  const sidebarCollapsed$ = useCCState(false);
+  const sidebarCollapsed = useGet(sidebarCollapsed$);
+  const setSidebarCollapsed = useSet(sidebarCollapsed$);
+
   const dataReady = isLoggedIn && onboardingReady && agentNameReady;
   const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
 
@@ -300,6 +336,11 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
       <ZeroSidebar
         activeId={activeId}
         agentName={agentDisplayName}
+        zeroAvatarSrc={zeroAvatarSrc}
+        subagents={subagents}
+        currentChatAgentId={currentChatAgentId}
+        collapsed={sidebarCollapsed}
+        onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         onSelect={handleNavSelect}
         onRecentSelect={handleRecentSelect}
         selectedRecentId={urlSessionId}
@@ -365,6 +406,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             }}
             onBackFromSession={handleBackFromSession}
             zeroAvatarSrc={zeroAvatarSrc}
+            chatAgentName={chatAgentName}
+            chatAvatarSrc={chatAvatarSrc}
             onAvatarClick={cycleAvatar}
           />
         )}

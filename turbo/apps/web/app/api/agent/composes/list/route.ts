@@ -12,21 +12,25 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
-function extractDisplayName(content: unknown): string | null {
+function extractMetadata(content: unknown): {
+  displayName: string | null;
+  description: string | null;
+} {
+  const empty = { displayName: null, description: null };
   if (
     content === null ||
     content === undefined ||
     typeof content !== "object"
   ) {
-    return null;
+    return empty;
   }
   const record = content as Record<string, unknown>;
   const agents = record["agents"];
   if (agents === null || agents === undefined || typeof agents !== "object") {
-    return null;
+    return empty;
   }
   const agentKeys = Object.keys(agents);
-  if (agentKeys.length === 0) return null;
+  if (agentKeys.length === 0) return empty;
   const agentsRecord = agents as Record<string, unknown>;
   const firstAgent = agentsRecord[agentKeys[0]!];
   if (
@@ -34,7 +38,7 @@ function extractDisplayName(content: unknown): string | null {
     firstAgent === undefined ||
     typeof firstAgent !== "object"
   ) {
-    return null;
+    return empty;
   }
   const agentRecord = firstAgent as Record<string, unknown>;
   const metadata = agentRecord["metadata"];
@@ -43,12 +47,18 @@ function extractDisplayName(content: unknown): string | null {
     metadata === undefined ||
     typeof metadata !== "object"
   ) {
-    return null;
+    return empty;
   }
   const metadataRecord = metadata as Record<string, unknown>;
-  const displayName = metadataRecord["displayName"];
-  if (typeof displayName !== "string") return null;
-  return displayName;
+  const displayName =
+    typeof metadataRecord["displayName"] === "string"
+      ? metadataRecord["displayName"]
+      : null;
+  const description =
+    typeof metadataRecord["description"] === "string"
+      ? metadataRecord["description"]
+      : null;
+  return { displayName, description };
 }
 
 const router = tsr.router(composesListContract, {
@@ -133,18 +143,23 @@ const router = tsr.router(composesListContract, {
 
     // Combine: own agents first, then shared agents with org/name format
     const allComposes = [
-      ...ownComposes.map((c) => ({
-        id: c.id,
-        name: c.name,
-        displayName: extractDisplayName(c.headContent),
-        headVersionId: c.headVersionId,
-        updatedAt: c.updatedAt.toISOString(),
-        isOwner: true,
-      })),
+      ...ownComposes.map((c) => {
+        const meta = extractMetadata(c.headContent);
+        return {
+          id: c.id,
+          name: c.name,
+          displayName: meta.displayName,
+          description: meta.description,
+          headVersionId: c.headVersionId,
+          updatedAt: c.updatedAt.toISOString(),
+          isOwner: true,
+        };
+      }),
       ...sharedComposes.map((c) => ({
         id: c.id,
         name: `${c.orgSlug}/${c.name}`,
         displayName: null as string | null,
+        description: null as string | null,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
         isOwner: false,

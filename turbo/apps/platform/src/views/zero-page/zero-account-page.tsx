@@ -1,11 +1,68 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
+import { IconSun, IconMoon, IconDeviceDesktop } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
+import { Card, CardContent, cn } from "@vm0/ui";
 import { NotificationSettings } from "../settings-page/notification-settings.tsx";
 import { TimezoneSettings } from "../settings-page/timezone-settings.tsx";
+import {
+  themePreference$,
+  setTheme$,
+  type ThemePreference,
+} from "../../signals/theme.ts";
+
+const THEME_OPTIONS: {
+  value: ThemePreference;
+  label: string;
+  icon: typeof IconSun;
+}[] = [
+  { value: "light", label: "Light", icon: IconSun },
+  { value: "dark", label: "Dark", icon: IconMoon },
+  { value: "system", label: "System", icon: IconDeviceDesktop },
+];
+
+function AppearanceSettings() {
+  const prefLoadable = useLoadable(themePreference$);
+  const currentPref =
+    prefLoadable.state === "hasData" ? prefLoadable.data : "system";
+  const setTheme = useSet(setTheme$);
+
+  return (
+    <Card className="zero-card">
+      <CardContent className="py-5 flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Theme
+          </span>
+          <p className="text-sm text-muted-foreground">
+            Choose how the interface looks.
+          </p>
+          <div className="flex gap-2 mt-1">
+            {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTheme(value)}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  currentPref === value
+                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                    : "zero-chip text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon size={16} stroke={1.5} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function ZeroPreferencesPage() {
-  const tab$ = useCCState("notifications");
+  const tab$ = useCCState("appearance");
   const tab = useGet(tab$);
   const setTab = useSet(tab$);
 
@@ -17,7 +74,7 @@ export function ZeroPreferencesPage() {
             Preferences
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your notification and agent runtime preferences
+            Manage your appearance, notification and agent runtime preferences
           </p>
         </div>
       </header>
@@ -26,6 +83,12 @@ export function ZeroPreferencesPage() {
         <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-8">
           <Tabs value={tab} onValueChange={(v) => setTab(v)}>
             <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+              <TabsTrigger
+                value="appearance"
+                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+              >
+                Appearance
+              </TabsTrigger>
               <TabsTrigger
                 value="notifications"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -41,6 +104,7 @@ export function ZeroPreferencesPage() {
             </TabsList>
 
             <div className="mt-4">
+              {tab === "appearance" && <AppearanceSettings />}
               {tab === "notifications" && <NotificationSettings />}
               {tab === "timezone" && <TimezoneSettings />}
             </div>

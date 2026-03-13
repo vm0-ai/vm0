@@ -655,6 +655,8 @@ interface ZeroChatPageProps {
   onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (message: string) => void;
   zeroAvatarSrc?: string;
+  /** Override agent name when chatting with a sub-agent. */
+  chatAgentName?: string;
   onAvatarClick?: () => void;
 }
 
@@ -667,11 +669,13 @@ export function ZeroChatPage({
   onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = "/zero-avatar.png",
+  chatAgentName,
   onAvatarClick,
 }: ZeroChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
+  const defaultAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const agentName = chatAgentName ?? defaultAgentName;
   const input$ = useCCState("");
   const input = useGet(input$);
   const setInput = useSet(input$);

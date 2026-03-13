@@ -1,24 +1,58 @@
 import { command, computed, state } from "ccstate";
 
-const internalTheme$ = state<"light" | "dark">("light");
+export type ThemePreference = "light" | "dark" | "system";
+
+const internalPreference$ = state<ThemePreference>("system");
+const internalResolved$ = state<"light" | "dark">("light");
 
 /**
- * Current theme value.
+ * Current resolved theme value (always "light" or "dark").
  */
-export const theme$ = computed((get) => get(internalTheme$));
+export const theme$ = computed((get) => get(internalResolved$));
+
+/**
+ * User's theme preference ("light", "dark", or "system").
+ */
+export const themePreference$ = computed((get) => get(internalPreference$));
+
+function resolveTheme(preference: ThemePreference): "light" | "dark" {
+  if (preference === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  return preference;
+}
+
+function applyTheme(theme: "light" | "dark") {
+  document.documentElement.dataset.theme = theme;
+  if (theme === "dark") {
+    document.documentElement.classList.add("dark");
+  } else {
+    document.documentElement.classList.remove("dark");
+  }
+}
+
+/**
+ * Set theme preference and apply it.
+ */
+export const setTheme$ = command(({ set }, preference: ThemePreference) => {
+  set(internalPreference$, preference);
+  const resolved = resolveTheme(preference);
+  set(internalResolved$, resolved);
+  applyTheme(resolved);
+  localStorage.setItem("theme", preference);
+});
 
 /**
  * Toggle between light and dark theme.
  */
 export const toggleTheme$ = command(({ get, set }) => {
-  const currentTheme = get(internalTheme$);
-  const newTheme = currentTheme === "light" ? "dark" : "light";
-  set(internalTheme$, newTheme);
-
-  // Update the data-theme attribute on the root element
-  document.documentElement.dataset.theme = newTheme;
-
-  // Store preference in localStorage
+  const current = get(internalResolved$);
+  const newTheme = current === "light" ? "dark" : "light";
+  set(internalPreference$, newTheme);
+  set(internalResolved$, newTheme);
+  applyTheme(newTheme);
   localStorage.setItem("theme", newTheme);
 });
 
@@ -26,18 +60,24 @@ export const toggleTheme$ = command(({ get, set }) => {
  * Initialize theme from localStorage or system preference.
  */
 export const initTheme$ = command(({ set }) => {
-  // Check localStorage first
-  const stored = localStorage.getItem("theme") as "light" | "dark" | null;
+  const stored = localStorage.getItem("theme") as ThemePreference | null;
+  const preference = stored ?? "system";
+  set(internalPreference$, preference);
+  const resolved = resolveTheme(preference);
+  set(internalResolved$, resolved);
+  applyTheme(resolved);
 
-  if (stored) {
-    set(internalTheme$, stored);
-    document.documentElement.dataset.theme = stored;
-    return;
-  }
-
-  // Fall back to system preference
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const theme = prefersDark ? "dark" : "light";
-  set(internalTheme$, theme);
-  document.documentElement.dataset.theme = theme;
+  // Listen for system theme changes when preference is "system"
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", () => {
+      const currentPref = localStorage.getItem(
+        "theme",
+      ) as ThemePreference | null;
+      if (!currentPref || currentPref === "system") {
+        const newResolved = resolveTheme("system");
+        set(internalResolved$, newResolved);
+        applyTheme(newResolved);
+      }
+    });
 });

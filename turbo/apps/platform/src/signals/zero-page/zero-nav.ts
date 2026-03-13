@@ -1,6 +1,14 @@
 import { command, computed } from "ccstate";
 import { pathname$, updatePathname$ } from "../route.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
 import type { ZeroNavId } from "../../views/zero-page/zero-sidebar.tsx";
+
+const CHAT_AGENT_KEY = "zero.chatAgentId";
+const {
+  get$: storedChatAgentId$,
+  set$: persistChatAgentId$,
+  clear$: clearChatAgentId$,
+} = localStorageSignals(CHAT_AGENT_KEY);
 
 function isValidTab(tab: string): tab is ZeroNavId {
   return (
@@ -47,6 +55,14 @@ export const zeroSessionId$ = computed((get): string | null => {
 });
 
 /**
+ * Currently selected chat agent ID, persisted in localStorage.
+ * Returns null when chatting with the default/main agent (Zero).
+ */
+export const zeroChatAgentId$ = computed((get): string | null => {
+  return get(storedChatAgentId$);
+});
+
+/**
  * Navigate to a zero tab — updates the URL path to `/zero/:tab`.
  * "chat" maps to `/zero` (the default, no suffix needed).
  */
@@ -54,6 +70,20 @@ export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
   const newPath = id === "chat" ? "/zero" : `/zero/${id}`;
   set(updatePathname$, newPath);
 });
+
+/**
+ * Set the chat agent ID, persisted in localStorage.
+ * Pass null to clear (chat with default agent).
+ */
+export const setZeroChatAgentId$ = command(
+  ({ set }, agentId: string | null) => {
+    if (agentId) {
+      set(persistChatAgentId$, agentId);
+    } else {
+      set(clearChatAgentId$);
+    }
+  },
+);
 
 /**
  * Sub-path segment under the current tab, e.g. `/zero/activity/:sub`.

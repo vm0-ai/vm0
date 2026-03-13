@@ -119,6 +119,7 @@ const agentDefinitionSchema = z.object({
   metadata: z
     .object({
       displayName: z.string().optional(),
+      description: z.string().optional(),
       sound: z.string().optional(),
     })
     .optional(),
@@ -332,6 +333,7 @@ const composeListItemSchema = z.object({
   id: z.string(),
   name: z.string(),
   displayName: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
   isOwner: z.boolean(),

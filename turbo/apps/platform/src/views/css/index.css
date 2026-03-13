@@ -214,11 +214,19 @@
   border: 1px solid var(--zero-card-border);
   border-radius: var(--zero-card-radius);
   box-shadow: var(--zero-card-shadow);
+  transition: background-color 0.15s;
+}
+.zero-app .zero-card:hover {
+  background-color: hsl(220 6% 98%);
 }
 .dark .zero-app .zero-card,
 [data-theme="dark"] .zero-app .zero-card {
   background-color: hsl(220 12% 12%);
   border-color: hsl(220 8% 22%);
+}
+.dark .zero-app .zero-card:hover,
+[data-theme="dark"] .zero-app .zero-card:hover {
+  background-color: hsl(220 12% 14%);
 }
 
 /* Onboarding modal footer: frosted glass */
@@ -666,26 +674,26 @@ details[open] > summary > span:first-child {
     14px 14px;
 }
 
-@media (prefers-color-scheme: dark) {
-  .zero-workspace-bg::before {
-    background-image:
-      radial-gradient(
-        ellipse 100% 70% at 50% 0%,
-        hsl(var(--background-50) / 0.4),
-        transparent 48%
-      ),
-      radial-gradient(
-        circle at center,
-        hsl(var(--foreground) / 0.05) 1px,
-        transparent 1px
-      );
-    background-size:
-      100% 100%,
-      14px 14px;
-  }
+.dark .zero-workspace-bg::before,
+[data-theme="dark"] .zero-workspace-bg::before {
+  background-image:
+    radial-gradient(
+      ellipse 100% 70% at 50% 0%,
+      hsl(var(--background-50) / 0.4),
+      transparent 48%
+    ),
+    radial-gradient(
+      circle at center,
+      hsl(var(--foreground) / 0.05) 1px,
+      transparent 1px
+    );
+  background-size:
+    100% 100%,
+    14px 14px;
+}
 
-  .zero-nav {
-    --color-sidebar-border: hsl(220 8% 26%);
-    --color-divider: hsl(220 10% 28%);
-  }
+.dark .zero-nav,
+[data-theme="dark"] .zero-nav {
+  --color-sidebar-border: hsl(220 8% 26%);
+  --color-divider: hsl(220 10% 28%);
 }

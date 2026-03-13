@@ -1,5 +1,6 @@
 interface AgentMetadata {
   displayName?: string;
+  description?: string;
   sound?: string;
 }
 
@@ -44,6 +45,10 @@ function stripProfileBlocks(content: string): string {
   return result;
 }
 
+/** Legacy description block injected by earlier versions. */
+const LEGACY_DESCRIPTION_REGEX =
+  /<!-- AGENT_DESCRIPTION_START -->\n[\s\S]*?<!-- AGENT_DESCRIPTION_END -->\n*/g;
+
 /** Keys used by the legacy YAML frontmatter format. */
 const LEGACY_METADATA_KEYS = new Set(["name", "tone"]);
 
@@ -86,6 +91,10 @@ function buildProfileParagraph(metadata: AgentMetadata): string | null {
 
   if (metadata.displayName) {
     parts.push(`Your name is ${metadata.displayName}.`);
+  }
+
+  if (metadata.description) {
+    parts.push(metadata.description);
   }
 
   if (metadata.sound) {

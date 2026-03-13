@@ -33,8 +33,11 @@ const router = tsr.router(onboardingStatusContract, {
     let hasDefaultAgent = false;
     let defaultAgentName: string | null = null;
     let defaultAgentComposeId: string | null = null;
-    let defaultAgentMetadata: { displayName?: string; sound?: string } | null =
-      null;
+    let defaultAgentMetadata: {
+      displayName?: string;
+      description?: string;
+      sound?: string;
+    } | null = null;
 
     try {
       const { org: resolvedOrg } = await resolveOrg(userId);

@@ -960,6 +960,13 @@
       "when": 1773400000100,
       "tag": "0136_volume_org_user_id",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1773400000110,
+      "tag": "0137_add_pinned_agent_ids",
+      "breakpoints": true
     }
   ]
 }

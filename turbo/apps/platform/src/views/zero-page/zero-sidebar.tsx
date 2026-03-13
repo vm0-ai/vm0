@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
-import { useLoadable, useGet, useSet } from "ccstate-react";
+import { useLoadable, useLastLoadable, useGet, useSet } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import {
-  IconMessageCircle,
-  IconRobot,
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
@@ -19,6 +17,9 @@ import {
   IconRefresh,
   IconSearch,
   IconX,
+  IconEdit,
+  IconChevronDown,
+  IconLayoutSidebarLeftCollapse,
 } from "@tabler/icons-react";
 import type { SessionListItem } from "@vm0/core";
 import {
@@ -30,12 +31,50 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  cn,
 } from "@vm0/ui";
 import slackIcon from "../settings-page/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import {
+  pinnedAgentIds$,
+  savingPinnedAgents$,
+  updatePinnedAgentIds$,
+} from "../../signals/zero-page/zero-pinned-agents.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
+
+/** Max pinned sub-agents (default agent counts as 1, total slots = 5). */
+const MAX_PINNED = 4;
+
+const AGENT_AVATARS = [
+  "/avatars/avatar-1.png",
+  "/avatars/avatar-2.png",
+  "/avatars/avatar-3.png",
+  "/avatars/avatar-4.png",
+] as const;
+
+export function getAgentAvatar(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return AGENT_AVATARS[Math.abs(hash) % AGENT_AVATARS.length];
+}
+
+export interface SubagentInfo {
+  id: string;
+  name: string;
+  displayName?: string | null;
+}
 
 export type ZeroNavId =
   | "chat"
@@ -48,12 +87,10 @@ export type ZeroNavId =
   | "preferences";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
-const MAIN_NAV = [
-  { id: "chat", label: "Chat with Zero", icon: IconMessageCircle as NavIcon },
-  { id: "meet", label: "Meet Zero", icon: IconRobot as NavIcon },
+const MANAGE_NAV = [
   { id: "team", label: "Zero's team", icon: IconUsers as NavIcon },
   { id: "schedule", label: "Schedule", icon: IconCalendar as NavIcon },
-  { id: "activity", label: "Activities", icon: IconChartLine as NavIcon },
+  { id: "activity", label: "Activity logs", icon: IconChartLine as NavIcon },
 ] as const;
 
 const FOOTER_NAV = [
@@ -85,6 +122,11 @@ interface SessionAccount {
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
   agentName?: string | null;
+  zeroAvatarSrc?: string;
+  subagents?: SubagentInfo[];
+  currentChatAgentId?: string | null;
+  collapsed?: boolean;
+  onCollapse?: () => void;
   onSelect: (id: ZeroNavId) => void;
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
@@ -92,7 +134,7 @@ interface ZeroSidebarProps {
   recentSessions?: SessionListItem[];
   recentSessionsLoading?: boolean;
   recentSessionsError?: string | null;
-  onNewChat?: () => void;
+  onNewChat?: (agentId: string | null) => void;
   onResetAgent?: () => void;
 }
 
@@ -150,10 +192,12 @@ function AccountDropdown({
   activeId,
   onAccountAction,
   onResetAgent,
+  collapsed = false,
 }: {
   activeId: ZeroNavId;
   onAccountAction?: (action: ZeroAccountAction) => void;
   onResetAgent?: () => void;
+  collapsed?: boolean;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
   const accountName = user?.fullName ?? "User";
@@ -190,10 +234,14 @@ function AccountDropdown({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className={`flex w-full items-center gap-2 rounded-lg p-2 text-left transition-colors duration-200 ${
-            activeId === "preferences"
-              ? "bg-sidebar-active"
-              : "hover:bg-sidebar-accent/50"
+          className={`flex items-center rounded-lg transition-colors duration-200 ${
+            collapsed
+              ? "justify-center p-2 h-10 w-10"
+              : `w-full gap-2 p-2 text-left ${
+                  activeId === "preferences"
+                    ? "bg-sidebar-active"
+                    : "hover:bg-sidebar-accent/50"
+                }`
           }`}
         >
           <AccountAvatar
@@ -201,26 +249,28 @@ function AccountDropdown({
             name={accountName}
             initial={accountInitial}
           />
-          <div className="flex-1 min-w-0">
-            <p
-              className={`text-sm font-medium leading-tight truncate ${
-                activeId === "preferences"
-                  ? "text-sidebar-primary"
-                  : "text-sidebar-foreground"
-              }`}
-            >
-              {accountName}
-            </p>
-            <p
-              className={`text-xs leading-tight truncate mt-px ${
-                activeId === "preferences"
-                  ? "text-sidebar-primary/80"
-                  : "text-sidebar-foreground opacity-70"
-              }`}
-            >
-              {accountEmail}
-            </p>
-          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p
+                className={`text-sm font-medium leading-tight truncate ${
+                  activeId === "preferences"
+                    ? "text-sidebar-primary"
+                    : "text-sidebar-foreground"
+                }`}
+              >
+                {accountName}
+              </p>
+              <p
+                className={`text-xs leading-tight truncate mt-px ${
+                  activeId === "preferences"
+                    ? "text-sidebar-primary/80"
+                    : "text-sidebar-foreground opacity-70"
+                }`}
+              >
+                {accountEmail}
+              </p>
+            </div>
+          )}
         </button>
       </DropdownMenuTrigger>
 
@@ -480,9 +530,208 @@ function RecentChatSection({
   );
 }
 
+function ManagePinnedAgentsDialog({
+  open,
+  onOpenChange,
+  zeroAvatarSrc,
+  displayName,
+  subagents,
+  pinnedIds,
+  onPinnedIdsChange,
+  saving = false,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  saving?: boolean;
+  zeroAvatarSrc: string;
+  displayName: string;
+  subagents: SubagentInfo[];
+  pinnedIds: string[];
+  onPinnedIdsChange: (ids: string[]) => void;
+}) {
+  const orderedPinned = pinnedIds
+    .map((id) => subagents.find((a) => a.id === id))
+    .filter((a): a is SubagentInfo => a !== undefined);
+
+  const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
+
+  const moveUp = (idx: number) => {
+    if (idx <= 0) return;
+    const next = [...pinnedIds];
+    [next[idx - 1], next[idx]] = [next[idx]!, next[idx - 1]!];
+    onPinnedIdsChange(next);
+  };
+
+  const moveDown = (idx: number) => {
+    if (idx >= pinnedIds.length - 1) return;
+    const next = [...pinnedIds];
+    [next[idx], next[idx + 1]] = [next[idx + 1]!, next[idx]!];
+    onPinnedIdsChange(next);
+  };
+
+  const togglePin = (agentId: string) => {
+    if (pinnedIds.includes(agentId)) {
+      onPinnedIdsChange(pinnedIds.filter((id) => id !== agentId));
+    } else if (pinnedIds.length < MAX_PINNED) {
+      onPinnedIdsChange([...pinnedIds, agentId]);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[400px] p-0 gap-0">
+        <DialogHeader className="px-5 pt-5 pb-3">
+          <div className="flex items-center gap-2">
+            <DialogTitle className="text-base font-semibold">
+              Manage pinned agents
+            </DialogTitle>
+            {saving && (
+              <IconLoader2
+                size={14}
+                className="animate-spin text-muted-foreground"
+              />
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Reorder or add agents to your sidebar (max {MAX_PINNED}).
+          </p>
+        </DialogHeader>
+
+        <div className="px-5 pb-2">
+          {/* Zero — always pinned */}
+          <div className="flex items-center gap-3 px-1 py-2.5 rounded-lg">
+            <div className="w-5 shrink-0" />
+            <img
+              src={zeroAvatarSrc}
+              alt={displayName}
+              className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+            />
+            <span className="text-sm font-medium text-foreground flex-1 truncate">
+              {displayName}
+            </span>
+            <span className="text-xs text-muted-foreground mr-1">Main</span>
+          </div>
+        </div>
+
+        {orderedPinned.length > 0 && (
+          <div className="px-5 pb-2">
+            <div className="border-t border-border/60 mb-2" />
+            <span className="text-xs font-medium text-muted-foreground px-1">
+              Pinned
+            </span>
+            <div className="flex flex-col mt-1">
+              {orderedPinned.map((agent, idx) => (
+                <div
+                  key={agent.id}
+                  className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
+                >
+                  <div className="flex flex-col shrink-0 w-5 items-center gap-0.5">
+                    <button
+                      type="button"
+                      className={cn(
+                        "text-muted-foreground/40 hover:text-foreground transition-colors",
+                        idx === 0 && "invisible",
+                      )}
+                      onClick={() => moveUp(idx)}
+                      aria-label="Move up"
+                    >
+                      <IconChevronDown size={14} className="rotate-180" />
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "text-muted-foreground/40 hover:text-foreground transition-colors",
+                        idx === orderedPinned.length - 1 && "invisible",
+                      )}
+                      onClick={() => moveDown(idx)}
+                      aria-label="Move down"
+                    >
+                      <IconChevronDown size={14} />
+                    </button>
+                  </div>
+                  <img
+                    src={getAgentAvatar(agent.name)}
+                    alt={agent.displayName ?? agent.name}
+                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+                  />
+                  <span className="text-sm text-foreground flex-1 truncate">
+                    {agent.displayName ?? agent.name}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-muted-foreground/50 hover:text-destructive transition-colors p-1"
+                    onClick={() => togglePin(agent.id)}
+                    aria-label={`Unpin ${agent.displayName ?? agent.name}`}
+                  >
+                    <IconPlus size={14} className="rotate-45" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {unpinned.length > 0 && (
+          <div className="px-5 pb-5">
+            <div className="border-t border-border/60 mb-2" />
+            <span className="text-xs font-medium text-muted-foreground px-1">
+              Available agents
+            </span>
+            <div className="flex flex-col mt-1">
+              {unpinned.map((agent) => (
+                <div
+                  key={agent.id}
+                  className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="w-5 shrink-0" />
+                  <img
+                    src={getAgentAvatar(agent.name)}
+                    alt={agent.displayName ?? agent.name}
+                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top opacity-60"
+                  />
+                  <span className="text-sm text-muted-foreground flex-1 truncate">
+                    {agent.displayName ?? agent.name}
+                  </span>
+                  <button
+                    type="button"
+                    className={cn(
+                      "transition-colors p-1 text-xs font-medium",
+                      pinnedIds.length >= MAX_PINNED
+                        ? "text-muted-foreground/30 cursor-not-allowed"
+                        : "text-primary hover:text-primary/80",
+                    )}
+                    onClick={() => togglePin(agent.id)}
+                    disabled={pinnedIds.length >= MAX_PINNED}
+                  >
+                    Pin
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {subagents.length === 0 && (
+          <div className="px-5 pb-5">
+            <div className="border-t border-border/60 mb-2" />
+            <p className="text-xs text-muted-foreground px-1 py-2">
+              No sub-agents available yet.
+            </p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ZeroSidebar({
   activeId,
   agentName,
+  zeroAvatarSrc = "/zero-avatar.png",
+  subagents = [],
+  currentChatAgentId = null,
+  collapsed = false,
+  onCollapse,
   onSelect,
   onRecentSelect,
   selectedRecentId = null,
@@ -494,7 +743,35 @@ export function ZeroSidebar({
   onResetAgent,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
-  const mainNav = MAIN_NAV.map((item) => ({
+  const chatExpanded$ = useCCState(true);
+  const chatExpanded = useGet(chatExpanded$);
+  const setChatExpanded = useSet(chatExpanded$);
+  const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
+  const pinnedIds =
+    pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
+  const savingPinned = useGet(savingPinnedAgents$);
+  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const setPinnedIds = (ids: string[]) => {
+    detach(savePinnedIds(ids), Reason.DomCallback);
+  };
+  const managePinnedOpen$ = useCCState(false);
+  const managePinnedOpen = useGet(managePinnedOpen$);
+  const setManagePinnedOpen = useSet(managePinnedOpen$);
+
+  // Resolve the selected agent label
+  const selectedAgent = currentChatAgentId
+    ? subagents.find((a) => a.id === currentChatAgentId)
+    : null;
+  const talkToLabel = selectedAgent
+    ? (selectedAgent.displayName ?? selectedAgent.name)
+    : displayName;
+
+  // Pinned agents resolved from IDs
+  const pinnedAgents = pinnedIds
+    .map((id) => subagents.find((a) => a.id === id))
+    .filter((a): a is SubagentInfo => a !== undefined);
+
+  const manageNav = MANAGE_NAV.map((item) => ({
     ...item,
     label: item.label.replace("Zero", displayName),
   }));
@@ -503,29 +780,111 @@ export function ZeroSidebar({
     label: item.label.replace("Zero", displayName),
   }));
 
+  const allNavItems = [
+    ...manageNav,
+    { id: "chat" as const, label: "New chat", icon: IconEdit as NavIcon },
+    ...footerNav.map(({ id, label, icon }) => ({ id, label, icon })),
+  ];
+
+  if (collapsed) {
+    return (
+      <VM0ClerkProvider>
+        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
+          {/* Expand button */}
+          <div className="shrink-0 flex items-center justify-center pt-3 pb-1">
+            <button
+              type="button"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              onClick={onCollapse}
+              aria-label="Expand sidebar"
+            >
+              <IconLayoutSidebarLeftCollapse size={18} className="rotate-180" />
+            </button>
+          </div>
+
+          {/* Icon-only nav */}
+          <nav className="flex-1 flex flex-col items-center gap-1 p-2">
+            <TooltipProvider delayDuration={100}>
+              {allNavItems.map(({ id, label, icon: Icon }) => (
+                <Tooltip key={id}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (id === "chat") {
+                          onSelect("chat");
+                          onNewChat?.(null);
+                        } else {
+                          onSelect(id);
+                        }
+                      }}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-200 ${
+                        activeId === id
+                          ? "bg-sidebar-active text-sidebar-primary"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent"
+                      }`}
+                    >
+                      <Icon size={16} className="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p className="text-xs">{label}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </TooltipProvider>
+          </nav>
+
+          {/* Account avatar */}
+          <div className="p-2 flex justify-center">
+            <AccountDropdown
+              activeId={activeId}
+              onAccountAction={onAccountAction}
+              onResetAgent={onResetAgent}
+              collapsed
+            />
+          </div>
+        </aside>
+      </VM0ClerkProvider>
+    );
+  }
+
   return (
     <VM0ClerkProvider>
-      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
+      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
         {/* Organization switcher */}
-        <div className="shrink-0 p-2 pb-1">
-          <div className="rounded-lg p-2">
-            <ClerkOrgSwitcher />
+        <div className="shrink-0 px-2 pt-1.5 pb-0">
+          <div className="flex items-center justify-between rounded-lg pr-0 py-0.5">
+            <div className="flex-1 min-w-0">
+              <ClerkOrgSwitcher />
+            </div>
+            <button
+              type="button"
+              className="flex h-7 w-7 -mr-[3px] shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              onClick={onCollapse}
+              aria-label="Collapse sidebar"
+            >
+              <IconLayoutSidebarLeftCollapse size={18} />
+            </button>
           </div>
         </div>
 
-        {/* Main nav */}
-        <nav className="flex-1 flex flex-col min-h-0 overflow-hidden p-2">
-          <div className="shrink-0 flex flex-col gap-1">
-            {mainNav.map(({ id, label, icon: Icon }) => {
-              const isActive =
-                activeId === id && !(id === "chat" && selectedRecentId);
-              return (
+        <nav className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1">
+          {/* Manage section */}
+          <div className="shrink-0">
+            <div className="h-7 flex items-center pl-2">
+              <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
+                Manage
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              {manageNav.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => onSelect(id)}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                    isActive
+                    activeId === id
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
@@ -533,8 +892,106 @@ export function ZeroSidebar({
                   <Icon size={16} className="shrink-0" />
                   <span className="truncate">{label}</span>
                 </button>
-              );
-            })}
+              ))}
+            </div>
+          </div>
+
+          {/* Chat section */}
+          <div className="shrink-0 mt-4">
+            <button
+              type="button"
+              className="flex h-7 w-full items-center gap-1 px-2 text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+              onClick={() => setChatExpanded(!chatExpanded)}
+            >
+              <span className="text-[13px] font-medium truncate">
+                Talk to {talkToLabel}
+              </span>
+              <IconChevronDown
+                size={14}
+                className={`shrink-0 transition-transform ${chatExpanded ? "" : "-rotate-90"}`}
+              />
+            </button>
+            {chatExpanded && (
+              <div className="flex items-center gap-1.5 px-2 pb-1 pt-1">
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
+                          currentChatAgentId === null
+                            ? "bg-foreground/10"
+                            : "hover:bg-foreground/5"
+                        }`}
+                        onClick={() => onNewChat?.(null)}
+                      >
+                        <img
+                          src={zeroAvatarSrc}
+                          alt={displayName}
+                          className="h-full w-full object-cover object-top"
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      {displayName}
+                    </TooltipContent>
+                  </Tooltip>
+                  {pinnedAgents.map((agent) => (
+                    <Tooltip key={agent.id}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
+                            currentChatAgentId === agent.id
+                              ? "bg-foreground/10"
+                              : "hover:bg-foreground/5"
+                          }`}
+                          onClick={() => onNewChat?.(agent.id)}
+                        >
+                          <img
+                            src={getAgentAvatar(agent.name)}
+                            alt={agent.displayName ?? agent.name}
+                            className="h-full w-full object-cover object-top"
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs">
+                        {agent.displayName ?? agent.name}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-dashed border-sidebar-foreground/25 text-sidebar-foreground/30 hover:border-sidebar-foreground/40 hover:text-sidebar-foreground/60 transition-colors"
+                        aria-label="Manage pinned agents"
+                        onClick={() => setManagePinnedOpen(true)}
+                      >
+                        <IconPlus size={14} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      Manage pinned agents
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
+            <div className="flex flex-col gap-1 mt-1">
+              <button
+                type="button"
+                onClick={() => onSelect("chat")}
+                className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                  activeId === "chat" && !selectedRecentId
+                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                }`}
+              >
+                <IconEdit size={16} className="shrink-0" />
+                <span className="truncate">New chat</span>
+              </button>
+            </div>
           </div>
 
           {/* Recent chat sessions */}
@@ -544,7 +1001,7 @@ export function ZeroSidebar({
             recentSessionsError={recentSessionsError}
             selectedRecentId={selectedRecentId}
             onRecentSelect={onRecentSelect}
-            onNewChat={onNewChat}
+            onNewChat={() => onNewChat?.(currentChatAgentId ?? null)}
           />
         </nav>
 
@@ -585,6 +1042,18 @@ export function ZeroSidebar({
           </div>
         </div>
       </aside>
+
+      {/* Manage pinned agents dialog */}
+      <ManagePinnedAgentsDialog
+        open={managePinnedOpen}
+        onOpenChange={setManagePinnedOpen}
+        zeroAvatarSrc={zeroAvatarSrc}
+        displayName={displayName}
+        subagents={subagents}
+        pinnedIds={pinnedIds}
+        onPinnedIdsChange={setPinnedIds}
+        saving={savingPinned}
+      />
     </VM0ClerkProvider>
   );
 }

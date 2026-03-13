@@ -44,6 +44,7 @@ const router = tsr.router(userPreferencesContract, {
         timezone: prefs.timezone,
         notifyEmail: prefs.notifyEmail,
         notifySlack: prefs.notifySlack,
+        pinnedAgentIds: prefs.pinnedAgentIds,
       },
     };
   },
@@ -74,6 +75,7 @@ const router = tsr.router(userPreferencesContract, {
         timezone: body.timezone,
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,
+        pinnedAgentIds: body.pinnedAgentIds,
       });
 
       return {
@@ -82,6 +84,7 @@ const router = tsr.router(userPreferencesContract, {
           timezone: prefs.timezone,
           notifyEmail: prefs.notifyEmail,
           notifySlack: prefs.notifySlack,
+          pinnedAgentIds: prefs.pinnedAgentIds,
         },
       };
     } catch (error) {

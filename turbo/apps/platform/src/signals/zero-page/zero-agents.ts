@@ -1,23 +1,13 @@
 import { computed } from "ccstate";
 import {
   agentsList$,
-  schedules$,
-  agentsMissingItems$,
   agentsLoading$,
   agentsError$,
   fetchAgentsList$,
-  getAgentScheduleStatus,
 } from "../agents-page/agents-list.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 
-export {
-  schedules$,
-  agentsMissingItems$,
-  agentsLoading$,
-  agentsError$,
-  fetchAgentsList$,
-  getAgentScheduleStatus,
-};
+export { agentsLoading$, agentsError$, fetchAgentsList$ };
 
 /**
  * Non-default agents for display in the Zero team page.

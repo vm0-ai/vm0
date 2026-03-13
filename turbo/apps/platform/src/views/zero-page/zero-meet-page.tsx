@@ -7,8 +7,18 @@ import {
   IconPlug,
   IconCalendar,
   IconCrown,
+  IconArrowLeft,
 } from "@tabler/icons-react";
-import { Button, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import {
+  Button,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
 import { ZeroSkillsTab } from "./zero-skills-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
@@ -26,7 +36,7 @@ import {
   deleteZeroSchedule$,
   toggleZeroScheduleEnabled$,
 } from "../../signals/zero-page/zero-schedule.ts";
-import { updatePathname$ } from "../../signals/route.ts";
+import { updatePathname$, navigateInReact$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroInstructions$,
@@ -180,6 +190,7 @@ export function ZeroMeetPage({
   onAvatarClick,
 }: ZeroMeetPageProps) {
   const navigate = useSet(updatePathname$);
+  const navigateRoute = useSet(navigateInReact$);
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -188,6 +199,10 @@ export function ZeroMeetPage({
     metadataLoadable.state === "hasData"
       ? (metadataLoadable.data?.sound ?? "professional")
       : "professional";
+  const resolvedDescription =
+    metadataLoadable.state === "hasData"
+      ? (metadataLoadable.data?.description ?? "")
+      : "";
   const resolvedSound: Tone = (TONE_OPTIONS as readonly string[]).includes(
     rawSound,
   )
@@ -198,10 +213,10 @@ export function ZeroMeetPage({
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search)
       : new URLSearchParams();
-  const validTabs = ["skills", "schedule", "settings", "instructions"];
+  const validTabs = ["connectors", "schedule", "profile", "instructions"];
   const initialTab = validTabs.includes(params.get("tab") ?? "")
     ? params.get("tab")!
-    : "skills";
+    : "connectors";
   const activeTab$ = useCCState(initialTab);
   const activeTab = useGet(activeTab$);
   const rawSetActiveTab = useSet(activeTab$);
@@ -209,7 +224,7 @@ export function ZeroMeetPage({
     rawSetActiveTab(tab);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (tab === "skills") {
+      if (tab === "connectors") {
         url.searchParams.delete("tab");
       } else {
         url.searchParams.set("tab", tab);
@@ -222,6 +237,19 @@ export function ZeroMeetPage({
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
         <div className="mx-auto max-w-[900px] px-7">
+          <div className="mb-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 -ml-2"
+              onClick={() =>
+                navigateRoute("/zero/:tab", { pathParams: { tab: "team" } })
+              }
+              aria-label="Back to team"
+            >
+              <IconArrowLeft size={20} stroke={1.5} />
+            </Button>
+          </div>
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -251,7 +279,7 @@ export function ZeroMeetPage({
                 </span>
               </div>
               <p className="text-sm text-muted-foreground mt-0.5 leading-tight">
-                Your AI teammate, tuned to you
+                {resolvedDescription || "Your AI teammate, tuned to you"}
               </p>
             </div>
           </div>
@@ -264,11 +292,11 @@ export function ZeroMeetPage({
             >
               <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
                 <TabsTrigger
-                  value="skills"
+                  value="connectors"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconPlug size={14} stroke={1.5} />
-                  Skills
+                  Connectors
                 </TabsTrigger>
                 <TabsTrigger
                   value="schedule"
@@ -278,11 +306,11 @@ export function ZeroMeetPage({
                   Schedule
                 </TabsTrigger>
                 <TabsTrigger
-                  value="settings"
+                  value="profile"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconUser size={14} stroke={1.5} />
-                  Settings
+                  Profile
                 </TabsTrigger>
                 <TabsTrigger
                   value="instructions"
@@ -293,29 +321,42 @@ export function ZeroMeetPage({
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            <Button
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
-              onClick={() => navigate("/zero/chat")}
-            >
-              <IconMessageCircle size={14} stroke={1.5} />
-              Just ask
-            </Button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+                    onClick={() => navigate("/zero/chat")}
+                  >
+                    <IconMessageCircle size={14} stroke={1.5} />
+                    Chat with {resolvedAgentName}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="max-w-[220px] text-center"
+                >
+                  Make updates or assign tasks
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        {activeTab === "skills" && <MeetSkillsTab />}
+        {activeTab === "connectors" && <MeetSkillsTab />}
 
         {activeTab === "schedule" && (
           <MeetScheduleTab agentName={resolvedAgentName} />
         )}
 
-        {activeTab === "settings" && (
+        {activeTab === "profile" && (
           <ZeroSettingsTab
             agentName={resolvedAgentName}
+            description={resolvedDescription}
             sound={resolvedSound}
             saving={saving}
             updateSettings$={zeroUpdateSettings$}

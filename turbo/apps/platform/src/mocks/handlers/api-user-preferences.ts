@@ -11,6 +11,7 @@ let mockPreferences: UserPreferencesResponse = {
   timezone: null,
   notifyEmail: false,
   notifySlack: false,
+  pinnedAgentIds: [],
 };
 
 export function resetMockUserPreferences(): void {
@@ -18,6 +19,7 @@ export function resetMockUserPreferences(): void {
     timezone: null,
     notifyEmail: false,
     notifySlack: false,
+    pinnedAgentIds: [],
   };
 }
 
@@ -39,6 +41,9 @@ export const apiUserPreferencesHandlers = [
     }
     if (body.timezone !== undefined) {
       mockPreferences.timezone = body.timezone;
+    }
+    if (body.pinnedAgentIds !== undefined) {
+      mockPreferences.pinnedAgentIds = body.pinnedAgentIds;
     }
 
     return HttpResponse.json(mockPreferences);

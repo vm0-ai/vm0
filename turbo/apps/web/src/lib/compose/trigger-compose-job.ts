@@ -9,7 +9,6 @@ import { env } from "../../env";
 import { e2bConfig } from "../e2b/config";
 import { logger } from "../logger";
 import { notifySlackComposeComplete } from "../slack/handlers/compose-notification";
-import { injectMetadataFrontmatter } from "@vm0/core";
 
 const log = logger("compose:trigger");
 
@@ -200,25 +199,6 @@ main().catch(async (error) => {
 `;
 
 /**
- * Extract agent metadata from compose content.
- * Looks for the `metadata` field in the first agent's config.
- */
-function getAgentMetadata(
-  content: Record<string, unknown>,
-): { displayName?: string; sound?: string } | undefined {
-  const agents = content.agents as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  if (!agents) return undefined;
-  const agentName = Object.keys(agents)[0];
-  if (!agentName) return undefined;
-  const metadata = agents[agentName]?.metadata as
-    | { displayName?: string; sound?: string }
-    | undefined;
-  return metadata;
-}
-
-/**
  * Extract instructions filename from compose content.
  * Looks for the `instructions` field in the first agent's config.
  */
@@ -299,18 +279,14 @@ async function spawnComposeJobSandbox(
     const yamlContent = JSON.stringify(params.content, null, 2);
     await sandbox.files.write("/tmp/compose/vm0.yaml", yamlContent);
 
-    // Write instructions file if provided, with agent profile injected
+    // Write raw instructions file — metadata injection now happens at API
+    // serve time (GET /api/agent/composes/:id/instructions), not at compose time.
     if (params.instructions !== undefined) {
       const instructionsFilename = getInstructionsFilename(params.content);
       if (instructionsFilename) {
-        const metadata = getAgentMetadata(params.content);
-        const instructionsContent = injectMetadataFrontmatter(
-          params.instructions,
-          metadata,
-        );
         await sandbox.files.write(
           `/tmp/compose/${instructionsFilename}`,
-          instructionsContent,
+          params.instructions,
         );
       }
     }
@@ -383,6 +359,7 @@ interface TriggerComposeJobResult {
 async function generateComposeCliToken(
   userId: string,
   jobId: string,
+  orgId?: string,
 ): Promise<string> {
   const token = `vm0_live_${crypto.randomBytes(32).toString("base64url")}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -391,6 +368,7 @@ async function generateComposeCliToken(
     token,
     userId,
     name: `Compose Job ${jobId}`,
+    orgId: orgId ?? null,
     expiresAt,
   });
 
@@ -407,12 +385,14 @@ async function generateComposeCliToken(
 type TriggerComposeJobParams =
   | {
       userId: string;
+      orgId?: string;
       source: "github";
       githubUrl: string;
       overwrite?: boolean;
     }
   | {
       userId: string;
+      orgId?: string;
       source: "platform";
       content: Record<string, unknown>;
       instructions?: string;
@@ -480,7 +460,7 @@ export async function triggerComposeJob(
   log.debug(`Created new job ${jobId} for user ${userId}`);
 
   // Generate tokens for sandbox
-  const cliToken = await generateComposeCliToken(userId, jobId);
+  const cliToken = await generateComposeCliToken(userId, jobId, params.orgId);
   const webhookToken = await generateComposeJobToken(userId, jobId);
 
   // Build sandbox params

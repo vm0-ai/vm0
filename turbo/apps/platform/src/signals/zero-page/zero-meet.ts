@@ -49,6 +49,7 @@ const zeroComposeId$ = computed(async (get) => {
 
 interface ZeroAgentMetadata {
   displayName?: string;
+  description?: string;
   sound?: string;
 }
 
@@ -339,6 +340,7 @@ export const saveZeroSkills$ = command(async ({ get, set }) => {
  * This ensures compose jobs always include the instructions file when the
  * compose content references one (e.g., instructions: "CLAUDE.md").
  */
+
 async function resolveInstructionsContent(
   fetchFn: typeof fetch,
   composeId: string | undefined,
@@ -462,6 +464,7 @@ const syncSkillsToCompose$ = command(
 
 interface ZeroSettingsUpdate {
   displayName?: string;
+  description?: string;
   sound?: string;
 }
 
@@ -484,6 +487,9 @@ export const zeroUpdateSettings$ = command(
     if (update.displayName !== undefined) {
       newMetadata.displayName = update.displayName;
     }
+    if (update.description !== undefined) {
+      newMetadata.description = update.description;
+    }
     if (update.sound !== undefined) {
       newMetadata.sound = update.sound;
     }
@@ -491,6 +497,7 @@ export const zeroUpdateSettings$ = command(
     // Skip if nothing changed
     if (
       newMetadata.displayName === currentMetadata.displayName &&
+      newMetadata.description === currentMetadata.description &&
       newMetadata.sound === currentMetadata.sound
     ) {
       return;
@@ -506,18 +513,19 @@ export const zeroUpdateSettings$ = command(
       };
 
       const fetchFn = get(fetch$);
-      const instructions = await resolveInstructionsContent(
+      let instructions = await resolveInstructionsContent(
         fetchFn,
         compose.id,
         get(instructionsState$).instructions?.content,
       );
+
       await buildAndSetDefaultAgent(fetchFn, newContent, instructions);
 
       await set(reloadOnboardingStatus$);
       set(internalComposeReload$, (x) => x + 1);
       // Refresh instructions so the profile block reflects the new settings
       await set(fetchZeroInstructions$);
-      toast.success("Settings saved");
+      toast.success("Profile saved");
     } catch (error) {
       throwIfAbort(error);
       L.error("Failed to update settings:", error);

@@ -5,7 +5,7 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "../agent-detail/polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { navigateToZeroSession$ } from "./zero-nav.ts";
+import { navigateToZeroSession$, zeroChatAgentId$ } from "./zero-nav.ts";
 import type { SessionListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
@@ -225,14 +225,19 @@ export const removeZeroAttachment$ = command(({ set }, id: string) => {
 // ---------------------------------------------------------------------------
 
 export const fetchZeroSessionList$ = command(async ({ get, set }) => {
-  const status = await get(zeroOnboardingStatus$);
-  const composeId = status.defaultAgentComposeId;
-  if (!composeId) {
-    return;
-  }
-
+  // Clear stale data immediately (before any await)
+  set(internalSessionList$, []);
   set(internalSessionListLoading$, true);
   set(internalSessionListError$, null);
+
+  // Read the selected agent from localStorage; fall back to default agent
+  const chatAgentId = get(zeroChatAgentId$);
+  const composeId =
+    chatAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentComposeId;
+  if (!composeId) {
+    set(internalSessionListLoading$, false);
+    return;
+  }
   try {
     const fetchFn = get(fetch$);
     const res = await fetchFn(
@@ -327,8 +332,9 @@ export const startNewZeroSession$ = command(({ set }) => {
 
 export const sendZeroChatMessage$ = command(
   async ({ get, set }, prompt: string) => {
-    const status = await get(zeroOnboardingStatus$);
-    const composeId = status.defaultAgentComposeId;
+    const chatAgentId = get(zeroChatAgentId$);
+    const composeId =
+      chatAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentComposeId;
     if (!composeId || !prompt.trim()) {
       return;
     }

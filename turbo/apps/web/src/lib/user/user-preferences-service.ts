@@ -13,6 +13,7 @@ interface UserPreferences {
   timezone: string | null;
   notifyEmail: boolean;
   notifySlack: boolean;
+  pinnedAgentIds: string[];
 }
 
 /**
@@ -50,6 +51,7 @@ async function getCachedMemberPreferences(
       timezone: cached.timezone,
       notifyEmail: cached.notifyEmail,
       notifySlack: cached.notifySlack,
+      pinnedAgentIds: (cached.pinnedAgentIds as string[] | null) ?? [],
     };
   }
 
@@ -73,6 +75,9 @@ async function getCachedMemberPreferences(
       typeof meta?.notify_email === "boolean" ? meta.notify_email : false,
     notifySlack:
       typeof meta?.notify_slack === "boolean" ? meta.notify_slack : true,
+    pinnedAgentIds: Array.isArray(meta?.pinned_agent_ids)
+      ? (meta.pinned_agent_ids as string[])
+      : [],
   };
 
   // 3. Upsert cache
@@ -85,6 +90,7 @@ async function getCachedMemberPreferences(
       timezone: prefs.timezone,
       notifyEmail: prefs.notifyEmail,
       notifySlack: prefs.notifySlack,
+      pinnedAgentIds: prefs.pinnedAgentIds,
       cachedAt: now,
     })
     .onConflictDoUpdate({
@@ -93,6 +99,7 @@ async function getCachedMemberPreferences(
         timezone: prefs.timezone,
         notifyEmail: prefs.notifyEmail,
         notifySlack: prefs.notifySlack,
+        pinnedAgentIds: prefs.pinnedAgentIds,
         cachedAt: now,
       },
     });
@@ -121,6 +128,7 @@ async function upsertMemberCache(
       timezone: prefs.timezone ?? null,
       notifyEmail: prefs.notifyEmail ?? false,
       notifySlack: prefs.notifySlack ?? true,
+      pinnedAgentIds: prefs.pinnedAgentIds ?? [],
       cachedAt: now,
     })
     .onConflictDoUpdate({
@@ -132,6 +140,9 @@ async function upsertMemberCache(
         }),
         ...(prefs.notifySlack !== undefined && {
           notifySlack: prefs.notifySlack,
+        }),
+        ...(prefs.pinnedAgentIds !== undefined && {
+          pinnedAgentIds: prefs.pinnedAgentIds,
         }),
         cachedAt: now,
       },
@@ -145,6 +156,7 @@ function buildClerkMetadata(prefs: {
   timezone?: string;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  pinnedAgentIds?: string[];
 }): Record<string, unknown> {
   return {
     ...(prefs.timezone !== undefined && { timezone: prefs.timezone }),
@@ -154,7 +166,28 @@ function buildClerkMetadata(prefs: {
     ...(prefs.notifySlack !== undefined && {
       notify_slack: prefs.notifySlack,
     }),
+    ...(prefs.pinnedAgentIds !== undefined && {
+      pinned_agent_ids: prefs.pinnedAgentIds,
+    }),
   };
+}
+
+/**
+ * Read only pinnedAgentIds from org_members_cache (no Clerk API call).
+ */
+async function getCachedPinnedAgentIds(
+  orgId: string,
+  userId: string,
+): Promise<string[]> {
+  const db = globalThis.services.db;
+  const [row] = await db
+    .select({ pinnedAgentIds: orgMembersCache.pinnedAgentIds })
+    .from(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
+    )
+    .limit(1);
+  return (row?.pinnedAgentIds as string[] | null) ?? [];
 }
 
 /**
@@ -171,17 +204,23 @@ export async function getUserPreferences(
   userId: string,
   sessionClaims?: CustomJwtSessionClaims,
 ): Promise<UserPreferences> {
-  // JWT fast path: use Clerk membership claims
+  // JWT fast path: use Clerk membership claims.
+  // pinnedAgentIds may not be in the JWT template yet — fallback to DB cache.
   if (
     sessionClaims &&
     (sessionClaims.membership_timezone !== undefined ||
       sessionClaims.membership_notify_email !== undefined ||
       sessionClaims.membership_notify_slack !== undefined)
   ) {
+    const pinnedFromJwt = sessionClaims.membership_pinned_agent_ids;
+    const pinnedAgentIds = Array.isArray(pinnedFromJwt)
+      ? (pinnedFromJwt as string[])
+      : await getCachedPinnedAgentIds(orgId, userId);
     return {
       timezone: sessionClaims.membership_timezone ?? null,
       notifyEmail: sessionClaims.membership_notify_email ?? false,
       notifySlack: sessionClaims.membership_notify_slack ?? true,
+      pinnedAgentIds,
     };
   }
 
@@ -195,7 +234,12 @@ export async function getUserPreferences(
 export async function updateUserPreferences(
   orgId: string,
   userId: string,
-  prefs: { timezone?: string; notifyEmail?: boolean; notifySlack?: boolean },
+  prefs: {
+    timezone?: string;
+    notifyEmail?: boolean;
+    notifySlack?: boolean;
+    pinnedAgentIds?: string[];
+  },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
     if (!isValidTimezone(prefs.timezone)) {
@@ -216,6 +260,10 @@ export async function updateUserPreferences(
       prefs.notifySlack !== undefined
         ? prefs.notifySlack
         : existing.notifySlack,
+    pinnedAgentIds:
+      prefs.pinnedAgentIds !== undefined
+        ? prefs.pinnedAgentIds
+        : existing.pinnedAgentIds,
   };
 
   // Write to Clerk membership metadata

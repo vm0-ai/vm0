@@ -104,7 +104,9 @@ export function ZeroSkillCard({
                 Disconnect
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={onRemove}>Remove skill</DropdownMenuItem>
+            <DropdownMenuItem onClick={onRemove}>
+              Remove connector
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -15,8 +15,10 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { eq } from "drizzle-orm";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
+import { eq, and } from "drizzle-orm";
 
 interface RunResult {
   checkpointId?: string;
@@ -103,15 +105,33 @@ function notFoundResponse() {
 }
 
 const router = tsr.router(platformLogsByIdContract, {
-  getById: async ({ params }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId();
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return unauthorizedResponse();
     }
+    const { userId, orgId: tokenOrgId } = authCtx;
 
-    // Query run with compose info
+    // Resolve active org from JWT / CLI token / default
+    let orgId: string;
+    try {
+      const { org: resolvedOrg } = await resolveOrg(
+        userId,
+        undefined,
+        undefined,
+        tokenOrgId,
+      );
+      orgId = resolvedOrg.orgId;
+    } catch (error) {
+      if (isNotFound(error) || isForbidden(error)) {
+        return notFoundResponse();
+      }
+      throw error;
+    }
+
+    // Query run scoped to current user + active org
     const [result] = await globalThis.services.db
       .select({
         run: agentRuns,
@@ -119,18 +139,24 @@ const router = tsr.router(platformLogsByIdContract, {
         composeVersion: agentComposeVersions,
       })
       .from(agentRuns)
-      .leftJoin(
+      .innerJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
-      .leftJoin(
+      .innerJoin(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .where(eq(agentRuns.id, params.id))
+      .where(
+        and(
+          eq(agentRuns.id, params.id),
+          eq(agentRuns.userId, userId),
+          eq(agentComposes.orgId, orgId),
+        ),
+      )
       .limit(1);
 
-    if (!result || result.run.userId !== userId) {
+    if (!result) {
       return notFoundResponse();
     }
 
