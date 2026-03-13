@@ -32,7 +32,7 @@ const router = tsr.router(modelProvidersUpdateModelContract, {
     });
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("org");
       const orgParam = new URL(request.url).searchParams.get("org");
       const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
       const provider = await updateModelProviderModel(

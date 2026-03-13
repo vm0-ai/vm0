@@ -102,7 +102,7 @@ const router = tsr.router(onboardingStatusContract, {
       status: 200 as const,
       body: {
         needsOnboarding,
-        hasScope: hasOrg,
+        hasOrg,
         hasModelProvider,
         hasDefaultAgent,
         defaultAgentName,

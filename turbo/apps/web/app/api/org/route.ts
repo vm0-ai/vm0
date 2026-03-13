@@ -3,7 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../src/lib/ts-rest-handler";
-import { scopeContract, createErrorResponse, ApiError } from "@vm0/core";
+import { orgContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import { updateOrgSlug } from "../../../src/lib/org/org-service";
@@ -22,9 +22,9 @@ function resolvedOrgToResponse(resolved: ResolvedOrg) {
   };
 }
 
-const router = tsr.router(scopeContract, {
+const router = tsr.router(orgContract, {
   /**
-   * GET /api/scope - Get current user's default org
+   * GET /api/org - Get current user's default org
    *
    * Resolves the active org via orgId from Clerk session,
    * or falls back to the user's default org (first admin membership).
@@ -59,7 +59,7 @@ const router = tsr.router(scopeContract, {
   },
 
   /**
-   * PUT /api/scope - Update active org slug
+   * PUT /api/org - Update active org slug
    *
    * Resolves the active org via orgId from Clerk session,
    * or falls back to the user's default org (first admin membership).
@@ -152,7 +152,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(scopeContract, router, {
+const handler = createHandler(orgContract, router, {
   errorHandler,
 });
 

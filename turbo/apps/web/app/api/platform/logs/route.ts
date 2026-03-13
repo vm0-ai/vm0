@@ -153,8 +153,8 @@ const router = tsr.router(platformLogsListContract, {
 
     // Resolve org slug to orgId for filtering
     let orgId: string | null = null;
-    if (query.scope) {
-      const orgData = await getOrgBySlug(query.scope);
+    if (query.org) {
+      const orgData = await getOrgBySlug(query.org);
       orgId = orgData?.orgId ?? null;
       if (!orgId) {
         return {
@@ -249,7 +249,7 @@ const router = tsr.router(platformLogsListContract, {
           id: run.id,
           sessionId: run.sessionId ?? null,
           agentName: run.composeName ?? "unknown",
-          scopeSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
+          orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
           status: run.status as PlatformLogStatus,
           createdAt: run.createdAt.toISOString(),

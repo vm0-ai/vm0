@@ -1,5 +1,5 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { scopeDefaultAgentContract } from "@vm0/core";
+import { orgDefaultAgentContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
@@ -7,7 +7,7 @@ import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 
-const router = tsr.router(scopeDefaultAgentContract, {
+const router = tsr.router(orgDefaultAgentContract, {
   setDefaultAgent: async ({ query, body, headers }) => {
     initServices();
 
@@ -24,7 +24,7 @@ const router = tsr.router(scopeDefaultAgentContract, {
 
     const { org, member } = await resolveOrg(
       userId,
-      query.scope,
+      undefined,
       query.org,
       tokenOrgId,
     );
@@ -83,6 +83,6 @@ const router = tsr.router(scopeDefaultAgentContract, {
   },
 });
 
-const handler = createHandler(scopeDefaultAgentContract, router);
+const handler = createHandler(orgDefaultAgentContract, router);
 
 export { handler as PUT };

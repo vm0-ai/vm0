@@ -44,12 +44,12 @@ const router = tsr.router(composesMainContract, {
 
     // Resolve org: for cross-org lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
-    // isCrossOrgLookup is true when an explicit scope/org param is provided,
+    // isCrossOrgLookup is true when an explicit org param is provided,
     // which requires canAccessCompose authorization below.
-    const isCrossOrgLookup = Boolean(query.scope || query.org);
+    const isCrossOrgLookup = Boolean(query.org);
     let orgId: string;
-    if (query.scope) {
-      const orgData = await getOrgBySlug(query.scope);
+    if (query.org) {
+      const orgData = await getOrgBySlug(query.org);
       if (!orgData) {
         return {
           status: 404 as const,
@@ -62,8 +62,6 @@ const router = tsr.router(composesMainContract, {
         };
       }
       orgId = orgData.orgId;
-    } else if (query.org) {
-      orgId = query.org;
     } else {
       const { org: resolvedOrg } = await resolveOrg(
         userId,

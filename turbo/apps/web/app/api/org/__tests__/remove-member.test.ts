@@ -52,7 +52,7 @@ async function addMember(
   });
 
   const inviteReq = createTestRequest(
-    `http://localhost:3000/api/scope/invite?scope=${slug}`,
+    `http://localhost:3000/api/org/invite?org=${slug}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -66,7 +66,7 @@ async function addMember(
   }
 }
 
-describe("DELETE /api/scope/members - Remove Member", () => {
+describe("DELETE /api/org/members - Remove Member", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -75,7 +75,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/scope/members?scope=test",
+      "http://localhost:3000/api/org/members?org=test",
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -93,14 +93,11 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     const userId = uniqueId("members-user");
     mockClerk({ userId });
 
-    const request = createTestRequest(
-      "http://localhost:3000/api/scope/members",
-      {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "member@example.com" }),
-      },
-    );
+    const request = createTestRequest("http://localhost:3000/api/org/members", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "member@example.com" }),
+    });
     const response = await DELETE(request);
     const data = await response.json();
 
@@ -131,7 +128,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     } as unknown as Awaited<ReturnType<typeof client.users.getUserList>>);
 
     const removeReq = createTestRequest(
-      `http://localhost:3000/api/scope/members?scope=${slug}`,
+      `http://localhost:3000/api/org/members?org=${slug}`,
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -166,7 +163,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
       ],
     });
     const statusReq1 = createTestRequest(
-      `http://localhost:3000/api/scope/members?scope=${slug}`,
+      `http://localhost:3000/api/org/members?org=${slug}`,
     );
     const statusRes1 = await getMembersRoute(statusReq1);
     expect(statusRes1.status).toBe(200);
@@ -195,7 +192,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
     } as unknown as Awaited<ReturnType<typeof adminClient.users.getUserList>>);
 
     const removeReq = createTestRequest(
-      `http://localhost:3000/api/scope/members?scope=${slug}`,
+      `http://localhost:3000/api/org/members?org=${slug}`,
       {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -214,7 +211,7 @@ describe("DELETE /api/scope/members - Remove Member", () => {
       memberships: [{ userId: adminUserId, role: "org:admin" }],
     });
     const statusReq2 = createTestRequest(
-      `http://localhost:3000/api/scope/members?scope=${slug}`,
+      `http://localhost:3000/api/org/members?org=${slug}`,
     );
     const statusRes2 = await getMembersRoute(statusReq2);
     expect(statusRes2.status).toBe(200);

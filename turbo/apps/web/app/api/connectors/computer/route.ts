@@ -28,7 +28,7 @@ const router = tsr.router(computerConnectorContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("org");
       const orgParam = new URL(request.url).searchParams.get("org");
       const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
       const result = await createComputerConnector(org.orgId, userId);
@@ -56,7 +56,7 @@ const router = tsr.router(computerConnectorContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("org");
     const orgParam = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
     const connector = await getConnector(org.orgId, userId, "computer");
@@ -80,7 +80,7 @@ const router = tsr.router(computerConnectorContract, {
     const { userId, orgId: tokenOrgId } = authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("org");
       const orgParam = new URL(request.url).searchParams.get("org");
       const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
       await deleteComputerConnector(org.orgId, userId);

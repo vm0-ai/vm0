@@ -29,7 +29,7 @@ async function createTestOrg(userId: string) {
   return { slug, orgId };
 }
 
-describe("POST /api/scope/invite - Invite Member", () => {
+describe("POST /api/org/invite - Invite Member", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -38,7 +38,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/scope/invite?scope=test",
+      "http://localhost:3000/api/org/invite?org=test",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,14 +56,11 @@ describe("POST /api/scope/invite - Invite Member", () => {
     const userId = uniqueId("invite-user");
     mockClerk({ userId });
 
-    const request = createTestRequest(
-      "http://localhost:3000/api/scope/invite",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "member@example.com" }),
-      },
-    );
+    const request = createTestRequest("http://localhost:3000/api/org/invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "member@example.com" }),
+    });
     const response = await POST(request);
     const data = await response.json();
 
@@ -76,7 +73,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
     const { slug } = await createTestOrg(userId);
 
     const inviteReq = createTestRequest(
-      `http://localhost:3000/api/scope/invite?scope=${slug}`,
+      `http://localhost:3000/api/org/invite?org=${slug}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -98,7 +95,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
 
     // Invite the member
     const inviteReq = createTestRequest(
-      `http://localhost:3000/api/scope/invite?scope=${slug}`,
+      `http://localhost:3000/api/org/invite?org=${slug}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -121,7 +118,7 @@ describe("POST /api/scope/invite - Invite Member", () => {
 
     // Verify invited member appears in the members list
     const membersReq = createTestRequest(
-      `http://localhost:3000/api/scope/members?scope=${slug}`,
+      `http://localhost:3000/api/org/members?org=${slug}`,
     );
     const membersRes = await getMembersRoute(membersReq);
     expect(membersRes.status).toBe(200);

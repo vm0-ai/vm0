@@ -49,7 +49,7 @@ import { VOLUME_SCOPE_USER_ID, type StoredExecutionContext } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
-// POST /api/scope removed in 5b-5 — scope creation is now Clerk's responsibility
+// POST /api/org removed in 5b-5 — org creation is now Clerk's responsibility
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";

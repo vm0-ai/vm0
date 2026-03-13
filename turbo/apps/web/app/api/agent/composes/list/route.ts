@@ -66,13 +66,13 @@ const router = tsr.router(composesListContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    // Resolve org: use ?scope= query param or default org
+    // Resolve org: use ?org= query param or default org
     let orgId: string;
     try {
       const { org: resolvedOrg } = await resolveOrg(
         userId,
-        query.scope,
         query.org,
+        undefined,
         tokenOrgId,
       );
       orgId = resolvedOrg.orgId;
@@ -116,7 +116,7 @@ const router = tsr.router(composesListContract, {
       .where(eq(agentComposes.orgId, orgId))
       .orderBy(desc(agentComposes.updatedAt));
 
-    // When using default org (no ?scope= param), also include email-shared agents
+    // When using default org (no ?org= param), also include email-shared agents
     let sharedComposes: {
       name: string;
       headVersionId: string | null;
@@ -124,7 +124,7 @@ const router = tsr.router(composesListContract, {
       orgSlug: string;
     }[] = [];
 
-    if (!query.scope && !query.org) {
+    if (!query.org) {
       const userEmail = await getUserEmail(userId);
       const shared = await getEmailSharedAgents(userId, userEmail);
       sharedComposes = shared;

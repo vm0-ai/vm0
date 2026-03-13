@@ -7,7 +7,7 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { PUT as setDefaultAgent } from "../../../../api/scopes/default-agent/route";
+import { PUT as setDefaultAgent } from "../../../../api/orgs/default-agent/route";
 
 const context = testContext();
 
@@ -30,7 +30,7 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return needsOnboarding=true when user has no org", async () => {
-    const userId = `no-scope-user-${Date.now()}`;
+    const userId = `no-org-user-${Date.now()}`;
     mockClerk({ userId, clerkOrgs: [] });
 
     const request = createTestRequest(
@@ -42,7 +42,7 @@ describe("GET /api/onboarding/status", () => {
     expect(response.status).toBe(200);
     expect(data).toEqual({
       needsOnboarding: true,
-      hasScope: false,
+      hasOrg: false,
       hasModelProvider: false,
       hasDefaultAgent: false,
       defaultAgentName: null,
@@ -61,7 +61,7 @@ describe("GET /api/onboarding/status", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.hasScope).toBe(true);
+    expect(data.hasOrg).toBe(true);
     expect(data.hasModelProvider).toBe(false);
     expect(data.hasDefaultAgent).toBe(false);
     expect(data.needsOnboarding).toBe(true);
@@ -78,7 +78,7 @@ describe("GET /api/onboarding/status", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.hasScope).toBe(true);
+    expect(data.hasOrg).toBe(true);
     expect(data.hasModelProvider).toBe(true);
     expect(data.hasDefaultAgent).toBe(false);
     expect(data.needsOnboarding).toBe(true);
@@ -92,7 +92,7 @@ describe("GET /api/onboarding/status", () => {
     const compose = await createTestCompose("test-agent");
 
     const setDefaultRequest = createTestRequest(
-      "http://localhost:3000/api/scopes/default-agent",
+      "http://localhost:3000/api/orgs/default-agent",
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -118,7 +118,7 @@ describe("GET /api/onboarding/status", () => {
     expect(response.status).toBe(200);
     expect(data).toEqual({
       needsOnboarding: false,
-      hasScope: true,
+      hasOrg: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
@@ -137,7 +137,7 @@ describe("GET /api/onboarding/status", () => {
     });
 
     const setDefaultRequest = createTestRequest(
-      "http://localhost:3000/api/scopes/default-agent",
+      "http://localhost:3000/api/orgs/default-agent",
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -162,7 +162,7 @@ describe("GET /api/onboarding/status", () => {
     expect(response.status).toBe(200);
     expect(data).toEqual({
       needsOnboarding: false,
-      hasScope: true,
+      hasOrg: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",

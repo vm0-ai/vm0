@@ -6,7 +6,7 @@ import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("GET /api/scope/list - Org List", () => {
+describe("GET /api/org/list - Org List", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -14,7 +14,7 @@ describe("GET /api/scope/list - Org List", () => {
   it("should require authentication", async () => {
     mockClerk({ userId: null });
 
-    const request = createTestRequest("http://localhost:3000/api/scope/list");
+    const request = createTestRequest("http://localhost:3000/api/org/list");
     const response = await GET(request);
     const data = await response.json();
 
@@ -31,17 +31,17 @@ describe("GET /api/scope/list - Org List", () => {
       clerkOrgs: [{ id: `org_${userId}`, slug: orgSlug, name: orgSlug }],
     });
 
-    const request = createTestRequest("http://localhost:3000/api/scope/list");
+    const request = createTestRequest("http://localhost:3000/api/org/list");
     const response = await GET(request);
     expect(response.status).toBe(200);
 
     const data = await response.json();
-    expect(data.scopes).toHaveLength(1);
-    expect(data.scopes[0].slug).toBe(orgSlug);
-    expect(data.scopes[0].role).toBe("admin");
+    expect(data.orgs).toHaveLength(1);
+    expect(data.orgs[0].slug).toBe(orgSlug);
+    expect(data.orgs[0].role).toBe("admin");
   });
 
-  it("should return org scopes with correct roles", async () => {
+  it("should return org list with correct roles", async () => {
     const memberUserId = uniqueId("list-member");
     const orgSlug = uniqueId("org");
     const orgId = uniqueId("org");
@@ -54,14 +54,14 @@ describe("GET /api/scope/list - Org List", () => {
       ],
     });
 
-    const listReq = createTestRequest("http://localhost:3000/api/scope/list");
+    const listReq = createTestRequest("http://localhost:3000/api/org/list");
     const listRes = await GET(listReq);
     expect(listRes.status).toBe(200);
 
     const data = await listRes.json();
-    expect(data.scopes).toHaveLength(1);
-    expect(data.scopes[0].slug).toBe(orgSlug);
-    expect(data.scopes[0].role).toBe("member");
+    expect(data.orgs).toHaveLength(1);
+    expect(data.orgs[0].slug).toBe(orgSlug);
+    expect(data.orgs[0].role).toBe("member");
   });
 
   it("should only return orgs the user is a Clerk member of", async () => {
@@ -76,13 +76,13 @@ describe("GET /api/scope/list - Org List", () => {
       ],
     });
 
-    const listReq = createTestRequest("http://localhost:3000/api/scope/list");
+    const listReq = createTestRequest("http://localhost:3000/api/org/list");
     const listRes = await GET(listReq);
     expect(listRes.status).toBe(200);
 
     const data = await listRes.json();
-    expect(data.scopes).toHaveLength(1);
-    expect(data.scopes[0].slug).toBe(userBOrgSlug);
-    expect(data.scopes[0].role).toBe("admin");
+    expect(data.orgs).toHaveLength(1);
+    expect(data.orgs[0].slug).toBe(userBOrgSlug);
+    expect(data.orgs[0].role).toBe("admin");
   });
 });

@@ -7,16 +7,16 @@ import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("/api/scope", () => {
+describe("/api/org", () => {
   beforeEach(() => {
     context.setupMocks();
   });
 
-  describe("GET /api/scope", () => {
+  describe("GET /api/org", () => {
     it("should require authentication", async () => {
       mockClerk({ userId: null });
 
-      const request = createTestRequest("http://localhost:3000/api/scope");
+      const request = createTestRequest("http://localhost:3000/api/org");
       const response = await GET(request);
       const data = await response.json();
 
@@ -27,7 +27,7 @@ describe("/api/scope", () => {
     it("should return user's default org from org_cache", async () => {
       await context.setupUser();
 
-      const request = createTestRequest("http://localhost:3000/api/scope");
+      const request = createTestRequest("http://localhost:3000/api/org");
       const response = await GET(request);
       const data = await response.json();
 
@@ -40,14 +40,14 @@ describe("/api/scope", () => {
       const userId = `no-org-user-${Date.now()}`;
       mockClerk({ userId, clerkOrgs: [] });
 
-      const request = createTestRequest("http://localhost:3000/api/scope");
+      const request = createTestRequest("http://localhost:3000/api/org");
       const response = await GET(request);
 
       expect(response.status).toBe(404);
     });
   });
 
-  describe("PUT /api/scope", () => {
+  describe("PUT /api/org", () => {
     beforeEach(async () => {
       await context.setupUser();
     });
@@ -55,7 +55,7 @@ describe("/api/scope", () => {
     it("should require authentication", async () => {
       mockClerk({ userId: null });
 
-      const request = createTestRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/org", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "new-slug", force: true }),
@@ -68,7 +68,7 @@ describe("/api/scope", () => {
     });
 
     it("should require force flag to update", async () => {
-      const request = createTestRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/org", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "new-slug", force: false }),
@@ -83,7 +83,7 @@ describe("/api/scope", () => {
     it("should update org slug with force flag", async () => {
       const newSlug = `updated-${Date.now()}`;
 
-      const request = createTestRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/org", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: newSlug, force: true }),
@@ -98,7 +98,7 @@ describe("/api/scope", () => {
     it("should write slug to Clerk org on update", async () => {
       const newSlug = `dualwrite-${Date.now()}`;
 
-      const request = createTestRequest("http://localhost:3000/api/scope", {
+      const request = createTestRequest("http://localhost:3000/api/org", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: newSlug, force: true }),

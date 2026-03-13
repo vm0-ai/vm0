@@ -16,7 +16,7 @@ import {
 const removeMemberBodySchema = z.object({ email: z.string().email() });
 
 /**
- * GET /api/scope/members - Get scope members and status
+ * GET /api/org/members - Get org members and status
  */
 export async function GET(request: Request) {
   initServices();
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
 }
 
 /**
- * DELETE /api/scope/members - Remove a member from the scope
+ * DELETE /api/org/members - Remove a member from the org
  */
 export async function DELETE(request: Request) {
   initServices();

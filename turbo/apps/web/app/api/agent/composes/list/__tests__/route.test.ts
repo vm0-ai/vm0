@@ -41,12 +41,12 @@ describe("GET /api/agent/composes/list", () => {
   });
 
   it("should return no own composes when none exist in org", async () => {
-    // Use explicit scope param to only get own agents (excludes shared)
+    // Use explicit org param to only get own agents (excludes shared)
     const uniqueSuffix = user.userId.replace("test-user-", "");
     const orgSlug = `org-${uniqueSuffix}`;
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
+      `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -63,12 +63,12 @@ describe("GET /api/agent/composes/list", () => {
     await createTestCompose(agentName1);
     await createTestCompose(agentName2);
 
-    // Use explicit scope param to get only own agents
+    // Use explicit org param to get only own agents
     const uniqueSuffix = user.userId.replace("test-user-", "");
     const orgSlug = `org-${uniqueSuffix}`;
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
+      `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -131,7 +131,7 @@ describe("GET /api/agent/composes/list", () => {
 
   it("should return 400 for non-existent org", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes/list?scope=nonexistent-scope",
+      "http://localhost:3000/api/agent/composes/list?org=nonexistent-org",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -156,7 +156,7 @@ describe("GET /api/agent/composes/list", () => {
     // Switch back to original user and try to access the other user's org
     mockClerk({ userId: user.userId });
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${otherOrgSlug}`,
+      `http://localhost:3000/api/agent/composes/list?org=${otherOrgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -168,7 +168,7 @@ describe("GET /api/agent/composes/list", () => {
 
   it("should list composes by specified org slug", async () => {
     // Create a compose first
-    const agentName = `test-scope-agent-${Date.now()}`;
+    const agentName = `test-org-agent-${Date.now()}`;
     await createTestCompose(agentName);
 
     // Derive the user's org slug from their userId
@@ -177,9 +177,9 @@ describe("GET /api/agent/composes/list", () => {
     const uniqueSuffix = user.userId.replace("test-user-", "");
     const orgSlug = `org-${uniqueSuffix}`;
 
-    // List by scope slug
+    // List by org slug
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
+      `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -190,14 +190,14 @@ describe("GET /api/agent/composes/list", () => {
   });
 
   describe("email-shared agents", () => {
-    it("should show shared agent with scope/name format", async () => {
+    it("should show shared agent with org/name format", async () => {
       // User A (owner) creates an agent and shares it
       const owner = await context.setupUser({ prefix: "owner" });
       const agentName = uniqueId("shared-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
-      // Derive the Agent Scope slug
+      // Derive the Agent Org slug
       const ownerSuffix = owner.userId.replace("owner-", "");
       const agentOrgSlug = `org-${ownerSuffix}`;
 
@@ -260,31 +260,31 @@ describe("GET /api/agent/composes/list", () => {
       const names = data.composes.map((c: { name: string }) => c.name);
       // Own agent has plain name
       expect(names).toContain(ownAgentName);
-      // Shared agent has scope/name format
+      // Shared agent has org/name format
       expect(names).toContain(`${agentOrgSlug}/${sharedAgentName}`);
     });
 
-    it("should not include shared agents when scope param is provided", async () => {
+    it("should not include shared agents when org param is provided", async () => {
       // Create shared agent from another user
-      await context.setupUser({ prefix: "scope-owner" });
-      const sharedAgentName = uniqueId("scope-shared");
+      await context.setupUser({ prefix: "org-owner" });
+      const sharedAgentName = uniqueId("org-shared");
       const { composeId } = await createTestCompose(sharedAgentName);
       await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
 
-      // Switch back to original user, list with explicit scope
+      // Switch back to original user, list with explicit org
       mockClerk({ userId: user.userId });
       const uniqueSuffix = user.userId.replace("test-user-", "");
       const orgSlug = `org-${uniqueSuffix}`;
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/list?scope=${orgSlug}`,
+        `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
       );
       const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       const names = data.composes.map((c: { name: string }) => c.name);
-      // Shared agent should NOT appear when using scope param
+      // Shared agent should NOT appear when using org param
       expect(names.some((n: string) => n.includes(sharedAgentName))).toBe(
         false,
       );

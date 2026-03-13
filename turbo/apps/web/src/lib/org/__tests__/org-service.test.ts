@@ -12,7 +12,7 @@ describe("getDefaultOrgByUserId", () => {
   });
 
   it("should return null when user has no org", async () => {
-    const userId = uniqueId("no-scope-user");
+    const userId = uniqueId("no-org-user");
     mockClerk({ userId, clerkOrgs: [] });
 
     const result = await getDefaultOrgByUserId(userId);

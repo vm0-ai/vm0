@@ -142,7 +142,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Not authenticated");
   });
 
-  it("should return shared agent via cross-org lookup with ?scope=", async () => {
+  it("should return shared agent via cross-org lookup with ?org=", async () => {
     const agentName = `test-shared-agent-${Date.now()}`;
 
     // Create compose as owner
@@ -161,7 +161,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
     // Access the agent via cross-org lookup
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerOrg.slug}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrg.slug}`,
       { method: "GET" },
     );
 
@@ -187,7 +187,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
     // Try to access via cross-org lookup
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerOrg.slug}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrg.slug}`,
       { method: "GET" },
     );
 
@@ -198,13 +198,13 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Agent compose not found");
   });
 
-  it("should return own agent without ?scope= parameter", async () => {
+  it("should return own agent without ?org= parameter", async () => {
     const agentName = `test-own-agent-${Date.now()}`;
 
     // Create compose as current user
     const { composeId } = await createTestCompose(agentName);
 
-    // Access without scope param (uses resolveOrg for own scope)
+    // Access without org param (uses resolveOrg for own org)
     const getRequest = createTestRequest(
       `http://localhost:3000/api/agent/composes?name=${agentName}`,
       { method: "GET" },
@@ -276,9 +276,9 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Agent compose not found");
   });
 
-  it("should return 404 for invalid scope slug in cross-org lookup", async () => {
+  it("should return 404 for invalid org slug in cross-org lookup", async () => {
     const getRequest = createTestRequest(
-      "http://localhost:3000/api/agent/composes?name=any-agent&scope=nonexistent-scope",
+      "http://localhost:3000/api/agent/composes?name=any-agent&org=nonexistent-org",
       { method: "GET" },
     );
 

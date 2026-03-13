@@ -33,7 +33,7 @@ const router = tsr.router(variablesByNameContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("scope");
+    const orgSlug = new URL(request.url).searchParams.get("org");
     const orgParam = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
     const variable = await getVariable(org.orgId, userId, params.name);
@@ -72,7 +72,7 @@ const router = tsr.router(variablesByNameContract, {
     log.debug("deleting variable", { userId, name: params.name });
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("scope");
+      const orgSlug = new URL(request.url).searchParams.get("org");
       const orgParam = new URL(request.url).searchParams.get("org");
       const { org } = await resolveOrg(userId, orgSlug, orgParam, tokenOrgId);
       await deleteVariable(org.orgId, userId, params.name);

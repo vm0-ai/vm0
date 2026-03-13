@@ -27,7 +27,7 @@ describe("resolveOrg", () => {
   it("tier 1: orgSlug takes priority over orgId from session", async () => {
     const { userId } = await context.setupUser();
 
-    // Create two additional scopes — set up Clerk orgs BEFORE creating scopes
+    // Create two additional orgs — set up Clerk orgs BEFORE creating orgs
     const slug1 = uniqueId("org");
     const slug2 = uniqueId("org");
     mockClerk({
@@ -63,11 +63,11 @@ describe("resolveOrg", () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope so POST resolves correct orgId
+    // Set up Clerk org BEFORE creating org so POST resolves correct orgId
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
-    // Mock session with orgId matching the scope's orgId
+    // Mock session with orgId matching the org's orgId
     mockClerk({
       userId,
       orgId: `org_mock_${slug}`,
@@ -85,7 +85,7 @@ describe("resolveOrg", () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -96,7 +96,7 @@ describe("resolveOrg", () => {
       clerkOrgs: testOrgs(slug),
     });
 
-    // Pass explicit orgId matching the scope
+    // Pass explicit orgId matching the org
     const result = await resolveOrg(userId, null, `org_mock_${slug}`);
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
@@ -107,7 +107,7 @@ describe("resolveOrg", () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -124,15 +124,15 @@ describe("resolveOrg", () => {
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
   });
 
-  it("tier 3: falls through when orgId has no matching scope", async () => {
+  it("tier 3: falls through when orgId has no matching org", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
-    // Mock session with an orgId that doesn't match any scope
+    // Mock session with an orgId that doesn't match any org
     mockClerk({
       userId,
       orgId: "org_nonexistent_xyz",
@@ -145,24 +145,24 @@ describe("resolveOrg", () => {
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
   });
 
-  it("tier 2: resolves correct scope when user has multiple scopes", async () => {
+  it("tier 2: resolves correct org when user has multiple orgs", async () => {
     const userId = uniqueId("test-user");
     const slug1 = uniqueId("org");
     const slug2 = uniqueId("org");
 
-    // Set up two Clerk orgs BEFORE creating scopes
+    // Set up two Clerk orgs BEFORE creating orgs
     mockClerk({
       userId,
       clerkOrgs: testOrgs(slug1, slug2),
     });
 
-    // Create first scope (will be the default — earliest createdAt)
+    // Create first org (will be the default — earliest createdAt)
     await createTestOrg(slug1);
 
-    // Create second scope
+    // Create second org
     await createTestOrg(slug2);
 
-    // Mock session with orgId matching the SECOND scope
+    // Mock session with orgId matching the SECOND org
     mockClerk({
       userId,
       orgId: `org_mock_${slug2}`,
@@ -181,7 +181,7 @@ describe("resolveOrg", () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -204,7 +204,7 @@ describe("resolveOrg", () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -226,7 +226,7 @@ describe("resolveOrg", () => {
     const slug1 = uniqueId("org");
     const slug2 = uniqueId("org");
 
-    // Set up two Clerk orgs BEFORE creating scopes
+    // Set up two Clerk orgs BEFORE creating orgs
     mockClerk({ userId, clerkOrgs: testOrgs(slug1, slug2) });
     await createTestOrg(slug1);
     await createTestOrg(slug2);
@@ -249,7 +249,7 @@ describe("resolveOrg", () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -270,7 +270,7 @@ describe("resolveOrg", () => {
     const otherUserId = uniqueId("other-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -286,11 +286,11 @@ describe("resolveOrg", () => {
     );
   });
 
-  it("?org= param resolves scope by orgId", async () => {
+  it("?org= param resolves org by orgId", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -308,12 +308,12 @@ describe("resolveOrg", () => {
     expect(result.org.slug).toBe(slug);
   });
 
-  it("?scope= takes priority over ?org=", async () => {
+  it("orgSlug takes priority over orgId", async () => {
     const userId = uniqueId("test-user");
     const slug1 = uniqueId("org");
     const slug2 = uniqueId("org");
 
-    // Set up two Clerk orgs BEFORE creating scopes
+    // Set up two Clerk orgs BEFORE creating orgs
     mockClerk({ userId, clerkOrgs: testOrgs(slug1, slug2) });
     await createTestOrg(slug1);
     await createTestOrg(slug2);
@@ -337,11 +337,11 @@ describe("requireOrgFromRequest", () => {
     context.setupMocks();
   });
 
-  it("resolves scope via ?org= param", async () => {
+  it("resolves org via ?org= param", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating scope
+    // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
@@ -360,32 +360,27 @@ describe("requireOrgFromRequest", () => {
     expect(result.org.slug).toBe(slug);
   });
 
-  it("?scope= takes priority over ?org=", async () => {
+  it("resolves org via ?org= slug param", async () => {
     const userId = uniqueId("test-user");
     const slug1 = uniqueId("org");
-    const slug2 = uniqueId("org");
 
-    // Set up two Clerk orgs BEFORE creating scopes
-    mockClerk({ userId, clerkOrgs: testOrgs(slug1, slug2) });
+    // Set up Clerk org BEFORE creating org
+    mockClerk({ userId, clerkOrgs: testOrgs(slug1) });
     await createTestOrg(slug1);
-    await createTestOrg(slug2);
 
     mockClerk({
       userId,
       orgId: `org_mock_${slug1}`,
-      clerkOrgs: testOrgs(slug1, slug2),
+      clerkOrgs: testOrgs(slug1),
     });
 
-    // Both ?scope= and ?org= provided — ?scope= should win
-    const request = new Request(
-      `http://localhost/api/test?scope=${slug1}&org=org_mock_${slug2}`,
-    );
+    const request = new Request(`http://localhost/api/test?org=${slug1}`);
     const result = await requireOrgFromRequest(request, userId);
 
     expect(result.org.orgId).toBe(`org_mock_${slug1}`);
   });
 
-  it("throws 400 when neither ?scope= nor ?org= provided", async () => {
+  it("throws 400 when ?org= not provided", async () => {
     const userId = uniqueId("test-user");
     mockClerk({ userId });
 

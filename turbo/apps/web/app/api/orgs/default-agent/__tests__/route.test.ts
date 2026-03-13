@@ -15,8 +15,8 @@ function putDefaultAgent(
   agentComposeId: string | null,
 ) {
   const url = orgSlug
-    ? `http://localhost:3000/api/scopes/default-agent?scope=${orgSlug}`
-    : "http://localhost:3000/api/scopes/default-agent";
+    ? `http://localhost:3000/api/orgs/default-agent?org=${orgSlug}`
+    : "http://localhost:3000/api/orgs/default-agent";
   return PUT(
     createTestRequest(url, {
       method: "PUT",
@@ -26,7 +26,7 @@ function putDefaultAgent(
   );
 }
 
-describe("PUT /api/scopes/default-agent", () => {
+describe("PUT /api/orgs/default-agent", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -67,16 +67,16 @@ describe("PUT /api/scopes/default-agent", () => {
     await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
-    // Create a second user (different prefix = different user, no scope admin)
+    // Create a second user (different prefix = different user, no org admin)
     await context.setupUser({ prefix: "member" });
 
-    // The member user resolves to their own scope where they ARE admin,
-    // but they don't have the compose. Test that agent-not-in-scope returns 404.
+    // The member user resolves to their own org where they ARE admin,
+    // but they don't have the compose. Test that agent-not-in-org returns 404.
     const response = await putDefaultAgent(undefined, compose.composeId);
     expect(response.status).toBe(404);
   });
 
-  it("should reject agent not in scope", async () => {
+  it("should reject agent not in org", async () => {
     await context.setupUser();
 
     // Use a random UUID that doesn't exist

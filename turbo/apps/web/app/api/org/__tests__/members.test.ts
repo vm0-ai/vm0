@@ -27,7 +27,7 @@ async function createTestOrg(userId: string) {
   return { slug, orgId: `org_mock_${userId}` };
 }
 
-describe("GET /api/scope/members - Org Members", () => {
+describe("GET /api/org/members - Org Members", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -36,7 +36,7 @@ describe("GET /api/scope/members - Org Members", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/scope/members?scope=test",
+      "http://localhost:3000/api/org/members?org=test",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -49,9 +49,7 @@ describe("GET /api/scope/members - Org Members", () => {
     const userId = uniqueId("members-user");
     mockClerk({ userId });
 
-    const request = createTestRequest(
-      "http://localhost:3000/api/scope/members",
-    );
+    const request = createTestRequest("http://localhost:3000/api/org/members");
     const response = await GET(request);
     const data = await response.json();
 
@@ -71,7 +69,7 @@ describe("GET /api/scope/members - Org Members", () => {
     });
 
     const statusReq = createTestRequest(
-      `http://localhost:3000/api/scope/members?scope=${slug}`,
+      `http://localhost:3000/api/org/members?org=${slug}`,
     );
     const statusRes = await GET(statusReq);
     expect(statusRes.status).toBe(200);
@@ -101,7 +99,7 @@ describe("GET /api/scope/members - Org Members", () => {
       });
 
       const statusReq = createTestRequest(
-        `http://localhost:3000/api/scope/members?scope=${slug}`,
+        `http://localhost:3000/api/org/members?org=${slug}`,
       );
       const statusRes = await GET(statusReq);
       expect(statusRes.status).toBe(200);
@@ -124,7 +122,7 @@ describe("GET /api/scope/members - Org Members", () => {
       });
 
       const statusReq = createTestRequest(
-        `http://localhost:3000/api/scope/members?scope=${slug}`,
+        `http://localhost:3000/api/org/members?org=${slug}`,
       );
       const statusRes = await GET(statusReq);
       expect(statusRes.status).toBe(403);
@@ -147,7 +145,7 @@ describe("GET /api/scope/members - Org Members", () => {
       ).mockRejectedValue(new Error("Clerk API unavailable"));
 
       const statusReq = createTestRequest(
-        `http://localhost:3000/api/scope/members?scope=${slug}`,
+        `http://localhost:3000/api/org/members?org=${slug}`,
       );
       const statusRes = await GET(statusReq);
       expect(statusRes.status).toBe(403);

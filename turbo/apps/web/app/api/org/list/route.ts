@@ -15,10 +15,10 @@ export async function GET(request: Request) {
     );
   }
 
-  const scopes = await getUserAccessibleOrgs(userId);
+  const orgs = await getUserAccessibleOrgs(userId);
 
   return NextResponse.json({
-    scopes,
+    orgs,
     active: undefined,
   });
 }

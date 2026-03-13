@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { requireOrgFromRequest } from "../../../../src/lib/org/resolve-org";
-import { leaveOrg } from "../../../../src/lib/org/org-member-service";
+import { inviteMember } from "../../../../src/lib/org/org-member-service";
 import {
   isBadRequest,
   isNotFound,
   isForbidden,
 } from "../../../../src/lib/errors";
 
+const inviteBodySchema = z.object({ email: z.string().email() });
+
 /**
- * POST /api/scope/leave - Leave the current org
+ * POST /api/org/invite - Invite a member to the org
  */
 export async function POST(request: Request) {
   initServices();
@@ -25,14 +28,25 @@ export async function POST(request: Request) {
   }
   const { userId, orgId: tokenOrgId } = authCtx;
 
+  const parseResult = inviteBodySchema.safeParse(
+    await request.json().catch(() => undefined),
+  );
+  if (!parseResult.success) {
+    return NextResponse.json(
+      { error: { message: "Invalid email format", code: "BAD_REQUEST" } },
+      { status: 400 },
+    );
+  }
+  const body = parseResult.data;
+
   try {
     const { org, member } = await requireOrgFromRequest(
       request,
       userId,
       tokenOrgId,
     );
-    await leaveOrg(userId, org.orgId, member.role);
-    return NextResponse.json({ message: "Left org" });
+    await inviteMember(userId, org.orgId, member.role, body.email);
+    return NextResponse.json({ message: `Invitation sent to ${body.email}` });
   } catch (error) {
     if (isBadRequest(error)) {
       return NextResponse.json(

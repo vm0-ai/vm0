@@ -31,7 +31,7 @@ export interface ScheduleResponse {
   id: string;
   composeId: string;
   composeName: string;
-  scopeSlug: string;
+  orgSlug: string;
   userId: string;
   name: string;
   triggerType: "cron" | "once" | "loop";
@@ -172,7 +172,7 @@ function toResponse(
     id: schedule.id,
     composeId: schedule.composeId,
     composeName,
-    scopeSlug: orgSlug,
+    orgSlug,
     userId: schedule.userId,
     name: schedule.name,
     triggerType: schedule.triggerType as "cron" | "once" | "loop",

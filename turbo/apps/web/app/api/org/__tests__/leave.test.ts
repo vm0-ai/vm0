@@ -10,7 +10,7 @@ import { setupClerkOrgMock } from "../../../../src/__tests__/clerk-org-mock";
 
 const context = testContext();
 
-describe("POST /api/scope/leave - Leave Org", () => {
+describe("POST /api/org/leave - Leave Org", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -19,7 +19,7 @@ describe("POST /api/scope/leave - Leave Org", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/scope/leave?scope=test",
+      "http://localhost:3000/api/org/leave?org=test",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -37,7 +37,7 @@ describe("POST /api/scope/leave - Leave Org", () => {
     const userId = uniqueId("leave-user");
     mockClerk({ userId });
 
-    const request = createTestRequest("http://localhost:3000/api/scope/leave", {
+    const request = createTestRequest("http://localhost:3000/api/org/leave", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -65,7 +65,7 @@ describe("POST /api/scope/leave - Leave Org", () => {
 
     // Try to leave as admin
     const leaveReq = createTestRequest(
-      `http://localhost:3000/api/scope/leave?scope=${slug}`,
+      `http://localhost:3000/api/org/leave?org=${slug}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

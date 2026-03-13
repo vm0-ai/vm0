@@ -20,7 +20,7 @@ describe("getOrgData", () => {
   it("fetches from Clerk and caches on miss", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
-    // Set up Clerk org with slug-based ID BEFORE creating scope
+    // Set up Clerk org with slug-based ID BEFORE creating org
     mockClerk({
       userId,
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
@@ -81,7 +81,7 @@ describe("getOrgData", () => {
   it("refetches from Clerk when cache is stale", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
-    // Set up Clerk org with slug-based ID BEFORE creating scope
+    // Set up Clerk org with slug-based ID BEFORE creating org
     mockClerk({
       userId,
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
@@ -100,7 +100,7 @@ describe("getOrgData", () => {
 
     const result = await getOrgData(orgId);
 
-    // Should have fresh data from Clerk mock (slug = scope name from createOrganization)
+    // Should have fresh data from Clerk mock (slug = org name from createOrganization)
     expect(result.slug).toBe(slug);
     expect(result.orgId).toBe(orgId);
 

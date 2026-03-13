@@ -119,13 +119,13 @@ function applyJwtTier(
 }
 
 /**
- * Resolve org from request context using org_cache (never queries scopes table).
+ * Resolve org from request context using org_cache.
  *
  * Uses JWT claims for membership verification when possible (zero Clerk API calls).
  * Falls back to Clerk Backend API for cross-org access or CLI tokens without org_id.
  *
  * Resolution order:
- * 1. orgSlug (?scope=<slug> query param) -> org_cache lookup, verify membership
+ * 1. orgSlug (?org=<slug> query param) -> org_cache lookup, verify membership
  * 2. orgId (from JWT session token or CLI token) -> org_cache lookup
  * 3. Fallback -> user's default org via Clerk API
  *
@@ -140,7 +140,7 @@ export async function resolveOrg(
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   const authResult = await auth();
 
-  // 1. Explicit org selection via ?scope= query param (highest priority)
+  // 1. Explicit org selection via ?org= query param (highest priority)
   if (orgSlug) {
     const orgData = await getOrgBySlug(orgSlug);
     if (!orgData) throw notFound("Org not found");
@@ -197,19 +197,12 @@ export async function requireOrgFromRequest(
   tokenOrgId?: string | null,
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   const url = new URL(request.url);
-  const orgSlug = url.searchParams.get("scope");
-  const orgParam = url.searchParams.get("org");
+  const orgSlug = url.searchParams.get("org");
 
   let orgData: ResolvedOrg | null = null;
 
   if (orgSlug) {
     orgData = await getOrgBySlug(orgSlug);
-  } else if (orgParam) {
-    try {
-      orgData = await getOrgData(orgParam);
-    } catch {
-      orgData = null;
-    }
   } else {
     throw badRequest("org query parameter is required");
   }
