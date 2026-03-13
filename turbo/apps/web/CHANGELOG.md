@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.103.1](https://github.com/vm0-ai/vm0/compare/web-v12.103.0...web-v12.103.1) (2026-03-13)
+
+
+### Refactoring
+
+* clean up remaining scope terminology in comments, docs, and telemetry ([#4726](https://github.com/vm0-ai/vm0/issues/4726)) ([6f6c2cd](https://github.com/vm0-ai/vm0/commit/6f6c2cdbbd439f1c8b7b2c6277b8d89ed927ef3a))
+
 ## [12.103.0](https://github.com/vm0-ai/vm0/compare/web-v12.102.5...web-v12.103.0) (2026-03-13)
 
 
