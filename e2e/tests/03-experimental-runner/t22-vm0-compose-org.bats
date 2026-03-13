@@ -3,11 +3,11 @@
 # Test VM0 compose with org support (E2E happy path only)
 # Tests the org/name:version naming convention for agent composes
 #
-# This test covers issue #757: Add scope support to agent compose
+# This test covers issue #757: Add org support to agent compose
 #
 # Note: Identifier format parsing and error handling (org/name, org/name:version, name:version,
 # backward compat, org errors) are tested via CLI Command Integration Tests
-# (see run/__tests__/index.test.ts, "scope error handling" section).
+# (see run/__tests__/index.test.ts, "org error handling" section).
 
 load '../../helpers/setup'
 
@@ -15,8 +15,8 @@ setup() {
     # Create temporary test directory
     export TEST_DIR="$(mktemp -d)"
     # Use UUID for reliable uniqueness in parallel test runs
-    export AGENT_NAME="e2e-scope-compose-$(cat /proc/sys/kernel/random/uuid | head -c 8)"
-    export ARTIFACT_NAME="e2e-scope-artifact-$(date +%s%3N)-$RANDOM"
+    export AGENT_NAME="e2e-org-compose-$(cat /proc/sys/kernel/random/uuid | head -c 8)"
+    export ARTIFACT_NAME="e2e-org-artifact-$(date +%s%3N)-$RANDOM"
 }
 
 teardown() {
@@ -45,7 +45,7 @@ EOF
     assert_success
 
     echo "# Verifying output contains org/name format..."
-    # Output should show something like "Compose created: user-abc12345/e2e-scope-compose-xxxx"
+    # Output should show something like "Compose created: user-abc12345/e2e-org-compose-xxxx"
     assert_output --regexp "Compose (created|version exists): [a-z0-9-]+/$AGENT_NAME"
 
     echo "# Verifying output contains version..."
@@ -81,13 +81,13 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    # Extract scope from compose output (format: "Compose created: scope/agent-name")
-    # This ensures we use the same scope that compose actually used, avoiding race conditions
-    USER_SCOPE=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
-    echo "# Scope from compose output: $USER_SCOPE"
+    # Extract org from compose output (format: "Compose created: org/agent-name")
+    # This ensures we use the same org that compose actually used, avoiding race conditions
+    USER_ORG=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
+    echo "# Org from compose output: $USER_ORG"
 
-    [ -n "$USER_SCOPE" ] || {
-        echo "# Failed to extract scope from compose output"
+    [ -n "$USER_ORG" ] || {
+        echo "# Failed to extract org from compose output"
         echo "# Output was: $output"
         return 1
     }
@@ -100,12 +100,12 @@ EOF
     assert_success
 
     echo "# Step 4: Running with org/name format..."
-    run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME" \
+    run $CLI_COMMAND run "$USER_ORG/$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "echo hello from scope test"
+        "echo hello from org test"
     assert_success
     assert_output --partial "● Bash("
-    assert_output --partial "hello from scope test"
+    assert_output --partial "hello from org test"
 }
 
 # ============================================
