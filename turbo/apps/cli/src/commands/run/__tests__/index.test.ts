@@ -1324,7 +1324,7 @@ describe("run command", () => {
   });
 
   describe("--experimental-shared-agent flag", () => {
-    it("should require flag when running agent from another user's scope", async () => {
+    it("should require flag when running agent from another user's org", async () => {
       await expect(async () => {
         await runCommand.parseAsync([
           "node",
@@ -1376,7 +1376,7 @@ describe("run command", () => {
         }),
       );
 
-      // Should not throw - own scope doesn't require the flag
+      // Should not throw - own org doesn't require the flag
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -1480,7 +1480,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should provide helpful error message for non-existent scope", async () => {
+    it("should provide helpful error message for non-existent org", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json(
@@ -1635,7 +1635,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should treat scope isolation as not found rather than forbidden", async () => {
+    it("should treat org isolation as not found rather than forbidden", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json(
