@@ -222,9 +222,11 @@ export async function getUserPreferences(
       sessionClaims.membership_notify_slack !== undefined)
   ) {
     const pinnedFromJwt = sessionClaims.membership_pinned_agent_ids;
-    const pinnedAgentIds = Array.isArray(pinnedFromJwt)
-      ? (pinnedFromJwt as string[])
-      : await getCachedPinnedAgentIds(orgId, userId);
+    const validated = toStringArray(pinnedFromJwt);
+    const pinnedAgentIds =
+      validated.length > 0 || Array.isArray(pinnedFromJwt)
+        ? validated
+        : await getCachedPinnedAgentIds(orgId, userId);
     return {
       timezone: sessionClaims.membership_timezone ?? null,
       notifyEmail: sessionClaims.membership_notify_email ?? false,
