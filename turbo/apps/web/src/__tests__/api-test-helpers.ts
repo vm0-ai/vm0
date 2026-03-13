@@ -314,7 +314,7 @@ export async function findTestCliToken(token: string) {
  * Create a test org by inserting into org_cache.
  *
  * Pre-populates org_cache so getOrgData() works without Clerk API calls.
- * The scopes table has been dropped (Phase 6 🆉).
+ * The legacy scopes table was dropped and replaced by orgs (Phase 6 🆉).
  *
  * @param slug - The org slug
  * @returns The created org with id and slug
@@ -1925,7 +1925,7 @@ export async function createTestSlackComposeRequest(options: {
  * Find slack_compose_requests by composeJobId for verification.
  */
 /**
- * Find artifact storage for a scope, including its HEAD version details.
+ * Find artifact storage for an org, including its HEAD version details.
  */
 export async function findTestArtifactStorage(orgId: string) {
   const [storage] = await globalThis.services.db
@@ -2280,12 +2280,12 @@ export async function insertTestAgentPermission(
 }
 
 /**
- * Find a compose record with its scope details.
+ * Find a compose record with its org details.
  *
  * Direct DB read is required because the compose API does not expose
- * scope slug in its response — it only returns compose-level fields.
+ * org slug in its response — it only returns compose-level fields.
  */
-export async function findTestComposeWithScope(composeId: string) {
+export async function findTestComposeWithOrg(composeId: string) {
   const [row] = await globalThis.services.db
     .select({
       composeId: agentComposes.id,

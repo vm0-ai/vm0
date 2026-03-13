@@ -12,7 +12,7 @@ import {
   refreshAppHome,
 } from "../../../../../src/lib/slack";
 import {
-  ensureScopeAndArtifact,
+  ensureOrgAndArtifact,
   getWorkspaceAgent,
 } from "../../../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
@@ -130,12 +130,12 @@ async function buildAgentFields(
 
   let agents: Array<{ id: string; name: string }> = [];
   if (isAdmin) {
-    const defaultScope = await getDefaultOrgByUserId(userId);
-    if (defaultScope) {
+    const defaultOrg = await getDefaultOrgByUserId(userId);
+    if (defaultOrg) {
       const userAgents = await globalThis.services.db
         .select({ id: agentComposes.id, name: agentComposes.name })
         .from(agentComposes)
-        .where(eq(agentComposes.orgId, defaultScope.orgId));
+        .where(eq(agentComposes.orgId, defaultOrg.orgId));
 
       // Prepend default agent, deduplicate by id
       const seen = new Set<string>();
@@ -279,7 +279,7 @@ export async function POST(request: Request) {
   }
 
   // Ensure org and artifact exist for the user
-  await ensureScopeAndArtifact(userId);
+  await ensureOrgAndArtifact(userId);
 
   // Create the link
   await globalThis.services.db

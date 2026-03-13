@@ -182,7 +182,7 @@ export async function prepareForExecution(
   // Resolve the Agent Org for volume resolution.
   // Runtime Org (for artifacts/memory) is pre-resolved by buildExecutionContext.
   const userId = context.userId || "";
-  const scopeStart = Date.now();
+  const orgStart = Date.now();
   const [agentComposeInfo] = await globalThis.services.db
     .select({
       orgId: agentComposes.orgId,
@@ -194,14 +194,14 @@ export async function prepareForExecution(
     )
     .where(eq(agentComposeVersions.id, context.agentComposeVersionId))
     .limit(1);
-  const scopeEnd = Date.now();
+  const orgEnd = Date.now();
 
   if (!agentComposeInfo) {
     throw badRequest("Agent compose not found");
   }
 
   const agentOrgData = await getOrgData(agentComposeInfo.orgId);
-  const agentScopeInfo = {
+  const agentOrgInfo = {
     orgId: agentComposeInfo.orgId,
     orgSlug: agentOrgData.slug,
   };
@@ -237,7 +237,7 @@ export async function prepareForExecution(
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
-    agentScopeInfo.orgId,
+    agentOrgInfo.orgId,
     runtimeOrg.orgId,
     userId,
     context.artifactName,
@@ -250,7 +250,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentScopeInfo.orgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgInfo.orgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
@@ -261,11 +261,11 @@ export async function prepareForExecution(
     runnerGroup,
     storageManifest,
     experimentalFirewall,
-    agentScopeInfo.orgSlug,
+    agentOrgInfo.orgSlug,
   );
 
   const timings: PrepareTimings = {
-    resolveOrgs: scopeEnd - scopeStart,
+    resolveOrgs: orgEnd - orgStart,
     ensureStorage: ensureEnd - ensureStart,
     storageManifest: storageEnd - storageStart,
   };

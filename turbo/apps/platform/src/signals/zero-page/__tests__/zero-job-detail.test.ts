@@ -236,15 +236,15 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobInstructions$)).not.toBeNull();
     });
 
-    it("should parse scoped agent name correctly", async () => {
+    it("should parse org-qualified agent name correctly", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("scope");
+          const org = url.searchParams.get("org");
 
           expect(name).toBe("sub-agent");
-          expect(scope).toBe("my-org");
+          expect(org).toBe("my-org");
 
           return HttpResponse.json({
             ...mockAgentResponse(),

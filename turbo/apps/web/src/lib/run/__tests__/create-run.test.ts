@@ -201,19 +201,19 @@ describe("createRun()", () => {
       expect(statuses).toContain("queued");
     });
 
-    it("should enforce limit per-scope, not per-user", async () => {
-      // Create a run in the default scope (fills its free-tier slot)
-      await createRun(baseParams({ prompt: "Scope 1 run" }));
+    it("should enforce limit per-org, not per-user", async () => {
+      // Create a run in the default org (fills its free-tier slot)
+      await createRun(baseParams({ prompt: "Org 1 run" }));
 
-      // Create a second user with a different scope
-      const otherUser = await context.setupUser({ prefix: "scope-user" });
+      // Create a second user with a different org
+      const otherUser = await context.setupUser({ prefix: "org-user" });
       const otherCompose = await createTestCompose(uniqueId("other-agent"));
 
-      // Run in the other scope should succeed (separate scope, separate limit)
+      // Run in the other org should succeed (separate org, separate limit)
       const result = await createRun({
         userId: otherUser.userId,
         agentComposeVersionId: otherCompose.versionId,
-        prompt: "Scope 2 run",
+        prompt: "Org 2 run",
       });
       expect(result.status).toBe("pending");
     });
@@ -643,8 +643,8 @@ describe("createRun()", () => {
       expect(result.status).toBe("pending");
     });
 
-    it("should mark run as failed when runner group scope validation fails", async () => {
-      vi.stubEnv("RUNNER_DEFAULT_GROUP", "nonexistent-scope/default");
+    it("should mark run as failed when runner group org validation fails", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "nonexistent-org/default");
       reloadEnv();
 
       mockClerk({ userId: user.userId, email: "user@example.com" });
@@ -667,19 +667,19 @@ describe("createRun()", () => {
       const run = await findTestRunRecord(runId);
       expect(run).toBeDefined();
       expect(run!.status).toBe("failed");
-      expect(run!.error).toMatch(/nonexistent-scope/);
+      expect(run!.error).toMatch(/nonexistent-org/);
     });
   });
 
-  describe("Scope Resolution for Storage", () => {
+  describe("Org Resolution for Storage", () => {
     it("should use runtime orgId for artifact/memory storage when orgId is provided", async () => {
-      // Create a second scope (org scope) and make the user a member
+      // Create a second org and make the user a member
       const orgCompose = await context.createAgentCompose(user.userId, {
         name: uniqueId("org-agent"),
       });
       const orgClerkOrgId = orgCompose.orgId;
 
-      // Use the default compose but pass org scope for storage resolution
+      // Use the default compose but pass org for storage resolution
       const result = await createRun(
         baseParams({
           artifactName: "artifact",
@@ -695,7 +695,7 @@ describe("createRun()", () => {
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
 
-      // Verify artifact storage was created in the org scope (not user's default scope)
+      // Verify artifact storage was created in the specified org (not user's default org)
       const artifact = await findTestStorage(
         orgClerkOrgId,
         "artifact",
@@ -704,13 +704,13 @@ describe("createRun()", () => {
       expect(artifact).toBeDefined();
       expect(artifact!.userId).toBe(user.userId);
 
-      // Verify memory storage was created in the org scope
+      // Verify memory storage was created in the specified org
       const memory = await findTestStorage(orgClerkOrgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
     });
 
-    it("should use default scope for storage when orgId is not provided", async () => {
+    it("should use default org for storage when orgId is not provided", async () => {
       const compose = await createTestCompose(uniqueId("agent"));
 
       const result = await createRun(
@@ -723,7 +723,7 @@ describe("createRun()", () => {
 
       expect(result.status).toBe("pending");
 
-      // Verify artifact storage was created in user's default scope
+      // Verify artifact storage was created in user's default org
       const artifact = await findTestStorage(
         user.orgId,
         "artifact",
@@ -732,7 +732,7 @@ describe("createRun()", () => {
       expect(artifact).toBeDefined();
       expect(artifact!.userId).toBe(user.userId);
 
-      // Verify memory storage was created in user's default scope
+      // Verify memory storage was created in user's default org
       const memory = await findTestStorage(user.orgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);

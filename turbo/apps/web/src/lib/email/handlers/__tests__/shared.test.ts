@@ -38,7 +38,7 @@ describe("parseEmailTriggerAddress", () => {
   });
 
   it("should return null for address with only org", () => {
-    const result = parseEmailTriggerAddress("scope+@vm0.bot");
+    const result = parseEmailTriggerAddress("org+@vm0.bot");
     expect(result).toBeNull();
   });
 
@@ -53,7 +53,7 @@ describe("parseEmailTriggerAddress", () => {
   });
 
   it("should return null for agent starting with hyphen", () => {
-    const result = parseEmailTriggerAddress("scope+-agent@vm0.bot");
+    const result = parseEmailTriggerAddress("org+-agent@vm0.bot");
     expect(result).toBeNull();
   });
 
@@ -76,8 +76,8 @@ describe("parseAgentOnlyAddress", () => {
     expect(parseAgentOnlyAddress("agent123@vm0.bot")).toBe("agent123");
   });
 
-  it("should return null for scope+agent format", () => {
-    expect(parseAgentOnlyAddress("scope+agent@vm0.bot")).toBeNull();
+  it("should return null for org+agent format", () => {
+    expect(parseAgentOnlyAddress("org+agent@vm0.bot")).toBeNull();
   });
 
   it("should return null for reply address", () => {
@@ -194,7 +194,7 @@ describe("computeReplyRecipients", () => {
   it("should never include bot address in reply recipients", () => {
     const result = computeReplyRecipients({
       from: "user@example.com",
-      to: ["scope+agent@vm0.bot", "user-b@example.com"],
+      to: ["org+agent@vm0.bot", "user-b@example.com"],
       cc: ["reply+token@vm0.bot", "user-c@example.com"],
       replyTo: [],
       botDomain,

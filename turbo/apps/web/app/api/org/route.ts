@@ -12,7 +12,7 @@ import type { ResolvedOrg } from "../../../src/lib/org/resolve-org";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 
-const log = logger("api:scope");
+const log = logger("api:org");
 
 function resolvedOrgToResponse(resolved: ResolvedOrg) {
   return {
@@ -119,7 +119,7 @@ const router = tsr.router(orgContract, {
 });
 
 /**
- * Custom error handler for scope API
+ * Custom error handler for org API
  */
 function errorHandler(err: unknown): TsRestResponse | void {
   // Handle ts-rest RequestValidationError

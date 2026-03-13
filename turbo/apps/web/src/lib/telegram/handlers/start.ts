@@ -5,7 +5,7 @@ import { decryptSecretValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import {
-  ensureScopeAndArtifact,
+  ensureOrgAndArtifact,
   resolveUserLink,
   buildConnectUrl,
 } from "./shared";
@@ -121,7 +121,7 @@ export async function handleStartCommand(
     .onConflictDoNothing();
 
   // Auto-grant permission
-  await ensureScopeAndArtifact(payload.vm0UserId);
+  await ensureOrgAndArtifact(payload.vm0UserId);
 
   await sendMessage(
     client,

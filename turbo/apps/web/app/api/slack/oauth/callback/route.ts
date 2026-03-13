@@ -15,7 +15,7 @@ import {
 } from "../../../../../src/lib/crypto/secrets-encryption";
 import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../../src/db/schema/slack-user-link";
-import { ensureScopeAndArtifact } from "../../../../../src/lib/slack/handlers/shared";
+import { ensureOrgAndArtifact } from "../../../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { addPermission } from "../../../../../src/lib/agent/permission-service";
 import { getPlatformUrl } from "../../../../../src/lib/url";
@@ -263,7 +263,7 @@ async function createUserLink(
   if (existing) return;
 
   // Ensure org and artifact exist
-  await ensureScopeAndArtifact(vm0UserId);
+  await ensureOrgAndArtifact(vm0UserId);
 
   // Create the link
   await db.insert(slackUserLinks).values({

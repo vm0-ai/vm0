@@ -14,7 +14,7 @@ import {
   createTestCompose,
   createTestOrg,
   findTestAgentPermissions,
-  findTestComposeWithScope,
+  findTestComposeWithOrg,
   insertTestAgentPermission,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { uniqueId } from "../../../../../src/__tests__/test-helpers";
@@ -315,7 +315,7 @@ describe("/api/integrations/slack", () => {
       mockClerk({ userId: userLink.vm0UserId });
 
       // Find the org slug and name used for the default agent
-      const defaultCompose = await findTestComposeWithScope(
+      const defaultCompose = await findTestComposeWithOrg(
         installation.defaultComposeId,
       );
 
@@ -356,7 +356,7 @@ describe("/api/integrations/slack", () => {
       expect(oldPermissions).toHaveLength(1);
     });
 
-    it("updates the default agent with scoped name (scope/agentName)", async () => {
+    it("updates the default agent with org-qualified name (org/agentName)", async () => {
       const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
 
       // Create a compose in a different org (simulating a shared agent)
@@ -370,7 +370,7 @@ describe("/api/integrations/slack", () => {
       mockClerk({ userId: userLink.vm0UserId });
 
       // Look up the other org's slug for the scoped name
-      const otherCompose = await findTestComposeWithScope(otherComposeId);
+      const otherCompose = await findTestComposeWithOrg(otherComposeId);
 
       const request = new Request(
         "http://localhost:3000/api/integrations/slack",
@@ -398,7 +398,7 @@ describe("/api/integrations/slack", () => {
       expect(getData.agent.orgSlug).toBe(otherCompose!.orgSlug);
     });
 
-    it("returns 400 when scoped name has invalid org slug", async () => {
+    it("returns 400 when org-qualified name has invalid org slug", async () => {
       const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
       mockClerk({ userId: userLink.vm0UserId });
 
@@ -408,7 +408,7 @@ describe("/api/integrations/slack", () => {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            agentName: "nonexistent-scope/some-agent",
+            agentName: "nonexistent-org/some-agent",
           }),
         },
       );

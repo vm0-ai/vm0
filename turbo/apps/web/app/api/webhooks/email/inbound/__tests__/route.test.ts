@@ -596,7 +596,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "unreg-email",
-          to: ["somescope+someagent@vm7.bot"],
+          to: ["someorg+someagent@vm7.bot"],
           from: "unregistered@example.com",
           subject: "Test",
           created_at: new Date().toISOString(),
@@ -1649,7 +1649,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
   describe("Email Trigger (agent@domain, auto-detect org)", () => {
     it("should dispatch agent run for agent-only email (auto-detect org)", async () => {
-      const user = await context.setupUser({ prefix: "auto-scope" });
+      const user = await context.setupUser({ prefix: "auto-org" });
       const agentName = uniqueId("auto-agent");
       await createTestCompose(agentName);
 
@@ -1660,10 +1660,10 @@ describe("POST /api/webhooks/email/inbound", () => {
       const payload = JSON.stringify({
         type: "email.received",
         data: {
-          email_id: "auto-scope-email",
+          email_id: "auto-org-email",
           to: [`${agentName}@vm7.bot`],
           from: senderEmail,
-          subject: "Auto Scope Test",
+          subject: "Auto Org Test",
           created_at: new Date().toISOString(),
         },
       });
@@ -1677,7 +1677,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Verify: agent run was created
       const runs = await findTestRunsByUserAndPromptContaining(
         user.userId,
-        "Auto Scope Test\n\nHello from email",
+        "Auto Org Test\n\nHello from email",
       );
       expect(runs).toHaveLength(1);
 
@@ -1690,9 +1690,9 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(triggerCallback!.payload).toMatchObject({
         senderEmail,
         userId: user.userId,
-        inboundEmailId: "auto-scope-email",
+        inboundEmailId: "auto-org-email",
         inboundMessageId: "<default-msg-id@example.com>",
-        subject: "Auto Scope Test",
+        subject: "Auto Org Test",
         triggerLocalPart: agentName,
       });
     });
@@ -1730,13 +1730,13 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockResend.emails.receiving.get.mockClear();
 
       // Mock Clerk to return a userId that has no org in the database
-      const senderEmail = "noscopeuser@example.com";
-      mockClerk({ userId: "no-scope-user-id", email: senderEmail });
+      const senderEmail = "noorguser@example.com";
+      mockClerk({ userId: "no-org-user-id", email: senderEmail });
 
       const payload = JSON.stringify({
         type: "email.received",
         data: {
-          email_id: "no-scope-email",
+          email_id: "no-org-email",
           to: ["someagent@vm7.bot"],
           from: senderEmail,
           subject: "Test",
@@ -1802,7 +1802,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       mockReceivedEmailGet({
         from: senderEmail,
         to: [`${agentName}@vm7.bot`],
-        subject: "Spoofed auto-scope",
+        subject: "Spoofed auto-org",
         text: "I am pretending to be someone else",
         html: "<p>I am pretending to be someone else</p>",
         headers: {
@@ -1817,7 +1817,7 @@ describe("POST /api/webhooks/email/inbound", () => {
           email_id: "auto-dmarc-fail-email",
           to: [`${agentName}@vm7.bot`],
           from: senderEmail,
-          subject: "Spoofed auto-scope",
+          subject: "Spoofed auto-org",
           created_at: new Date().toISOString(),
         },
       });
@@ -1831,7 +1831,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // No run should have been created
       const runs = await findTestRunsByUserAndPrompt(
         user.userId,
-        "Spoofed auto-scope\n\nI am pretending to be someone else",
+        "Spoofed auto-org\n\nI am pretending to be someone else",
       );
       expect(runs).toHaveLength(0);
 
@@ -1844,7 +1844,7 @@ describe("POST /api/webhooks/email/inbound", () => {
   it("should send error reply when trigger address is not recognized", async () => {
     mockResend.emails.receiving.get.mockClear();
 
-    // Send to an address with a + prefix that doesn't match scope+agent format
+    // Send to an address with a + prefix that doesn't match org+agent format
     // and parseAgentOnlyAddress returns null because it contains a "+"
     const senderEmail = "user@example.com";
     const payload = JSON.stringify({

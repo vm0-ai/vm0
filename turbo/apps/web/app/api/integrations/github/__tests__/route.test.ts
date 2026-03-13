@@ -8,7 +8,7 @@ import {
   insertTestGitHubInstallationWithAdmin,
   insertTestGitHubUserLink,
   findTestGitHubInstallationById,
-  findTestComposeWithScope,
+  findTestComposeWithOrg,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -428,7 +428,7 @@ describe("/api/integrations/github", () => {
       expect(getData.agent.name).toBe("new-agent");
     });
 
-    it("should update default agent with scoped name", async () => {
+    it("should update default agent with org-qualified name", async () => {
       const userId = uniqueId("gh-user");
       mockClerk({ userId });
       await createTestOrg(uniqueId("gh-org"));
@@ -446,7 +446,7 @@ describe("/api/integrations/github", () => {
       mockClerk({ userId });
 
       // Look up the other org's slug for the scoped name
-      const otherCompose = await findTestComposeWithScope(otherComposeId);
+      const otherCompose = await findTestComposeWithOrg(otherComposeId);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",

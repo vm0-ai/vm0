@@ -34,7 +34,7 @@ const router = tsr.router(orgDefaultAgentContract, {
         status: 403 as const,
         body: {
           error: {
-            message: "Only scope admins can set the default agent",
+            message: "Only org admins can set the default agent",
             code: "FORBIDDEN",
           },
         },
@@ -44,7 +44,7 @@ const router = tsr.router(orgDefaultAgentContract, {
     const { agentComposeId } = body;
 
     if (agentComposeId !== null) {
-      // Verify agent exists and belongs to this scope
+      // Verify agent exists and belongs to this org
       const [compose] = await globalThis.services.db
         .select({ id: agentComposes.id })
         .from(agentComposes)
@@ -61,7 +61,7 @@ const router = tsr.router(orgDefaultAgentContract, {
           status: 404 as const,
           body: {
             error: {
-              message: "Agent not found in this scope",
+              message: "Agent not found in this org",
               code: "NOT_FOUND",
             },
           },

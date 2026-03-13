@@ -93,7 +93,7 @@ export async function DELETE(request: Request) {
     );
     await removeMember(userId, org.orgId, member.role, body.email);
     return NextResponse.json({
-      message: `Removed ${body.email} from scope`,
+      message: `Removed ${body.email} from org`,
     });
   } catch (error) {
     if (isBadRequest(error)) {
