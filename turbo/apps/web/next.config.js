@@ -54,10 +54,6 @@ const nextConfig = {
     NEXT_PUBLIC_DATA_SOURCE: process.env.BLOG_DATA_SOURCE,
   },
 
-  eslint: {
-    // CI already runs lint separately, skip during Vercel build to save time and memory
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     // CI already runs type-check separately, skip during Vercel build to save time and memory
     ignoreBuildErrors: true,
@@ -100,17 +96,6 @@ const nextConfig = {
   },
   allowedDevOrigins: ["*.vm7.ai"],
   serverExternalPackages: ["ably"],
-  webpack: (config) => {
-    config.ignoreWarnings = [
-      // e2b SDK uses dynamic require() for cross-runtime compatibility (Node/Deno/Bun)
-      { module: /node_modules\/e2b\/dist/ },
-      // next-intl uses dynamic import(t) internally for format loading
-      { module: /node_modules\/next-intl\/dist/ },
-      // Webpack cache serialization performance hints for large strings
-      { message: /Serializing big strings/ },
-    ];
-    return config;
-  },
 };
 
 const isProduction = process.env.VERCEL_ENV === "production";

@@ -45,4 +45,4 @@ fi
 
 # Start Next.js dev server
 cd "$WEB_APP_DIR"
-exec env VM0_API_URL="$TUNNEL_URL" npx next dev --turbopack --port "$PORT"
+exec env VM0_API_URL="$TUNNEL_URL" npx next dev --turbo --port "$PORT"
