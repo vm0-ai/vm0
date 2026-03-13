@@ -3386,21 +3386,6 @@ describe("expandServiceConfigs", () => {
     expect(expanded[0]!.description).toBeUndefined();
   });
 
-  it("should drop service when all api_entries are filtered out", () => {
-    // github has 1 api_entry with only "full-access" permission.
-    // Selecting a non-matching permission would fail validation,
-    // so we test via permissions: all and verify it's kept.
-    // (Drop-empty is implicitly tested — if a service had api_entries
-    // with different permissions, unselected ones would drop.)
-    const config = makeConfig({
-      github: { permissions: "all" },
-    });
-    const expanded = getExpanded(config);
-
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.apis.length).toBeGreaterThan(0);
-  });
-
   it("should throw for unknown service ref", () => {
     const config = makeConfig({ "not-a-service": { permissions: "all" } });
     expect(() => expandServiceConfigs(config)).toThrow(
