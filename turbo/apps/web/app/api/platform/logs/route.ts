@@ -33,7 +33,6 @@ interface AgentComposeContent {
 
 interface LogsQuery {
   name?: string;
-  scope?: string;
   agent?: string;
   search?: string;
   status?: PlatformLogStatus;
@@ -43,7 +42,7 @@ interface LogsQuery {
 
 /**
  * Build agent name/org filter conditions from query params.
- * name+scope take precedence over legacy agent param, which takes precedence over search.
+ * name takes precedence over legacy agent param, which takes precedence over search.
  */
 function buildAgentFilterConditions(
   query: LogsQuery,
