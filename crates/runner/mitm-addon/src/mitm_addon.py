@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 import ipaddress
 import socket
+from typing import NamedTuple
 from mitmproxy import http, ctx, tls
 from mitmproxy.addonmanager import Loader
 
@@ -164,17 +165,31 @@ def match_path(path: str, pattern: str) -> dict | None:
     return params
 
 
-def match_service_request(url: str, method: str, vm_services: list | None) -> tuple | None:
+class ServiceAllow(NamedTuple):
+    """Permission matched — inject auth headers."""
+    api_entry: dict
+    match_info: dict
+
+
+class ServiceBlock(NamedTuple):
+    """Base URL matched but no permission granted — return 403."""
+    base: str
+
+
+def match_service_request(url: str, method: str, vm_services: list | None) -> ServiceAllow | ServiceBlock | None:
     """Match request against service permissions.
 
     Returns:
-      ("allow", api_entry, match_info) — permission matched, inject headers
-      ("block", base_url) — base URL matched but no permission granted
+      ServiceAllow — permission matched, inject headers
+      ServiceBlock — base URL matched but no permission granted
       None — no base URL match (not a service request)
     """
     if not vm_services:
         return None
 
+    # Track the first base URL that matched. If we find a base match but no
+    # permission rule allows the request, we block it (fail-closed). Only the
+    # first matched base is recorded — subsequent base matches don't overwrite.
     blocked_base = None
 
     for service in vm_services:
@@ -212,7 +227,7 @@ def match_service_request(url: str, method: str, vm_services: list | None) -> tu
                         continue
                     params = match_path(rel_path, rule_pattern)
                     if params is not None:
-                        return ("allow", api_entry, {
+                        return ServiceAllow(api_entry, {
                             "service": svc_name,
                             "ref": svc_ref,
                             "permission": perm_name,
@@ -221,7 +236,7 @@ def match_service_request(url: str, method: str, vm_services: list | None) -> tu
                         })
 
     if blocked_base is not None:
-        return ("block", blocked_base)
+        return ServiceBlock(blocked_base)
     return None
 
 
@@ -507,21 +522,19 @@ def request(flow: http.HTTPFlow) -> None:
     if vm_services:
         original_url = get_original_url(flow)
         result = match_service_request(original_url, flow.request.method, vm_services)
-        if result is not None:
-            if result[0] == "block":
-                blocked_base = result[1]
-                ctx.log.warn(f"[{run_id}] Service {blocked_base}: no matching permission for {flow.request.method} {flow.request.path}")
-                flow.metadata["firewall_action"] = "DENY"
-                flow.metadata["firewall_rule"] = f"service:{blocked_base}"
-                flow.metadata["original_url"] = original_url
-                flow.response = http.Response.make(
-                    403,
-                    b"No matching service permission",
-                    {"Content-Type": "text/plain"},
-                )
-                return
-            _, api_entry, match_info = result
-            handle_service_request(flow, api_entry, vm_info, match_info)
+        if isinstance(result, ServiceBlock):
+            ctx.log.warn(f"[{run_id}] Service {result.base}: no matching permission for {flow.request.method} {flow.request.path}")
+            flow.metadata["firewall_action"] = "DENY"
+            flow.metadata["firewall_rule"] = f"service:{result.base}"
+            flow.metadata["original_url"] = original_url
+            flow.response = http.Response.make(
+                403,
+                b"No matching service permission",
+                {"Content-Type": "text/plain"},
+            )
+            return
+        if isinstance(result, ServiceAllow):
+            handle_service_request(flow, result.api_entry, vm_info, result.match_info)
             return
 
     # Request is ALLOWED, no service match — pass through directly

@@ -4,6 +4,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 import mitm_addon
+from mitm_addon import ServiceAllow, ServiceBlock
 
 
 def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, path="/repos"):
@@ -98,8 +99,8 @@ class TestMatchServiceRequest:
             {"base": "https://api.github.com", "auth": {"headers": {}}},
         ], name="github", ref="github")
         result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
-        assert result[0] == "block"
-        assert result[1] == "https://api.github.com"
+        assert isinstance(result, ServiceBlock)
+        assert result.base == "https://api.github.com"
 
     def test_permission_match_allows(self):
         services = _wrap_services([{
@@ -108,12 +109,11 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
         }], name="github", ref="github")
         result = mitm_addon.match_service_request("https://api.github.com/repos/octocat/hello", "GET", services)
-        assert result[0] == "allow"
-        info = result[2]
-        assert info["service"] == "github"
-        assert info["permission"] == "repo-read"
-        assert info["params"] == {"owner": "octocat", "repo": "hello"}
-        assert info["rule"] == "GET /repos/{owner}/{repo}"
+        assert isinstance(result, ServiceAllow)
+        assert result.match_info["service"] == "github"
+        assert result.match_info["permission"] == "repo-read"
+        assert result.match_info["params"] == {"owner": "octocat", "repo": "hello"}
+        assert result.match_info["rule"] == "GET /repos/{owner}/{repo}"
 
     def test_any_method_matches(self):
         services = _wrap_services([{
@@ -122,8 +122,8 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/anything", "DELETE", services)
-        assert result[0] == "allow"
-        assert result[2]["permission"] == "full-access"
+        assert isinstance(result, ServiceAllow)
+        assert result.match_info["permission"] == "full-access"
 
     def test_method_case_insensitive(self):
         services = _wrap_services([{
@@ -132,7 +132,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "p", "rules": ["post /repos"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/repos", "POST", services)
-        assert result[0] == "allow"
+        assert isinstance(result, ServiceAllow)
 
     def test_wrong_method_blocks(self):
         services = _wrap_services([{
@@ -141,7 +141,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "read-only", "rules": ["GET /repos/{owner}/{repo}"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/repos/a/b", "POST", services)
-        assert result[0] == "block"
+        assert isinstance(result, ServiceBlock)
 
     def test_wrong_path_blocks(self):
         services = _wrap_services([{
@@ -150,7 +150,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/users/octocat", "GET", services)
-        assert result[0] == "block"
+        assert isinstance(result, ServiceBlock)
 
     def test_no_base_match_returns_none(self):
         services = _wrap_services([{
@@ -175,8 +175,8 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "root", "rules": ["GET /"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com", "GET", services)
-        assert result[0] == "allow"
-        assert result[2]["permission"] == "root"
+        assert isinstance(result, ServiceAllow)
+        assert result.match_info["permission"] == "root"
 
     def test_trailing_slash_on_url(self):
         """URL trailing slash doesn't affect matching (split filters empty segments)."""
@@ -186,7 +186,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/repos/", "GET", services)
-        assert result[0] == "allow"
+        assert isinstance(result, ServiceAllow)
 
     def test_trailing_slash_on_base_config(self):
         """Base URL with trailing slash still matches (rstrip strips it)."""
@@ -196,7 +196,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
-        assert result[0] == "allow"
+        assert isinstance(result, ServiceAllow)
 
     def test_port_boundary_rejected(self):
         """Port in URL (rest starts with ':') is not a valid path boundary."""
@@ -227,8 +227,8 @@ class TestMatchServiceRequest:
             ],
         }])
         result = mitm_addon.match_service_request("https://slack.com/api/chat.postMessage", "POST", services)
-        assert result[0] == "allow"
-        assert result[2]["permission"] == "messages-send"
+        assert isinstance(result, ServiceAllow)
+        assert result.match_info["permission"] == "messages-send"
 
     def test_malformed_rules_skipped(self):
         """Rules without 'METHOD /path' format are silently skipped, not crash or false-allow."""
@@ -239,10 +239,10 @@ class TestMatchServiceRequest:
         }])
         # Only "GET /repos" is valid — the rest are skipped
         result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
-        assert result[0] == "allow"
+        assert isinstance(result, ServiceAllow)
         # Non-matching path still blocks (malformed rules don't accidentally allow)
         result2 = mitm_addon.match_service_request("https://api.github.com/users", "GET", services)
-        assert result2[0] == "block"
+        assert isinstance(result2, ServiceBlock)
 
     def test_path_case_sensitive(self):
         """URL paths are case-sensitive — /REPOS must not match /repos."""
@@ -252,7 +252,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "p", "rules": ["GET /repos/{owner}"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/REPOS/octocat", "GET", services)
-        assert result[0] == "block"
+        assert isinstance(result, ServiceBlock)
 
     def test_multiple_services_match_across(self):
         services = [
@@ -268,12 +268,12 @@ class TestMatchServiceRequest:
             }]},
         ]
         gh = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
-        assert gh[0] == "allow"
-        assert gh[2]["service"] == "github"
+        assert isinstance(gh, ServiceAllow)
+        assert gh.match_info["service"] == "github"
 
         sl = mitm_addon.match_service_request("https://slack.com/api/chat.postMessage", "POST", services)
-        assert sl[0] == "allow"
-        assert sl[2]["service"] == "slack"
+        assert isinstance(sl, ServiceAllow)
+        assert sl.match_info["service"] == "slack"
 
     def test_query_string_stripped_for_matching(self):
         services = _wrap_services([{
@@ -282,7 +282,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/repos?page=1", "GET", services)
-        assert result[0] == "allow"
+        assert isinstance(result, ServiceAllow)
 
     def test_fragment_stripped_for_matching(self):
         services = _wrap_services([{
@@ -291,7 +291,7 @@ class TestMatchServiceRequest:
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/repos#section", "GET", services)
-        assert result[0] == "allow"
+        assert isinstance(result, ServiceAllow)
 
     def test_empty_permissions_list_blocks(self):
         """If permissions is present but empty, no rules can match → block."""
@@ -301,7 +301,7 @@ class TestMatchServiceRequest:
             "permissions": [],
         }])
         result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
-        assert result[0] == "block"
+        assert isinstance(result, ServiceBlock)
 
     def test_same_base_different_permissions(self):
         """Same base URL with different permissions/auth — second api_entry can match."""
@@ -318,9 +318,9 @@ class TestMatchServiceRequest:
             },
         ])
         result = mitm_addon.match_service_request("https://slack.com/api/chat.postMessage", "POST", services)
-        assert result[0] == "allow"
-        assert result[1]["auth"]["headers"]["Authorization"] == "Bearer user"
-        assert result[2]["permission"] == "send"
+        assert isinstance(result, ServiceAllow)
+        assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer user"
+        assert result.match_info["permission"] == "send"
 
 
 # =========================================================================
