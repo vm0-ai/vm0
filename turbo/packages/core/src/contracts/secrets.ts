@@ -68,7 +68,7 @@ export type SetSecretRequest = z.infer<typeof setSecretRequestSchema>;
 export const secretsMainContract = c.router({
   /**
    * GET /api/secrets
-   * List all secrets for the current user's scope (metadata only)
+   * List all secrets for the current user's org (metadata only)
    */
   list: {
     method: "GET",

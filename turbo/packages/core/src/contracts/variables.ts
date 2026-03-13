@@ -61,7 +61,7 @@ export type SetVariableRequest = z.infer<typeof setVariableRequestSchema>;
 export const variablesMainContract = c.router({
   /**
    * GET /api/variables
-   * List all variables for the current user's scope (includes values)
+   * List all variables for the current user's org (includes values)
    */
   list: {
     method: "GET",
