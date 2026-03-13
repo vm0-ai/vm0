@@ -12,6 +12,10 @@ describe("getDefaultOrgByUserId", () => {
   });
 
   it("should return null when user has no org", async () => {
+    // setupUser initializes services (db, etc.) needed by getDefaultOrg
+    await context.setupUser();
+
+    // Re-mock Clerk with a user that has no orgs
     const userId = uniqueId("no-org-user");
     mockClerk({ userId, clerkOrgs: [] });
 
@@ -21,6 +25,10 @@ describe("getDefaultOrgByUserId", () => {
   });
 
   it("should return org from org_cache for user with Clerk org", async () => {
+    // setupUser initializes services (db, etc.) needed by getDefaultOrg
+    await context.setupUser();
+
+    // Re-mock Clerk with a specific user
     const userId = uniqueId("test-user");
     const orgId = `org_mock_${userId}`;
     const slug = uniqueId("org");
