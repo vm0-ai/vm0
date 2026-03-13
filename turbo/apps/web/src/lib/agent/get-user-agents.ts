@@ -18,9 +18,9 @@ interface UserAgent {
  * Shared agents are returned with `orgSlug/name` format for agentName.
  *
  * Note: This always includes shared agents, unlike `composes/list` which
- * only includes them when no `?scope=` param is provided. This is intentional
+ * only includes them when no `?org=` param is provided. This is intentional
  * — routes like `required-env` and `missing-secrets` need the full picture
- * regardless of scope filtering.
+ * regardless of org filtering.
  */
 export async function getUserAgents(userId: string): Promise<UserAgent[]> {
   const db = globalThis.services.db;

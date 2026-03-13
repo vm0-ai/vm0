@@ -22,7 +22,10 @@ import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
+import {
+  getOrgBySlug,
+  getOrgData,
+} from "../../../../src/lib/org/org-cache-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -49,7 +52,10 @@ const router = tsr.router(composesMainContract, {
     const isCrossOrgLookup = Boolean(query.org);
     let orgId: string;
     if (query.org) {
-      const orgData = await getOrgBySlug(query.org);
+      // Try slug first, fall back to orgId (callers may pass either via ?org=)
+      const orgData =
+        (await getOrgBySlug(query.org)) ??
+        (await getOrgData(query.org).catch(() => null));
       if (!orgData) {
         return {
           status: 404 as const,

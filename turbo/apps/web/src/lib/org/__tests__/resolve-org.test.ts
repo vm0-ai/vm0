@@ -364,20 +364,26 @@ describe("requireOrgFromRequest", () => {
     const userId = uniqueId("test-user");
     const slug1 = uniqueId("org");
 
-    // Set up Clerk org BEFORE creating org
-    mockClerk({ userId, clerkOrgs: testOrgs(slug1) });
+    // createTestOrg derives orgId from auth().userId → org_mock_${userId}
+    const expectedOrgId = `org_mock_${userId}`;
+
+    // Set up Clerk org BEFORE creating org — use matching orgId
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: expectedOrgId, slug: slug1, name: slug1 }],
+    });
     await createTestOrg(slug1);
 
     mockClerk({
       userId,
-      orgId: `org_mock_${slug1}`,
-      clerkOrgs: testOrgs(slug1),
+      orgId: expectedOrgId,
+      clerkOrgs: [{ id: expectedOrgId, slug: slug1, name: slug1 }],
     });
 
     const request = new Request(`http://localhost/api/test?org=${slug1}`);
     const result = await requireOrgFromRequest(request, userId);
 
-    expect(result.org.orgId).toBe(`org_mock_${slug1}`);
+    expect(result.org.orgId).toBe(expectedOrgId);
   });
 
   it("throws 400 when ?org= not provided", async () => {

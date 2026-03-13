@@ -38,7 +38,7 @@ function mapOrgRole(clerkRole: string | undefined | null): OrgRole {
  * Fast path: if the org's orgId matches the JWT's active org,
  * trust the JWT claims and skip the Clerk API call entirely.
  *
- * Slow path: for cross-org access (e.g. ?scope= pointing to a non-active org),
+ * Slow path: for cross-org access (e.g. ?org= pointing to a non-active org),
  * fall back to Clerk Backend API.
  *
  * CLI token path: if tokenOrgId is provided and matches the org,
@@ -185,7 +185,7 @@ export async function resolveOrg(
 }
 
 /**
- * Extract and validate org from a request's ?scope= or ?org= query parameter.
+ * Extract and validate org from a request's ?org= query parameter.
  * Throws if the param is missing, the org doesn't exist, or the user
  * is not a member.
  *
@@ -199,13 +199,14 @@ export async function requireOrgFromRequest(
   const url = new URL(request.url);
   const orgSlug = url.searchParams.get("org");
 
-  let orgData: ResolvedOrg | null = null;
-
-  if (orgSlug) {
-    orgData = await getOrgBySlug(orgSlug);
-  } else {
+  if (!orgSlug) {
     throw badRequest("org query parameter is required");
   }
+
+  // Try slug first, fall back to orgId (callers may pass either via ?org=)
+  const orgData =
+    (await getOrgBySlug(orgSlug)) ??
+    (await getOrgData(orgSlug).catch(() => null));
 
   if (!orgData) {
     throw notFound("Org not found");
