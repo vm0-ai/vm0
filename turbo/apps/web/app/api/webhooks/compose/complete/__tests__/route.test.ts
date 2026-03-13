@@ -597,6 +597,7 @@ describe("POST /api/webhooks/compose/complete", () => {
       // Trigger compose job (sandbox creation is pending)
       const result = await triggerComposeJob({
         userId: userLink.vm0UserId,
+        orgSlug: "test-org",
         source: "github",
         githubUrl: "https://github.com/owner/failing-repo",
       });

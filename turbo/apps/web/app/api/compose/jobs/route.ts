@@ -66,14 +66,14 @@ const router = tsr.router(composeJobsMainContract, {
     const result = isGitHubInput
       ? await triggerComposeJob({
           userId,
-          orgId: org.orgId,
+          orgSlug: org.slug,
           source: "github",
           githubUrl: body.githubUrl,
           overwrite: body.overwrite,
         })
       : await triggerComposeJob({
           userId,
-          orgId: org.orgId,
+          orgSlug: org.slug,
           source: "platform",
           content: body.content,
           instructions: body.instructions,

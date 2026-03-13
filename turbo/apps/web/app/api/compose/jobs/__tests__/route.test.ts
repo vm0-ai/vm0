@@ -746,6 +746,30 @@ describe("Platform session auth (no CLI token)", () => {
     expect(sandboxEnvs.VM0_TOKEN).toMatch(/^vm0_live_/);
   });
 
+  it("should pass VM0_ACTIVE_ORG to sandbox with org slug", async () => {
+    await context.setupUser();
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/compose/jobs",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          githubUrl: "https://github.com/owner/repo",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    const createCall = vi.mocked(Sandbox.create).mock.calls[0];
+    expect(createCall).toBeDefined();
+    const sandboxEnvs = createCall![1]?.envs as Record<string, string>;
+    expect(sandboxEnvs.VM0_ACTIVE_ORG).toBeDefined();
+    expect(sandboxEnvs.VM0_ACTIVE_ORG).toMatch(/^org-/);
+  });
+
   it("should create a job with Clerk JWT in Authorization header", async () => {
     // Platform SaaS sends a Clerk JWT as Bearer token — this should still work
     // because getUserId() resolves auth via Clerk session cookies first

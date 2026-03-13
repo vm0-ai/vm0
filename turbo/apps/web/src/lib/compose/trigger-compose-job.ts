@@ -233,6 +233,7 @@ async function spawnComposeJobSandbox(
   params: SandboxComposeParams,
   cliToken: string,
   webhookToken: string,
+  orgSlug: string,
 ): Promise<void> {
   const apiUrl = getApiUrl();
   const webhookUrl = `${apiUrl}/api/webhooks/compose/complete`;
@@ -247,6 +248,7 @@ async function spawnComposeJobSandbox(
     VM0_API_URL: apiUrl,
     VM0_WEBHOOK_URL: webhookUrl,
     VM0_WEBHOOK_TOKEN: webhookToken,
+    VM0_ACTIVE_ORG: orgSlug,
     ...(env().VERCEL_AUTOMATION_BYPASS_SECRET && {
       VERCEL_PROTECTION_BYPASS: env().VERCEL_AUTOMATION_BYPASS_SECRET,
     }),
@@ -383,14 +385,14 @@ async function generateComposeCliToken(
 type TriggerComposeJobParams =
   | {
       userId: string;
-      orgId?: string;
+      orgSlug: string;
       source: "github";
       githubUrl: string;
       overwrite?: boolean;
     }
   | {
       userId: string;
-      orgId?: string;
+      orgSlug: string;
       source: "platform";
       content: Record<string, unknown>;
       instructions?: string;
@@ -399,7 +401,7 @@ type TriggerComposeJobParams =
 export async function triggerComposeJob(
   params: TriggerComposeJobParams,
 ): Promise<TriggerComposeJobResult> {
-  const { userId, source } = params;
+  const { userId, source, orgSlug } = params;
 
   // Atomic idempotency: INSERT with ON CONFLICT DO NOTHING against the
   // partial unique index (user_id WHERE status IN ('pending','running')).
@@ -472,36 +474,40 @@ export async function triggerComposeJob(
         };
 
   // Fire-and-forget: Spawn sandbox asynchronously
-  spawnComposeJobSandbox(jobId, sandboxParams, cliToken, webhookToken).catch(
-    async (error) => {
-      log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to create sandbox";
-      // Wrap in try/catch to prevent unhandled rejection: this is already
-      // inside a fire-and-forget .catch() handler, so a DB failure here
-      // must not propagate as a second unhandled rejection.
-      try {
-        await globalThis.services.db
-          .update(composeJobs)
-          .set({
-            status: "failed",
-            error: errorMessage,
-            completedAt: new Date(),
-          })
-          .where(eq(composeJobs.id, jobId));
-      } catch (dbError) {
-        log.error(`Failed to update job ${jobId} status to failed:`, dbError);
-      }
+  spawnComposeJobSandbox(
+    jobId,
+    sandboxParams,
+    cliToken,
+    webhookToken,
+    orgSlug,
+  ).catch(async (error) => {
+    log.error(`Failed to spawn sandbox for job ${jobId}:`, error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to create sandbox";
+    // Wrap in try/catch to prevent unhandled rejection: this is already
+    // inside a fire-and-forget .catch() handler, so a DB failure here
+    // must not propagate as a second unhandled rejection.
+    try {
+      await globalThis.services.db
+        .update(composeJobs)
+        .set({
+          status: "failed",
+          error: errorMessage,
+          completedAt: new Date(),
+        })
+        .where(eq(composeJobs.id, jobId));
+    } catch (dbError) {
+      log.error(`Failed to update job ${jobId} status to failed:`, dbError);
+    }
 
-      await notifySlackComposeComplete(jobId, null, errorMessage).catch(
-        (notifyError) => {
-          log.warn("Failed to send Slack failure notification", {
-            notifyError,
-          });
-        },
-      );
-    },
-  );
+    await notifySlackComposeComplete(jobId, null, errorMessage).catch(
+      (notifyError) => {
+        log.warn("Failed to send Slack failure notification", {
+          notifyError,
+        });
+      },
+    );
+  });
 
   return {
     jobId: newJob.id,
