@@ -94,7 +94,120 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://api.airtable.com", bearerAuth("AIRTABLE_TOKEN"))],
   },
   github: {
-    apis: [api("https://api.github.com", bearerAuth("GITHUB_TOKEN"))],
+    apis: [
+      {
+        base: "https://api.github.com",
+        auth: bearerAuth("GITHUB_TOKEN"),
+        permissions: [
+          {
+            name: "repo-read",
+            description: "Read repository metadata, branches, and commits",
+            rules: [
+              "GET /repos/{owner}/{repo}",
+              "GET /repos/{owner}/{repo}/branches",
+              "GET /repos/{owner}/{repo}/branches/{branch}",
+              "GET /repos/{owner}/{repo}/commits",
+              "GET /repos/{owner}/{repo}/commits/{ref}",
+              "GET /repos/{owner}/{repo}/contributors",
+              "GET /repos/{owner}/{repo}/tags",
+              "GET /repos/{owner}/{repo}/releases",
+              "GET /repos/{owner}/{repo}/releases/{release_id}",
+            ],
+          },
+          {
+            name: "contents-read",
+            description: "Read file contents and directory listings",
+            rules: [
+              "GET /repos/{owner}/{repo}/contents/{path+}",
+              "GET /repos/{owner}/{repo}/readme",
+              "GET /repos/{owner}/{repo}/git/trees/{sha}",
+              "GET /repos/{owner}/{repo}/git/blobs/{sha}",
+              "GET /repos/{owner}/{repo}/git/refs/{ref+}",
+            ],
+          },
+          {
+            name: "contents-write",
+            description: "Create, update, and delete file contents",
+            rules: [
+              "PUT /repos/{owner}/{repo}/contents/{path+}",
+              "DELETE /repos/{owner}/{repo}/contents/{path+}",
+              "POST /repos/{owner}/{repo}/git/blobs",
+              "POST /repos/{owner}/{repo}/git/trees",
+              "POST /repos/{owner}/{repo}/git/commits",
+              "POST /repos/{owner}/{repo}/git/refs",
+              "PATCH /repos/{owner}/{repo}/git/refs/{ref+}",
+            ],
+          },
+          {
+            name: "issues-read",
+            description: "Read issues and comments",
+            rules: [
+              "GET /repos/{owner}/{repo}/issues",
+              "GET /repos/{owner}/{repo}/issues/{issue_number}",
+              "GET /repos/{owner}/{repo}/issues/{issue_number}/comments",
+              "GET /repos/{owner}/{repo}/issues/{issue_number}/labels",
+              "GET /repos/{owner}/{repo}/labels",
+            ],
+          },
+          {
+            name: "issues-write",
+            description: "Create and update issues, comments, and labels",
+            rules: [
+              "POST /repos/{owner}/{repo}/issues",
+              "PATCH /repos/{owner}/{repo}/issues/{issue_number}",
+              "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
+              "PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}",
+              "POST /repos/{owner}/{repo}/issues/{issue_number}/labels",
+              "DELETE /repos/{owner}/{repo}/issues/{issue_number}/labels/{name}",
+            ],
+          },
+          {
+            name: "pull-requests-read",
+            description: "Read pull requests, reviews, and diffs",
+            rules: [
+              "GET /repos/{owner}/{repo}/pulls",
+              "GET /repos/{owner}/{repo}/pulls/{pull_number}",
+              "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
+              "GET /repos/{owner}/{repo}/pulls/{pull_number}/commits",
+              "GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews",
+              "GET /repos/{owner}/{repo}/pulls/{pull_number}/comments",
+            ],
+          },
+          {
+            name: "pull-requests-write",
+            description: "Create, update, and merge pull requests",
+            rules: [
+              "POST /repos/{owner}/{repo}/pulls",
+              "PATCH /repos/{owner}/{repo}/pulls/{pull_number}",
+              "POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews",
+              "POST /repos/{owner}/{repo}/pulls/{pull_number}/comments",
+              "PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge",
+            ],
+          },
+          {
+            name: "actions-read",
+            description: "Read workflow runs and logs",
+            rules: [
+              "GET /repos/{owner}/{repo}/actions/runs",
+              "GET /repos/{owner}/{repo}/actions/runs/{run_id}",
+              "GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs",
+              "GET /repos/{owner}/{repo}/actions/workflows",
+              "GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",
+            ],
+          },
+          {
+            name: "search",
+            description: "Search code, issues, and repositories",
+            rules: [
+              "GET /search/code",
+              "GET /search/issues",
+              "GET /search/repositories",
+              "GET /search/commits",
+            ],
+          },
+        ],
+      },
+    ],
     placeholders: {
       GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000",
     },
