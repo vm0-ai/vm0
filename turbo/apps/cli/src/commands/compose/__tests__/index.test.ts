@@ -3355,15 +3355,14 @@ describe("expandServiceConfigs", () => {
     expect(names).toContain("slack");
   });
 
-  it("should filter api_entries when permission not selected", () => {
-    // slack has 2 api entries (slack.com/api with api-full-access and
-    // files.slack.com with files-full-access). Selecting only one keeps one.
-    const config = makeConfig({ slack: { permissions: ["api-full-access"] } });
+  it("should keep all api_entries when shared permission is selected", () => {
+    // slack has 2 api entries (slack.com/api and files.slack.com),
+    // both with full-access. Selecting full-access keeps both.
+    const config = makeConfig({ slack: { permissions: ["full-access"] } });
     const expanded = getExpanded(config);
 
     expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.apis).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.base).toBe("https://slack.com/api");
+    expect(expanded[0]!.apis).toHaveLength(2);
   });
 
   it("should skip services with no agents", () => {

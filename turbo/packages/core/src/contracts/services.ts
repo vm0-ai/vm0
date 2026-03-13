@@ -70,18 +70,15 @@ function bearerAuth(secretName: string) {
   return { headers: { Authorization: `Bearer \${secrets.${secretName}}` } };
 }
 
-/** Create a catch-all permission with the given name. */
-function fullAccess(name = "full-access"): ServicePermission {
-  return { name, rules: ["ANY /{path+}"] };
-}
+/** Default catch-all permission for services without granular permissions. */
+const FULL_ACCESS_PERMISSION: ServicePermission = {
+  name: "full-access",
+  rules: ["ANY /{path+}"],
+};
 
-/** Shorthand: single-base API entry with bearer auth and a named catch-all permission. */
-function api(
-  base: string,
-  auth: ServiceApi["auth"],
-  permissionName = "full-access",
-): ServiceApi {
-  return { base, auth, permissions: [fullAccess(permissionName)] };
+/** Shorthand: single-base API entry with bearer auth. */
+function api(base: string, auth: ServiceApi["auth"]): ServiceApi {
+  return { base, auth, permissions: [FULL_ACCESS_PERMISSION] };
 }
 
 const SERVICE_CONFIGS: Partial<
@@ -287,16 +284,8 @@ const SERVICE_CONFIGS: Partial<
   },
   slack: {
     apis: [
-      api(
-        "https://slack.com/api",
-        bearerAuth("SLACK_TOKEN"),
-        "api-full-access",
-      ),
-      api(
-        "https://files.slack.com",
-        bearerAuth("SLACK_TOKEN"),
-        "files-full-access",
-      ),
+      api("https://slack.com/api", bearerAuth("SLACK_TOKEN")),
+      api("https://files.slack.com", bearerAuth("SLACK_TOKEN")),
     ],
     placeholders: {
       SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder",
@@ -304,30 +293,14 @@ const SERVICE_CONFIGS: Partial<
   },
   docusign: {
     apis: [
-      api(
-        "https://demo.docusign.net/restapi",
-        bearerAuth("DOCUSIGN_TOKEN"),
-        "demo-full-access",
-      ),
-      api(
-        "https://na1.docusign.net/restapi",
-        bearerAuth("DOCUSIGN_TOKEN"),
-        "na1-full-access",
-      ),
+      api("https://demo.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
+      api("https://na1.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
     ],
   },
   dropbox: {
     apis: [
-      api(
-        "https://api.dropboxapi.com/2",
-        bearerAuth("DROPBOX_TOKEN"),
-        "api-full-access",
-      ),
-      api(
-        "https://content.dropboxapi.com/2",
-        bearerAuth("DROPBOX_TOKEN"),
-        "content-full-access",
-      ),
+      api("https://api.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
+      api("https://content.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
     ],
   },
   linear: {
@@ -335,21 +308,9 @@ const SERVICE_CONFIGS: Partial<
   },
   intercom: {
     apis: [
-      api(
-        "https://api.intercom.io",
-        bearerAuth("INTERCOM_TOKEN"),
-        "us-full-access",
-      ),
-      api(
-        "https://api.eu.intercom.io",
-        bearerAuth("INTERCOM_TOKEN"),
-        "eu-full-access",
-      ),
-      api(
-        "https://api.au.intercom.io",
-        bearerAuth("INTERCOM_TOKEN"),
-        "au-full-access",
-      ),
+      api("https://api.intercom.io", bearerAuth("INTERCOM_TOKEN")),
+      api("https://api.eu.intercom.io", bearerAuth("INTERCOM_TOKEN")),
+      api("https://api.au.intercom.io", bearerAuth("INTERCOM_TOKEN")),
     ],
   },
   jam: {
@@ -357,24 +318,16 @@ const SERVICE_CONFIGS: Partial<
   },
   jotform: {
     apis: [
-      api(
-        "https://api.jotform.com",
-        {
-          headers: {
-            APIKEY: "${secrets.JOTFORM_TOKEN}",
-          },
+      api("https://api.jotform.com", {
+        headers: {
+          APIKEY: "${secrets.JOTFORM_TOKEN}",
         },
-        "us-full-access",
-      ),
-      api(
-        "https://eu-api.jotform.com",
-        {
-          headers: {
-            APIKEY: "${secrets.JOTFORM_TOKEN}",
-          },
+      }),
+      api("https://eu-api.jotform.com", {
+        headers: {
+          APIKEY: "${secrets.JOTFORM_TOKEN}",
         },
-        "eu-full-access",
-      ),
+      }),
     ],
   },
   line: {
@@ -382,42 +335,26 @@ const SERVICE_CONFIGS: Partial<
   },
   make: {
     apis: [
-      api(
-        "https://eu1.make.com/api/v2",
-        {
-          headers: {
-            Authorization: "Token ${secrets.MAKE_TOKEN}",
-          },
+      api("https://eu1.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
         },
-        "eu1-full-access",
-      ),
-      api(
-        "https://eu2.make.com/api/v2",
-        {
-          headers: {
-            Authorization: "Token ${secrets.MAKE_TOKEN}",
-          },
+      }),
+      api("https://eu2.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
         },
-        "eu2-full-access",
-      ),
-      api(
-        "https://us1.make.com/api/v2",
-        {
-          headers: {
-            Authorization: "Token ${secrets.MAKE_TOKEN}",
-          },
+      }),
+      api("https://us1.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
         },
-        "us1-full-access",
-      ),
-      api(
-        "https://us2.make.com/api/v2",
-        {
-          headers: {
-            Authorization: "Token ${secrets.MAKE_TOKEN}",
-          },
+      }),
+      api("https://us2.make.com/api/v2", {
+        headers: {
+          Authorization: "Token ${secrets.MAKE_TOKEN}",
         },
-        "us2-full-access",
-      ),
+      }),
     ],
   },
   metabase: {
@@ -502,16 +439,8 @@ const SERVICE_CONFIGS: Partial<
   },
   posthog: {
     apis: [
-      api(
-        "https://us.posthog.com/api",
-        bearerAuth("POSTHOG_ACCESS_TOKEN"),
-        "us-full-access",
-      ),
-      api(
-        "https://app.posthog.com/api",
-        bearerAuth("POSTHOG_ACCESS_TOKEN"),
-        "cloud-full-access",
-      ),
+      api("https://us.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
+      api("https://app.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
     ],
   },
   stripe: {
@@ -543,7 +472,6 @@ const SERVICE_CONFIGS: Partial<
       api(
         `https://us${i + 1}.api.mailchimp.com/3.0`,
         bearerAuth("MAILCHIMP_TOKEN"),
-        `us${i + 1}-full-access`,
       ),
     ),
   },

@@ -493,6 +493,10 @@ function collectAndValidatePermissions(
         `API entry "${api.base}" in service "${serviceConfig.name}" (ref "${ref}") has no permissions`,
       );
     }
+    // Uniqueness is enforced within a single api_entry. The same permission
+    // name across different api_entries is allowed (e.g., "full-access" on
+    // both slack.com/api and files.slack.com).
+    const seen = new Set<string>();
     for (const perm of api.permissions) {
       if (!perm.name) {
         throw new Error(
@@ -504,9 +508,9 @@ function collectAndValidatePermissions(
           `Service "${serviceConfig.name}" (ref "${ref}") has a permission named "all", which is a reserved keyword`,
         );
       }
-      if (available.has(perm.name)) {
+      if (seen.has(perm.name)) {
         throw new Error(
-          `Duplicate permission name "${perm.name}" in service "${serviceConfig.name}" (ref "${ref}")`,
+          `Duplicate permission name "${perm.name}" in API entry "${api.base}" of service "${serviceConfig.name}" (ref "${ref}")`,
         );
       }
       if (perm.rules.length === 0) {
@@ -517,6 +521,7 @@ function collectAndValidatePermissions(
       for (const rule of perm.rules) {
         validateRule(rule, perm.name, serviceConfig.name);
       }
+      seen.add(perm.name);
       available.add(perm.name);
     }
   }
