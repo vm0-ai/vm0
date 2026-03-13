@@ -1,10 +1,22 @@
-import { Html, Head, Body, Container, Text, Hr } from "@react-email/components";
+import {
+  Html,
+  Head,
+  Body,
+  Container,
+  Text,
+  Link,
+  Hr,
+} from "@react-email/components";
 
 interface InboundErrorEmailProps {
   errorMessage: string;
+  unsubscribeUrl?: string;
 }
 
-export function InboundErrorEmail({ errorMessage }: InboundErrorEmailProps) {
+export function InboundErrorEmail({
+  errorMessage,
+  unsubscribeUrl,
+}: InboundErrorEmailProps) {
   return (
     <Html>
       <Head />
@@ -13,6 +25,13 @@ export function InboundErrorEmail({ errorMessage }: InboundErrorEmailProps) {
           <Text style={errorStyle}>{errorMessage}</Text>
           <Hr style={hrStyle} />
           <Text style={signatureStyle}>VM0</Text>
+          {unsubscribeUrl && (
+            <Text style={unsubscribeFooterStyle}>
+              <Link href={unsubscribeUrl} style={linkStyle}>
+                Unsubscribe
+              </Link>
+            </Text>
+          )}
         </Container>
       </Body>
     </Html>
@@ -51,4 +70,15 @@ const signatureStyle = {
   fontWeight: "600" as const,
   color: "#374151",
   margin: "0",
+};
+
+const unsubscribeFooterStyle = {
+  fontSize: "12px",
+  color: "#9ca3af",
+  margin: "16px 0 0",
+};
+
+const linkStyle = {
+  color: "#2563eb",
+  textDecoration: "underline",
 };

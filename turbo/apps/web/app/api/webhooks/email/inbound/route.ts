@@ -10,9 +10,71 @@ import {
   isReplyAddress,
   sendInboundErrorReply,
 } from "../../../../../src/lib/email/handlers/shared";
+import { emailSuppressions } from "../../../../../src/db/schema/email-suppression";
+import { getCachedUserIdByEmail } from "../../../../../src/lib/auth/user-cache-service";
+import { unsubscribeUser } from "../../../../../src/lib/email/unsubscribe-service";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhook:email:inbound");
+
+interface WebhookEvent {
+  type?: string;
+  data?: {
+    to?: string[];
+    from?: string;
+    subject?: string;
+    email_id?: string;
+  };
+}
+
+/**
+ * Handle email.bounced event — insert suppression for each recipient.
+ */
+async function handleBounce(event: WebhookEvent): Promise<Response> {
+  const recipients = event.data?.to ?? [];
+  for (const addr of recipients) {
+    await globalThis.services.db
+      .insert(emailSuppressions)
+      .values({
+        emailAddress: addr,
+        reason: "bounced",
+        resendEmailId: event.data?.email_id ?? null,
+      })
+      .onConflictDoNothing();
+  }
+  log.debug("Processed email.bounced event", { recipients });
+  return NextResponse.json({ received: true });
+}
+
+/**
+ * Handle email.complained event — insert suppression + unsubscribe user.
+ */
+async function handleComplaint(event: WebhookEvent): Promise<Response> {
+  const recipients = event.data?.to ?? [];
+  for (const addr of recipients) {
+    await globalThis.services.db
+      .insert(emailSuppressions)
+      .values({
+        emailAddress: addr,
+        reason: "complained",
+        resendEmailId: event.data?.email_id ?? null,
+      })
+      .onConflictDoNothing();
+
+    // Try to unsubscribe the user if we can resolve their userId
+    const userId = await getCachedUserIdByEmail(addr).catch(() => null);
+    if (userId) {
+      await unsubscribeUser(userId).catch((err) =>
+        log.error("Failed to unsubscribe user after complaint", {
+          userId,
+          err,
+        }),
+      );
+    }
+  }
+  log.debug("Processed email.complained event", { recipients });
+  return NextResponse.json({ received: true });
+}
 
 /**
  * Resend Inbound Email Webhook
@@ -51,13 +113,18 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  // 3. Check event type
-  const event = payload as {
-    type?: string;
-    data?: { to?: string[]; from?: string; subject?: string };
-  };
+  // 3. Check event type and route accordingly
+  const event = payload as WebhookEvent;
+
+  if (event.type === "email.bounced") {
+    return handleBounce(event);
+  }
+
+  if (event.type === "email.complained") {
+    return handleComplaint(event);
+  }
+
   if (event.type !== "email.received") {
-    // Acknowledge non-inbound events silently
     return NextResponse.json({ received: true });
   }
 

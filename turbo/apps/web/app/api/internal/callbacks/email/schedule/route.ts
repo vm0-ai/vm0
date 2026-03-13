@@ -11,7 +11,10 @@ import {
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
+  buildUnsubscribeUrl,
+  buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/email/handlers/shared";
+import { isUserUnsubscribed } from "../../../../../../src/lib/email/unsubscribe-service";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -69,6 +72,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
+  // Check if user has unsubscribed from system emails
+  if (await isUserUnsubscribed(userId)) {
+    log.debug("User has unsubscribed, skipping email notification", { userId });
+    return NextResponse.json({ success: true, skipped: true });
+  }
+
   // Get user email
   const userEmail = await getUserEmail(userId);
   if (!userEmail) {
@@ -77,6 +86,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const logsUrl = buildLogsUrl(runId, composeName);
+  const unsubscribeUrl = buildUnsubscribeUrl(userId);
+  const unsubscribeHeaders = buildUnsubscribeHeaders(unsubscribeUrl);
 
   if (status === "completed") {
     // Get agent output
@@ -114,9 +125,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       subject: `VM0 - Scheduled run for "${composeName}" completed`,
       template: {
         template: "schedule-completed",
-        props: { agentName: composeName, output: truncatedOutput, logsUrl },
+        props: {
+          agentName: composeName,
+          output: truncatedOutput,
+          logsUrl,
+          unsubscribeUrl,
+        },
       },
       replyTo: replyToAddress,
+      headers: unsubscribeHeaders,
       threadAction: agentSessionId
         ? {
             action: "save_thread_session",
@@ -139,8 +156,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           agentName: composeName,
           errorMessage: error ?? "Unknown error",
           logsUrl,
+          unsubscribeUrl,
         },
       },
+      headers: unsubscribeHeaders,
     });
   }
 

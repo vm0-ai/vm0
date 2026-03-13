@@ -6,27 +6,47 @@ import type { ReactElement } from "react";
 
 interface AgentReplyTemplate {
   template: "agent-reply";
-  props: { agentName: string; output: string; logsUrl: string };
+  props: {
+    agentName: string;
+    output: string;
+    logsUrl: string;
+    unsubscribeUrl?: string;
+  };
 }
 
 interface InboundErrorTemplate {
   template: "inbound-error";
-  props: { errorMessage: string };
+  props: { errorMessage: string; unsubscribeUrl?: string };
 }
 
 interface ScheduleCompletedTemplate {
   template: "schedule-completed";
-  props: { agentName: string; output: string; logsUrl: string };
+  props: {
+    agentName: string;
+    output: string;
+    logsUrl: string;
+    unsubscribeUrl?: string;
+  };
 }
 
 interface ScheduleFailedTemplate {
   template: "schedule-failed";
-  props: { agentName: string; errorMessage: string; logsUrl: string };
+  props: {
+    agentName: string;
+    errorMessage: string;
+    logsUrl: string;
+    unsubscribeUrl?: string;
+  };
 }
 
 interface DataExportReadyTemplate {
   template: "data-export-ready";
-  props: { downloadUrl: string; expiresAt: string; artifactCount: number };
+  props: {
+    downloadUrl: string;
+    expiresAt: string;
+    artifactCount: number;
+    unsubscribeUrl?: string;
+  };
 }
 
 export type EmailTemplate =

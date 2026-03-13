@@ -12,12 +12,14 @@ interface ScheduleFailedEmailProps {
   agentName: string;
   errorMessage: string;
   logsUrl: string;
+  unsubscribeUrl?: string;
 }
 
 export function ScheduleFailedEmail({
   agentName,
   errorMessage,
   logsUrl,
+  unsubscribeUrl,
 }: ScheduleFailedEmailProps) {
   return (
     <Html>
@@ -32,6 +34,13 @@ export function ScheduleFailedEmail({
               Audit
             </Link>
           </Text>
+          {unsubscribeUrl && (
+            <Text style={unsubscribeFooterStyle}>
+              <Link href={unsubscribeUrl} style={linkStyle}>
+                Unsubscribe
+              </Link>
+            </Text>
+          )}
         </Container>
       </Body>
     </Html>
@@ -76,6 +85,12 @@ const footerStyle = {
   fontSize: "13px",
   color: "#6b7280",
   margin: "0",
+};
+
+const unsubscribeFooterStyle = {
+  fontSize: "12px",
+  color: "#9ca3af",
+  margin: "16px 0 0",
 };
 
 const linkStyle = {

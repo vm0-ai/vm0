@@ -12,6 +12,8 @@ import {
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
+  buildUnsubscribeUrl,
+  buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/email/handlers/shared";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -162,7 +164,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const newAgentSessionId = extractAgentSessionId(run?.result);
 
   // Build threading headers and recipients
-  const headers = buildThreadingHeaders(payload, session.lastEmailMessageId);
+  const unsubscribeUrl = buildUnsubscribeUrl(session.userId);
+  const headers = {
+    ...buildThreadingHeaders(payload, session.lastEmailMessageId),
+    ...buildUnsubscribeHeaders(unsubscribeUrl),
+  };
 
   const emailTo =
     payload.replyRecipientTo && payload.replyRecipientTo.length > 0
@@ -180,7 +186,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     subject: `Re: VM0 - Scheduled run for "${compose.name}" completed`,
     template: {
       template: "agent-reply",
-      props: { agentName: compose.name, output, logsUrl },
+      props: { agentName: compose.name, output, logsUrl, unsubscribeUrl },
     },
     cc: emailCc,
     replyTo: buildReplyToAddress(session.replyToToken),

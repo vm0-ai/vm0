@@ -43,6 +43,7 @@ import * as orgCacheSchema from "./schema/org-cache";
 import * as orgMembersCacheSchema from "./schema/org-members-cache";
 import * as userCacheSchema from "./schema/user-cache";
 import * as exportJobSchema from "./schema/export-job";
+import * as emailSuppressionSchema from "./schema/email-suppression";
 
 export const schema = {
   ...userSchema,
@@ -90,4 +91,5 @@ export const schema = {
   ...orgMembersCacheSchema,
   ...userCacheSchema,
   ...exportJobSchema,
+  ...emailSuppressionSchema,
 };

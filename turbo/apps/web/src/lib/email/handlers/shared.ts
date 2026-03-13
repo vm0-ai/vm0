@@ -296,17 +296,84 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 }
 
 // ============================================================================
+// Unsubscribe Token Management
+// ============================================================================
+
+/**
+ * Generate an HMAC-signed unsubscribe token for a user.
+ * Format: {userId}.{hmac16chars}
+ */
+function generateUnsubscribeToken(userId: string): string {
+  const hmac = crypto
+    .createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
+    .update(`unsubscribe:${userId}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `${userId}.${hmac}`;
+}
+
+/**
+ * Verify an HMAC-signed unsubscribe token and return the userId.
+ * Returns null if the token is invalid or tampered.
+ */
+export function verifyUnsubscribeToken(token: string): string | null {
+  const dotIndex = token.lastIndexOf(".");
+  if (dotIndex === -1) return null;
+
+  const userId = token.slice(0, dotIndex);
+  const providedHmac = token.slice(dotIndex + 1);
+
+  if (!userId || !providedHmac) return null;
+
+  const expectedHmac = crypto
+    .createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
+    .update(`unsubscribe:${userId}`)
+    .digest("hex")
+    .slice(0, 16);
+
+  // Timing-safe comparison
+  if (providedHmac.length !== expectedHmac.length) return null;
+
+  const isValid = crypto.timingSafeEqual(
+    Buffer.from(providedHmac),
+    Buffer.from(expectedHmac),
+  );
+
+  return isValid ? userId : null;
+}
+
+/**
+ * Build the unsubscribe URL for a user.
+ */
+export function buildUnsubscribeUrl(userId: string): string {
+  const token = generateUnsubscribeToken(userId);
+  return `${getPlatformUrl()}/api/email/unsubscribe?token=${token}`;
+}
+
+/**
+ * Build List-Unsubscribe headers for RFC 8058 compliance.
+ */
+export function buildUnsubscribeHeaders(url: string): Record<string, string> {
+  return {
+    "List-Unsubscribe": `<${url}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+}
+
+// ============================================================================
 // Error Reply
 // ============================================================================
 
 /**
  * Send an error reply email to the sender when inbound processing fails.
  * No-ops when Resend is not configured.
+ * When userId is provided, includes List-Unsubscribe headers and template link.
  */
 export async function sendInboundErrorReply(opts: {
   to: string;
   subject: string;
   errorMessage: string;
+  userId?: string;
 }): Promise<void> {
   if (!env().RESEND_API_KEY) return;
 
@@ -314,14 +381,22 @@ export async function sendInboundErrorReply(opts: {
     ? `Re: ${opts.subject.replace(/^Re:\s*/i, "")}`
     : "Email delivery failed";
 
+  const unsubscribeUrl = opts.userId
+    ? buildUnsubscribeUrl(opts.userId)
+    : undefined;
+  const headers = unsubscribeUrl
+    ? buildUnsubscribeHeaders(unsubscribeUrl)
+    : undefined;
+
   await enqueueEmail({
     from: buildFromAddress("vm0"),
     to: opts.to,
     subject: reSubject,
     template: {
       template: "inbound-error",
-      props: { errorMessage: opts.errorMessage },
+      props: { errorMessage: opts.errorMessage, unsubscribeUrl },
     },
+    headers,
   });
 }
 

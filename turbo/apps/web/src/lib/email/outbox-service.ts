@@ -1,5 +1,6 @@
 import { eq, and, or, lt, sql } from "drizzle-orm";
 import { emailOutbox } from "../../db/schema/email-outbox";
+import { emailSuppressions } from "../../db/schema/email-suppression";
 import { resolveTemplate } from "./template-registry";
 import { sendEmailDirect, getMessageId } from "./client";
 import {
@@ -136,6 +137,23 @@ async function processItem(
     .set({ status: "sending", attempts })
     .where(eq(emailOutbox.id, itemId));
 
+  // Check if any recipient is suppressed (bounced/complained)
+  const toAddresses = normalizeAddresses(row.to_addresses);
+  const suppressedAddress = await findSuppressedAddress(tx, toAddresses);
+  if (suppressedAddress) {
+    await tx
+      .update(emailOutbox)
+      .set({
+        status: "failed",
+        lastError: `Recipient address suppressed (${suppressedAddress})`,
+      })
+      .where(eq(emailOutbox.id, itemId));
+    log.debug(`Email ${itemId} skipped: recipient suppressed`, {
+      address: suppressedAddress,
+    });
+    return true;
+  }
+
   // Resolve template to React element
   const template = row.template as Parameters<typeof resolveTemplate>[0];
   const react = resolveTemplate(template);
@@ -247,6 +265,47 @@ export async function cleanupExpiredOutbox(): Promise<number> {
     log.debug(`Cleaned up ${deleted.length} expired outbox items`);
   }
   return deleted.length;
+}
+
+/**
+ * Normalize to_addresses (string or string[]) to a flat string array.
+ */
+function normalizeAddresses(raw: unknown): string[] {
+  if (typeof raw === "string") return [raw];
+  if (Array.isArray(raw)) return raw as string[];
+  return [];
+}
+
+/**
+ * Check if any address in the list is suppressed.
+ * Returns the first suppressed address found, or null.
+ */
+async function findSuppressedAddress(
+  tx: Parameters<Parameters<typeof globalThis.services.db.transaction>[0]>[0],
+  addresses: string[],
+): Promise<string | null> {
+  if (addresses.length === 0) return null;
+
+  const lowerAddresses = addresses.map((a) => a.toLowerCase());
+  const results = await tx
+    .select({ emailAddress: emailSuppressions.emailAddress })
+    .from(emailSuppressions)
+    .where(
+      sql`lower(${emailSuppressions.emailAddress}) IN (${sql.join(
+        lowerAddresses.map((a) => sql`${a}`),
+        sql`, `,
+      )})`,
+    )
+    .limit(1);
+
+  if (results.length > 0) {
+    // Return the original-cased address that matched
+    const matchedLower = results[0]!.emailAddress.toLowerCase();
+    return (
+      addresses.find((a) => a.toLowerCase() === matchedLower) ?? matchedLower
+    );
+  }
+  return null;
 }
 
 /**

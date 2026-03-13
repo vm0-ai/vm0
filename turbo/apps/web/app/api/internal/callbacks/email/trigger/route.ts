@@ -10,6 +10,8 @@ import {
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
+  buildUnsubscribeUrl,
+  buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/email/handlers/shared";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
@@ -165,10 +167,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ? buildReplyToAddress(replyToken)
     : undefined;
 
-  const headers = buildThreadingHeaders(
-    payload.inboundMessageId,
-    payload.inboundReferences,
-  );
+  const unsubscribeUrl = buildUnsubscribeUrl(userId);
+  const headers = {
+    ...buildThreadingHeaders(
+      payload.inboundMessageId,
+      payload.inboundReferences,
+    ),
+    ...buildUnsubscribeHeaders(unsubscribeUrl),
+  };
 
   // Send response email (use computed recipients if available, fall back to sender)
   const emailTo =
@@ -186,7 +192,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     subject: buildSubject(payload.subject, compose.name),
     template: {
       template: "agent-reply",
-      props: { agentName: compose.name, output, logsUrl },
+      props: { agentName: compose.name, output, logsUrl, unsubscribeUrl },
     },
     cc: emailCc,
     replyTo: replyToAddress,

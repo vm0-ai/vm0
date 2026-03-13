@@ -4,6 +4,9 @@ import {
   parseAgentOnlyAddress,
   isReplyAddress,
   computeReplyRecipients,
+  verifyUnsubscribeToken,
+  buildUnsubscribeUrl,
+  buildUnsubscribeHeaders,
 } from "../shared";
 
 describe("parseEmailTriggerAddress", () => {
@@ -313,5 +316,40 @@ describe("computeReplyRecipients", () => {
     });
     expect(result.to).toEqual(["user@example.com"]);
     expect(result.cc).toEqual([]);
+  });
+});
+
+describe("verifyUnsubscribeToken", () => {
+  it("should return null for token without dot", () => {
+    expect(verifyUnsubscribeToken("notokenhere")).toBeNull();
+  });
+
+  it("should return null for tampered token", () => {
+    expect(verifyUnsubscribeToken("user_123.0000000000000000")).toBeNull();
+  });
+
+  it("should return null for truncated token", () => {
+    expect(verifyUnsubscribeToken("user_123.abc")).toBeNull();
+  });
+
+  it("should return null for empty userId", () => {
+    expect(verifyUnsubscribeToken(".abcdef0123456789")).toBeNull();
+  });
+});
+
+describe("buildUnsubscribeUrl", () => {
+  it("should return a URL containing the token parameter", () => {
+    const url = buildUnsubscribeUrl("user_123");
+    expect(url).toContain("/api/email/unsubscribe?token=");
+    expect(url).toContain("user_123.");
+  });
+});
+
+describe("buildUnsubscribeHeaders", () => {
+  it("should return correct RFC 8058 headers", () => {
+    const url = "https://example.com/api/email/unsubscribe?token=abc";
+    const headers = buildUnsubscribeHeaders(url);
+    expect(headers["List-Unsubscribe"]).toBe(`<${url}>`);
+    expect(headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });
 });

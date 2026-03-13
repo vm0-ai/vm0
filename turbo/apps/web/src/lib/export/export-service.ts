@@ -16,7 +16,12 @@ import {
 } from "../s3/s3-client";
 import { resolveSessionHistory } from "../session-history/session-history-service";
 import { enqueueEmail } from "../email/outbox-service";
-import { buildFromAddress } from "../email/handlers/shared";
+import {
+  buildFromAddress,
+  buildUnsubscribeUrl,
+  buildUnsubscribeHeaders,
+} from "../email/handlers/shared";
+import { isUserUnsubscribed } from "../email/unsubscribe-service";
 import { getCachedUser } from "../auth/user-cache-service";
 import { env } from "../../env";
 import { logger } from "../logger";
@@ -338,26 +343,37 @@ export async function executeExportJob(
       })
       .where(eq(exportJobs.id, jobId));
 
-    const user = await getCachedUser(userId);
-    const formattedExpiry = expiresAtDate.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    // Skip email notification if user has unsubscribed
+    if (await isUserUnsubscribed(userId)) {
+      log.debug(
+        `Export job ${jobId}: user unsubscribed, skipping email notification`,
+      );
+    } else {
+      const user = await getCachedUser(userId);
+      const formattedExpiry = expiresAtDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
 
-    await enqueueEmail({
-      from: buildFromAddress("vm0"),
-      to: user.email,
-      subject: "Your data export is ready",
-      template: {
-        template: "data-export-ready",
-        props: {
-          downloadUrl,
-          expiresAt: formattedExpiry,
-          artifactCount: artifactUrls.length,
+      const unsubscribeUrl = buildUnsubscribeUrl(userId);
+
+      await enqueueEmail({
+        from: buildFromAddress("vm0"),
+        to: user.email,
+        subject: "Your data export is ready",
+        template: {
+          template: "data-export-ready",
+          props: {
+            downloadUrl,
+            expiresAt: formattedExpiry,
+            artifactCount: artifactUrls.length,
+            unsubscribeUrl,
+          },
         },
-      },
-    });
+        headers: buildUnsubscribeHeaders(unsubscribeUrl),
+      });
+    }
 
     log.debug(`Export job ${jobId} completed successfully`);
   } catch (error) {
