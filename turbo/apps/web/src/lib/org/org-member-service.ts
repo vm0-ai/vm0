@@ -96,7 +96,6 @@ export async function getDefaultOrg(
 
 /**
  * Resolve org ID: use the provided value or fall back to the user's default org.
- * Resolve org ID: use the provided value or fall back to the user's default org.
  */
 export async function resolveOrgId(
   userId: string,
