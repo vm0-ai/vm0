@@ -11,7 +11,7 @@ setup_file() {
     export AGENT_NAME="e2e-t33-$(date +%s%3N)-$RANDOM"
     # Create shared test directory for this file
     export TEST_DIR="$(mktemp -d)"
-    export TEST_CONFIG="$TEST_DIR/vm0.yaml"
+    # Note: TEST_CONFIG is set per-test in setup() to avoid parallel write races
 
     # Create a claude-files volume that exists (required for claude-code framework)
     export CLAUDE_VOLUME_NAME="e2e-vol-t33-claude-$(date +%s%3N)-$RANDOM"
@@ -36,9 +36,10 @@ teardown_file() {
 }
 
 setup() {
-    # Per-test setup
+    # Per-test setup — unique config path avoids parallel write races
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export ARTIFACT_NAME="e2e-art-optional-${UNIQUE_ID}"
+    export TEST_CONFIG="$TEST_DIR/vm0-${UNIQUE_ID}.yaml"
 }
 
 @test "t33-1: compose succeeds with optional volume that does not exist" {

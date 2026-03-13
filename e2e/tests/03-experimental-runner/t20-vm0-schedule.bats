@@ -11,6 +11,7 @@
 # - setup_file: Creates shared agent ONCE for all tests, saves state to BATS_FILE_TMPDIR
 # - teardown_file: Cleans up agent ONCE after all tests
 # - Each @test: Loads state from BATS_FILE_TMPDIR and uses the shared agent
+# - Tests are parallelizable: each test is self-contained with its own lifecycle
 
 load '../../helpers/setup'
 
@@ -65,7 +66,8 @@ setup() {
 # Happy Path Tests
 # ============================================================
 
-@test "vm0 schedule setup creates a new schedule" {
+@test "t20-1: cron schedule lifecycle (create, list, update, enable/disable, delete)" {
+    # --- Create ---
     run $CLI_COMMAND schedule setup "$AGENT_NAME" \
         --frequency daily \
         --time "09:00" \
@@ -74,17 +76,15 @@ setup() {
     assert_success
     assert_output --partial "Created schedule"
     assert_output --partial "$AGENT_NAME"
-}
 
-@test "vm0 schedule list shows created schedules" {
+    # --- List ---
     run $CLI_COMMAND schedule list
     assert_success
     assert_output --partial "$AGENT_NAME"
     assert_output --partial "AGENT"
     assert_output --partial "disabled"
-}
 
-@test "vm0 schedule status shows schedule details" {
+    # --- Status ---
     run $CLI_COMMAND schedule status "$AGENT_NAME"
     assert_success
     assert_output --partial "Agent:"
@@ -92,9 +92,8 @@ setup() {
     assert_output --partial "Status:"
     assert_output --partial "Trigger:"
     assert_output --partial "0 9 * * *"
-}
 
-@test "vm0 schedule setup updates existing schedule" {
+    # --- Update ---
     run $CLI_COMMAND schedule setup "$AGENT_NAME" \
         --frequency daily \
         --time "10:00" \
@@ -107,9 +106,8 @@ setup() {
     run $CLI_COMMAND schedule status "$AGENT_NAME"
     assert_success
     assert_output --partial "0 10 * * *"
-}
 
-@test "vm0 schedule enable/disable workflow" {
+    # --- Enable/Disable ---
     # Enable the schedule
     run $CLI_COMMAND schedule enable "$AGENT_NAME"
     assert_success
@@ -129,9 +127,8 @@ setup() {
     run $CLI_COMMAND schedule list
     assert_success
     assert_output --partial "disabled"
-}
 
-@test "vm0 schedule delete removes schedule" {
+    # --- Delete ---
     # First create a fresh schedule to delete
     run $CLI_COMMAND schedule setup "$AGENT_NAME" \
         --frequency daily \
@@ -151,13 +148,9 @@ setup() {
 # Uses a separate agent to avoid conflicts with cron tests
 # ============================================================
 
-@test "vm0 schedule setup creates a loop schedule" {
+@test "t20-2: loop schedule lifecycle (create, status, enable/disable, delete)" {
     local LOOP_AGENT_NAME="schedule-loop-${UNIQUE_ID}"
     local LOOP_TEST_DIR="$(mktemp -d)"
-
-    # Save for subsequent tests
-    echo "$LOOP_AGENT_NAME" > "$BATS_FILE_TMPDIR/loop_agent_name"
-    echo "$LOOP_TEST_DIR" > "$BATS_FILE_TMPDIR/loop_test_dir"
 
     cat > "$LOOP_TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -173,7 +166,7 @@ EOF
     run $CLI_COMMAND compose vm0.yaml
     assert_success
 
-    # Create loop schedule with 300s interval
+    # --- Create ---
     run $CLI_COMMAND schedule setup "$LOOP_AGENT_NAME" \
         --frequency loop \
         --interval 300 \
@@ -182,22 +175,16 @@ EOF
     assert_success
     assert_output --partial "Created schedule"
     assert_output --partial "Loop (interval 300s)"
-}
 
-@test "vm0 schedule status shows loop schedule details" {
-    local LOOP_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/loop_agent_name")
-
+    # --- Status ---
     run $CLI_COMMAND schedule status "$LOOP_AGENT_NAME"
     assert_success
     assert_output --partial "Agent:"
     assert_output --partial "$LOOP_AGENT_NAME"
     assert_output --partial "interval 300s"
     assert_output --partial "loop"
-}
 
-@test "vm0 schedule enable/disable loop schedule" {
-    local LOOP_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/loop_agent_name")
-
+    # --- Enable/Disable ---
     # Enable the loop schedule
     run $CLI_COMMAND schedule enable "$LOOP_AGENT_NAME"
     assert_success
@@ -213,12 +200,8 @@ EOF
     run $CLI_COMMAND schedule disable "$LOOP_AGENT_NAME"
     assert_success
     assert_output --partial "Disabled"
-}
 
-@test "vm0 schedule delete loop schedule" {
-    local LOOP_AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/loop_agent_name")
-    local LOOP_TEST_DIR=$(cat "$BATS_FILE_TMPDIR/loop_test_dir")
-
+    # --- Delete ---
     run $CLI_COMMAND schedule delete "$LOOP_AGENT_NAME" --yes
     assert_success
     assert_output --partial "Deleted"
@@ -233,7 +216,7 @@ EOF
 # Secrets and vars are now managed via platform tables
 # ============================================================
 
-@test "vm0 schedule setup with platform secrets and vars" {
+@test "t20-3: schedule with platform secrets and vars" {
     local CONFIG_AGENT_NAME="schedule-config-${UNIQUE_ID}"
     local CONFIG_TEST_DIR="$(mktemp -d)"
     local SECRET_NAME="SCHED_KEY_${UNIQUE_ID//-/_}"

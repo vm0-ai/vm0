@@ -6,9 +6,7 @@
 # 2. --conversation flag can fork from a specific conversation
 # 3. Fork maintains conversation history while allowing different artifact version
 #
-# Refactored to split multi-vm0-run tests into separate cases for timeout safety.
-# Each case has max one vm0 run call (~15s), fitting within 30s timeout.
-# State is shared between cases via $BATS_FILE_TMPDIR.
+# All tests are self-contained and can run in parallel.
 
 load '../../helpers/setup'
 
@@ -111,15 +109,15 @@ teardown_file() {
     echo "# Verified: conversationId is present in output"
 }
 
-# ============================================================================
-# Test 3: Fork with --conversation flag (split into 3a, 3b, 3c)
-# ============================================================================
+@test "t08-3: fork from conversation uses new artifact version" {
+    # Self-contained test: creates conversation, pushes new artifact, forks
+    # 2 vm0 run calls (~15s each) + artifact push = ~35s, within 60s timeout
 
-@test "t08-3a: create initial conversation for fork test" {
     # Step 1: Create artifact with initial content
     echo "# Creating initial artifact..."
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    local artifact_dir="$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
+    mkdir -p "$artifact_dir"
+    cd "$artifact_dir"
     $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "v1" > version.txt
@@ -137,48 +135,32 @@ teardown_file() {
     assert_output --partial "Conversation:"
 
     # Extract conversation ID
-    CONVERSATION_ID=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
-    echo "# Conversation ID: $CONVERSATION_ID"
-    [ -n "$CONVERSATION_ID" ] || {
+    local conversation_id
+    conversation_id=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
+    echo "# Conversation ID: $conversation_id"
+    [ -n "$conversation_id" ] || {
         echo "# Failed to extract conversation ID"
         echo "$output"
         return 1
     }
 
-    # Save state for next tests
-    echo "$CONVERSATION_ID" > "$BATS_FILE_TMPDIR/t08-3-conversation_id"
-    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t08-3-artifact_name"
-    echo "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/t08-3-artifact_dir"
-}
-
-@test "t08-3b: push new artifact version for fork test" {
-    # Load state from previous test
-    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t08-3-artifact_name")
-    ARTIFACT_DIR=$(cat "$BATS_FILE_TMPDIR/t08-3-artifact_dir")
-
-    # Push new artifact version
+    # Step 3: Push new artifact version
     echo "# Pushing new artifact version..."
-    cd "$ARTIFACT_DIR"
+    cd "$artifact_dir"
     echo "v2" > version.txt
     echo "999" > counter.txt
     echo "new-file" > new.txt
     run $CLI_COMMAND artifact push
     assert_success
     echo "# New artifact version pushed"
-}
 
-@test "t08-3c: fork from conversation uses new artifact version" {
-    # Load state from previous tests
-    CONVERSATION_ID=$(cat "$BATS_FILE_TMPDIR/t08-3-conversation_id")
-    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/t08-3-artifact_name")
-
-    # Fork from conversation with NEW artifact version (~15s)
+    # Step 4: Fork from conversation with NEW artifact version (~15s)
     # This is the key test: --conversation lets us continue conversation history
     # but with a different (newer) artifact version
     echo "# Forking from conversation with new artifact..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        --conversation "$CONVERSATION_ID" \
+        --conversation "$conversation_id" \
         --verbose \
         "cat version.txt && cat counter.txt && ls"
 
@@ -201,9 +183,10 @@ teardown_file() {
     assert_output --partial "Conversation:"
 
     # Extract conversation ID from fork run
-    FORK_CONVERSATION_ID=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
-    echo "# Fork conversation ID: $FORK_CONVERSATION_ID"
-    [ -n "$FORK_CONVERSATION_ID" ]
+    local fork_conversation_id
+    fork_conversation_id=$(echo "$output" | grep -oP 'Conversation:\s*\K[a-f0-9-]{36}' | head -1)
+    echo "# Fork conversation ID: $fork_conversation_id"
+    [ -n "$fork_conversation_id" ]
 
     # Note: When using same agent config + artifact, system reuses the session
     # and may return same conversation ID. This is expected behavior.

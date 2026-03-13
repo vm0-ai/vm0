@@ -73,53 +73,40 @@ setup() {
     cd "$TEST_DIR"
 }
 
-# ============================================================
-# vm0 preference --timezone command tests
-# ============================================================
+# All timezone tests are in a single test to avoid racing on the global
+# user-level timezone preference.  Two vm0 run calls (~15s each) + CLI
+# commands (~5s) ≈ 35s, well within the 60s timeout.
 
-@test "vm0 preference --timezone sets user preference" {
+@test "vm0 preference --timezone and TZ injection" {
+    # --- preference set and read ---
     run $CLI_COMMAND preference --timezone "Asia/Shanghai"
     assert_success
     assert_output --partial "Timezone set to"
     assert_output --partial "Asia/Shanghai"
-}
 
-@test "vm0 preference shows current preferences" {
-    # Set a timezone first
     $CLI_COMMAND preference --timezone "America/New_York" >/dev/null
 
     run $CLI_COMMAND preference
     assert_success
     assert_output --partial "America/New_York"
-}
 
-@test "vm0 preference --timezone rejects invalid timezone" {
+    # --- reject invalid timezone ---
     run $CLI_COMMAND preference --timezone "Invalid/Timezone"
     assert_failure
     assert_output --partial "Invalid timezone"
-}
 
-# ============================================================
-# TZ environment variable injection tests
-# ============================================================
-
-@test "sandbox receives TZ environment variable from user preference" {
-    # Set timezone preference
+    # --- TZ injection into sandbox ---
     $CLI_COMMAND preference --timezone "Asia/Tokyo" >/dev/null
 
-    # Run agent and check TZ environment variable
     run $CLI_COMMAND run "$AGENT_NAME" \
         --verbose \
         "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Asia/Tokyo"
-}
 
-@test "explicit TZ in environment overrides user preference" {
-    # Set user timezone preference
+    # --- explicit TZ overrides user preference ---
     $CLI_COMMAND preference --timezone "Asia/Shanghai" >/dev/null
 
-    # Create agent config with explicit TZ in environment
     local OVERRIDE_AGENT_NAME="tz-override-${UNIQUE_ID}"
     cat > "$TEST_DIR/vm0-tz-override.yaml" <<EOF
 version: "1.0"
@@ -142,7 +129,6 @@ EOF
 
     $CLI_COMMAND compose "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
 
-    # Run agent - explicit TZ should take precedence
     run $CLI_COMMAND run "$OVERRIDE_AGENT_NAME" \
         --verbose \
         "echo TZ=\$TZ"

@@ -5,9 +5,9 @@
 # 1. Agent runs create new artifact versions during checkpoint
 # 2. Resume from checkpoint restores the specific version from checkpoint, not HEAD
 #
-# Refactored to split multi-vm0-run test into separate cases for timeout safety.
-# Each case has max one vm0 run call (~15s), fitting within 30s timeout.
-# State is shared between cases via $BATS_FILE_TMPDIR.
+# All tests are independent and parallelizable.
+# t04-1 validates compose config.
+# t04-2 runs the full checkpoint versioning workflow in a single test.
 
 load '../../helpers/setup'
 
@@ -70,12 +70,15 @@ teardown_file() {
     assert_output --partial "$AGENT_NAME"
 }
 
-@test "t04-2: create artifact and run agent to create checkpoint" {
-    # Step 1: Create artifact with initial content
+@test "t04-2: resume from checkpoint restores checkpoint version not HEAD" {
+    # --- Phase 1: Create artifact with initial content ---
+    local artifact_name="$ARTIFACT_NAME"
+    local artifact_dir="$TEST_ARTIFACT_DIR/$artifact_name"
+
     echo "# Creating initial artifact..."
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    mkdir -p "$artifact_dir"
+    cd "$artifact_dir"
+    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null
 
     # Initial content: counter at 100, no agent marker
     echo "100" > counter.txt
@@ -83,11 +86,11 @@ teardown_file() {
     run $CLI_COMMAND artifact push
     assert_success
 
-    # Step 2: Run agent to create checkpoint (~15s)
+    # --- Phase 2: Run agent to create checkpoint (~15s) ---
     # Agent will: create agent-marker.txt, modify counter.txt from 100 to 101
     echo "# Running agent to modify artifact..."
     run $CLI_COMMAND run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
+        --artifact-name "$artifact_name" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
     assert_success
@@ -98,30 +101,20 @@ teardown_file() {
     assert_output --partial "◆ Claude Code Completed"
     assert_output --partial "Checkpoint:"
 
-    # Extract and save checkpoint ID for next test
-    CHECKPOINT_ID=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
-    echo "# Checkpoint ID: $CHECKPOINT_ID"
-    [ -n "$CHECKPOINT_ID" ] || {
+    # Extract checkpoint ID as a local variable
+    local checkpoint_id
+    checkpoint_id=$(echo "$output" | grep -oP 'Checkpoint:\s*\K[a-f0-9-]{36}' | head -1)
+    echo "# Checkpoint ID: $checkpoint_id"
+    [ -n "$checkpoint_id" ] || {
         echo "# Failed to extract checkpoint ID"
         echo "$output"
         return 1
     }
 
-    # Save state for subsequent tests
-    echo "$CHECKPOINT_ID" > "$BATS_FILE_TMPDIR/checkpoint_id"
-    echo "$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/artifact_name"
-    echo "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME" > "$BATS_FILE_TMPDIR/artifact_dir"
-}
-
-@test "t04-3: push new content to make HEAD different from checkpoint" {
-    # Load state from previous test
-    ARTIFACT_NAME=$(cat "$BATS_FILE_TMPDIR/artifact_name")
-    ARTIFACT_DIR=$(cat "$BATS_FILE_TMPDIR/artifact_dir")
-
-    # Push new content to artifact (simulating external changes)
+    # --- Phase 3: Push new content to make HEAD different from checkpoint ---
     # This makes HEAD different from the checkpoint version
     echo "# Pushing new content to make HEAD different..."
-    cd "$ARTIFACT_DIR"
+    cd "$artifact_dir"
     echo "0" > counter.txt               # Reset counter to 0
     echo "external content" > state.txt  # Change state
     echo "external marker" > external-marker.txt  # Add new file
@@ -130,15 +123,11 @@ teardown_file() {
     run $CLI_COMMAND artifact push
     assert_success
     echo "# New HEAD version pushed"
-}
 
-@test "t04-4: resume from checkpoint restores checkpoint version not HEAD" {
-    # Load state from previous tests
-    CHECKPOINT_ID=$(cat "$BATS_FILE_TMPDIR/checkpoint_id")
-
-    # Resume from checkpoint - should get checkpoint version, not HEAD (~15s)
-    echo "# Resuming from checkpoint: $CHECKPOINT_ID"
-    run $CLI_COMMAND run resume "$CHECKPOINT_ID" \
+    # --- Phase 4: Resume from checkpoint and verify ---
+    # Should get checkpoint version, not HEAD (~15s)
+    echo "# Resuming from checkpoint: $checkpoint_id"
+    run $CLI_COMMAND run resume "$checkpoint_id" \
         --verbose \
         "ls && cat counter.txt"
 
