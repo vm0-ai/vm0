@@ -1,7 +1,9 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { eq, desc } from "drizzle-orm";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
 import { getOrgData } from "./org-cache-service";
+import { orgMembersCache } from "../../db/schema/org-members-cache";
 import type { OrgRole } from "@vm0/core";
 import type { ResolvedOrg, ResolvedMember } from "./resolve-org";
 
@@ -61,6 +63,29 @@ export async function getDefaultOrg(
       };
     } catch {
       // JWT orgId not found in Clerk — fall through to slow path
+    }
+  }
+
+  // Cache fast path: check org_members_cache for a recent entry (1-min TTL)
+  const [cached] = await globalThis.services.db
+    .select()
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId))
+    .orderBy(desc(orgMembersCache.cachedAt))
+    .limit(1);
+
+  if (cached && Date.now() - cached.cachedAt.getTime() < 60_000) {
+    try {
+      const orgData = await getOrgData(cached.orgId);
+      return {
+        org: orgData,
+        member: {
+          role: cached.role === "admin" ? "admin" : "member",
+          userId,
+        },
+      };
+    } catch {
+      // org_cache miss — fall through to Clerk API
     }
   }
 

@@ -55,10 +55,10 @@ const router = tsr.router(composeJobsMainContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
-    // Resolve the caller's org so the CLI token carries the correct orgId
-    const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+    // Resolve the caller's org
+    const { org } = await resolveOrg(userId);
 
     // Dispatch based on input type: GitHub URL or platform content
     const isGitHubInput = "githubUrl" in body;

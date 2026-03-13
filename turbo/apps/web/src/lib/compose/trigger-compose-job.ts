@@ -359,7 +359,6 @@ interface TriggerComposeJobResult {
 async function generateComposeCliToken(
   userId: string,
   jobId: string,
-  orgId?: string,
 ): Promise<string> {
   const token = `vm0_live_${crypto.randomBytes(32).toString("base64url")}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -368,7 +367,6 @@ async function generateComposeCliToken(
     token,
     userId,
     name: `Compose Job ${jobId}`,
-    orgId: orgId ?? null,
     expiresAt,
   });
 
@@ -460,7 +458,7 @@ export async function triggerComposeJob(
   log.debug(`Created new job ${jobId} for user ${userId}`);
 
   // Generate tokens for sandbox
-  const cliToken = await generateComposeCliToken(userId, jobId, params.orgId);
+  const cliToken = await generateComposeCliToken(userId, jobId);
   const webhookToken = await generateComposeJobToken(userId, jobId);
 
   // Build sandbox params

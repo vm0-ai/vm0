@@ -112,17 +112,12 @@ const router = tsr.router(platformLogsByIdContract, {
     if (!authCtx) {
       return unauthorizedResponse();
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     // Resolve active org from JWT / CLI token / default
     let orgId: string;
     try {
-      const { org: resolvedOrg } = await resolveOrg(
-        userId,
-        undefined,
-        undefined,
-        tokenOrgId,
-      );
+      const { org: resolvedOrg } = await resolveOrg(userId);
       orgId = resolvedOrg.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error)) {
