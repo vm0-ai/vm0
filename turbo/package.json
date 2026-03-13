@@ -28,7 +28,7 @@
     "e2b": "^2.10.3",
     "knip": "^5.63.1",
     "prettier": "^3.6.2",
-    "tsx": "^4.20.6",
+    "tsx": "^4.21.0",
     "turbo": "^2.8.14",
     "typescript": "5.9.3",
     "vitest": "^4.0.18"
@@ -52,7 +52,8 @@
       "lodash": ">=4.17.23",
       "lodash-es": ">=4.17.23",
       "mdast-util-to-hast": ">=13.2.1",
-      "minimatch": ">=10.2.3"
+      "minimatch": ">=10.2.3",
+      "@esbuild-kit/core-utils>esbuild": "^0.25.4"
     }
   },
   "packageManager": "pnpm@10.15.0",
