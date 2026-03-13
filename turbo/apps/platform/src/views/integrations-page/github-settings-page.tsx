@@ -146,7 +146,7 @@ export function GitHubSettingsPage() {
       return undefined;
     }
     const fullName = `${data.agent.scopeSlug}/${data.agent.name}`;
-    // If the scoped name exists in agents list, use it (shared agent)
+    // If the qualified name exists in agents list, use it (shared agent)
     if (agents.some((a) => a.name === fullName)) {
       return fullName;
     }
