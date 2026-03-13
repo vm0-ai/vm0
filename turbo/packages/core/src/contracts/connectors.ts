@@ -1111,7 +1111,6 @@ const CONNECTOR_TYPES_DEF = {
   },
   strava: {
     label: "Strava",
-    featureFlag: FeatureSwitchKey.StravaConnector,
     helpText:
       "Connect your Strava account to access activities and athlete data",
     authMethods: {

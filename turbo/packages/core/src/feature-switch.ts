@@ -129,11 +129,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.StravaConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-  },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
