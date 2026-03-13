@@ -23,6 +23,10 @@ import {
   resetMockSlackIntegration,
 } from "./api-integrations-slack.ts";
 import {
+  apiIntegrationsSlackOrgHandlers,
+  resetMockSlackOrgIntegration,
+} from "./api-integrations-slack-org.ts";
+import {
   apiIntegrationsTelegramHandlers,
   resetMockTelegramIntegration,
 } from "./api-integrations-telegram.ts";
@@ -42,6 +46,7 @@ export const handlers = [
   ...exampleHandlers,
   ...platformLogsHandlers,
   ...apiIntegrationsSlackHandlers,
+  ...apiIntegrationsSlackOrgHandlers,
   ...apiIntegrationsTelegramHandlers,
   ...apiAgentsHandlers,
   ...apiUserPreferencesHandlers,
@@ -54,6 +59,7 @@ export function resetAllMockHandlers(): void {
   resetMockSecrets();
   resetMockVariables();
   resetMockSlackIntegration();
+  resetMockSlackOrgIntegration();
   resetMockTelegramIntegration();
   resetMockUserPreferences();
 }
