@@ -29,102 +29,298 @@ def _wrap_services(apis, name="test", ref="test"):
 
 
 # =========================================================================
-# match_service
+# match_path
 # =========================================================================
 
 
-class TestMatchService:
-    def test_exact_base_match(self):
-        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer tok"}}}], name="github", ref="github")
-        result = mitm_addon.match_service("https://api.github.com", services)
-        assert result is not None
-        assert result["base"] == "https://api.github.com"
+class TestMatchPath:
+    def test_exact_path(self):
+        assert mitm_addon.match_path("/repos", "/repos") == {}
 
-    def test_base_with_path(self):
-        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
-        result = mitm_addon.match_service("https://api.github.com/repos/owner/repo", services)
-        assert result is not None
-        assert result["base"] == "https://api.github.com"
+    def test_exact_multi_segment(self):
+        assert mitm_addon.match_path("/api/v1/users", "/api/v1/users") == {}
 
-    def test_base_with_query(self):
-        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
-        result = mitm_addon.match_service("https://api.github.com?page=1", services)
-        assert result is not None
-        assert result["base"] == "https://api.github.com"
+    def test_single_param(self):
+        result = mitm_addon.match_path("/repos/octocat", "/repos/{owner}")
+        assert result == {"owner": "octocat"}
 
-    def test_base_with_fragment(self):
-        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
-        result = mitm_addon.match_service("https://api.github.com#section", services)
-        assert result is not None
-        assert result["base"] == "https://api.github.com"
+    def test_multiple_params(self):
+        result = mitm_addon.match_path("/repos/octocat/hello-world", "/repos/{owner}/{repo}")
+        assert result == {"owner": "octocat", "repo": "hello-world"}
 
-    def test_path_boundary_prevents_evil_domain(self):
-        """Prevents api.github.com matching api.github.com.evil.com."""
-        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
-        result = mitm_addon.match_service("https://api.github.com.evil.com/steal", services)
-        assert result is None
+    def test_mixed_literal_and_param(self):
+        result = mitm_addon.match_path("/repos/octocat/hello-world/issues", "/repos/{owner}/{repo}/issues")
+        assert result == {"owner": "octocat", "repo": "hello-world"}
 
-    def test_path_boundary_prevents_suffix_attack(self):
-        services = _wrap_services([{"base": "https://slack.com", "auth": {"headers": {}}}], name="slack", ref="slack")
-        result = mitm_addon.match_service("https://slack.com.attacker.io/hook", services)
+    def test_greedy_param_matches_rest(self):
+        result = mitm_addon.match_path("/repos/octocat/hello-world", "/{path+}")
+        assert result == {"path": "repos/octocat/hello-world"}
+
+    def test_greedy_param_matches_single_segment(self):
+        result = mitm_addon.match_path("/foo", "/{path+}")
+        assert result == {"path": "foo"}
+
+    def test_greedy_param_matches_empty(self):
+        result = mitm_addon.match_path("/", "/{path+}")
+        assert result == {"path": ""}
+
+    def test_greedy_after_literal(self):
+        result = mitm_addon.match_path("/api/v1/anything/here", "/api/v1/{rest+}")
+        assert result == {"rest": "anything/here"}
+
+    def test_path_too_short(self):
+        assert mitm_addon.match_path("/repos", "/repos/{owner}/{repo}") is None
+
+    def test_path_too_long(self):
+        assert mitm_addon.match_path("/repos/owner/repo/extra", "/repos/{owner}/{repo}") is None
+
+    def test_literal_mismatch(self):
+        assert mitm_addon.match_path("/users/octocat", "/repos/{owner}") is None
+
+    def test_root_matches_root(self):
+        assert mitm_addon.match_path("/", "/") == {}
+
+    def test_empty_path_matches_empty_pattern(self):
+        assert mitm_addon.match_path("", "") == {}
+
+
+# =========================================================================
+# match_service_request
+# =========================================================================
+
+
+class TestMatchServiceRequest:
+    """Tests for the three-state matching: allow, block, or None (pass-through)."""
+
+    def test_no_permissions_blocks(self):
+        """Missing permissions field → block (fail-closed)."""
+        services = _wrap_services([
+            {"base": "https://api.github.com", "auth": {"headers": {}}},
+        ], name="github", ref="github")
+        result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
+        assert result[0] == "block"
+        assert result[1] == "https://api.github.com"
+
+    def test_permission_match_allows(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
+        }], name="github", ref="github")
+        result = mitm_addon.match_service_request("https://api.github.com/repos/octocat/hello", "GET", services)
+        assert result[0] == "allow"
+        info = result[2]
+        assert info["service"] == "github"
+        assert info["permission"] == "repo-read"
+        assert info["params"] == {"owner": "octocat", "repo": "hello"}
+        assert info["rule"] == "GET /repos/{owner}/{repo}"
+
+    def test_any_method_matches(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/anything", "DELETE", services)
+        assert result[0] == "allow"
+        assert result[2]["permission"] == "full-access"
+
+    def test_method_case_insensitive(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["post /repos"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/repos", "POST", services)
+        assert result[0] == "allow"
+
+    def test_wrong_method_blocks(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "read-only", "rules": ["GET /repos/{owner}/{repo}"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/repos/a/b", "POST", services)
+        assert result[0] == "block"
+
+    def test_wrong_path_blocks(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/users/octocat", "GET", services)
+        assert result[0] == "block"
+
+    def test_no_base_match_returns_none(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["GET /{path+}"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.gitlab.com/repos", "GET", services)
         assert result is None
 
     def test_no_services_returns_none(self):
-        assert mitm_addon.match_service("https://api.github.com/repos", None) is None
+        assert mitm_addon.match_service_request("https://api.github.com", "GET", None) is None
 
-    def test_empty_services_list(self):
-        services = []
-        assert mitm_addon.match_service("https://api.github.com/repos", services) is None
+    def test_empty_services_returns_none(self):
+        assert mitm_addon.match_service_request("https://api.github.com", "GET", []) is None
 
-    def test_empty_apis_in_service(self):
-        services = [{"name": "github", "ref": "github", "apis": []}]
-        assert mitm_addon.match_service("https://api.github.com/repos", services) is None
+    def test_exact_base_no_path(self):
+        """URL equals base exactly (rest='') → rel_path='/' → matches root rule."""
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "root", "rules": ["GET /"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com", "GET", services)
+        assert result[0] == "allow"
+        assert result[2]["permission"] == "root"
 
-    def test_no_matching_service(self):
-        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
-        result = mitm_addon.match_service("https://api.gitlab.com/repos", services)
+    def test_trailing_slash_on_url(self):
+        """URL trailing slash doesn't affect matching (split filters empty segments)."""
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/repos/", "GET", services)
+        assert result[0] == "allow"
+
+    def test_trailing_slash_on_base_config(self):
+        """Base URL with trailing slash still matches (rstrip strips it)."""
+        services = _wrap_services([{
+            "base": "https://api.github.com/",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
+        assert result[0] == "allow"
+
+    def test_port_boundary_rejected(self):
+        """Port in URL (rest starts with ':') is not a valid path boundary."""
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com:8443/repos", "GET", services)
         assert result is None
 
-    def test_trailing_slash_on_base_stripped(self):
-        """Base URLs with trailing slashes should still match."""
-        services = _wrap_services([{"base": "https://api.github.com/", "auth": {"headers": {}}}])
-        result = mitm_addon.match_service("https://api.github.com/repos", services)
-        assert result is not None
-        assert result["base"] == "https://api.github.com/"
+    def test_evil_domain_not_matched(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com.evil.com/steal", "GET", services)
+        assert result is None
 
-    def test_first_matching_api_wins(self):
-        services = _wrap_services([
-            {"base": "https://api.github.com/v3", "auth": {"headers": {}}},
-            {"base": "https://api.github.com", "auth": {"headers": {}}},
-        ])
-        result = mitm_addon.match_service("https://api.github.com/v3/repos", services)
-        assert result["base"] == "https://api.github.com/v3"
+    def test_multiple_permissions_first_match_wins(self):
+        services = _wrap_services([{
+            "base": "https://slack.com/api",
+            "auth": {"headers": {}},
+            "permissions": [
+                {"name": "messages-read", "rules": ["POST /conversations.history"]},
+                {"name": "messages-send", "rules": ["POST /chat.postMessage"]},
+            ],
+        }])
+        result = mitm_addon.match_service_request("https://slack.com/api/chat.postMessage", "POST", services)
+        assert result[0] == "allow"
+        assert result[2]["permission"] == "messages-send"
 
-    def test_empty_base_skipped(self):
-        services = _wrap_services([
-            {"base": "", "auth": {"headers": {}}},
-            {"base": "https://api.github.com", "auth": {"headers": {}}},
-        ])
-        result = mitm_addon.match_service("https://api.github.com/repos", services)
-        assert result["base"] == "https://api.github.com"
+    def test_malformed_rules_skipped(self):
+        """Rules without 'METHOD /path' format are silently skipped, not crash or false-allow."""
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "bad", "rules": ["GET", "", "INVALID", "  ", "GET /repos"]}],
+        }])
+        # Only "GET /repos" is valid — the rest are skipped
+        result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
+        assert result[0] == "allow"
+        # Non-matching path still blocks (malformed rules don't accidentally allow)
+        result2 = mitm_addon.match_service_request("https://api.github.com/users", "GET", services)
+        assert result2[0] == "block"
 
-    def test_matches_across_multiple_services(self):
-        """Match should work across different services in the list."""
+    def test_path_case_sensitive(self):
+        """URL paths are case-sensitive — /REPOS must not match /repos."""
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["GET /repos/{owner}"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/REPOS/octocat", "GET", services)
+        assert result[0] == "block"
+
+    def test_multiple_services_match_across(self):
         services = [
-            {"name": "github", "ref": "github", "apis": [
-                {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer gh"}}},
-            ]},
-            {"name": "slack", "ref": "slack", "apis": [
-                {"base": "https://slack.com/api", "auth": {"headers": {"Authorization": "Bearer sl"}}},
-            ]},
+            {"name": "github", "ref": "github", "apis": [{
+                "base": "https://api.github.com",
+                "auth": {"headers": {}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            }]},
+            {"name": "slack", "ref": "slack", "apis": [{
+                "base": "https://slack.com/api",
+                "auth": {"headers": {}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            }]},
         ]
-        gh = mitm_addon.match_service("https://api.github.com/repos", services)
-        assert gh is not None
-        assert gh["base"] == "https://api.github.com"
+        gh = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
+        assert gh[0] == "allow"
+        assert gh[2]["service"] == "github"
 
-        sl = mitm_addon.match_service("https://slack.com/api/chat.postMessage", services)
-        assert sl is not None
-        assert sl["base"] == "https://slack.com/api"
+        sl = mitm_addon.match_service_request("https://slack.com/api/chat.postMessage", "POST", services)
+        assert sl[0] == "allow"
+        assert sl[2]["service"] == "slack"
+
+    def test_query_string_stripped_for_matching(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/repos?page=1", "GET", services)
+        assert result[0] == "allow"
+
+    def test_fragment_stripped_for_matching(self):
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/repos#section", "GET", services)
+        assert result[0] == "allow"
+
+    def test_empty_permissions_list_blocks(self):
+        """If permissions is present but empty, no rules can match → block."""
+        services = _wrap_services([{
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [],
+        }])
+        result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
+        assert result[0] == "block"
+
+    def test_same_base_different_permissions(self):
+        """Same base URL with different permissions/auth — second api_entry can match."""
+        services = _wrap_services([
+            {
+                "base": "https://slack.com/api",
+                "auth": {"headers": {"Authorization": "Bearer bot"}},
+                "permissions": [{"name": "read", "rules": ["POST /conversations.history"]}],
+            },
+            {
+                "base": "https://slack.com/api",
+                "auth": {"headers": {"Authorization": "Bearer user"}},
+                "permissions": [{"name": "send", "rules": ["POST /chat.postMessage"]}],
+            },
+        ])
+        result = mitm_addon.match_service_request("https://slack.com/api/chat.postMessage", "POST", services)
+        assert result[0] == "allow"
+        assert result[1]["auth"]["headers"]["Authorization"] == "Bearer user"
+        assert result[2]["permission"] == "send"
 
 
 # =========================================================================
@@ -176,7 +372,7 @@ class TestHandleServiceRequest:
     def setup_method(self):
         mitm_addon._service_header_cache.clear()
 
-    def test_success_injects_headers(self):
+    def test_success_injects_headers_and_audit_metadata(self):
         flow = _make_http_flow()
         api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
         vm_info = {
@@ -185,24 +381,32 @@ class TestHandleServiceRequest:
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "/tmp/net.jsonl",
         }
+        match_info = {"service": "github", "ref": "github", "permission": "repo-read", "rule": "GET /repos/{owner}/{repo}", "params": {"owner": "octocat", "repo": "hello"}}
         resolved_headers = {"Authorization": "Bearer real-token", "X-Custom": "value"}
 
         with (
             patch.object(mitm_addon, "get_service_headers", return_value=resolved_headers),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.handle_service_request(flow, api_entry, vm_info)
+            mitm_addon.handle_service_request(flow, api_entry, vm_info, match_info)
 
         # Headers injected
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.headers["X-Custom"] == "value"
 
-        # Metadata set correctly
+        # Core metadata
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_rule"] == "service:https://api.github.com"
         assert flow.metadata["service_base"] == "https://api.github.com"
         assert flow.metadata["service_api_id"] == "run-1:0"
         assert flow.metadata["vm_run_id"] == "run-1"
+
+        # Audit metadata
+        assert flow.metadata["service_name"] == "github"
+        assert flow.metadata["service_ref"] == "github"
+        assert flow.metadata["service_permission"] == "repo-read"
+        assert flow.metadata["service_rule"] == "GET /repos/{owner}/{repo}"
+        assert flow.metadata["service_params"] == {"owner": "octocat", "repo": "hello"}
 
     def test_failure_returns_502(self):
         flow = _make_http_flow()
@@ -213,6 +417,7 @@ class TestHandleServiceRequest:
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "/tmp/net.jsonl",
         }
+        match_info = {"service": "github", "ref": "github"}
 
         with (
             patch.object(
@@ -222,7 +427,7 @@ class TestHandleServiceRequest:
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            mitm_addon.handle_service_request(flow, api_entry, vm_info)
+            mitm_addon.handle_service_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -234,12 +439,13 @@ class TestHandleServiceRequest:
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "encryptedSecrets": "iv:tag:data", "networkLogPath": ""}
+        match_info = {"service": "github", "ref": "github"}
 
         with (
             patch.object(mitm_addon, "get_service_headers", return_value={"Auth": "tok"}),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.handle_service_request(flow, api_entry, vm_info)
+            mitm_addon.handle_service_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is None
 
@@ -248,9 +454,10 @@ class TestHandleServiceRequest:
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
+        match_info = {"service": "github", "ref": "github"}
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            mitm_addon.handle_service_request(flow, api_entry, vm_info)
+            mitm_addon.handle_service_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502

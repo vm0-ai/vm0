@@ -829,7 +829,11 @@ function buildExperimentalServices(
   return services.map((svc) => ({
     name: svc.name,
     ref: svc.ref,
-    apis: svc.apis.map((api) => ({ base: api.base, auth: api.auth })),
+    apis: svc.apis.map((api) => ({
+      base: api.base,
+      auth: api.auth,
+      ...(api.permissions ? { permissions: api.permissions } : {}),
+    })),
   }));
 }
 

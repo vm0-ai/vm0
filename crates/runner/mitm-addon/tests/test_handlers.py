@@ -138,7 +138,11 @@ class TestRequestHandler:
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": [
                         {"name": "github", "ref": "github", "apis": [
-                            {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}},
+                            {
+                                "base": "https://api.github.com",
+                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                            },
                         ]},
                     ],
                     "encryptedSecrets": "iv:tag:data",
@@ -164,6 +168,157 @@ class TestRequestHandler:
         call_args = mock_handler.call_args
         assert call_args[0][0] is flow
         assert call_args[0][1]["base"] == "https://api.github.com"
+        match_info = call_args[0][3]
+        assert match_info["service"] == "github"
+        assert match_info["ref"] == "github"
+        assert match_info["permission"] == "full-access"
+
+    def test_service_permission_blocks_unmatched(self, tmp_path):
+        """Service with permissions but no matching rule returns 403."""
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "sandboxToken": "tok-conn",
+                    "firewallRules": [
+                        {"domain": "*.github.com", "action": "ALLOW"},
+                        {"final": "DENY"},
+                    ],
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "services": [
+                        {"name": "github", "ref": "github", "apis": [
+                            {
+                                "base": "https://api.github.com",
+                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "permissions": [
+                                    {"name": "read-repos", "rules": ["GET /repos/{owner}/{repo}"]},
+                                ],
+                            },
+                        ]},
+                    ],
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = _make_http_flow(
+            client_ip="10.200.0.5", host="api.github.com", path="/orgs"
+        )
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+        ):
+            mitm_addon.request(flow)
+
+        mock_handler.assert_not_called()
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_rule"] == "service:https://api.github.com"
+
+    def test_service_permission_allows_matched(self, tmp_path):
+        """Service with permissions and matching rule calls handler with match_info."""
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "sandboxToken": "tok-conn",
+                    "firewallRules": [
+                        {"domain": "*.github.com", "action": "ALLOW"},
+                        {"final": "DENY"},
+                    ],
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "services": [
+                        {"name": "github", "ref": "github", "apis": [
+                            {
+                                "base": "https://api.github.com",
+                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "permissions": [
+                                    {"name": "read-repos", "rules": ["GET /repos/{owner}/{repo}"]},
+                                ],
+                            },
+                        ]},
+                    ],
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = _make_http_flow(
+            client_ip="10.200.0.5", host="api.github.com", path="/repos/octocat/hello"
+        )
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+        ):
+            mitm_addon.request(flow)
+
+        mock_handler.assert_called_once()
+        call_args = mock_handler.call_args
+        assert call_args[0][0] is flow
+        assert call_args[0][1]["base"] == "https://api.github.com"
+        match_info = call_args[0][3]
+        assert match_info["service"] == "github"
+        assert match_info["ref"] == "github"
+        assert match_info["permission"] == "read-repos"
+        assert match_info["rule"] == "GET /repos/{owner}/{repo}"
+        assert match_info["params"] == {"owner": "octocat", "repo": "hello"}
+
+    def test_service_no_base_match_passes_through(self, tmp_path):
+        """URL not matching any service base → pass-through (not block)."""
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "sandboxToken": "tok-conn",
+                    "firewallRules": [
+                        {"domain": "*.example.com", "action": "ALLOW"},
+                        {"final": "DENY"},
+                    ],
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "services": [
+                        {"name": "github", "ref": "github", "apis": [
+                            {
+                                "base": "https://api.github.com",
+                                "auth": {"headers": {}},
+                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                            },
+                        ]},
+                    ],
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        # Request to example.com — allowed by firewall but not a service
+        flow = _make_http_flow(
+            client_ip="10.200.0.5", host="api.example.com", path="/data"
+        )
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+        ):
+            mitm_addon.request(flow)
+
+        # No service match → pass-through, not blocked
+        mock_handler.assert_not_called()
+        assert flow.response is None
+        assert flow.metadata["firewall_action"] == "ALLOW"
 
     def test_firewall_denies_service_domain(self, tmp_path):
         """Firewall DENY blocks service-matched domains — firewall is the security boundary."""
@@ -176,7 +331,11 @@ class TestRequestHandler:
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": [
                         {"name": "github", "ref": "github", "apis": [
-                            {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}},
+                            {
+                                "base": "https://api.github.com",
+                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                            },
                         ]},
                     ],
                     "encryptedSecrets": "iv:tag:data",
