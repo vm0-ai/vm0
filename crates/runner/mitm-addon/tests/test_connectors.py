@@ -303,6 +303,32 @@ class TestMatchServiceRequest:
         result = mitm_addon.match_service_request("https://api.github.com/repos", "GET", services)
         assert isinstance(result, ServiceBlock)
 
+    def test_different_bases_same_permission_name(self):
+        """Same permission name across different api_entries — each matches its own base."""
+        services = _wrap_services([
+            {
+                "base": "https://slack.com/api",
+                "auth": {"headers": {"Authorization": "Bearer api-token"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            {
+                "base": "https://files.slack.com",
+                "auth": {"headers": {"Authorization": "Bearer files-token"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+        ])
+        # Request to first base
+        result = mitm_addon.match_service_request("https://slack.com/api/conversations.history", "POST", services)
+        assert isinstance(result, ServiceAllow)
+        assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer api-token"
+        assert result.match_info["permission"] == "full-access"
+
+        # Request to second base
+        result = mitm_addon.match_service_request("https://files.slack.com/files-pri/T1/download", "GET", services)
+        assert isinstance(result, ServiceAllow)
+        assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer files-token"
+        assert result.match_info["permission"] == "full-access"
+
     def test_same_base_different_permissions(self):
         """Same base URL with different permissions/auth — second api_entry can match."""
         services = _wrap_services([

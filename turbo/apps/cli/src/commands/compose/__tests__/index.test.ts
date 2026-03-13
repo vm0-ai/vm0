@@ -3363,6 +3363,10 @@ describe("expandServiceConfigs", () => {
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis).toHaveLength(2);
+    // Both api_entries share the same permission name
+    for (const api of expanded[0]!.apis) {
+      expect(api.permissions!.map((p) => p.name)).toEqual(["full-access"]);
+    }
   });
 
   it("should skip services with no agents", () => {
