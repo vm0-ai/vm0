@@ -17,7 +17,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 const log = logger("api:schedules:name");
 
 const router = tsr.router(schedulesByNameContract, {
-  getByName: async ({ params, query, headers }) => {
+  getByName: async ({ params, query, headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -34,9 +34,10 @@ const router = tsr.router(schedulesByNameContract, {
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(userId);
+      } = await resolveOrg(userId, orgSlug);
 
       const schedule = await getScheduleByName(
         userId,
@@ -62,7 +63,7 @@ const router = tsr.router(schedulesByNameContract, {
     }
   },
 
-  delete: async ({ params, query, headers }) => {
+  delete: async ({ params, query, headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -81,9 +82,10 @@ const router = tsr.router(schedulesByNameContract, {
     );
 
     try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(userId);
+      } = await resolveOrg(userId, orgSlug);
 
       await deleteSchedule(userId, orgId, query.composeId, params.name);
 

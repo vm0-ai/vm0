@@ -228,17 +228,17 @@ export async function resolveOrg(
 }
 
 /**
- * Null-safe org resolution for contexts without request params.
- * Returns null if no org found, instead of throwing.
+ * Null-safe org resolution. Returns null if no org found, instead of throwing.
  *
  * Used by handlers that operate outside request context
  * (Slack, Telegram, email) where missing org is expected.
  */
 export async function resolveOrgOrNull(
   userId: string,
+  orgSlug?: string | null,
 ): Promise<ResolvedOrg | null> {
   try {
-    const { org } = await resolveOrg(userId);
+    const { org } = await resolveOrg(userId, orgSlug);
     return org;
   } catch (error) {
     if (isNotFound(error)) return null;

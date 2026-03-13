@@ -14,7 +14,7 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 const log = logger("api:schedules:runs");
 
 const router = tsr.router(scheduleRunsContract, {
-  listRuns: async ({ params, query, headers }) => {
+  listRuns: async ({ params, query, headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -33,9 +33,10 @@ const router = tsr.router(scheduleRunsContract, {
     );
 
     try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(userId);
+      } = await resolveOrg(userId, orgSlug);
 
       const runs = await getScheduleRecentRuns(
         userId,

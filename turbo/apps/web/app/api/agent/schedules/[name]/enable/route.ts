@@ -48,9 +48,10 @@ export async function POST(
   }
   const body = parseResult.data;
 
+  const orgSlug = new URL(request.url).searchParams.get("org");
   const {
     org: { orgId },
-  } = await resolveOrg(userId);
+  } = await resolveOrg(userId, orgSlug);
 
   log.debug(`Enabling schedule ${name} for compose ${body.composeId}`);
 
