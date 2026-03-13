@@ -154,6 +154,8 @@ export const storedExecutionContextSchema = z.object({
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
+  // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
+  secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   cliAgentType: z.string(),
   experimentalFirewall: experimentalFirewallSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
@@ -191,6 +193,8 @@ export const executionContextSchema = z.object({
   secretValues: z.array(z.string()).nullable(),
   // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
   encryptedSecrets: z.string().nullable(),
+  // Maps secret names to OAuth connector types for runtime token refresh
+  secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   cliAgentType: z.string(),
   // Experimental firewall configuration
   experimentalFirewall: experimentalFirewallSchema.optional(),

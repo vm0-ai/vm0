@@ -54,6 +54,9 @@ pub struct ExecutionContext {
     // Forwarded to mitm-addon via proxy registry for auth resolution
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
+    // Maps secret names to OAuth connector types for runtime token refresh
+    #[serde(default)]
+    pub secret_connector_map: Option<HashMap<String, String>>,
     pub cli_agent_type: String,
     #[serde(default)]
     pub experimental_firewall: Option<ExperimentalFirewall>,

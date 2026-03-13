@@ -392,6 +392,8 @@ interface ConnectorSecretResult {
   connectorSecrets: Record<string, string> | undefined;
   /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
+  /** Maps secret names to connector types for refresh-capable OAuth connectors */
+  secretConnectorMap: Record<string, string> | undefined;
 }
 
 /**
@@ -413,6 +415,7 @@ async function resolveConnectorSecrets(
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
+      secretConnectorMap: undefined,
     };
   }
 
@@ -421,6 +424,7 @@ async function resolveConnectorSecrets(
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
+      secretConnectorMap: undefined,
     };
   }
 
@@ -475,9 +479,25 @@ async function resolveConnectorSecrets(
     );
   }
 
+  // Build secretConnectorMap for refresh-capable OAuth connectors.
+  // Maps access token secret name → connector type so the auth endpoint
+  // can refresh expired tokens at runtime.
+  const secretConnectorMap: Record<string, string> = {};
+  for (const { type } of validConnectors) {
+    if (!(type in PROVIDER_HANDLERS)) continue;
+    const handler = PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
+    if (handler.refreshToken) {
+      secretConnectorMap[handler.getSecretName()] = type;
+    }
+  }
+
   return {
     connectorSecrets,
     injectedEnvVars: allInjectedEnvVars,
+    secretConnectorMap:
+      Object.keys(secretConnectorMap).length > 0
+        ? secretConnectorMap
+        : undefined,
   };
 }
 
@@ -646,6 +666,7 @@ async function resolveSecretsAndEnvironment(
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
+  secretConnectorMap: Record<string, string> | undefined;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -690,6 +711,23 @@ async function resolveSecretsAndEnvironment(
       }
     : undefined;
 
+  // Filter secretConnectorMap: remove keys overridden by higher-priority sources.
+  // If a secret is provided by CLI, user DB, or model-provider, OAuth refresh should
+  // not overwrite it at runtime.
+  let secretConnectorMap = connectorResult.secretConnectorMap;
+  if (secretConnectorMap) {
+    const overrideKeys = new Set(
+      [
+        connectorResult.injectedEnvVars,
+        modelProviderResult.secrets,
+        dbSecrets,
+        cliSecrets,
+      ].flatMap((s) => (s ? Object.keys(s) : [])),
+    );
+    for (const key of overrideKeys) delete secretConnectorMap[key];
+    if (!Object.keys(secretConnectorMap).length) secretConnectorMap = undefined;
+  }
+
   // Expand environment variables from compose config.
   // Model provider env vars are passed as additionalEnvironment so they go through
   // the same servicePlaceholders logic (secret-derived values use ${{ secrets.X }} templates).
@@ -701,7 +739,7 @@ async function resolveSecretsAndEnvironment(
     modelProviderResult.injectedEnvironment,
   );
 
-  return { secrets, environment };
+  return { secrets, environment, secretConnectorMap };
 }
 
 /**
@@ -941,7 +979,7 @@ export async function buildExecutionContext(
   ]);
   const resolveSecretsEnd = Date.now();
 
-  const { secrets, environment } = secretsResult;
+  const { secrets, environment, secretConnectorMap } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
   // Build experimental services manifest (base + auth entries for the runner)
@@ -959,6 +997,7 @@ export async function buildExecutionContext(
       prompt: params.prompt,
       vars,
       secrets,
+      secretConnectorMap,
       sandboxToken: params.sandboxToken,
       artifactName,
       artifactVersion,

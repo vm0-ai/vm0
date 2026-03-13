@@ -130,6 +130,7 @@ async fn execute_inner(
             network_log_path: &network_log_path,
             services: context.experimental_services.as_deref(),
             encrypted_secrets: context.encrypted_secrets.as_deref(),
+            secret_connector_map: context.secret_connector_map.as_ref(),
         };
         if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
             warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
@@ -654,6 +655,7 @@ mod tests {
             resume_session: None,
             secret_values: None,
             encrypted_secrets: None,
+            secret_connector_map: None,
             cli_agent_type: String::new(),
             experimental_firewall: None,
             debug_no_mock_claude: None,

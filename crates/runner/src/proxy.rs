@@ -28,6 +28,7 @@ struct VmEntry {
     network_log_path: String,
     services: Option<Vec<crate::types::ServiceEntry>>,
     encrypted_secrets: Option<String>,
+    secret_connector_map: Option<HashMap<String, String>>,
 }
 
 /// Firewall rule for network filtering (first-match-wins).
@@ -65,6 +66,7 @@ pub struct VmRegistration<'a> {
     pub network_log_path: &'a std::path::Path,
     pub services: Option<&'a [crate::types::ServiceEntry]>,
     pub encrypted_secrets: Option<&'a str>,
+    pub secret_connector_map: Option<&'a HashMap<String, String>>,
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
@@ -448,6 +450,7 @@ impl ProxyRegistryHandle {
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
                 services,
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
+                secret_connector_map: registration.secret_connector_map.cloned(),
             },
         );
         registry.updated_at = now;
@@ -524,6 +527,7 @@ mod tests {
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 services: None,
                 encrypted_secrets: None,
+                secret_connector_map: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -628,6 +632,7 @@ mod tests {
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             services: None,
             encrypted_secrets: None,
+            secret_connector_map: None,
         };
         handle
             .register_vm("10.200.0.2", &registration)
@@ -646,6 +651,7 @@ mod tests {
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             services: None,
             encrypted_secrets: None,
+            secret_connector_map: None,
         };
         handle
             .register_vm("10.200.0.2", &registration2)
@@ -697,6 +703,7 @@ mod tests {
                     network_log_path: &log_path,
                     services: None,
                     encrypted_secrets: None,
+                    secret_connector_map: None,
                 };
                 h.register_vm(&ip, &registration).await.unwrap();
             });
@@ -743,6 +750,7 @@ mod tests {
                 network_log_path: "/tmp/network-run-1.jsonl".to_string(),
                 services: None,
                 encrypted_secrets: None,
+                secret_connector_map: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -805,6 +813,7 @@ mod tests {
             network_log_path: std::path::Path::new("/tmp/network-run-svc.jsonl"),
             services: Some(&services),
             encrypted_secrets: None,
+            secret_connector_map: None,
         };
         handle
             .register_vm("10.200.0.5", &registration)
@@ -869,6 +878,7 @@ mod tests {
             network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
             services: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
+            secret_connector_map: None,
         };
         handle
             .register_vm("10.200.0.6", &registration)

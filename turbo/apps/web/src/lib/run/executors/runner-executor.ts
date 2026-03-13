@@ -55,6 +55,7 @@ export async function executeRunnerJob(
     environment: context.environment,
     resumeSession: context.resumeSession,
     encryptedSecrets,
+    secretConnectorMap: context.secretConnectorMap,
     cliAgentType: context.cliAgentType,
     experimentalFirewall: context.experimentalFirewall ?? undefined,
     experimentalServices: context.experimentalServices ?? undefined,

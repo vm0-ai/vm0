@@ -55,6 +55,7 @@ export interface ExecutionContext {
   prompt: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>; // Decrypted secrets for environment expansion
+  secretConnectorMap?: Record<string, string>; // Secret name → connector type for OAuth refresh
   sandboxToken: string;
 
   // Artifact settings (new runs only)

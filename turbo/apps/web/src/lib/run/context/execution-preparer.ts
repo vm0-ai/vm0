@@ -308,6 +308,7 @@ function buildPreparedContext(
     // Environment & Secrets
     environment: context.environment || null,
     secrets: context.secrets || null,
+    secretConnectorMap: context.secretConnectorMap || null,
     // Resume support
     resumeSession: context.resumeSession || null,
     resumeArtifact: context.resumeArtifact || null,

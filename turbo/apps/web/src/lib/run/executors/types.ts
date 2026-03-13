@@ -29,6 +29,7 @@ export interface PreparedContext {
   // Environment & Secrets
   environment: Record<string, string> | null;
   secrets: Record<string, string> | null;
+  secretConnectorMap: Record<string, string> | null;
 
   // Resume support
   resumeSession: ResumeSession | null;
