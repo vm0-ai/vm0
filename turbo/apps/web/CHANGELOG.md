@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.105.0](https://github.com/vm0-ai/vm0/compare/web-v12.104.0...web-v12.105.0) (2026-03-13)
+
+
+### Features
+
+* **email:** add unsubscribe headers, suppression table, and bounce/complaint webhook ([#4737](https://github.com/vm0-ai/vm0/issues/4737)) ([e349aaa](https://github.com/vm0-ai/vm0/commit/e349aaa68a9ed8ea37c6b7cc251170daaaca05c4))
+
 ## [12.104.0](https://github.com/vm0-ai/vm0/compare/web-v12.103.1...web-v12.104.0) (2026-03-13)
 
 
