@@ -92,96 +92,97 @@ export async function GET(request: Request) {
   const state = parseOAuthState(url.searchParams.get("state"));
   const redirectUri = `${baseUrl}/api/slack/org/oauth/callback`;
 
+  let oauthResult;
   try {
-    const oauthResult = await exchangeOAuthCode(
+    oauthResult = await exchangeOAuthCode(
       SLACK_CLIENT_ID,
       SLACK_CLIENT_SECRET,
       code,
       redirectUri,
     );
-
-    const encryptedBotToken = encryptSecretValue(
-      oauthResult.accessToken,
-      SECRETS_ENCRYPTION_KEY,
-    );
-
-    const db = globalThis.services.db;
-
-    // Check existing installation
-    const existing = await db
-      .select()
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    if (existing) {
-      // Re-install: update bot token, preserve org binding
-      await db
-        .update(slackOrgInstallations)
-        .set({
-          encryptedBotToken,
-          botUserId: oauthResult.botUserId,
-          slackWorkspaceName: oauthResult.teamName,
-          updatedAt: new Date(),
-        })
-        .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId));
-
-      log.debug("Re-installed Slack workspace, bot token updated", {
-        workspaceId: oauthResult.teamId,
-        orgId: existing.orgId,
-      });
-    } else {
-      // First install
-      const isPlatformFlow = state.orgId && state.vm0UserId;
-
-      await db.insert(slackOrgInstallations).values({
-        slackWorkspaceId: oauthResult.teamId,
-        slackWorkspaceName: oauthResult.teamName,
-        orgId: isPlatformFlow ? state.orgId : null,
-        encryptedBotToken,
-        botUserId: oauthResult.botUserId,
-        installedByUserId: isPlatformFlow ? state.vm0UserId : null,
-      });
-
-      log.debug("New Slack workspace installed", {
-        workspaceId: oauthResult.teamId,
-        orgId: isPlatformFlow ? state.orgId : null,
-      });
-    }
-
-    // Platform flow: verify admin and create connection
-    if (state.orgId && state.vm0UserId) {
-      // Verify user is org admin
-      const member = await requireOrgMember(state.orgId, state.vm0UserId);
-      if (member.role !== "admin") {
-        return NextResponse.redirect(
-          `${platformUrl}/slack/failed?error=${encodeURIComponent("Only org admins can install Slack for an organization.")}`,
-        );
-      }
-
-      // Create connection (idempotent via unique constraint)
-      await db
-        .insert(slackOrgConnections)
-        .values({
-          slackUserId: oauthResult.authedUserId,
-          slackWorkspaceId: oauthResult.teamId,
-          vm0UserId: state.vm0UserId,
-          orgId: state.orgId,
-        })
-        .onConflictDoNothing();
-
-      return NextResponse.redirect(`${platformUrl}/zero/works`);
-    }
-
-    // Slack flow: redirect to success page
-    return NextResponse.redirect(
-      `${platformUrl}/slack/installed?workspace=${encodeURIComponent(oauthResult.teamName)}`,
-    );
   } catch (err) {
-    log.error("Slack OAuth callback error", { error: err });
+    log.error("Slack OAuth exchange failed", { error: err });
     return NextResponse.redirect(
       `${platformUrl}/slack/failed?error=${encodeURIComponent("Failed to complete Slack installation. Please try again.")}`,
     );
   }
+
+  const encryptedBotToken = encryptSecretValue(
+    oauthResult.accessToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+
+  const db = globalThis.services.db;
+
+  // Check existing installation
+  const existing = await db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (existing) {
+    // Re-install: update bot token, preserve org binding
+    await db
+      .update(slackOrgInstallations)
+      .set({
+        encryptedBotToken,
+        botUserId: oauthResult.botUserId,
+        slackWorkspaceName: oauthResult.teamName,
+        updatedAt: new Date(),
+      })
+      .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId));
+
+    log.debug("Re-installed Slack workspace, bot token updated", {
+      workspaceId: oauthResult.teamId,
+      orgId: existing.orgId,
+    });
+  } else {
+    // First install
+    const isPlatformFlow = state.orgId && state.vm0UserId;
+
+    await db.insert(slackOrgInstallations).values({
+      slackWorkspaceId: oauthResult.teamId,
+      slackWorkspaceName: oauthResult.teamName,
+      orgId: isPlatformFlow ? state.orgId : null,
+      encryptedBotToken,
+      botUserId: oauthResult.botUserId,
+      installedByUserId: isPlatformFlow ? state.vm0UserId : null,
+    });
+
+    log.debug("New Slack workspace installed", {
+      workspaceId: oauthResult.teamId,
+      orgId: isPlatformFlow ? state.orgId : null,
+    });
+  }
+
+  // Platform flow: verify admin and create connection
+  if (state.orgId && state.vm0UserId) {
+    // Verify user is org admin
+    const member = await requireOrgMember(state.orgId, state.vm0UserId);
+    if (member.role !== "admin") {
+      return NextResponse.redirect(
+        `${platformUrl}/slack/failed?error=${encodeURIComponent("Only org admins can install Slack for an organization.")}`,
+      );
+    }
+
+    // Create connection (idempotent via unique constraint)
+    await db
+      .insert(slackOrgConnections)
+      .values({
+        slackUserId: oauthResult.authedUserId,
+        slackWorkspaceId: oauthResult.teamId,
+        vm0UserId: state.vm0UserId,
+        orgId: state.orgId,
+      })
+      .onConflictDoNothing();
+
+    return NextResponse.redirect(`${platformUrl}/zero/works`);
+  }
+
+  // Slack flow: redirect to success page
+  return NextResponse.redirect(
+    `${platformUrl}/slack/installed?workspace=${encodeURIComponent(oauthResult.teamName)}`,
+  );
 }

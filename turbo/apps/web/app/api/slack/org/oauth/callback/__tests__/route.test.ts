@@ -117,7 +117,33 @@ describe("/api/slack/org/oauth/callback", () => {
     expect(connection!.orgId).toBe(orgId);
   });
 
-  it("should reject user who is not an org member", async () => {
+  it("should reject org member who is not an admin", async () => {
+    const userId = uniqueId("member");
+    const orgId = uniqueId("org");
+
+    // User is a member of this org but with "member" role, not "admin"
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId, role: "org:member" }],
+    });
+    await createTestOrg(orgId);
+
+    mockOAuthSuccess();
+
+    const state = JSON.stringify({ orgId, vm0UserId: userId });
+    const request = createTestRequest(
+      `http://localhost:3000/api/slack/org/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(request);
+
+    // Non-admin member should be redirected to failed page
+    expect(response.status).toBe(307);
+    const location = response.headers.get("Location");
+    expect(location).toContain("/slack/failed");
+    expect(location).toContain("Only%20org%20admins");
+  });
+
+  it("should throw when user is not an org member", async () => {
     const userId = uniqueId("outsider");
     const orgId = uniqueId("org");
 
@@ -130,12 +156,11 @@ describe("/api/slack/org/oauth/callback", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/slack/org/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
     );
-    const response = await GET(request);
 
-    // requireOrgMember throws 403 → caught by catch block → redirect to failed
-    expect(response.status).toBe(307);
-    const location = response.headers.get("Location");
-    expect(location).toContain("/slack/failed");
+    // requireOrgMember throws ForbiddenError — let it propagate to framework
+    await expect(GET(request)).rejects.toThrow(
+      "You are not a member of this organization",
+    );
   });
 
   it("should create installation with null org_id for slack-initiated flow", async () => {
@@ -168,7 +193,10 @@ describe("/api/slack/org/oauth/callback", () => {
     const orgId = uniqueId("org");
     const workspaceId = uniqueId("ws");
 
-    mockClerk({ userId: adminUserId });
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
     await createTestOrg(orgId);
 
     // First install (platform flow)

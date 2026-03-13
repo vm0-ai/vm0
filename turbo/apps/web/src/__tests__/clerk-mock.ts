@@ -208,12 +208,14 @@ export function mockClerk(options: {
             // Return members of this org.
             // For clerkOrgs: session user is a member.
             // For createdOrgs: the creator is a member (regardless of session).
-            const inClerkOrgs = clerkOrgs.some((o) => o.id === organizationId);
-            if (inClerkOrgs && options.userId) {
+            const matchedClerkOrg = clerkOrgs.find(
+              (o) => o.id === organizationId,
+            );
+            if (matchedClerkOrg && options.userId) {
               return Promise.resolve({
                 data: [
                   {
-                    role: "org:admin",
+                    role: matchedClerkOrg.role ?? "org:admin",
                     publicUserData: { userId: options.userId },
                     publicMetadata,
                     createdAt: Date.now(),
