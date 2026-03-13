@@ -9,13 +9,6 @@ interface CliConfig {
   activeOrg?: string;
 }
 
-/**
- * Legacy config shape for migration from activeScope to activeOrg
- */
-interface LegacyCliConfig extends CliConfig {
-  activeScope?: string;
-}
-
 // Use functions for lazy evaluation (enables testing with mocked homedir)
 function getConfigDir(): string {
   return join(homedir(), ".vm0");
@@ -31,15 +24,7 @@ export async function loadConfig(): Promise<CliConfig> {
     return {};
   }
   const content = await readFile(configFile, "utf8");
-  const raw = JSON.parse(content) as LegacyCliConfig;
-
-  // Migrate activeScope → activeOrg
-  if (raw.activeScope !== undefined && raw.activeOrg === undefined) {
-    raw.activeOrg = raw.activeScope;
-    delete raw.activeScope;
-  }
-
-  return raw;
+  return JSON.parse(content) as CliConfig;
 }
 
 export async function saveConfig(config: CliConfig): Promise<void> {
