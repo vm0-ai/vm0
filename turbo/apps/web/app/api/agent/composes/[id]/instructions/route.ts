@@ -184,11 +184,12 @@ export async function GET(
 function extractAgentMetadata(
   content: AgentComposeYaml,
 ): { displayName?: string; description?: string; sound?: string } | undefined {
-  if (!content.agents) return undefined;
+  if (!content.agents) {
+    return undefined;
+  }
   const agentKey = Object.keys(content.agents)[0];
-  if (!agentKey) return undefined;
-  const agent = content.agents[agentKey];
-  return agent?.metadata as
-    | { displayName?: string; description?: string; sound?: string }
-    | undefined;
+  if (!agentKey) {
+    return undefined;
+  }
+  return content.agents[agentKey]?.metadata;
 }
