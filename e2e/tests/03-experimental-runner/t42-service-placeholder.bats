@@ -8,6 +8,23 @@
 
 load '../../helpers/setup'
 
+# Set up connectors ONCE before parallel tests to avoid race conditions.
+# Both tests write to the same connector record (orgId + userId + type),
+# so concurrent setup_test_connector calls would overwrite each other.
+setup_file() {
+    if [[ -z "$VM0_API_URL" ]]; then
+        echo "VM0_API_URL not set" >&2
+        return 1
+    fi
+    if [[ -z "$CI_GITHUB_TOKEN" ]]; then
+        echo "CI_GITHUB_TOKEN not set" >&2
+        return 1
+    fi
+
+    setup_test_connector "github" "$CI_GITHUB_TOKEN"
+    setup_test_connector "slack" "xoxb-multi-test-token"
+}
+
 setup() {
     if [[ -z "$VM0_API_URL" ]]; then
         fail "VM0_API_URL not set"
@@ -65,9 +82,7 @@ setup_test_connector() {
 }
 
 @test "service: placeholder env vars" {
-    setup_test_connector "github" "ghp_multi_test_token"
-    setup_test_connector "slack" "xoxb-multi-test-token"
-
+    # Connectors are set up in setup_file() to avoid parallel write races.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -105,12 +120,7 @@ EOF
 }
 
 @test "service: permission-based request matching" {
-    if [[ -z "$CI_GITHUB_TOKEN" ]]; then
-        fail "CI_GITHUB_TOKEN not set"
-    fi
-
-    setup_test_connector "github" "$CI_GITHUB_TOKEN"
-
+    # Connectors are set up in setup_file() to avoid parallel write races.
     # Only grant repo-read — search endpoints should be blocked.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
