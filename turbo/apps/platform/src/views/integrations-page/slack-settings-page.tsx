@@ -204,14 +204,14 @@ export function SlackSettingsPage() {
   const openConfirm = useSet(openSlackDisconnectDialog$);
   const closeConfirm = useSet(closeSlackDisconnectDialog$);
 
-  // Construct qualified agent name that matches the format used in agentsList$
-  // (shared agents use "org/name", owned agents use just "name").
-  const qualifiedAgentName = (() => {
+  // Construct scoped agent name that matches the format used in agentsList$
+  // (shared agents use "scope/name", owned agents use just "name").
+  const scopedAgentName = (() => {
     if (!data?.agent) {
       return undefined;
     }
     const fullName = `${data.agent.scopeSlug}/${data.agent.name}`;
-    // If the qualified name exists in agents list, use it (shared agent)
+    // If the scoped name exists in agents list, use it (shared agent)
     if (agents.some((a) => a.name === fullName)) {
       return fullName;
     }
@@ -222,15 +222,15 @@ export function SlackSettingsPage() {
   // Ensure the current workspace agent appears in the dropdown even if
   // it isn't in the user's own agents list (e.g. shared by another user).
   const agentOptions = (() => {
-    if (!qualifiedAgentName) {
+    if (!scopedAgentName) {
       return agents;
     }
-    const hasCurrentAgent = agents.some((a) => a.name === qualifiedAgentName);
+    const hasCurrentAgent = agents.some((a) => a.name === scopedAgentName);
     if (hasCurrentAgent) {
       return agents;
     }
     return [
-      { name: qualifiedAgentName, headVersionId: null, updatedAt: "" },
+      { name: scopedAgentName, headVersionId: null, updatedAt: "" },
       ...agents,
     ];
   })();
@@ -276,13 +276,13 @@ export function SlackSettingsPage() {
           <>
             <DefaultAgentSection
               isAdmin={data?.isAdmin ?? false}
-              agentName={qualifiedAgentName}
+              agentName={scopedAgentName}
               agentOptions={agentOptions}
               onAgentChange={handleAgentChange}
             />
 
             <MissingEnvBanner
-              agentName={qualifiedAgentName}
+              agentName={scopedAgentName}
               missingSecrets={data?.environment.missingSecrets ?? []}
               missingVars={data?.environment.missingVars ?? []}
             />

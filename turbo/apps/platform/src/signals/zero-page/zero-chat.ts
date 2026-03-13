@@ -81,7 +81,7 @@ interface ZeroChatMessageAttachment {
   url: string;
 }
 
-export interface ZeroChatMessage {
+interface ZeroChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -129,9 +129,6 @@ const internalSessionError$ = state<string | null>(null);
 export const zeroSessionError$ = computed((get) => get(internalSessionError$));
 
 const internalSessionSwitching$ = state(false);
-export const zeroSessionSwitching$ = computed((get) =>
-  get(internalSessionSwitching$),
-);
 
 // Chat input
 const internalChatInput$ = state("");
@@ -146,7 +143,7 @@ export const clearZeroChatInput$ = command(({ set }) => {
 });
 
 // Attachments
-export interface ZeroChatAttachment {
+interface ZeroChatAttachment {
   id: string;
   filename: string;
   contentType: string;
@@ -156,69 +153,6 @@ export interface ZeroChatAttachment {
 }
 
 const internalAttachments$ = state<ZeroChatAttachment[]>([]);
-export const zeroChatAttachments$ = computed((get) =>
-  get(internalAttachments$),
-);
-
-export const uploadZeroAttachment$ = command(
-  async ({ get, set }, file: File) => {
-    const id = crypto.randomUUID();
-    const placeholder: ZeroChatAttachment = {
-      id,
-      filename: file.name,
-      contentType: file.type,
-      size: file.size,
-      url: "",
-      uploading: true,
-    };
-    set(internalAttachments$, (prev) => [...prev, placeholder]);
-
-    try {
-      const fetchFn = get(fetch$);
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetchFn("/api/agent/uploads", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(
-          err?.error?.message ?? `Upload failed: ${res.statusText}`,
-        );
-      }
-
-      const data = (await res.json()) as {
-        id: string;
-        filename: string;
-        contentType: string;
-        size: number;
-        url: string;
-      };
-
-      set(internalAttachments$, (prev) =>
-        prev.map((a) =>
-          a.id === id
-            ? { ...a, url: data.url, id: data.id, uploading: false }
-            : a,
-        ),
-      );
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Upload failed:", error);
-      // Remove the failed placeholder
-      set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
-    }
-  },
-);
-
-export const removeZeroAttachment$ = command(({ set }, id: string) => {
-  set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
-});
 
 // ---------------------------------------------------------------------------
 // Commands: session list management
@@ -536,57 +470,3 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
     L.error("Failed to extract run result:", error);
   }
 });
-
-// ---------------------------------------------------------------------------
-// Commands: send intro message (fire-and-forget, creates a session)
-// ---------------------------------------------------------------------------
-
-export const sendZeroIntroMessage$ = command(
-  async ({ get, set }, prompt: string) => {
-    const status = await get(zeroOnboardingStatus$);
-    const composeId = status.defaultAgentComposeId;
-    if (!composeId || !prompt.trim()) {
-      return;
-    }
-
-    try {
-      const fetchFn = get(fetch$);
-
-      const runId = await startAgentRun(fetchFn, composeId, prompt);
-
-      if (!runId) {
-        L.error("Intro message run failed");
-        return;
-      }
-
-      const runEvents$ = state<Computed<Promise<PageResult>>[]>([]);
-      const runStatus$ = state<LogStatus | null>(null);
-      const controller = new AbortController();
-
-      await set(setupPollingLoop$, {
-        runId,
-        signal: controller.signal,
-        state: {
-          get events$() {
-            return get(runEvents$);
-          },
-          setEvents: (updater) => {
-            set(runEvents$, updater);
-          },
-          setStatus: (s) => {
-            set(runStatus$, s);
-          },
-        },
-        onTerminal: () => {
-          set(fetchZeroSessionList$).catch((error: unknown) => {
-            throwIfAbort(error);
-            L.error("Failed to refresh session list:", error);
-          });
-        },
-      });
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Intro message error:", error);
-    }
-  },
-);

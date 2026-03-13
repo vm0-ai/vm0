@@ -67,3 +67,10 @@ export const zeroTabSub$ = computed((get): string | null => {
   const parts = path.replace(/^\/zero\/?/, "").split("/");
   return parts[1] || null;
 });
+
+/**
+ * Navigate to a specific chat session — `/zero/chat/:sessionId`.
+ */
+export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
+  set(updatePathname$, `/zero/chat/${sessionId}`);
+});

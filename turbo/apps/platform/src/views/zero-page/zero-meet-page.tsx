@@ -12,6 +12,7 @@ import {
   IconLoader2,
   IconCrown,
   IconDotsVertical,
+  IconArrowLeft,
 } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons";
@@ -40,7 +41,10 @@ import {
 } from "@vm0/ui";
 import { ZeroScheduleCard, DEFAULT_SCHEDULE } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import { setPendingChatPrompt$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  setPendingChatPrompt$,
+  setZeroActiveId$,
+} from "../../signals/zero-page/zero-nav.ts";
 import {
   allConnectorTypes$,
   addConnectionDialogOpen$,
@@ -188,7 +192,7 @@ function ZeroConnectionsTab() {
   return (
     <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Skills manage your connections and help you get more out of these
+        Connectors manage your connections and help you get more out of these
         services.
       </p>
 
@@ -208,12 +212,12 @@ function ZeroConnectionsTab() {
               />
             </span>
             <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
-              Add skill
+              Add connector
             </span>
           </div>
           <div className="flex h-11 items-center border-t border-dashed border-border/80 px-5 group-hover:border-border">
             <span className="text-xs text-muted-foreground/70">
-              Browse 100+ popular skills
+              Browse 100+ popular connectors
             </span>
           </div>
         </button>
@@ -236,7 +240,7 @@ function ZeroConnectionsTab() {
             <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
               <div className="flex items-center gap-2 min-w-0">
                 {item.isPolling ? (
-                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                     <IconLoader2
                       size={12}
                       stroke={1.5}
@@ -245,7 +249,7 @@ function ZeroConnectionsTab() {
                     Connecting…
                   </span>
                 ) : item.connected ? (
-                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground truncate">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                     {item.statusText}
                   </span>
@@ -254,19 +258,19 @@ function ZeroConnectionsTab() {
                     <button
                       type="button"
                       onClick={() => setSelected(item.type)}
-                      className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                      className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                     >
                       Connect
                     </button>
                     {item.showApiKey && (
                       <>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-sm text-muted-foreground">
                           or
                         </span>
                         <button
                           type="button"
                           onClick={() => setAhrefsApiKeyDialogOpen(true)}
-                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                          className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                         >
                           API key
                         </button>
@@ -306,7 +310,7 @@ function ZeroConnectionsTab() {
                         )
                       }
                     >
-                      Remove skill
+                      Remove connector
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -406,6 +410,7 @@ export function ZeroMeetPage({
   onNavigateToChat,
 }: ZeroMeetPageProps) {
   const setPrompt = useSet(setPendingChatPrompt$);
+  const navigateToSection = useSet(setZeroActiveId$);
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -448,6 +453,17 @@ export function ZeroMeetPage({
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
         <div className="mx-auto max-w-[900px] px-7">
+          <div className="mb-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 -ml-2"
+              onClick={() => navigateToSection("job")}
+              aria-label="Back to team"
+            >
+              <IconArrowLeft size={20} stroke={1.5} />
+            </Button>
+          </div>
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -494,7 +510,7 @@ export function ZeroMeetPage({
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconPlug size={14} stroke={1.5} />
-                  Skills
+                  Connectors
                 </TabsTrigger>
                 <TabsTrigger
                   value="schedule"
@@ -528,7 +544,7 @@ export function ZeroMeetPage({
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
                     onClick={() => {
                       setPrompt(
-                        `Help me update ${agentName}'s skills configuration and settings`,
+                        `Help me update ${agentName}'s connectors configuration and settings`,
                       );
                       onNavigateToChat?.();
                     }}

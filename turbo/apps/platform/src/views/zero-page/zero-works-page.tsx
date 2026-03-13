@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSearch,
   IconSettings,
@@ -20,12 +21,13 @@ import {
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
 import { ZeroSlackConfigContent } from "./zero-slack-config-content";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
-const CONNECTED_TOOLS: {
+const CONNECTED_TOOLS: readonly Readonly<{
   id: string;
   name: string;
   description: string;
-}[] = [
+}>[] = [
   {
     id: "slack",
     name: "Slack",
@@ -34,18 +36,25 @@ const CONNECTED_TOOLS: {
 ];
 
 export function ZeroWorksPage() {
-  const [search, setSearch] = useState("");
-  const [slackConfigOpen, setSlackConfigOpen] = useState(false);
+  const agentNameLoadable = useLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const search$ = useCCState("");
+  const search = useGet(search$);
+  const setSearch = useSet(search$);
+  const slackConfigOpen$ = useCCState(false);
+  const slackConfigOpen = useGet(slackConfigOpen$);
+  const setSlackConfigOpen = useSet(slackConfigOpen$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
           <h1 className="text-lg font-semibold tracking-tight text-foreground">
-            Where Zero works
+            Where {agentName} works
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Connect with Zero through these channels
+            Connect with {agentName} through these channels
           </p>
           <div className="mt-4 relative">
             <IconSearch

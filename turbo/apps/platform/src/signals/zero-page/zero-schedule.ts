@@ -129,18 +129,16 @@ interface ZeroScheduleEntry {
 
 export const zeroScheduleEntries$ = computed((get) => {
   const schedules = get(internalSchedules$);
-  return [...schedules]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map(
-      (s): ZeroScheduleEntry => ({
-        id: s.id,
-        time: scheduleToTimeString(s),
-        prompt: s.prompt,
-        enabled: s.enabled,
-        name: s.name,
-        intervalSeconds: s.intervalSeconds,
-      }),
-    );
+  return schedules.map(
+    (s): ZeroScheduleEntry => ({
+      id: s.id,
+      time: scheduleToTimeString(s),
+      prompt: s.prompt,
+      enabled: s.enabled,
+      name: s.name,
+      intervalSeconds: s.intervalSeconds,
+    }),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -345,195 +343,5 @@ export const deleteZeroSchedule$ = command(
 
     toast.success("Schedule deleted");
     await set(fetchZeroSchedules$);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// All-org schedule entries (for schedule page — no composeId filter)
-// ---------------------------------------------------------------------------
-
-export interface OrgScheduleEntry {
-  id: string;
-  time: string;
-  prompt: string;
-  enabled: boolean;
-  name: string;
-  intervalSeconds: number | null;
-  composeId: string;
-  composeName: string;
-}
-
-const internalAllSchedules$ = state<ScheduleResponse[]>([]);
-const internalAllSchedulesLoaded$ = state(false);
-
-/** Whether the org schedules have been loaded at least once. */
-export const allOrgSchedulesLoaded$ = computed((get) =>
-  get(internalAllSchedulesLoaded$),
-);
-
-export const allOrgScheduleEntries$ = computed((get) => {
-  const schedules = get(internalAllSchedules$);
-  return [...schedules]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map(
-      (s): OrgScheduleEntry => ({
-        id: s.id,
-        time: scheduleToTimeString(s),
-        prompt: s.prompt,
-        enabled: s.enabled,
-        name: s.name,
-        intervalSeconds: s.intervalSeconds,
-        composeId: s.composeId,
-        composeName: s.composeName,
-      }),
-    );
-});
-
-export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
-  const fetchFn = get(fetch$);
-  try {
-    const response = await fetchFn("/api/agent/schedules");
-    if (!response.ok) {
-      set(internalAllSchedules$, []);
-      return;
-    }
-    const data = (await response.json()) as {
-      schedules: ScheduleResponse[];
-    };
-    set(internalAllSchedules$, data.schedules);
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to fetch all org schedules:", error);
-    set(internalAllSchedules$, []);
-  } finally {
-    set(internalAllSchedulesLoaded$, true);
-  }
-});
-
-export const saveOrgSchedule$ = command(
-  async (
-    { get, set },
-    params: ZeroScheduleSaveParams & { composeId: string },
-  ) => {
-    const fetchFn = get(fetch$);
-    const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
-
-    const base = {
-      composeId: params.composeId,
-      name: scheduleName,
-      timezone: params.timezone,
-      prompt: params.prompt.trim(),
-      enabled: true,
-    };
-
-    let body: ScheduleBody;
-
-    if (params.freq === "every_n_minutes") {
-      body = { ...base, intervalSeconds: params.intervalSeconds };
-    } else if (params.freq === "once") {
-      if (
-        isAtTimePast(params.date, String(params.hour), String(params.minute))
-      ) {
-        throw new Error("Scheduled time must be in the future");
-      }
-      const atTime = buildAtTime(
-        params.date,
-        String(params.hour),
-        String(params.minute),
-      );
-      body = { ...base, atTime };
-    } else if (params.freq === "now") {
-      body = { ...base, atTime: new Date().toISOString() };
-    } else {
-      const freqMap: Record<string, CronTimeOption> = {
-        every_weekday: "every-weekday",
-        every_day: "every-day",
-        every_week: "every-week",
-        every_month: "every-month",
-      };
-      const timeOption = freqMap[params.freq];
-      if (!timeOption) {
-        throw new Error(`Unknown schedule frequency: ${params.freq}`);
-      }
-      const cronExpression = buildCronExpression({
-        timeOption,
-        hour: String(params.hour),
-        minute: String(params.minute),
-        dayOfWeek: params.dayOfWeek,
-        dayOfMonth: params.dayOfMonth,
-      });
-      body = { ...base, cronExpression };
-    }
-
-    const response = await fetchFn("/api/agent/schedules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Save failed: ${response.statusText}`,
-      );
-    }
-
-    toast.success(params.editName ? "Schedule updated" : "Schedule created");
-    await set(fetchAllOrgSchedules$);
-  },
-);
-
-export const toggleOrgScheduleEnabled$ = command(
-  async (
-    { get, set },
-    params: { name: string; enabled: boolean; composeId: string },
-  ) => {
-    const fetchFn = get(fetch$);
-    const action = params.enabled ? "enable" : "disable";
-    const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(params.name)}/${action}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ composeId: params.composeId }),
-      },
-    );
-
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      const message =
-        errorData?.error?.message ??
-        `Failed to ${action} schedule: ${response.statusText}`;
-      toast.error(message);
-      throw new Error(message);
-    }
-
-    await set(fetchAllOrgSchedules$);
-  },
-);
-
-export const deleteOrgSchedule$ = command(
-  async ({ get, set }, params: { name: string; composeId: string }) => {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(params.name)}?composeId=${encodeURIComponent(params.composeId)}`,
-      { method: "DELETE" },
-    );
-
-    if (!response.ok && response.status !== 204) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
-      );
-    }
-
-    toast.success("Schedule deleted");
-    await set(fetchAllOrgSchedules$);
   },
 );

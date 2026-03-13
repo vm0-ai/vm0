@@ -16,6 +16,7 @@ import {
   IconCalendar,
   IconArrowUpRight,
   IconSparkles,
+  IconPlus,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -30,13 +31,20 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   cn,
 } from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-jobs-page";
+import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
+import { AddConnectionDialog } from "../settings-page/add-connection-dialog.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   pendingChatPrompt$,
   setPendingChatPrompt$,
+  setZeroActiveId$,
+  zeroTabSub$,
 } from "../../signals/zero-page/zero-nav.ts";
 
 export type DemoScenarioId =
@@ -711,7 +719,12 @@ export function ZeroChatPage({
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const agent = resolveAgentContext(null, agentName, zeroAvatarSrc);
+  const chatAgentId = useGet(zeroTabSub$);
+  const agent = resolveAgentContext(chatAgentId, agentName, zeroAvatarSrc);
+  const navigateToSection = useSet(setZeroActiveId$);
+  const skillsDialogOpen$ = useCCState(false);
+  const skillsDialogOpen = useGet(skillsDialogOpen$);
+  const setSkillsDialogOpen = useSet(skillsDialogOpen$);
   const input$ = useCCState("");
   const input = useGet(input$);
   const setInput = useSet(input$);
@@ -1191,16 +1204,138 @@ export function ZeroChatPage({
                     >
                       <IconPaperclip size={18} stroke={1.5} />
                     </button>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 rounded-lg h-9 px-3 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
-                      onClick={handleFeelingLucky}
-                    >
-                      <IconSparkles size={16} />
-                      Feeling great
-                    </button>
+                    <Popover>
+                      <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                          <PopoverTrigger asChild>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex shrink-0 items-center rounded-lg h-9 px-1.5 hover:bg-muted/60 transition-colors"
+                              >
+                                <span className="flex items-center -space-x-1.5">
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background border border-border/60">
+                                    <ConnectorIcon
+                                      type="google-calendar"
+                                      size={14}
+                                    />
+                                  </span>
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background border border-border/60">
+                                    <ConnectorIcon type="notion" size={14} />
+                                  </span>
+                                </span>
+                              </button>
+                            </TooltipTrigger>
+                          </PopoverTrigger>
+                          <TooltipContent side="top" className="text-xs">
+                            Connectors
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <PopoverContent
+                        side="top"
+                        align="start"
+                        className="w-64 p-0 rounded-xl"
+                      >
+                        <div className="p-2">
+                          <div className="flex flex-col">
+                            {(
+                              [
+                                {
+                                  type: "google-calendar" as const,
+                                  label: "Google Calendar",
+                                  connected: true,
+                                },
+                                {
+                                  type: "notion" as const,
+                                  label: "Notion",
+                                  connected: true,
+                                },
+                                {
+                                  type: "github" as const,
+                                  label: "GitHub",
+                                  connected: false,
+                                },
+                              ] as const
+                            ).map((skill) => (
+                              <div
+                                key={skill.type}
+                                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
+                              >
+                                <span
+                                  className={cn(
+                                    "flex h-5 w-5 shrink-0 items-center justify-center",
+                                    !skill.connected && "opacity-40",
+                                  )}
+                                >
+                                  <ConnectorIcon type={skill.type} size={20} />
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-sm flex-1",
+                                    skill.connected
+                                      ? "text-foreground"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
+                                  {skill.label}
+                                </span>
+                                {skill.connected ? (
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSkillsDialogOpen(true);
+                                    }}
+                                  >
+                                    Connect
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="border-t border-border/50 p-2 flex flex-col">
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted/50 transition-colors"
+                            onClick={() => setSkillsDialogOpen(true)}
+                          >
+                            <IconPlus
+                              size={20}
+                              stroke={1.5}
+                              className="shrink-0 text-muted-foreground"
+                            />
+                            Add connector
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted/50 transition-colors"
+                            onClick={() => navigateToSection("meet")}
+                          >
+                            <IconPlug
+                              size={20}
+                              stroke={1.5}
+                              className="shrink-0 text-muted-foreground"
+                            />
+                            Manage connectors in {agent.name}
+                          </button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-lg h-9 px-3 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
+                      onClick={handleFeelingLucky}
+                    >
+                      <IconSparkles size={16} className="shrink-0" />
+                      Feeling great
+                    </button>
                     <Select
                       value={selectedModel}
                       onValueChange={(value) =>
@@ -1248,7 +1383,7 @@ export function ZeroChatPage({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        className="group relative rounded-xl border border-border p-4 text-left transition-colors duration-150 hover:bg-muted/40 flex gap-3 items-start"
+                        className="group relative rounded-xl border border-border bg-card p-4 text-left transition-colors duration-150 hover:bg-muted/40 flex gap-3 items-start"
                         onClick={() => setInput(prompt)}
                       >
                         <span
@@ -1283,6 +1418,11 @@ export function ZeroChatPage({
           </div>
         </div>
       </main>
+      <AddConnectionDialog
+        open={skillsDialogOpen}
+        onOpenChange={setSkillsDialogOpen}
+        variant="zero"
+      />
     </div>
   );
 }

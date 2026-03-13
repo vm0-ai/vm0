@@ -12,11 +12,11 @@ import {
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
+import { hasOrg$ } from "../org.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
 import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
 import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
-import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { throwIfAbort } from "../utils.ts";
 
@@ -122,10 +122,6 @@ export const zeroSelectedSkills$ = computed((get) =>
 export const zeroOnboardingError$ = computed((get) =>
   get(internalOnboardingError$),
 );
-
-export const clearZeroOnboardingError$ = command(({ set }) => {
-  set(internalOnboardingError$, null);
-});
 
 export const zeroCanSave$ = computed((get) => {
   const providerType = get(internalProviderType$);
@@ -254,6 +250,7 @@ export const initZeroOnboarding$ = command(
 
 /**
  * Save model provider (step 2 completion).
+ * Creates scope if needed, then creates model provider.
  */
 export const saveZeroModelProvider$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -263,6 +260,14 @@ export const saveZeroModelProvider$ = command(
       const providerType = get(internalProviderType$);
       const formValues = get(internalFormValues$);
       const shape = getProviderShape(providerType);
+
+      // Check org exists
+      const orgExists = await get(hasOrg$);
+      signal.throwIfAborted();
+
+      if (!orgExists) {
+        throw new Error("Organization not found. Please create one first.");
+      }
 
       // Build request based on provider shape
       const request: Record<string, unknown> = { type: providerType };
@@ -332,7 +337,7 @@ export const completeZeroOnboarding$ = command(
       };
 
       // Run compose job (CLI processes skills, uploads assets)
-      // Pass empty instructions so the server creates a CLAUDE.md with agent profile
+      // Pass empty instructions so the server creates a CLAUDE.md with metadata frontmatter
       const job = await triggerAndPollComposeJob(fetchFn, content, "");
       signal.throwIfAborted();
 

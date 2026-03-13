@@ -11,7 +11,6 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { zeroTabSub$ } from "./zero-nav.ts";
 import { delay } from "signal-timers";
 
 const EVENTS_PAGE_LIMIT = 30;
@@ -22,12 +21,12 @@ const MAX_POLL_INTERVAL = 30_000;
 // ---------------------------------------------------------------------------
 
 /** Agent filter derived from URL `?agent=` query param. */
-export const zeroActivityAgentFilter$ = computed((get) => {
+const zeroActivityAgentFilter$ = computed((get) => {
   return get(searchParams$).get("agent") ?? "all";
 });
 
 /** Status filter derived from URL `?status=` query param. */
-export const zeroActivityStatusFilter$ = computed((get) => {
+const zeroActivityStatusFilter$ = computed((get) => {
   return get(searchParams$).get("status") ?? "all";
 });
 
@@ -41,11 +40,6 @@ interface AgentOption {
 }
 
 const internalOrgAgents$ = state<AgentOption[]>([]);
-
-/** All agents in the current org with display names. */
-export const zeroActivityOrgAgents$ = computed((get) =>
-  get(internalOrgAgents$),
-);
 
 const fetchOrgAgents$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
@@ -81,17 +75,10 @@ export const initZeroActivity$ = command(async ({ set }) => {
   set(seedZeroActivityCursorHistory$);
 });
 
-export const {
-  limit$: zeroActivityLimit$,
+const {
   data$: zeroActivityData$,
   seedCursorHistory$: seedZeroActivityCursorHistory$,
   hasPrev$: zeroActivityHasPrev$,
-  currentPage$: zeroActivityCurrentPage$,
-  goToNextPage$: goToNextZeroActivityPage$,
-  goToPrevPage$: goToPrevZeroActivityPage$,
-  goForwardTwoPages$: goForwardTwoZeroActivityPages$,
-  goBackTwoPages$: goBackTwoZeroActivityPages$,
-  setRowsPerPage$: setZeroActivityRowsPerPage$,
   resetPaginationState$: resetZeroActivityPagination$,
 } = createCursorPagination({
   buildFetchParams: (limit, cursor, get) => {
@@ -128,6 +115,8 @@ export const {
   },
 });
 
+export { zeroActivityData$, zeroActivityHasPrev$ };
+
 /** Update a filter — resets pagination and writes to URL. */
 export const setZeroActivityFilter$ = command(
   ({ get, set }, key: "agent" | "status", value: string) => {
@@ -158,36 +147,6 @@ export const setZeroActivityFilter$ = command(
 
 const internalPollingAbort$ = state<AbortController | null>(null);
 const lastSyncedLogId$ = state<string | null>(null);
-
-/**
- * Sync the URL sub-route to the detail polling lifecycle.
- * Idempotent: only restarts polling when the log ID actually changes.
- */
-export const syncZeroActivitySub$ = command(({ get, set }) => {
-  const sub = get(zeroTabSub$);
-  const prev = get(lastSyncedLogId$);
-  if (sub === prev) {
-    return;
-  }
-
-  // Abort previous polling
-  const prevAbort = get(internalPollingAbort$);
-  if (prevAbort) {
-    prevAbort.abort();
-  }
-  set(internalPollingAbort$, null);
-  set(pagedEvents$, []);
-  set(lastSyncedLogId$, sub);
-
-  if (sub) {
-    const controller = new AbortController();
-    set(internalPollingAbort$, controller);
-    detach(
-      set(setupZeroActivityEventPolling$, controller.signal),
-      Reason.Daemon,
-    );
-  }
-});
 
 /**
  * Set selected log ID directly (used by tests).
@@ -278,15 +237,6 @@ function createEventPageComputed(
 }
 
 const pagedEvents$ = state<Computed<Promise<PageResult>>[]>([]);
-
-export const zeroActivityEvents$ = computed(async (get) => {
-  const pages = get(pagedEvents$);
-  if (pages.length === 0) {
-    return [] as AgentEvent[];
-  }
-  const results = await Promise.all(pages.map((p) => get(p)));
-  return results.flatMap((r) => r.events);
-});
 
 const pollInterval$ = state(3000);
 

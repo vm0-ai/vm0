@@ -214,11 +214,21 @@
   border: 1px solid var(--zero-card-border);
   border-radius: var(--zero-card-radius);
   box-shadow: var(--zero-card-shadow);
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.zero-app .zero-card:hover {
+  background-color: hsl(220 6% 98%);
 }
 .dark .zero-app .zero-card,
 [data-theme="dark"] .zero-app .zero-card {
   background-color: hsl(220 12% 12%);
   border-color: hsl(220 8% 22%);
+}
+.dark .zero-app .zero-card:hover,
+[data-theme="dark"] .zero-app .zero-card:hover {
+  background-color: hsl(220 12% 14%);
 }
 
 /* Onboarding modal footer: frosted glass */

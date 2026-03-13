@@ -91,7 +91,7 @@ function SubAgentSkillsTab() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Skills manage your connections and help you get more out of these
+        Connectors manage your connections and help you get more out of these
         services.
       </p>
 
@@ -110,12 +110,12 @@ function SubAgentSkillsTab() {
               />
             </span>
             <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
-              Add skill
+              Add connector
             </span>
           </div>
           <div className="flex h-11 items-center border-t border-dashed border-border/80 px-5 group-hover:border-border">
             <span className="text-xs text-muted-foreground/70">
-              Browse 100+ popular skills
+              Browse 100+ popular connectors
             </span>
           </div>
         </button>
@@ -138,7 +138,7 @@ function SubAgentSkillsTab() {
             <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
               <div className="flex items-center gap-2 min-w-0">
                 {item.connected ? (
-                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground truncate">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                     {item.statusText}
                   </span>
@@ -146,18 +146,18 @@ function SubAgentSkillsTab() {
                   <>
                     <button
                       type="button"
-                      className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                      className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                     >
                       Connect
                     </button>
                     {item.showApiKey && (
                       <>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-sm text-muted-foreground">
                           or
                         </span>
                         <button
                           type="button"
-                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                          className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                         >
                           API key
                         </button>
@@ -190,7 +190,7 @@ function SubAgentSkillsTab() {
                         )
                       }
                     >
-                      Remove skill
+                      Remove connector
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -287,7 +287,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconPlug size={14} stroke={1.5} />
-                  Skills
+                  Connectors
                 </TabsTrigger>
                 <TabsTrigger
                   value="schedule"
@@ -321,7 +321,7 @@ export function ZeroJobDetailPage({ job, onBack }: ZeroJobDetailPageProps) {
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
                     onClick={() => {
                       setPrompt(
-                        `Help me configure the "${job.title}" sub-agent settings and skills`,
+                        `Help me configure the "${job.title}" sub-agent settings and connectors`,
                       );
                       navigateToChat("chat");
                     }}

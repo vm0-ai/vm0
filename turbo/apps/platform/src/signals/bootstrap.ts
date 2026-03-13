@@ -17,7 +17,7 @@ import { setupAgentDetailPage$ } from "./agent-detail/agent-detail-page.ts";
 import { setupAgentLogsPage$ } from "./agent-detail/agent-logs-page.ts";
 import { setupAgentLogDetailPage$ } from "./agent-detail/agent-log-detail-page.ts";
 import { setupAgentConnectionsPage$ } from "./agent-detail/agent-connections-page.ts";
-import { hasScope$ } from "./scope.ts";
+import { hasOrg$ } from "./org.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
@@ -29,6 +29,7 @@ import { setupProviderSetupPage$ } from "./provider-setup/provider-setup-page.ts
 import { setupSlackConnectPage$ } from "./slack-connect/slack-connect-page.ts";
 import { setupSlackConnectSuccessPage$ } from "./slack-connect/slack-connect-success-page.ts";
 import { setupZeroPage$ } from "./zero-page/zero-page.ts";
+import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupTelegramSettingsPage$ } from "./integrations-page/telegram-settings-page.ts";
 import { setupTelegramConnectPage$ } from "./telegram-connect/telegram-connect-page.ts";
 import { setupTelegramConnectSuccessPage$ } from "./telegram-connect/telegram-connect-success-page.ts";
@@ -39,6 +40,18 @@ const ROUTE_CONFIG = [
   {
     path: "/",
     setup: setupAuthPageWrapper(setupHomePage$),
+  },
+  {
+    path: "/select-org",
+    setup: setupAuthPageWrapper(setupSelectOrgPage$),
+  },
+  {
+    path: "/zero/:tab/:sub",
+    setup: setupAuthPageWrapper(setupZeroPage$),
+  },
+  {
+    path: "/zero/:tab",
+    setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
     path: "/zero",
@@ -156,12 +169,12 @@ function setupScopeRequiredPageWrapper(
       signal.throwIfAborted();
 
       // Then check scope in background (after page is already displayed)
-      const scopeExists = await get(hasScope$);
+      const orgExists = await get(hasOrg$);
       signal.throwIfAborted();
-      L.debug("scopeExists", scopeExists);
+      L.debug("orgExists", orgExists);
 
-      if (!scopeExists) {
-        L.debug("redirect to homepage because scope does not exist");
+      if (!orgExists) {
+        L.debug("redirect to homepage because org does not exist");
         set(navigateInReact$, "/");
         return;
       }

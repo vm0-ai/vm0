@@ -48,7 +48,7 @@ export const SCHEDULE_FREQUENCY_OPTIONS = [
 export const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
 export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i);
 export const MINUTE_OPTIONS = [0, 15, 30, 45];
-export const TIMEZONE_OPTIONS = [
+const TIMEZONE_OPTIONS = [
   "UTC",
   "Asia/Shanghai",
   "America/New_York",

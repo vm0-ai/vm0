@@ -41,7 +41,7 @@ function getSectionTitles(
     meet: `${agentName}'s profile`,
     schedule: "Schedule",
     search: "Search",
-    job: "Sub-agents",
+    job: "Zero's team",
     production: "Documents",
     logs: "Activity logs",
     works: `Where ${agentName} works`,
@@ -95,7 +95,12 @@ export function ZeroContent({
     return <ZeroSchedulePage />;
   }
   if (sectionId === "job") {
-    return <ZeroJobsPage onNavigateToChat={onNavigateToChat} />;
+    return (
+      <ZeroJobsPage
+        onNavigateToChat={onNavigateToChat}
+        zeroAvatarSrc={zeroAvatarSrc}
+      />
+    );
   }
   if (sectionId === "production") {
     return <ZeroProductionPage />;
