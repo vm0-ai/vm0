@@ -1,13 +1,3 @@
-CREATE TABLE "slack_org_compose_requests" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"compose_job_id" uuid NOT NULL,
-	"slack_workspace_id" varchar(255) NOT NULL,
-	"slack_user_id" varchar(255) NOT NULL,
-	"slack_channel_id" varchar(255) NOT NULL,
-	"org_id" text NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "slack_org_connections" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"slack_user_id" varchar(255) NOT NULL,
@@ -59,14 +49,12 @@ CREATE TABLE "slack_org_thread_sessions" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "slack_org_compose_requests" ADD CONSTRAINT "slack_org_compose_requests_compose_job_id_compose_jobs_id_fk" FOREIGN KEY ("compose_job_id") REFERENCES "public"."compose_jobs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_org_connections" ADD CONSTRAINT "slack_org_connections_slack_workspace_id_slack_org_installations_slack_workspace_id_fk" FOREIGN KEY ("slack_workspace_id") REFERENCES "public"."slack_org_installations"("slack_workspace_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_org_pending_questions" ADD CONSTRAINT "slack_org_pending_questions_connection_id_slack_org_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."slack_org_connections"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_org_pending_questions" ADD CONSTRAINT "slack_org_pending_questions_compose_id_agent_composes_id_fk" FOREIGN KEY ("compose_id") REFERENCES "public"."agent_composes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_org_pending_questions" ADD CONSTRAINT "slack_org_pending_questions_session_id_agent_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."agent_sessions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_org_thread_sessions" ADD CONSTRAINT "slack_org_thread_sessions_connection_id_slack_org_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."slack_org_connections"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slack_org_thread_sessions" ADD CONSTRAINT "slack_org_thread_sessions_agent_session_id_agent_sessions_id_fk" FOREIGN KEY ("agent_session_id") REFERENCES "public"."agent_sessions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "idx_slack_org_compose_requests_job" ON "slack_org_compose_requests" USING btree ("compose_job_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "idx_slack_org_connections_user_workspace" ON "slack_org_connections" USING btree ("slack_user_id","slack_workspace_id");--> statement-breakpoint
 CREATE INDEX "idx_slack_org_connections_workspace" ON "slack_org_connections" USING btree ("slack_workspace_id");--> statement-breakpoint
 CREATE INDEX "idx_slack_org_connections_vm0_user_org" ON "slack_org_connections" USING btree ("vm0_user_id","org_id");--> statement-breakpoint

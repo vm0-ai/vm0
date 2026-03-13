@@ -1,5 +1,5 @@
 {
-  "id": "351865ec-6c2f-4a5f-a035-ad200fd6c26b",
+  "id": "fd4e1fe3-4586-4e5c-a9d2-5a2375c8e5c5",
   "prevId": "54522244-bf6c-4354-8b8c-98086e0352ad",
   "version": "7",
   "dialect": "postgresql",
@@ -3420,89 +3420,6 @@
           "columns": ["slack_workspace_id"]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.slack_org_compose_requests": {
-      "name": "slack_org_compose_requests",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "compose_job_id": {
-          "name": "compose_job_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "slack_workspace_id": {
-          "name": "slack_workspace_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "slack_user_id": {
-          "name": "slack_user_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "slack_channel_id": {
-          "name": "slack_channel_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_slack_org_compose_requests_job": {
-          "name": "idx_slack_org_compose_requests_job",
-          "columns": [
-            {
-              "expression": "compose_job_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "slack_org_compose_requests_compose_job_id_compose_jobs_id_fk": {
-          "name": "slack_org_compose_requests_compose_job_id_compose_jobs_id_fk",
-          "tableFrom": "slack_org_compose_requests",
-          "tableTo": "compose_jobs",
-          "columnsFrom": ["compose_job_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
