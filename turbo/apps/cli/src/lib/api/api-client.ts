@@ -479,7 +479,7 @@ class ApiClient {
   }
 
   /**
-   * Get current user's default scope
+   * Get current user's default org
    */
   async getScope(): Promise<ScopeResponse> {
     const baseUrl = await this.getBaseUrl();
@@ -501,12 +501,12 @@ class ApiClient {
 
     // Error cases
     const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to get scope";
+    const message = errorBody.error?.message || "Failed to get org";
     throw new Error(message);
   }
 
   /**
-   * Update user's default scope slug
+   * Update user's default org slug
    */
   async updateScope(body: {
     slug: string;
@@ -531,7 +531,7 @@ class ApiClient {
 
     // Error cases
     const errorBody = result.body as ApiErrorResponse;
-    const message = errorBody.error?.message || "Failed to update scope";
+    const message = errorBody.error?.message || "Failed to update org";
     throw new Error(message);
   }
 

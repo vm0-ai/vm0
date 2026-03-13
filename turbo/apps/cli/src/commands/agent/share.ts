@@ -41,8 +41,8 @@ export const shareCommand = new Command()
           throw new Error(`Agent not found: ${name}`);
         }
 
-        // Get scope for display
-        const scope = await getOrg();
+        // Get org for display
+        const org = await getOrg();
 
         // Add email permission
         const response = await httpPost(
@@ -63,7 +63,7 @@ export const shareCommand = new Command()
           throw new Error(error.error?.message || "Failed to share agent");
         }
 
-        const fullName = `${scope.slug}/${name}`;
+        const fullName = `${org.slug}/${name}`;
         console.log(
           chalk.green(`✓ Agent "${name}" shared with ${options.email}`),
         );

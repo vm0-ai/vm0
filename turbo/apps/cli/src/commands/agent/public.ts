@@ -37,8 +37,8 @@ export const publicCommand = new Command()
           throw new Error(`Agent not found: ${name}`);
         }
 
-        // Get scope for display
-        const scope = await getOrg();
+        // Get org for display
+        const org = await getOrg();
 
         // Add public permission
         const response = await httpPost(
@@ -57,7 +57,7 @@ export const publicCommand = new Command()
           );
         }
 
-        const fullName = `${scope.slug}/${name}`;
+        const fullName = `${org.slug}/${name}`;
         console.log(chalk.green(`✓ Agent "${name}" is now public`));
         console.log();
         console.log("Others can now run your agent with:");

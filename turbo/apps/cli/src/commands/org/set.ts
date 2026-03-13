@@ -14,22 +14,22 @@ export const setCommand = new Command()
   .action(
     withErrorHandler(async (slug: string, options: { force?: boolean }) => {
       try {
-        const existingScope = await getOrg();
+        const existingOrg = await getOrg();
 
         if (!options.force) {
           throw new Error(
-            `You already have an organization: ${existingScope.slug}`,
+            `You already have an organization: ${existingOrg.slug}`,
             {
               cause: new Error(`To change, use: vm0 org set ${slug} --force`),
             },
           );
         }
 
-        const scope = await updateOrg({ slug, force: true });
-        console.log(chalk.green(`✓ Organization updated to ${scope.slug}`));
+        const org = await updateOrg({ slug, force: true });
+        console.log(chalk.green(`✓ Organization updated to ${org.slug}`));
         console.log();
         console.log("Your agents will now be namespaced as:");
-        console.log(chalk.cyan(`  ${scope.slug}/<agent-name>`));
+        console.log(chalk.cyan(`  ${org.slug}/<agent-name>`));
       } catch (error) {
         if (
           error instanceof Error &&

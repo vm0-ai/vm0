@@ -54,11 +54,11 @@ describe("org use command", () => {
     expect(logCalls).toContain("my-org");
   });
 
-  it("should switch to personal scope with --personal flag", async () => {
+  it("should switch to personal org with --personal flag", async () => {
     await useCommand.parseAsync(["node", "cli", "--personal"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("personal scope");
+    expect(logCalls).toContain("personal org");
   });
 
   it("should require slug argument without --personal", async () => {

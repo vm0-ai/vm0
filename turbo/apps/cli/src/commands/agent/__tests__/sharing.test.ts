@@ -28,7 +28,7 @@ describe("Agent Sharing Commands", () => {
 
   const testComposeId = "test-compose-123";
   const testAgentName = "my-agent";
-  const testScopeSlug = "test-user";
+  const testOrgSlug = "test-user";
 
   beforeEach(() => {
     chalk.level = 0;
@@ -51,11 +51,11 @@ describe("Agent Sharing Commands", () => {
           { status: 404 },
         );
       }),
-      // Default handler for scope API
+      // Default handler for org API
       http.get("http://localhost:3000/api/scope", () => {
         return HttpResponse.json({
-          id: "scope-123",
-          slug: testScopeSlug,
+          id: "org-123",
+          slug: testOrgSlug,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -108,7 +108,7 @@ describe("Agent Sharing Commands", () => {
       // Check for run command hint with experimental flag
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining(
-          `vm0 run ${testScopeSlug}/${testAgentName} --experimental-shared-agent`,
+          `vm0 run ${testOrgSlug}/${testAgentName} --experimental-shared-agent`,
         ),
       );
     });
@@ -287,7 +287,7 @@ describe("Agent Sharing Commands", () => {
       // Check for run command hint with experimental flag
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining(
-          `vm0 run ${testScopeSlug}/${testAgentName} --experimental-shared-agent`,
+          `vm0 run ${testOrgSlug}/${testAgentName} --experimental-shared-agent`,
         ),
       );
     });

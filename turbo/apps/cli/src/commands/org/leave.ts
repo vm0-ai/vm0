@@ -12,7 +12,7 @@ export const leaveCommand = new Command()
       await leaveOrg();
       await saveConfig({ activeScope: undefined });
       console.log(
-        chalk.green("✓ Left organization. Switched to personal scope."),
+        chalk.green("✓ Left organization. Switched to personal org."),
       );
     }),
   );

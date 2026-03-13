@@ -14,12 +14,12 @@ export const listCommand = new Command()
       const activeScope = config.activeScope;
 
       console.log(chalk.bold("Available organizations:"));
-      for (const scope of result.scopes) {
-        const isCurrent = scope.slug === activeScope;
+      for (const org of result.scopes) {
+        const isCurrent = org.slug === activeScope;
         const marker = isCurrent ? chalk.green("* ") : "  ";
-        const roleLabel = scope.role ? ` (${scope.role})` : "";
+        const roleLabel = org.role ? ` (${org.role})` : "";
         const currentLabel = isCurrent ? chalk.dim(" ← current") : "";
-        console.log(`${marker}${scope.slug}${roleLabel}${currentLabel}`);
+        console.log(`${marker}${org.slug}${roleLabel}${currentLabel}`);
       }
     }),
   );

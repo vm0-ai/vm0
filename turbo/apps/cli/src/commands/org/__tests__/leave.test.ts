@@ -51,7 +51,7 @@ describe("org leave command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("Left organization");
-    expect(logCalls).toContain("personal scope");
+    expect(logCalls).toContain("personal org");
   });
 
   it("should handle admin-cannot-leave error", async () => {

@@ -8,19 +8,19 @@ export const useCommand = new Command()
   .name("use")
   .description("Switch to a different organization")
   .argument("[slug]", "Organization slug to switch to")
-  .option("--personal", "Switch to personal scope")
+  .option("--personal", "Switch to personal org")
   .action(
     withErrorHandler(
       async (slug: string | undefined, options: { personal?: boolean }) => {
         if (options.personal) {
           await saveConfig({ activeScope: undefined });
-          console.log(chalk.green("✓ Switched to personal scope."));
+          console.log(chalk.green("✓ Switched to personal org."));
           return;
         }
 
         if (!slug) {
           throw new Error(
-            "Organization slug is required. Use --personal to switch to personal scope.",
+            "Organization slug is required. Use --personal to switch to personal org.",
           );
         }
 

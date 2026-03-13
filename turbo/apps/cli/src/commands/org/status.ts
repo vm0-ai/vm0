@@ -9,10 +9,10 @@ export const statusCommand = new Command()
   .action(
     withErrorHandler(async () => {
       try {
-        const scope = await getOrg();
+        const org = await getOrg();
 
         console.log(chalk.bold("Organization Information:"));
-        console.log(`  Slug: ${chalk.green(scope.slug)}`);
+        console.log(`  Slug: ${chalk.green(org.slug)}`);
       } catch (error) {
         if (
           error instanceof Error &&
