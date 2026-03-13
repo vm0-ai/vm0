@@ -343,7 +343,7 @@ export const composesListContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
     },
-    summary: "List all agent composes for a scope",
+    summary: "List all agent composes for an org",
   },
 });
 
