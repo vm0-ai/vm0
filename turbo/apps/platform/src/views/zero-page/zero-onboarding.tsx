@@ -38,6 +38,8 @@ import {
   zeroHasModelProvider$,
   zeroSelectedSkills$,
   toggleZeroSkill$,
+  zeroOnboardingError$,
+  clearZeroOnboardingError$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import { fetchSlackIntegration$ } from "../../signals/integrations-page/slack-integration.ts";
 import {
@@ -231,6 +233,8 @@ export function ZeroOnboarding({
   const hasModelProvider =
     hasModelProviderLoadable.state === "hasData" &&
     hasModelProviderLoadable.data === true;
+  const onboardingError = useGet(zeroOnboardingError$);
+  const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
 
@@ -280,6 +284,7 @@ export function ZeroOnboarding({
   };
 
   const handleAddToSlack = () => {
+    clearOnboardingError();
     const controller = new AbortController();
     detach(
       (async () => {
@@ -295,6 +300,7 @@ export function ZeroOnboarding({
   };
 
   const handleContinueWithWeb = () => {
+    clearOnboardingError();
     const controller = new AbortController();
     detach(completeOnboarding(controller.signal), Reason.DomCallback);
   };
@@ -508,6 +514,13 @@ export function ZeroOnboarding({
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[400px] mt-1 mb-6">
               Choose how you&apos;d like to interact with your agent.
             </p>
+            {onboardingError && (
+              <div className="w-full max-w-[560px] mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                {onboardingError === "Build timed out"
+                  ? "Setup is taking longer than expected. Please try again."
+                  : onboardingError}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-[560px]">
               <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center mb-3 overflow-hidden">

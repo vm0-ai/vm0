@@ -52,8 +52,10 @@ export async function triggerAndPollComposeJob(
     return job;
   }
 
-  // Poll until done (2s intervals, up to 3 minutes)
-  const maxAttempts = 90;
+  // Poll until done (2s intervals, up to ~5.5 minutes)
+  // Must exceed the 5-minute E2B sandbox timeout to allow for sandbox creation,
+  // script startup, and webhook delivery overhead.
+  const maxAttempts = 165;
   for (let i = 0; i < maxAttempts; i++) {
     await delay(2000);
 
