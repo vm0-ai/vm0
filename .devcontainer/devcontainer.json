@@ -4,6 +4,9 @@
   "features": {
     "ghcr.io/itsmechlark/features/postgresql:1": {
       "version": "17"
+    },
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
     }
   },
   "remoteUser": "vscode",
