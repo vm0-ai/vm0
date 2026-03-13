@@ -161,15 +161,24 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Compose reload trigger
+// Shared: resolve existing instructions (cache → API fallback)
 // ---------------------------------------------------------------------------
 
-const internalComposeReload$ = state(0);
-
-function refetchDetail(
-  set: (atom: typeof fetchZeroJobDetail$) => Promise<void>,
-) {
-  return set(fetchZeroJobDetail$);
+async function resolveExistingInstructions(
+  get: (atom: typeof instructionsState$) => ZeroJobInstructionsState,
+  fetchFn: typeof fetch,
+  composeId: string,
+): Promise<string | undefined> {
+  const instrContent = get(instructionsState$).instructions?.content;
+  if (instrContent) {
+    return stripMetadataFrontmatter(instrContent);
+  }
+  const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
+  if (resp.ok) {
+    const data = (await resp.json()) as AgentInstructions;
+    return data.content ? stripMetadataFrontmatter(data.content) : undefined;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,8 +257,7 @@ export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
     });
 
     set(editedContent$, null);
-    set(internalComposeReload$, (x) => x + 1);
-    await refetchDetail(set);
+    await set(fetchZeroJobDetail$);
   } catch (error) {
     throwIfAbort(error);
     set(internalBuildError$, "Failed to build instructions. Please try again.");
@@ -309,22 +317,11 @@ export const zeroJobUpdateSettings$ = command(
         },
       };
 
-      // Resolve existing instructions so the compose job keeps them
-      let instructions: string | undefined;
-      const instrContent = get(instructionsState$).instructions?.content;
-      if (instrContent) {
-        instructions = stripMetadataFrontmatter(instrContent);
-      } else {
-        const resp = await fetchFn(
-          `/api/agent/composes/${detail.id}/instructions`,
-        );
-        if (resp.ok) {
-          const data = (await resp.json()) as AgentInstructions;
-          instructions = data.content
-            ? stripMetadataFrontmatter(data.content)
-            : undefined;
-        }
-      }
+      const instructions = await resolveExistingInstructions(
+        get,
+        fetchFn,
+        detail.id,
+      );
 
       // Ensure instructions field in content
       const agent = newContent.agents[agentKey];
@@ -344,8 +341,7 @@ export const zeroJobUpdateSettings$ = command(
         throw new Error("Build completed without result");
       }
 
-      set(internalComposeReload$, (x) => x + 1);
-      await refetchDetail(set);
+      await set(fetchZeroJobDetail$);
       await set(fetchZeroJobInstructions$);
       toast.success("Settings saved");
     } catch (error) {
@@ -444,22 +440,11 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
     };
 
     const fetchFn = get(fetch$);
-    // Resolve existing instructions
-    let instructions: string | undefined;
-    const instrContent = get(instructionsState$).instructions?.content;
-    if (instrContent) {
-      instructions = stripMetadataFrontmatter(instrContent);
-    } else {
-      const resp = await fetchFn(
-        `/api/agent/composes/${detail.id}/instructions`,
-      );
-      if (resp.ok) {
-        const data = (await resp.json()) as AgentInstructions;
-        instructions = data.content
-          ? stripMetadataFrontmatter(data.content)
-          : undefined;
-      }
-    }
+    const instructions = await resolveExistingInstructions(
+      get,
+      fetchFn,
+      detail.id,
+    );
 
     // Ensure instructions field
     const updatedAgent = newContent.agents[agentKey];
@@ -480,8 +465,7 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
     }
 
     set(internalAddedSkills$, null);
-    set(internalComposeReload$, (x) => x + 1);
-    await refetchDetail(set);
+    await set(fetchZeroJobDetail$);
     toast.success("Skills saved");
   } catch (error) {
     throwIfAbort(error);
