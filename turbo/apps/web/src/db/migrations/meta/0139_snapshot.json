@@ -1,6 +1,6 @@
 {
-  "id": "ae1316ed-dabe-4560-8a2f-9c1a59fcdb14",
-  "prevId": "19c5ecf8-568e-431b-a214-2eaf65d6594a",
+  "id": "a3168633-5c65-42be-bb8b-c82d7935902b",
+  "prevId": "ae1316ed-dabe-4560-8a2f-9c1a59fcdb14",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1350,12 +1350,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp",
@@ -1876,6 +1870,12 @@
         },
         "user_id": {
           "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "org_slug": {
+          "name": "org_slug",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2988,6 +2988,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
         },
         "timezone": {
           "name": "timezone",
