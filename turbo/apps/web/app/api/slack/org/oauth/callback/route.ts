@@ -1,0 +1,187 @@
+import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
+import { initServices } from "../../../../../../src/lib/init-services";
+import { env } from "../../../../../../src/env";
+import {
+  exchangeOAuthCode,
+  getSlackRedirectBaseUrl,
+} from "../../../../../../src/lib/slack";
+import { encryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
+import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
+import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
+import { requireOrgMember } from "../../../../../../src/lib/org/org-member-service";
+import { getPlatformUrl } from "../../../../../../src/lib/url";
+import { logger } from "../../../../../../src/lib/logger";
+
+const log = logger("slack-org:oauth-callback");
+
+interface OAuthState {
+  orgId: string | null;
+  vm0UserId: string | null;
+}
+
+function parseOAuthState(state: string | null): OAuthState {
+  if (!state) return { orgId: null, vm0UserId: null };
+  try {
+    const parsed = JSON.parse(state) as {
+      orgId?: string;
+      vm0UserId?: string;
+    };
+    return {
+      orgId: parsed.orgId ?? null,
+      vm0UserId: parsed.vm0UserId ?? null,
+    };
+  } catch {
+    return { orgId: null, vm0UserId: null };
+  }
+}
+
+/**
+ * Org-aware Slack OAuth Callback
+ *
+ * GET /api/slack/org/oauth/callback
+ *
+ * Handles the OAuth redirect from Slack after authorization.
+ *
+ * Platform flow (state has orgId + vm0UserId):
+ *   - Verify user is org admin via Clerk
+ *   - Upsert installation with org_id and installed_by_user_id
+ *   - Create connection record
+ *   - Redirect to platform settings
+ *
+ * Slack flow (no orgId in state):
+ *   - Upsert installation with org_id = NULL
+ *   - Redirect to "workspace installed, ask admin to connect" page
+ *
+ * Re-install (installation exists with org_id):
+ *   - Preserve org_id and installed_by_user_id
+ *   - Update bot token only
+ */
+export async function GET(request: Request) {
+  initServices();
+
+  const { SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SECRETS_ENCRYPTION_KEY } =
+    env();
+
+  if (!SLACK_CLIENT_ID || !SLACK_CLIENT_SECRET) {
+    return NextResponse.json(
+      { error: "Slack integration is not configured" },
+      { status: 503 },
+    );
+  }
+
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const error = url.searchParams.get("error");
+  const baseUrl = getSlackRedirectBaseUrl(request.url);
+  const platformUrl = getPlatformUrl();
+
+  if (error) {
+    return NextResponse.redirect(
+      `${platformUrl}/slack/failed?error=${encodeURIComponent(error)}`,
+    );
+  }
+
+  if (!code) {
+    return NextResponse.json(
+      { error: "Missing authorization code" },
+      { status: 400 },
+    );
+  }
+
+  const state = parseOAuthState(url.searchParams.get("state"));
+  const redirectUri = `${baseUrl}/api/slack/org/oauth/callback`;
+
+  try {
+    const oauthResult = await exchangeOAuthCode(
+      SLACK_CLIENT_ID,
+      SLACK_CLIENT_SECRET,
+      code,
+      redirectUri,
+    );
+
+    const encryptedBotToken = encryptSecretValue(
+      oauthResult.accessToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+
+    const db = globalThis.services.db;
+
+    // Check existing installation
+    const existing = await db
+      .select()
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+
+    if (existing) {
+      // Re-install: update bot token, preserve org binding
+      await db
+        .update(slackOrgInstallations)
+        .set({
+          encryptedBotToken,
+          botUserId: oauthResult.botUserId,
+          slackWorkspaceName: oauthResult.teamName,
+          updatedAt: new Date(),
+        })
+        .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId));
+
+      log.debug("Re-installed Slack workspace, bot token updated", {
+        workspaceId: oauthResult.teamId,
+        orgId: existing.orgId,
+      });
+    } else {
+      // First install
+      const isPlatformFlow = state.orgId && state.vm0UserId;
+
+      await db.insert(slackOrgInstallations).values({
+        slackWorkspaceId: oauthResult.teamId,
+        slackWorkspaceName: oauthResult.teamName,
+        orgId: isPlatformFlow ? state.orgId : null,
+        encryptedBotToken,
+        botUserId: oauthResult.botUserId,
+        installedByUserId: isPlatformFlow ? state.vm0UserId : null,
+      });
+
+      log.debug("New Slack workspace installed", {
+        workspaceId: oauthResult.teamId,
+        orgId: isPlatformFlow ? state.orgId : null,
+      });
+    }
+
+    // Platform flow: verify admin and create connection
+    if (state.orgId && state.vm0UserId) {
+      // Verify user is org admin
+      const member = await requireOrgMember(state.orgId, state.vm0UserId);
+      if (member.role !== "admin") {
+        return NextResponse.redirect(
+          `${platformUrl}/slack/failed?error=${encodeURIComponent("Only org admins can install Slack for an organization.")}`,
+        );
+      }
+
+      // Create connection (idempotent via unique constraint)
+      await db
+        .insert(slackOrgConnections)
+        .values({
+          slackUserId: oauthResult.authedUserId,
+          slackWorkspaceId: oauthResult.teamId,
+          vm0UserId: state.vm0UserId,
+          orgId: state.orgId,
+        })
+        .onConflictDoNothing();
+
+      return NextResponse.redirect(`${platformUrl}/zero/works`);
+    }
+
+    // Slack flow: redirect to success page
+    return NextResponse.redirect(
+      `${platformUrl}/slack/installed?workspace=${encodeURIComponent(oauthResult.teamName)}`,
+    );
+  } catch (err) {
+    log.error("Slack OAuth callback error", { error: err });
+    return NextResponse.redirect(
+      `${platformUrl}/slack/failed?error=${encodeURIComponent("Failed to complete Slack installation. Please try again.")}`,
+    );
+  }
+}

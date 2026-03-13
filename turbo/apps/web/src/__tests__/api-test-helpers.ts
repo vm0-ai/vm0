@@ -25,6 +25,8 @@ import { storages, storageVersions } from "../db/schema/storage";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackInstallations } from "../db/schema/slack-installation";
+import { slackOrgInstallations } from "../db/schema/slack-org-installation";
+import { slackOrgConnections } from "../db/schema/slack-org-connection";
 import { githubInstallations } from "../db/schema/github-installation";
 import { githubUserLinks } from "../db/schema/github-user-link";
 import { githubIssueSessions } from "../db/schema/github-issue-session";
@@ -2232,6 +2234,46 @@ export async function findTestSlackInstallation(workspaceId: string) {
     .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
     .limit(1);
   return row;
+}
+
+export async function findTestSlackOrgInstallation(workspaceId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+  return row;
+}
+
+export async function findTestSlackOrgConnection(
+  slackUserId: string,
+  workspaceId: string,
+) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackUserId, slackUserId),
+        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
+      ),
+    );
+  return row;
+}
+
+export async function findTestSlackOrgConnections(
+  slackUserId: string,
+  workspaceId: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackUserId, slackUserId),
+        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
+      ),
+    );
 }
 
 /**
