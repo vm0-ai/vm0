@@ -3,8 +3,7 @@ import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
 import { verifySenderAuthenticity } from "../sender-auth";
 import {
-  parseEmailTriggerAddress,
-  parseAgentOnlyAddress,
+  parseInboundEmailAddress,
   resolveAgentByAddress,
   generateReplyToken,
   computeReplyRecipients,
@@ -34,54 +33,39 @@ interface InboundEmailEvent {
 }
 
 interface ResolvedTrigger {
-  triggerAddress: { org: string; agent: string };
+  agentOrg: string;
+  agentName: string;
+  runtimeOrgId: string;
+  runtimeOrgSlug: string;
   triggerLocalPart: string;
   userId: string;
 }
 
 /**
  * Parse trigger address from recipients and resolve the sender's user ID.
- * Supports two formats:
- * - org+agent@domain (explicit org)
- * - agent@domain (org auto-detected from sender's personal org)
+ *
+ * Supports four address formats:
+ * - runtimeorg+agentorg/agentname@domain (explicit runtime + agent org)
+ * - agentorg/agentname@domain            (agent org explicit, runtime from user default)
+ * - org+agent@domain                     (legacy: agentOrg=org, runtime from user default)
+ * - agent@domain                         (both from user default)
  */
 async function resolveTrigger(
   to: string[],
   senderEmail: string,
 ): Promise<ResolvedTrigger | HandlerResult> {
-  // 1a. Try org+agent format first
+  // 1. Parse inbound address from recipients
+  let parsed = null;
+  let matchedAddress = "";
   for (const addr of to) {
-    const parsed = parseEmailTriggerAddress(addr);
+    parsed = parseInboundEmailAddress(addr);
     if (parsed) {
-      // Look up sender in Clerk
-      const userId = await getUserIdByEmail(senderEmail);
-      if (!userId) {
-        log.debug("Sender email not registered", { from: senderEmail });
-        return {
-          ok: false,
-          errorMessage:
-            "Your email address is not associated with a VM0 account.",
-        };
-      }
-      return {
-        triggerAddress: parsed,
-        triggerLocalPart: `${parsed.org}+${parsed.agent}`,
-        userId,
-      };
-    }
-  }
-
-  // 1b. Try agent-only format
-  let agentName: string | null = null;
-  for (const addr of to) {
-    const parsed = parseAgentOnlyAddress(addr);
-    if (parsed) {
-      agentName = parsed;
+      matchedAddress = addr;
       break;
     }
   }
 
-  if (!agentName) {
+  if (!parsed) {
     log.debug("No trigger address found in recipients", { to });
     return {
       ok: false,
@@ -90,7 +74,7 @@ async function resolveTrigger(
     };
   }
 
-  // For agent-only format, we need the sender's org
+  // 2. Resolve sender userId
   const userId = await getUserIdByEmail(senderEmail);
   if (!userId) {
     log.debug("Sender email not registered", { from: senderEmail });
@@ -100,18 +84,38 @@ async function resolveTrigger(
     };
   }
 
-  const runtimeOrg = await resolveOrgOrNull(userId);
+  // 3. Resolve runtime org (explicit slug from address, or user's default)
+  const runtimeOrg = await resolveOrgOrNull(userId, parsed.runtimeOrg);
   if (!runtimeOrg) {
-    log.debug("Sender has no org", { from: senderEmail, userId });
-    return {
-      ok: false,
-      errorMessage: "Your account does not have a workspace configured.",
-    };
+    const msg = parsed.runtimeOrg
+      ? `Workspace "${parsed.runtimeOrg}" was not found.`
+      : "Your account does not have a workspace configured.";
+    log.debug("Runtime org resolution failed", {
+      from: senderEmail,
+      userId,
+      explicitOrg: parsed.runtimeOrg,
+    });
+    return { ok: false, errorMessage: msg };
   }
+  const runtimeOrgId = runtimeOrg.orgId;
+  const runtimeOrgSlug = runtimeOrg.slug;
+
+  // 4. Resolve agent org (defaults to runtime org if not specified)
+  const agentOrg = parsed.agentOrg ?? runtimeOrgSlug;
+
+  // 5. Extract trigger local part from the matched address for reply-from
+  const atIndex = matchedAddress.indexOf("@");
+  const triggerLocalPart =
+    atIndex > 0
+      ? matchedAddress.slice(0, atIndex).toLowerCase()
+      : parsed.agentName;
 
   return {
-    triggerAddress: { org: runtimeOrg.slug, agent: agentName },
-    triggerLocalPart: agentName,
+    agentOrg,
+    agentName: parsed.agentName,
+    runtimeOrgId,
+    runtimeOrgSlug,
+    triggerLocalPart,
     userId,
   };
 }
@@ -138,27 +142,29 @@ export async function handleInboundEmailTrigger(
   const resolved = await resolveTrigger(to, senderEmail);
   if ("ok" in resolved) return resolved;
 
-  const { triggerAddress, triggerLocalPart, userId } = resolved;
+  const {
+    agentOrg,
+    agentName,
+    runtimeOrgId,
+    runtimeOrgSlug,
+    triggerLocalPart,
+    userId,
+  } = resolved;
 
   log.debug("Processing email trigger", {
-    org: triggerAddress.org,
-    agent: triggerAddress.agent,
+    agentOrg,
+    agentName,
+    runtimeOrg: runtimeOrgSlug,
     from: senderEmail,
   });
 
   // 3. Resolve agent
-  const compose = await resolveAgentByAddress(
-    triggerAddress.org,
-    triggerAddress.agent,
-  );
+  const compose = await resolveAgentByAddress(agentOrg, agentName);
   if (!compose) {
-    log.debug("Agent not found", {
-      org: triggerAddress.org,
-      agent: triggerAddress.agent,
-    });
+    log.debug("Agent not found", { org: agentOrg, agent: agentName });
     return {
       ok: false,
-      errorMessage: `Agent "${triggerAddress.agent}" was not found in org "${triggerAddress.org}".`,
+      errorMessage: `Agent "${agentName}" was not found in org "${agentOrg}".`,
     };
   }
 
@@ -260,6 +266,7 @@ export async function handleInboundEmailTrigger(
         inboundReferences,
         subject,
         triggerLocalPart,
+        runtimeOrgId,
         replyRecipientTo: replyRecipients.to,
         replyRecipientCc: replyRecipients.cc,
       },
@@ -273,17 +280,20 @@ export async function handleInboundEmailTrigger(
     agentComposeVersionId: compose.headVersionId,
     prompt: fullPrompt,
     composeId: compose.composeId,
-    agentName: triggerAddress.agent,
+    agentName,
     artifactName: "artifact",
     memoryName: "memory",
+    orgId: runtimeOrgId,
+    orgSlug: runtimeOrgSlug,
     callbacks,
   });
 
   log.info("Dispatched agent run from email trigger", {
     runId: result.runId,
     emailId,
-    org: triggerAddress.org,
-    agent: triggerAddress.agent,
+    agentOrg,
+    agentName,
+    runtimeOrg: runtimeOrgSlug,
   });
 
   return { ok: true };

@@ -25,6 +25,7 @@ export const emailThreadSessions = pgTable(
     agentSessionId: uuid("agent_session_id")
       .notNull()
       .references(() => agentSessions.id, { onDelete: "cascade" }),
+    orgId: varchar("org_id", { length: 255 }),
     lastEmailMessageId: varchar("last_email_message_id", { length: 512 }),
     replyToToken: varchar("reply_to_token", { length: 255 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -28,6 +28,7 @@ interface CallbackPayload {
   inboundReferences?: string;
   subject?: string;
   triggerLocalPart?: string;
+  runtimeOrgId?: string;
   replyRecipientTo?: string[];
   replyRecipientCc?: string[];
 }
@@ -204,6 +205,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           composeId,
           agentSessionId,
           replyToToken: replyToken,
+          orgId: payload.runtimeOrgId,
         }
       : undefined,
   });

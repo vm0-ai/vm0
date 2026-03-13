@@ -328,6 +328,7 @@ async function executePostSendAction(
         agentSessionId: action.agentSessionId,
         lastEmailMessageId: messageId,
         replyToToken: action.replyToToken,
+        orgId: action.orgId,
       });
       break;
 

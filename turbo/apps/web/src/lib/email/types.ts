@@ -66,6 +66,7 @@ interface SaveThreadSessionAction {
   composeId: string;
   agentSessionId: string;
   replyToToken: string;
+  orgId?: string;
 }
 
 interface UpdateThreadSessionAction {

@@ -161,11 +161,12 @@ export async function handleInboundEmailReply(
     replyContent = `${replyContent}\n\n${attachmentText}`;
   }
 
-  // 10. Get compose to find agent name and version
+  // 10. Get compose to find agent name, version, and org (fallback for legacy sessions)
   const [compose] = await globalThis.services.db
     .select({
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, session.composeId))
@@ -197,7 +198,10 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 12. Inject integration context and create run
+  // 12. Resolve runtime org: prefer session.orgId, fall back to compose.orgId
+  const runtimeOrgId = session.orgId ?? compose.orgId;
+
+  // 13. Inject integration context and create run
   const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${replyContent}`;
   const result = await createRun({
     userId: session.userId,
@@ -206,6 +210,7 @@ export async function handleInboundEmailReply(
     composeId: session.composeId,
     sessionId: session.agentSessionId,
     agentName: compose.name,
+    orgId: runtimeOrgId,
     callbacks,
   });
 
