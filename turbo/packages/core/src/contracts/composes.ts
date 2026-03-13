@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { experimentalFirewallSchema } from "./runners";
+import { experimentalFirewallSchema, servicePermissionSchema } from "./runners";
 
 const c = initContract();
 
@@ -100,9 +100,17 @@ const agentDefinitionSchema = z.object({
   experimental_firewall: experimentalFirewallSchema.optional(),
   /**
    * External services for proxy-side token replacement.
-   * CLI input: string[] (e.g., ["github", "slack"]) — expanded by CLI to full objects before API call.
+   * CLI input: map format { slack: { permissions: [...] | "all" } }
+   * — expanded by CLI to full ExpandedServiceConfig[] before API call.
    */
-  experimental_services: z.array(z.string()).optional(),
+  experimental_services: z
+    .record(
+      z.string(),
+      z.object({
+        permissions: z.union([z.literal("all"), z.array(z.string()).min(1)]),
+      }),
+    )
+    .optional(),
   /**
    * Agent metadata for display and personalization.
    * - displayName: Human-readable name shown in the UI (preserves original casing).
@@ -127,7 +135,7 @@ const agentDefinitionSchema = z.object({
 });
 
 /**
- * Agent compose YAML content schema (CLI input — experimental_services is string[])
+ * Agent compose YAML content schema (CLI input — experimental_services is map format)
  */
 const agentComposeContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
@@ -140,12 +148,15 @@ const agentComposeContentSchema = z.object({
  */
 const expandedServiceConfigSchema = z.object({
   name: z.string(),
+  ref: z.string(),
+  description: z.string().optional(),
   apis: z.array(
     z.object({
       base: z.string(),
       auth: z.object({
         headers: z.record(z.string(), z.string()),
       }),
+      permissions: z.array(servicePermissionSchema).optional(),
     }),
   ),
   placeholders: z.record(z.string(), z.string()).optional(),

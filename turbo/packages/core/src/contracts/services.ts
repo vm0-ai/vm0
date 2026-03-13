@@ -31,6 +31,7 @@ interface ServiceApi {
 }
 
 export interface ServiceConfig {
+  name: string;
   description?: string;
   apis: ServiceApi[];
   /**
@@ -80,7 +81,9 @@ function api(base: string, auth: ServiceApi["auth"]): ServiceApi {
   return { base, auth, permissions: [FULL_ACCESS_PERMISSION] };
 }
 
-const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
+const SERVICE_CONFIGS: Partial<
+  Record<ConnectorType, Omit<ServiceConfig, "name">>
+> = {
   ahrefs: {
     apis: [api("https://api.ahrefs.com", bearerAuth("AHREFS_TOKEN"))],
   },
@@ -527,9 +530,15 @@ const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
 /**
  * Expanded service config stored in compose content.
  * Resolved from service name + ServiceConfig at compose time, then frozen.
+ *
+ * - `name`: service config name (e.g., "slack")
+ * - `ref`: key used in vm0.yaml to reference this service (= name in Phase 3)
+ * - `description`: optional description from the service config
  */
 export interface ExpandedServiceConfig {
   name: string;
+  ref: string;
+  description?: string;
   apis: ServiceApi[];
   placeholders?: Record<string, string>;
 }
@@ -541,5 +550,7 @@ export interface ExpandedServiceConfig {
 export function getServiceConfig(
   type: ConnectorType,
 ): ServiceConfig | undefined {
-  return SERVICE_CONFIGS[type];
+  const config = SERVICE_CONFIGS[type];
+  if (!config) return undefined;
+  return { ...config, name: type };
 }

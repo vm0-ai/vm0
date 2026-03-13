@@ -79,7 +79,7 @@ export const runnersPollContract = c.router({
 /**
  * Service API entry for proxy-side token replacement
  */
-const servicePermissionSchema = z.object({
+export const servicePermissionSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   rules: z.array(z.string()),

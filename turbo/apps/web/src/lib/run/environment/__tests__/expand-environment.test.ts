@@ -22,6 +22,7 @@ function makeCompose(
 
 const githubService: ExpandedServiceConfig = {
   name: "github",
+  ref: "github",
   apis: [
     {
       base: "https://api.github.com",
@@ -33,6 +34,7 @@ const githubService: ExpandedServiceConfig = {
 
 const slackService: ExpandedServiceConfig = {
   name: "slack",
+  ref: "slack",
   apis: [
     {
       base: "https://slack.com/api",
@@ -44,6 +46,7 @@ const slackService: ExpandedServiceConfig = {
 
 const airtableService: ExpandedServiceConfig = {
   name: "airtable",
+  ref: "airtable",
   apis: [
     {
       base: "https://api.airtable.com",
