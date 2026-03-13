@@ -486,7 +486,7 @@ export function expandServiceConfigs(config: unknown): void {
       };
       if (serviceConfig.description !== undefined)
         entry.description = serviceConfig.description;
-      if (serviceConfig.placeholders)
+      if (serviceConfig.placeholders !== undefined)
         entry.placeholders = serviceConfig.placeholders;
       expanded.push(entry);
     }

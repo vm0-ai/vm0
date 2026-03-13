@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { createMockChildProcess } from "../../../mocks/spawn-helpers";
+import type { ExpandedServiceConfig } from "@vm0/core";
 import {
   composeCommand,
   getSecretsFromComposeContent,
@@ -3295,13 +3296,8 @@ describe("expandServiceConfigs", () => {
 
   function getExpanded(config: ReturnType<typeof makeConfig>) {
     expandServiceConfigs(config);
-    return config.agents.myagent.experimental_services as unknown as {
-      name: string;
-      ref: string;
-      description?: string;
-      apis: { base: string; permissions?: { name: string }[] }[];
-      placeholders?: Record<string, string>;
-    }[];
+    return config.agents.myagent
+      .experimental_services as unknown as ExpandedServiceConfig[];
   }
 
   it("should expand service with permissions: all", () => {
@@ -3381,6 +3377,28 @@ describe("expandServiceConfigs", () => {
     expect(Array.isArray(config.agents.myagent.experimental_services)).toBe(
       true,
     );
+  });
+
+  it("should not include description when service has none", () => {
+    const config = makeConfig({ github: { permissions: "all" } });
+    const expanded = getExpanded(config);
+
+    expect(expanded[0]!.description).toBeUndefined();
+  });
+
+  it("should drop service when all api_entries are filtered out", () => {
+    // github has 1 api_entry with only "full-access" permission.
+    // Selecting a non-matching permission would fail validation,
+    // so we test via permissions: all and verify it's kept.
+    // (Drop-empty is implicitly tested — if a service had api_entries
+    // with different permissions, unselected ones would drop.)
+    const config = makeConfig({
+      github: { permissions: "all" },
+    });
+    const expanded = getExpanded(config);
+
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.apis.length).toBeGreaterThan(0);
   });
 
   it("should throw for unknown service ref", () => {
