@@ -812,7 +812,7 @@ interface BuildContextResult {
  * Returns null if no services are declared.
  *
  * Reads pre-expanded ExpandedServiceConfig objects (resolved at compose time)
- * and flattens apis to one entry per base URL with auth headers (for runner-side matching).
+ * and maps them to nested services format: { services: [{ name, ref, apis }] }.
  *
  * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */
@@ -826,16 +826,11 @@ function buildExperimentalServices(
   const services = firstAgent?.experimental_services;
   if (!services || services.length === 0) return null;
 
-  const entries: { base: string; auth: { headers: Record<string, string> } }[] =
-    [];
-
-  for (const service of services) {
-    for (const serviceApi of service.apis) {
-      entries.push({ base: serviceApi.base, auth: serviceApi.auth });
-    }
-  }
-
-  return { apis: entries };
+  return services.map((svc) => ({
+    name: svc.name,
+    ref: svc.ref,
+    apis: svc.apis.map((api) => ({ base: api.base, auth: api.auth })),
+  }));
 }
 
 /**

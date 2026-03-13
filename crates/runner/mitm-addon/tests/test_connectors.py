@@ -23,6 +23,11 @@ def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, pat
     return flow
 
 
+def _wrap_services(apis, name="test", ref="test"):
+    """Wrap a list of API entries into a service entry list."""
+    return [{"name": name, "ref": ref, "apis": apis}]
+
+
 # =========================================================================
 # match_service
 # =========================================================================
@@ -30,74 +35,96 @@ def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, pat
 
 class TestMatchService:
     def test_exact_base_match(self):
-        services = {"apis": [{"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer tok"}}}]}
+        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer tok"}}}], name="github", ref="github")
         result = mitm_addon.match_service("https://api.github.com", services)
         assert result is not None
         assert result["base"] == "https://api.github.com"
 
     def test_base_with_path(self):
-        services = {"apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]}
+        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
         result = mitm_addon.match_service("https://api.github.com/repos/owner/repo", services)
         assert result is not None
         assert result["base"] == "https://api.github.com"
 
     def test_base_with_query(self):
-        services = {"apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]}
+        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
         result = mitm_addon.match_service("https://api.github.com?page=1", services)
         assert result is not None
         assert result["base"] == "https://api.github.com"
 
     def test_base_with_fragment(self):
-        services = {"apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]}
+        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
         result = mitm_addon.match_service("https://api.github.com#section", services)
         assert result is not None
         assert result["base"] == "https://api.github.com"
 
     def test_path_boundary_prevents_evil_domain(self):
         """Prevents api.github.com matching api.github.com.evil.com."""
-        services = {"apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]}
+        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
         result = mitm_addon.match_service("https://api.github.com.evil.com/steal", services)
         assert result is None
 
     def test_path_boundary_prevents_suffix_attack(self):
-        services = {"apis": [{"base": "https://slack.com", "auth": {"headers": {}}}]}
+        services = _wrap_services([{"base": "https://slack.com", "auth": {"headers": {}}}], name="slack", ref="slack")
         result = mitm_addon.match_service("https://slack.com.attacker.io/hook", services)
         assert result is None
 
     def test_no_services_returns_none(self):
         assert mitm_addon.match_service("https://api.github.com/repos", None) is None
 
-    def test_empty_apis_list(self):
-        services = {"apis": []}
+    def test_empty_services_list(self):
+        services = []
+        assert mitm_addon.match_service("https://api.github.com/repos", services) is None
+
+    def test_empty_apis_in_service(self):
+        services = [{"name": "github", "ref": "github", "apis": []}]
         assert mitm_addon.match_service("https://api.github.com/repos", services) is None
 
     def test_no_matching_service(self):
-        services = {"apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]}
+        services = _wrap_services([{"base": "https://api.github.com", "auth": {"headers": {}}}])
         result = mitm_addon.match_service("https://api.gitlab.com/repos", services)
         assert result is None
 
     def test_trailing_slash_on_base_stripped(self):
         """Base URLs with trailing slashes should still match."""
-        services = {"apis": [{"base": "https://api.github.com/", "auth": {"headers": {}}}]}
+        services = _wrap_services([{"base": "https://api.github.com/", "auth": {"headers": {}}}])
         result = mitm_addon.match_service("https://api.github.com/repos", services)
         assert result is not None
         assert result["base"] == "https://api.github.com/"
 
     def test_first_matching_api_wins(self):
-        services = {"apis": [
+        services = _wrap_services([
             {"base": "https://api.github.com/v3", "auth": {"headers": {}}},
             {"base": "https://api.github.com", "auth": {"headers": {}}},
-        ]}
+        ])
         result = mitm_addon.match_service("https://api.github.com/v3/repos", services)
         assert result["base"] == "https://api.github.com/v3"
 
     def test_empty_base_skipped(self):
-        services = {"apis": [
+        services = _wrap_services([
             {"base": "", "auth": {"headers": {}}},
             {"base": "https://api.github.com", "auth": {"headers": {}}},
-        ]}
+        ])
         result = mitm_addon.match_service("https://api.github.com/repos", services)
         assert result["base"] == "https://api.github.com"
+
+    def test_matches_across_multiple_services(self):
+        """Match should work across different services in the list."""
+        services = [
+            {"name": "github", "ref": "github", "apis": [
+                {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer gh"}}},
+            ]},
+            {"name": "slack", "ref": "slack", "apis": [
+                {"base": "https://slack.com/api", "auth": {"headers": {"Authorization": "Bearer sl"}}},
+            ]},
+        ]
+        gh = mitm_addon.match_service("https://api.github.com/repos", services)
+        assert gh is not None
+        assert gh["base"] == "https://api.github.com"
+
+        sl = mitm_addon.match_service("https://slack.com/api/chat.postMessage", services)
+        assert sl is not None
+        assert sl["base"] == "https://slack.com/api"
 
 
 # =========================================================================
@@ -151,7 +178,7 @@ class TestHandleServiceRequest:
 
     def test_success_injects_headers(self):
         flow = _make_http_flow()
-        api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
+        api_entry = {"id": "run-1:github:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
         vm_info = {
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
@@ -174,7 +201,7 @@ class TestHandleServiceRequest:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_rule"] == "service:https://api.github.com"
         assert flow.metadata["service_base"] == "https://api.github.com"
-        assert flow.metadata["service_api_id"] == "run-1:0"
+        assert flow.metadata["service_api_id"] == "run-1:github:0"
         assert flow.metadata["vm_run_id"] == "run-1"
 
     def test_failure_returns_502(self):

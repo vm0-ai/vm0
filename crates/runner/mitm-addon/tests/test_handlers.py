@@ -136,11 +136,11 @@ class TestRequestHandler:
                         {"final": "DENY"},
                     ],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "services": {
-                        "apis": [
+                    "services": [
+                        {"name": "github", "ref": "github", "apis": [
                             {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}},
-                        ]
-                    },
+                        ]},
+                    ],
                     "encryptedSecrets": "iv:tag:data",
                 }
             }
@@ -174,11 +174,11 @@ class TestRequestHandler:
                     "sandboxToken": "tok-conn",
                     "firewallRules": [{"final": "DENY"}],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "services": {
-                        "apis": [
+                    "services": [
+                        {"name": "github", "ref": "github", "apis": [
                             {"base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}},
-                        ]
-                    },
+                        ]},
+                    ],
                     "encryptedSecrets": "iv:tag:data",
                 }
             }

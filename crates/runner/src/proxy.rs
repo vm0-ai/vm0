@@ -26,7 +26,7 @@ struct VmEntry {
     registered_at: i64,
     firewall_rules: Vec<FirewallRule>,
     network_log_path: String,
-    services: Option<crate::types::ExperimentalServices>,
+    services: Option<Vec<crate::types::ServiceEntry>>,
     encrypted_secrets: Option<String>,
 }
 
@@ -63,7 +63,7 @@ pub struct VmRegistration<'a> {
     pub sandbox_token: &'a str,
     pub firewall_rules: &'a [FirewallRule],
     pub network_log_path: &'a std::path::Path,
-    pub services: Option<&'a crate::types::ExperimentalServices>,
+    pub services: Option<&'a Vec<crate::types::ServiceEntry>>,
     pub encrypted_secrets: Option<&'a str>,
 }
 
@@ -427,9 +427,11 @@ impl ProxyRegistryHandle {
         let now = chrono::Utc::now().timestamp_millis();
         let services = registration.services.map(|s| {
             let mut s = s.clone();
-            for (i, api) in s.apis.iter_mut().enumerate() {
-                if api.id.is_empty() {
-                    api.id = format!("{}:{}", registration.run_id, i);
+            for svc in &mut s {
+                for (i, api) in svc.apis.iter_mut().enumerate() {
+                    if api.id.is_empty() {
+                        api.id = format!("{}:{}:{}", registration.run_id, svc.name, i);
+                    }
                 }
             }
             s
@@ -770,7 +772,9 @@ mod tests {
             lock_path,
         };
 
-        let services = crate::types::ExperimentalServices {
+        let services = vec![crate::types::ServiceEntry {
+            name: "gmail".to_string(),
+            ref_key: "gmail".to_string(),
             apis: vec![crate::types::ServiceApiEntry {
                 id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
@@ -782,7 +786,7 @@ mod tests {
                 },
                 permissions: None,
             }],
-        };
+        }];
 
         let registration = VmRegistration {
             run_id: "run-svc",
@@ -802,25 +806,28 @@ mod tests {
         let loaded = read_registry(&registry_path).await.unwrap();
         let vm = loaded.vms.get("10.200.0.5").unwrap();
         let stored = vm.services.as_ref().unwrap();
-        assert_eq!(stored.apis.len(), 1);
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].apis.len(), 1);
         assert_eq!(
-            stored.apis[0].base,
+            stored[0].apis[0].base,
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
 
-        // Verify id was assigned by register_vm.
-        assert_eq!(stored.apis[0].id, "run-svc:0");
+        // Verify id was assigned by register_vm: "{run_id}:{service_name}:{index}".
+        assert_eq!(stored[0].apis[0].id, "run-svc:gmail:0");
 
         // Verify JSON shape matches what the Python addon expects.
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let vm_json = &value["vms"]["10.200.0.5"];
-        let svc = &vm_json["services"]["apis"][0];
+        let svc = &vm_json["services"][0];
+        assert_eq!(svc["name"], "gmail");
+        assert_eq!(svc["ref"], "gmail");
         assert_eq!(
-            svc["base"],
+            svc["apis"][0]["base"],
             "https://gmail.googleapis.com/gmail/v1/users/me"
         );
-        assert_eq!(svc["id"], "run-svc:0");
+        assert_eq!(svc["apis"][0]["id"], "run-svc:gmail:0");
     }
 
     #[tokio::test]

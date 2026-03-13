@@ -76,7 +76,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub memory_name: Option<String>,
     #[serde(default)]
-    pub experimental_services: Option<ExperimentalServices>,
+    pub experimental_services: Option<Vec<ServiceEntry>>,
 }
 
 /// Firewall and proxy configuration attached to each execution.
@@ -89,9 +89,14 @@ pub struct ExperimentalFirewall {
     pub rules: Option<Vec<crate::proxy::FirewallRule>>,
 }
 
-/// Service manifest for proxy-side token replacement.
+/// A single service with its name, ref key, and API entries.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ExperimentalServices {
+pub struct ServiceEntry {
+    pub name: String,
+    /// The ref key from vm0.yaml (e.g., "github", "slack").
+    /// `ref` is a Rust keyword, so we rename via serde.
+    #[serde(rename = "ref")]
+    pub ref_key: String,
     pub apis: Vec<ServiceApiEntry>,
 }
 

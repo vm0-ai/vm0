@@ -116,7 +116,7 @@ async fn execute_inner(
     let has_services = context
         .experimental_services
         .as_ref()
-        .is_some_and(|s| !s.apis.is_empty());
+        .is_some_and(|s| s.iter().any(|svc| !svc.apis.is_empty()));
     let proxy_registered = firewall_enabled || has_services;
     let network_log_path = config.log_paths.network_log(context.run_id);
 
@@ -574,7 +574,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         || context
             .experimental_services
             .as_ref()
-            .is_some_and(|s| !s.apis.is_empty());
+            .is_some_and(|s| s.iter().any(|svc| !svc.apis.is_empty()));
     if proxy_active {
         env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
@@ -957,7 +957,9 @@ mod tests {
     #[test]
     fn build_env_json_services_enable_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_services = Some(crate::types::ExperimentalServices {
+        ctx.experimental_services = Some(vec![crate::types::ServiceEntry {
+            name: "gmail".into(),
+            ref_key: "gmail".into(),
             apis: vec![crate::types::ServiceApiEntry {
                 id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
@@ -969,7 +971,7 @@ mod tests {
                 },
                 permissions: None,
             }],
-        });
+        }]);
         let env = build_env_json(&ctx, "http://localhost");
         assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
     }
@@ -977,7 +979,7 @@ mod tests {
     #[test]
     fn build_env_json_empty_services_no_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_services = Some(crate::types::ExperimentalServices { apis: vec![] });
+        ctx.experimental_services = Some(vec![]);
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }
@@ -990,7 +992,9 @@ mod tests {
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
-            "experimentalServices": {
+            "experimentalServices": [{
+                "name": "github",
+                "ref": "github",
                 "apis": [{
                     "base": "https://api.github.com",
                     "auth": {
@@ -999,12 +1003,15 @@ mod tests {
                         }
                     }
                 }]
-            }
+            }]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let svcs = ctx.experimental_services.unwrap();
-        assert_eq!(svcs.apis.len(), 1);
-        assert_eq!(svcs.apis[0].base, "https://api.github.com");
+        assert_eq!(svcs.len(), 1);
+        assert_eq!(svcs[0].name, "github");
+        assert_eq!(svcs[0].ref_key, "github");
+        assert_eq!(svcs[0].apis.len(), 1);
+        assert_eq!(svcs[0].apis[0].base, "https://api.github.com");
     }
 
     #[test]

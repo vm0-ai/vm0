@@ -296,8 +296,10 @@ export {
   type FirewallRule,
   type ExperimentalFirewall,
   serviceApiEntrySchema,
+  serviceEntrySchema,
   experimentalServicesSchema,
   type ServiceApiEntry,
+  type ServiceEntry,
   type ExperimentalServices,
 } from "./runners";
 

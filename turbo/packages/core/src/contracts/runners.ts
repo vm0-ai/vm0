@@ -94,11 +94,19 @@ export const serviceApiEntrySchema = z.object({
 });
 
 /**
- * Experimental services configuration for proxy-side token replacement
+ * A single service with its name, ref, and API entries.
  */
-export const experimentalServicesSchema = z.object({
+export const serviceEntrySchema = z.object({
+  name: z.string(),
+  ref: z.string(),
   apis: z.array(serviceApiEntrySchema),
 });
+
+/**
+ * Experimental services configuration for proxy-side token replacement.
+ * Flat array of service entries: [{ name, ref, apis }]
+ */
+export const experimentalServicesSchema = z.array(serviceEntrySchema);
 
 /**
  * Storage entry in manifest
@@ -242,4 +250,5 @@ export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type FirewallRule = z.infer<typeof firewallRuleSchema>;
 export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;
 export type ServiceApiEntry = z.infer<typeof serviceApiEntrySchema>;
+export type ServiceEntry = z.infer<typeof serviceEntrySchema>;
 export type ExperimentalServices = z.infer<typeof experimentalServicesSchema>;

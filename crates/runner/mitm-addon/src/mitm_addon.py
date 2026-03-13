@@ -128,21 +128,23 @@ def get_original_url(flow: http.HTTPFlow) -> str:
 # Service Header Resolution
 # ============================================================================
 
-def match_service(url: str, vm_services: dict | None) -> dict | None:
+def match_service(url: str, vm_services: list | None) -> dict | None:
     """Match URL against service API base URLs. Returns API entry or None.
 
+    Iterates flat service list: [{ name, ref, apis }] → apis[].
     Matches if the URL starts with the base and the next character is '/', '?', or end-of-string.
     This prevents https://api.github.com matching https://api.github.com.evil.com.
     """
     if not vm_services:
         return None
-    for api_entry in vm_services.get("apis", []):
-        base = api_entry.get("base", "").rstrip("/")
-        if base and url.startswith(base):
-            # Ensure match is at a path boundary, not mid-hostname
-            rest = url[len(base):]
-            if not rest or rest[0] in ("/", "?", "#"):
-                return api_entry
+    for service in vm_services:
+        for api_entry in service.get("apis", []):
+            base = api_entry.get("base", "").rstrip("/")
+            if base and url.startswith(base):
+                # Ensure match is at a path boundary, not mid-hostname
+                rest = url[len(base):]
+                if not rest or rest[0] in ("/", "?", "#"):
+                    return api_entry
     return None
 
 
