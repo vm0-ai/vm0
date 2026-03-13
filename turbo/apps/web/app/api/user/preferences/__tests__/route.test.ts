@@ -184,20 +184,18 @@ describe("GET /api/user/preferences (error paths)", () => {
     context.setupMocks();
   });
 
-  it("should return BAD_REQUEST when no organization context is available", async () => {
+  it("should resolve default org when no orgId in session", async () => {
     const user = await context.setupUser();
 
-    // No orgId in session and no orgId in auth context
+    // No orgId in session — resolveOrg falls back to user's default org
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
     );
     const response = await GET(request);
-    const data = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(data.error.message).toContain("No organization context");
+    expect(response.status).toBe(200);
   });
 });
 
@@ -224,9 +222,9 @@ describe("PUT /api/user/preferences", () => {
     expect(data.error.message).toContain("Not authenticated");
   });
 
-  it("should return BAD_REQUEST when no organization context is available", async () => {
+  it("should resolve default org when no orgId in session", async () => {
     const user = await context.setupUser();
-    // No orgId in session and no orgId in auth context
+    // No orgId in session — resolveOrg falls back to user's default org
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
@@ -238,10 +236,8 @@ describe("PUT /api/user/preferences", () => {
       },
     );
     const response = await PUT(request);
-    const data = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(data.error.message).toContain("No organization context");
+    expect(response.status).toBe(200);
   });
 
   it("should update timezone successfully", async () => {
