@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { createTestOrg } from "../../../__tests__/api-test-helpers";
+import {
+  createTestOrg,
+  insertOrgCacheEntry,
+  insertOrgMembersCacheEntry,
+} from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { resolveOrg, requireOrgFromRequest } from "../resolve-org";
 
@@ -122,6 +126,72 @@ describe("resolveOrg", () => {
     const result = await resolveOrg(userId);
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
+  });
+
+  it("tier 3: resolves via org_members_cache when no Clerk session", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    const orgId = `org_mock_${slug}`;
+
+    // Pre-populate org_cache so getOrgDataOrNull resolves
+    await insertOrgCacheEntry({ orgId, slug });
+
+    // Pre-populate org_members_cache with a fresh entry (< 1 min TTL)
+    await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
+
+    // Mock as CLI token — no orgId, no Clerk orgs (tier 4 would fail)
+    mockClerk({
+      userId,
+      orgId: null,
+      clerkOrgs: [],
+    });
+
+    // Resolve without slug — tier 2 skipped (no orgId), tier 3 should hit cache
+    const result = await resolveOrg(userId);
+
+    expect(result.org.orgId).toBe(orgId);
+    expect(result.org.slug).toBe(slug);
+  });
+
+  it("tier 3: skips stale org_members_cache entries (>1 min TTL)", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    const orgId = `org_mock_${slug}`;
+    const freshSlug = uniqueId("org");
+    const freshOrgId = `org_mock_${freshSlug}`;
+
+    // Pre-populate org_cache for the cached org
+    await insertOrgCacheEntry({ orgId, slug });
+
+    // Pre-populate org_members_cache with a STALE entry (> 1 min ago)
+    const staleTime = new Date(Date.now() - 120_000);
+    await insertOrgMembersCacheEntry({
+      orgId,
+      userId,
+      role: "admin",
+      cachedAt: staleTime,
+    });
+
+    // Set up a fresh org via Clerk API (tier 4 fallback)
+    mockClerk({
+      userId,
+      orgId: null,
+      clerkOrgs: [{ id: freshOrgId, slug: freshSlug, name: freshSlug }],
+    });
+    await createTestOrg(freshSlug);
+
+    // Re-mock without orgId for the actual resolution call
+    mockClerk({
+      userId,
+      orgId: null,
+      clerkOrgs: [{ id: freshOrgId, slug: freshSlug, name: freshSlug }],
+    });
+
+    // Stale cache should be skipped, falls through to tier 4 (Clerk API)
+    const result = await resolveOrg(userId);
+
+    expect(result.org.orgId).toBe(freshOrgId);
+    expect(result.org.slug).toBe(freshSlug);
   });
 
   it("tier 3: falls through when orgId has no matching org", async () => {

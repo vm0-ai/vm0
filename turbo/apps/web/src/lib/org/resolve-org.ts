@@ -1,6 +1,12 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { eq, desc } from "drizzle-orm";
-import { forbidden, badRequest, notFound, isNotFound } from "../errors";
+import {
+  forbidden,
+  badRequest,
+  notFound,
+  isNotFound,
+  isForbidden,
+} from "../errors";
 import { logger } from "../logger";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
@@ -147,7 +153,7 @@ export async function resolveOrg(
       return { org: applyJwtTier(orgData, authResult), member };
     } catch (error) {
       // Re-throw forbidden errors (user is not a member)
-      if (error instanceof Error && error.message.includes("not a member")) {
+      if (isForbidden(error)) {
         throw error;
       }
       // Org not found in Clerk — fall through to default org
