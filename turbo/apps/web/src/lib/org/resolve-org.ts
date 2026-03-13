@@ -9,8 +9,28 @@ import type { OrgRole } from "@vm0/core";
 const log = logger("org:resolve");
 
 /**
+ * Wrapper around getOrgData that returns null instead of throwing when the
+ * org cannot be resolved.
+ *
+ * getOrgData throws when Clerk's getOrganization rejects (org not found)
+ * or the fetched org has no slug.  Both are "not-found" semantics that
+ * callers treat as a null result.  Database errors are unlikely to surface
+ * here because getOrgBySlug (called first in the resolution chain) hits the
+ * same DB — if the database were down, it would fail there first.
+ */
+export async function getOrgDataOrNull(
+  orgId: string,
+): Promise<{ orgId: string; slug: string; tier: string } | null> {
+  try {
+    return await getOrgData(orgId);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Lightweight org type based on org_cache data.
- * Replaces the full scopes.$inferSelect type for the resolution path.
+ * Replaces the full org_cache.$inferSelect type for the resolution path.
  */
 export interface ResolvedOrg {
   orgId: string;
@@ -205,8 +225,7 @@ export async function requireOrgFromRequest(
 
   // Try slug first, fall back to orgId (callers may pass either via ?org=)
   const orgData =
-    (await getOrgBySlug(orgSlug)) ??
-    (await getOrgData(orgSlug).catch(() => null));
+    (await getOrgBySlug(orgSlug)) ?? (await getOrgDataOrNull(orgSlug));
 
   if (!orgData) {
     throw notFound("Org not found");
