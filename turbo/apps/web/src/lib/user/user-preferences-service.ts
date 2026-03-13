@@ -9,6 +9,17 @@ const log = logger("service:user-preferences");
 /** Cache TTL aligned with Clerk JWT TTL */
 const CACHE_TTL_MS = 60_000; // 1 minute
 
+/**
+ * Safely extract a string array from an unknown jsonb/metadata value.
+ * Returns [] if the value is not an array of strings.
+ */
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 interface UserPreferences {
   timezone: string | null;
   notifyEmail: boolean;
@@ -51,7 +62,7 @@ async function getCachedMemberPreferences(
       timezone: cached.timezone,
       notifyEmail: cached.notifyEmail,
       notifySlack: cached.notifySlack,
-      pinnedAgentIds: (cached.pinnedAgentIds as string[] | null) ?? [],
+      pinnedAgentIds: toStringArray(cached.pinnedAgentIds),
     };
   }
 
@@ -75,9 +86,7 @@ async function getCachedMemberPreferences(
       typeof meta?.notify_email === "boolean" ? meta.notify_email : false,
     notifySlack:
       typeof meta?.notify_slack === "boolean" ? meta.notify_slack : true,
-    pinnedAgentIds: Array.isArray(meta?.pinned_agent_ids)
-      ? (meta.pinned_agent_ids as string[])
-      : [],
+    pinnedAgentIds: toStringArray(meta?.pinned_agent_ids),
   };
 
   // 3. Upsert cache
@@ -187,7 +196,7 @@ async function getCachedPinnedAgentIds(
       and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
     )
     .limit(1);
-  return (row?.pinnedAgentIds as string[] | null) ?? [];
+  return toStringArray(row?.pinnedAgentIds);
 }
 
 /**
