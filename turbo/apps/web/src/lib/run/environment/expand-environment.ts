@@ -83,6 +83,9 @@ function buildServicePlaceholders(
  * @param vars Variables for expansion (from --vars CLI param)
  * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
  * @param checkEnv When true, validates that all required secrets/vars are provided
+ * @param additionalEnvironment Extra env entries (e.g. model provider) to merge before expansion.
+ *   Compose-declared entries take precedence. Secret-derived values should use
+ *   $\{{ secrets.X }} templates so servicePlaceholders logic applies.
  * @returns Expanded environment variables
  */
 export function expandEnvironmentFromCompose(
@@ -90,21 +93,24 @@ export function expandEnvironmentFromCompose(
   vars: Record<string, string> | undefined,
   passedSecrets: Record<string, string> | undefined,
   checkEnv?: boolean,
+  additionalEnvironment?: Record<string, string>,
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) {
+
+  // Get first agent config
+  const firstAgent = compose?.agents
+    ? Object.values(compose.agents)[0]
+    : undefined;
+
+  // Merge environments: compose entries take precedence over additional entries
+  const environment: Record<string, string> = {
+    ...additionalEnvironment,
+    ...firstAgent?.environment,
+  };
+
+  if (Object.keys(environment).length === 0) {
     return { environment: undefined };
   }
-
-  // Get first agent's environment (currently only one agent supported)
-  const agents = Object.values(compose.agents);
-  const firstAgent = agents[0];
-
-  if (!firstAgent?.environment) {
-    return { environment: undefined };
-  }
-
-  const environment = firstAgent.environment;
 
   // Extract all variable references to determine what we need
   const grouped = extractAndGroupVariables(environment);

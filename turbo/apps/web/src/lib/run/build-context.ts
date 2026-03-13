@@ -118,20 +118,19 @@ function resolveProviderType(
  */
 function resolveEnvironmentMapping(
   providerType: ModelProviderType,
-  secretValue: string | undefined,
+  secretName: string | undefined,
   selectedModel: string | undefined,
-  secretsMap?: Record<string, string>,
+  availableSecretNames?: Set<string>,
 ): Record<string, string> {
   const mapping = getEnvironmentMapping(providerType);
 
   if (!mapping) {
-    // No mapping - return secret directly under its natural name
-    const secretName = getSecretNameForType(providerType);
-    if (!secretName || !secretValue) {
-      // Multi-auth providers should have environmentMapping, this shouldn't happen
+    // No mapping - return secret reference under its natural name
+    const name = secretName || getSecretNameForType(providerType);
+    if (!name) {
       return {};
     }
-    return { [secretName]: secretValue };
+    return { [name]: `\${{ secrets.${name} }}` };
   }
 
   // Resolve model: use selected or fall back to default
@@ -140,22 +139,21 @@ function resolveEnvironmentMapping(
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(mapping)) {
     if (value === "$secret") {
-      // Single secret value
-      if (secretValue) {
-        result[key] = secretValue;
+      // Single secret: emit template reference
+      if (secretName) {
+        result[key] = `\${{ secrets.${secretName} }}`;
       }
     } else if (value === "$model") {
       if (model) {
         result[key] = model;
       }
     } else if (value.startsWith("$secrets.")) {
-      // Multi-auth: lookup secret from map
+      // Multi-auth: emit template reference only if the secret is available
+      // (environmentMapping may reference secrets from other auth methods)
       const lookupName = value.slice("$secrets.".length);
-      const lookupValue = secretsMap?.[lookupName];
-      if (lookupValue) {
-        result[key] = lookupValue;
+      if (!availableSecretNames || availableSecretNames.has(lookupName)) {
+        result[key] = `\${{ secrets.${lookupName} }}`;
       }
-      // Skip if undefined (optional secret)
     } else {
       // Literal value (e.g., base URL)
       result[key] = value;
@@ -170,8 +168,10 @@ function resolveEnvironmentMapping(
  */
 interface ModelProviderSecretResult {
   secrets: Record<string, string> | undefined;
-  /** Environment variables to inject (may be multiple for providers with mapping) */
-  injectedEnvVars: Record<string, string> | undefined;
+  /** Environment template entries to merge into compose env before expansion.
+   *  Secret-derived values use ${{ secrets.X }} references so they go through
+   *  servicePlaceholders logic; literals (base URLs, model names) are plain strings. */
+  injectedEnvironment: Record<string, string> | undefined;
 }
 
 /**
@@ -194,7 +194,7 @@ async function resolveModelProviderSecrets(
     hasExplicitModelProviderConfig ||
     (framework !== "claude-code" && framework !== "codex")
   ) {
-    return { secrets, injectedEnvVars: undefined };
+    return { secrets, injectedEnvironment: undefined };
   }
 
   // Fetch default provider once (used for type resolution, model selection, and auth method)
@@ -218,14 +218,14 @@ async function resolveModelProviderSecrets(
       log.debug(
         `Multi-auth provider ${providerType} has no auth method configured`,
       );
-      return { secrets, injectedEnvVars: undefined };
+      return { secrets, injectedEnvironment: undefined };
     }
 
     // Get secret names for this auth method
     const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
     if (!secretNames || secretNames.length === 0) {
       log.debug(`No secret names found for ${providerType}/${authMethod}`);
-      return { secrets, injectedEnvVars: undefined };
+      return { secrets, injectedEnvironment: undefined };
     }
 
     // Fetch all model-provider secrets by name
@@ -248,32 +248,33 @@ async function resolveModelProviderSecrets(
     }
 
     if (!hasAllRequired) {
-      return { secrets, injectedEnvVars: undefined };
+      return { secrets, injectedEnvironment: undefined };
     }
 
     // Store secrets for masking
     secrets = secrets || {};
     Object.assign(secrets, secretsMap);
 
-    // Resolve environment mapping with secrets map
-    const injectedEnvVars = resolveEnvironmentMapping(
+    // Resolve environment mapping as template references.
+    // Pass available secret names so mapping entries for other auth methods are skipped.
+    const injectedEnvironment = resolveEnvironmentMapping(
       providerType,
       undefined, // No single secret for multi-auth
       selectedModel,
-      secretsMap,
+      new Set(secretNames),
     );
 
     log.debug(
-      `Resolved multi-auth model provider env vars: ${Object.keys(injectedEnvVars).join(", ")}`,
+      `Resolved multi-auth model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
     );
 
-    return { secrets, injectedEnvVars };
+    return { secrets, injectedEnvironment };
   }
 
   // Handle single-secret providers
   const secretName = getSecretNameForType(providerType);
   if (!secretName) {
-    return { secrets, injectedEnvVars: undefined };
+    return { secrets, injectedEnvironment: undefined };
   }
 
   const secretValue = await getSecretValue(
@@ -284,25 +285,25 @@ async function resolveModelProviderSecrets(
   );
 
   if (!secretValue) {
-    return { secrets, injectedEnvVars: undefined };
+    return { secrets, injectedEnvironment: undefined };
   }
 
   // Store secret in secrets map for masking
   secrets = secrets || {};
   secrets[secretName] = secretValue;
 
-  // Resolve environment mapping (handles $secret and $model substitution)
-  const injectedEnvVars = resolveEnvironmentMapping(
+  // Resolve environment mapping as template references
+  const injectedEnvironment = resolveEnvironmentMapping(
     providerType,
-    secretValue,
+    secretName,
     selectedModel,
   );
 
   log.debug(
-    `Resolved model provider env vars: ${Object.keys(injectedEnvVars).join(", ")}`,
+    `Resolved model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
   );
 
-  return { secrets, injectedEnvVars };
+  return { secrets, injectedEnvironment };
 }
 
 /**
@@ -517,35 +518,6 @@ async function fetchReferencedSecrets(
  *
  * @param source - Label for logging (e.g., "model provider", "connector")
  */
-function autoInjectEnvVarsToEnvironment(
-  environment: Record<string, string> | undefined,
-  injectedEnvVars: Record<string, string> | undefined,
-  source: string = "provider",
-): Record<string, string> | undefined {
-  if (!injectedEnvVars || Object.keys(injectedEnvVars).length === 0) {
-    return environment;
-  }
-
-  const result = environment ? { ...environment } : {};
-  const injectedKeys: string[] = [];
-
-  for (const [key, value] of Object.entries(injectedEnvVars)) {
-    // Only inject if not already set (user-defined environment takes precedence)
-    if (!(key in result)) {
-      result[key] = value;
-      injectedKeys.push(key);
-    }
-  }
-
-  if (injectedKeys.length > 0) {
-    log.debug(
-      `Auto-injected ${source} env vars to environment: ${injectedKeys.join(", ")}`,
-    );
-  }
-
-  return result;
-}
-
 /**
  * Fetch server-stored variables and merge with CLI-provided vars
  * Priority: CLI vars > server-stored vars
@@ -726,21 +698,15 @@ async function resolveSecretsAndEnvironment(
       }
     : undefined;
 
-  const modelProviderEnvVars = modelProviderResult.injectedEnvVars;
-
   // Expand environment variables from compose config.
-  const { environment: expandedEnvironment } = expandEnvironmentFromCompose(
+  // Model provider env vars are passed as additionalEnvironment so they go through
+  // the same servicePlaceholders logic (secret-derived values use ${{ secrets.X }} templates).
+  const { environment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
     secrets,
     checkEnv,
-  );
-
-  // Auto-inject model provider env vars into environment
-  const environment = autoInjectEnvVarsToEnvironment(
-    expandedEnvironment,
-    modelProviderEnvVars,
-    "model provider",
+    modelProviderResult.injectedEnvironment,
   );
 
   return { secrets, environment };
