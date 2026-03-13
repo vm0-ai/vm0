@@ -14,7 +14,6 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
-    continue-on-error: true
     container:
       image: semgrep/semgrep
     steps:
@@ -35,7 +34,6 @@ jobs:
   codeql:
     name: CodeQL SAST
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -52,7 +50,6 @@ jobs:
   npm-audit:
     name: npm audit (SCA)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -64,7 +61,7 @@ jobs:
       - name: Run npm audit
         run: |
           echo "## npm audit results" >> "$GITHUB_STEP_SUMMARY"
-          npm audit --omit=dev 2>&1 | tee audit-output.txt || true
+          npm audit --omit=dev 2>&1 | tee audit-output.txt
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat audit-output.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -72,7 +69,6 @@ jobs:
   gitleaks:
     name: Gitleaks Secrets Detection
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
