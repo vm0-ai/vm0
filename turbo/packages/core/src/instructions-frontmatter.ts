@@ -5,7 +5,44 @@ interface AgentMetadata {
 
 const PROFILE_START = "<!-- ZERO_PROFILE";
 const PROFILE_END = "ZERO_PROFILE -->";
-const PROFILE_REGEX = /<!-- ZERO_PROFILE\n(?:[^\n]*\n)*?ZERO_PROFILE -->\n?/g;
+
+/**
+ * Remove all ZERO_PROFILE blocks from content in O(n) time.
+ * Uses indexOf instead of regex to avoid ReDoS with nested/repeated markers.
+ */
+function stripProfileBlocks(content: string): string {
+  let result = "";
+  let searchFrom = 0;
+
+  while (searchFrom < content.length) {
+    const startIdx = content.indexOf(PROFILE_START + "\n", searchFrom);
+    if (startIdx === -1) {
+      result += content.slice(searchFrom);
+      break;
+    }
+
+    result += content.slice(searchFrom, startIdx);
+
+    const endIdx = content.indexOf(
+      PROFILE_END,
+      startIdx + PROFILE_START.length + 1,
+    );
+    if (endIdx === -1) {
+      // No closing marker — keep the rest as-is
+      result += content.slice(startIdx);
+      break;
+    }
+
+    // Skip past the end marker and optional trailing newline
+    let afterEnd = endIdx + PROFILE_END.length;
+    if (content[afterEnd] === "\n") {
+      afterEnd++;
+    }
+    searchFrom = afterEnd;
+  }
+
+  return result;
+}
 
 /** Keys used by the legacy YAML frontmatter format. */
 const LEGACY_METADATA_KEYS = new Set(["name", "tone"]);
@@ -99,9 +136,9 @@ export function injectMetadataFrontmatter(
   const block = `${PROFILE_START}\n${paragraph}\n${PROFILE_END}`;
 
   // Remove any existing profile block and legacy frontmatter first
-  const stripped = stripLegacyFrontmatter(content)
-    .replace(PROFILE_REGEX, "")
-    .trimEnd();
+  const stripped = stripProfileBlocks(
+    stripLegacyFrontmatter(content),
+  ).trimEnd();
 
   if (!stripped) {
     return `${block}\n`;
@@ -115,5 +152,5 @@ export function injectMetadataFrontmatter(
  * instructions content for display in the editor.
  */
 export function stripMetadataFrontmatter(content: string): string {
-  return stripLegacyFrontmatter(content).replace(PROFILE_REGEX, "").trim();
+  return stripProfileBlocks(stripLegacyFrontmatter(content)).trim();
 }
