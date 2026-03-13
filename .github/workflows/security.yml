@@ -20,9 +20,47 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Semgrep
-        run: semgrep scan --config auto --error --sarif --output semgrep-results.sarif .
+        run: semgrep scan --config auto --json-output semgrep-results.json --sarif --output semgrep-results.sarif .
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Check against baseline
+        shell: python3 {0}
+        run: |
+          import json, sys
+
+          with open(".github/semgrep-baseline.json") as f:
+              baseline = json.load(f)
+
+          with open("semgrep-results.json") as f:
+              results = json.load(f)
+
+          current = {}
+          for r in results.get("results", []):
+              rid = r["check_id"]
+              current[rid] = current.get(rid, 0) + 1
+
+          errors = []
+          for rule, count in sorted(current.items()):
+              allowed = baseline.get(rule, 0)
+              if count > allowed:
+                  if allowed == 0:
+                      errors.append(f"NEW rule {rule}: {count} finding(s)")
+                  else:
+                      errors.append(f"REGRESSION {rule}: {count} (baseline: {allowed})")
+
+          print(f"Semgrep: {len(current)} rules, {sum(current.values())} total findings")
+          for rule, count in sorted(current.items()):
+              status = "OK" if count <= baseline.get(rule, 0) else "FAIL"
+              print(f"  [{status}] {rule}: {count} (baseline: {baseline.get(rule, 0)})")
+
+          if errors:
+              print(f"\n{len(errors)} regression(s) found:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          else:
+              print("\nNo regressions. All findings within baseline.")
 
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v3
