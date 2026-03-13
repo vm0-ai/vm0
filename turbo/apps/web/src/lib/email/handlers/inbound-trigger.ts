@@ -15,7 +15,7 @@ import { createRun } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
-import { getDefaultOrgByUserId } from "../../org/org-service";
+import { resolveOrgOrNull } from "../../org/resolve-org";
 import { canAccessCompose } from "../../agent/permission-service";
 import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";
@@ -100,7 +100,7 @@ async function resolveTrigger(
     };
   }
 
-  const runtimeOrg = await getDefaultOrgByUserId(userId);
+  const runtimeOrg = await resolveOrgOrNull(userId);
   if (!runtimeOrg) {
     log.debug("Sender has no org", { from: senderEmail, userId });
     return {

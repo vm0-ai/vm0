@@ -9,7 +9,7 @@ import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { getScheduleRecentRuns } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
-import { resolveOrgId } from "../../../../../../src/lib/org/org-member-service";
+import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 
 const log = logger("api:schedules:runs");
 
@@ -33,7 +33,9 @@ const router = tsr.router(scheduleRunsContract, {
     );
 
     try {
-      const orgId = await resolveOrgId(userId);
+      const {
+        org: { orgId },
+      } = await resolveOrg(userId);
 
       const runs = await getScheduleRecentRuns(
         userId,

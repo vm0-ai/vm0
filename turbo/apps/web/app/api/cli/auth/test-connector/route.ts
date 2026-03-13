@@ -7,7 +7,7 @@ import {
   resolveTestUserId,
   isTestVariant,
 } from "../../../../../src/lib/auth/test-user";
-import { getDefaultOrgByUserId } from "../../../../../src/lib/org/org-service";
+import { resolveOrgOrNull } from "../../../../../src/lib/org/resolve-org";
 import { env } from "../../../../../src/env";
 
 const bodySchema = z.object({
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
 
-  const org = await getDefaultOrgByUserId(userId);
+  const org = await resolveOrgOrNull(userId);
   if (!org) {
     return NextResponse.json(
       { error: "Test user has no org — run test-token first" },

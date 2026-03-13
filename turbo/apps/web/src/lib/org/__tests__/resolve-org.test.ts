@@ -118,7 +118,7 @@ describe("resolveOrg", () => {
       clerkOrgs: testOrgs(slug),
     });
 
-    // Resolve without slug — should fall through to getDefaultOrg (Clerk API)
+    // Resolve without slug — should fall through to default org (Clerk API)
     const result = await resolveOrg(userId);
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);

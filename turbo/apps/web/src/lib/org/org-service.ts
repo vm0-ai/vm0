@@ -1,11 +1,11 @@
 import { clerkClient } from "@clerk/nextjs/server";
-import { requireOrgMember, getDefaultOrg } from "./org-member-service";
+import { requireOrgMember } from "./org-member-service";
 import {
   getOrgData,
   getOrgBySlug,
   invalidateOrgCache,
 } from "./org-cache-service";
-import { badRequest, forbidden, isNotFound } from "../errors";
+import { badRequest, forbidden } from "../errors";
 import { logger } from "../logger";
 import { verifyMembershipCached } from "./org-membership-cache";
 import type { ResolvedOrg } from "./resolve-org";
@@ -43,23 +43,6 @@ function validateOrgSlug(slug: string): void {
   // TODO: "vm0" is hardcoded as the system org slug. This should be configurable.
   if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
     throw badRequest(`Org slug is reserved`);
-  }
-}
-
-/**
- * Get a user's default org by their Clerk ID.
- * Finds the first org where the user is an admin member.
- * Returns the org record or null if none found.
- */
-export async function getDefaultOrgByUserId(
-  userId: string,
-): Promise<ResolvedOrg | null> {
-  try {
-    const { org } = await getDefaultOrg(userId);
-    return org;
-  } catch (error) {
-    if (isNotFound(error)) return null;
-    throw error;
   }
 }
 

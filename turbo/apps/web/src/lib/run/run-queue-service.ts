@@ -9,7 +9,7 @@ import {
   decryptSecretsMap,
 } from "../crypto/secrets-encryption";
 import { PENDING_RUN_TTL_MS } from "./run-service";
-import { getDefaultOrg } from "../org/org-member-service";
+import { resolveOrg } from "../org/resolve-org";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
 
 const log = logger("service:run-queue");
@@ -43,7 +43,7 @@ export async function enqueueRun(
   if (params.orgId) {
     orgId = params.orgId;
   } else {
-    const { org } = await getDefaultOrg(userId);
+    const { org } = await resolveOrg(userId);
     orgId = org.orgId;
   }
 

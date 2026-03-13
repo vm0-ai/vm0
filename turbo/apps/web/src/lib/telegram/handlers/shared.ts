@@ -4,7 +4,7 @@ import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getPlatformUrl } from "../../url";
-import { getDefaultOrgByUserId } from "../../org/org-service";
+import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
@@ -242,7 +242,7 @@ async function completePendingLink(
  * Ensure org and artifact storage exist for a user.
  */
 export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
-  const org = await getDefaultOrgByUserId(vm0UserId);
+  const org = await resolveOrgOrNull(vm0UserId);
   if (!org) return;
 
   await ensureStorageExists(

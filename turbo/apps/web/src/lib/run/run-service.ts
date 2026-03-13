@@ -31,8 +31,7 @@ import { canAccessCompose } from "../agent/permission-service";
 import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
-import { getDefaultOrgByUserId } from "../org/org-service";
-import { getDefaultOrg } from "../org/org-member-service";
+import { resolveOrg, resolveOrgOrNull } from "../org/resolve-org";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
 import type { OrgTier } from "@vm0/core";
@@ -306,7 +305,7 @@ export interface CreateRunParams {
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   // Caller-resolved org slug and orgId for variable/storage resolution.
-  // When provided, used instead of getDefaultOrg fallback.
+  // When provided, used instead of resolveOrg fallback.
   orgSlug?: string;
   orgId?: string;
   // Caller-resolved org tier for concurrency limit derivation.
@@ -435,7 +434,7 @@ async function validateComposeRequirements(
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
       const resolvedClerkOrgId =
-        orgId ?? (await getDefaultOrgByUserId(userId))?.orgId;
+        orgId ?? (await resolveOrgOrNull(userId))?.orgId;
       const storedVars = resolvedClerkOrgId
         ? await getVariableValues(resolvedClerkOrgId, userId)
         : {};
@@ -692,7 +691,7 @@ export async function createRun(
     orgId = params.orgId;
     orgSlug = params.orgSlug;
   } else {
-    const { org } = await getDefaultOrg(userId);
+    const { org } = await resolveOrg(userId);
     orgSlug = org.slug;
     orgId = org.orgId;
   }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { getDefaultOrg } from "../../../../../src/lib/org/org-member-service";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { isNotFound } from "../../../../../src/lib/errors";
@@ -40,7 +40,7 @@ function isTestTokenAllowed(request: Request): boolean {
 
 /**
  * Ensure the test user has an org_cache entry for org resolution.
- * Uses the same flow as production (getDefaultOrg) so that
+ * Uses the same flow as production (resolveOrg) so that
  * Clerk API membership verification works during E2E tests.
  *
  * If the user has no Clerk org yet, creates org_cache and org_members_cache
@@ -48,7 +48,7 @@ function isTestTokenAllowed(request: Request): boolean {
  */
 async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   try {
-    const { org, member } = await getDefaultOrg(userId);
+    const { org, member } = await resolveOrg(userId);
     // Pre-populate org_members_cache so verifyMembershipCached hits cache
     // instead of calling Clerk API on every request (avoids 429 rate limits)
     await globalThis.services.db

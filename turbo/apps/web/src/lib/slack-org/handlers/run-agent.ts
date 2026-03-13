@@ -48,7 +48,7 @@ interface RunAgentResult {
  * Execute an agent run for org-aware Slack integration.
  *
  * Key difference from legacy: passes orgId, orgSlug, orgTier explicitly
- * to createRun() instead of relying on getDefaultOrg().
+ * to createRun() instead of relying on resolveOrg().
  */
 export async function runAgentForSlackOrg(
   params: RunAgentParams,

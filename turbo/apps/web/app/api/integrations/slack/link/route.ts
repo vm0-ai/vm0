@@ -17,7 +17,7 @@ import {
 } from "../../../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { addPermission } from "../../../../../src/lib/agent/permission-service";
-import { getDefaultOrgByUserId } from "../../../../../src/lib/org/org-service";
+import { resolveOrgOrNull } from "../../../../../src/lib/org/resolve-org";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
 import { syncWorkspaceAgentPermissions } from "../../../../../src/lib/slack/permission-sync";
@@ -130,7 +130,7 @@ async function buildAgentFields(
 
   let agents: Array<{ id: string; name: string }> = [];
   if (isAdmin) {
-    const defaultOrg = await getDefaultOrgByUserId(userId);
+    const defaultOrg = await resolveOrgOrNull(userId);
     if (defaultOrg) {
       const userAgents = await globalThis.services.db
         .select({ id: agentComposes.id, name: agentComposes.name })

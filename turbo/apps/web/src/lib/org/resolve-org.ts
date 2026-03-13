@@ -1,8 +1,9 @@
-import { auth } from "@clerk/nextjs/server";
-import { forbidden, badRequest, notFound } from "../errors";
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { eq, desc } from "drizzle-orm";
+import { forbidden, badRequest, notFound, isNotFound } from "../errors";
 import { logger } from "../logger";
+import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
-import { getDefaultOrg } from "./org-member-service";
 import { verifyMembershipCached } from "./org-membership-cache";
 
 import type { OrgRole } from "@vm0/core";
@@ -43,7 +44,7 @@ export interface ResolvedOrg {
  * Minimal member object returned by org resolution.
  * Contains only the fields used downstream (primarily `role` for permission checks).
  */
-export type ResolvedMember = {
+type ResolvedMember = {
   role: OrgRole;
   userId: string;
 };
@@ -112,8 +113,9 @@ function applyJwtTier(
  *
  * Resolution order:
  * 1. orgSlug (?org=<slug> query param) -> org_cache lookup, verify membership
- * 2. orgId (from JWT session token) -> org_cache lookup
- * 3. Fallback -> user's default org via Clerk API
+ * 2. orgId (from JWT session token) -> org_cache lookup, verify membership
+ * 3. org_members_cache (1min TTL) -> org_cache lookup, verify membership
+ * 4. Clerk API slow path (last resort) -> org_cache lookup
  *
  * When the resolved org matches the JWT's active org, `tier` is read from
  * sessionClaims.org_tier (falling back to org_cache value if missing).
@@ -155,8 +157,71 @@ export async function resolveOrg(
     }
   }
 
-  // 3. Default org fallback
-  return getDefaultOrg(userId);
+  // 3. org_members_cache fallback (1min TTL)
+  const [cached] = await globalThis.services.db
+    .select()
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId))
+    .orderBy(desc(orgMembersCache.cachedAt))
+    .limit(1);
+
+  if (cached && Date.now() - cached.cachedAt.getTime() < 60_000) {
+    const orgData = await getOrgDataOrNull(cached.orgId);
+    if (orgData) {
+      const member = await verifyMembership(orgData, userId, authResult);
+      return { org: applyJwtTier(orgData, authResult), member };
+    }
+  }
+
+  // 4. Clerk API slow path (last resort)
+  const client = await clerkClient();
+  const memberships = await client.users.getOrganizationMembershipList({
+    userId,
+  });
+
+  // Priority: admin orgs first, then any org
+  const adminMembership = memberships.data.find((m) => m.role === "org:admin");
+  const candidates = adminMembership
+    ? [
+        adminMembership,
+        ...memberships.data.filter((m) => m !== adminMembership),
+      ]
+    : memberships.data;
+
+  for (const membership of candidates) {
+    const mOrgId = membership.organization.id;
+    const orgData = await getOrgDataOrNull(mOrgId);
+    if (orgData) {
+      return {
+        org: applyJwtTier(orgData, authResult),
+        member: {
+          role: mapOrgRole(membership.role),
+          userId,
+        },
+      };
+    }
+  }
+
+  throw notFound("No org found for user");
+}
+
+/**
+ * Null-safe org resolution for contexts without request params.
+ * Returns null if no org found, instead of throwing.
+ *
+ * Used by handlers that operate outside request context
+ * (Slack, Telegram, email) where missing org is expected.
+ */
+export async function resolveOrgOrNull(
+  userId: string,
+): Promise<ResolvedOrg | null> {
+  try {
+    const { org } = await resolveOrg(userId);
+    return org;
+  } catch (error) {
+    if (isNotFound(error)) return null;
+    throw error;
+  }
 }
 
 /**

@@ -1,11 +1,7 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
-import { eq, desc } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
-import { getOrgData } from "./org-cache-service";
-import { orgMembersCache } from "../../db/schema/org-members-cache";
 import type { OrgRole } from "@vm0/core";
-import type { ResolvedOrg, ResolvedMember } from "./resolve-org";
 
 const log = logger("service:org-member");
 
@@ -35,100 +31,6 @@ export async function requireOrgMember(orgId: string, userId: string) {
     userId,
     orgId,
   };
-}
-
-/**
- * Get user's default org using org_cache.
- *
- * Fast path: if the JWT session contains an orgId, look up via org_cache
- * — no Clerk API call needed.
- *
- * Slow path: for CLI tokens (no JWT) or when the JWT org has no cache entry,
- * fall back to Clerk Backend API to discover the user's org memberships.
- */
-export async function getDefaultOrg(
-  userId: string,
-): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
-  // JWT fast path: use active org from session token
-  const authResult = await auth();
-  if (authResult.orgId) {
-    try {
-      const orgData = await getOrgData(authResult.orgId);
-      return {
-        org: orgData,
-        member: {
-          role: mapClerkRole(authResult.orgRole ?? "org:member"),
-          userId,
-        },
-      };
-    } catch {
-      // JWT orgId not found in Clerk — fall through to slow path
-    }
-  }
-
-  // Cache fast path: check org_members_cache for a recent entry (1-min TTL)
-  const [cached] = await globalThis.services.db
-    .select()
-    .from(orgMembersCache)
-    .where(eq(orgMembersCache.userId, userId))
-    .orderBy(desc(orgMembersCache.cachedAt))
-    .limit(1);
-
-  if (cached && Date.now() - cached.cachedAt.getTime() < 60_000) {
-    try {
-      const orgData = await getOrgData(cached.orgId);
-      return {
-        org: orgData,
-        member: {
-          role: cached.role === "admin" ? "admin" : "member",
-          userId,
-        },
-      };
-    } catch {
-      // org_cache miss — fall through to Clerk API
-    }
-  }
-
-  // Slow path: Clerk API (CLI tokens, or JWT org has no local cache entry yet)
-  const client = await clerkClient();
-  const memberships = await client.users.getOrganizationMembershipList({
-    userId,
-  });
-
-  // Priority: admin orgs first, then any org
-  const adminMembership = memberships.data.find((m) => m.role === "org:admin");
-  const candidates = adminMembership
-    ? [
-        adminMembership,
-        ...memberships.data.filter((m) => m !== adminMembership),
-      ]
-    : memberships.data;
-
-  for (const membership of candidates) {
-    const orgId = membership.organization.id;
-    const orgData = await getOrgData(orgId);
-    return {
-      org: orgData,
-      member: {
-        role: mapClerkRole(membership.role),
-        userId,
-      },
-    };
-  }
-
-  throw notFound("No org found for user");
-}
-
-/**
- * Resolve org ID: use the provided value or fall back to the user's default org.
- */
-export async function resolveOrgId(
-  userId: string,
-  orgId?: string | null,
-): Promise<string> {
-  if (orgId) return orgId;
-  const { org } = await getDefaultOrg(userId);
-  return org.orgId;
 }
 
 /**

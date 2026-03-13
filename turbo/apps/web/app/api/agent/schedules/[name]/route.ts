@@ -12,7 +12,7 @@ import {
 } from "../../../../../src/lib/schedule";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
-import { resolveOrgId } from "../../../../../src/lib/org/org-member-service";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 
 const log = logger("api:schedules:name");
 
@@ -34,7 +34,9 @@ const router = tsr.router(schedulesByNameContract, {
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
-      const orgId = await resolveOrgId(userId);
+      const {
+        org: { orgId },
+      } = await resolveOrg(userId);
 
       const schedule = await getScheduleByName(
         userId,
@@ -79,7 +81,9 @@ const router = tsr.router(schedulesByNameContract, {
     );
 
     try {
-      const orgId = await resolveOrgId(userId);
+      const {
+        org: { orgId },
+      } = await resolveOrg(userId);
 
       await deleteSchedule(userId, orgId, query.composeId, params.name);
 
