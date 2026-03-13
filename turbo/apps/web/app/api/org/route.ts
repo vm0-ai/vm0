@@ -91,7 +91,12 @@ const router = tsr.router(orgContract, {
     }
 
     try {
-      const updatedOrg = await updateOrgSlug(resolvedOrg.orgId, slug, userId, force);
+      const updatedOrg = await updateOrgSlug(
+        resolvedOrg.orgId,
+        slug,
+        userId,
+        force,
+      );
 
       return { status: 200 as const, body: resolvedOrgToResponse(updatedOrg) };
     } catch (error) {
