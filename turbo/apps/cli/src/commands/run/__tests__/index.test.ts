@@ -1444,11 +1444,11 @@ describe("run command", () => {
           const url = new URL(request.url);
           const org = url.searchParams.get("org");
 
-          if (org === "nonexistent-scope-xyz123") {
+          if (org === "nonexistent-org-xyz123") {
             return HttpResponse.json(
               {
                 error: {
-                  message: "Scope not found: nonexistent-scope-xyz123",
+                  message: "Org not found: nonexistent-org-xyz123",
                   code: "NOT_FOUND",
                 },
               },
@@ -1466,7 +1466,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "nonexistent-scope-xyz123/my-agent",
+          "nonexistent-org-xyz123/my-agent",
           "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
@@ -1486,7 +1486,7 @@ describe("run command", () => {
           return HttpResponse.json(
             {
               error: {
-                message: "Scope not found: invalid-scope",
+                message: "Org not found: invalid-org",
                 code: "NOT_FOUND",
               },
             },
@@ -1499,7 +1499,7 @@ describe("run command", () => {
         await runCommand.parseAsync([
           "node",
           "cli",
-          "invalid-scope/test-agent",
+          "invalid-org/test-agent",
           "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
@@ -1527,7 +1527,7 @@ describe("run command", () => {
               {
                 error: {
                   message:
-                    "Compose not found: nonexistent-agent-xyz123 in scope user-abc12345",
+                    "Compose not found: nonexistent-agent-xyz123 in org user-abc12345",
                   code: "NOT_FOUND",
                 },
               },

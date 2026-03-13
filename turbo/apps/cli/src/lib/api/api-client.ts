@@ -481,7 +481,7 @@ class ApiClient {
   /**
    * Get current user's default org
    */
-  async getScope(): Promise<OrgResponse> {
+  async getOrg(): Promise<OrgResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
@@ -508,7 +508,7 @@ class ApiClient {
   /**
    * Update user's default org slug
    */
-  async updateScope(body: {
+  async updateOrg(body: {
     slug: string;
     force?: boolean;
   }): Promise<OrgResponse> {

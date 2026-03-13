@@ -33,6 +33,7 @@ interface AgentComposeContent {
 
 interface LogsQuery {
   name?: string;
+  org?: string;
   agent?: string;
   search?: string;
   status?: PlatformLogStatus;

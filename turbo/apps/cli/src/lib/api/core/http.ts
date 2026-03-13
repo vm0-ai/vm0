@@ -53,9 +53,9 @@ async function getRawHeaders(): Promise<Record<string, string>> {
 export async function httpGet(path: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
-  const scopedPath = await appendOrgParam(path);
+  const orgPath = await appendOrgParam(path);
 
-  return fetch(`${baseUrl}${scopedPath}`, {
+  return fetch(`${baseUrl}${orgPath}`, {
     method: "GET",
     headers,
   });
@@ -67,9 +67,9 @@ export async function httpGet(path: string): Promise<Response> {
 export async function httpPost(path: string, body: unknown): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
-  const scopedPath = await appendOrgParam(path);
+  const orgPath = await appendOrgParam(path);
 
-  return fetch(`${baseUrl}${scopedPath}`, {
+  return fetch(`${baseUrl}${orgPath}`, {
     method: "POST",
     headers: {
       ...headers,
@@ -85,9 +85,9 @@ export async function httpPost(path: string, body: unknown): Promise<Response> {
 export async function httpDelete(path: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
-  const scopedPath = await appendOrgParam(path);
+  const orgPath = await appendOrgParam(path);
 
-  return fetch(`${baseUrl}${scopedPath}`, {
+  return fetch(`${baseUrl}${orgPath}`, {
     method: "DELETE",
     headers,
   });

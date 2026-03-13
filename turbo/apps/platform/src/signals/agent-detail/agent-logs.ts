@@ -34,7 +34,7 @@ export const {
       name,
     });
     if (org) {
-      params.set("scope", org);
+      params.set("org", org);
     }
     if (cursor) {
       params.set("cursor", cursor);

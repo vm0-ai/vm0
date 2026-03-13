@@ -623,10 +623,10 @@ async function finalizeCompose(
   }
   const response = await createOrUpdateCompose({ content: config });
 
-  // Get scope for display name
-  const scopeResponse = await getOrg();
+  // Get org for display name
+  const orgResponse = await getOrg();
   const shortVersionId = response.versionId.slice(0, 8);
-  const displayName = `${scopeResponse.slug}/${response.name}`;
+  const displayName = `${orgResponse.slug}/${response.name}`;
 
   // Build result
   const result: ComposeResult = {
