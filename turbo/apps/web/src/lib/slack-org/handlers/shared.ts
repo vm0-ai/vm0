@@ -1,8 +1,11 @@
 import { eq, and } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
 import { getPlatformUrl } from "../../url";
+import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
+import { ensureStorageExists } from "../../storage/storage-service";
 
 /**
  * Resolve installation and org from a Slack workspace ID.
@@ -56,10 +59,8 @@ export async function resolveDefaultComposeId(
   // For now, read from Clerk org metadata via org cache
   // The publicMetadata.default_agent_compose_id field may not yet exist,
   // so we read it via getOrgData which fetches from Clerk API
-  const clerkClient = (await import("@clerk/nextjs/server")).clerkClient();
-  const org = await (
-    await clerkClient
-  ).organizations.getOrganization({
+  const clerk = await clerkClient();
+  const org = await clerk.organizations.getOrganization({
     organizationId: orgId,
   });
 
@@ -71,9 +72,6 @@ export async function resolveDefaultComposeId(
   }
 
   // Fallback: resolve from VM0_DEFAULT_AGENT env var
-  const { resolveDefaultAgentComposeId } = await import(
-    "../../agent-compose/resolve-default"
-  );
   return resolveDefaultAgentComposeId();
 }
 
@@ -205,7 +203,6 @@ export async function ensureOrgArtifact(
   orgId: string,
   orgSlug: string,
 ): Promise<void> {
-  const { ensureStorageExists } = await import("../../storage/storage-service");
   await ensureStorageExists(orgId, userId, "artifact", orgSlug, "artifact");
 }
 

@@ -14,9 +14,6 @@ import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
-import { logger } from "../../../../../../src/lib/logger";
-
-const log = logger("api:slack-org:connect");
 
 const connectBodySchema = z.object({
   workspaceId: z.string().min(1),
@@ -145,42 +142,14 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    if (!installation.orgId) {
-      // Unbound workspace — requires admin
-      if (member.role !== "admin") {
-        return NextResponse.json(
-          {
-            error: {
-              message:
-                "Only org admins can connect an unconfigured workspace. Ask your org admin to connect first.",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 },
-        );
-      }
-
-      const result = await adminConnect({
-        userId,
-        orgId: org.orgId,
-        workspaceId,
-        slackUserId,
-      });
-
-      return NextResponse.json({
-        success: true,
-        connectionId: result.connection.id,
-        role: "admin",
-      });
-    }
-
-    // Already bound — member connect
-    if (installation.orgId !== org.orgId) {
+  if (!installation.orgId) {
+    // Unbound workspace — requires admin
+    if (member.role !== "admin") {
       return NextResponse.json(
         {
           error: {
-            message: "This workspace is connected to a different org",
+            message:
+              "Only org admins can connect an unconfigured workspace. Ask your org admin to connect first.",
             code: "FORBIDDEN",
           },
         },
@@ -188,7 +157,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await memberConnect({
+    const result = await adminConnect({
       userId,
       orgId: org.orgId,
       workspaceId,
@@ -198,15 +167,33 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       connectionId: result.connection.id,
-      role: member.role,
+      role: "admin",
     });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Connection failed";
-    log.error("Connect failed", { error, userId, workspaceId });
+  }
+
+  // Already bound — member connect
+  if (installation.orgId !== org.orgId) {
     return NextResponse.json(
-      { error: { message, code: "INTERNAL_ERROR" } },
-      { status: 500 },
+      {
+        error: {
+          message: "This workspace is connected to a different org",
+          code: "FORBIDDEN",
+        },
+      },
+      { status: 403 },
     );
   }
+
+  const result = await memberConnect({
+    userId,
+    orgId: org.orgId,
+    workspaceId,
+    slackUserId,
+  });
+
+  return NextResponse.json({
+    success: true,
+    connectionId: result.connection.id,
+    role: member.role,
+  });
 }

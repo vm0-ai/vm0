@@ -10,6 +10,7 @@ import {
   postMessage,
 } from "../../slack/client";
 import { buildAppHomeView, buildWelcomeMessage } from "../../slack/blocks";
+import { requireOrgMember } from "../../org/org-member-service";
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
@@ -98,7 +99,6 @@ export async function refreshOrgAppHome(
   let isAdmin = false;
   if (installation.orgId) {
     try {
-      const { requireOrgMember } = await import("../../org/org-member-service");
       const member = await requireOrgMember(
         installation.orgId,
         connection.vm0UserId,
