@@ -70,15 +70,18 @@ function bearerAuth(secretName: string) {
   return { headers: { Authorization: `Bearer \${secrets.${secretName}}` } };
 }
 
-/** Default catch-all permission for services without granular permissions. */
-const FULL_ACCESS_PERMISSION: ServicePermission = {
-  name: "full-access",
-  rules: ["ANY /{path+}"],
-};
+/** Create a catch-all permission with the given name. */
+function fullAccess(name = "full-access"): ServicePermission {
+  return { name, rules: ["ANY /{path+}"] };
+}
 
-/** Shorthand: single-base API entry with bearer auth. */
-function api(base: string, auth: ServiceApi["auth"]): ServiceApi {
-  return { base, auth, permissions: [FULL_ACCESS_PERMISSION] };
+/** Shorthand: single-base API entry with bearer auth and a named catch-all permission. */
+function api(
+  base: string,
+  auth: ServiceApi["auth"],
+  permissionName = "full-access",
+): ServiceApi {
+  return { base, auth, permissions: [fullAccess(permissionName)] };
 }
 
 const SERVICE_CONFIGS: Partial<
@@ -284,8 +287,16 @@ const SERVICE_CONFIGS: Partial<
   },
   slack: {
     apis: [
-      api("https://slack.com/api", bearerAuth("SLACK_TOKEN")),
-      api("https://files.slack.com", bearerAuth("SLACK_TOKEN")),
+      api(
+        "https://slack.com/api",
+        bearerAuth("SLACK_TOKEN"),
+        "api-full-access",
+      ),
+      api(
+        "https://files.slack.com",
+        bearerAuth("SLACK_TOKEN"),
+        "files-full-access",
+      ),
     ],
     placeholders: {
       SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder",
@@ -293,14 +304,30 @@ const SERVICE_CONFIGS: Partial<
   },
   docusign: {
     apis: [
-      api("https://demo.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
-      api("https://na1.docusign.net/restapi", bearerAuth("DOCUSIGN_TOKEN")),
+      api(
+        "https://demo.docusign.net/restapi",
+        bearerAuth("DOCUSIGN_TOKEN"),
+        "demo-full-access",
+      ),
+      api(
+        "https://na1.docusign.net/restapi",
+        bearerAuth("DOCUSIGN_TOKEN"),
+        "na1-full-access",
+      ),
     ],
   },
   dropbox: {
     apis: [
-      api("https://api.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
-      api("https://content.dropboxapi.com/2", bearerAuth("DROPBOX_TOKEN")),
+      api(
+        "https://api.dropboxapi.com/2",
+        bearerAuth("DROPBOX_TOKEN"),
+        "api-full-access",
+      ),
+      api(
+        "https://content.dropboxapi.com/2",
+        bearerAuth("DROPBOX_TOKEN"),
+        "content-full-access",
+      ),
     ],
   },
   linear: {
@@ -308,9 +335,21 @@ const SERVICE_CONFIGS: Partial<
   },
   intercom: {
     apis: [
-      api("https://api.intercom.io", bearerAuth("INTERCOM_TOKEN")),
-      api("https://api.eu.intercom.io", bearerAuth("INTERCOM_TOKEN")),
-      api("https://api.au.intercom.io", bearerAuth("INTERCOM_TOKEN")),
+      api(
+        "https://api.intercom.io",
+        bearerAuth("INTERCOM_TOKEN"),
+        "us-full-access",
+      ),
+      api(
+        "https://api.eu.intercom.io",
+        bearerAuth("INTERCOM_TOKEN"),
+        "eu-full-access",
+      ),
+      api(
+        "https://api.au.intercom.io",
+        bearerAuth("INTERCOM_TOKEN"),
+        "au-full-access",
+      ),
     ],
   },
   jam: {
@@ -318,16 +357,24 @@ const SERVICE_CONFIGS: Partial<
   },
   jotform: {
     apis: [
-      api("https://api.jotform.com", {
-        headers: {
-          APIKEY: "${secrets.JOTFORM_TOKEN}",
+      api(
+        "https://api.jotform.com",
+        {
+          headers: {
+            APIKEY: "${secrets.JOTFORM_TOKEN}",
+          },
         },
-      }),
-      api("https://eu-api.jotform.com", {
-        headers: {
-          APIKEY: "${secrets.JOTFORM_TOKEN}",
+        "us-full-access",
+      ),
+      api(
+        "https://eu-api.jotform.com",
+        {
+          headers: {
+            APIKEY: "${secrets.JOTFORM_TOKEN}",
+          },
         },
-      }),
+        "eu-full-access",
+      ),
     ],
   },
   line: {
@@ -335,26 +382,42 @@ const SERVICE_CONFIGS: Partial<
   },
   make: {
     apis: [
-      api("https://eu1.make.com/api/v2", {
-        headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+      api(
+        "https://eu1.make.com/api/v2",
+        {
+          headers: {
+            Authorization: "Token ${secrets.MAKE_TOKEN}",
+          },
         },
-      }),
-      api("https://eu2.make.com/api/v2", {
-        headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+        "eu1-full-access",
+      ),
+      api(
+        "https://eu2.make.com/api/v2",
+        {
+          headers: {
+            Authorization: "Token ${secrets.MAKE_TOKEN}",
+          },
         },
-      }),
-      api("https://us1.make.com/api/v2", {
-        headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+        "eu2-full-access",
+      ),
+      api(
+        "https://us1.make.com/api/v2",
+        {
+          headers: {
+            Authorization: "Token ${secrets.MAKE_TOKEN}",
+          },
         },
-      }),
-      api("https://us2.make.com/api/v2", {
-        headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+        "us1-full-access",
+      ),
+      api(
+        "https://us2.make.com/api/v2",
+        {
+          headers: {
+            Authorization: "Token ${secrets.MAKE_TOKEN}",
+          },
         },
-      }),
+        "us2-full-access",
+      ),
     ],
   },
   metabase: {
@@ -439,8 +502,16 @@ const SERVICE_CONFIGS: Partial<
   },
   posthog: {
     apis: [
-      api("https://us.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
-      api("https://app.posthog.com/api", bearerAuth("POSTHOG_ACCESS_TOKEN")),
+      api(
+        "https://us.posthog.com/api",
+        bearerAuth("POSTHOG_ACCESS_TOKEN"),
+        "us-full-access",
+      ),
+      api(
+        "https://app.posthog.com/api",
+        bearerAuth("POSTHOG_ACCESS_TOKEN"),
+        "cloud-full-access",
+      ),
     ],
   },
   stripe: {
@@ -468,29 +539,13 @@ const SERVICE_CONFIGS: Partial<
     apis: [api("https://plausible.io/api", bearerAuth("PLAUSIBLE_TOKEN"))],
   },
   mailchimp: {
-    apis: [
-      api("https://us1.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us2.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us3.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us4.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us5.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us6.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us7.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us8.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us9.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us10.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us11.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us12.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us13.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us14.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us15.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us16.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us17.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us18.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us19.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us20.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-      api("https://us21.api.mailchimp.com/3.0", bearerAuth("MAILCHIMP_TOKEN")),
-    ],
+    apis: Array.from({ length: 21 }, (_, i) =>
+      api(
+        `https://us${i + 1}.api.mailchimp.com/3.0`,
+        bearerAuth("MAILCHIMP_TOKEN"),
+        `us${i + 1}-full-access`,
+      ),
+    ),
   },
   chatwoot: {
     apis: [api("https://app.chatwoot.com", bearerAuth("CHATWOOT_TOKEN"))],

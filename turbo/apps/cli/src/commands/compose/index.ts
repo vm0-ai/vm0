@@ -390,17 +390,127 @@ function resolveServiceConfig(ref: string): ServiceConfig {
  * Collect available permission names from a service config.
  * Validates uniqueness and that "all" is not used as a permission name.
  */
+const VALID_RULE_METHODS = new Set([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+  "ANY",
+]);
+
+export function validateRule(
+  rule: string,
+  permName: string,
+  serviceName: string,
+): void {
+  const parts = rule.split(" ", 2);
+  if (parts.length !== 2 || !parts[1]) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": must be "METHOD /path"`,
+    );
+  }
+  const [method, path] = parts as [string, string];
+  if (!VALID_RULE_METHODS.has(method.toUpperCase())) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": unknown method "${method}"`,
+    );
+  }
+  if (!path.startsWith("/")) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": path must start with "/"`,
+    );
+  }
+  const segments = path.split("/").filter(Boolean);
+  const paramNames = new Set<string>();
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    if (seg.startsWith("{") && seg.endsWith("}")) {
+      const name = seg.slice(1, -1);
+      const baseName = name.endsWith("+") ? name.slice(0, -1) : name;
+      if (!baseName) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": empty parameter name`,
+        );
+      }
+      if (paramNames.has(baseName)) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": duplicate parameter name "{${baseName}}"`,
+        );
+      }
+      paramNames.add(baseName);
+      if (name.endsWith("+") && i !== segments.length - 1) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of service "${serviceName}": {${name}} must be the last segment`,
+        );
+      }
+    }
+  }
+}
+
+export function validateBaseUrl(base: string, serviceName: string): void {
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    throw new Error(
+      `Invalid base URL "${base}" in service "${serviceName}": not a valid URL`,
+    );
+  }
+  if (url.search) {
+    throw new Error(
+      `Invalid base URL "${base}" in service "${serviceName}": must not contain query string`,
+    );
+  }
+  if (url.hash) {
+    throw new Error(
+      `Invalid base URL "${base}" in service "${serviceName}": must not contain fragment`,
+    );
+  }
+}
+
 function collectAndValidatePermissions(
   ref: string,
   serviceConfig: ServiceConfig,
 ): Set<string> {
+  if (serviceConfig.apis.length === 0) {
+    throw new Error(
+      `Service "${serviceConfig.name}" (ref "${ref}") has no api entries`,
+    );
+  }
   const available = new Set<string>();
   for (const api of serviceConfig.apis) {
-    for (const perm of api.permissions ?? []) {
+    validateBaseUrl(api.base, serviceConfig.name);
+    if (!api.permissions || api.permissions.length === 0) {
+      throw new Error(
+        `API entry "${api.base}" in service "${serviceConfig.name}" (ref "${ref}") has no permissions`,
+      );
+    }
+    for (const perm of api.permissions) {
+      if (!perm.name) {
+        throw new Error(
+          `Service "${serviceConfig.name}" (ref "${ref}") has a permission with empty name`,
+        );
+      }
       if (perm.name === "all") {
         throw new Error(
           `Service "${serviceConfig.name}" (ref "${ref}") has a permission named "all", which is a reserved keyword`,
         );
+      }
+      if (available.has(perm.name)) {
+        throw new Error(
+          `Duplicate permission name "${perm.name}" in service "${serviceConfig.name}" (ref "${ref}")`,
+        );
+      }
+      if (perm.rules.length === 0) {
+        throw new Error(
+          `Permission "${perm.name}" in service "${serviceConfig.name}" (ref "${ref}") has no rules`,
+        );
+      }
+      for (const rule of perm.rules) {
+        validateRule(rule, perm.name, serviceConfig.name);
       }
       available.add(perm.name);
     }
