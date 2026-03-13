@@ -179,8 +179,8 @@ export async function prepareForExecution(
     `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
   );
 
-  // Resolve the Agent Scope for volume resolution.
-  // Runtime Scope (for artifacts/memory) is pre-resolved by buildExecutionContext.
+  // Resolve the Agent Org for volume resolution.
+  // Runtime Org (for artifacts/memory) is pre-resolved by buildExecutionContext.
   const userId = context.userId || "";
   const scopeStart = Date.now();
   const [agentComposeInfo] = await globalThis.services.db
@@ -230,9 +230,9 @@ export async function prepareForExecution(
   ]);
   const ensureEnd = Date.now();
 
-  // Prepare storage manifest with dual scopes (see docs/resource-model.md)
-  // - Volumes: resolved from Agent Scope
-  // - Artifacts/Memory: resolved from Runtime Scope
+  // Prepare storage manifest with dual orgs (see docs/resource-model.md)
+  // - Volumes: resolved from Agent Org
+  // - Artifacts/Memory: resolved from Runtime Org
   const storageStart = Date.now();
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
@@ -250,7 +250,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual scopes: agentClerkOrgId=${agentScopeInfo.orgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentScopeInfo.orgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
@@ -271,7 +271,7 @@ export async function prepareForExecution(
   };
 
   log.debug(
-    `PreparedContext built for run ${context.runId} (scopes=${timings.resolveOrgs}ms, ensure=${timings.ensureStorage}ms, storage=${timings.storageManifest}ms)`,
+    `PreparedContext built for run ${context.runId} (orgs=${timings.resolveOrgs}ms, ensure=${timings.ensureStorage}ms, storage=${timings.storageManifest}ms)`,
   );
 
   return { context: preparedContext, timings };
@@ -287,7 +287,7 @@ function buildPreparedContext(
   runnerGroup: string | null,
   storageManifest: StorageManifest,
   experimentalFirewall: CoreExperimentalFirewall | null,
-  agentScopeSlug: string | null,
+  agentOrgSlug: string | null,
 ): PreparedContext {
   return {
     // Identity
@@ -330,7 +330,7 @@ function buildPreparedContext(
 
     // Metadata
     agentName: context.agentName || null,
-    agentScopeSlug,
+    agentOrgSlug,
     resumedFromCheckpointId: context.resumedFromCheckpointId || null,
     continuedFromSessionId: context.continuedFromSessionId || null,
 

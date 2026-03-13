@@ -41,7 +41,7 @@ interface SecretInfo {
 }
 
 /**
- * List all secrets for a scope (metadata only, no values)
+ * List all secrets for an org (metadata only, no values)
  */
 export async function listSecrets(
   orgId: string,
@@ -67,7 +67,7 @@ export async function listSecrets(
 }
 
 /**
- * Get a secret by name for a user's default scope (metadata only)
+ * Get a secret by name for a user's default org (metadata only)
  * Only returns user-type secrets; model-provider secrets are managed via model-provider commands
  */
 export async function getSecret(
@@ -142,7 +142,7 @@ export async function getSecretValue(
 }
 
 /**
- * Get all secret values for a scope as a map
+ * Get all secret values for an org as a map
  * Used for batch secret resolution during variable expansion
  * @param type - Optional type filter to isolate user vs model-provider secrets
  */
@@ -175,10 +175,10 @@ export async function getSecretValues(
 }
 
 /**
- * Upsert a secret by scope ID, name, and type.
+ * Upsert a secret by org ID, name, and type.
  * Used internally by connector services for managing connector/model-provider secrets.
  */
-export async function upsertSecretByScope(
+export async function upsertSecretByOrg(
   orgId: string,
   userId: string,
   name: string,

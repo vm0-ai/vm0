@@ -608,7 +608,7 @@ interface BuildContextParams {
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Caller-resolved scope slug and orgId for secret/variable/storage resolution.
+  // Caller-resolved org slug and orgId for secret/variable/storage resolution.
   // When provided, used for both secrets and storage (artifacts/memory).
   // When not provided, resolved via getDefaultOrg fallback.
   orgSlug?: string;
@@ -795,13 +795,13 @@ function applyResolutionDefaults(
 }
 
 /**
- * Resolve the Runtime Scope for this execution.
+ * Resolve the Runtime Org for this execution.
  *
- * The Runtime Scope (orgId + userId) determines secrets, variables,
+ * The Runtime Org (orgId + userId) determines secrets, variables,
  * connectors, model providers, artifacts, and memories.
  * See docs/resource-model.md for the full resource model.
  *
- * When params.orgId is not provided, the user's default scope is used.
+ * When params.orgId is not provided, the user's default org is used.
  */
 async function resolveOrgs(params: BuildContextParams): Promise<{
   runtimeClerkOrgId: string;
@@ -827,7 +827,7 @@ async function resolveOrgs(params: BuildContextParams): Promise<{
       },
     };
   }
-  // No explicit scope — default scope is used
+  // No explicit org — default org is used
   const { org } = await getDefaultOrg(params.userId);
   return {
     runtimeClerkOrgId: org.orgId,
@@ -907,9 +907,9 @@ export async function buildExecutionContext(
   let resumeSession: ResumeSession | undefined;
   let resumeArtifact: ArtifactSnapshot | undefined;
 
-  // Step 1: Resolve source and scopes in parallel (independent operations).
+  // Step 1: Resolve source and orgs in parallel (independent operations).
   // resolveSource loads checkpoint/session/conversation data.
-  // resolveOrgs resolves the runtime scope for secrets and storage.
+  // resolveOrgs resolves the runtime org for secrets and storage.
   const resolveStart = Date.now();
   const [resolution, { runtimeClerkOrgId, pendingRuntimeScope }] =
     await Promise.all([resolveSource(params), resolveOrgs(params)]);

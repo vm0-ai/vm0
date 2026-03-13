@@ -12,7 +12,7 @@ import { secrets } from "../../db/schema/secret";
 import { decryptSecretValue } from "../crypto";
 import { badRequest, conflict, notFound } from "../errors";
 import { logger } from "../logger";
-import { upsertSecretByScope } from "../secret/secret-service";
+import { upsertSecretByOrg } from "../secret/secret-service";
 import {
   findOrCreateBotUser,
   createCredential,
@@ -152,7 +152,7 @@ export async function createComputerConnector(
 
   // Store secrets (ngrok token is one-time use, returned to client only)
   await Promise.all([
-    upsertSecretByScope(
+    upsertSecretByOrg(
       orgId,
       userId,
       "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
@@ -160,7 +160,7 @@ export async function createComputerConnector(
       "connector",
       "Computer connector: COMPUTER_CONNECTOR_BRIDGE_TOKEN",
     ),
-    upsertSecretByScope(
+    upsertSecretByOrg(
       orgId,
       userId,
       "COMPUTER_CONNECTOR_DOMAIN_ID",
@@ -168,7 +168,7 @@ export async function createComputerConnector(
       "connector",
       "Computer connector: COMPUTER_CONNECTOR_DOMAIN_ID",
     ),
-    upsertSecretByScope(
+    upsertSecretByOrg(
       orgId,
       userId,
       "COMPUTER_CONNECTOR_DOMAIN",

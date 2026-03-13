@@ -10,7 +10,7 @@ import {
 
 /**
  * Variables table
- * Stores non-sensitive configuration variables per user within a scope
+ * Stores non-sensitive configuration variables per user within an org
  * Values are stored in plaintext (unlike secrets which are encrypted)
  */
 export const variables = pgTable(

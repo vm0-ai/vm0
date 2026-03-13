@@ -39,7 +39,7 @@ interface VariableInfo {
 }
 
 /**
- * List all variables for a scope (includes values)
+ * List all variables for an org (includes values)
  */
 export async function listVariables(
   orgId: string,
@@ -62,7 +62,7 @@ export async function listVariables(
 }
 
 /**
- * Get a variable by name for a scope (includes value)
+ * Get a variable by name for an org (includes value)
  */
 export async function getVariable(
   orgId: string,
@@ -96,7 +96,7 @@ export async function getVariable(
 }
 
 /**
- * Get all variable values for a scope as a map
+ * Get all variable values for an org as a map
  * Used for batch variable resolution during agent execution
  */
 export async function getVariableValues(

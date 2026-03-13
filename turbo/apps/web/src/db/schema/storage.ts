@@ -15,7 +15,7 @@ import {
  * Storages table
  * Main table for storage with HEAD pointer to current version.
  * Unique constraint: (orgId, userId, name, type)
- * - Volumes use VOLUME_SCOPE_USER_ID ("__scope__") as userId (scope-level shared)
+ * - Volumes use VOLUME_SCOPE_USER_ID ("__scope__") as userId (org-level shared)
  * - Artifacts and Memory use real userId (per-user isolated)
  */
 export const storages = pgTable(

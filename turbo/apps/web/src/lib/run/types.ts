@@ -98,7 +98,7 @@ export interface ExecutionContext {
 }
 
 /**
- * Runtime Scope — the scope of the user who triggers an agent run.
+ * Runtime Org — the org of the user who triggers an agent run.
  * Combined with userId, determines artifacts, memories, secrets, variables,
  * connectors, and model providers. See docs/resource-model.md.
  *

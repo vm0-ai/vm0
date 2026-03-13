@@ -52,7 +52,7 @@ export interface PreparedContext {
 
   // Metadata for vm0_start event
   agentName: string | null;
-  agentScopeSlug: string | null;
+  agentOrgSlug: string | null;
   resumedFromCheckpointId: string | null;
   continuedFromSessionId: string | null;
 

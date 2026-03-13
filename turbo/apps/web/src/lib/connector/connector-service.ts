@@ -12,7 +12,7 @@ import { secrets } from "../../db/schema/secret";
 import { variables } from "../../db/schema/variable";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
-import { upsertSecretByScope } from "../secret/secret-service";
+import { upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
 
 const log = logger("service:connector");
@@ -37,7 +37,7 @@ function getSecretNameForConnector(type: ConnectorType): string {
 }
 
 /**
- * List all connectors for a scope.
+ * List all connectors for an org.
  * Returns OAuth connectors from DB plus derived api-token connectors
  * based on user secrets that match api-token required secret names.
  */
@@ -261,7 +261,7 @@ export async function upsertOAuthConnector(
   const isUpdate = existingConnector.length > 0;
 
   // Upsert access token secret
-  await upsertSecretByScope(
+  await upsertSecretByOrg(
     orgId,
     userId,
     secretName,
@@ -272,7 +272,7 @@ export async function upsertOAuthConnector(
 
   // Upsert refresh token secret if provided
   if (options?.refreshToken && options.refreshSecretName) {
-    await upsertSecretByScope(
+    await upsertSecretByOrg(
       orgId,
       userId,
       options.refreshSecretName,
@@ -473,7 +473,7 @@ export async function upsertConnectorSecret(
   secretName: string,
   secretValue: string,
 ): Promise<void> {
-  await upsertSecretByScope(
+  await upsertSecretByOrg(
     orgId,
     userId,
     secretName,

@@ -154,7 +154,7 @@ function calculateNextRun(
 function toResponse(
   schedule: typeof agentSchedules.$inferSelect,
   composeName: string,
-  scopeSlug: string,
+  orgSlug: string,
 ): ScheduleResponse {
   // Extract secret names from encrypted secrets (values are never returned)
   let secretNames: string[] | null = null;
@@ -172,7 +172,7 @@ function toResponse(
     id: schedule.id,
     composeId: schedule.composeId,
     composeName,
-    scopeSlug,
+    scopeSlug: orgSlug,
     userId: schedule.userId,
     name: schedule.name,
     triggerType: schedule.triggerType as "cron" | "once" | "loop",
@@ -216,9 +216,9 @@ async function loadCompose(
 }
 
 /**
- * Load scope slug by ID
+ * Load org slug by ID
  */
-async function getScopeSlug(orgId: string): Promise<string> {
+async function getOrgSlug(orgId: string): Promise<string> {
   const orgData = await getOrgData(orgId);
   return orgData.slug;
 }
@@ -234,7 +234,7 @@ async function verifyScheduleOwnership(
 ): Promise<{
   schedule: typeof agentSchedules.$inferSelect;
   compose: typeof agentComposes.$inferSelect;
-  scopeSlug: string;
+  orgSlug: string;
 }> {
   const [schedule] = await globalThis.services.db
     .select()
@@ -254,9 +254,9 @@ async function verifyScheduleOwnership(
   }
 
   const compose = await loadCompose(composeId);
-  const scopeSlug = await getScopeSlug(orgId);
+  const orgSlug = await getOrgSlug(orgId);
 
-  return { schedule, compose, scopeSlug };
+  return { schedule, compose, orgSlug };
 }
 
 /**
@@ -280,7 +280,7 @@ async function validateRequiredConfig(
 
   const required = extractRequiredConfiguration(version.content);
 
-  // Fetch platform-managed secrets and vars from schedule's scope + user
+  // Fetch platform-managed secrets and vars from schedule's org + user
   const platformSecrets = await getSecretValues(orgId, userId, "user");
   const platformSecretNames = Object.keys(platformSecrets);
   log.debug(
@@ -373,7 +373,7 @@ export async function deploySchedule(
 
   // Load compose (access control is handled by the caller/route layer)
   const compose = await loadCompose(request.composeId);
-  const scopeSlug = await getScopeSlug(orgId);
+  const orgSlug = await getOrgSlug(orgId);
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
@@ -397,7 +397,7 @@ export async function deploySchedule(
     )
     .limit(1);
 
-  // Validate required secrets/vars against schedule's scope + user
+  // Validate required secrets/vars against schedule's org + user
   await validateRequiredConfig(compose, orgId, userId);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
@@ -434,7 +434,7 @@ export async function deploySchedule(
     log.debug(`Updated schedule ${request.name} (${existing.id})`);
 
     return {
-      schedule: toResponse(updated, compose.name, scopeSlug),
+      schedule: toResponse(updated, compose.name, orgSlug),
       created: false,
     };
   } else {
@@ -472,7 +472,7 @@ export async function deploySchedule(
     log.debug(`Created schedule ${request.name} (${created.id})`);
 
     return {
-      schedule: toResponse(created, compose.name, scopeSlug),
+      schedule: toResponse(created, compose.name, orgSlug),
       created: true,
     };
   }
@@ -504,7 +504,7 @@ export async function listSchedules(
     .where(inArray(agentComposes.id, composeIds));
   const composeMap = new Map(composeRows.map((c) => [c.id, c]));
 
-  // Load scope slugs via org cache (by orgId from schedule records)
+  // Load org slugs via org cache (by orgId from schedule records)
   const uniqueClerkOrgIds = [...new Set(userSchedules.map((s) => s.orgId))];
   const orgDataEntries = await Promise.all(
     uniqueClerkOrgIds.map(async (id) => [id, await getOrgData(id)] as const),
@@ -519,13 +519,13 @@ export async function listSchedules(
     })
     .map((schedule) => {
       const compose = composeMap.get(schedule.composeId)!;
-      const scopeSlug = orgDataMap.get(schedule.orgId)?.slug ?? "";
-      return toResponse(schedule, compose.name, scopeSlug);
+      const orgSlug = orgDataMap.get(schedule.orgId)?.slug ?? "";
+      return toResponse(schedule, compose.name, orgSlug);
     });
 }
 
 /**
- * Get schedule by name, compose ID, and scope+user
+ * Get schedule by name, compose ID, and org+user
  */
 export async function getScheduleByName(
   userId: string,
@@ -535,14 +535,14 @@ export async function getScheduleByName(
 ): Promise<ScheduleResponse> {
   log.debug(`Getting schedule ${name} for compose ${composeId}`);
 
-  const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
+  const { schedule, compose, orgSlug } = await verifyScheduleOwnership(
     userId,
     orgId,
     composeId,
     name,
   );
 
-  return toResponse(schedule, compose.name, scopeSlug);
+  return toResponse(schedule, compose.name, orgSlug);
 }
 
 /**
@@ -590,7 +590,7 @@ export async function getScheduleRecentRuns(
 }
 
 /**
- * Delete schedule by name, compose ID, and scope+user
+ * Delete schedule by name, compose ID, and org+user
  */
 export async function deleteSchedule(
   userId: string,
@@ -625,7 +625,7 @@ export async function enableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Enabling schedule ${name} for compose ${composeId}`);
 
-  const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
+  const { schedule, compose, orgSlug } = await verifyScheduleOwnership(
     userId,
     orgId,
     composeId,
@@ -669,7 +669,7 @@ export async function enableSchedule(
 
   log.debug(`Enabled schedule ${name}`);
 
-  return toResponse(updated, compose.name, scopeSlug);
+  return toResponse(updated, compose.name, orgSlug);
 }
 
 /**
@@ -683,7 +683,7 @@ export async function disableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Disabling schedule ${name} for compose ${composeId}`);
 
-  const { schedule, compose, scopeSlug } = await verifyScheduleOwnership(
+  const { schedule, compose, orgSlug } = await verifyScheduleOwnership(
     userId,
     orgId,
     composeId,
@@ -706,7 +706,7 @@ export async function disableSchedule(
 
   log.debug(`Disabled schedule ${name}`);
 
-  return toResponse(updated, compose.name, scopeSlug);
+  return toResponse(updated, compose.name, orgSlug);
 }
 
 /**

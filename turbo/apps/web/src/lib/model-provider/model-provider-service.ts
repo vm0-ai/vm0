@@ -119,7 +119,7 @@ async function assignDefaultIfFirst(
 }
 
 /**
- * List all model providers for a scope
+ * List all model providers for an org
  */
 export async function listModelProviders(
   orgId: string,

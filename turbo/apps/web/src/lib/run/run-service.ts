@@ -44,7 +44,7 @@ const log = logger("service:run");
 // so this TTL only matters if the cron job fails to run.
 export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-/** Concurrent run limits by scope tier */
+/** Concurrent run limits by org tier */
 const TIER_CONCURRENCY_LIMITS: Record<OrgTier, number> = {
   free: 1,
   pro: 2,
@@ -59,7 +59,7 @@ function getConcurrencyLimitForTier(tier: OrgTier): number {
  * Check if org has reached concurrent run limit
  *
  * @param orgId Clerk org ID to check
- * @param orgTier Scope tier for tier-based limit (default: "free")
+ * @param orgTier Org tier for tier-based limit (default: "free")
  * @param db Optional database instance (for use within transactions)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
@@ -305,11 +305,11 @@ export interface CreateRunParams {
   modelProvider?: string;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
-  // Caller-resolved scope slug and orgId for variable/storage resolution (org-aware).
+  // Caller-resolved org slug and orgId for variable/storage resolution.
   // When provided, used instead of getDefaultOrg fallback.
   orgSlug?: string;
   orgId?: string;
-  // Caller-resolved scope tier for concurrency limit derivation.
+  // Caller-resolved org tier for concurrency limit derivation.
   orgTier?: OrgTier;
 }
 
@@ -593,7 +593,7 @@ async function buildAndDispatchRun(opts: {
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
       // Sub-step timings within buildExecutionContext
       {
-        op: "api_build_resolve_source_and_scope",
+        op: "api_build_resolve_source_and_org",
         ms: buildContextTimings.resolveSourceAndScope,
       },
       {
@@ -602,7 +602,7 @@ async function buildAndDispatchRun(opts: {
       },
       // Sub-step timings within prepareForExecution
       {
-        op: "api_prepare_resolve_scopes",
+        op: "api_prepare_resolve_orgs",
         ms: prepareResult.timings.resolveOrgs,
       },
       {
@@ -685,7 +685,7 @@ export async function createRun(
     );
   }
 
-  // Resolve scope slug and orgId for the run record and storage
+  // Resolve org slug and orgId for the run record and storage
   let orgSlug: string | undefined;
   let orgId: string;
   if (params.orgId) {

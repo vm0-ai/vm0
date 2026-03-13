@@ -38,7 +38,7 @@ export async function executeRunnerJob(
 
   log.debug(`Queueing run ${context.runId} for runner group: ${runnerGroup}`);
 
-  // Validate runner group scope matches user's scope
+  // Validate runner group org matches user's org
   await validateRunnerGroupOrg(context.userId, runnerGroup);
 
   // Encrypt secrets map (key-value pairs) before storing
@@ -62,7 +62,7 @@ export async function executeRunnerJob(
     apiStartTime: context.apiStartTime ?? undefined,
     userTimezone: context.userTimezone ?? undefined,
     agentName: context.agentName ?? undefined,
-    agentScopeSlug: context.agentScopeSlug ?? undefined,
+    agentScopeSlug: context.agentOrgSlug ?? undefined,
     memoryName: context.memoryName ?? undefined,
   };
 

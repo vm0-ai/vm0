@@ -23,8 +23,8 @@ describe("parseEmailTriggerAddress", () => {
   });
 
   it("should handle org and agent with hyphens", () => {
-    const result = parseEmailTriggerAddress("my-scope+my-agent@vm0.bot");
-    expect(result).toEqual({ org: "my-scope", agent: "my-agent" });
+    const result = parseEmailTriggerAddress("my-org+my-agent@vm0.bot");
+    expect(result).toEqual({ org: "my-org", agent: "my-agent" });
   });
 
   it("should return null for reply address", () => {

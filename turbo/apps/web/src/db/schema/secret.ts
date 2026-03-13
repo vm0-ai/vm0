@@ -10,7 +10,7 @@ import {
 
 /**
  * Secrets table
- * Stores encrypted third-party service secrets per user within a scope
+ * Stores encrypted third-party service secrets per user within an org
  * Values encrypted with AES-256-GCM using SECRETS_ENCRYPTION_KEY
  */
 export const secrets = pgTable(
