@@ -640,7 +640,6 @@ async function resolveSecretsAndEnvironment(
   vars: Record<string, string> | undefined,
   cliSecrets: Record<string, string> | undefined,
   modelProvider: string | undefined,
-  runId: string,
   checkEnv: boolean | undefined,
   userId: string,
 ): Promise<{
@@ -930,7 +929,6 @@ export async function buildExecutionContext(
       vars,
       params.secrets,
       params.modelProvider,
-      params.runId,
       params.checkEnv,
       params.userId,
     ),
