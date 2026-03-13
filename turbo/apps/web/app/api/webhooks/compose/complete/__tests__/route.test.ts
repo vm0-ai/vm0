@@ -472,7 +472,6 @@ describe("POST /api/webhooks/compose/complete", () => {
 
       // Create a compose job for this user
       const cliToken = await createTestCliToken(userLink.vm0UserId);
-      mockClerk({ userId: null });
 
       const createRequest = createTestRequest(
         "http://localhost:3000/api/compose/jobs",
@@ -490,6 +489,8 @@ describe("POST /api/webhooks/compose/complete", () => {
       const createResponse = await createComposeJob(createRequest);
       const createData = await createResponse.json();
       const jobId = createData.jobId;
+
+      mockClerk({ userId: null });
 
       // Insert slack_compose_requests record (simulating what the Slack handler does)
       await createTestSlackComposeRequest({

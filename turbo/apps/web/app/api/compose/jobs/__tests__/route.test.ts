@@ -628,9 +628,6 @@ describe("GET /api/compose/jobs/:jobId", () => {
       const otherUser = await context.setupUser({ prefix: "other" });
       const otherCliToken = await createTestCliToken(otherUser.userId);
 
-      // Clear Clerk mock so CLI token is used for auth
-      mockClerk({ userId: null });
-
       const otherJobRequest = createTestRequest(
         "http://localhost:3000/api/compose/jobs",
         {
@@ -648,6 +645,9 @@ describe("GET /api/compose/jobs/:jobId", () => {
       const otherJobResponse = await POST(otherJobRequest);
       const otherJobData = await otherJobResponse.json();
       const otherJobId = otherJobData.jobId;
+
+      // Clear Clerk mock so CLI token is used for auth
+      mockClerk({ userId: null });
 
       // Try to access the other user's job with original user's token
       // Clerk is null, so testUserCliToken will be used for auth
