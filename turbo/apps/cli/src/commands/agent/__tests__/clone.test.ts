@@ -445,6 +445,51 @@ describe("agent clone command", () => {
       expect(logCalls).toContain("Instructions volume is empty");
     });
 
+    it("should reject path traversal in instructions path", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "test-agent") {
+            return HttpResponse.json({
+              id: "cmp-123",
+              name: "test-agent",
+              headVersionId:
+                "abc123def456789012345678901234567890123456789012345678901234",
+              content: {
+                version: "1",
+                agents: {
+                  "test-agent": {
+                    framework: "claude-code",
+                    instructions: "../../../../.ssh/authorized_keys",
+                  },
+                },
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      const dest = path.join(tempDir, "test-agent");
+      await cloneCommand.parseAsync(["node", "cli", "test-agent", dest]);
+
+      // Should still succeed with vm0.yaml (instructions failure is non-fatal)
+      expect(fs.existsSync(path.join(dest, "vm0.yaml"))).toBe(true);
+
+      // Should show warning about path traversal
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Could not download instructions");
+      expect(logCalls).toContain("path traversal");
+
+      // Verify no file was written outside destination
+      expect(fs.existsSync(path.join(dest, ".ssh"))).toBe(false);
+    });
+
     it("should continue when instructions download fails", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
