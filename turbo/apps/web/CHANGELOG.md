@@ -1,5 +1,16 @@
 # Changelog
 
+## [12.102.3](https://github.com/vm0-ai/vm0/compare/web-v12.102.2...web-v12.102.3) (2026-03-13)
+
+
+### Refactoring
+
+* **run:** unify secret merging into single map with explicit priority ([#4630](https://github.com/vm0-ai/vm0/issues/4630)) ([dc68069](https://github.com/vm0-ai/vm0/commit/dc68069b5d3df15e7c93be55257be3f94bf3f374)), closes [#4628](https://github.com/vm0-ai/vm0/issues/4628)
+* update user-facing error messages from scope to org ([#4629](https://github.com/vm0-ai/vm0/issues/4629)) ([a1a9712](https://github.com/vm0-ai/vm0/commit/a1a9712f3f1bcaa71dba91ce23c7dc1f8acd6b6a))
+* **web:** rename internal scope references in service layer to org ([#4645](https://github.com/vm0-ai/vm0/issues/4645)) ([1b83eb0](https://github.com/vm0-ai/vm0/commit/1b83eb0b87579eaed1ad5cd48f58d3b6e6da7760))
+* **web:** rename internal scope references to org in route handlers and tests ([#4646](https://github.com/vm0-ai/vm0/issues/4646)) ([d74023a](https://github.com/vm0-ai/vm0/commit/d74023a1414ac5038936b7f808cffd9c16173f23))
+* **web:** rename lib/scope directory to lib/org ([#4643](https://github.com/vm0-ai/vm0/issues/4643)) ([6c80e92](https://github.com/vm0-ai/vm0/commit/6c80e9227e2232cb9e2625cfd5cb91c009dfe108)), closes [#4636](https://github.com/vm0-ai/vm0/issues/4636)
+
 ## [12.102.2](https://github.com/vm0-ai/vm0/compare/web-v12.102.1...web-v12.102.2) (2026-03-12)
 
 

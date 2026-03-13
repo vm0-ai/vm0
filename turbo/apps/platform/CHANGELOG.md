@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.107.3](https://github.com/vm0-ai/vm0/compare/platform-v0.107.2...platform-v0.107.3) (2026-03-13)
+
+
+### Refactoring
+
+* **platform:** rename internal scope variables and signals to org ([#4644](https://github.com/vm0-ai/vm0/issues/4644)) ([f8abd64](https://github.com/vm0-ai/vm0/commit/f8abd64f563dab3f36f63e09a7b361ca0c1e2d9e))
+
 ## [0.107.2](https://github.com/vm0-ai/vm0/compare/platform-v0.107.1...platform-v0.107.2) (2026-03-12)
 
 

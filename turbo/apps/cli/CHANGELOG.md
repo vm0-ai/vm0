@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.56.9](https://github.com/vm0-ai/vm0/compare/cli-v9.56.8...cli-v9.56.9) (2026-03-13)
+
+
+### Refactoring
+
+* **cli:** rename internal scope variables and comments to org ([#4642](https://github.com/vm0-ai/vm0/issues/4642)) ([91605bb](https://github.com/vm0-ai/vm0/commit/91605bb1d3d6bb1b5f9f93f9a5337db685aa8d4b)), closes [#4632](https://github.com/vm0-ai/vm0/issues/4632)
+* update user-facing error messages from scope to org ([#4629](https://github.com/vm0-ai/vm0/issues/4629)) ([a1a9712](https://github.com/vm0-ai/vm0/commit/a1a9712f3f1bcaa71dba91ce23c7dc1f8acd6b6a))
+
 ## [9.56.8](https://github.com/vm0-ai/vm0/compare/cli-v9.56.7...cli-v9.56.8) (2026-03-12)
 
 
