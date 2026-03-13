@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { createMockChildProcess } from "../../../mocks/spawn-helpers";
-import { composeCommand, getSecretsFromComposeContent } from "../index";
+import {
+  composeCommand,
+  getSecretsFromComposeContent,
+  expandServiceConfigs,
+} from "../index";
 import * as fs from "fs/promises";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import * as path from "path";
@@ -3271,5 +3275,127 @@ describe("getSecretsFromComposeContent", () => {
 
     expect(secrets.size).toBe(1);
     expect(secrets.has("API_KEY")).toBe(true);
+  });
+});
+
+describe("expandServiceConfigs", () => {
+  function makeConfig(
+    services: Record<string, { permissions: string[] | "all" }>,
+  ) {
+    return {
+      version: "1.0",
+      agents: {
+        myagent: {
+          framework: "claude-code",
+          experimental_services: services,
+        },
+      },
+    };
+  }
+
+  function getExpanded(config: ReturnType<typeof makeConfig>) {
+    expandServiceConfigs(config);
+    return config.agents.myagent.experimental_services as unknown as {
+      name: string;
+      ref: string;
+      description?: string;
+      apis: { base: string; permissions?: { name: string }[] }[];
+      placeholders?: Record<string, string>;
+    }[];
+  }
+
+  it("should expand service with permissions: all", () => {
+    const config = makeConfig({ github: { permissions: "all" } });
+    const expanded = getExpanded(config);
+
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.name).toBe("github");
+    expect(expanded[0]!.ref).toBe("github");
+    expect(expanded[0]!.apis).toHaveLength(1);
+    expect(expanded[0]!.apis[0]!.base).toBe("https://api.github.com");
+    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
+    expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("full-access");
+  });
+
+  it("should expand service with specific permissions", () => {
+    const config = makeConfig({ github: { permissions: ["full-access"] } });
+    const expanded = getExpanded(config);
+
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
+    expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("full-access");
+  });
+
+  it("should include placeholders when service has them", () => {
+    const config = makeConfig({ github: { permissions: "all" } });
+    const expanded = getExpanded(config);
+
+    expect(expanded[0]!.placeholders).toEqual({
+      GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000",
+    });
+  });
+
+  it("should expand multiple services", () => {
+    const config = makeConfig({
+      github: { permissions: "all" },
+      slack: { permissions: "all" },
+    });
+    const expanded = getExpanded(config);
+
+    expect(expanded).toHaveLength(2);
+    const names = expanded.map((s) => s.name);
+    expect(names).toContain("github");
+    expect(names).toContain("slack");
+  });
+
+  it("should filter api_entries when permission not selected", () => {
+    // slack has 2 api entries (slack.com/api and files.slack.com),
+    // both with full-access. Selecting full-access keeps both.
+    const config = makeConfig({ slack: { permissions: ["full-access"] } });
+    const expanded = getExpanded(config);
+
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.apis).toHaveLength(2);
+  });
+
+  it("should skip services with no agents", () => {
+    const config = { version: "1.0" };
+    expandServiceConfigs(config);
+    // No error thrown
+  });
+
+  it("should skip already expanded services (array format)", () => {
+    const config = {
+      version: "1.0",
+      agents: {
+        myagent: {
+          framework: "claude-code",
+          experimental_services: [
+            { name: "github", ref: "github", apis: [], placeholders: {} },
+          ],
+        },
+      },
+    };
+    expandServiceConfigs(config);
+    // Should not modify already-expanded array
+    expect(Array.isArray(config.agents.myagent.experimental_services)).toBe(
+      true,
+    );
+  });
+
+  it("should throw for unknown service ref", () => {
+    const config = makeConfig({ "not-a-service": { permissions: "all" } });
+    expect(() => expandServiceConfigs(config)).toThrow(
+      'Cannot resolve service ref "not-a-service"',
+    );
+  });
+
+  it("should throw for non-existent permission name", () => {
+    const config = makeConfig({
+      github: { permissions: ["does-not-exist"] },
+    });
+    expect(() => expandServiceConfigs(config)).toThrow(
+      'Permission "does-not-exist" does not exist in service "github"',
+    );
   });
 });

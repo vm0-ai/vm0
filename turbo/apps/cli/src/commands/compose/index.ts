@@ -402,11 +402,6 @@ function collectAndValidatePermissions(
           `Service "${serviceConfig.name}" (ref "${ref}") has a permission named "all", which is a reserved keyword`,
         );
       }
-      if (available.has(perm.name)) {
-        throw new Error(
-          `Service "${serviceConfig.name}" (ref "${ref}") has duplicate permission name "${perm.name}" across api entries`,
-        );
-      }
       available.add(perm.name);
     }
   }
@@ -428,7 +423,7 @@ function collectAndValidatePermissions(
  * TODO: Support resolving services from GitHub URLs (like skills).
  * Currently only resolves from built-in SERVICE_CONFIGS via connectorTypeSchema.
  */
-function expandServiceConfigs(config: unknown): void {
+export function expandServiceConfigs(config: unknown): void {
   const compose = config as {
     agents?: Record<
       string,
@@ -489,7 +484,7 @@ function expandServiceConfigs(config: unknown): void {
         ref,
         apis: filteredApis,
       };
-      if (serviceConfig.description)
+      if (serviceConfig.description !== undefined)
         entry.description = serviceConfig.description;
       if (serviceConfig.placeholders)
         entry.placeholders = serviceConfig.placeholders;
