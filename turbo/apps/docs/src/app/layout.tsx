@@ -1,5 +1,5 @@
 import "@/app/global.css";
-import { RootProvider } from "fumadocs-ui/provider";
+import { RootProvider } from "fumadocs-ui/provider/next";
 import { Noto_Sans } from "next/font/google";
 import { createMetadata, baseUrl } from "@/lib/metadata";
 

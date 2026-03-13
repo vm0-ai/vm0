@@ -12,13 +12,13 @@
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
-    "fumadocs-core": "15.7.4",
-    "fumadocs-mdx": "14.2.8",
-    "fumadocs-ui": "15.7.4",
+    "fumadocs-core": "16.6.16",
+    "fumadocs-mdx": "14.2.9",
+    "fumadocs-ui": "16.6.16",
     "mermaid": "^11.12.2",
-    "next": "15.5.12",
-    "react": "^19.1.2",
-    "react-dom": "^19.1.2"
+    "next": "^16.1.6",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",

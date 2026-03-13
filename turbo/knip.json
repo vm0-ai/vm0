@@ -41,7 +41,7 @@
     "apps/docs": {
       "entry": ["source.config.ts"],
       "project": ["**/*.{ts,tsx,mdx,js,mjs}"],
-      "ignoreDependencies": ["@vm0/typescript-config"]
+      "ignoreDependencies": ["@vm0/typescript-config", "tailwindcss"]
     },
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
