@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Semgrep
-        run: semgrep scan --config auto --sarif --output semgrep-results.sarif .
+        run: semgrep scan --config auto --error --sarif --output semgrep-results.sarif .
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
@@ -47,9 +47,12 @@ jobs:
         with:
           category: codeql
 
-  npm-audit:
-    name: npm audit (SCA)
+  pnpm-audit:
+    name: pnpm audit (SCA)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: turbo
     steps:
       - uses: actions/checkout@v4
 
@@ -58,10 +61,14 @@ jobs:
         with:
           node-version: 20
 
-      - name: Run npm audit
+      - name: Install pnpm
+        run: corepack enable pnpm
+
+      - name: Run pnpm audit
         run: |
-          echo "## npm audit results" >> "$GITHUB_STEP_SUMMARY"
-          npm audit --omit=dev 2>&1 | tee audit-output.txt
+          set -o pipefail
+          echo "## pnpm audit results" >> "$GITHUB_STEP_SUMMARY"
+          pnpm audit --prod 2>&1 | tee audit-output.txt
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat audit-output.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
