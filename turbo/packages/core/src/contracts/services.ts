@@ -69,9 +69,15 @@ function bearerAuth(secretName: string) {
   return { headers: { Authorization: `Bearer \${secrets.${secretName}}` } };
 }
 
+/** Default catch-all permission for services without granular permissions. */
+const FULL_ACCESS_PERMISSION: ServicePermission = {
+  name: "full-access",
+  rules: ["ANY /{path+}"],
+};
+
 /** Shorthand: single-base API entry with bearer auth. */
 function api(base: string, auth: ServiceApi["auth"]): ServiceApi {
-  return { base, auth };
+  return { base, auth, permissions: [FULL_ACCESS_PERMISSION] };
 }
 
 const SERVICE_CONFIGS: Partial<Record<ConnectorType, ServiceConfig>> = {
