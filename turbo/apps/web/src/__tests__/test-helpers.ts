@@ -425,7 +425,7 @@ export function testContext(): TestContext {
 
   /**
    * Creates an isolated user context for a single test.
-   * Each call creates a unique user ID and scope.
+   * Each call creates a unique user ID and org.
    *
    * Usage:
    *   const user = await context.setupUser();
@@ -446,7 +446,7 @@ export function testContext(): TestContext {
     const userPromise = (async () => {
       initServices();
 
-      // Generate unique suffix shared between userId and scope
+      // Generate unique suffix shared between userId and org
       // This allows tests to derive org slug from userId if needed
       const suffix = uniqueSuffix();
       const userId = `${prefix}-${suffix}`;

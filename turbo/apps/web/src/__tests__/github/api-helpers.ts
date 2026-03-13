@@ -35,7 +35,7 @@ interface GitHubInstallationResult {
 /**
  * Given a GitHub App installation exists in the database.
  *
- * Creates all prerequisite records (scope, compose, version, installation, user link)
+ * Creates all prerequisite records (org, compose, version, installation, user link)
  * needed for webhook handler tests.
  */
 export async function givenGitHubInstallation(

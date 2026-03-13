@@ -45,14 +45,14 @@ describe("resolveOrg", () => {
     await createTestOrg(slug1);
     await createTestOrg(slug2);
 
-    // Mock session with orgId pointing to scope2
+    // Mock session with orgId pointing to org2
     mockClerk({
       userId,
       orgId: `org_mock_${slug2}`,
       clerkOrgs: testOrgs(slug1, slug2),
     });
 
-    // Resolve with explicit slug for scope1 — should return scope1, not scope2
+    // Resolve with explicit slug for org1 — should return org1, not org2
     const result = await resolveOrg(userId, slug1);
 
     expect(result.org.orgId).toBe(`org_mock_${slug1}`);
@@ -169,7 +169,7 @@ describe("resolveOrg", () => {
       clerkOrgs: testOrgs(slug1, slug2),
     });
 
-    // Resolve without slug — should return scope2 (from orgId), not scope1 (default)
+    // Resolve without slug — should return org2 (from orgId), not org1 (default)
     const result = await resolveOrg(userId);
 
     expect(result.org.orgId).toBe(`org_mock_${slug2}`);
@@ -231,7 +231,7 @@ describe("resolveOrg", () => {
     await createTestOrg(slug1);
     await createTestOrg(slug2);
 
-    // JWT active org is scope2, but resolving scope1 via explicit slug
+    // JWT active org is org2, but resolving org1 via explicit slug
     mockClerk({
       userId,
       orgId: `org_mock_${slug2}`,
