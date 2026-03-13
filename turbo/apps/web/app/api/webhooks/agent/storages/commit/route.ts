@@ -12,7 +12,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getDefaultOrgByUserId } from "../../../../../../src/lib/org/org-service";
+import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,
@@ -65,19 +65,8 @@ const router = tsr.router(webhookStoragesCommitContract, {
       };
     }
 
-    // Resolve Runtime Org (user's default org)
-    const runtimeOrg = await getDefaultOrgByUserId(userId);
-    if (!runtimeOrg) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: "User's default org not found",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
+    // Use the org from the run record (set at run creation time)
+    const runtimeOrg = await getOrgData(run.orgId);
 
     // Volumes use sentinel userId; artifacts/memory use real userId
     const storageUserId =
