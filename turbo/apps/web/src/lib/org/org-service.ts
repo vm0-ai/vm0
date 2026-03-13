@@ -1,4 +1,3 @@
-import { createHmac } from "crypto";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireOrgMember, getDefaultOrg } from "./org-member-service";
 import {
@@ -25,18 +24,6 @@ const RESERVED_SLUGS = ["vm0", "system", "admin", "api", "app", "www"];
  * - must start and end with alphanumeric
  */
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/;
-
-/**
- * Generate a deterministic default org slug from Clerk user ID.
- * Format: user-{8 hex chars from SHA-256 hash}
- *
- * @param userId - The Clerk user ID to hash
- * @returns A slug in format "user-xxxxxxxx" (13 chars total)
- */
-export function generateDefaultOrgSlug(userId: string): string {
-  const hash = createHmac("sha256", "org-slug").update(userId).digest("hex");
-  return `user-${hash.slice(0, 8)}`;
-}
 
 /**
  * Validate org slug format

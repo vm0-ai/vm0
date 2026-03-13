@@ -1,4 +1,5 @@
-import { useLastResolved, useSet } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
   Select,
   SelectContent,
@@ -7,12 +8,12 @@ import {
   SelectValue,
 } from "@vm0/ui/components/ui/select";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { IconClock } from "@tabler/icons-react";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { IconClock, IconLoader2 } from "@tabler/icons-react";
 import {
   notificationPreferences$,
   updateNotificationPreference$,
 } from "../../signals/settings-page/notification-settings.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 
 function getCommonTimezones() {
   return [
@@ -40,27 +41,26 @@ export function TimezoneSettings() {
   const preferences = useLastResolved(notificationPreferences$);
   const updatePreference = useSet(updateNotificationPreference$);
 
+  const loading$ = useCCState(false);
+  const loading = useGet(loading$);
+  const setLoading = useSet(loading$);
+
+  const handleChange = (value: string) => {
+    setLoading(true);
+    updatePreference({ timezone: value })
+      .finally(() => setLoading(false))
+      .catch(() => toast.error("Failed to update timezone"));
+  };
+
   if (!preferences) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <Skeleton className="h-5 w-32 rounded" />
-          <Skeleton className="h-4 w-80 rounded" />
-        </div>
-        <Skeleton className="h-[76px] w-full rounded-xl" />
-      </div>
-    );
+    return <Skeleton className="h-[76px] w-full rounded-xl" />;
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-base font-medium text-foreground">Time Zone</h3>
-        <p className="text-sm text-muted-foreground">
-          Sets the TZ environment variable for your agent sandbox at runtime.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Sets the TZ environment variable for your agent sandbox at runtime.
+      </p>
       <div className="flex items-center gap-4 border border-border bg-card p-4 rounded-xl">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
@@ -73,12 +73,11 @@ export function TimezoneSettings() {
             Your agents will use this time zone during runs
           </div>
         </div>
-        <div className="shrink-0 w-64">
+        <div className="relative shrink-0 w-64">
           <Select
             value={preferences.timezone ?? "UTC"}
-            onValueChange={(value) =>
-              detach(updatePreference({ timezone: value }), Reason.DomCallback)
-            }
+            onValueChange={handleChange}
+            disabled={loading}
           >
             <SelectTrigger>
               <SelectValue />
@@ -91,6 +90,14 @@ export function TimezoneSettings() {
               ))}
             </SelectContent>
           </Select>
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-end pr-8">
+              <IconLoader2
+                size={16}
+                className="animate-spin text-muted-foreground"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

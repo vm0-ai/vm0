@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { generateDefaultOrgSlug } from "../../../../../src/lib/org/org-service";
 import { getDefaultOrg } from "../../../../../src/lib/org/org-member-service";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { isNotFound } from "../../../../../src/lib/errors";
@@ -53,7 +52,7 @@ async function ensureTestScope(userId: string): Promise<{ orgId: string }> {
     if (!isNotFound(error)) throw error;
     // User has no Clerk org — use sentinel orgId with org_cache entry
     const sentinelOrgId = `org_test_${userId}`;
-    const slug = generateDefaultOrgSlug(userId);
+    const slug = "test-org";
     await globalThis.services.db
       .insert(orgCache)
       .values({ orgId: sentinelOrgId, slug, tier: "free" })

@@ -44,7 +44,7 @@ interface CollectedData {
  */
 async function collectInstructions(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   bucket: string,
 ): Promise<{ entries: ZipEntry[]; count: number }> {
   const db = globalThis.services.db;
@@ -59,10 +59,7 @@ async function collectInstructions(
     })
     .from(agentComposes)
     .where(
-      and(
-        eq(agentComposes.userId, userId),
-        eq(agentComposes.orgId, clerkOrgId),
-      ),
+      and(eq(agentComposes.userId, userId), eq(agentComposes.orgId, orgId)),
     );
 
   for (const compose of composes) {
@@ -89,7 +86,7 @@ async function collectInstructions(
       .from(storages)
       .where(
         and(
-          eq(storages.orgId, clerkOrgId),
+          eq(storages.orgId, orgId),
           eq(storages.name, instructionsStorageName),
           eq(storages.type, "volume"),
         ),
@@ -180,7 +177,7 @@ async function collectConversations(
  */
 async function collectArtifacts(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   bucket: string,
   expiresAtDate: Date,
 ): Promise<ExportArtifactUrl[]> {
@@ -198,7 +195,7 @@ async function collectArtifacts(
     .where(
       and(
         eq(storages.userId, userId),
-        eq(storages.orgId, clerkOrgId),
+        eq(storages.orgId, orgId),
         eq(storages.type, "artifact"),
       ),
     );
@@ -240,13 +237,13 @@ async function collectArtifacts(
  */
 async function collectUserData(
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
   bucket: string,
 ): Promise<CollectedData> {
   const zipEntries: ZipEntry[] = [];
   const expiresAtDate = new Date(Date.now() + DOWNLOAD_EXPIRY_MS);
 
-  const instructions = await collectInstructions(userId, clerkOrgId, bucket);
+  const instructions = await collectInstructions(userId, orgId, bucket);
   zipEntries.push(...instructions.entries);
 
   const convos = await collectConversations(userId);
@@ -254,7 +251,7 @@ async function collectUserData(
 
   const artifactUrls = await collectArtifacts(
     userId,
-    clerkOrgId,
+    orgId,
     bucket,
     expiresAtDate,
   );
@@ -272,7 +269,7 @@ async function collectUserData(
       {
         exportedAt: new Date().toISOString(),
         userId,
-        orgId: clerkOrgId,
+        orgId,
         counts: {
           instructions: instructions.count,
           conversations: convos.count,
@@ -299,7 +296,7 @@ async function collectUserData(
 export async function executeExportJob(
   jobId: string,
   userId: string,
-  clerkOrgId: string,
+  orgId: string,
 ): Promise<void> {
   const db = globalThis.services.db;
   const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
@@ -312,7 +309,7 @@ export async function executeExportJob(
 
     const { zipEntries, artifactUrls } = await collectUserData(
       userId,
-      clerkOrgId,
+      orgId,
       bucket,
     );
 

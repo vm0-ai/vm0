@@ -11,11 +11,11 @@ import {
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
-import { initOrg$, hasOrg$ } from "../org.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
 import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
 import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
+import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ZeroOnboarding");
@@ -84,6 +84,7 @@ function defaultFormValues(): ZeroFormValues {
 const internalFormValues$ = state<ZeroFormValues>(defaultFormValues());
 const internalSaving$ = state(false);
 const internalSelectedSkills$ = state<string[]>([]);
+const internalOnboardingError$ = state<string | null>(null);
 
 // ---------------------------------------------------------------------------
 // Exported computed state
@@ -97,6 +98,14 @@ export const zeroSaving$ = computed((get) => get(internalSaving$));
 export const zeroSelectedSkills$ = computed((get) =>
   get(internalSelectedSkills$),
 );
+
+export const zeroOnboardingError$ = computed((get) =>
+  get(internalOnboardingError$),
+);
+
+export const clearZeroOnboardingError$ = command(({ set }) => {
+  set(internalOnboardingError$, null);
+});
 
 export const zeroCanSave$ = computed((get) => {
   const providerType = get(internalProviderType$);
@@ -225,7 +234,6 @@ export const initZeroOnboarding$ = command(
 
 /**
  * Save model provider (step 2 completion).
- * Creates org if needed, then creates model provider.
  */
 export const saveZeroModelProvider$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -235,15 +243,6 @@ export const saveZeroModelProvider$ = command(
       const providerType = get(internalProviderType$);
       const formValues = get(internalFormValues$);
       const shape = getProviderShape(providerType);
-
-      // Create org if needed
-      const orgExists = await get(hasOrg$);
-      signal.throwIfAborted();
-
-      if (!orgExists) {
-        await set(initOrg$, signal);
-        signal.throwIfAborted();
-      }
 
       // Build request based on provider shape
       const request: Record<string, unknown> = { type: providerType };
@@ -282,6 +281,7 @@ export const saveZeroModelProvider$ = command(
 export const completeZeroOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(internalSaving$, true);
+    set(internalOnboardingError$, null);
 
     try {
       const displayName = get(internalAgentName$);
@@ -348,6 +348,12 @@ export const completeZeroOnboarding$ = command(
       // Reload status and mark done
       set(internalReload$, (x) => x + 1);
       set(internalStep$, "done");
+    } catch (error) {
+      throwIfAbort(error);
+      const message =
+        error instanceof Error ? error.message : "Failed to complete setup";
+      L.error("Failed to complete onboarding:", error);
+      set(internalOnboardingError$, message);
     } finally {
       set(internalSaving$, false);
     }

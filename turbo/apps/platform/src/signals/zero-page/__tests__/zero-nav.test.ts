@@ -48,9 +48,12 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("works");
     });
 
-    it("should resolve /zero/account to 'account'", () => {
-      mockLocation({ pathname: "/zero/account", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("account");
+    it("should resolve /zero/preferences to 'preferences'", () => {
+      mockLocation(
+        { pathname: "/zero/preferences", search: "" },
+        context.signal,
+      );
+      expect(context.store.get(zeroActiveId$)).toBe("preferences");
     });
 
     it("should fall back to 'chat' for invalid tab", () => {

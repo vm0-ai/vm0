@@ -1,11 +1,12 @@
-import { useLastResolved, useSet } from "ccstate-react";
-import { Switch } from "@vm0/ui/components/ui/switch";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   notificationPreferences$,
   updateNotificationPreference$,
 } from "../../signals/settings-page/notification-settings.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import emailIcon from "./icons/email.svg";
 import slackIcon from "./icons/slack.svg";
 
@@ -13,31 +14,37 @@ export function NotificationSettings() {
   const preferences = useLastResolved(notificationPreferences$);
   const updatePreference = useSet(updateNotificationPreference$);
 
+  const loadingKeys$ = useCCState<Set<string>>(new Set());
+  const loadingKeys = useGet(loadingKeys$);
+  const setLoadingKeys = useSet(loadingKeys$);
+
+  const handleToggle = (key: string, update: Record<string, boolean>) => {
+    setLoadingKeys((prev) => new Set([...prev, key]));
+    updatePreference(update)
+      .finally(() => {
+        setLoadingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      })
+      .catch(() => toast.error("Failed to update preference"));
+  };
+
   if (!preferences) {
     return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <Skeleton className="h-5 w-32 rounded" />
-          <Skeleton className="h-4 w-80 rounded" />
-        </div>
-        <div className="flex flex-col">
-          <Skeleton className="h-[76px] w-full rounded-t-xl rounded-b-none" />
-          <Skeleton className="h-[76px] w-full rounded-t-none rounded-b-xl border-t border-background" />
-        </div>
+      <div className="flex flex-col">
+        <Skeleton className="h-[76px] w-full rounded-t-xl rounded-b-none" />
+        <Skeleton className="h-[76px] w-full rounded-t-none rounded-b-xl border-t border-background" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-base font-medium text-foreground">Notifications</h3>
-        <p className="text-sm text-muted-foreground">
-          Choose how you get notified when scheduled agent runs complete or
-          fail.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Choose how you get notified when scheduled agent runs complete or fail.
+      </p>
       <div className="flex flex-col">
         <div className="flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 rounded-t-xl">
           <div className="shrink-0">
@@ -57,18 +64,14 @@ export function NotificationSettings() {
               Receive an email when a scheduled agent run completes or fails.
             </div>
           </div>
-          <div className="shrink-0">
-            <Switch
-              checked={preferences.notifyEmail}
-              onCheckedChange={(checked) =>
-                detach(
-                  updatePreference({ notifyEmail: checked }),
-                  Reason.DomCallback,
-                )
-              }
-              aria-label="Toggle email notifications"
-            />
-          </div>
+          <LoadingSwitch
+            checked={preferences.notifyEmail}
+            loading={loadingKeys.has("email")}
+            onCheckedChange={(checked) =>
+              handleToggle("email", { notifyEmail: checked })
+            }
+            ariaLabel="Toggle email notifications"
+          />
         </div>
 
         <div className="flex items-center gap-4 border border-border bg-card p-4 rounded-b-xl">
@@ -83,18 +86,14 @@ export function NotificationSettings() {
               Get a Slack DM when a scheduled agent run completes or fails.
             </div>
           </div>
-          <div className="shrink-0">
-            <Switch
-              checked={preferences.notifySlack}
-              onCheckedChange={(checked) =>
-                detach(
-                  updatePreference({ notifySlack: checked }),
-                  Reason.DomCallback,
-                )
-              }
-              aria-label="Toggle Slack notifications"
-            />
-          </div>
+          <LoadingSwitch
+            checked={preferences.notifySlack}
+            loading={loadingKeys.has("slack")}
+            onCheckedChange={(checked) =>
+              handleToggle("slack", { notifySlack: checked })
+            }
+            ariaLabel="Toggle Slack notifications"
+          />
         </div>
       </div>
     </div>

@@ -21,13 +21,4 @@ export const apiOrgHandlers = [
   http.get("/api/org", () => {
     return HttpResponse.json(mockOrg);
   }),
-
-  // POST /api/org - Create an org
-  // Always returns 409 since mock user always has org
-  http.post("/api/org", () => {
-    return HttpResponse.json(
-      { error: { message: "You already have an org", code: "CONFLICT" } },
-      { status: 409 },
-    );
-  }),
 ];

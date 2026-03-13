@@ -23,7 +23,7 @@ export const setupHomePage$ = command(
     signal.throwIfAborted();
 
     if (needsOnboarding) {
-      await set(startOnboarding$, signal);
+      set(startOnboarding$);
     }
   },
 );

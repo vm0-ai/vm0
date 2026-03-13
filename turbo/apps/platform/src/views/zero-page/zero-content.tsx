@@ -1,8 +1,8 @@
 import { useLoadable } from "ccstate-react";
-import type { ZeroNavId, ZeroAccountSubId } from "./zero-sidebar.tsx";
+import type { ZeroNavId } from "./zero-sidebar.tsx";
 import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
-import { ZeroAccountPage } from "./zero-account-page.tsx";
+import { ZeroPreferencesPage } from "./zero-account-page.tsx";
 import { ZeroJobsPage } from "./zero-jobs-page.tsx";
 import { ZeroMeetPage } from "./zero-meet-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
@@ -13,7 +13,6 @@ import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 interface ZeroContentProps {
   sectionId: ZeroNavId;
-  accountSubId?: ZeroAccountSubId | null;
   /** When set, shows the real session chat page instead of the demo page. */
   inSession?: boolean;
   onSendMessage?: (message: string) => void;
@@ -38,13 +37,12 @@ function getSectionTitles(
     activity: "Activities",
     works: `Where ${agentName} works`,
     settings: "Settings",
-    account: "Account",
+    preferences: "Preferences",
   };
 }
 
 export function ZeroContent({
   sectionId,
-  accountSubId = null,
   inSession = false,
   onSendMessage,
   onNavigateToActivity,
@@ -106,8 +104,8 @@ export function ZeroContent({
   if (sectionId === "settings") {
     return <ZeroSettingsPage />;
   }
-  if (sectionId === "account") {
-    return <ZeroAccountPage accountSubId={accountSubId ?? null} />;
+  if (sectionId === "preferences") {
+    return <ZeroPreferencesPage />;
   }
 
   const title = getSectionTitles(agentName)[sectionId];

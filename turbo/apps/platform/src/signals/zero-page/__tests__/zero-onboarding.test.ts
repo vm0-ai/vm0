@@ -6,7 +6,9 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
   setZeroAgentName$,
+  setZeroStep$,
   zeroOnboardingStep$,
+  zeroOnboardingError$,
   zeroSaving$,
 } from "../zero-onboarding.ts";
 
@@ -128,5 +130,70 @@ describe("completeZeroOnboarding$", () => {
 
     expect(context.store.get(zeroOnboardingStep$)).toBe("done");
     expect(context.store.get(zeroSaving$)).toBeFalsy();
+  });
+
+  it("should set error state and reset saving on build failure", async () => {
+    server.use(
+      http.post("*/api/compose/jobs", () => {
+        return HttpResponse.json(
+          { error: { message: "Build failed: sandbox error" } },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    // Set step to "4" so we can verify it doesn't change to "done"
+    context.store.set(setZeroStep$, "4");
+
+    // Should NOT throw — error is caught internally
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(context.store.get(zeroOnboardingError$)).toBe(
+      "Build failed: sandbox error",
+    );
+    expect(context.store.get(zeroSaving$)).toBeFalsy();
+    expect(context.store.get(zeroOnboardingStep$)).toBe("4");
+  });
+
+  it("should clear error state on successful retry", async () => {
+    // First call: fail
+    server.use(
+      http.post("*/api/compose/jobs", () => {
+        return HttpResponse.json(
+          { error: { message: "Build failed" } },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+    context.store.set(setZeroStep$, "4");
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+    expect(context.store.get(zeroOnboardingError$)).toBeTruthy();
+
+    // Second call: succeed
+    server.use(
+      http.post("*/api/compose/jobs", () => {
+        return HttpResponse.json({
+          jobId: "test-job-id",
+          status: "completed",
+          result: {
+            composeId: "new-compose-id",
+            composeName: "test-compose",
+          },
+        });
+      }),
+      http.put("*/api/scopes/default-agent", () => {
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(context.store.get(zeroOnboardingError$)).toBeNull();
+    expect(context.store.get(zeroOnboardingStep$)).toBe("done");
   });
 });
