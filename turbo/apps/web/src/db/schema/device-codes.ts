@@ -11,6 +11,7 @@ export const deviceCodes = pgTable("device_codes", {
   code: varchar("code", { length: 9 }).primaryKey(), // XXXX-XXXX format
   status: deviceCodeStatusEnum("status").default("pending").notNull(),
   userId: text("user_id"), // Clerk user ID, set after authentication
+  orgSlug: text("org_slug"), // Org slug from browser session, set on approval
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

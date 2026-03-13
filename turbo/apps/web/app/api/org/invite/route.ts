@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const parseResult = inviteBodySchema.safeParse(
     await request.json().catch(() => undefined),
@@ -40,11 +40,7 @@ export async function POST(request: Request) {
   const body = parseResult.data;
 
   try {
-    const { org, member } = await requireOrgFromRequest(
-      request,
-      userId,
-      tokenOrgId,
-    );
+    const { org, member } = await requireOrgFromRequest(request, userId);
     await inviteMember(userId, org.orgId, member.role, body.email);
     return NextResponse.json({ message: `Invitation sent to ${body.email}` });
   } catch (error) {

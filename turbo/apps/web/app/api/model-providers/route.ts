@@ -28,10 +28,10 @@ const router = tsr.router(modelProvidersMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
+    const { org } = await resolveOrg(userId, orgSlug);
     const providers = await listModelProviders(org.orgId, userId);
 
     return {
@@ -63,7 +63,7 @@ const router = tsr.router(modelProvidersMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const { type, secret, authMethod, secrets, selectedModel } = body;
 
@@ -71,7 +71,7 @@ const router = tsr.router(modelProvidersMainContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
+      const { org } = await resolveOrg(userId, orgSlug);
 
       // Determine if this is a multi-auth provider or legacy provider
       const isMultiAuth = hasAuthMethods(type);

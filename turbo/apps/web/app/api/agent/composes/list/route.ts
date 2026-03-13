@@ -74,17 +74,12 @@ const router = tsr.router(composesListContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     // Resolve org: use ?org= query param or default org
     let orgId: string;
     try {
-      const { org: resolvedOrg } = await resolveOrg(
-        userId,
-        query.org,
-        undefined,
-        tokenOrgId,
-      );
+      const { org: resolvedOrg } = await resolveOrg(userId, query.org);
       orgId = resolvedOrg.orgId;
     } catch (error) {
       if (isNotFound(error)) {

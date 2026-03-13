@@ -181,7 +181,7 @@ export async function GET(
         codeVerifier,
       );
 
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     log.debug("Storing connector", {
       userId,
@@ -200,7 +200,7 @@ export async function GET(
     // when the code adds new scopes and prompt users to re-authorize.
     // Note: do not read "scope" from the callback URL — OAuth providers (e.g., Monday.com)
     // may append OAuth scopes as ?scope=... which would be mistaken for an app scope slug.
-    const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+    const { org } = await resolveOrg(userId);
     const { created } = await upsertOAuthConnector(
       org.orgId,
       userId,

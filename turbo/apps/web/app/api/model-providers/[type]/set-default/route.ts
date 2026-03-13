@@ -23,7 +23,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     log.debug("setting model provider as default", {
       userId,
@@ -32,7 +32,7 @@ const router = tsr.router(modelProvidersSetDefaultContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
+      const { org } = await resolveOrg(userId, orgSlug);
       const provider = await setModelProviderDefault(
         org.orgId,
         userId,

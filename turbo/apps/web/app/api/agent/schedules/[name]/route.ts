@@ -29,12 +29,12 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     log.debug(`Getting schedule ${params.name} for compose ${query.composeId}`);
 
     try {
-      const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
+      const orgId = await resolveOrgId(userId);
 
       const schedule = await getScheduleByName(
         userId,
@@ -72,14 +72,14 @@ const router = tsr.router(schedulesByNameContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     log.debug(
       `Deleting schedule ${params.name} for compose ${query.composeId}`,
     );
 
     try {
-      const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
+      const orgId = await resolveOrgId(userId);
 
       await deleteSchedule(userId, orgId, query.composeId, params.name);
 

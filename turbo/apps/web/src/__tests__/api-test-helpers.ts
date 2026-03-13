@@ -259,6 +259,7 @@ export async function deleteTestCliToken(token: string): Promise<void> {
 export async function createTestDeviceCode(options?: {
   status?: "pending" | "authenticated" | "expired" | "denied";
   userId?: string;
+  orgSlug?: string;
   expiresAt?: Date;
 }): Promise<string> {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -276,6 +277,7 @@ export async function createTestDeviceCode(options?: {
     code,
     status,
     userId: options?.userId ?? null,
+    orgSlug: options?.orgSlug ?? null,
     expiresAt,
   });
 
@@ -2890,14 +2892,37 @@ export async function getOrgCacheEntry(orgId: string) {
 export async function insertOrgMembersCacheEntry(entry: {
   orgId: string;
   userId: string;
+  role?: string;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
-  await globalThis.services.db.insert(orgMembersCache).values({
-    orgId: entry.orgId,
-    userId: entry.userId,
-    cachedAt: entry.cachedAt ?? new Date(),
-  });
+  await globalThis.services.db
+    .insert(orgMembersCache)
+    .values({
+      orgId: entry.orgId,
+      userId: entry.userId,
+      role: entry.role ?? "member",
+      cachedAt: entry.cachedAt ?? new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: {
+        role: entry.role ?? "member",
+        cachedAt: entry.cachedAt ?? new Date(),
+      },
+    });
+}
+
+export async function findOrgMembersCacheEntry(orgId: string, userId: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
+    )
+    .limit(1);
+  return row;
 }
 
 export async function findTestRunnerJobEntry(runId: string) {

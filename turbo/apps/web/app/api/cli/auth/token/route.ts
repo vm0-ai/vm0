@@ -9,7 +9,6 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { getDefaultOrg } from "../../../../../src/lib/org/org-member-service";
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
@@ -74,10 +73,7 @@ const router = tsr.router(cliAuthTokenContract, {
       case "authenticated": {
         const userId = session.userId as string;
 
-        // Resolve user's default org from org_cache
-        const { org } = await getDefaultOrg(userId);
-
-        // Generate CLI token with org binding
+        // Generate CLI token (no org binding — org context comes from client-side activeOrg)
         const randomBytes = crypto.randomBytes(32);
         const cliToken = `vm0_live_${randomBytes.toString("base64url")}`;
         const now = new Date();
@@ -87,7 +83,6 @@ const router = tsr.router(cliAuthTokenContract, {
           token: cliToken,
           userId,
           name: "CLI Device Flow Authentication",
-          orgId: org.orgId,
           expiresAt,
           createdAt: now,
         });
@@ -103,6 +98,7 @@ const router = tsr.router(cliAuthTokenContract, {
             access_token: cliToken,
             token_type: "Bearer" as const,
             expires_in: 90 * 24 * 60 * 60, // 90 days in seconds
+            org_slug: session.orgSlug ?? undefined,
           },
         };
       }

@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { initServices } from "../../src/lib/init-services";
 import { deviceCodes } from "../../src/db/schema/device-codes";
 import { setTimezoneIfNotSet } from "../../src/lib/user/user-preferences-service";
+import { getOrgData } from "../../src/lib/org/org-cache-service";
 
 interface VerifyResult {
   success: boolean;
@@ -46,12 +47,20 @@ export async function verifyDeviceAction(
     return { success: false, error: "Device code has expired" };
   }
 
-  // Update status to authenticated and set userId
+  // Resolve org slug from browser session for CLI activeOrg
+  let orgSlug: string | null = null;
+  if (orgId) {
+    const orgData = await getOrgData(orgId);
+    orgSlug = orgData.slug;
+  }
+
+  // Update status to authenticated and set userId + orgSlug
   await globalThis.services.db
     .update(deviceCodes)
     .set({
       status: "authenticated",
       userId,
+      orgSlug,
       updatedAt: new Date(),
     })
     .where(eq(deviceCodes.code, normalizedCode));

@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -129,7 +129,7 @@ export async function GET(request: Request) {
   }
 
   // Get user's existing secrets, vars, connectors
-  const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+  const { org } = await resolveOrg(userId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
     listVariables(org.orgId, userId),
@@ -260,7 +260,7 @@ export async function PATCH(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const parseResult = patchSlackBodySchema.safeParse(
     await request.json().catch(() => undefined),
@@ -336,7 +336,7 @@ export async function PATCH(request: Request) {
     }
     targetOrgId = targetOrg.orgId;
   } else {
-    const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+    const { org } = await resolveOrg(userId);
     targetOrgId = org.orgId;
   }
 

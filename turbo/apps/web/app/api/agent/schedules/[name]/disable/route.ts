@@ -28,7 +28,7 @@ export async function POST(
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const { name } = await params;
 
@@ -48,7 +48,7 @@ export async function POST(
   }
   const body = parseResult.data;
 
-  const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
+  const orgId = await resolveOrgId(userId);
 
   log.debug(`Disabling schedule ${name} for compose ${body.composeId}`);
 

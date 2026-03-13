@@ -27,18 +27,13 @@ const router = tsr.router(storagesListContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const { type: storageType } = query;
 
     // Resolve user's default org
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: runtimeOrg } = await resolveOrg(
-      userId,
-      orgSlug,
-      null,
-      tokenOrgId,
-    );
+    const { org: runtimeOrg } = await resolveOrg(userId, orgSlug);
 
     // Volumes use sentinel userId (org-shared); artifacts/memory use real userId
     const storageUserId =

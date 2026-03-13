@@ -20,10 +20,10 @@ const router = tsr.router(modelProvidersCheckContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
+    const { org } = await resolveOrg(userId, orgSlug);
     const result = await checkSecretExists(org.orgId, userId, params.type);
 
     return {

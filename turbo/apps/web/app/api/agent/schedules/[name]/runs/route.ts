@@ -26,14 +26,14 @@ const router = tsr.router(scheduleRunsContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     log.debug(
       `Listing runs for schedule ${params.name} (limit: ${query.limit})`,
     );
 
     try {
-      const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
+      const orgId = await resolveOrgId(userId);
 
       const runs = await getScheduleRecentRuns(
         userId,

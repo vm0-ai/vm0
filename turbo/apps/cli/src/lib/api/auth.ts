@@ -62,6 +62,7 @@ async function exchangeToken(
   refresh_token?: string;
   token_type?: string;
   expires_in?: number;
+  org_slug?: string;
   error?: string;
   error_description?: string;
 }> {
@@ -76,6 +77,7 @@ async function exchangeToken(
     refresh_token?: string;
     token_type?: string;
     expires_in?: number;
+    org_slug?: string;
     error?: string;
     error_description?: string;
   }>;
@@ -125,10 +127,11 @@ export async function authenticate(apiUrl?: string): Promise<void> {
     );
 
     if (tokenResult.access_token) {
-      // Success! Store the token
+      // Success! Store the token and org context
       await saveConfig({
         token: tokenResult.access_token,
         apiUrl: targetApiUrl,
+        ...(tokenResult.org_slug && { activeOrg: tokenResult.org_slug }),
       });
 
       console.log(chalk.green("\nAuthentication successful!"));

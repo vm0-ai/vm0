@@ -140,9 +140,9 @@ describe("GET /api/org/members - Org Members", () => {
         memberships: [],
       });
       const client = await clerkClient();
-      vi.mocked(
-        client.organizations.getOrganizationMembershipList,
-      ).mockRejectedValue(new Error("Clerk API unavailable"));
+      vi.mocked(client.users.getOrganizationMembershipList).mockRejectedValue(
+        new Error("Clerk API unavailable"),
+      );
 
       const statusReq = createTestRequest(
         `http://localhost:3000/api/org/members?org=${slug}`,

@@ -31,10 +31,10 @@ const router = tsr.router(variablesByNameContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
+    const { org } = await resolveOrg(userId, orgSlug);
     const variable = await getVariable(org.orgId, userId, params.name);
     if (!variable) {
       return createErrorResponse(
@@ -66,13 +66,13 @@ const router = tsr.router(variablesByNameContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     log.debug("deleting variable", { userId, name: params.name });
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
+      const { org } = await resolveOrg(userId, orgSlug);
       await deleteVariable(org.orgId, userId, params.name);
 
       return {

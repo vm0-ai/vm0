@@ -28,7 +28,6 @@ type RunnerAuthContext =
   | {
       type: "user";
       userId: string;
-      orgId: string | null;
     }
   | { type: "official-runner" };
 
@@ -127,7 +126,6 @@ export async function getRunnerAuth(
       return {
         type: "user",
         userId: tokenRecord.userId,
-        orgId: tokenRecord.orgId,
       };
     }
 

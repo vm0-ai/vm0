@@ -36,15 +36,10 @@ const router = tsr.router(orgContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     try {
-      const { org: resolvedOrg } = await resolveOrg(
-        userId,
-        null,
-        null,
-        tokenOrgId,
-      );
+      const { org: resolvedOrg } = await resolveOrg(userId);
 
       return {
         status: 200 as const,
@@ -71,7 +66,7 @@ const router = tsr.router(orgContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const { slug, force } = body;
 
@@ -79,7 +74,7 @@ const router = tsr.router(orgContract, {
 
     let resolvedOrg;
     try {
-      ({ org: resolvedOrg } = await resolveOrg(userId, null, null, tokenOrgId));
+      ({ org: resolvedOrg } = await resolveOrg(userId));
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse(

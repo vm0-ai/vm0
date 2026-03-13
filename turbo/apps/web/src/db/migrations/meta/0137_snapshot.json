@@ -1,5 +1,5 @@
 {
-  "id": "19c5ecf8-568e-431b-a214-2eaf65d6594a",
+  "id": "72436a75-5bcd-4068-b3eb-78997d03e4ec",
   "prevId": "44c365a9-6b39-4dfa-988d-7d9a0ff6062d",
   "version": "7",
   "dialect": "postgresql",
@@ -1880,6 +1880,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "org_slug": {
+          "name": "org_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -2954,13 +2960,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "pinned_agent_ids": {
-          "name": "pinned_agent_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "'[]'::jsonb"
         }
       },
       "indexes": {},

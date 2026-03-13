@@ -26,14 +26,14 @@ const router = tsr.router(schedulesMainContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     log.debug(`Deploying schedule ${body.name} for compose ${body.composeId}`);
 
     try {
       // Note: vars and secrets are no longer accepted via API
       // They must be managed via platform tables (vm0 secret set, vm0 var set)
-      const orgId = await resolveOrgId(userId, undefined, tokenOrgId);
+      const orgId = await resolveOrgId(userId);
 
       const result = await deploySchedule(userId, orgId, {
         name: body.name,

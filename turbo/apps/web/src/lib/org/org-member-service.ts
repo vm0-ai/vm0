@@ -100,10 +100,8 @@ export async function getDefaultOrg(
 export async function resolveOrgId(
   userId: string,
   orgId?: string | null,
-  tokenOrgId?: string | null,
 ): Promise<string> {
   if (orgId) return orgId;
-  if (tokenOrgId) return tokenOrgId;
   const { org } = await getDefaultOrg(userId);
   return org.orgId;
 }

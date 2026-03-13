@@ -29,10 +29,10 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   try {
-    const { org } = await requireOrgFromRequest(request, userId, tokenOrgId);
+    const { org } = await requireOrgFromRequest(request, userId);
     const status = await getOrgMembers(userId, org.orgId, org.slug);
     return NextResponse.json(status);
   } catch (error) {
@@ -72,7 +72,7 @@ export async function DELETE(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const parseResult = removeMemberBodySchema.safeParse(
     await request.json().catch(() => undefined),
@@ -86,11 +86,7 @@ export async function DELETE(request: Request) {
   const body = parseResult.data;
 
   try {
-    const { org, member } = await requireOrgFromRequest(
-      request,
-      userId,
-      tokenOrgId,
-    );
+    const { org, member } = await requireOrgFromRequest(request, userId);
     await removeMember(userId, org.orgId, member.role, body.email);
     return NextResponse.json({
       message: `Removed ${body.email} from org`,

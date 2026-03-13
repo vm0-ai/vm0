@@ -23,14 +23,10 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   try {
-    const { org, member } = await requireOrgFromRequest(
-      request,
-      userId,
-      tokenOrgId,
-    );
+    const { org, member } = await requireOrgFromRequest(request, userId);
     await leaveOrg(userId, org.orgId, member.role);
     return NextResponse.json({ message: "Left org" });
   } catch (error) {

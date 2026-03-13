@@ -7,6 +7,7 @@ import {
 } from "./org-cache-service";
 import { badRequest, forbidden, isNotFound } from "../errors";
 import { logger } from "../logger";
+import { verifyMembershipCached } from "./org-membership-cache";
 import type { ResolvedOrg } from "./resolve-org";
 
 const log = logger("service:org");
@@ -124,14 +125,13 @@ export function isOfficialRunnerGroup(group: string): boolean {
  * Runner groups are in format "org/name" (e.g., "e2e-stable/pr-851").
  *
  * For official runner groups (vm0/*), any authenticated user is allowed.
- * For user runner groups, the org part must match the user's personal org slug.
+ * For user runner groups, verifies membership via org_members_cache.
  *
  * @throws ForbiddenError if org doesn't match (for non-official groups)
  */
 export async function validateRunnerGroupOrg(
   userId: string,
   group: string,
-  tokenOrgId?: string | null,
 ): Promise<void> {
   const orgSlug = group.split("/")[0];
   if (!orgSlug) {
@@ -143,25 +143,16 @@ export async function validateRunnerGroupOrg(
     return;
   }
 
-  // CLI token with stored org_id — resolve slug from org_cache
-  if (tokenOrgId) {
-    const orgData = await getOrgData(tokenOrgId);
-    if (orgData.slug === orgSlug) {
-      return;
-    }
-    throw forbidden(`Runner group org "${orgSlug}" does not match your org`);
-  }
-
-  const defaultOrg = await getDefaultOrgByUserId(userId);
-  if (!defaultOrg) {
+  // Look up the org by slug, then verify membership via cache
+  const orgData = await getOrgBySlug(orgSlug);
+  if (!orgData) {
     throw forbidden(
       `Runner group org "${orgSlug}" requires you to have an org configured`,
     );
   }
 
-  if (defaultOrg.slug !== orgSlug) {
-    throw forbidden(
-      `Runner group org "${orgSlug}" does not match your org "${defaultOrg.slug}"`,
-    );
+  const membership = await verifyMembershipCached(orgData.orgId, userId);
+  if (!membership) {
+    throw forbidden(`Runner group org "${orgSlug}" does not match your org`);
   }
 }

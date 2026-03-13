@@ -104,13 +104,20 @@ export function setupClerkOrgMock(options: {
                 })),
           }),
       ),
-    getOrganizationMembershipList: vi.fn().mockResolvedValue({
-      data: memberships.map((m) => ({
-        organization: { id: orgId, slug: orgSlug, name: orgSlug },
-        role: m.role,
-        publicUserData: { userId: m.userId },
-      })),
-    }),
+    getOrganizationMembershipList: vi
+      .fn()
+      .mockImplementation((params: { userId: string }) => {
+        const userMemberships = memberships.filter(
+          (m) => m.userId === params.userId,
+        );
+        return Promise.resolve({
+          data: userMemberships.map((m) => ({
+            organization: { id: orgId, slug: orgSlug, name: orgSlug },
+            role: m.role,
+            publicUserData: { userId: m.userId },
+          })),
+        });
+      }),
   };
 
   mockClerkClient.mockResolvedValue({

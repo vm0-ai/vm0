@@ -20,14 +20,9 @@ const router = tsr.router(orgDefaultAgentContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
-    const { org, member } = await resolveOrg(
-      userId,
-      undefined,
-      query.org,
-      tokenOrgId,
-    );
+    const { org, member } = await resolveOrg(userId, undefined, query.org);
 
     if (member.role !== "admin") {
       return {

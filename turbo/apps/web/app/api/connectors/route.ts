@@ -21,10 +21,10 @@ const router = tsr.router(connectorsMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug, null, tokenOrgId);
+    const { org } = await resolveOrg(userId, orgSlug);
     const connectorList = await listConnectors(org.orgId, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,

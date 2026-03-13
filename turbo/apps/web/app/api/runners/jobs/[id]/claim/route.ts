@@ -84,11 +84,7 @@ const router = tsr.router(runnersJobClaimContract, {
       }
 
       try {
-        await validateRunnerGroupOrg(
-          auth.userId,
-          jobWithRun.job.runnerGroup,
-          auth.orgId,
-        );
+        await validateRunnerGroupOrg(auth.userId, jobWithRun.job.runnerGroup);
       } catch {
         return createErrorResponse("FORBIDDEN", "Access denied");
       }

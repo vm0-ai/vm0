@@ -4,6 +4,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { getDefaultOrg } from "../../../../../src/lib/org/org-member-service";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
+import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { isNotFound } from "../../../../../src/lib/errors";
 import {
   resolveTestUserId,
@@ -42,22 +43,30 @@ function isTestTokenAllowed(request: Request): boolean {
  * Uses the same flow as production (getDefaultOrg) so that
  * Clerk API membership verification works during E2E tests.
  *
- * If the user has no Clerk org yet, creates an org_cache entry with a sentinel orgId.
+ * If the user has no Clerk org yet, creates org_cache and org_members_cache
+ * entries with a sentinel orgId.
  */
-async function ensureTestOrg(userId: string): Promise<{ orgId: string }> {
+async function ensureTestOrg(userId: string): Promise<void> {
   try {
-    const { org } = await getDefaultOrg(userId);
-    return { orgId: org.orgId };
+    await getDefaultOrg(userId);
   } catch (error) {
     if (!isNotFound(error)) throw error;
-    // User has no Clerk org — use sentinel orgId with org_cache entry
+    // User has no Clerk org — use sentinel orgId with org_cache + membership cache
     const sentinelOrgId = `org_test_${userId}`;
     const slug = "test-org";
     await globalThis.services.db
       .insert(orgCache)
       .values({ orgId: sentinelOrgId, slug, tier: "free" })
       .onConflictDoNothing();
-    return { orgId: sentinelOrgId };
+    await globalThis.services.db
+      .insert(orgMembersCache)
+      .values({
+        orgId: sentinelOrgId,
+        userId,
+        role: "admin",
+        cachedAt: new Date(),
+      })
+      .onConflictDoNothing();
   }
 }
 
@@ -89,9 +98,9 @@ export async function POST(request: Request) {
   }
 
   // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
-  const { orgId } = await ensureTestOrg(userId);
+  await ensureTestOrg(userId);
 
-  // Generate CLI token with org binding
+  // Generate CLI token
   const randomBytes = crypto.randomBytes(32);
   const token = `vm0_live_${randomBytes.toString("base64url")}`;
   const now = new Date();
@@ -101,7 +110,6 @@ export async function POST(request: Request) {
     token,
     userId,
     name: "CI Test Token",
-    orgId,
     expiresAt,
     createdAt: now,
   });

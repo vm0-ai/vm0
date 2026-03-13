@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -122,7 +122,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's default org and get existing secrets, vars, connectors
-  const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+  const { org } = await resolveOrg(userId);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
     listVariables(org.orgId, userId),
@@ -192,7 +192,7 @@ export async function PATCH(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const parseResult = patchBodySchema.safeParse(await request.json());
   if (!parseResult.success) {
@@ -267,7 +267,7 @@ export async function PATCH(request: Request) {
     targetOrg = resolved;
   } else {
     try {
-      ({ org: targetOrg } = await resolveOrg(userId, null, null, tokenOrgId));
+      ({ org: targetOrg } = await resolveOrg(userId));
     } catch (error) {
       if (isNotFound(error)) {
         return NextResponse.json(

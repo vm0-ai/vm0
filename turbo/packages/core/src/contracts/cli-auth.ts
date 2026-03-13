@@ -58,6 +58,7 @@ export const cliAuthTokenContract = c.router({
         access_token: z.string(),
         token_type: z.literal("Bearer"),
         expires_in: z.number(),
+        org_slug: z.string().optional(),
       }),
       // Authorization pending
       202: oauthErrorSchema,

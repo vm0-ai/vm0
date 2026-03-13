@@ -48,7 +48,7 @@ const router = tsr.router(runnersPollContract, {
     } else {
       // User runners: validate org and filter by userId
       try {
-        await validateRunnerGroupOrg(auth.userId, group, auth.orgId);
+        await validateRunnerGroupOrg(auth.userId, group);
       } catch {
         return createErrorResponse("FORBIDDEN", "Access denied");
       }

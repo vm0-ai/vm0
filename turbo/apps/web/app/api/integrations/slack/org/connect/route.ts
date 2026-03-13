@@ -37,8 +37,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const { userId, orgId: tokenOrgId } = authCtx;
-  const { org, member } = await resolveOrg(userId, null, null, tokenOrgId);
+  const { userId } = authCtx;
+  const { org, member } = await resolveOrg(userId);
 
   // Find user's connection in any workspace bound to this org
   const [connection] = await globalThis.services.db
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const parseResult = connectBodySchema.safeParse(
     await request.json().catch(() => undefined),
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
   const { workspaceId, slackUserId } = parseResult.data;
 
   // Resolve org and check membership
-  const { org, member } = await resolveOrg(userId, null, null, tokenOrgId);
+  const { org, member } = await resolveOrg(userId);
 
   // Check installation exists
   const [installation] = await globalThis.services.db

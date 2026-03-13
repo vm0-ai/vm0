@@ -106,6 +106,33 @@ describe("POST /api/cli/auth/token", () => {
     expect(found).toBeUndefined();
   });
 
+  it("should return org_slug when device code has org context", async () => {
+    const code = await createTestDeviceCode({
+      status: "authenticated",
+      userId: user.userId,
+      orgSlug: "my-test-org",
+    });
+
+    const response = await POST(makeTokenRequest(code));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.org_slug).toBe("my-test-org");
+  });
+
+  it("should not return org_slug when device code has no org context", async () => {
+    const code = await createTestDeviceCode({
+      status: "authenticated",
+      userId: user.userId,
+    });
+
+    const response = await POST(makeTokenRequest(code));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).not.toHaveProperty("org_slug");
+  });
+
   it("should return 400 when device_code is missing from body", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/cli/auth/token",

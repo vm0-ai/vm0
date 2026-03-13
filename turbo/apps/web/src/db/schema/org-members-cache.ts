@@ -17,6 +17,7 @@ export const orgMembersCache = pgTable(
   {
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    role: text("role").notNull().default("member"),
     timezone: text("timezone"),
     notifyEmail: boolean("notify_email").notNull().default(false),
     notifySlack: boolean("notify_slack").notNull().default(true),

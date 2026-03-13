@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       { status: 401 },
     );
   }
-  const { userId, orgId: tokenOrgId } = authCtx;
+  const { userId } = authCtx;
 
   const db = globalThis.services.db;
 
@@ -123,7 +123,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's org for resource queries
-  const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+  const { org } = await resolveOrg(userId);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([

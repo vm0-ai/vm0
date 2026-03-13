@@ -43,7 +43,7 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     // Resolve org: for cross-org lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
@@ -68,12 +68,7 @@ const router = tsr.router(composesMainContract, {
       }
       orgId = orgData.orgId;
     } else {
-      const { org: resolvedOrg } = await resolveOrg(
-        userId,
-        null,
-        null,
-        tokenOrgId,
-      );
+      const { org: resolvedOrg } = await resolveOrg(userId);
       orgId = resolvedOrg.orgId;
     }
 
@@ -153,7 +148,7 @@ const router = tsr.router(composesMainContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     const { content } = body;
 
@@ -265,7 +260,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's org (required for compose creation)
-    const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+    const { org } = await resolveOrg(userId);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

@@ -34,16 +34,11 @@ const router = tsr.router(storagesCommitContract, {
         },
       };
     }
-    const { userId, orgId: tokenOrgId } = authCtx;
+    const { userId } = authCtx;
 
     // Resolve user's default org
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: runtimeOrg } = await resolveOrg(
-      userId,
-      orgSlug,
-      null,
-      tokenOrgId,
-    );
+    const { org: runtimeOrg } = await resolveOrg(userId, orgSlug);
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 

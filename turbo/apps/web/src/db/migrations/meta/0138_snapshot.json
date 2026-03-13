@@ -1,6 +1,6 @@
 {
-  "id": "ae1316ed-dabe-4560-8a2f-9c1a59fcdb14",
-  "prevId": "19c5ecf8-568e-431b-a214-2eaf65d6594a",
+  "id": "f0a71c75-5fab-47c4-8ecd-115904f51a8c",
+  "prevId": "72436a75-5bcd-4068-b3eb-78997d03e4ec",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1880,6 +1880,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "org_slug": {
+          "name": "org_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -2139,67 +2145,6 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.email_suppressions": {
-      "name": "email_suppressions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "email_address": {
-          "name": "email_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "resend_email_id": {
-          "name": "resend_email_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "email_suppressions_email_lower_idx": {
-          "name": "email_suppressions_email_lower_idx",
-          "columns": [
-            {
-              "expression": "lower(\"email_address\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -2989,6 +2934,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
         "timezone": {
           "name": "timezone",
           "type": "text",
@@ -3008,13 +2960,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
-        },
-        "pinned_agent_ids": {
-          "name": "pinned_agent_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "'[]'::jsonb"
         },
         "cached_at": {
           "name": "cached_at",

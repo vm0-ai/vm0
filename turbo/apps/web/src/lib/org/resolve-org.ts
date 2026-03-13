@@ -1,8 +1,9 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { forbidden, badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
 import { getDefaultOrg } from "./org-member-service";
+import { verifyMembershipCached } from "./org-membership-cache";
 
 import type { OrgRole } from "@vm0/core";
 
@@ -58,23 +59,14 @@ function mapOrgRole(clerkRole: string | undefined | null): OrgRole {
  * Fast path: if the org's orgId matches the JWT's active org,
  * trust the JWT claims and skip the Clerk API call entirely.
  *
- * Slow path: for cross-org access (e.g. ?org= pointing to a non-active org),
- * fall back to Clerk Backend API.
- *
- * CLI token path: if tokenOrgId is provided and matches the org,
- * trust the token (membership was verified at token creation time).
+ * Cache path: for CLI tokens or cross-org access, use org_members_cache
+ * with Clerk API fallback (1-minute TTL).
  */
 async function verifyMembership(
   resolved: ResolvedOrg,
   userId: string,
   authResult: Awaited<ReturnType<typeof auth>>,
-  tokenOrgId?: string | null,
 ): Promise<ResolvedMember> {
-  // CLI token with stored org_id — trust if it matches
-  if (tokenOrgId && resolved.orgId === tokenOrgId) {
-    return { role: "admin", userId };
-  }
-
   // JWT fast path: active org matches → trust JWT, no API call
   if (resolved.orgId === authResult.orgId) {
     return {
@@ -87,25 +79,13 @@ async function verifyMembership(
     throw forbidden("You are not a member of this organization");
   }
 
-  // Slow path: cross-org access → Clerk Backend API
+  // Cache-backed path: check org_members_cache, fall back to Clerk API
   try {
-    const client = await clerkClient();
-    const memberships =
-      await client.organizations.getOrganizationMembershipList({
-        organizationId: resolved.orgId,
-      });
-
-    const membership = memberships.data.find(
-      (m) => m.publicUserData?.userId === userId,
-    );
-    if (!membership) {
+    const result = await verifyMembershipCached(resolved.orgId, userId);
+    if (!result) {
       throw forbidden("You are not a member of this organization");
     }
-
-    return {
-      role: mapOrgRole(membership.role),
-      userId,
-    };
+    return { role: result.role, userId };
   } catch (error) {
     // Re-throw our own forbidden errors
     if (error instanceof Error && error.message.includes("not a member")) {
@@ -142,11 +122,11 @@ function applyJwtTier(
  * Resolve org from request context using org_cache.
  *
  * Uses JWT claims for membership verification when possible (zero Clerk API calls).
- * Falls back to Clerk Backend API for cross-org access or CLI tokens without org_id.
+ * Falls back to org_members_cache (with Clerk API fallback) for CLI tokens.
  *
  * Resolution order:
  * 1. orgSlug (?org=<slug> query param) -> org_cache lookup, verify membership
- * 2. orgId (from JWT session token or CLI token) -> org_cache lookup
+ * 2. orgId (from JWT session token) -> org_cache lookup
  * 3. Fallback -> user's default org via Clerk API
  *
  * When the resolved org matches the JWT's active org, `tier` is read from
@@ -156,7 +136,6 @@ export async function resolveOrg(
   userId: string,
   orgSlug?: string | null,
   orgId?: string | null,
-  tokenOrgId?: string | null,
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   const authResult = await auth();
 
@@ -165,28 +144,18 @@ export async function resolveOrg(
     const orgData = await getOrgBySlug(orgSlug);
     if (!orgData) throw notFound("Org not found");
 
-    const member = await verifyMembership(
-      orgData,
-      userId,
-      authResult,
-      tokenOrgId,
-    );
+    const member = await verifyMembership(orgData, userId, authResult);
     return { org: applyJwtTier(orgData, authResult), member };
   }
 
-  // 2. Clerk org ID — use provided value, CLI token orgId, or auto-detect from JWT.
-  // For CLI tokens without orgId, auth().orgId returns null (no Clerk session),
+  // 2. Clerk org ID — use provided value or auto-detect from JWT.
+  // For CLI tokens (no Clerk session), auth().orgId returns null,
   // so this tier is skipped and we fall through to the default org.
-  const effectiveOrgId = orgId ?? tokenOrgId ?? authResult.orgId ?? null;
+  const effectiveOrgId = orgId ?? authResult.orgId ?? null;
   if (effectiveOrgId) {
     try {
       const orgData = await getOrgData(effectiveOrgId);
-      const member = await verifyMembership(
-        orgData,
-        userId,
-        authResult,
-        tokenOrgId,
-      );
+      const member = await verifyMembership(orgData, userId, authResult);
       return { org: applyJwtTier(orgData, authResult), member };
     } catch (error) {
       // Re-throw forbidden errors (user is not a member)
@@ -214,7 +183,6 @@ export async function resolveOrg(
 export async function requireOrgFromRequest(
   request: Request,
   userId: string,
-  tokenOrgId?: string | null,
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   const url = new URL(request.url);
   const orgSlug = url.searchParams.get("org");
@@ -232,11 +200,6 @@ export async function requireOrgFromRequest(
   }
 
   const authResult = await auth();
-  const member = await verifyMembership(
-    orgData,
-    userId,
-    authResult,
-    tokenOrgId,
-  );
+  const member = await verifyMembership(orgData, userId, authResult);
   return { org: applyJwtTier(orgData, authResult), member };
 }
