@@ -59,17 +59,17 @@ export async function getClientConfig() {
   const baseHeaders = await getHeaders();
 
   const config = await loadConfig();
-  const activeScope = config.activeScope;
+  const activeOrg = config.activeOrg;
 
-  if (activeScope) {
+  if (activeOrg) {
     return {
       baseUrl,
       baseHeaders,
       jsonQuery: false as const,
       api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
         const separator = args.path.includes("?") ? "&" : "?";
-        if (!args.path.includes("scope=")) {
-          args.path = `${args.path}${separator}scope=${encodeURIComponent(activeScope)}`;
+        if (!args.path.includes("org=")) {
+          args.path = `${args.path}${separator}org=${encodeURIComponent(activeOrg)}`;
         }
         return tsRestFetchApi(args);
       },

@@ -15,13 +15,13 @@ import type {
 
 export async function getComposeByName(
   name: string,
-  scope?: string,
+  org?: string,
 ): Promise<GetComposeResponse | null> {
   const config = await getClientConfig();
   const client = initClient(composesMainContract, config);
 
   const result = await client.getByName({
-    query: { name, scope },
+    query: { name, org },
   });
 
   if (result.status === 200) {

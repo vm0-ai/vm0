@@ -6,6 +6,13 @@ import { existsSync } from "fs";
 interface CliConfig {
   token?: string;
   apiUrl?: string;
+  activeOrg?: string;
+}
+
+/**
+ * Legacy config shape for migration from activeScope to activeOrg
+ */
+interface LegacyCliConfig extends CliConfig {
   activeScope?: string;
 }
 
@@ -24,7 +31,15 @@ export async function loadConfig(): Promise<CliConfig> {
     return {};
   }
   const content = await readFile(configFile, "utf8");
-  return JSON.parse(content) as CliConfig;
+  const raw = JSON.parse(content) as LegacyCliConfig;
+
+  // Migrate activeScope → activeOrg
+  if (raw.activeScope !== undefined && raw.activeOrg === undefined) {
+    raw.activeOrg = raw.activeScope;
+    delete raw.activeScope;
+  }
+
+  return raw;
 }
 
 export async function saveConfig(config: CliConfig): Promise<void> {

@@ -13,7 +13,7 @@ export const useCommand = new Command()
     withErrorHandler(
       async (slug: string | undefined, options: { personal?: boolean }) => {
         if (options.personal) {
-          await saveConfig({ activeScope: undefined });
+          await saveConfig({ activeOrg: undefined });
           console.log(chalk.green("✓ Switched to personal org."));
           return;
         }
@@ -26,14 +26,14 @@ export const useCommand = new Command()
 
         // Verify the organization exists and user has access
         const orgList = await listOrgs();
-        const target = orgList.scopes.find((s) => s.slug === slug);
+        const target = orgList.orgs.find((s) => s.slug === slug);
         if (!target) {
           throw new Error(
             `Organization '${slug}' not found or not accessible.`,
           );
         }
 
-        await saveConfig({ activeScope: slug });
+        await saveConfig({ activeOrg: slug });
         console.log(chalk.green(`✓ Switched to organization: ${slug}`));
       },
     ),

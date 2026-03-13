@@ -40,9 +40,9 @@ describe("org use command", () => {
 
   it("should switch to organization and show success", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/list", () => {
+      http.get("http://localhost:3000/api/org/list", () => {
         return HttpResponse.json({
-          scopes: [{ slug: "my-org", role: "admin" }],
+          orgs: [{ slug: "my-org", role: "admin" }],
           active: undefined,
         });
       }),
@@ -74,9 +74,9 @@ describe("org use command", () => {
 
   it("should handle organization not found", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/list", () => {
+      http.get("http://localhost:3000/api/org/list", () => {
         return HttpResponse.json({
-          scopes: [],
+          orgs: [],
           active: undefined,
         });
       }),
@@ -94,7 +94,7 @@ describe("org use command", () => {
 
   it("should handle API error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/list", () => {
+      http.get("http://localhost:3000/api/org/list", () => {
         return HttpResponse.json(
           {
             error: {

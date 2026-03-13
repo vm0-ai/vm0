@@ -20,7 +20,7 @@ function createMockSchedule(overrides: Record<string, unknown> = {}) {
     id: "schedule-1",
     composeId: "compose-1",
     composeName: "test-agent",
-    scopeSlug: "user-test",
+    orgSlug: "user-test",
     name: "test-agent-schedule",
     cronExpression: "0 9 * * *",
     atTime: null,

@@ -52,7 +52,7 @@ describe("Agent Sharing Commands", () => {
         );
       }),
       // Default handler for org API
-      http.get("http://localhost:3000/api/scope", () => {
+      http.get("http://localhost:3000/api/org", () => {
         return HttpResponse.json({
           id: "org-123",
           slug: testOrgSlug,

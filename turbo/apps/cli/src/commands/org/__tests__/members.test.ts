@@ -30,7 +30,7 @@ describe("org status command", () => {
 
   it("should display org name, role, and member list", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/members", () => {
+      http.get("http://localhost:3000/api/org/members", () => {
         return HttpResponse.json({
           slug: "my-team",
           role: "admin",
@@ -65,7 +65,7 @@ describe("org status command", () => {
 
   it("should show helpful error when no active organization", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/members", () => {
+      http.get("http://localhost:3000/api/org/members", () => {
         return HttpResponse.json(
           {
             error: {

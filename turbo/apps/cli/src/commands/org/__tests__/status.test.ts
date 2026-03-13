@@ -42,7 +42,7 @@ describe("org status command", () => {
   describe("no organization configured", () => {
     it("should show helpful message when user has no organization", async () => {
       server.use(
-        http.get("http://localhost:3000/api/scope", () => {
+        http.get("http://localhost:3000/api/org", () => {
           return HttpResponse.json(
             { error: { message: "No org configured", code: "NOT_FOUND" } },
             { status: 404 },
@@ -67,7 +67,7 @@ describe("org status command", () => {
   describe("organization display", () => {
     it("should display organization information", async () => {
       server.use(
-        http.get("http://localhost:3000/api/scope", () => {
+        http.get("http://localhost:3000/api/org", () => {
           return HttpResponse.json({
             id: "test-id",
             slug: "testuser",
@@ -91,7 +91,7 @@ describe("org status command", () => {
   describe("error handling", () => {
     it("should handle unexpected errors", async () => {
       server.use(
-        http.get("http://localhost:3000/api/scope", () => {
+        http.get("http://localhost:3000/api/org", () => {
           return HttpResponse.json(
             { error: { message: "Server error", code: "SERVER_ERROR" } },
             { status: 500 },
@@ -111,7 +111,7 @@ describe("org status command", () => {
 
     it("should handle non-Error exceptions", async () => {
       server.use(
-        http.get("http://localhost:3000/api/scope", () => {
+        http.get("http://localhost:3000/api/org", () => {
           return HttpResponse.error();
         }),
       );

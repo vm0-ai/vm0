@@ -98,10 +98,10 @@ describe("run command", () => {
       http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
         return HttpResponse.json(defaultEventsResponse);
       }),
-      // Default scope handler for experimental-shared-agent validation
-      http.get("http://localhost:3000/api/scope", () => {
+      // Default org handler for experimental-shared-agent validation
+      http.get("http://localhost:3000/api/org", () => {
         return HttpResponse.json({
-          id: "scope-123",
+          id: "org-123",
           slug: "test-user",
           createdAt: "2025-01-01T00:00:00Z",
           updatedAt: "2025-01-01T00:00:00Z",
@@ -422,7 +422,7 @@ describe("run command", () => {
 
     it("should parse scope/name format", async () => {
       let capturedQueryParams:
-        | { name: string | null; scope: string | null }
+        | { name: string | null; org: string | null }
         | undefined;
       let capturedBody: unknown;
       server.use(
@@ -430,7 +430,7 @@ describe("run command", () => {
           const url = new URL(request.url);
           capturedQueryParams = {
             name: url.searchParams.get("name"),
-            scope: url.searchParams.get("scope"),
+            org: url.searchParams.get("org"),
           };
           return HttpResponse.json({
             id: "550e8400-e29b-41d4-a716-446655440000",
@@ -480,7 +480,7 @@ describe("run command", () => {
 
       expect(capturedQueryParams).toEqual({
         name: "my-agent",
-        scope: "user-abc123",
+        org: "user-abc123",
       });
       expect(capturedBody).toEqual(
         expect.objectContaining({
@@ -1354,7 +1354,7 @@ describe("run command", () => {
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("scope");
+          const scope = url.searchParams.get("org");
 
           if (scope === "test-user" && name === "my-agent") {
             return HttpResponse.json({
@@ -1397,7 +1397,7 @@ describe("run command", () => {
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("scope");
+          const scope = url.searchParams.get("org");
 
           if (scope === "other-user" && name === "shared-agent") {
             return HttpResponse.json({
@@ -1442,7 +1442,7 @@ describe("run command", () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
-          const scope = url.searchParams.get("scope");
+          const scope = url.searchParams.get("org");
 
           if (scope === "nonexistent-scope-xyz123") {
             return HttpResponse.json(
@@ -1520,7 +1520,7 @@ describe("run command", () => {
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("scope");
+          const scope = url.searchParams.get("org");
 
           if (
             scope === "user-abc12345" &&
@@ -1599,7 +1599,7 @@ describe("run command", () => {
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("scope");
+          const scope = url.searchParams.get("org");
 
           if (scope === "other-user-scope" && name === "my-agent") {
             return HttpResponse.json(

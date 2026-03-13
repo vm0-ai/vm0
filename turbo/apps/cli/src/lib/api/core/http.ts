@@ -2,27 +2,27 @@ import { getBaseUrl } from "./client-factory";
 import { getActiveToken, loadConfig } from "../config";
 
 /**
- * Append ?scope=<activeScope> to a path if activeScope is configured
- * and the path doesn't already include a scope param.
+ * Append ?org=<activeOrg> to a path if activeOrg is configured
+ * and the path doesn't already include an org param.
  */
-async function appendScopeParam(path: string): Promise<string> {
+async function appendOrgParam(path: string): Promise<string> {
   const config = await loadConfig();
-  const activeScope = config.activeScope;
-  if (!activeScope) {
+  const activeOrg = config.activeOrg;
+  if (!activeOrg) {
     return path;
   }
 
-  // Check if scope param already exists
+  // Check if org param already exists
   const queryStart = path.indexOf("?");
   if (queryStart !== -1) {
     const params = new URLSearchParams(path.slice(queryStart));
-    if (params.has("scope")) {
+    if (params.has("org")) {
       return path;
     }
-    return `${path}&scope=${encodeURIComponent(activeScope)}`;
+    return `${path}&org=${encodeURIComponent(activeOrg)}`;
   }
 
-  return `${path}?scope=${encodeURIComponent(activeScope)}`;
+  return `${path}?org=${encodeURIComponent(activeOrg)}`;
 }
 
 /**
@@ -53,7 +53,7 @@ async function getRawHeaders(): Promise<Record<string, string>> {
 export async function httpGet(path: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
-  const scopedPath = await appendScopeParam(path);
+  const scopedPath = await appendOrgParam(path);
 
   return fetch(`${baseUrl}${scopedPath}`, {
     method: "GET",
@@ -67,7 +67,7 @@ export async function httpGet(path: string): Promise<Response> {
 export async function httpPost(path: string, body: unknown): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
-  const scopedPath = await appendScopeParam(path);
+  const scopedPath = await appendOrgParam(path);
 
   return fetch(`${baseUrl}${scopedPath}`, {
     method: "POST",
@@ -85,7 +85,7 @@ export async function httpPost(path: string, body: unknown): Promise<Response> {
 export async function httpDelete(path: string): Promise<Response> {
   const baseUrl = await getBaseUrl();
   const headers = await getRawHeaders();
-  const scopedPath = await appendScopeParam(path);
+  const scopedPath = await appendOrgParam(path);
 
   return fetch(`${baseUrl}${scopedPath}`, {
     method: "DELETE",

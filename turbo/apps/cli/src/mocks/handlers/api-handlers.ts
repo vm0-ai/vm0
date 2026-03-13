@@ -60,11 +60,11 @@ export const apiHandlers = [
     );
   }),
 
-  // GET /api/scope - getOrg
-  http.get("http://localhost:3000/api/scope", () => {
+  // GET /api/org - getOrg
+  http.get("http://localhost:3000/api/org", () => {
     return HttpResponse.json(
       {
-        id: "scope-default",
+        id: "org-default",
         slug: "user-default",
         displayName: null,
         createdAt: "2025-01-01T00:00:00Z",

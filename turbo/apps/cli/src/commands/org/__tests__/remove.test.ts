@@ -30,7 +30,7 @@ describe("org remove command", () => {
 
   it("should remove member and show success", async () => {
     server.use(
-      http.delete("http://localhost:3000/api/scope/members", () => {
+      http.delete("http://localhost:3000/api/org/members", () => {
         return HttpResponse.json({
           message: "Removed member@example.com from organization",
         });
@@ -46,7 +46,7 @@ describe("org remove command", () => {
 
   it("should handle API error", async () => {
     server.use(
-      http.delete("http://localhost:3000/api/scope/members", () => {
+      http.delete("http://localhost:3000/api/org/members", () => {
         return HttpResponse.json(
           {
             error: {

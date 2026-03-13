@@ -5,7 +5,7 @@ import type {
   SessionResponse,
   CheckpointResponse,
   ComposeResponse,
-  ScopeResponse as CoreScopeResponse,
+  OrgResponse as CoreOrgResponse,
   ApiErrorResponse,
   ScheduleResponse,
   ScheduleListResponse,
@@ -16,7 +16,7 @@ import type {
 // Re-export types with CLI naming conventions for backward compatibility
 export type RunResult = CoreRunResult;
 export type ApiError = ApiErrorResponse;
-export type ScopeResponse = CoreScopeResponse;
+export type OrgResponse = CoreOrgResponse;
 export type GetSessionResponse = SessionResponse;
 export type GetCheckpointResponse = CheckpointResponse;
 export type GetComposeResponse = ComposeResponse;

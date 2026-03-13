@@ -41,7 +41,7 @@ describe("org list command", () => {
     await mkdir(configDir, { recursive: true });
     await writeFile(
       path.join(configDir, "config.json"),
-      JSON.stringify({ activeScope: "my-org" }),
+      JSON.stringify({ activeOrg: "my-org" }),
     );
   });
 
@@ -51,9 +51,9 @@ describe("org list command", () => {
 
   it("should display organizations with roles", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/list", () => {
+      http.get("http://localhost:3000/api/org/list", () => {
         return HttpResponse.json({
-          scopes: [
+          orgs: [
             { slug: "personal-user", role: "admin" },
             { slug: "my-org", role: "admin" },
           ],
@@ -73,9 +73,9 @@ describe("org list command", () => {
 
   it("should mark current organization", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/list", () => {
+      http.get("http://localhost:3000/api/org/list", () => {
         return HttpResponse.json({
-          scopes: [
+          orgs: [
             { slug: "personal-user", role: "admin" },
             { slug: "my-org", role: "admin" },
           ],
@@ -92,7 +92,7 @@ describe("org list command", () => {
 
   it("should handle API error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope/list", () => {
+      http.get("http://localhost:3000/api/org/list", () => {
         return HttpResponse.json(
           {
             error: {

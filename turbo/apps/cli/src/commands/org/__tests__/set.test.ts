@@ -33,7 +33,7 @@ describe("org set command", () => {
 
   it("should require --force to update existing organization", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope", () => {
+      http.get("http://localhost:3000/api/org", () => {
         return HttpResponse.json({
           id: "test-id",
           slug: "oldslug",
@@ -58,7 +58,7 @@ describe("org set command", () => {
 
   it("should update organization with --force", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope", () => {
+      http.get("http://localhost:3000/api/org", () => {
         return HttpResponse.json({
           id: "test-id",
           slug: "oldslug",
@@ -66,7 +66,7 @@ describe("org set command", () => {
           updatedAt: "2024-01-01T00:00:00Z",
         });
       }),
-      http.put("http://localhost:3000/api/scope", () => {
+      http.put("http://localhost:3000/api/org", () => {
         return HttpResponse.json({
           id: "test-id",
           slug: "newslug",
@@ -85,7 +85,7 @@ describe("org set command", () => {
 
   it("should handle slug already taken", async () => {
     server.use(
-      http.get("http://localhost:3000/api/scope", () => {
+      http.get("http://localhost:3000/api/org", () => {
         return HttpResponse.json({
           id: "test-id",
           slug: "oldslug",
@@ -93,7 +93,7 @@ describe("org set command", () => {
           updatedAt: "2024-01-01T00:00:00Z",
         });
       }),
-      http.put("http://localhost:3000/api/scope", () => {
+      http.put("http://localhost:3000/api/org", () => {
         return HttpResponse.json(
           { error: { message: "Org already exists", code: "CONFLICT" } },
           { status: 409 },

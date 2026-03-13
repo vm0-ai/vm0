@@ -11,11 +11,11 @@ export const listCommand = new Command()
     withErrorHandler(async () => {
       const result = await listOrgs();
       const config = await loadConfig();
-      const activeScope = config.activeScope;
+      const activeOrg = config.activeOrg;
 
       console.log(chalk.bold("Available organizations:"));
-      for (const org of result.scopes) {
-        const isCurrent = org.slug === activeScope;
+      for (const org of result.orgs) {
+        const isCurrent = org.slug === activeOrg;
         const marker = isCurrent ? chalk.green("* ") : "  ";
         const roleLabel = org.role ? ` (${org.role})` : "";
         const currentLabel = isCurrent ? chalk.dim(" ← current") : "";

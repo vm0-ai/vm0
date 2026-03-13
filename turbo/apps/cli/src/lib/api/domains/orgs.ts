@@ -1,10 +1,10 @@
 import { initClient } from "@ts-rest/core";
 import {
-  scopeContract,
-  scopeMembersContract,
-  scopeListContract,
-  type ScopeMembersResponse,
-  type ScopeListResponse,
+  orgContract,
+  orgMembersContract,
+  orgListContract,
+  type OrgMembersResponse,
+  type OrgListResponse,
 } from "@vm0/core";
 import {
   getClientConfig,
@@ -12,7 +12,7 @@ import {
   handleError,
 } from "../core/client-factory";
 import { getToken } from "../config";
-import type { ScopeResponse } from "../core/types";
+import type { OrgResponse } from "../core/types";
 
 /**
  * Get client config that always uses the user token (vm0_live_),
@@ -41,9 +41,9 @@ async function getUserTokenClientConfig(): Promise<{
 /**
  * Get current user's default organization
  */
-export async function getOrg(): Promise<ScopeResponse> {
+export async function getOrg(): Promise<OrgResponse> {
   const config = await getClientConfig();
-  const client = initClient(scopeContract, config);
+  const client = initClient(orgContract, config);
 
   const result = await client.get({ headers: {} });
 
@@ -60,9 +60,9 @@ export async function getOrg(): Promise<ScopeResponse> {
 export async function updateOrg(body: {
   slug: string;
   force?: boolean;
-}): Promise<ScopeResponse> {
+}): Promise<OrgResponse> {
   const config = await getClientConfig();
-  const client = initClient(scopeContract, config);
+  const client = initClient(orgContract, config);
 
   const result = await client.update({ body });
 
@@ -76,9 +76,9 @@ export async function updateOrg(body: {
 /**
  * Get organization members and status
  */
-export async function getOrgMembers(): Promise<ScopeMembersResponse> {
+export async function getOrgMembers(): Promise<OrgMembersResponse> {
   const config = await getClientConfig();
-  const client = initClient(scopeMembersContract, config);
+  const client = initClient(orgMembersContract, config);
 
   const result = await client.members({ headers: {} });
 
@@ -94,7 +94,7 @@ export async function getOrgMembers(): Promise<ScopeMembersResponse> {
  */
 export async function inviteOrgMember(email: string): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(scopeMembersContract, config);
+  const client = initClient(orgMembersContract, config);
 
   const result = await client.invite({
     body: { email },
@@ -112,7 +112,7 @@ export async function inviteOrgMember(email: string): Promise<void> {
  */
 export async function removeOrgMember(email: string): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(scopeMembersContract, config);
+  const client = initClient(orgMembersContract, config);
 
   const result = await client.removeMember({
     body: { email },
@@ -130,7 +130,7 @@ export async function removeOrgMember(email: string): Promise<void> {
  */
 export async function leaveOrg(): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(scopeMembersContract, config);
+  const client = initClient(orgMembersContract, config);
 
   const result = await client.leave({
     body: {},
@@ -146,9 +146,9 @@ export async function leaveOrg(): Promise<void> {
 /**
  * List all accessible organizations (always uses user token)
  */
-export async function listOrgs(): Promise<ScopeListResponse> {
+export async function listOrgs(): Promise<OrgListResponse> {
   const config = await getUserTokenClientConfig();
-  const client = initClient(scopeListContract, config);
+  const client = initClient(orgListContract, config);
 
   const result = await client.list({ headers: {} });
 

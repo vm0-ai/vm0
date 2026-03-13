@@ -122,8 +122,8 @@ describe("compose command", () => {
   let tempDir: string;
   let originalCwd: string;
 
-  const scopeResponse = {
-    id: "scope-123",
+  const orgResponse = {
+    id: "org-123",
     slug: "user-abc12345",
     displayName: null,
     createdAt: "2025-01-01T00:00:00Z",
@@ -184,8 +184,8 @@ describe("compose command", () => {
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -213,8 +213,8 @@ describe("compose command", () => {
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -262,8 +262,8 @@ describe("compose command", () => {
             });
           },
         ),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -311,8 +311,8 @@ describe("compose command", () => {
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -379,8 +379,8 @@ describe("compose command", () => {
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -497,8 +497,8 @@ describe("compose command", () => {
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -543,8 +543,8 @@ describe("compose command", () => {
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -563,8 +563,8 @@ describe("compose command", () => {
         `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
       );
       server.use(
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
     });
@@ -796,8 +796,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -917,8 +917,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -978,8 +978,8 @@ agents:
               action: "created",
             });
           }),
-          http.get("http://localhost:3000/api/scope", () => {
-            return HttpResponse.json(scopeResponse);
+          http.get("http://localhost:3000/api/org", () => {
+            return HttpResponse.json(orgResponse);
           }),
         );
 
@@ -1038,8 +1038,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1074,8 +1074,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1111,8 +1111,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1147,8 +1147,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1221,8 +1221,8 @@ agents:
               action: "created",
             });
           }),
-          http.get("http://localhost:3000/api/scope", () => {
-            return HttpResponse.json(scopeResponse);
+          http.get("http://localhost:3000/api/org", () => {
+            return HttpResponse.json(orgResponse);
           }),
         );
 
@@ -1289,8 +1289,8 @@ agents:
               action: "existing",
             });
           }),
-          http.get("http://localhost:3000/api/scope", () => {
-            return HttpResponse.json(scopeResponse);
+          http.get("http://localhost:3000/api/org", () => {
+            return HttpResponse.json(orgResponse);
           }),
         );
 
@@ -1401,8 +1401,8 @@ agents:
               action: "existing",
             });
           }),
-          http.get("http://localhost:3000/api/scope", () => {
-            return HttpResponse.json(scopeResponse);
+          http.get("http://localhost:3000/api/org", () => {
+            return HttpResponse.json(orgResponse);
           }),
         );
 
@@ -1447,8 +1447,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
     });
@@ -1633,8 +1633,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1677,8 +1677,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1736,8 +1736,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1772,8 +1772,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1798,8 +1798,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1821,8 +1821,8 @@ describe("GitHub URL compose", () => {
   let tempDir: string;
   let originalCwd: string;
 
-  const scopeResponse = {
-    id: "scope-123",
+  const orgResponse = {
+    id: "org-123",
     slug: "user-abc12345",
     displayName: null,
     createdAt: "2025-01-01T00:00:00Z",
@@ -1897,8 +1897,8 @@ agents:
           action: "created",
         });
       }),
-      http.get("http://localhost:3000/api/scope", () => {
-        return HttpResponse.json(scopeResponse);
+      http.get("http://localhost:3000/api/org", () => {
+        return HttpResponse.json(orgResponse);
       }),
     );
 
@@ -2002,8 +2002,8 @@ agents:
           action: "created",
         });
       }),
-      http.get("http://localhost:3000/api/scope", () => {
-        return HttpResponse.json(scopeResponse);
+      http.get("http://localhost:3000/api/org", () => {
+        return HttpResponse.json(orgResponse);
       }),
     );
 
@@ -2070,8 +2070,8 @@ agents:
           action: "created",
         });
       }),
-      http.get("http://localhost:3000/api/scope", () => {
-        return HttpResponse.json(scopeResponse);
+      http.get("http://localhost:3000/api/org", () => {
+        return HttpResponse.json(orgResponse);
       }),
     );
 
@@ -2119,8 +2119,8 @@ agents:
           action: "created",
         });
       }),
-      http.get("http://localhost:3000/api/scope", () => {
-        return HttpResponse.json(scopeResponse);
+      http.get("http://localhost:3000/api/org", () => {
+        return HttpResponse.json(orgResponse);
       }),
     );
 
@@ -2174,8 +2174,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2223,8 +2223,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2269,8 +2269,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2319,8 +2319,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2432,8 +2432,8 @@ agents:
             action: "existing",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2482,8 +2482,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2533,8 +2533,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2593,8 +2593,8 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/scope", () => {
-          return HttpResponse.json(scopeResponse);
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2663,8 +2663,8 @@ agents:
       },
     );
 
-    const scopeApiHandler = http.get("http://localhost:3000/api/scope", () => {
-      return HttpResponse.json(scopeResponse);
+    const orgApiHandler = http.get("http://localhost:3000/api/org", () => {
+      return HttpResponse.json(orgResponse);
     });
 
     it("should show setup URL when secrets are missing", async () => {
@@ -2687,7 +2687,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({ secrets: [] });
         }),
@@ -2725,7 +2725,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({
             secrets: [
@@ -2769,7 +2769,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({ secrets: [] });
         }),
@@ -2805,7 +2805,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({ secrets: [] });
         }),
@@ -2849,7 +2849,7 @@ agents:
         }),
       );
 
-      server.use(composeApiHandler, scopeApiHandler);
+      server.use(composeApiHandler, orgApiHandler);
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
 
@@ -2891,7 +2891,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({
             secrets: [
@@ -2963,7 +2963,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({ secrets: [] });
         }),
@@ -3029,7 +3029,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({ secrets: [] });
         }),
@@ -3083,7 +3083,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({ secrets: [] });
         }),
@@ -3139,7 +3139,7 @@ agents:
 
       server.use(
         composeApiHandler,
-        scopeApiHandler,
+        orgApiHandler,
         http.get("http://localhost:3000/api/secrets", () => {
           return HttpResponse.json({ secrets: [] });
         }),

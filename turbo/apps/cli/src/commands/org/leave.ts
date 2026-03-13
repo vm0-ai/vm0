@@ -10,7 +10,7 @@ export const leaveCommand = new Command()
   .action(
     withErrorHandler(async () => {
       await leaveOrg();
-      await saveConfig({ activeScope: undefined });
+      await saveConfig({ activeOrg: undefined });
       console.log(
         chalk.green("✓ Left organization. Switched to personal org."),
       );

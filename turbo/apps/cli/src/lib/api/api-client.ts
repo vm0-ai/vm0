@@ -12,7 +12,7 @@ import {
   composesVersionsContract,
   sessionsByIdContract,
   checkpointsByIdContract,
-  scopeContract,
+  orgContract,
   storagesPrepareContract,
   storagesCommitContract,
   storagesDownloadContract,
@@ -49,7 +49,7 @@ import type {
   CheckpointResponse,
   AgentComposeSnapshot as CoreAgentComposeSnapshot,
   ComposeResponse,
-  ScopeResponse as CoreScopeResponse,
+  OrgResponse as CoreOrgResponse,
   LogsSearchResponse as CoreLogsSearchResponse,
 } from "@vm0/core";
 
@@ -62,7 +62,7 @@ export type TelemetryMetric = CoreTelemetryMetric;
 export type NetworkLogEntry = CoreNetworkLogEntry;
 export type AgentComposeSnapshot = CoreAgentComposeSnapshot;
 export type ApiError = ApiErrorResponse;
-export type ScopeResponse = CoreScopeResponse;
+export type OrgResponse = CoreOrgResponse;
 export type GetSystemLogResponse = SystemLogResponse;
 export type GetMetricsResponse = MetricsResponse;
 export type GetAgentEventsResponse = AgentEventsResponse;
@@ -141,7 +141,7 @@ class ApiClient {
 
   async getComposeByName(
     name: string,
-    scope?: string,
+    org?: string,
   ): Promise<GetComposeResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
@@ -156,7 +156,7 @@ class ApiClient {
     const result = await client.getByName({
       query: {
         name,
-        scope,
+        org,
       },
     });
 
@@ -481,12 +481,12 @@ class ApiClient {
   /**
    * Get current user's default org
    */
-  async getScope(): Promise<ScopeResponse> {
+  async getScope(): Promise<OrgResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
     // Create ts-rest client with config
-    const client = initClient(scopeContract, {
+    const client = initClient(orgContract, {
       baseUrl,
       baseHeaders: headers,
       jsonQuery: false,
@@ -511,12 +511,12 @@ class ApiClient {
   async updateScope(body: {
     slug: string;
     force?: boolean;
-  }): Promise<ScopeResponse> {
+  }): Promise<OrgResponse> {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
     // Create ts-rest client with config
-    const client = initClient(scopeContract, {
+    const client = initClient(orgContract, {
       baseUrl,
       baseHeaders: headers,
       jsonQuery: false,

@@ -40,7 +40,7 @@ describe("org leave command", () => {
 
   it("should leave org and show success", async () => {
     server.use(
-      http.post("http://localhost:3000/api/scope/leave", () => {
+      http.post("http://localhost:3000/api/org/leave", () => {
         return HttpResponse.json({
           message: "Left organization",
         });
@@ -56,7 +56,7 @@ describe("org leave command", () => {
 
   it("should handle admin-cannot-leave error", async () => {
     server.use(
-      http.post("http://localhost:3000/api/scope/leave", () => {
+      http.post("http://localhost:3000/api/org/leave", () => {
         return HttpResponse.json(
           {
             error: {
