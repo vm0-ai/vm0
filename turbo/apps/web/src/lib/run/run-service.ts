@@ -593,7 +593,7 @@ async function buildAndDispatchRun(opts: {
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
       // Sub-step timings within buildExecutionContext
       {
-        op: "api_build_resolve_source_and_org",
+        op: "api_build_resolve_source_and_scope",
         ms: buildContextTimings.resolveSourceAndScope,
       },
       {
@@ -602,7 +602,7 @@ async function buildAndDispatchRun(opts: {
       },
       // Sub-step timings within prepareForExecution
       {
-        op: "api_prepare_resolve_orgs",
+        op: "api_prepare_resolve_scopes",
         ms: prepareResult.timings.resolveOrgs,
       },
       {
