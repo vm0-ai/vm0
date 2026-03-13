@@ -26,6 +26,28 @@ VOLEOF
 
     # Unique name for the optional volume that will NOT exist
     export OPTIONAL_VOLUME_NAME="e2e-vol-t33-optional-nonexistent-$(date +%s%3N)-$RANDOM"
+
+    # Compose the shared agent ONCE here so parallel tests don't race on INSERT
+    export SHARED_CONFIG="$TEST_DIR/vm0-shared.yaml"
+    cat > "$SHARED_CONFIG" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}:
+    description: "Test agent with optional volume"
+    framework: claude-code
+    volumes:
+      - optional-data:/home/user/optional-data
+      - claude-files:/home/user/.config/claude
+volumes:
+  optional-data:
+    name: $OPTIONAL_VOLUME_NAME
+    version: latest
+    optional: true
+  claude-files:
+    name: $CLAUDE_VOLUME_NAME
+    version: latest
+EOF
+    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -69,28 +91,7 @@ EOF
 }
 
 @test "t33-2: run succeeds when optional volume does not exist (skip silently)" {
-    # Ensure config is created with optional volume
-    cat > "$TEST_CONFIG" <<EOF
-version: "1.0"
-agents:
-  ${AGENT_NAME}:
-    description: "Test agent with optional volume"
-    framework: claude-code
-    volumes:
-      - optional-data:/home/user/optional-data
-      - claude-files:/home/user/.config/claude
-volumes:
-  optional-data:
-    name: $OPTIONAL_VOLUME_NAME
-    version: latest
-    optional: true
-  claude-files:
-    name: $CLAUDE_VOLUME_NAME
-    version: latest
-EOF
-
-    # Compose the agent
-    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+    # Agent already composed in setup_file() — no need to re-compose here
 
     # Create artifact (required for run)
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
