@@ -5,6 +5,7 @@ import type {
   UpdateUserPreferencesRequest,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
+import { clerk$ } from "../auth.ts";
 
 // ---------------------------------------------------------------------------
 // Reload trigger
@@ -41,6 +42,10 @@ export const updateNotificationPreference$ = command(
       toast.error("Failed to update notification preference");
       return;
     }
+
+    // Force JWT refresh so updated membership metadata is available immediately
+    const clerk = await get(clerk$);
+    await clerk.session?.getToken({ skipCache: true });
 
     set(internalReloadPreferences$, (x) => x + 1);
   },

@@ -4,7 +4,6 @@ import {
   ZeroSidebar,
   type ZeroNavId,
   type ZeroAccountAction,
-  type ZeroAccountSubId,
 } from "./zero-sidebar.tsx";
 import { Button } from "@vm0/ui";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
@@ -197,8 +196,6 @@ export function ZeroAppShell() {
     : "Zero";
   const activeId = useGet(zeroActiveId$);
   const setActiveId = useSet(setZeroActiveId$);
-  const accountSubId$ = useCCState<ZeroAccountSubId>(null);
-  const accountSubId = useGet(accountSubId$);
   const avatarIndex$ = useCCState(0);
   const avatarIndex = useGet(avatarIndex$);
   const showAboutPage$ = useCCState(false);
@@ -274,8 +271,9 @@ export function ZeroAppShell() {
       if (action === "signout" || action === "manage") {
         return;
       }
-      set(setZeroActiveId$, "account");
-      set(accountSubId$, action as ZeroAccountSubId);
+      if (action === "preferences") {
+        set(setZeroActiveId$, "preferences");
+      }
     },
   );
   const handleAccountAction = useSet(handleAccountAction$);
@@ -346,7 +344,6 @@ export function ZeroAppShell() {
         ) : (
           <ZeroContent
             sectionId={activeId}
-            accountSubId={accountSubId}
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
             onNavigateToActivity={() => setActiveId("activity")}

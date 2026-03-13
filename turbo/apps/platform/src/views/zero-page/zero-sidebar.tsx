@@ -45,7 +45,7 @@ export type ZeroNavId =
   | "activity"
   | "works"
   | "settings"
-  | "account";
+  | "preferences";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MAIN_NAV = [
@@ -72,8 +72,6 @@ const FOOTER_NAV = [
 ] as const;
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
-
-export type ZeroAccountSubId = "preferences" | null;
 
 interface SessionAccount {
   sessionId: string;
@@ -193,7 +191,7 @@ function AccountDropdown({
         <button
           type="button"
           className={`flex w-full items-center gap-2 rounded-lg p-2 text-left transition-colors duration-200 ${
-            activeId === "account"
+            activeId === "preferences"
               ? "bg-sidebar-active"
               : "hover:bg-sidebar-accent/50"
           }`}
@@ -206,7 +204,7 @@ function AccountDropdown({
           <div className="flex-1 min-w-0">
             <p
               className={`text-sm font-medium leading-tight truncate ${
-                activeId === "account"
+                activeId === "preferences"
                   ? "text-sidebar-primary"
                   : "text-sidebar-foreground"
               }`}
@@ -215,7 +213,7 @@ function AccountDropdown({
             </p>
             <p
               className={`text-xs leading-tight truncate mt-px ${
-                activeId === "account"
+                activeId === "preferences"
                   ? "text-sidebar-primary/80"
                   : "text-sidebar-foreground opacity-70"
               }`}
