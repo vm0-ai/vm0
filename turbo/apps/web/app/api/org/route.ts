@@ -12,7 +12,7 @@ import type { ResolvedOrg } from "../../../src/lib/org/resolve-org";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
 
-const log = logger("api:scope");
+const log = logger("api:org");
 
 function resolvedOrgToResponse(resolved: ResolvedOrg) {
   return {
@@ -91,9 +91,9 @@ const router = tsr.router(orgContract, {
     }
 
     try {
-      const scope = await updateOrgSlug(resolvedOrg.orgId, slug, userId, force);
+      const org = await updateOrgSlug(resolvedOrg.orgId, slug, userId, force);
 
-      return { status: 200 as const, body: resolvedOrgToResponse(scope) };
+      return { status: 200 as const, body: resolvedOrgToResponse(org) };
     } catch (error) {
       if (isBadRequest(error)) {
         // Check if it's a conflict error (slug already exists)
@@ -119,7 +119,7 @@ const router = tsr.router(orgContract, {
 });
 
 /**
- * Custom error handler for scope API
+ * Custom error handler for org API
  */
 function errorHandler(err: unknown): TsRestResponse | void {
   // Handle ts-rest RequestValidationError

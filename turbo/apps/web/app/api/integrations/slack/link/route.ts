@@ -130,12 +130,12 @@ async function buildAgentFields(
 
   let agents: Array<{ id: string; name: string }> = [];
   if (isAdmin) {
-    const defaultScope = await getDefaultOrgByUserId(userId);
-    if (defaultScope) {
+    const defaultOrg = await getDefaultOrgByUserId(userId);
+    if (defaultOrg) {
       const userAgents = await globalThis.services.db
         .select({ id: agentComposes.id, name: agentComposes.name })
         .from(agentComposes)
-        .where(eq(agentComposes.orgId, defaultScope.orgId));
+        .where(eq(agentComposes.orgId, defaultOrg.orgId));
 
       // Prepend default agent, deduplicate by id
       const seen = new Set<string>();
