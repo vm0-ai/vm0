@@ -1,6 +1,7 @@
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   notificationPreferences$,
   updateNotificationPreference$,
@@ -27,7 +28,7 @@ export function NotificationSettings() {
           return next;
         });
       })
-      .catch(() => {});
+      .catch(() => toast.error("Failed to update preference"));
   };
 
   if (!preferences) {

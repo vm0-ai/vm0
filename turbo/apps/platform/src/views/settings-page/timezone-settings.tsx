@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@vm0/ui/components/ui/select";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { IconClock, IconLoader2 } from "@tabler/icons-react";
 import {
   notificationPreferences$,
@@ -48,7 +49,7 @@ export function TimezoneSettings() {
     setLoading(true);
     updatePreference({ timezone: value })
       .finally(() => setLoading(false))
-      .catch(() => {});
+      .catch(() => toast.error("Failed to update timezone"));
   };
 
   if (!preferences) {
