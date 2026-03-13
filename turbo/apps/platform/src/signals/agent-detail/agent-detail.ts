@@ -67,7 +67,7 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
 
     const params = new URLSearchParams({ name: agentName });
     if (org) {
-      params.set("scope", org);
+      params.set("org", org);
     }
 
     const response = await fetchFn(`/api/agent/composes?${params.toString()}`);

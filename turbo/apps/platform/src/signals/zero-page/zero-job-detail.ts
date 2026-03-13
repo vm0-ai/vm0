@@ -62,11 +62,11 @@ const fetchZeroJobDetail$ = command(async ({ get, set }) => {
     const slashIndex = name.indexOf("/");
     const isOwner = slashIndex === -1;
     const agentName = isOwner ? name : name.slice(slashIndex + 1);
-    const scope = isOwner ? undefined : name.slice(0, slashIndex);
+    const org = isOwner ? undefined : name.slice(0, slashIndex);
 
     const params = new URLSearchParams({ name: agentName });
-    if (scope) {
-      params.set("scope", scope);
+    if (org) {
+      params.set("org", org);
     }
 
     const response = await fetchFn(`/api/agent/composes?${params.toString()}`);
