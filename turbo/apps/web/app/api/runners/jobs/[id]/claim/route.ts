@@ -200,7 +200,7 @@ const router = tsr.router(runnersJobClaimContract, {
         apiStartTime: storedContext.apiStartTime,
         userTimezone: storedContext.userTimezone,
         agentName: storedContext.agentName,
-        agentScopeSlug: storedContext.agentScopeSlug,
+        agentOrgSlug: storedContext.agentOrgSlug,
         memoryName: storedContext.memoryName,
       },
     };

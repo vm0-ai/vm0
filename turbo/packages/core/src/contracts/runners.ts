@@ -29,13 +29,13 @@ export const experimentalFirewallSchema = z.object({
 });
 
 /**
- * Runner group format: scope/name (e.g., "acme/production")
+ * Runner group format: org/name (e.g., "acme/production")
  */
 export const runnerGroupSchema = z
   .string()
   .regex(
     /^[a-z0-9-]+\/[a-z0-9-]+$/,
-    "Runner group must be in scope/name format (e.g., acme/production)",
+    "Runner group must be in org/name format (e.g., acme/production)",
   );
 
 /**
@@ -154,9 +154,9 @@ export const storedExecutionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Agent metadata for VM0_AGENT_NAME and VM0_AGENT_SCOPE env vars
+  // Agent metadata for VM0_AGENT_NAME and VM0_AGENT_ORG env vars
   agentName: z.string().optional(),
-  agentScopeSlug: z.string().optional(),
+  agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental services for proxy-side token replacement
@@ -194,7 +194,7 @@ export const executionContextSchema = z.object({
   userTimezone: z.string().optional(),
   // Agent metadata
   agentName: z.string().optional(),
-  agentScopeSlug: z.string().optional(),
+  agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental services for proxy-side token replacement

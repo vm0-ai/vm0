@@ -420,7 +420,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should parse scope/name format", async () => {
+    it("should parse org/name format", async () => {
       let capturedQueryParams:
         | { name: string | null; org: string | null }
         | undefined;
@@ -489,7 +489,7 @@ describe("run command", () => {
       );
     });
 
-    it("should parse scope/name:version format", async () => {
+    it("should parse org/name:version format", async () => {
       let capturedVersionParams:
         | { composeId: string | null; version: string | null }
         | undefined;

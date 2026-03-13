@@ -88,7 +88,7 @@ const agentDefinitionSchema = z.object({
         .string()
         .regex(
           /^[a-z0-9-]+\/[a-z0-9-]+$/,
-          "Runner group must be in scope/name format (e.g., acme/production)",
+          "Runner group must be in org/name format (e.g., acme/production)",
         ),
     })
     .optional(),

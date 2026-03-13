@@ -1,12 +1,12 @@
 #!/usr/bin/env bats
 
-# Test VM0 compose with scope support (E2E happy path only)
-# Tests the scope/name:version naming convention for agent composes
+# Test VM0 compose with org support (E2E happy path only)
+# Tests the org/name:version naming convention for agent composes
 #
 # This test covers issue #757: Add scope support to agent compose
 #
-# Note: Identifier format parsing and error handling (scope/name, scope/name:version, name:version,
-# backward compat, scope errors) are tested via CLI Command Integration Tests
+# Note: Identifier format parsing and error handling (org/name, org/name:version, name:version,
+# backward compat, org errors) are tested via CLI Command Integration Tests
 # (see run/__tests__/index.test.ts, "scope error handling" section).
 
 load '../../helpers/setup'
@@ -25,10 +25,10 @@ teardown() {
 }
 
 # ============================================
-# vm0 compose displays scope/name format
+# vm0 compose displays org/name format
 # ============================================
 
-@test "t22-1: vm0 compose shows scope/name:version in run instructions" {
+@test "t22-1: vm0 compose shows org/name:version in run instructions" {
     echo "# Creating config file..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -44,7 +44,7 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying output contains scope/name format..."
+    echo "# Verifying output contains org/name format..."
     # Output should show something like "Compose created: user-abc12345/e2e-scope-compose-xxxx"
     assert_output --regexp "Compose (created|version exists): [a-z0-9-]+/$AGENT_NAME"
 
@@ -52,18 +52,18 @@ EOF
     assert_output --partial "Version:"
     assert_output --regexp "Version:[ ]+[0-9a-f]{8}"
 
-    echo "# Verifying run instructions include scope/name:version format..."
-    # Output should show: vm0 run scope/name:version
+    echo "# Verifying run instructions include org/name:version format..."
+    # Output should show: vm0 run org/name:version
     assert_output --regexp "vm0 run [a-z0-9-]+/$AGENT_NAME:[0-9a-f]{8}"
 }
 
 # ============================================
-# vm0 run with scope/name format (E2E happy path)
+# vm0 run with org/name format (E2E happy path)
 # ============================================
 
-@test "t22-2: vm0 run with scope/name format resolves agent correctly" {
-    # This test verifies the end-to-end happy path for scope/name format.
-    # Other identifier formats (scope/name:version, name:version, backward compat)
+@test "t22-2: vm0 run with org/name format resolves agent correctly" {
+    # This test verifies the end-to-end happy path for org/name format.
+    # Other identifier formats (org/name:version, name:version, backward compat)
     # are tested via CLI Command Integration Tests in run/__tests__/index.test.ts.
 
     echo "# Step 1: Creating agent config..."
@@ -72,7 +72,7 @@ version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent for scope/name run"
+    description: "Test agent for org/name run"
     framework: claude-code
     working_dir: /home/user/workspace
 EOF
@@ -99,7 +99,7 @@ EOF
     run $CLI_COMMAND artifact push
     assert_success
 
-    echo "# Step 4: Running with scope/name format..."
+    echo "# Step 4: Running with org/name format..."
     run $CLI_COMMAND run "$USER_SCOPE/$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from scope test"

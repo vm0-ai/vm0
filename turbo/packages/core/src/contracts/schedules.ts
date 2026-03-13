@@ -70,7 +70,7 @@ const deployScheduleRequestSchema = z
     artifactName: z.string().optional(),
     artifactVersion: z.string().optional(),
     volumeVersions: z.record(z.string(), z.string()).optional(),
-    // Resolved agent compose ID (CLI resolves scope/name:version → composeId)
+    // Resolved agent compose ID (CLI resolves org/name:version → composeId)
     composeId: z.string().uuid("Invalid compose ID"),
     // Enable schedule immediately upon creation
     enabled: z.boolean().optional(),
