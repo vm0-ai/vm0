@@ -76,7 +76,7 @@ import { RunService } from "../../../lib/run/run-service";
 import { AgentSessionService } from "../../../lib/agent-session/agent-session-service";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { scopes } from "../../../db/schema/scope";
+import { orgCache } from "../../../db/schema/org-cache";
 import { credentials } from "../../../db/schema/credential";
 import { eq } from "drizzle-orm";
 import { encryptCredentialValue } from "../../../lib/crypto";
@@ -156,7 +156,7 @@ describe("...", () => {
 `testContext()` provides:
 
 - `setupMocks()` - Set up default mock behavior for external services
-- `setupUser()` - Create isolated user context (unique userId and scopeId)
+- `setupUser()` - Create isolated user context (unique userId and orgId)
 - `mocks` - Access mock objects for customization or assertions
 
 ---
@@ -197,18 +197,16 @@ Similar to importing internal services, direct DB operations for data setup ofte
 
 ```typescript
 // Creating data
-await globalThis.services.db.insert(scopes).values({
-  id: testScopeId,
-  slug: `test-${testScopeId.slice(0, 8)}`,
-  type: "personal",
-  ownerId: testUserId,
+await globalThis.services.db.insert(orgCache).values({
+  orgId: testOrgId,
+  slug: `test-${testOrgId.slice(0, 8)}`,
 });
 
 await globalThis.services.db.insert(agentComposes).values({
   id: testAgentId,
   name: testAgentName,
   userId: testUserId,
-  scopeId: testScopeId,
+  orgId: testOrgId,
 });
 
 // Modifying state
@@ -539,7 +537,7 @@ Create `given*` helpers that set up preconditions through real API flows:
 import { HttpResponse } from "msw";
 import { handlers, http } from "../msw";
 import { server } from "../../mocks/server";
-import { createTestCompose, createTestScope } from "../api-test-helpers";
+import { createTestCompose, createTestOrg } from "../api-test-helpers";
 import { mockClerk } from "../clerk-mock";
 
 // Import route handlers and server actions
@@ -582,9 +580,9 @@ export async function givenLinkedSlackUser(
 ): Promise<LinkedUserResult> {
   const { installation } = await givenSlackWorkspaceInstalled(options);
 
-  // Mock Clerk and create scope
+  // Mock Clerk and create org
   mockClerk({ userId: options.vm0UserId ?? "user-123" });
-  await createTestScope("test-scope");
+  await createTestOrg("test-org");
 
   // Call the actual server action
   await linkSlackAccount(options.slackUserId ?? "U123", installation.slackWorkspaceId);

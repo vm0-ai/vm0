@@ -36,7 +36,7 @@ export async function requireOrgMember(orgId: string, userId: string) {
 }
 
 /**
- * Get user's default org using org_cache (never queries scopes table).
+ * Get user's default org using org_cache.
  *
  * Fast path: if the JWT session contains an orgId, look up via org_cache
  * — no Clerk API call needed.
@@ -64,7 +64,7 @@ export async function getDefaultOrg(
     }
   }
 
-  // Slow path: Clerk API (CLI tokens, or JWT org has no local scope yet)
+  // Slow path: Clerk API (CLI tokens, or JWT org has no local cache entry yet)
   const client = await clerkClient();
   const memberships = await client.users.getOrganizationMembershipList({
     userId,
@@ -96,7 +96,7 @@ export async function getDefaultOrg(
 
 /**
  * Resolve org ID: use the provided value or fall back to the user's default org.
- * Replaces the old resolveOrgId() which returned a scope UUID.
+ * Resolve org ID: use the provided value or fall back to the user's default org.
  */
 export async function resolveOrgId(
   userId: string,

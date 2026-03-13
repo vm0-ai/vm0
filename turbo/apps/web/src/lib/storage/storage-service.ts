@@ -34,7 +34,7 @@ function createEmptyTarGz(): Buffer {
  * @param orgId - Clerk org ID for storage access
  * @param userId - User ID for storage record ownership
  * @param storageName - Storage name
- * @param orgSlug - Scope slug for S3 prefix construction
+ * @param orgSlug - Org slug for S3 prefix construction
  * @param storageType - Storage type ("artifact" or "memory")
  */
 export async function ensureStorageExists(
@@ -272,7 +272,7 @@ async function resolveVersion(
  * @param vars - Template variables for placeholder replacement
  * @param agentClerkOrgId - Agent Clerk org ID for volume resolution (where the agent is defined)
  * @param runtimeClerkOrgId - Runtime Clerk org ID for artifact/memory resolution (where the agent is executed)
- * @param userId - User ID within the Runtime Scope (for artifact/memory ownership)
+ * @param userId - User ID within the runtime org (for artifact/memory ownership)
  * @param artifactName - Artifact storage name
  * @param artifactVersion - Artifact version (defaults to "latest")
  * @param volumeVersionOverrides - Optional volume version overrides
@@ -431,7 +431,7 @@ export async function prepareStorageManifest(
       })()
     : Promise.resolve(null);
 
-  // Resolve memory (uses Runtime Scope, same as artifact)
+  // Resolve memory (uses runtime org, same as artifact)
   // Memory storage is guaranteed to exist after ensureStorageExists() in prepareForExecution()
   const memoryPromise = memoryName
     ? (async (): Promise<ManifestArtifact | null> => {

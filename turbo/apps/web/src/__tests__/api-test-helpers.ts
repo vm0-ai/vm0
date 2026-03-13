@@ -316,7 +316,7 @@ export async function findTestCliToken(token: string) {
  * Create a test org by inserting into org_cache.
  *
  * Pre-populates org_cache so getOrgData() works without Clerk API calls.
- * The legacy scopes table was dropped and replaced by orgs.
+ * Pre-populates org_cache so getOrgData() works without Clerk API calls.
  *
  * @param slug - The org slug
  * @returns The created org with id and slug

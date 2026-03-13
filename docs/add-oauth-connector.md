@@ -263,23 +263,16 @@ After both apps are registered and the credentials file is populated:
    # Expected: "✓ Authenticated"
    ```
 
-   **Step B: Ensure scope exists**
+   **Step B: Ensure org exists**
 
    ```bash
-   vm0 scope status
+   vm0 org status
    ```
 
-   If no scope is configured, create one:
+   If no org is configured, create one:
    ```bash
-   vm0 scope set test-user-scope
+   vm0 org set test-user-org
    ```
-
-   > If `vm0 scope set` fails with a 500 error (Clerk org creation fails in dev), create the scope directly in the database:
-   > ```bash
-   > psql "$DATABASE_URL" -c "INSERT INTO scopes (slug, clerk_org_id) VALUES ('test-user-scope', 'org_test') RETURNING id, slug;"
-   > # Then create the scope membership using the returned scope ID and user ID from `vm0 auth status`:
-   > psql "$DATABASE_URL" -c "INSERT INTO scope_members (scope_id, user_id, role) VALUES ('<scope-id>', '<clerk-user-id>', 'admin');"
-   > ```
 
    **Step C: Configure model provider**
 
@@ -302,7 +295,7 @@ After both apps are registered and the credentials file is populated:
    **Verify all prerequisites:**
    ```bash
    vm0 auth status          # ✓ Authenticated
-   vm0 scope status         # Shows scope slug
+   vm0 org status           # Shows org slug
    vm0 model-provider list  # Shows default provider for claude-code
    ```
 
@@ -329,11 +322,11 @@ Ensure the dev server is running and the CLI is authenticated:
 
 ```bash
 vm0 auth status          # ✓ Authenticated
-vm0 scope status         # Shows scope slug
+vm0 org status           # Shows org slug
 vm0 model-provider list  # Shows default provider
 ```
 
-If any of these are not set up, follow [Step C in the Add OAuth Connector Checklist](#add-oauth-connector-checklist) for CLI auth, scope, and model provider setup.
+If any of these are not set up, follow [Step C in the Add OAuth Connector Checklist](#add-oauth-connector-checklist) for CLI auth, org, and model provider setup.
 
 ### Step 1: Obtain the API token [AI + Human]
 
@@ -475,7 +468,7 @@ After fixes:
 
 - **Skill-only changes** (jq fields, example tweaks, documentation): Push to `vm0-skills` main, re-run `vm0 cook`. No human needed.
 - **Connector code changes** (response parsing, error handling): Re-run `vm0 cook`. No human needed — the dev server hot-reloads.
-- **Scope changes**: Disconnect and reconnect the connector via `agent-browser` with noVNC (see Step 3 scope fix above), then re-run `vm0 cook`.
+- **OAuth scope changes**: Disconnect and reconnect the connector via `agent-browser` with noVNC (see Step 3 scope fix above), then re-run `vm0 cook`.
 
 Repeat Steps 2–4 until all examples pass.
 

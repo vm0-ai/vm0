@@ -86,7 +86,7 @@ turbo/apps/platform/src/
 │   ├── server.ts          # MSW server setup for Node.js
 │   └── handlers/
 │       ├── index.ts       # Aggregates all handlers
-│       ├── api-scope.ts   # Scope API handlers
+│       ├── api-org.ts     # Org API handlers
 │       ├── api-model-providers.ts  # Model provider handlers
 │       └── ...            # Other API handlers
 ├── test/
@@ -106,12 +106,11 @@ For endpoints that return constant data:
 ```typescript
 import { http, HttpResponse } from "msw";
 
-export const apiScopeHandlers = [
-  http.get("/api/scope", () => {
+export const apiOrgHandlers = [
+  http.get("/api/org", () => {
     return HttpResponse.json({
-      id: "scope_1",
+      id: "org_1",
       slug: "user-12345678",
-      type: "personal",
     });
   }),
 ];
@@ -178,11 +177,11 @@ All handlers are collected in `handlers/index.ts`:
 
 ```typescript
 import { apiModelProvidersHandlers, resetMockModelProviders } from "./api-model-providers";
-import { apiScopeHandlers } from "./api-scope";
+import { apiOrgHandlers } from "./api-org";
 
 export const handlers = [
   ...apiModelProvidersHandlers,
-  ...apiScopeHandlers,
+  ...apiOrgHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -224,7 +223,7 @@ import { http, HttpResponse } from "msw";
 it("should show error when API returns 404", async () => {
   // Override the default handler for this test only
   server.use(
-    http.get("/api/scope", () => {
+    http.get("/api/org", () => {
       return new HttpResponse(null, { status: 404 });
     }),
   );
@@ -280,10 +279,10 @@ Override multiple endpoints when testing complex flows:
 ```typescript
 it("should complete onboarding flow", async () => {
   server.use(
-    http.get("/api/scope", () => {
+    http.get("/api/org", () => {
       return new HttpResponse(null, { status: 404 });
     }),
-    http.post("/api/scope", () => {
+    http.post("/api/org", () => {
       return HttpResponse.json({}, { status: 201 });
     }),
     http.put("/api/settings", () => {

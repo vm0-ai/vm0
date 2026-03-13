@@ -472,8 +472,8 @@ const context = testContext();
 describe("MyPage", () => {
   it("should render the page", async () => {
     server.use(
-      http.get("/api/scope", () => {
-        return HttpResponse.json({ id: "scope_123", slug: "user-123" });
+      http.get("/api/org", () => {
+        return HttpResponse.json({ id: "org_1", slug: "user-123" });
       }),
     );
 
@@ -521,25 +521,25 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { testContext } from "./test-helpers.ts";
-import { scope$, hasScope$ } from "../scope.ts";
+import { org$, hasOrg$ } from "../org.ts";
 
 const context = testContext();
 
-describe("scope signals", () => {
-  it("hasScope$ returns true when user has scope", async () => {
-    const hasScope = await context.store.get(hasScope$);
-    expect(hasScope).toBeTruthy();
+describe("org signals", () => {
+  it("hasOrg$ returns true when user has org", async () => {
+    const hasOrg = await context.store.get(hasOrg$);
+    expect(hasOrg).toBeTruthy();
   });
 
-  it("hasScope$ returns false when no scope (404)", async () => {
+  it("hasOrg$ returns false when no org (404)", async () => {
     server.use(
-      http.get("/api/scope", () => {
+      http.get("/api/org", () => {
         return new HttpResponse(null, { status: 404 });
       }),
     );
 
-    const hasScope = await context.store.get(hasScope$);
-    expect(hasScope).toBeFalsy();
+    const hasOrg = await context.store.get(hasOrg$);
+    expect(hasOrg).toBeFalsy();
   });
 });
 ```

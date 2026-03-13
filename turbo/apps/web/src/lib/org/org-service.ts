@@ -39,7 +39,7 @@ function validateOrgSlug(slug: string): void {
     );
   }
 
-  // TODO: "vm0" is hardcoded as the system scope slug. This should be configurable.
+  // TODO: "vm0" is hardcoded as the system org slug. This should be configurable.
   if (RESERVED_SLUGS.includes(slug) || slug.startsWith("vm0")) {
     throw badRequest(`Org slug is reserved`);
   }

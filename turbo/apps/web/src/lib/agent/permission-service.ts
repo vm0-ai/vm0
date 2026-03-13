@@ -194,7 +194,7 @@ export async function getEmailSharedAgents(
     .where(and(...conditions))
     .orderBy(desc(agentComposes.createdAt));
 
-  // Resolve scope slugs via org cache (skip orgs that fail lookup)
+  // Resolve org slugs via org cache (skip orgs that fail lookup)
   const uniqueOrgIds = [...new Set(rows.map((r) => r.orgId))];
   const orgDataResults = await Promise.all(
     uniqueOrgIds.map(async (id) => {

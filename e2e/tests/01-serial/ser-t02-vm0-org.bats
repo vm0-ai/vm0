@@ -3,16 +3,16 @@
 # Test VM0 org commands (Happy Path Only)
 # Tests the CLI for managing user organizations/namespaces
 #
-# This test covers issue #628: scope/namespace system
+# This test covers issue #628: org/namespace system
 #
 # Note: Slug validation tests (length, reserved words, invalid characters)
 # are covered by unit tests in:
-# - turbo/apps/web/src/lib/scope/__tests__/org-service.test.ts
+# - turbo/apps/web/src/lib/org/__tests__/org-service.test.ts
 # - turbo/apps/cli/src/commands/org/__tests__/set.test.ts
 #
 # Error handling tests have been moved to CLI integration tests:
 # - turbo/apps/cli/src/commands/run/__tests__/index.test.ts
-#   - "should show error when scope does not exist" (org not found)
+#   - "should show error when org does not exist" (org not found)
 # - turbo/apps/cli/src/commands/org/__tests__/set.test.ts
 #   - "should require --force to update existing organization"
 

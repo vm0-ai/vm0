@@ -104,7 +104,7 @@ The orchestration layer coordinates job execution between web API and runners.
 - **Fallback**: Polling every 30s catches missed notifications
 
 **Runner Behavior**:
-1. Subscribe to Ably channel `runner-group:{scope}/{name}`
+1. Subscribe to Ably channel `runner-group:{org}/{name}`
 2. Receive job notification: `{ runId }`
 3. Claim job atomically via `/api/runners/jobs/{id}/claim` (sets `claimed_at`)
 4. Execute in Firecracker VM
@@ -113,9 +113,9 @@ The orchestration layer coordinates job execution between web API and runners.
 
 #### Runner Groups
 
-**Format**: `{scope}/{name}`
+**Format**: `{org}/{name}`
 - Official: `vm0/*` (e.g., `vm0/production`) - VM0-managed runners
-- User: `{scope-slug}/*` (e.g., `my-team/private`) - Self-hosted runners
+- User: `{org-slug}/*` (e.g., `my-team/private`) - Self-hosted runners
 
 **Authentication**:
 - Official runners: HMAC signature using `OFFICIAL_RUNNER_SECRET`
