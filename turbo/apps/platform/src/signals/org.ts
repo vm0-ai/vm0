@@ -1,15 +1,9 @@
-import { computed, state } from "ccstate";
+import { computed } from "ccstate";
 import { user$ } from "./auth.ts";
 import { fetch$ } from "./fetch.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Org");
-
-/**
- * Reload trigger for org signals.
- * Increment to force recomputation of org$.
- */
-const internalReloadOrg$ = state(0);
 
 /**
  * Org response type from API
@@ -26,7 +20,6 @@ export interface Org {
  * Returns undefined if user has no org or is not authenticated.
  */
 export const org$ = computed(async (get) => {
-  get(internalReloadOrg$); // Subscribe to reload trigger
   const user = await get(user$);
   if (!user) {
     return undefined;
