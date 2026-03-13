@@ -46,7 +46,7 @@ const router = tsr.router(runnersPollContract, {
       ];
       log.debug(`Official runner polling group: ${group}`);
     } else {
-      // User runners: validate scope and filter by userId
+      // User runners: validate org and filter by userId
       try {
         await validateRunnerGroupOrg(auth.userId, group, auth.orgId);
       } catch {

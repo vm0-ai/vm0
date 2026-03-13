@@ -142,14 +142,14 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Not authenticated");
   });
 
-  it("should return shared agent via cross-scope lookup with ?scope=", async () => {
+  it("should return shared agent via cross-org lookup with ?scope=", async () => {
     const agentName = `test-shared-agent-${Date.now()}`;
 
     // Create compose as owner
     const { composeId } = await createTestCompose(agentName);
 
-    // Get the owner's scope slug
-    const ownerScope = (await getOrgCacheEntry(user.orgId))!;
+    // Get the owner's org slug
+    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
 
     // Grant email permission to the recipient
     const recipientEmail = "recipient@example.com";
@@ -159,9 +159,9 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const recipient = await context.setupUser({ prefix: "recipient" });
     mockClerk({ userId: recipient.userId, email: recipientEmail });
 
-    // Access the agent via cross-scope lookup
+    // Access the agent via cross-org lookup
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerScope.slug}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerOrg.slug}`,
       { method: "GET" },
     );
 
@@ -173,21 +173,21 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return 404 for non-shared agent via cross-scope lookup", async () => {
+  it("should return 404 for non-shared agent via cross-org lookup", async () => {
     const agentName = `test-not-shared-${Date.now()}`;
 
     // Create compose as owner (no permission granted)
     await createTestCompose(agentName);
 
-    // Get the owner's scope slug
-    const ownerScope = (await getOrgCacheEntry(user.orgId))!;
+    // Get the owner's org slug
+    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
 
     // Switch to another user with no permission
     await context.setupUser({ prefix: "unauthorized" });
 
-    // Try to access via cross-scope lookup
+    // Try to access via cross-org lookup
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerScope.slug}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}&scope=${ownerOrg.slug}`,
       { method: "GET" },
     );
 
@@ -218,15 +218,15 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return shared agent via cross-scope lookup with ?org=", async () => {
+  it("should return shared agent via cross-org lookup with ?org=", async () => {
     const agentName = `test-shared-org-${Date.now()}`;
 
     // Create compose as owner
     const { composeId } = await createTestCompose(agentName);
 
-    // Get the owner's scope slug to derive orgId
-    const ownerScope = (await getOrgCacheEntry(user.orgId))!;
-    const ownerOrgId = ownerScope.orgId;
+    // Get the owner's org slug to derive orgId
+    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
+    const ownerOrgId = ownerOrg.orgId;
 
     // Grant email permission to the recipient
     const recipientEmail = "recipient-org@example.com";
@@ -236,7 +236,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const recipient = await context.setupUser({ prefix: "recipient-org" });
     mockClerk({ userId: recipient.userId, email: recipientEmail });
 
-    // Access the agent via cross-scope lookup using ?org=
+    // Access the agent via cross-org lookup using ?org=
     const getRequest = createTestRequest(
       `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrgId}`,
       { method: "GET" },
@@ -250,20 +250,20 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return 404 for non-shared agent via cross-scope lookup with ?org=", async () => {
+  it("should return 404 for non-shared agent via cross-org lookup with ?org=", async () => {
     const agentName = `test-not-shared-org-${Date.now()}`;
 
     // Create compose as owner (no permission granted)
     await createTestCompose(agentName);
 
-    // Get the owner's scope slug to derive orgId
-    const ownerScope = (await getOrgCacheEntry(user.orgId))!;
-    const ownerOrgId = ownerScope.orgId;
+    // Get the owner's org slug to derive orgId
+    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
+    const ownerOrgId = ownerOrg.orgId;
 
     // Switch to another user with no permission
     await context.setupUser({ prefix: "unauthorized-org" });
 
-    // Try to access via cross-scope lookup using ?org=
+    // Try to access via cross-org lookup using ?org=
     const getRequest = createTestRequest(
       `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrgId}`,
       { method: "GET" },
@@ -276,7 +276,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Agent compose not found");
   });
 
-  it("should return 404 for invalid scope slug in cross-scope lookup", async () => {
+  it("should return 404 for invalid scope slug in cross-org lookup", async () => {
     const getRequest = createTestRequest(
       "http://localhost:3000/api/agent/composes?name=any-agent&scope=nonexistent-scope",
       { method: "GET" },

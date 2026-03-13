@@ -22,8 +22,8 @@ const log = logger("webhook:email:inbound");
  * Receives inbound email events from Resend via Svix.
  * Routes to appropriate handler based on email address type:
  * - reply+{token}@domain → handleInboundEmailReply (continue conversation)
- * - {scope}+{agent}@domain → handleInboundEmailTrigger (new agent run, explicit scope)
- * - {agent}@domain → handleInboundEmailTrigger (new agent run, scope from sender)
+ * - {org}+{agent}@domain → handleInboundEmailTrigger (new agent run, explicit org)
+ * - {agent}@domain → handleInboundEmailTrigger (new agent run, org from sender)
  *
  * Verifies the webhook signature and dispatches handling in the background.
  * Returns 200 immediately to acknowledge receipt.

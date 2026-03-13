@@ -64,7 +64,7 @@ describe("Storage per-user isolation", () => {
     expect(userAArtifacts).toHaveLength(1);
     expect(userAArtifacts[0].name).toBe("shared-name");
 
-    // User B (different scope) should not see User A's artifact
+    // User B (different org) should not see User A's artifact
     const userB = await context.setupUser({ prefix: "other-user" });
     mockClerk({ userId: userB.userId });
 
@@ -129,13 +129,13 @@ describe("Storage per-user isolation", () => {
     expect(userAVolumes).toHaveLength(1);
     expect(userAVolumes[0].name).toBe("shared-data");
 
-    // User B (different scope) creates volume with same name in their scope
+    // User B (different org) creates volume with same name in their org
     const userB = await context.setupUser({ prefix: "other-user" });
     mockClerk({ userId: userB.userId });
 
     await createTestVolume("shared-data");
 
-    // User B should see their scope's volume
+    // User B should see their org's volume
     const userBResponse = await listStorages("volume");
     const userBVolumes = await userBResponse.json();
     expect(userBVolumes).toHaveLength(1);

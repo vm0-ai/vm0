@@ -139,7 +139,7 @@ export async function linkSlackAccount(
     };
   }
 
-  // Ensure scope and artifact exist for the user
+  // Ensure org and artifact exist for the user
   await ensureScopeAndArtifact(userId);
 
   // Create the link

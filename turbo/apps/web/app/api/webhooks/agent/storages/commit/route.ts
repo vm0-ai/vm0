@@ -65,14 +65,14 @@ const router = tsr.router(webhookStoragesCommitContract, {
       };
     }
 
-    // Resolve Runtime Scope (user's default scope)
+    // Resolve Runtime Org (user's default org)
     const runtimeOrg = await getDefaultOrgByUserId(userId);
     if (!runtimeOrg) {
       return {
         status: 400 as const,
         body: {
           error: {
-            message: "User's default scope not found",
+            message: "User's default org not found",
             code: "BAD_REQUEST",
           },
         },

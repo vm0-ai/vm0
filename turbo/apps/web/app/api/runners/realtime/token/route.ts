@@ -33,7 +33,7 @@ const router = tsr.router(runnerRealtimeTokenContract, {
       }
       log.debug(`Official runner requesting token for ${group}`);
     } else {
-      // User runners: validate scope
+      // User runners: validate org
       try {
         await validateRunnerGroupOrg(auth.userId, group, auth.orgId);
       } catch {

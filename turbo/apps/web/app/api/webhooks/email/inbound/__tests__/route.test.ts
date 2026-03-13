@@ -514,27 +514,27 @@ describe("POST /api/webhooks/email/inbound", () => {
     expect(JSON.stringify(args?.react)).toContain("DMARC verification failed");
   });
 
-  describe("Email Trigger (scope+agent@domain)", () => {
+  describe("Email Trigger (org+agent@domain)", () => {
     it("should dispatch agent run for valid trigger email", async () => {
-      // Given a user with a scope and compose
+      // Given a user with an org and compose
       // setupUser creates a user with userId = "trigger-user-{suffix}" and
-      // scope slug = "org-{suffix}" using the same suffix
+      // org slug = "org-{suffix}" using the same suffix
       const user = await context.setupUser({ prefix: "trigger-user" });
 
-      // Extract suffix from userId to derive scope slug
+      // Extract suffix from userId to derive org slug
       // userId format: "{prefix}-{suffix}" where suffix is an 8-char UUID
       const suffix = user.userId.slice("trigger-user-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("trigger-agent");
 
-      // Create compose (automatically associates with user's scope)
+      // Create compose (automatically associates with user's org)
       const { composeId } = await createTestCompose(agentName);
 
       // Mock Clerk to return the user when looking up by email
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
-      // Build inbound email webhook payload with scope+agent format
+      // Build inbound email webhook payload with org+agent format
       const payload = JSON.stringify({
         type: "email.received",
         data: {
@@ -625,7 +625,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const senderEmail = "sender@example.com";
       mockClerk({ userId: "some-user-id", email: senderEmail });
 
-      // Send email to non-existent scope/agent
+      // Send email to non-existent org/agent
       const payload = JSON.stringify({
         type: "email.received",
         data: {
@@ -664,7 +664,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       await createTestCompose(agentName);
 
       // Mock Clerk to return a DIFFERENT user when looking up sender email.
-      // This user is not the compose owner, not in the scope, and has no ACL entry.
+      // This user is not the compose owner, not in the org, and has no ACL entry.
       const senderEmail = "unauthorized@example.com";
       mockClerk({ userId: "unauthorized-user-id", email: senderEmail });
 
@@ -1647,8 +1647,8 @@ describe("POST /api/webhooks/email/inbound", () => {
     });
   });
 
-  describe("Email Trigger (agent@domain, auto-detect scope)", () => {
-    it("should dispatch agent run for agent-only email (auto-detect scope)", async () => {
+  describe("Email Trigger (agent@domain, auto-detect org)", () => {
+    it("should dispatch agent run for agent-only email (auto-detect org)", async () => {
       const user = await context.setupUser({ prefix: "auto-scope" });
       const agentName = uniqueId("auto-agent");
       await createTestCompose(agentName);
@@ -1656,7 +1656,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
-      // Send to agentname@domain (no scope, no plus sign)
+      // Send to agentname@domain (no org, no plus sign)
       const payload = JSON.stringify({
         type: "email.received",
         data: {
@@ -1726,10 +1726,10 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
 
-    it("should send error reply for agent-only email when sender has no scope", async () => {
+    it("should send error reply for agent-only email when sender has no org", async () => {
       mockResend.emails.receiving.get.mockClear();
 
-      // Mock Clerk to return a userId that has no scope in the database
+      // Mock Clerk to return a userId that has no org in the database
       const senderEmail = "noscopeuser@example.com";
       mockClerk({ userId: "no-scope-user-id", email: senderEmail });
 
@@ -1750,7 +1750,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      // No email fetch should have happened (early return after scope lookup failed)
+      // No email fetch should have happened (early return after org lookup failed)
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
 
       // Error reply should have been sent
@@ -1765,7 +1765,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
-      // Send to an agent that doesn't exist in the sender's scope
+      // Send to an agent that doesn't exist in the sender's org
       const payload = JSON.stringify({
         type: "email.received",
         data: {

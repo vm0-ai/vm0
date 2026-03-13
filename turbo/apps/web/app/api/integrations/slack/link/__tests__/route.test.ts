@@ -206,7 +206,7 @@ describe("/api/integrations/slack/link", () => {
       const { installation } = await givenSlackWorkspaceInstalled();
       mockClerk({ userId: user.userId });
 
-      // Create an additional agent for the user (scope already exists from setupUser)
+      // Create an additional agent for the user (org already exists from setupUser)
       const { composeId: customAgentId } =
         await createTestCompose("custom-agent");
 

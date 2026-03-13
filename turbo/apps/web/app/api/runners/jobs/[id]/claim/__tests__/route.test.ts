@@ -234,7 +234,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
   describe("Claim flow - Agent metadata", () => {
     it("should return agentName and agentScopeSlug in claim response", async () => {
-      // Create compose and look up scope slug
+      // Create compose and look up org slug
       const { composeId, versionId } = await createTestCompose("test-agent");
       const composeInfo = await findTestComposeWithScope(composeId);
       const orgSlug = composeInfo!.orgSlug;
@@ -273,7 +273,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
 
     it("should omit agentName and agentScopeSlug when not set in stored context", async () => {
-      // Create compose and look up scope slug
+      // Create compose and look up org slug
       const { composeId, versionId } =
         await createTestCompose("test-agent-no-meta");
       const composeInfo = await findTestComposeWithScope(composeId);

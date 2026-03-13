@@ -649,8 +649,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run2.status).toBe("pending");
     });
 
-    it("should allow 2 concurrent runs for pro tier scopes", async () => {
-      // Set scope to pro tier (allows 2 concurrent runs)
+    it("should allow 2 concurrent runs for pro tier orgs", async () => {
+      // Set org to pro tier (allows 2 concurrent runs)
       const orgEntry = (await getOrgCacheEntry(user.orgId))!;
       await insertOrgCacheEntry({
         orgId: user.orgId,
@@ -665,7 +665,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run2.status).toBe("pending");
     });
 
-    it("should queue 3rd concurrent run for pro tier scopes", async () => {
+    it("should queue 3rd concurrent run for pro tier orgs", async () => {
       // Pro tier only allows 2 concurrent runs
       const orgEntry = (await getOrgCacheEntry(user.orgId))!;
       await insertOrgCacheEntry({

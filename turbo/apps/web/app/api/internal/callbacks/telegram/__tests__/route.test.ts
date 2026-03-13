@@ -106,7 +106,7 @@ function createCallbackRequest(
 }
 
 /**
- * Set up a full Telegram test context: scope, compose (with version),
+ * Set up a full Telegram test context: org, compose (with version),
  * installation (encrypted token), user link, run, callback.
  */
 async function setupTelegramCallback() {

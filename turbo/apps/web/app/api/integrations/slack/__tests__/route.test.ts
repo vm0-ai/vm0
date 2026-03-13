@@ -314,7 +314,7 @@ describe("/api/integrations/slack", () => {
 
       mockClerk({ userId: userLink.vm0UserId });
 
-      // Find the scope slug and name used for the default agent
+      // Find the org slug and name used for the default agent
       const defaultCompose = await findTestComposeWithScope(
         installation.defaultComposeId,
       );
@@ -359,7 +359,7 @@ describe("/api/integrations/slack", () => {
     it("updates the default agent with scoped name (scope/agentName)", async () => {
       const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
 
-      // Create a compose in a different scope (simulating a shared agent)
+      // Create a compose in a different org (simulating a shared agent)
       const otherUserId = uniqueId("other-user");
       mockClerk({ userId: otherUserId });
       await createTestOrg(uniqueId("other-org"));
@@ -369,7 +369,7 @@ describe("/api/integrations/slack", () => {
       // Switch back to admin user
       mockClerk({ userId: userLink.vm0UserId });
 
-      // Look up the other scope's slug for the scoped name
+      // Look up the other org's slug for the scoped name
       const otherCompose = await findTestComposeWithScope(otherComposeId);
 
       const request = new Request(
@@ -398,7 +398,7 @@ describe("/api/integrations/slack", () => {
       expect(getData.agent.orgSlug).toBe(otherCompose!.orgSlug);
     });
 
-    it("returns 400 when scoped name has invalid scope slug", async () => {
+    it("returns 400 when scoped name has invalid org slug", async () => {
       const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
       mockClerk({ userId: userLink.vm0UserId });
 

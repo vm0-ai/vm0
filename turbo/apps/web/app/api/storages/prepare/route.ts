@@ -102,7 +102,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    // Resolve user's default scope
+    // Resolve user's default org
     const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
     const { org: runtimeOrg } = await resolveOrg(
@@ -161,7 +161,7 @@ const router = tsr.router(storagesPrepareContract, {
       }
     }
 
-    // Volumes use sentinel userId (scope-level shared); artifacts/memory use real userId
+    // Volumes use sentinel userId (org-level shared); artifacts/memory use real userId
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
 

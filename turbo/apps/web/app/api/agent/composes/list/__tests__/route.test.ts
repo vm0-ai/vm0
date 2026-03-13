@@ -40,7 +40,7 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.error.message).toBe("Not authenticated");
   });
 
-  it("should return no own composes when none exist in scope", async () => {
+  it("should return no own composes when none exist in org", async () => {
     // Use explicit scope param to only get own agents (excludes shared)
     const uniqueSuffix = user.userId.replace("test-user-", "");
     const orgSlug = `org-${uniqueSuffix}`;
@@ -55,7 +55,7 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.composes).toEqual([]);
   });
 
-  it("should return all composes for the user's default scope", async () => {
+  it("should return all composes for the user's default org", async () => {
     // Create two test composes via API
     const agentName1 = `test-list-agent-1-${Date.now()}`;
     const agentName2 = `test-list-agent-2-${Date.now()}`;
@@ -91,7 +91,7 @@ describe("GET /api/agent/composes/list", () => {
     }
   });
 
-  it("should filter by scope correctly - not show other user's composes", async () => {
+  it("should filter by org correctly - not show other user's composes", async () => {
     // Create compose for current user
     const userAgentName = `test-user-agent-${Date.now()}`;
     await createTestCompose(userAgentName);
@@ -129,7 +129,7 @@ describe("GET /api/agent/composes/list", () => {
     expect(otherNames).not.toContain(userAgentName);
   });
 
-  it("should return 400 for non-existent scope", async () => {
+  it("should return 400 for non-existent org", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/agent/composes/list?scope=nonexistent-scope",
     );
@@ -140,20 +140,20 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.error.code).toBe("BAD_REQUEST");
   });
 
-  it("should return 403 when user tries to access another user's scope", async () => {
-    // Create another user with their own scope
+  it("should return 403 when user tries to access another user's org", async () => {
+    // Create another user with their own org
     const otherUser = await context.setupUser({ prefix: "forbidden-user" });
 
     // Create a compose for the other user
     await createTestCompose(uniqueId("forbidden-compose"));
 
-    // Derive the other user's scope slug from their userId
+    // Derive the other user's org slug from their userId
     // userId format: {prefix}-{timestamp}-{uuid}
-    // scope slug format: org-{timestamp}-{uuid}
+    // org slug format: org-{timestamp}-{uuid}
     const uniqueSuffix = otherUser.userId.replace("forbidden-user-", "");
     const otherOrgSlug = `org-${uniqueSuffix}`;
 
-    // Switch back to original user and try to access the other user's scope
+    // Switch back to original user and try to access the other user's org
     mockClerk({ userId: user.userId });
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/list?scope=${otherOrgSlug}`,
@@ -166,14 +166,14 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.error.message).toContain("don't have access");
   });
 
-  it("should list composes by specified scope slug", async () => {
+  it("should list composes by specified org slug", async () => {
     // Create a compose first
     const agentName = `test-scope-agent-${Date.now()}`;
     await createTestCompose(agentName);
 
-    // Derive the user's scope slug from their userId
+    // Derive the user's org slug from their userId
     // userId format: test-user-{timestamp}-{uuid}
-    // scope slug format: org-{timestamp}-{uuid}
+    // org slug format: org-{timestamp}-{uuid}
     const uniqueSuffix = user.userId.replace("test-user-", "");
     const orgSlug = `org-${uniqueSuffix}`;
 

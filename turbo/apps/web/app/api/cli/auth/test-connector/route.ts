@@ -94,7 +94,7 @@ export async function POST(request: Request) {
   const org = await getDefaultOrgByUserId(userId);
   if (!org) {
     return NextResponse.json(
-      { error: "Test user has no scope — run test-token first" },
+      { error: "Test user has no org — run test-token first" },
       { status: 400 },
     );
   }

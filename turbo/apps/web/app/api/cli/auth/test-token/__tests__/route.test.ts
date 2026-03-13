@@ -37,7 +37,7 @@ describe("/api/cli/auth/test-token", () => {
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
     });
-    // Return a Clerk org membership so ensureDefaultScope can discover/create a local scope
+    // Return a Clerk org membership so ensureDefaultOrg can discover/create a local org
     mockGetOrganizationMembershipList.mockResolvedValue({
       data: [
         {

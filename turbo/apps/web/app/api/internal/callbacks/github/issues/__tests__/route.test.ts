@@ -110,7 +110,7 @@ function setupGitHubApiMocks(installationId: string) {
 }
 
 /**
- * Create a full test setup: user, scope, compose, run, GitHub installation, and callback.
+ * Create a full test setup: user, org, compose, run, GitHub installation, and callback.
  */
 async function givenGitHubCallbackSetup(overrides?: {
   existingSessionId?: string;

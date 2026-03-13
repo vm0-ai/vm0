@@ -262,7 +262,7 @@ async function createUserLink(
 
   if (existing) return;
 
-  // Ensure scope and artifact exist
+  // Ensure org and artifact exist
   await ensureScopeAndArtifact(vm0UserId);
 
   // Create the link

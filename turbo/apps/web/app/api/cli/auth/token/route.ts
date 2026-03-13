@@ -74,7 +74,7 @@ const router = tsr.router(cliAuthTokenContract, {
       case "authenticated": {
         const userId = session.userId as string;
 
-        // Resolve user's default scope from org_cache
+        // Resolve user's default org from org_cache
         const { org } = await getDefaultOrg(userId);
 
         // Generate CLI token with org binding

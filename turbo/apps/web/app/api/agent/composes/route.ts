@@ -42,11 +42,11 @@ const router = tsr.router(composesMainContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    // Resolve scope: for cross-scope lookups (shared agents), skip membership
+    // Resolve org: for cross-org lookups (shared agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
-    // isCrossScopeLookup is true when an explicit scope/org param is provided,
+    // isCrossOrgLookup is true when an explicit scope/org param is provided,
     // which requires canAccessCompose authorization below.
-    const isCrossScopeLookup = Boolean(query.scope || query.org);
+    const isCrossOrgLookup = Boolean(query.scope || query.org);
     let orgId: string;
     if (query.scope) {
       const orgData = await getOrgBySlug(query.scope);
@@ -108,8 +108,8 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Check permission to access this compose (for cross-scope lookups)
-    if (isCrossScopeLookup) {
+    // Check permission to access this compose (for cross-org lookups)
+    if (isCrossOrgLookup) {
       const userEmail = await getUserEmail(userId);
       const hasAccess = await canAccessCompose(userId, userEmail, result);
       if (!hasAccess) {
@@ -261,7 +261,7 @@ const router = tsr.router(composesMainContract, {
     // Compute content-addressable version ID from resolved content
     const versionId = computeComposeVersionId(resolvedContent);
 
-    // Get user's scope (required for compose creation)
+    // Get user's org (required for compose creation)
     const { org } = await resolveOrg(userId, null, null, tokenOrgId);
 
     // Check compose and version existence in parallel

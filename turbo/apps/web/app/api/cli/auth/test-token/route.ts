@@ -39,7 +39,7 @@ function isTestTokenAllowed(request: Request): boolean {
 }
 
 /**
- * Ensure the test user has an org_cache entry for scope resolution.
+ * Ensure the test user has an org_cache entry for org resolution.
  * Uses the same flow as production (getDefaultOrg) so that
  * Clerk API membership verification works during E2E tests.
  *
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
 
-  // Auto-create scope if user doesn't have one (creates real Clerk org or sentinel)
+  // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
   const { orgId } = await ensureTestScope(userId);
 
   // Generate CLI token with org binding

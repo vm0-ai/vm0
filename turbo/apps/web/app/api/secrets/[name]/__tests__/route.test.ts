@@ -194,7 +194,7 @@ describe("DELETE /api/secrets/:name - Delete Secret", () => {
     expect(getResponse.status).toBe(200);
   });
 
-  it("should return 404 for user without scope", async () => {
+  it("should return 404 for user without org", async () => {
     mockClerk({ userId: `user-no-scope-${Date.now()}` });
 
     const request = createTestRequest(

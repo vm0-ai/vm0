@@ -444,7 +444,7 @@ const router = tsr.router(runsMainContract, {
       `Resolved agentComposeVersionId: ${resolved.agentComposeVersionId}`,
     );
 
-    // Resolve scope for variable/secret resolution.
+    // Resolve org for variable/secret resolution.
     // The actual variable fetching happens in build-context.ts.
     const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");

@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ agents: [] });
   }
 
-  // Get user's scope to query configured secrets
+  // Get user's org to query configured secrets
   const runtimeOrg = await getDefaultOrgByUserId(userId);
   if (!runtimeOrg) {
     return NextResponse.json({ agents: [] });

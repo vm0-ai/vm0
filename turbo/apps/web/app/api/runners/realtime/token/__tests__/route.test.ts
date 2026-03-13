@@ -118,7 +118,7 @@ describe("POST /api/runners/realtime/token", () => {
       const token = `vm0_official_${OFFICIAL_RUNNER_SECRET}`;
 
       const response = await POST(
-        makeRequest({ group: "other-scope/default" }, `Bearer ${token}`),
+        makeRequest({ group: "other-org/default" }, `Bearer ${token}`),
       );
       const data = await response.json();
 
@@ -128,11 +128,11 @@ describe("POST /api/runners/realtime/token", () => {
       );
     });
 
-    it("should return 403 when user runner requests group from wrong scope", async () => {
+    it("should return 403 when user runner requests group from wrong org", async () => {
       const token = await createTestCliToken(user.userId);
 
       const response = await POST(
-        makeRequest({ group: "wrong-scope/default" }, `Bearer ${token}`),
+        makeRequest({ group: "wrong-org/default" }, `Bearer ${token}`),
       );
       const data = await response.json();
 
@@ -158,12 +158,12 @@ describe("POST /api/runners/realtime/token", () => {
       expect(data.mac).toBe("test-mac");
     });
 
-    it("should return Ably TokenRequest for user runner with matching scope group", async () => {
+    it("should return Ably TokenRequest for user runner with matching org group", async () => {
       vi.stubEnv("ABLY_API_KEY", "test-api-key");
       reloadEnv();
       const token = await createTestCliToken(user.userId);
 
-      // Derive scope slug from user context - setupUser creates org-{suffix}
+      // Derive org slug from user context - setupUser creates org-{suffix}
       const suffix = user.userId.replace("test-user-", "");
       const orgSlug = `org-${suffix}`;
 

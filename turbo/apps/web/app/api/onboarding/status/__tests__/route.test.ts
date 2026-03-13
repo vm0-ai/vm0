@@ -29,7 +29,7 @@ describe("GET /api/onboarding/status", () => {
     expect(data.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("should return needsOnboarding=true when user has no scope", async () => {
+  it("should return needsOnboarding=true when user has no org", async () => {
     const userId = `no-scope-user-${Date.now()}`;
     mockClerk({ userId, clerkOrgs: [] });
 
@@ -51,7 +51,7 @@ describe("GET /api/onboarding/status", () => {
     });
   });
 
-  it("should return hasScope=true, hasModelProvider=false when scope exists but no provider", async () => {
+  it("should return hasOrg=true, hasModelProvider=false when org exists but no provider", async () => {
     await context.setupUser();
 
     const request = createTestRequest(

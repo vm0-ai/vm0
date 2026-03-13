@@ -32,7 +32,7 @@ const router = tsr.router(storagesDownloadContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    // Resolve user's default scope
+    // Resolve user's default org
     const orgSlug = new URL(request.url).searchParams.get("scope");
     const orgParam = new URL(request.url).searchParams.get("org");
     const { org: runtimeOrg } = await resolveOrg(
@@ -45,14 +45,14 @@ const router = tsr.router(storagesDownloadContract, {
     const { name: storageName, type: storageType, version: versionId } = query;
 
     log.debug(
-      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for scope ${runtimeOrg.slug}`,
+      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for org ${runtimeOrg.slug}`,
     );
 
-    // Volumes use sentinel userId (scope-shared); artifacts/memory use real userId
+    // Volumes use sentinel userId (org-shared); artifacts/memory use real userId
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
 
-    // Check if storage exists and belongs to user's default scope
+    // Check if storage exists and belongs to user's default org
     const [storage] = await globalThis.services.db
       .select()
       .from(storages)

@@ -95,21 +95,21 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       };
     }
 
-    // Resolve Runtime Scope (user's default scope)
+    // Resolve Runtime Org (user's default org)
     const resolvedOrg = await getDefaultOrgByUserId(userId);
     if (!resolvedOrg) {
       return {
         status: 400 as const,
         body: {
           error: {
-            message: "User's default scope not found",
+            message: "User's default org not found",
             code: "BAD_REQUEST",
           },
         },
       };
     }
 
-    // Volumes use sentinel userId (scope-level shared); artifacts/memory use real userId
+    // Volumes use sentinel userId (org-level shared); artifacts/memory use real userId
     const storageUserId =
       storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
 

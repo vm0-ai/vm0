@@ -435,7 +435,7 @@ describe("/api/integrations/github", () => {
       const { composeId } = await createTestCompose("gh-agent");
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
-      // Create a compose in a different scope (simulating a shared agent)
+      // Create a compose in a different org (simulating a shared agent)
       const otherUserId = uniqueId("other-user");
       mockClerk({ userId: otherUserId });
       await createTestOrg(uniqueId("other-org"));
@@ -445,7 +445,7 @@ describe("/api/integrations/github", () => {
       // Switch back to original user
       mockClerk({ userId });
 
-      // Look up the other scope's slug for the scoped name
+      // Look up the other org's slug for the scoped name
       const otherCompose = await findTestComposeWithScope(otherComposeId);
 
       const request = createTestRequest(

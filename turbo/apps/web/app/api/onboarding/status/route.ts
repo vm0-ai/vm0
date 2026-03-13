@@ -27,8 +27,8 @@ const router = tsr.router(onboardingStatusContract, {
       };
     }
 
-    // Check if scope exists
-    let hasScope = false;
+    // Check if org exists
+    let hasOrg = false;
     let hasModelProvider = false;
     let hasDefaultAgent = false;
     let defaultAgentName: string | null = null;
@@ -38,7 +38,7 @@ const router = tsr.router(onboardingStatusContract, {
 
     try {
       const { org: resolvedOrg } = await resolveOrg(userId);
-      hasScope = true;
+      hasOrg = true;
 
       // Check model provider
       const [provider] = await globalThis.services.db
@@ -93,16 +93,16 @@ const router = tsr.router(onboardingStatusContract, {
       if (!isNotFound(error)) {
         throw error;
       }
-      // Scope not found — all flags stay false
+      // Org not found — all flags stay false
     }
 
-    const needsOnboarding = !hasScope || !hasModelProvider || !hasDefaultAgent;
+    const needsOnboarding = !hasOrg || !hasModelProvider || !hasDefaultAgent;
 
     return {
       status: 200 as const,
       body: {
         needsOnboarding,
-        hasScope,
+        hasScope: hasOrg,
         hasModelProvider,
         hasDefaultAgent,
         defaultAgentName,

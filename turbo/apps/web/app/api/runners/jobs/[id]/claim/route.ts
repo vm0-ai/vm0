@@ -78,7 +78,7 @@ const router = tsr.router(runnersJobClaimContract, {
         `Official runner claiming job from ${jobWithRun.job.runnerGroup}`,
       );
     } else {
-      // User runners: verify job ownership and scope
+      // User runners: verify job ownership and org
       if (jobWithRun.runUserId !== auth.userId) {
         return createErrorResponse("FORBIDDEN", "Job does not belong to user");
       }

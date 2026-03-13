@@ -66,7 +66,7 @@ const router = tsr.router(composesListContract, {
     }
     const { userId, orgId: tokenOrgId } = authCtx;
 
-    // Resolve org: use ?scope= query param or default org
+    // Resolve org: use ?scope= query param or default
     let orgId: string;
     try {
       const { org: resolvedOrg } = await resolveOrg(

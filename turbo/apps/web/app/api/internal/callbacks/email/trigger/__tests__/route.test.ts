@@ -150,7 +150,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
-      const triggerLocalPart = `my-scope+${agentName}`;
+      const triggerLocalPart = `my-org+${agentName}`;
       const payload: TriggerCallbackPayload = {
         senderEmail,
         composeId,
