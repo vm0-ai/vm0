@@ -15,14 +15,14 @@ import {
  * Storages table
  * Main table for storage with HEAD pointer to current version.
  * Unique constraint: (orgId, userId, name, type)
- * - Volumes use VOLUME_SCOPE_USER_ID ("__scope__") as userId (org-level shared)
+ * - Volumes use VOLUME_ORG_USER_ID ("__org__") as userId (org-level shared)
  * - Artifacts and Memory use real userId (per-user isolated)
  */
 export const storages = pgTable(
   "storages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: text("user_id").notNull(), // Real userId for artifact/memory; VOLUME_SCOPE_USER_ID for volumes
+    userId: text("user_id").notNull(), // Real userId for artifact/memory; VOLUME_ORG_USER_ID for volumes
     name: varchar("name", { length: 256 }).notNull(),
     type: varchar("type", { length: 16 }).notNull().default("volume"),
     orgId: text("org_id").notNull(),

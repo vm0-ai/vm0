@@ -3,7 +3,7 @@ import {
   tsr,
   createSafeErrorHandler,
 } from "../../../../src/lib/ts-rest-handler";
-import { storagesCommitContract, VOLUME_SCOPE_USER_ID } from "@vm0/core";
+import { storagesCommitContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
@@ -71,7 +71,7 @@ const router = tsr.router(storagesCommitContract, {
 
     // Volumes use sentinel userId; artifacts/memory use real userId
     const storageUserId =
-      storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
+      storageType === "volume" ? VOLUME_ORG_USER_ID : userId;
 
     // Find storage
     const [storage] = await globalThis.services.db

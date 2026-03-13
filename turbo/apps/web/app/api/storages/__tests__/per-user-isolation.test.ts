@@ -9,7 +9,7 @@ import {
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
-import { VOLUME_SCOPE_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID } from "@vm0/core";
 
 const context = testContext();
 
@@ -32,7 +32,7 @@ describe("Storage per-user isolation", () => {
 
     const record = await findTestStorage(user.orgId, "shared-vol", "volume");
     expect(record).toBeDefined();
-    expect(record!.userId).toBe(VOLUME_SCOPE_USER_ID);
+    expect(record!.userId).toBe(VOLUME_ORG_USER_ID);
   });
 
   it("should store artifacts with real userId in database", async () => {
@@ -144,7 +144,7 @@ describe("Storage per-user isolation", () => {
     // Both volumes use sentinel userId, not the real user
     const recordA = await findTestStorage(userA.orgId, "shared-data", "volume");
     const recordB = await findTestStorage(userB.orgId, "shared-data", "volume");
-    expect(recordA!.userId).toBe(VOLUME_SCOPE_USER_ID);
-    expect(recordB!.userId).toBe(VOLUME_SCOPE_USER_ID);
+    expect(recordA!.userId).toBe(VOLUME_ORG_USER_ID);
+    expect(recordB!.userId).toBe(VOLUME_ORG_USER_ID);
   });
 });

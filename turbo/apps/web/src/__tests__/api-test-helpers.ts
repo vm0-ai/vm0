@@ -45,7 +45,7 @@ import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecretsMap } from "../lib/crypto/secrets-encryption";
-import { VOLUME_SCOPE_USER_ID, type StoredExecutionContext } from "@vm0/core";
+import { VOLUME_ORG_USER_ID, type StoredExecutionContext } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
@@ -1957,7 +1957,7 @@ export async function findTestArtifactStorage(orgId: string) {
 
 /**
  * Find a storage volume by clerk org and name.
- * Volumes use the sentinel VOLUME_SCOPE_USER_ID for org-level sharing.
+ * Volumes use the sentinel VOLUME_ORG_USER_ID for org-level sharing.
  * Returns the storage id and name, or undefined if not found.
  */
 export async function findTestStorageByName(
@@ -1974,7 +1974,7 @@ export async function findTestStorageByName(
     .where(
       and(
         eq(storages.orgId, orgId),
-        eq(storages.userId, VOLUME_SCOPE_USER_ID),
+        eq(storages.userId, VOLUME_ORG_USER_ID),
         eq(storages.name, name),
         eq(storages.type, "volume"),
       ),

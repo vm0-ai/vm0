@@ -5,7 +5,7 @@ import {
 } from "../../../../../../src/lib/ts-rest-handler";
 import {
   webhookStoragesPrepareContract,
-  VOLUME_SCOPE_USER_ID,
+  VOLUME_ORG_USER_ID,
   MAX_FILE_SIZE_BYTES,
 } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -111,7 +111,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
 
     // Volumes use sentinel userId (org-level shared); artifacts/memory use real userId
     const storageUserId =
-      storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
+      storageType === "volume" ? VOLUME_ORG_USER_ID : userId;
 
     // Find or create storage (upsert to handle concurrent requests)
     const [storage] = await globalThis.services.db

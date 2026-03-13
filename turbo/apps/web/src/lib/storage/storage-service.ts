@@ -15,7 +15,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { env } from "../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
 import { computeContentHashFromHashes } from "./content-hash";
-import { VOLUME_SCOPE_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID } from "@vm0/core";
 
 const log = logger("storage");
 
@@ -180,7 +180,7 @@ export async function ensureStorageExists(
  * @param storageName - Storage name
  * @param storageType - Storage type ("volume", "artifact", or "memory")
  * @param version - Version string ("latest" or specific hash)
- * @param userId - User ID (real userId for artifact/memory, VOLUME_SCOPE_USER_ID for volumes)
+ * @param userId - User ID (real userId for artifact/memory, VOLUME_ORG_USER_ID for volumes)
  * @returns Version ID and S3 key
  */
 async function resolveVersion(
@@ -347,7 +347,7 @@ export async function prepareStorageManifest(
           volume.vasStorageName,
           "volume",
           volume.vasVersion,
-          VOLUME_SCOPE_USER_ID,
+          VOLUME_ORG_USER_ID,
         );
 
         // Generate archive URL for tar.gz

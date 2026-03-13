@@ -3,7 +3,7 @@ import {
   tsr,
   createSafeErrorHandler,
 } from "../../../../src/lib/ts-rest-handler";
-import { storagesDownloadContract, VOLUME_SCOPE_USER_ID } from "@vm0/core";
+import { storagesDownloadContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
@@ -49,7 +49,7 @@ const router = tsr.router(storagesDownloadContract, {
 
     // Volumes use sentinel userId (org-shared); artifacts/memory use real userId
     const storageUserId =
-      storageType === "volume" ? VOLUME_SCOPE_USER_ID : userId;
+      storageType === "volume" ? VOLUME_ORG_USER_ID : userId;
 
     // Check if storage exists and belongs to user's default org
     const [storage] = await globalThis.services.db
