@@ -44,7 +44,7 @@ function isTestTokenAllowed(request: Request): boolean {
  *
  * If the user has no Clerk org yet, creates an org_cache entry with a sentinel orgId.
  */
-async function ensureTestScope(userId: string): Promise<{ orgId: string }> {
+async function ensureTestOrg(userId: string): Promise<{ orgId: string }> {
   try {
     const { org } = await getDefaultOrg(userId);
     return { orgId: org.orgId };
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
   }
 
   // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
-  const { orgId } = await ensureTestScope(userId);
+  const { orgId } = await ensureTestOrg(userId);
 
   // Generate CLI token with org binding
   const randomBytes = crypto.randomBytes(32);

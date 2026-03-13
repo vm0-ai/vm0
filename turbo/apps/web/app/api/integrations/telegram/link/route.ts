@@ -7,7 +7,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import {
-  ensureScopeAndArtifact,
+  ensureOrgAndArtifact,
   getWorkspaceAgent,
 } from "../../../../../src/lib/telegram/handlers/shared";
 import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
@@ -231,7 +231,7 @@ export async function POST(request: Request) {
         ],
         set: { vm0UserId: userId, updatedAt: new Date() },
       });
-    await ensureScopeAndArtifact(userId);
+    await ensureOrgAndArtifact(userId);
 
     return NextResponse.json({
       botUsername: installation.botUsername,
@@ -283,7 +283,7 @@ export async function POST(request: Request) {
         ],
         set: { vm0UserId: userId, updatedAt: new Date() },
       });
-    await ensureScopeAndArtifact(userId);
+    await ensureOrgAndArtifact(userId);
 
     // Send success message to user in Telegram (non-blocking)
     const client = createTelegramClient(botToken);

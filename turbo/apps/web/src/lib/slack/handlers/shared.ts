@@ -206,7 +206,7 @@ export function buildAgentLogsUrl(agentName: string): string {
  * 1. Find-or-create storage record
  * 2. If no HEAD version, create an empty initial version (upload manifest to S3 + commit)
  */
-export async function ensureScopeAndArtifact(vm0UserId: string): Promise<void> {
+export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
   const org = await getDefaultOrgByUserId(vm0UserId);
   if (!org) return;
 

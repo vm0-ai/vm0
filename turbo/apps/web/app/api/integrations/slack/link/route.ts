@@ -12,7 +12,7 @@ import {
   refreshAppHome,
 } from "../../../../../src/lib/slack";
 import {
-  ensureScopeAndArtifact,
+  ensureOrgAndArtifact,
   getWorkspaceAgent,
 } from "../../../../../src/lib/slack/handlers/shared";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
@@ -279,7 +279,7 @@ export async function POST(request: Request) {
   }
 
   // Ensure org and artifact exist for the user
-  await ensureScopeAndArtifact(userId);
+  await ensureOrgAndArtifact(userId);
 
   // Create the link
   await globalThis.services.db
