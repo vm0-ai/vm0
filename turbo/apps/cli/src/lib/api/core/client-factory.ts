@@ -1,5 +1,5 @@
 import { tsRestFetchApi } from "@ts-rest/core";
-import { getApiUrl, getActiveToken, loadConfig } from "../config";
+import { getApiUrl, getActiveToken, getActiveOrg } from "../config";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
@@ -58,8 +58,7 @@ export async function getClientConfig() {
   const baseUrl = await getBaseUrl();
   const baseHeaders = await getHeaders();
 
-  const config = await loadConfig();
-  const activeOrg = config.activeOrg;
+  const activeOrg = await getActiveOrg();
 
   if (activeOrg) {
     return {

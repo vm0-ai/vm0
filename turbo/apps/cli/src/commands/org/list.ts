@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { listOrgs } from "../../lib/api";
-import { loadConfig } from "../../lib/api/config";
+import { getActiveOrg } from "../../lib/api/config";
 import { withErrorHandler } from "../../lib/command";
 
 export const listCommand = new Command()
@@ -10,8 +10,7 @@ export const listCommand = new Command()
   .action(
     withErrorHandler(async () => {
       const result = await listOrgs();
-      const config = await loadConfig();
-      const activeOrg = config.activeOrg;
+      const activeOrg = await getActiveOrg();
 
       console.log(chalk.bold("Available organizations:"));
       for (const org of result.orgs) {

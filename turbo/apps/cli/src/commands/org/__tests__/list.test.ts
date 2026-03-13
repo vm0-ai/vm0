@@ -90,6 +90,36 @@ describe("org list command", () => {
     expect(logCalls).toContain("current");
   });
 
+  it("should use VM0_ACTIVE_ORG env var over config file", async () => {
+    // Config file has activeOrg: "my-org" (from beforeEach)
+    // Env var overrides to "env-org"
+    vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
+
+    server.use(
+      http.get("http://localhost:3000/api/org/list", () => {
+        return HttpResponse.json({
+          orgs: [
+            { slug: "my-org", role: "admin" },
+            { slug: "env-org", role: "member" },
+          ],
+          active: undefined,
+        });
+      }),
+    );
+
+    await listCommand.parseAsync(["node", "cli"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    // "env-org" should be marked as current (from env var), not "my-org" (from config)
+    const lines = logCalls.split("\n");
+    const envOrgLine = lines.find((l: string) => l.includes("env-org"));
+    const myOrgLine = lines.find(
+      (l: string) => l.includes("my-org") && !l.includes("env-org"),
+    );
+    expect(envOrgLine).toContain("current");
+    expect(myOrgLine).not.toContain("current");
+  });
+
   it("should handle API error", async () => {
     server.use(
       http.get("http://localhost:3000/api/org/list", () => {

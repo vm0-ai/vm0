@@ -76,6 +76,18 @@ export async function getApiUrl(): Promise<string> {
   return config.apiUrl ?? "https://www.vm0.ai";
 }
 
+/**
+ * Get the active organization for API requests.
+ * Priority: VM0_ACTIVE_ORG env var > activeOrg from config file
+ */
+export async function getActiveOrg(): Promise<string | undefined> {
+  if (process.env.VM0_ACTIVE_ORG) {
+    return process.env.VM0_ACTIVE_ORG;
+  }
+  const config = await loadConfig();
+  return config.activeOrg;
+}
+
 export async function clearConfig(): Promise<void> {
   const configFile = getConfigFile();
   if (existsSync(configFile)) {

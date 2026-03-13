@@ -1,13 +1,12 @@
 import { getBaseUrl } from "./client-factory";
-import { getActiveToken, loadConfig } from "../config";
+import { getActiveToken, getActiveOrg } from "../config";
 
 /**
  * Append ?org=<activeOrg> to a path if activeOrg is configured
  * and the path doesn't already include an org param.
  */
 async function appendOrgParam(path: string): Promise<string> {
-  const config = await loadConfig();
-  const activeOrg = config.activeOrg;
+  const activeOrg = await getActiveOrg();
   if (!activeOrg) {
     return path;
   }
