@@ -1,9 +1,9 @@
 import {
-  boolean,
   pgTable,
   uuid,
   varchar,
   text,
+  boolean,
   timestamp,
   uniqueIndex,
   index,
@@ -25,7 +25,6 @@ export const slackOrgConnections = pgTable(
       .references(() => slackOrgInstallations.slackWorkspaceId),
     vm0UserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
-    isAdmin: boolean("is_admin").default(false).notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

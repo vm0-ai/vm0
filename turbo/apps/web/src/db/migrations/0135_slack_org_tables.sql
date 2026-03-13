@@ -4,7 +4,6 @@ CREATE TABLE "slack_org_connections" (
 	"slack_workspace_id" varchar(255) NOT NULL,
 	"vm0_user_id" text NOT NULL,
 	"org_id" text NOT NULL,
-	"is_admin" boolean DEFAULT false NOT NULL,
 	"dm_welcome_sent" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );

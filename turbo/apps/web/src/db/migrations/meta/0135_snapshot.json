@@ -1,5 +1,5 @@
 {
-  "id": "fd4e1fe3-4586-4e5c-a9d2-5a2375c8e5c5",
+  "id": "28cccc6f-fe12-49e3-ae59-542b178dac64",
   "prevId": "54522244-bf6c-4354-8b8c-98086e0352ad",
   "version": "7",
   "dialect": "postgresql",
@@ -3458,13 +3458,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "is_admin": {
-          "name": "is_admin",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "dm_welcome_sent": {
           "name": "dm_welcome_sent",
