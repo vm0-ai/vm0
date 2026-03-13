@@ -3309,17 +3309,25 @@ describe("expandServiceConfigs", () => {
     expect(expanded[0]!.ref).toBe("github");
     expect(expanded[0]!.apis).toHaveLength(1);
     expect(expanded[0]!.apis[0]!.base).toBe("https://api.github.com");
-    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("full-access");
+    // GitHub has 9 granular permission groups
+    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => p.name);
+    expect(permNames).toContain("repo-read");
+    expect(permNames).toContain("issues-read");
+    expect(permNames).toContain("pull-requests-read");
+    expect(permNames).toContain("search");
   });
 
   it("should expand service with specific permissions", () => {
-    const config = makeConfig({ github: { permissions: ["full-access"] } });
+    const config = makeConfig({
+      github: { permissions: ["issues-read", "issues-write"] },
+    });
     const expanded = getExpanded(config);
 
     expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("full-access");
+    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(2);
+    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => p.name);
+    expect(permNames).toContain("issues-read");
+    expect(permNames).toContain("issues-write");
   });
 
   it("should include placeholders when service has them", () => {
