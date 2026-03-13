@@ -16,9 +16,6 @@ import crypto from "crypto";
 
 const log = logger("telegram:start");
 
-/** Token expiry in seconds (10 minutes) */
-const TOKEN_EXPIRY_SECONDS = 600;
-
 interface LinkTokenPayload {
   vm0UserId: string;
   installationId: string;
@@ -140,39 +137,10 @@ export async function handleStartCommand(
 const SIGNATURE_LENGTH = 43;
 
 /**
- * Create a signed link token for account linking.
- * Uses HMAC-SHA256 with a simple JSON payload + expiry.
- *
- * Token format: base64url(payload) + base64url(hmac) concatenated without
- * separator. Telegram deep link start parameters only allow A-Za-z0-9_-
- * so we cannot use '.' or any other special character as a delimiter.
- * The signature is always 43 chars (SHA-256), so we split from the end.
- */
-export function createLinkToken(
-  vm0UserId: string,
-  installationId: string,
-  secretKey: string,
-): string {
-  const payload: LinkTokenPayload = {
-    vm0UserId,
-    installationId,
-    exp: Math.floor(Date.now() / 1000) + TOKEN_EXPIRY_SECONDS,
-  };
-
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto
-    .createHmac("sha256", secretKey)
-    .update(data)
-    .digest("base64url");
-
-  return `${data}${signature}`;
-}
-
-/**
  * Verify and decode a link token.
  * Returns null if invalid or expired.
  */
-export function verifyLinkToken(
+function verifyLinkToken(
   token: string,
   secretKey: string,
 ): LinkTokenPayload | null {

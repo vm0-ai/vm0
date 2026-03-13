@@ -30,31 +30,18 @@ export function getSlackRedirectBaseUrl(requestUrl?: string): string {
 // Re-export shared agent compose resolver
 export { resolveDefaultAgentComposeId } from "../agent-compose/resolve-default";
 
-// Signature verification
-export { verifySlackSignature, getSlackSignatureHeaders } from "./verify";
-
 // Slack API client
 export {
   createSlackClient,
   postMessage,
   updateMessage,
   setThreadStatus,
-  openModal,
-  updateModal,
-  publishAppHome,
   exchangeOAuthCode,
-  isSlackInvalidAuthError,
 } from "./client";
 
 // Block Kit builders
 export {
-  buildAppHomeView,
   buildErrorMessage,
-  buildLoginPromptMessage,
-  buildWelcomeMessage,
-  buildHelpMessage,
-  buildSuccessMessage,
-  buildMarkdownMessage,
   buildAgentResponseMessage,
   buildAskUserQuestionBlocks,
   buildAskUserAnsweredBlocks,
@@ -62,19 +49,5 @@ export {
 } from "./blocks";
 export type { AskUserQuestion } from "./blocks";
 
-// Thread context
-export {
-  fetchThreadContext,
-  fetchChannelContext,
-  formatContextForAgent,
-  formatContextForAgentWithImages,
-  extractMessageContent,
-} from "./context";
-
 // Handlers
-export { handleDirectMessage } from "./handlers/direct-message";
-export {
-  handleAppHomeOpened,
-  handleMessagesTabOpened,
-  refreshAppHome,
-} from "./handlers/app-home-opened";
+export { refreshAppHome } from "./handlers/app-home-opened";

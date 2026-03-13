@@ -1,23 +1,5 @@
-import { WebClient, type WebAPICallResult } from "@slack/web-api";
+import { WebClient } from "@slack/web-api";
 import type { Block, KnownBlock, View } from "@slack/web-api";
-
-/**
- * Check if an error is a Slack invalid_auth error
- * This happens when the bot token is revoked, expired, or invalid
- */
-export function isSlackInvalidAuthError(error: unknown): boolean {
-  if (
-    error &&
-    typeof error === "object" &&
-    "code" in error &&
-    error.code === "slack_webapi_platform_error" &&
-    "data" in error
-  ) {
-    const data = error.data as WebAPICallResult;
-    return data.error === "invalid_auth";
-  }
-  return false;
-}
 
 /**
  * Create a Slack Web API client
@@ -70,44 +52,6 @@ export async function publishAppHome(
 ): Promise<void> {
   await client.views.publish({
     user_id: userId,
-    view,
-  });
-}
-
-/**
- * Open a modal in Slack
- *
- * @param client - Slack WebClient
- * @param triggerId - Trigger ID from slash command or interaction
- * @param view - Modal view definition
- */
-export async function openModal(
-  client: WebClient,
-  triggerId: string,
-  view: View,
-): Promise<string | undefined> {
-  const result = await client.views.open({
-    trigger_id: triggerId,
-    view,
-  });
-
-  return result.view?.id;
-}
-
-/**
- * Update an existing modal
- *
- * @param client - Slack WebClient
- * @param viewId - View ID to update
- * @param view - New view definition
- */
-export async function updateModal(
-  client: WebClient,
-  viewId: string,
-  view: View,
-): Promise<void> {
-  await client.views.update({
-    view_id: viewId,
     view,
   });
 }

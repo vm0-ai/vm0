@@ -18,7 +18,7 @@ import { logger } from "../../logger";
 
 const log = logger("slack:shared");
 
-export type SlackClient = ReturnType<typeof createSlackClient>;
+type SlackClient = ReturnType<typeof createSlackClient>;
 
 /**
  * Fetch conversation context with deduplication support.

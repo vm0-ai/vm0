@@ -5,7 +5,7 @@
  * individual command/message handlers (i.e. the `{ message }` wrapper).
  * The webhook route parses the raw update and passes this shape down.
  */
-export interface TelegramPhotoSize {
+interface TelegramPhotoSize {
   file_id: string;
   file_unique_id: string;
   width: number;

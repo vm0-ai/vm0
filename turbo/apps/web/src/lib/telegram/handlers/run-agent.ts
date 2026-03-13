@@ -14,7 +14,7 @@ const log = logger("telegram:run-agent");
 /**
  * Telegram-specific context to include in the callback payload
  */
-export interface TelegramCallbackContext {
+interface TelegramCallbackContext {
   installationId: string;
   chatId: string;
   messageId: string;

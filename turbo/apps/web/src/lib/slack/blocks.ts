@@ -400,7 +400,7 @@ function convertToSlackMarkdown(content: string): string {
   return result;
 }
 
-export function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
+function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
   const MAX_BLOCK_LENGTH = 2900; // Leave some margin below 3000
   const blocks: SectionBlock[] = [];
 
@@ -447,7 +447,7 @@ export function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 // Keyword detection for deep links (re-exported from shared module)
 // ---------------------------------------------------------------------------
 
-export { detectDeepLinks, type DeepLink } from "../deep-links";
+export { detectDeepLinks } from "../deep-links";
 
 /**
  * Build an agent response message with agent name context and optional logs link

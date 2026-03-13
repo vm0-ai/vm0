@@ -14,7 +14,7 @@ interface TelegramApiResponse<T> {
   };
 }
 
-export interface TelegramBotInfo {
+interface TelegramBotInfo {
   id: number;
   is_bot: boolean;
   first_name: string;

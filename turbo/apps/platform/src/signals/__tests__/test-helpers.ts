@@ -6,12 +6,6 @@ import { resetAllMockHandlers } from "../../mocks/handlers";
 
 const L = logger("Test");
 
-export interface TestFixtureConfig {
-  store: Store;
-  signal: AbortSignal;
-  debugLoggers?: string[];
-}
-
 export interface TestContext {
   readonly signal: AbortSignal;
   readonly store: Store;
