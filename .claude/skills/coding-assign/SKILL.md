@@ -12,14 +12,17 @@ Assigns the current working issue to a coding worker label (`vm01`–`vm0N`) usi
 
 Your args are: `$ARGUMENTS`
 
-The first argument is the **maximum number of workers** (required). For example, `coding-assign 8` means workers `vm01` through `vm08`.
+The first argument is the **maximum number of workers** (optional, defaults to **4**). For example, `coding-assign 8` means workers `vm01` through `vm08`.
 
 ```bash
 # Example: /coding-assign 8
 MAX_WORKERS=8
+
+# Example: /coding-assign  (no args — defaults to 4)
+MAX_WORKERS=4
 ```
 
-If no argument is provided, ask the user and exit.
+If no argument is provided, default to `MAX_WORKERS=4` (uniform distribution across `vm01`–`vm04`).
 
 ## Prerequisites
 
