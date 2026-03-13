@@ -48,7 +48,18 @@ function isTestTokenAllowed(request: Request): boolean {
  */
 async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   try {
-    const { org } = await getDefaultOrg(userId);
+    const { org, member } = await getDefaultOrg(userId);
+    // Pre-populate org_members_cache so verifyMembershipCached hits cache
+    // instead of calling Clerk API on every request (avoids 429 rate limits)
+    await globalThis.services.db
+      .insert(orgMembersCache)
+      .values({
+        orgId: org.orgId,
+        userId,
+        role: member.role,
+        cachedAt: new Date(),
+      })
+      .onConflictDoNothing();
     return { slug: org.slug };
   } catch (error) {
     if (!isNotFound(error)) throw error;
