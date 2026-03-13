@@ -369,7 +369,7 @@ describe("/api/integrations/slack", () => {
       // Switch back to admin user
       mockClerk({ userId: userLink.vm0UserId });
 
-      // Look up the other org's slug for the scoped name
+      // Look up the other org's slug for the org-qualified name
       const otherCompose = await findTestComposeWithOrg(otherComposeId);
 
       const request = new Request(

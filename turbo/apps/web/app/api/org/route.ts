@@ -91,9 +91,9 @@ const router = tsr.router(orgContract, {
     }
 
     try {
-      const org = await updateOrgSlug(resolvedOrg.orgId, slug, userId, force);
+      const updatedOrg = await updateOrgSlug(resolvedOrg.orgId, slug, userId, force);
 
-      return { status: 200 as const, body: resolvedOrgToResponse(org) };
+      return { status: 200 as const, body: resolvedOrgToResponse(updatedOrg) };
     } catch (error) {
       if (isBadRequest(error)) {
         // Check if it's a conflict error (slug already exists)

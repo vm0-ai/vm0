@@ -445,7 +445,7 @@ describe("/api/integrations/github", () => {
       // Switch back to original user
       mockClerk({ userId });
 
-      // Look up the other org's slug for the scoped name
+      // Look up the other org's slug for the org-qualified name
       const otherCompose = await findTestComposeWithOrg(otherComposeId);
 
       const request = createTestRequest(
