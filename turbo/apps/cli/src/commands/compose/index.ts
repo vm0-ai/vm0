@@ -11,7 +11,7 @@ import {
   connectorTypeSchema,
   getServiceConfig,
 } from "@vm0/core";
-import type { ExpandedServiceConfig } from "@vm0/core";
+import type { ExpandedServiceConfig, ServiceConfig } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
@@ -65,13 +65,17 @@ function getVarsFromComposeContent(content: unknown): Set<string> {
   return new Set(grouped.vars.map((r) => r.name));
 }
 
+interface ServiceSelection {
+  permissions: string[] | "all";
+}
+
 interface AgentConfig {
   instructions?: string;
   framework?: string;
   skills?: string[];
   environment?: Record<string, string>;
   metadata?: { displayName?: string; sound?: string };
-  experimental_services?: string[];
+  experimental_services?: Record<string, ServiceSelection>;
 }
 
 interface LoadedConfig {
@@ -364,44 +368,130 @@ function mergeSkillVariables(
 }
 
 /**
- * Expand experimental_services from string[] to ExpandedServiceConfig[] in-place.
+ * Resolve a single service ref to its config and validate it exists.
+ */
+function resolveServiceConfig(ref: string): ServiceConfig {
+  const parsed = connectorTypeSchema.safeParse(ref);
+  if (!parsed.success) {
+    throw new Error(
+      `Cannot resolve service ref "${ref}": no built-in service with this name`,
+    );
+  }
+  const serviceConfig = getServiceConfig(parsed.data);
+  if (!serviceConfig) {
+    throw new Error(
+      `Service ref "${ref}" resolved to "${parsed.data}" but it does not support proxy-side token replacement`,
+    );
+  }
+  return serviceConfig;
+}
+
+/**
+ * Collect available permission names from a service config.
+ * Validates uniqueness and that "all" is not used as a permission name.
+ */
+function collectAndValidatePermissions(
+  ref: string,
+  serviceConfig: ServiceConfig,
+): Set<string> {
+  const available = new Set<string>();
+  for (const api of serviceConfig.apis) {
+    for (const perm of api.permissions ?? []) {
+      if (perm.name === "all") {
+        throw new Error(
+          `Service "${serviceConfig.name}" (ref "${ref}") has a permission named "all", which is a reserved keyword`,
+        );
+      }
+      available.add(perm.name);
+    }
+  }
+  return available;
+}
+
+/**
+ * Expand experimental_services from map format to ExpandedServiceConfig[] in-place.
+ * Validates permission names and filters api_entries to only include selected permissions.
  * Mutates the config object so the API receives pre-expanded service objects.
+ *
+ * Input (from vm0.yaml):  Record<ref, { permissions: string[] | "all" }>
+ * Output (for API):       ExpandedServiceConfig[]
+ *
+ * The union type in the `as` cast covers both shapes since this function
+ * transforms the field from one to the other. Already-expanded arrays are
+ * skipped via the Array.isArray guard.
  *
  * TODO: Support resolving services from GitHub URLs (like skills).
  * Currently only resolves from built-in SERVICE_CONFIGS via connectorTypeSchema.
  */
-function expandServiceConfigs(config: unknown): void {
+export function expandServiceConfigs(config: unknown): void {
   const compose = config as {
     agents?: Record<
       string,
-      { experimental_services?: string[] | ExpandedServiceConfig[] }
+      {
+        experimental_services?:
+          | Record<string, ServiceSelection>
+          | ExpandedServiceConfig[];
+      }
     >;
   };
   if (!compose?.agents) return;
 
   for (const agent of Object.values(compose.agents)) {
     const services = agent.experimental_services;
-    if (!services || services.length === 0) continue;
-    // Skip if already expanded (object array, not string array)
-    if (typeof services[0] !== "string") continue;
+    if (!services) continue;
+    // Skip if already expanded (array, not map)
+    if (Array.isArray(services)) continue;
 
-    agent.experimental_services = (services as string[]).map((name) => {
-      const parsed = connectorTypeSchema.safeParse(name);
-      if (!parsed.success) {
-        throw new Error(`Unknown service: "${name}"`);
+    const expanded: ExpandedServiceConfig[] = [];
+
+    for (const [ref, selection] of Object.entries(services)) {
+      const serviceConfig = resolveServiceConfig(ref);
+      const availablePermissions = collectAndValidatePermissions(
+        ref,
+        serviceConfig,
+      );
+
+      // Validate selected permissions exist
+      if (selection.permissions !== "all") {
+        for (const name of selection.permissions) {
+          if (!availablePermissions.has(name)) {
+            const available = [...availablePermissions].join(", ");
+            throw new Error(
+              `Permission "${name}" does not exist in service "${serviceConfig.name}" (ref "${ref}"). Available: ${available}`,
+            );
+          }
+        }
       }
-      const serviceConfig = getServiceConfig(parsed.data);
-      if (!serviceConfig) {
-        throw new Error(
-          `Service "${name}" does not support proxy-side token replacement`,
-        );
-      }
-      return {
-        name,
-        apis: serviceConfig.apis,
-        placeholders: serviceConfig.placeholders,
+
+      // Filter api_entries: keep only selected permissions, drop empty entries
+      const selectedSet =
+        selection.permissions === "all" ? null : new Set(selection.permissions);
+
+      const filteredApis = serviceConfig.apis
+        .map((api) => ({
+          ...api,
+          permissions: selectedSet
+            ? (api.permissions ?? []).filter((p) => selectedSet.has(p.name))
+            : api.permissions,
+        }))
+        .filter((api) => (api.permissions ?? []).length > 0);
+
+      // Drop service entirely if no api_entries remain
+      if (filteredApis.length === 0) continue;
+
+      const entry: ExpandedServiceConfig = {
+        name: serviceConfig.name,
+        ref,
+        apis: filteredApis,
       };
-    });
+      if (serviceConfig.description !== undefined)
+        entry.description = serviceConfig.description;
+      if (serviceConfig.placeholders !== undefined)
+        entry.placeholders = serviceConfig.placeholders;
+      expanded.push(entry);
+    }
+
+    agent.experimental_services = expanded;
   }
 }
 

@@ -70,7 +70,7 @@ pub struct ExecutionContext {
     // Not yet used by runner — org/agent slug for scoping
     #[allow(dead_code)]
     #[serde(default)]
-    pub agent_scope_slug: Option<String>,
+    pub agent_org_slug: Option<String>,
     // Not yet used by runner — memory storage name for first-run init
     #[allow(dead_code)]
     #[serde(default)]

@@ -76,7 +76,8 @@ agents:
     framework: claude-code
     working_dir: /home/user/workspace
     experimental_services:
-      - github
+      github:
+        permissions: all
 EOF
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
@@ -95,7 +96,8 @@ agents:
     framework: claude-code
     working_dir: /home/user/workspace
     experimental_services:
-      - github
+      github:
+        permissions: all
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 EOF
@@ -133,8 +135,10 @@ agents:
     framework: claude-code
     working_dir: /home/user/workspace
     experimental_services:
-      - github
-      - slack
+      github:
+        permissions: all
+      slack:
+        permissions: all
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       SLACK_TOKEN: \${{ secrets.SLACK_TOKEN }}
@@ -180,7 +184,8 @@ agents:
     framework: claude-code
     working_dir: /home/user/workspace
     experimental_services:
-      - github
+      github:
+        permissions: all
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 EOF

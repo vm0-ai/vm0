@@ -34,6 +34,11 @@ import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
 import * as telegramThreadSessionSchema from "./schema/telegram-thread-session";
 import * as telegramMessageSchema from "./schema/telegram-message";
+import * as slackPendingQuestionSchema from "./schema/slack-pending-question";
+import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
+import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
+import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
+import * as slackOrgPendingQuestionSchema from "./schema/slack-org-pending-question";
 import * as orgCacheSchema from "./schema/org-cache";
 import * as orgMembersCacheSchema from "./schema/org-members-cache";
 import * as userCacheSchema from "./schema/user-cache";
@@ -63,6 +68,11 @@ export const schema = {
 
   ...slackThreadSessionSchema,
   ...slackComposeRequestSchema,
+  ...slackPendingQuestionSchema,
+  ...slackOrgInstallationSchema,
+  ...slackOrgConnectionSchema,
+  ...slackOrgThreadSessionSchema,
+  ...slackOrgPendingQuestionSchema,
   ...variableSchema,
   ...composeJobSchema,
   ...connectorSchema,

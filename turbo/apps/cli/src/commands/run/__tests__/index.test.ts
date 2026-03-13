@@ -420,7 +420,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should parse scope/name format", async () => {
+    it("should parse org/name format", async () => {
       let capturedQueryParams:
         | { name: string | null; org: string | null }
         | undefined;
@@ -489,7 +489,7 @@ describe("run command", () => {
       );
     });
 
-    it("should parse scope/name:version format", async () => {
+    it("should parse org/name:version format", async () => {
       let capturedVersionParams:
         | { composeId: string | null; version: string | null }
         | undefined;
@@ -1324,7 +1324,7 @@ describe("run command", () => {
   });
 
   describe("--experimental-shared-agent flag", () => {
-    it("should require flag when running agent from another user's scope", async () => {
+    it("should require flag when running agent from another user's org", async () => {
       await expect(async () => {
         await runCommand.parseAsync([
           "node",
@@ -1349,14 +1349,14 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should allow running agent from own scope without flag", async () => {
+    it("should allow running agent from own org without flag", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("org");
+          const org = url.searchParams.get("org");
 
-          if (scope === "test-user" && name === "my-agent") {
+          if (org === "test-user" && name === "my-agent") {
             return HttpResponse.json({
               id: "compose-123",
               name: "my-agent",
@@ -1376,7 +1376,7 @@ describe("run command", () => {
         }),
       );
 
-      // Should not throw - own scope doesn't require the flag
+      // Should not throw - own org doesn't require the flag
       await runCommand.parseAsync([
         "node",
         "cli",
@@ -1392,14 +1392,14 @@ describe("run command", () => {
       );
     });
 
-    it("should allow running agent from another scope with flag", async () => {
+    it("should allow running agent from another org with flag", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("org");
+          const org = url.searchParams.get("org");
 
-          if (scope === "other-user" && name === "shared-agent") {
+          if (org === "other-user" && name === "shared-agent") {
             return HttpResponse.json({
               id: "compose-456",
               name: "shared-agent",
@@ -1437,14 +1437,14 @@ describe("run command", () => {
     });
   });
 
-  describe("scope error handling", () => {
-    it("should show error when scope does not exist", async () => {
+  describe("org error handling", () => {
+    it("should show error when org does not exist", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
-          const scope = url.searchParams.get("org");
+          const org = url.searchParams.get("org");
 
-          if (scope === "nonexistent-scope-xyz123") {
+          if (org === "nonexistent-scope-xyz123") {
             return HttpResponse.json(
               {
                 error: {
@@ -1480,7 +1480,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should provide helpful error message for non-existent scope", async () => {
+    it("should provide helpful error message for non-existent org", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json(
@@ -1515,17 +1515,14 @@ describe("run command", () => {
       );
     });
 
-    it("should show error when agent does not exist in valid scope", async () => {
+    it("should show error when agent does not exist in valid org", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("org");
+          const org = url.searchParams.get("org");
 
-          if (
-            scope === "user-abc12345" &&
-            name === "nonexistent-agent-xyz123"
-          ) {
+          if (org === "user-abc12345" && name === "nonexistent-agent-xyz123") {
             return HttpResponse.json(
               {
                 error: {
@@ -1594,14 +1591,14 @@ describe("run command", () => {
       );
     });
 
-    it("should not allow access to agent from different scope", async () => {
+    it("should not allow access to agent from different org", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("org");
+          const org = url.searchParams.get("org");
 
-          if (scope === "other-user-scope" && name === "my-agent") {
+          if (org === "other-user-scope" && name === "my-agent") {
             return HttpResponse.json(
               {
                 error: {
@@ -1638,7 +1635,7 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should treat scope isolation as not found rather than forbidden", async () => {
+    it("should treat org isolation as not found rather than forbidden", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json(

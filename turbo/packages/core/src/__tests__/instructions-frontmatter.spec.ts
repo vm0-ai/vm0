@@ -143,6 +143,60 @@ describe("stripMetadataFrontmatter", () => {
   });
 });
 
+describe("ReDoS regression", () => {
+  it("should handle opening marker with no closing marker in linear time", () => {
+    const malicious = "<!-- ZERO_PROFILE\n" + "a\n".repeat(10000);
+    const start = performance.now();
+    const result = stripMetadataFrontmatter(malicious);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(100);
+    expect(result).toBe(malicious.trim());
+  });
+
+  it("should handle repeated opening markers in linear time", () => {
+    const malicious = "<!-- ZERO_PROFILE\n".repeat(10000);
+    const start = performance.now();
+    const result = stripMetadataFrontmatter(malicious);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(100);
+    expect(result).toBe(malicious.trim());
+  });
+
+  it("should handle nested-looking markers with one closer", () => {
+    const malicious =
+      "<!-- ZERO_PROFILE\n".repeat(100) + "payload\n" + "ZERO_PROFILE -->\n";
+    const start = performance.now();
+    const result = stripMetadataFrontmatter(malicious);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(100);
+    // The regex matches from the first opener to the closer
+    expect(result).toBe("");
+  });
+
+  it("should correctly strip a valid block in large content", () => {
+    const prefix = "line\n".repeat(5000);
+    const block = "<!-- ZERO_PROFILE\nYour name is Aria.\nZERO_PROFILE -->\n";
+    const suffix = "line\n".repeat(5000);
+    const content = prefix + block + suffix;
+    const start = performance.now();
+    const result = stripMetadataFrontmatter(content);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(100);
+    expect(result).not.toContain("ZERO_PROFILE");
+  });
+
+  it("should handle injectMetadataFrontmatter with repeated markers in linear time", () => {
+    const malicious = "<!-- ZERO_PROFILE\n".repeat(10000);
+    const start = performance.now();
+    const result = injectMetadataFrontmatter(malicious, {
+      displayName: "Test",
+    });
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(100);
+    expect(result).toContain("Your name is Test.");
+  });
+});
+
 describe("legacy migration", () => {
   it("should replace old frontmatter with new profile block on inject", () => {
     const content =

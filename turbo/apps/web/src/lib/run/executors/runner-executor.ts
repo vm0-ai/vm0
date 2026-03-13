@@ -62,7 +62,7 @@ export async function executeRunnerJob(
     apiStartTime: context.apiStartTime ?? undefined,
     userTimezone: context.userTimezone ?? undefined,
     agentName: context.agentName ?? undefined,
-    agentScopeSlug: context.agentOrgSlug ?? undefined,
+    agentOrgSlug: context.agentOrgSlug ?? undefined,
     memoryName: context.memoryName ?? undefined,
   };
 
