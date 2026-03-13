@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getOrg, updateOrg } from "../../lib/api";
+import { saveConfig } from "../../lib/api/config";
 import { withErrorHandler } from "../../lib/command";
 
 export const setCommand = new Command()
@@ -26,6 +27,7 @@ export const setCommand = new Command()
         }
 
         const org = await updateOrg({ slug, force: true });
+        await saveConfig({ activeOrg: org.slug });
         console.log(chalk.green(`✓ Organization updated to ${org.slug}`));
         console.log();
         console.log("Your agents will now be namespaced as:");
