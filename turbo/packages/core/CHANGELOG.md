@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.62.0](https://github.com/vm0-ai/vm0/compare/core-v8.61.0...core-v8.62.0) (2026-03-13)
+
+
+### Features
+
+* **zero:** add pinned agents, agent switching, and per-agent sessions ([#4727](https://github.com/vm0-ai/vm0/issues/4727)) ([d3ee3af](https://github.com/vm0-ai/vm0/commit/d3ee3af19e34c583efc8f9b6b4da1bf48de9f0fb))
+
 ## [8.61.0](https://github.com/vm0-ai/vm0/compare/core-v8.60.0...core-v8.61.0) (2026-03-13)
 
 

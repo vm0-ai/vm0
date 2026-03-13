@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.104.0](https://github.com/vm0-ai/vm0/compare/web-v12.103.1...web-v12.104.0) (2026-03-13)
+
+
+### Features
+
+* **zero:** add pinned agents, agent switching, and per-agent sessions ([#4727](https://github.com/vm0-ai/vm0/issues/4727)) ([d3ee3af](https://github.com/vm0-ai/vm0/commit/d3ee3af19e34c583efc8f9b6b4da1bf48de9f0fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.62.0
+
 ## [12.103.1](https://github.com/vm0-ai/vm0/compare/web-v12.103.0...web-v12.103.1) (2026-03-13)
 
 

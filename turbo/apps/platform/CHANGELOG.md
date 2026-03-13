@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.109.0](https://github.com/vm0-ai/vm0/compare/platform-v0.108.0...platform-v0.109.0) (2026-03-13)
+
+
+### Features
+
+* **zero:** add pinned agents, agent switching, and per-agent sessions ([#4727](https://github.com/vm0-ai/vm0/issues/4727)) ([d3ee3af](https://github.com/vm0-ai/vm0/commit/d3ee3af19e34c583efc8f9b6b4da1bf48de9f0fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.62.0
+
 ## [0.108.0](https://github.com/vm0-ai/vm0/compare/platform-v0.107.4...platform-v0.108.0) (2026-03-13)
 
 
