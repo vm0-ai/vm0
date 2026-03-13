@@ -3,6 +3,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { userPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   getUserPreferences,
   updateUserPreferences,
@@ -21,14 +22,11 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { sessionClaims, orgId } = await auth();
-
-    if (!orgId) {
-      return createErrorResponse("BAD_REQUEST", "No organization context");
-    }
+    const { sessionClaims } = await auth();
+    const { org } = await resolveOrg(ctx.userId);
 
     const prefs = await getUserPreferences(
-      orgId,
+      org.orgId,
       ctx.userId,
       sessionClaims ?? undefined,
     );
@@ -55,13 +53,10 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { orgId: resolvedOrgId } = await auth();
-    if (!resolvedOrgId) {
-      return createErrorResponse("BAD_REQUEST", "No organization context");
-    }
+    const { org } = await resolveOrg(ctx.userId);
 
     try {
-      const prefs = await updateUserPreferences(resolvedOrgId, ctx.userId, {
+      const prefs = await updateUserPreferences(org.orgId, ctx.userId, {
         timezone: body.timezone,
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,

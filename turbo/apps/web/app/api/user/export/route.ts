@@ -1,8 +1,8 @@
 import { NextResponse, after } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { eq, and, gt, inArray } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { exportJobs } from "../../../../src/db/schema/export-job";
 import { executeExportJob } from "../../../../src/lib/export/export-service";
 
@@ -24,14 +24,9 @@ export async function POST(request: Request) {
 
   const { userId } = ctx;
 
-  // Resolve orgId from Clerk session
-  const { orgId: resolvedOrgId } = await auth();
-  if (!resolvedOrgId) {
-    return NextResponse.json(
-      { error: { code: "BAD_REQUEST", message: "No organization context" } },
-      { status: 400 },
-    );
-  }
+  // Resolve orgId via resolveOrg (works for both Clerk sessions and CLI tokens)
+  const { org } = await resolveOrg(userId);
+  const resolvedOrgId = org.orgId;
 
   const db = globalThis.services.db;
 
