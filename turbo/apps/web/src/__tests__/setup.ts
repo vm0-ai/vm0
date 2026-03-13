@@ -45,7 +45,7 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("NGROK_API_KEY", "test-ngrok-api-key");
     vi.stubEnv("NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.test.vm0.io");
     // Runner executor default group (runs dispatch to runner)
-    // Uses "vm0" scope which is hardcoded as public in validateRunnerGroupOrg
+    // Uses "vm0" org which is hardcoded as public in validateRunnerGroupOrg
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");

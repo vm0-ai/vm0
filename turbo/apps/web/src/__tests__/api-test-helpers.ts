@@ -2280,12 +2280,12 @@ export async function insertTestAgentPermission(
 }
 
 /**
- * Find a compose record with its scope details.
+ * Find a compose record with its org details.
  *
  * Direct DB read is required because the compose API does not expose
- * scope slug in its response — it only returns compose-level fields.
+ * org slug in its response — it only returns compose-level fields.
  */
-export async function findTestComposeWithScope(composeId: string) {
+export async function findTestComposeWithOrg(composeId: string) {
   const [row] = await globalThis.services.db
     .select({
       composeId: agentComposes.id,

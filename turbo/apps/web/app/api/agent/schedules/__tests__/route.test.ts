@@ -328,10 +328,10 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             composeId: otherComposeId,
-            name: "cross-scope-schedule",
+            name: "cross-org-schedule",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
-            prompt: "Test cross-scope",
+            prompt: "Test cross-org",
           }),
         },
       );

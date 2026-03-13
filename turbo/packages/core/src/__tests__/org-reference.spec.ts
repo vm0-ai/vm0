@@ -18,7 +18,7 @@ describe("isLegacySystemTemplate", () => {
 
   it("returns false for non-vm0 prefix", () => {
     expect(isLegacySystemTemplate("my-image")).toBe(false);
-    expect(isLegacySystemTemplate("scope/vm0-image")).toBe(false);
+    expect(isLegacySystemTemplate("org/vm0-image")).toBe(false);
     expect(isLegacySystemTemplate("vm1-image")).toBe(false);
   });
 });

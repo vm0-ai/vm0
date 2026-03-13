@@ -6,7 +6,7 @@ import {
   createTestCliToken,
   createTestCompose,
   createTestRunnerJob,
-  findTestComposeWithScope,
+  findTestComposeWithOrg,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -234,10 +234,10 @@ describe("POST /api/runners/jobs/:id/claim", () => {
   });
 
   describe("Claim flow - Agent metadata", () => {
-    it("should return agentName and agentScopeSlug in claim response", async () => {
+    it("should return agentName and agentOrgSlug in claim response", async () => {
       // Create compose and look up org slug
       const { composeId, versionId } = await createTestCompose("test-agent");
-      const composeInfo = await findTestComposeWithScope(composeId);
+      const composeInfo = await findTestComposeWithOrg(composeId);
       const orgSlug = composeInfo!.orgSlug;
 
       // Create runner job with agent metadata in stored context
@@ -247,7 +247,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         `${orgSlug}/default`,
         {
           agentName: "test-agent",
-          agentScopeSlug: orgSlug,
+          agentOrgSlug: orgSlug,
         },
       );
 
@@ -270,14 +270,14 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
       const data = await response.json();
       expect(data.agentName).toBe("test-agent");
-      expect(data.agentScopeSlug).toBe(orgSlug);
+      expect(data.agentOrgSlug).toBe(orgSlug);
     });
 
-    it("should omit agentName and agentScopeSlug when not set in stored context", async () => {
+    it("should omit agentName and agentOrgSlug when not set in stored context", async () => {
       // Create compose and look up org slug
       const { composeId, versionId } =
         await createTestCompose("test-agent-no-meta");
-      const composeInfo = await findTestComposeWithScope(composeId);
+      const composeInfo = await findTestComposeWithOrg(composeId);
       const orgSlug = composeInfo!.orgSlug;
 
       // Create runner job WITHOUT agent metadata
@@ -306,7 +306,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
       const data = await response.json();
       expect(data.agentName).toBeUndefined();
-      expect(data.agentScopeSlug).toBeUndefined();
+      expect(data.agentOrgSlug).toBeUndefined();
     });
   });
 
@@ -314,7 +314,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     it("should only include secret values present in environment", async () => {
       const { composeId, versionId } =
         await createTestCompose("test-secret-filter");
-      const composeInfo = await findTestComposeWithScope(composeId);
+      const composeInfo = await findTestComposeWithOrg(composeId);
       const orgSlug = composeInfo!.orgSlug;
 
       const encryptedSecrets = encryptSecretsMap(
@@ -366,7 +366,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
     it("should return empty array when no secrets match environment", async () => {
       const { composeId, versionId } = await createTestCompose("test-no-match");
-      const composeInfo = await findTestComposeWithScope(composeId);
+      const composeInfo = await findTestComposeWithOrg(composeId);
       const orgSlug = composeInfo!.orgSlug;
 
       const encryptedSecrets = encryptSecretsMap(
@@ -407,7 +407,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     it("should return null when no encrypted secrets exist", async () => {
       const { composeId, versionId } =
         await createTestCompose("test-no-secrets");
-      const composeInfo = await findTestComposeWithScope(composeId);
+      const composeInfo = await findTestComposeWithOrg(composeId);
       const orgSlug = composeInfo!.orgSlug;
 
       const { runId } = await createTestRunnerJob(

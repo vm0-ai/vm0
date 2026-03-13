@@ -195,7 +195,7 @@ describe("DELETE /api/secrets/:name - Delete Secret", () => {
   });
 
   it("should return 404 for user without org", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
+    mockClerk({ userId: `user-no-org-${Date.now()}` });
 
     const request = createTestRequest(
       "http://localhost:3000/api/secrets/ANY_KEY",

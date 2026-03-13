@@ -8,7 +8,7 @@ import {
   insertTestGitHubInstallationWithAdmin,
   insertTestGitHubUserLink,
   findTestGitHubInstallationById,
-  findTestComposeWithScope,
+  findTestComposeWithOrg,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -446,7 +446,7 @@ describe("/api/integrations/github", () => {
       mockClerk({ userId });
 
       // Look up the other org's slug for the scoped name
-      const otherCompose = await findTestComposeWithScope(otherComposeId);
+      const otherCompose = await findTestComposeWithOrg(otherComposeId);
 
       const request = createTestRequest(
         "http://localhost:3000/api/integrations/github",

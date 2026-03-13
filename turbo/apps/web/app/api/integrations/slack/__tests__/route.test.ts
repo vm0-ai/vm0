@@ -14,7 +14,7 @@ import {
   createTestCompose,
   createTestOrg,
   findTestAgentPermissions,
-  findTestComposeWithScope,
+  findTestComposeWithOrg,
   insertTestAgentPermission,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { uniqueId } from "../../../../../src/__tests__/test-helpers";
@@ -315,7 +315,7 @@ describe("/api/integrations/slack", () => {
       mockClerk({ userId: userLink.vm0UserId });
 
       // Find the org slug and name used for the default agent
-      const defaultCompose = await findTestComposeWithScope(
+      const defaultCompose = await findTestComposeWithOrg(
         installation.defaultComposeId,
       );
 
@@ -370,7 +370,7 @@ describe("/api/integrations/slack", () => {
       mockClerk({ userId: userLink.vm0UserId });
 
       // Look up the other org's slug for the scoped name
-      const otherCompose = await findTestComposeWithScope(otherComposeId);
+      const otherCompose = await findTestComposeWithOrg(otherComposeId);
 
       const request = new Request(
         "http://localhost:3000/api/integrations/slack",

@@ -194,7 +194,7 @@ describe("DELETE /api/variables/:name - Delete Variable", () => {
   });
 
   it("should return 404 for user without org", async () => {
-    mockClerk({ userId: `user-no-scope-${Date.now()}` });
+    mockClerk({ userId: `user-no-org-${Date.now()}` });
 
     const request = createTestRequest(
       "http://localhost:3000/api/variables/ANY_VAR",
