@@ -11,7 +11,6 @@ import {
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
-import { initOrg$, hasOrg$ } from "../org.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
 import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
@@ -225,7 +224,6 @@ export const initZeroOnboarding$ = command(
 
 /**
  * Save model provider (step 2 completion).
- * Creates org if needed, then creates model provider.
  */
 export const saveZeroModelProvider$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -235,15 +233,6 @@ export const saveZeroModelProvider$ = command(
       const providerType = get(internalProviderType$);
       const formValues = get(internalFormValues$);
       const shape = getProviderShape(providerType);
-
-      // Create org if needed
-      const orgExists = await get(hasOrg$);
-      signal.throwIfAborted();
-
-      if (!orgExists) {
-        await set(initOrg$, signal);
-        signal.throwIfAborted();
-      }
 
       // Build request based on provider shape
       const request: Record<string, unknown> = { type: providerType };

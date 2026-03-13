@@ -39,9 +39,6 @@ describe("home page", () => {
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", () => {
-        return HttpResponse.json({}, { status: 201 });
-      }),
     );
 
     await setupPage({
@@ -104,9 +101,6 @@ describe("home page", () => {
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", () => {
-        return HttpResponse.json({}, { status: 201 });
-      }),
       http.put("/api/model-providers", async ({ request }) => {
         providerCreated = true;
         const body = (await request.json()) as {
@@ -162,9 +156,6 @@ describe("home page", () => {
     server.use(
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
-      }),
-      http.post("/api/scope", () => {
-        return HttpResponse.json({}, { status: 201 });
       }),
       http.put("/api/model-providers", async ({ request }) => {
         await uploadDeferred;

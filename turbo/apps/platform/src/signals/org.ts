@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { computed, state } from "ccstate";
 import { user$ } from "./auth.ts";
 import { fetch$ } from "./fetch.ts";
 import { logger } from "./log.ts";
@@ -53,49 +53,4 @@ export const org$ = computed(async (get) => {
 export const hasOrg$ = computed(async (get) => {
   const org = await get(org$);
   return org !== undefined;
-});
-
-/**
- * Generate a deterministic org slug from user ID.
- * Uses SubtleCrypto (browser-compatible) to hash the user ID.
- */
-async function generateDefaultSlug(userId: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(userId);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `user-${hashHex.slice(0, 8)}`;
-}
-
-/**
- * Create org for current user with auto-generated slug.
- * Triggers reload after successful creation.
- */
-export const initOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const user = await get(user$);
-  signal.throwIfAborted();
-
-  if (!user) {
-    throw new Error("User must be authenticated to create org");
-  }
-
-  const slug = await generateDefaultSlug(user.id);
-  signal.throwIfAborted();
-
-  const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/scope", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slug }),
-  });
-  signal.throwIfAborted();
-
-  if (!response.ok) {
-    throw new Error(`Failed to create org: ${response.status}`);
-  }
-
-  set(internalReloadOrg$, (x) => x + 1);
 });

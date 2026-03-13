@@ -7,7 +7,7 @@ import {
   hasModelSelection,
   type ModelProviderType,
 } from "@vm0/core";
-import { initOrg$, hasOrg$ } from "./org.ts";
+import { hasOrg$ } from "./org.ts";
 import {
   hasAnyModelProvider$,
   createModelProvider$,
@@ -208,23 +208,11 @@ export const copyToClipboard$ = command(({ get, set }, text: string) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Start the onboarding flow - show modal only.
- * Org creation is deferred to save action.
+ * Start the onboarding flow - show modal.
  */
-export const startOnboarding$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    set(internalShowOnboardingModal$, true);
-
-    // Create org if it doesn't exist
-    const orgExists = await get(hasOrg$);
-    signal.throwIfAborted();
-
-    if (!orgExists) {
-      await set(initOrg$, signal);
-      signal.throwIfAborted();
-    }
-  },
-);
+export const startOnboarding$ = command(({ set }) => {
+  set(internalShowOnboardingModal$, true);
+});
 
 /**
  * Close the onboarding modal (Cancel / Add it later).
@@ -237,7 +225,7 @@ export const closeOnboardingModal$ = command(({ set }) => {
 
 /**
  * Save the onboarding configuration.
- * Creates org if needed and creates the model provider.
+ * Creates the model provider.
  */
 export const saveOnboardingConfig$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -261,15 +249,6 @@ export const saveOnboardingConfig$ = command(
         }
       } else if (!formValues.secret.trim()) {
         return;
-      }
-
-      // Create org if it doesn't exist
-      const orgExists = await get(hasOrg$);
-      signal.throwIfAborted();
-
-      if (!orgExists) {
-        await set(initOrg$, signal);
-        signal.throwIfAborted();
       }
 
       // Build request based on provider shape

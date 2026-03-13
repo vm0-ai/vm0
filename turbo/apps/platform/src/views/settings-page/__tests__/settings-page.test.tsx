@@ -17,9 +17,6 @@ describe("settings page", () => {
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
       }),
-      http.post("/api/scope", () => {
-        return new HttpResponse(null, { status: 201 });
-      }),
     );
 
     await setupPage({ context, path: "/settings" });

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { insertOrgCacheEntry } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
-import { getDefaultOrgByUserId, generateDefaultOrgSlug } from "../org-service";
+import { getDefaultOrgByUserId } from "../org-service";
 
 const context = testContext();
 
@@ -34,20 +34,5 @@ describe("getDefaultOrgByUserId", () => {
     expect(result).not.toBeNull();
     expect(result!.orgId).toBe(orgId);
     expect(result!.slug).toBe(slug);
-  });
-});
-
-describe("generateDefaultOrgSlug", () => {
-  it("should generate deterministic slug from userId", () => {
-    const slug1 = generateDefaultOrgSlug("user_abc");
-    const slug2 = generateDefaultOrgSlug("user_abc");
-    expect(slug1).toBe(slug2);
-    expect(slug1).toMatch(/^user-[a-f0-9]{8}$/);
-  });
-
-  it("should generate different slugs for different userIds", () => {
-    const slug1 = generateDefaultOrgSlug("user_abc");
-    const slug2 = generateDefaultOrgSlug("user_xyz");
-    expect(slug1).not.toBe(slug2);
   });
 });
