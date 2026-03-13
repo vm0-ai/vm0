@@ -46,9 +46,10 @@ function isTestTokenAllowed(request: Request): boolean {
  * If the user has no Clerk org yet, creates org_cache and org_members_cache
  * entries with a sentinel orgId.
  */
-async function ensureTestOrg(userId: string): Promise<void> {
+async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   try {
-    await getDefaultOrg(userId);
+    const { org } = await getDefaultOrg(userId);
+    return { slug: org.slug };
   } catch (error) {
     if (!isNotFound(error)) throw error;
     // User has no Clerk org — use sentinel orgId with org_cache + membership cache
@@ -67,6 +68,7 @@ async function ensureTestOrg(userId: string): Promise<void> {
         cachedAt: new Date(),
       })
       .onConflictDoNothing();
+    return { slug };
   }
 }
 
@@ -98,7 +100,7 @@ export async function POST(request: Request) {
   }
 
   // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
-  await ensureTestOrg(userId);
+  const { slug: orgSlug } = await ensureTestOrg(userId);
 
   // Generate CLI token
   const randomBytes = crypto.randomBytes(32);
@@ -119,5 +121,6 @@ export async function POST(request: Request) {
     token_type: "Bearer",
     expires_in: 90 * 24 * 60 * 60,
     user_id: userId,
+    org_slug: orgSlug,
   });
 }

@@ -192,7 +192,7 @@ describe("/api/cli/auth/test-token", () => {
       reloadEnv();
     });
 
-    it("returns token with correct format", async () => {
+    it("returns token with correct format and org_slug", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
         { method: "POST" },
@@ -205,6 +205,7 @@ describe("/api/cli/auth/test-token", () => {
       expect(data.token_type).toBe("Bearer");
       expect(data.expires_in).toBe(90 * 24 * 60 * 60);
       expect(data.user_id).toBe("user_test123");
+      expect(data.org_slug).toBe("test-token-org");
     });
 
     it("returns 500 when test user is not found", async () => {
