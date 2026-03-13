@@ -1,12 +1,10 @@
 #!/usr/bin/env bats
 
-# Test experimental_services placeholder env var injection and token replacement
+# Test experimental_services placeholder env var injection and permission-based matching
 #
 # Verifies that when experimental_services is declared:
-# 1. Compose accepts the configuration
-# 2. Placeholder env vars replace secret values in the sandbox (with custom formats)
-# 3. Multiple connectors work together
-# 4. Proxy replaces placeholder tokens with real tokens (via test-connector API)
+# 1. Placeholder env vars replace secret values in the sandbox (with custom formats)
+# 2. Proxy replaces placeholder tokens and enforces permission-based access control
 
 load '../../helpers/setup'
 
@@ -17,8 +15,8 @@ setup() {
 
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export AGENT_NAME="e2e-connector-${UNIQUE_ID}"
-    export ARTIFACT_NAME="e2e-connector-artifact-${UNIQUE_ID}"
+    export AGENT_NAME="e2e-service-${UNIQUE_ID}"
+    export ARTIFACT_NAME="e2e-service-artifact-${UNIQUE_ID}"
 }
 
 teardown() {
@@ -66,63 +64,7 @@ setup_test_connector() {
     fi
 }
 
-@test "connector: compose accepts experimental_services" {
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  connector-test:
-    description: "Connector placeholder test"
-    framework: claude-code
-    working_dir: /home/user/workspace
-    experimental_services:
-      github:
-        permissions: all
-EOF
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-}
-
-@test "connector: github placeholder uses gho_ prefix" {
-    setup_test_connector "github" "ghp_placeholder_test_token"
-
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  ${AGENT_NAME}-github:
-    description: "GitHub connector placeholder test"
-    framework: claude-code
-    working_dir: /home/user/workspace
-    experimental_services:
-      github:
-        permissions: all
-    environment:
-      GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-EOF
-
-    create_artifact "$ARTIFACT_NAME-github"
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    # Verify GITHUB_TOKEN is set to the connector placeholder.
-    # Full values are masked by the runner (***), so we compare sha256 hashes.
-    local expected_gh_hash
-    expected_gh_hash=$(echo -n "gho_vm0placeholder0000000000000000000000" | sha256sum | cut -d' ' -f1)
-    run $CLI_COMMAND run "${AGENT_NAME}-github" \
-        --artifact-name "$ARTIFACT_NAME-github" \
-        "echo \"GITHUB_HASH=\$(echo -n \$GITHUB_TOKEN | sha256sum | cut -d' ' -f1)\""
-
-    echo "$output"
-    assert_success
-    assert_output --partial "Run completed successfully"
-
-    assert_output --partial "GITHUB_HASH=${expected_gh_hash}"
-}
-
-@test "connector: multiple connectors inject all env vars" {
+@test "service: placeholder env vars" {
     setup_test_connector "github" "ghp_multi_test_token"
     setup_test_connector "slack" "xoxb-multi-test-token"
 
@@ -131,7 +73,7 @@ version: "1.0"
 
 agents:
   ${AGENT_NAME}-multi:
-    description: "Multi-connector placeholder test"
+    description: "Multi-service placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
     experimental_services:
@@ -149,66 +91,60 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    # Verify env vars from both connectors via sha256 hash comparison.
-    local expected_gh_hash
-    expected_gh_hash=$(echo -n "gho_vm0placeholder0000000000000000000000" | sha256sum | cut -d' ' -f1)
-    local expected_slack_hash
-    expected_slack_hash=$(echo -n "xoxb-0000-0000-vm0placeholder" | sha256sum | cut -d' ' -f1)
+    # Verify env vars from both services are set to placeholder values.
     run $CLI_COMMAND run "${AGENT_NAME}-multi" \
         --artifact-name "$ARTIFACT_NAME-multi" \
-        "echo \"GITHUB_HASH=\$(echo -n \$GITHUB_TOKEN | sha256sum | cut -d' ' -f1)\" && echo \"SLACK_HASH=\$(echo -n \$SLACK_TOKEN | sha256sum | cut -d' ' -f1)\""
+        "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
 
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "GITHUB_HASH=${expected_gh_hash}"
-    assert_output --partial "SLACK_HASH=${expected_slack_hash}"
+    assert_output --partial "GITHUB_TOKEN=gho_vm0placeholder0000000000000000000000"
+    assert_output --partial "SLACK_TOKEN=xoxb-0000-0000-vm0placeholder"
 }
 
-@test "connector: proxy replaces placeholder with real token" {
+@test "service: permission-based request matching" {
     if [[ -z "$CI_GITHUB_TOKEN" ]]; then
         fail "CI_GITHUB_TOKEN not set"
     fi
 
-    # Use the real GitHub Actions token so we can verify the proxy
-    # actually replaced the placeholder with a working token.
     setup_test_connector "github" "$CI_GITHUB_TOKEN"
 
+    # Only grant repo-read — search endpoints should be blocked.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
-  ${AGENT_NAME}-replace:
-    description: "Token replacement test"
+  ${AGENT_NAME}-perm:
+    description: "Permission-based request matching test"
     framework: claude-code
     working_dir: /home/user/workspace
     experimental_services:
       github:
-        permissions: all
+        permissions:
+          - repo-read
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 EOF
 
-    create_artifact "$ARTIFACT_NAME-replace"
+    create_artifact "$ARTIFACT_NAME-perm"
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    # Make a request to the GitHub API from inside the sandbox.
-    # The sandbox only has the placeholder token (gho_vm0placeholder...).
-    # The proxy intercepts the request, replaces it with the real
-    # CI_GITHUB_TOKEN, and forwards to GitHub.
-    #
-    # 200 = proxy replaced the placeholder with the real token (success)
-    # 401 = placeholder was sent as-is (replacement did NOT happen)
-    run $CLI_COMMAND run "${AGENT_NAME}-replace" \
-        --artifact-name "$ARTIFACT_NAME-replace" \
-        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"HTTP_STATUS=\$STATUS\""
+    # Three checks from inside the sandbox:
+    # 1. GET /repos/vm0-ai/vm0 — matches repo-read → proxy replaces token → 200
+    # 2. GET /search/code?q=vm0 — no matching permission → mitm_addon blocks → 403
+    # This also verifies proxy token replacement (200 means the real token was used).
+    run $CLI_COMMAND run "${AGENT_NAME}-perm" \
+        --artifact-name "$ARTIFACT_NAME-perm" \
+        "ALLOWED=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && BLOCKED=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/search/code?q=vm0) && echo \"ALLOWED_STATUS=\$ALLOWED\" && echo \"BLOCKED_STATUS=\$BLOCKED\""
 
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "HTTP_STATUS=200"
+    assert_output --partial "ALLOWED_STATUS=200"
+    assert_output --partial "BLOCKED_STATUS=403"
 }
