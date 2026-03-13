@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.58.0](https://github.com/vm0-ai/vm0/compare/cli-v9.57.1...cli-v9.58.0) (2026-03-13)
+
+
+### Features
+
+* **cli:** add env var override for active org config ([#4753](https://github.com/vm0-ai/vm0/issues/4753)) ([70df299](https://github.com/vm0-ai/vm0/commit/70df299d82fb1931b88ec56c049b617c4e6f6bea))
+* remove org_id from cli_tokens, use org_members_cache for verification ([#4723](https://github.com/vm0-ai/vm0/issues/4723)) ([0c47323](https://github.com/vm0-ai/vm0/commit/0c473236a096b720e612e8084e553eeecfbf6e0b))
+* **services:** add strict validation for service configs at compose time ([#4749](https://github.com/vm0-ai/vm0/issues/4749)) ([1674b3a](https://github.com/vm0-ai/vm0/commit/1674b3a0ed15d42ac8c63c8c2349ee9092eb12ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.63.0
+
 ## [9.57.1](https://github.com/vm0-ai/vm0/compare/cli-v9.57.0...cli-v9.57.1) (2026-03-13)
 
 

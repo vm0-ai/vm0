@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.106.0](https://github.com/vm0-ai/vm0/compare/web-v12.105.0...web-v12.106.0) (2026-03-13)
+
+
+### Features
+
+* remove org_id from cli_tokens, use org_members_cache for verification ([#4723](https://github.com/vm0-ai/vm0/issues/4723)) ([0c47323](https://github.com/vm0-ai/vm0/commit/0c473236a096b720e612e8084e553eeecfbf6e0b))
+
+
+### Bug Fixes
+
+* **webhooks:** use run.orgid instead of re-resolving org via clerk api ([#4746](https://github.com/vm0-ai/vm0/issues/4746)) ([3cd8b73](https://github.com/vm0-ai/vm0/commit/3cd8b73f9f7d8bc25daf754c2a5c3994fb138245))
+* **web:** replace check-then-insert with atomic upsert in variable and checkpoint services ([#4735](https://github.com/vm0-ai/vm0/issues/4735)) ([3b0dc8f](https://github.com/vm0-ai/vm0/commit/3b0dc8fff50cd9329266b14f4e7933eb52e8ec5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.63.0
+
 ## [12.105.0](https://github.com/vm0-ai/vm0/compare/web-v12.104.0...web-v12.105.0) (2026-03-13)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.63.0](https://github.com/vm0-ai/vm0/compare/core-v8.62.0...core-v8.63.0) (2026-03-13)
+
+
+### Features
+
+* remove org_id from cli_tokens, use org_members_cache for verification ([#4723](https://github.com/vm0-ai/vm0/issues/4723)) ([0c47323](https://github.com/vm0-ai/vm0/commit/0c473236a096b720e612e8084e553eeecfbf6e0b))
+* **services:** add strict validation for service configs at compose time ([#4749](https://github.com/vm0-ai/vm0/issues/4749)) ([1674b3a](https://github.com/vm0-ai/vm0/commit/1674b3a0ed15d42ac8c63c8c2349ee9092eb12ce))
+
 ## [8.62.0](https://github.com/vm0-ai/vm0/compare/core-v8.61.0...core-v8.62.0) (2026-03-13)
 
 
