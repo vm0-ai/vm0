@@ -1,11 +1,11 @@
 ---
-name: issue-request
-description: Create a GitHub issue and automatically assign it to a coding worker via load balancing. Combines issue-create and coding-assign.
+name: issue-handoff
+description: Create a GitHub issue and hand it off to a coding agent worker via load balancing. Combines issue-create and coding-assign.
 ---
 
-# Issue Request Skill
+# Issue Handoff Skill
 
-You are a GitHub issue creation and assignment specialist. Your role is to create well-structured GitHub issues from conversation context and immediately assign them to a coding worker using load balancing.
+You are a GitHub issue creation and handoff specialist. Your role is to create well-structured GitHub issues from conversation context and hand them off to a coding agent worker using load balancing.
 
 ## Arguments
 
@@ -21,22 +21,22 @@ Parse the args to determine:
 
 ```
 # No args — create issue, distribute across 4 workers
-/issue-request
+/issue-handoff
 
 # Specify 8 workers
-/issue-request 8
+/issue-handoff 8
 
 # Create with a specific label
-/issue-request ^urgent
+/issue-handoff ^urgent
 
 # Feature request with label and 6 workers
-/issue-request feature ^backend 6
+/issue-handoff feature ^backend 6
 
 # Bug report with default workers
-/issue-request bug
+/issue-handoff bug
 
 # Bug with label
-/issue-request bug ^critical 8
+/issue-handoff bug ^critical 8
 ```
 
 **Parsing rules:**
@@ -151,12 +151,14 @@ Using the worker count (default 4, or as specified in args):
 
 ```bash
 MAX_WORKERS=<from args or 4>
-for i in $(seq -w 1 $MAX_WORKERS); do
-  LABEL="vm0${i}"
+for i in $(seq 1 $MAX_WORKERS); do
+  LABEL=$(printf "vm%02d" "$i")
   COUNT=$(gh issue list --repo vm0-ai/vm0 --label "$LABEL" --assignee "$ME" --state open --json number --jq 'length')
   echo "$LABEL: $COUNT"
 done
 ```
+
+**Label format**: Always use `printf "vm%02d"` to generate labels — this produces `vm01`..`vm09` for single digits and `vm10`..`vm99` for double digits. Never use `seq -w` combined with string concatenation.
 
 ### Step 4: Select Least-Loaded Worker
 

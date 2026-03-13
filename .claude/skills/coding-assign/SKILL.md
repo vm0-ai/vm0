@@ -54,12 +54,14 @@ ME=$(gh api user --jq '.login')
 For each worker label (`vm01` through `vm0N`), count open issues assigned to the current user:
 
 ```bash
-for i in $(seq -w 1 $MAX_WORKERS); do
-  LABEL="vm0${i}"
+for i in $(seq 1 $MAX_WORKERS); do
+  LABEL=$(printf "vm%02d" "$i")
   COUNT=$(gh issue list --repo vm0-ai/vm0 --label "$LABEL" --assignee "$ME" --state open --json number --jq 'length')
   echo "$LABEL: $COUNT"
 done
 ```
+
+**Label format**: Always use `printf "vm%02d"` to generate labels — this produces `vm01`..`vm09` for single digits and `vm10`..`vm99` for double digits. Never use `seq -w` combined with string concatenation, as it produces wrong formats like `vm001` when workers > 9.
 
 ### Step 4: Select Least-Loaded Worker
 
