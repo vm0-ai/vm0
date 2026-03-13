@@ -43,7 +43,7 @@ interface LogsQuery {
 
 /**
  * Build agent name/org filter conditions from query params.
- * name takes precedence over legacy agent param, which takes precedence over search.
+ * name+org take precedence over legacy agent param, which takes precedence over search.
  */
 function buildAgentFilterConditions(
   query: LogsQuery,
