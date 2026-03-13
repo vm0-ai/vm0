@@ -34,7 +34,7 @@ describe("home page", () => {
     expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
   });
 
-  it("should show onboarding modal when scope returns 404", async () => {
+  it("should show onboarding modal when org returns 404", async () => {
     server.use(
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
@@ -86,8 +86,8 @@ describe("home page", () => {
     expect(screen.getByText(/Define your model provider/)).toBeDefined();
   });
 
-  it("should not show onboarding modal when both scope and a model provider exist", async () => {
-    // Default mocks have both scope and oauth token
+  it("should not show onboarding modal when both org and a model provider exist", async () => {
+    // Default mocks have both org and oauth token
     await setupPage({
       context,
       path: "/",

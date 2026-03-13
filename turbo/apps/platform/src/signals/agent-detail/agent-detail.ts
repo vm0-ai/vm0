@@ -59,15 +59,15 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
   try {
     const fetchFn = get(fetch$);
 
-    // Shared agents have scope/agentName format; split for the API
+    // Shared agents have org/agentName format; split for the API
     const slashIndex = name.indexOf("/");
     const isOwner = slashIndex === -1;
     const agentName = isOwner ? name : name.slice(slashIndex + 1);
-    const scope = isOwner ? undefined : name.slice(0, slashIndex);
+    const org = isOwner ? undefined : name.slice(0, slashIndex);
 
     const params = new URLSearchParams({ name: agentName });
-    if (scope) {
-      params.set("scope", scope);
+    if (org) {
+      params.set("scope", org);
     }
 
     const response = await fetchFn(`/api/agent/composes?${params.toString()}`);

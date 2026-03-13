@@ -459,7 +459,7 @@ describe("agent detail page", () => {
 
     await setupPage({
       context,
-      path: `/agents/${encodeURIComponent("other-scope/shared-agent")}`,
+      path: `/agents/${encodeURIComponent("other-org/shared-agent")}`,
     });
 
     await vi.waitFor(() => {
@@ -778,7 +778,7 @@ describe("agent detail page", () => {
   });
 
   it("should show read-only pre for shared (non-owner) agents", async () => {
-    // Shared agent path has scope/name format
+    // Shared agent path has org/name format
     server.use(
       http.get("/api/agent/composes", ({ request }) => {
         const url = new URL(request.url);
@@ -813,7 +813,7 @@ describe("agent detail page", () => {
 
     await setupPage({
       context,
-      path: `/agents/${encodeURIComponent("other-scope/shared-agent")}`,
+      path: `/agents/${encodeURIComponent("other-org/shared-agent")}`,
     });
 
     await vi.waitFor(() => {

@@ -20,7 +20,7 @@ import { ZeroActivityDetailPage } from "./zero-activity-detail-page.tsx";
 import {
   zeroActivityAgentFilter$,
   zeroActivityStatusFilter$,
-  zeroActivityScopeAgents$,
+  zeroActivityOrgAgents$,
   setZeroActivityFilter$,
   zeroActivityData$,
   zeroActivityLimit$,
@@ -134,7 +134,7 @@ export function ZeroActivityPage() {
   const agentFilter = useGet(zeroActivityAgentFilter$);
   const statusFilter = useGet(zeroActivityStatusFilter$);
   const setFilter = useSet(setZeroActivityFilter$);
-  const scopeAgents = useGet(zeroActivityScopeAgents$);
+  const orgAgents = useGet(zeroActivityOrgAgents$);
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
   const hasNext =
@@ -145,15 +145,13 @@ export function ZeroActivityPage() {
       : undefined;
   const isLoading = dataLoadable.state === "loading";
 
-  // Build name → displayName lookup from scope agents
-  const nameToDisplay = new Map(
-    scopeAgents.map((a) => [a.name, a.displayName]),
-  );
+  // Build name → displayName lookup from org agents
+  const nameToDisplay = new Map(orgAgents.map((a) => [a.name, a.displayName]));
 
   // Agent filter options: show display names, map back to compose name
   const agentOptions = [
     { value: "all", label: "All Agents" },
-    ...scopeAgents.map((a) => ({ value: a.name, label: a.displayName })),
+    ...orgAgents.map((a) => ({ value: a.name, label: a.displayName })),
   ];
 
   // Detail view when sub-route is present

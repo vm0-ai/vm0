@@ -139,9 +139,9 @@ export function GitHubSettingsPage() {
   const openConfirm = useSet(openGithubDisconnectDialog$);
   const closeConfirm = useSet(closeGithubDisconnectDialog$);
 
-  // Construct scoped agent name that matches the format used in agentsList$
-  // (shared agents use "scope/name", owned agents use just "name").
-  const scopedAgentName = (() => {
+  // Construct qualified agent name that matches the format used in agentsList$
+  // (shared agents use "org/name", owned agents use just "name").
+  const qualifiedAgentName = (() => {
     if (!data?.agent) {
       return undefined;
     }
@@ -157,15 +157,15 @@ export function GitHubSettingsPage() {
   // Ensure the current agent appears in the dropdown even if
   // it isn't in the user's own agents list (e.g. shared by another user).
   const agentOptions = (() => {
-    if (!scopedAgentName) {
+    if (!qualifiedAgentName) {
       return agents;
     }
-    const hasCurrentAgent = agents.some((a) => a.name === scopedAgentName);
+    const hasCurrentAgent = agents.some((a) => a.name === qualifiedAgentName);
     if (hasCurrentAgent) {
       return agents;
     }
     return [
-      { name: scopedAgentName, headVersionId: null, updatedAt: "" },
+      { name: qualifiedAgentName, headVersionId: null, updatedAt: "" },
       ...agents,
     ];
   })();
@@ -235,7 +235,7 @@ export function GitHubSettingsPage() {
                   </p>
                 </div>
                 <Select
-                  value={scopedAgentName ?? ""}
+                  value={qualifiedAgentName ?? ""}
                   onValueChange={handleAgentChange}
                   disabled={!isAdmin}
                 >
@@ -254,7 +254,7 @@ export function GitHubSettingsPage() {
             </div>
 
             <MissingEnvBanner
-              agentName={scopedAgentName}
+              agentName={qualifiedAgentName}
               missingSecrets={data?.environment.missingSecrets ?? []}
               missingVars={data?.environment.missingVars ?? []}
             />

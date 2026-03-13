@@ -32,7 +32,7 @@ export const zeroActivityStatusFilter$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Scope agents — fetch all composes for name → displayName mapping
+// Org agents — fetch all composes for name → displayName mapping
 // ---------------------------------------------------------------------------
 
 interface AgentOption {
@@ -40,18 +40,18 @@ interface AgentOption {
   displayName: string;
 }
 
-const internalScopeAgents$ = state<AgentOption[]>([]);
+const internalOrgAgents$ = state<AgentOption[]>([]);
 
-/** All agents in the current scope with display names. */
-export const zeroActivityScopeAgents$ = computed((get) =>
-  get(internalScopeAgents$),
+/** All agents in the current org with display names. */
+export const zeroActivityOrgAgents$ = computed((get) =>
+  get(internalOrgAgents$),
 );
 
-const fetchScopeAgents$ = command(async ({ get, set }) => {
+const fetchOrgAgents$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const resp = await fetchFn("/api/agent/composes/list");
   if (!resp.ok) {
-    throw new Error(`Failed to fetch scope agents: ${resp.statusText}`);
+    throw new Error(`Failed to fetch org agents: ${resp.statusText}`);
   }
   const data = (await resp.json()) as { composes: ComposeListItem[] };
   const agents: AgentOption[] = data.composes.map((c) => ({
@@ -59,7 +59,7 @@ const fetchScopeAgents$ = command(async ({ get, set }) => {
     displayName:
       c.displayName ?? c.name.charAt(0).toUpperCase() + c.name.slice(1),
   }));
-  set(internalScopeAgents$, agents);
+  set(internalOrgAgents$, agents);
 });
 
 // ---------------------------------------------------------------------------
@@ -74,10 +74,10 @@ export const initZeroActivityAgentName$ = command(async ({ get, set }) => {
   set(internalAgentName$, status.defaultAgentName);
 });
 
-/** Initialize activity page: load agent name, scope agents, and seed cursor history. */
+/** Initialize activity page: load agent name, org agents, and seed cursor history. */
 export const initZeroActivity$ = command(async ({ set }) => {
   await set(initZeroActivityAgentName$);
-  await set(fetchScopeAgents$);
+  await set(fetchOrgAgents$);
   set(seedZeroActivityCursorHistory$);
 });
 

@@ -309,8 +309,8 @@ export function TelegramSettingsPage() {
   const copyToClipboard = useSet(copyToClipboard$);
   const openPopup = useSet(openTelegramLoginPopup$);
 
-  // Construct scoped agent name that matches the format used in agentsList$
-  const scopedAgentName = (() => {
+  // Construct qualified agent name that matches the format used in agentsList$
+  const qualifiedAgentName = (() => {
     if (!data?.agent) {
       return undefined;
     }
@@ -323,15 +323,15 @@ export function TelegramSettingsPage() {
 
   // Ensure the current agent appears in the dropdown
   const agentOptions = (() => {
-    if (!scopedAgentName) {
+    if (!qualifiedAgentName) {
       return agents;
     }
-    const hasCurrentAgent = agents.some((a) => a.name === scopedAgentName);
+    const hasCurrentAgent = agents.some((a) => a.name === qualifiedAgentName);
     if (hasCurrentAgent) {
       return agents;
     }
     return [
-      { name: scopedAgentName, headVersionId: null, updatedAt: "" },
+      { name: qualifiedAgentName, headVersionId: null, updatedAt: "" },
       ...agents,
     ];
   })();
@@ -402,13 +402,13 @@ export function TelegramSettingsPage() {
 
             <DefaultAgentSection
               isAdmin={data?.isAdmin ?? false}
-              agentName={scopedAgentName}
+              agentName={qualifiedAgentName}
               agentOptions={agentOptions}
               onAgentChange={handleAgentChange}
             />
 
             <MissingEnvBanner
-              agentName={scopedAgentName}
+              agentName={qualifiedAgentName}
               missingSecrets={data?.environment.missingSecrets ?? []}
               missingVars={data?.environment.missingVars ?? []}
             />

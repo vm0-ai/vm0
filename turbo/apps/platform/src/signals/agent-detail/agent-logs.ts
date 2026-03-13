@@ -23,18 +23,18 @@ export const {
       return null;
     }
 
-    // Split scoped name (e.g., "e7h4n/agent0") into name and scope
+    // Split qualified name (e.g., "e7h4n/agent0") into name and org
     const slashIndex = rawName.indexOf("/");
     const isOwner = slashIndex === -1;
     const name = isOwner ? rawName : rawName.slice(slashIndex + 1);
-    const scope = isOwner ? undefined : rawName.slice(0, slashIndex);
+    const org = isOwner ? undefined : rawName.slice(0, slashIndex);
 
     const params = new URLSearchParams({
       limit: String(limit),
       name,
     });
-    if (scope) {
-      params.set("scope", scope);
+    if (org) {
+      params.set("scope", org);
     }
     if (cursor) {
       params.set("cursor", cursor);

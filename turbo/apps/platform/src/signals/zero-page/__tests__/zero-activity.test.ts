@@ -74,7 +74,7 @@ async function setup() {
 
 describe("zero-activity signals", () => {
   describe("zeroActivityData$", () => {
-    it("should fetch logs for all agents in scope", async () => {
+    it("should fetch logs for all agents in org", async () => {
       server.use(
         http.get("http://localhost:3000/api/platform/logs", ({ request }) => {
           const url = new URL(request.url);

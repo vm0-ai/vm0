@@ -19,7 +19,7 @@ import { act } from "@testing-library/react";
 const context = testContext();
 
 describe("startOnboarding$", () => {
-  it("visit a scope protected page without a scope will redirect to the onboarding page", async () => {
+  it("visit an org protected page without an org will redirect to the onboarding page", async () => {
     server.use(
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
@@ -40,7 +40,7 @@ describe("startOnboarding$", () => {
 });
 
 describe("needsOnboarding$", () => {
-  it("should return true when no scope exists", async () => {
+  it("should return true when no org exists", async () => {
     server.use(
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });
@@ -69,8 +69,8 @@ describe("needsOnboarding$", () => {
     expect(needsOnboarding).toBeTruthy();
   });
 
-  it("should return false when both scope and a model provider exist", async () => {
-    // Default mocks have both scope and oauth token
+  it("should return false when both org and a model provider exist", async () => {
+    // Default mocks have both org and oauth token
     await setupPage({ context, path: "/", withoutRender: true });
 
     const needsOnboarding = await context.store.get(needsOnboarding$);
@@ -79,8 +79,8 @@ describe("needsOnboarding$", () => {
 });
 
 describe("saveOnboardingConfig$", () => {
-  it("should send slug with user- prefix when creating scope", async () => {
-    let scopeSlug: string | undefined;
+  it("should send slug with user- prefix when creating org", async () => {
+    let orgSlug: string | undefined;
 
     server.use(
       http.get("/api/scope", () => {
@@ -88,7 +88,7 @@ describe("saveOnboardingConfig$", () => {
       }),
       http.post("/api/scope", async ({ request }) => {
         const body = (await request.json()) as { slug: string };
-        scopeSlug = body.slug;
+        orgSlug = body.slug;
         return HttpResponse.json({}, { status: 201 });
       }),
     );
@@ -103,12 +103,12 @@ describe("saveOnboardingConfig$", () => {
       await context.store.set(saveOnboardingConfig$, context.signal);
     });
 
-    expect(scopeSlug).toBeDefined();
-    expect(scopeSlug).toMatch(/^user-[0-9a-f]{8}$/);
+    expect(orgSlug).toBeDefined();
+    expect(orgSlug).toMatch(/^user-[0-9a-f]{8}$/);
   });
 
-  it("should create scope and model provider when saving with oauth token", async () => {
-    let scopeCreated = false;
+  it("should create org and model provider when saving with oauth token", async () => {
+    let orgCreated = false;
     let providerCreated = false;
 
     server.use(
@@ -116,7 +116,7 @@ describe("saveOnboardingConfig$", () => {
         return new HttpResponse(null, { status: 404 });
       }),
       http.post("/api/scope", () => {
-        scopeCreated = true;
+        orgCreated = true;
         return HttpResponse.json({}, { status: 201 });
       }),
       http.put("/api/model-providers", () => {
@@ -149,7 +149,7 @@ describe("saveOnboardingConfig$", () => {
       await context.store.set(saveOnboardingConfig$, context.signal);
     });
 
-    expect(scopeCreated).toBeTruthy();
+    expect(orgCreated).toBeTruthy();
     expect(providerCreated).toBeTruthy();
     expect(context.store.get(showOnboardingModal$)).toBeFalsy();
   });
@@ -279,8 +279,8 @@ describe("saveOnboardingConfig$", () => {
 });
 
 describe("closeOnboardingModal$", () => {
-  it("should create scope when closing without saving", async () => {
-    let scopeCreated = false;
+  it("should create org when closing without saving", async () => {
+    let orgCreated = false;
     let providerCreated = false;
 
     server.use(
@@ -288,7 +288,7 @@ describe("closeOnboardingModal$", () => {
         return new HttpResponse(null, { status: 404 });
       }),
       http.post("/api/scope", () => {
-        scopeCreated = true;
+        orgCreated = true;
         return HttpResponse.json({}, { status: 201 });
       }),
       http.put("/api/model-providers", () => {
@@ -303,29 +303,29 @@ describe("closeOnboardingModal$", () => {
       context.store.set(closeOnboardingModal$);
     });
 
-    expect(scopeCreated).toBeTruthy();
+    expect(orgCreated).toBeTruthy();
     expect(providerCreated).toBeFalsy();
     expect(context.store.get(showOnboardingModal$)).toBeFalsy();
   });
 
-  it("should not create scope if it already exists", async () => {
-    let scopeCreated = false;
+  it("should not create org if it already exists", async () => {
+    let orgCreated = false;
 
     server.use(
       http.post("/api/scope", () => {
-        scopeCreated = true;
+        orgCreated = true;
         return HttpResponse.json({}, { status: 201 });
       }),
     );
 
-    // Default mock has scope
+    // Default mock has org
     await setupPage({ context, path: "/", withoutRender: true });
 
     act(() => {
       context.store.set(closeOnboardingModal$);
     });
 
-    expect(scopeCreated).toBeFalsy();
+    expect(orgCreated).toBeFalsy();
     expect(context.store.get(showOnboardingModal$)).toBeFalsy();
   });
 });

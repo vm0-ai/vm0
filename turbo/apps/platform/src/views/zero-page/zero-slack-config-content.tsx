@@ -116,7 +116,7 @@ export function ZeroSlackConfigContent({
   const openConfirm = useSet(openSlackDisconnectDialog$);
   const closeConfirm = useSet(closeSlackDisconnectDialog$);
 
-  const scopedAgentName = (() => {
+  const qualifiedAgentName = (() => {
     if (!data?.agent) {
       return undefined;
     }
@@ -128,15 +128,15 @@ export function ZeroSlackConfigContent({
   })();
 
   const agentOptions = (() => {
-    if (!scopedAgentName) {
+    if (!qualifiedAgentName) {
       return agents;
     }
-    const hasCurrentAgent = agents.some((a) => a.name === scopedAgentName);
+    const hasCurrentAgent = agents.some((a) => a.name === qualifiedAgentName);
     if (hasCurrentAgent) {
       return agents;
     }
     return [
-      { name: scopedAgentName, headVersionId: null, updatedAt: "" },
+      { name: qualifiedAgentName, headVersionId: null, updatedAt: "" },
       ...agents,
     ];
   })();
@@ -202,7 +202,7 @@ export function ZeroSlackConfigContent({
                 </div>
                 {data?.isAdmin ? (
                   <Select
-                    value={scopedAgentName ?? ""}
+                    value={qualifiedAgentName ?? ""}
                     onValueChange={handleAgentChange}
                   >
                     <SelectTrigger className="w-full sm:w-[280px] sm:shrink-0">
@@ -219,7 +219,7 @@ export function ZeroSlackConfigContent({
                 ) : (
                   <div className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-muted px-3 py-2 sm:w-[280px] sm:shrink-0">
                     <span className="truncate text-sm">
-                      {scopedAgentName ?? "No agent"}
+                      {qualifiedAgentName ?? "No agent"}
                     </span>
                     <IconChevronDown
                       size={16}
@@ -231,7 +231,7 @@ export function ZeroSlackConfigContent({
             </div>
 
             <MissingEnvBanner
-              agentName={scopedAgentName}
+              agentName={qualifiedAgentName}
               missingSecrets={data?.environment.missingSecrets ?? []}
               missingVars={data?.environment.missingVars ?? []}
             />

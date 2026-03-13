@@ -199,7 +199,7 @@ function OnboardingSkillsStep({
   );
 }
 
-/** Zero onboarding: creates scope, model provider, and default agent. */
+/** Zero onboarding: creates org, model provider, and default agent. */
 export function ZeroOnboarding({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,

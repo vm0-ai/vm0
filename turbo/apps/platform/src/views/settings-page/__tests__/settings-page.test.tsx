@@ -12,7 +12,7 @@ const context = testContext();
 const user = userEvent.setup();
 
 describe("settings page", () => {
-  it("should be redirect if user has no scope", async () => {
+  it("should be redirect if user has no org", async () => {
     server.use(
       http.get("/api/scope", () => {
         return new HttpResponse(null, { status: 404 });

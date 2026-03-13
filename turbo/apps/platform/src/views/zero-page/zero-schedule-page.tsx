@@ -866,7 +866,7 @@ export function ZeroSchedulePage() {
               Schedule
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Schedules for all agents in this scope.
+              Schedules for all agents in this org.
             </p>
           </div>
           <Tabs
