@@ -95,7 +95,7 @@ describe("org set command", () => {
       }),
       http.put("http://localhost:3000/api/scope", () => {
         return HttpResponse.json(
-          { error: { message: "Scope already exists", code: "CONFLICT" } },
+          { error: { message: "Org already exists", code: "CONFLICT" } },
           { status: 409 },
         );
       }),
