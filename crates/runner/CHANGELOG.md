@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.24.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.23.0...runner-rs-v0.24.0) (2026-03-13)
+
+
+### Features
+
+* **services:** permission-based request matching in mitm_addon ([#4721](https://github.com/vm0-ai/vm0/issues/4721)) ([98267dd](https://github.com/vm0-ai/vm0/commit/98267ddeb6d01e7b9b1c4599ead7a9c173b67130))
+
+
+### Refactoring
+
+* change experimental services from flat apis to nested service entries ([#4711](https://github.com/vm0-ai/vm0/issues/4711)) ([a7dbfc8](https://github.com/vm0-ai/vm0/commit/a7dbfc8a18e65350ef701628f1b3e6ed6837d282))
+* eliminate remaining scope references ([#4703](https://github.com/vm0-ai/vm0/issues/4703)) ([fd85a3b](https://github.com/vm0-ai/vm0/commit/fd85a3b6b4f4fe10eb0ff36a1f5140888d9a57f1))
+* rename remaining scope references to org in contracts ([#4695](https://github.com/vm0-ai/vm0/issues/4695)) ([9d4a05e](https://github.com/vm0-ai/vm0/commit/9d4a05e89cd28a98f3496149bdaf5f19e93207eb)), closes [#4688](https://github.com/vm0-ai/vm0/issues/4688)
+
 ## [0.23.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.22.8...runner-rs-v0.23.0) (2026-03-13)
 
 

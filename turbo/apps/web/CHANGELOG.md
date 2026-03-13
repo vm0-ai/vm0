@@ -1,5 +1,45 @@
 # Changelog
 
+## [12.103.0](https://github.com/vm0-ai/vm0/compare/web-v12.102.5...web-v12.103.0) (2026-03-13)
+
+
+### Features
+
+* **compose:** add permission validation and filtering for experimental_services ([#4680](https://github.com/vm0-ai/vm0/issues/4680)) ([05a8638](https://github.com/vm0-ai/vm0/commit/05a86380f0652f182a3b09b938b7417a5f1111e7))
+* **services:** permission-based request matching in mitm_addon ([#4721](https://github.com/vm0-ai/vm0/issues/4721)) ([98267dd](https://github.com/vm0-ai/vm0/commit/98267ddeb6d01e7b9b1c4599ead7a9c173b67130))
+* **slack:** add org-aware oauth install and callback routes ([#4702](https://github.com/vm0-ai/vm0/issues/4702)) ([38c8947](https://github.com/vm0-ai/vm0/commit/38c89479d1276e54e1e2b7eba6f247972c4d719b))
+* **slack:** add org-aware slack database schema ([#4670](https://github.com/vm0-ai/vm0/issues/4670)) ([9fe8cf3](https://github.com/vm0-ai/vm0/commit/9fe8cf3f627b21d4ca8626705910498e16a667d4))
+* **slack:** add org-aware slack integration ([#4706](https://github.com/vm0-ai/vm0/issues/4706)) ([8d4fe05](https://github.com/vm0-ai/vm0/commit/8d4fe050b7b6f94a20096dff0dd34c5be222df65))
+* **web:** upgrade next.js to v16 with full turbopack migration ([#4707](https://github.com/vm0-ai/vm0/issues/4707)) ([da26f47](https://github.com/vm0-ai/vm0/commit/da26f47a3c5694f28ab8c06cef6f8796dac0d05d)), closes [#4685](https://github.com/vm0-ai/vm0/issues/4685)
+* **web:** upgrade next.js to v16 with full turbopack migration ([#4708](https://github.com/vm0-ai/vm0/issues/4708)) ([b635331](https://github.com/vm0-ai/vm0/commit/b6353318d5a7bef9e21788b44c1a57bf12bea6c5)), closes [#4685](https://github.com/vm0-ai/vm0/issues/4685)
+
+
+### Bug Fixes
+
+* update platform to send ?org= and clean up remaining scope references ([#4690](https://github.com/vm0-ai/vm0/issues/4690)) ([3788240](https://github.com/vm0-ai/vm0/commit/37882409b710bea326429c5bf3cf5f2d944abfd2))
+* **web:** filter secret values to only include environment-present values ([#4684](https://github.com/vm0-ai/vm0/issues/4684)) ([52adb87](https://github.com/vm0-ai/vm0/commit/52adb874545d52c57780a9c09f4fdac1612d8082))
+* **web:** replace check-then-insert with atomic upsert in secret and connector services ([#4725](https://github.com/vm0-ai/vm0/issues/4725)) ([77188c8](https://github.com/vm0-ai/vm0/commit/77188c8bbcf30d1c0dad79f59d03b42d65f33337))
+
+
+### Refactoring
+
+* change experimental services from flat apis to nested service entries ([#4711](https://github.com/vm0-ai/vm0/issues/4711)) ([a7dbfc8](https://github.com/vm0-ai/vm0/commit/a7dbfc8a18e65350ef701628f1b3e6ed6837d282))
+* eliminate remaining scope references ([#4703](https://github.com/vm0-ai/vm0/issues/4703)) ([fd85a3b](https://github.com/vm0-ai/vm0/commit/fd85a3b6b4f4fe10eb0ff36a1f5140888d9a57f1))
+* eliminate scope references in web, platform, and tests ([#4700](https://github.com/vm0-ai/vm0/issues/4700)) ([7451fc6](https://github.com/vm0-ai/vm0/commit/7451fc6bcb062d1163179667fff656cc55c182e9)), closes [#4693](https://github.com/vm0-ai/vm0/issues/4693)
+* fix remaining scope references in org route and test comments ([#4704](https://github.com/vm0-ai/vm0/issues/4704)) ([f1d622b](https://github.com/vm0-ai/vm0/commit/f1d622bfff712df045eeaf271c03c9a16a3bc942))
+* rename remaining scope references to org in contracts ([#4695](https://github.com/vm0-ai/vm0/issues/4695)) ([9d4a05e](https://github.com/vm0-ai/vm0/commit/9d4a05e89cd28a98f3496149bdaf5f19e93207eb)), closes [#4688](https://github.com/vm0-ai/vm0/issues/4688)
+* rename remaining scope variables and remove dead scope field ([#4687](https://github.com/vm0-ai/vm0/issues/4687)) ([e1a8995](https://github.com/vm0-ai/vm0/commit/e1a8995bf95ccc2d71f69a6b080304f1a39497af))
+* rename scope wire format to org across all packages ([#4656](https://github.com/vm0-ai/vm0/issues/4656)) ([43ac1f3](https://github.com/vm0-ai/vm0/commit/43ac1f30220a0d285b639f35cacaac842bccd5ff))
+* rename VOLUME_SCOPE_USER_ID to VOLUME_ORG_USER_ID with data migration ([#4697](https://github.com/vm0-ai/vm0/issues/4697)) ([4ab266c](https://github.com/vm0-ai/vm0/commit/4ab266cebf9096caa4718a452680e91a74000e36))
+* update remaining scope comments to use org terminology ([#4720](https://github.com/vm0-ai/vm0/issues/4720)) ([bc1b969](https://github.com/vm0-ai/vm0/commit/bc1b96976fc83e3c21d7cfe51c6464fd785ea4a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.61.0
+
 ## [12.102.5](https://github.com/vm0-ai/vm0/compare/web-v12.102.4...web-v12.102.5) (2026-03-13)
 
 

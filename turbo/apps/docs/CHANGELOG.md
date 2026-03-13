@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.17.1](https://github.com/vm0-ai/vm0/compare/docs-v2.17.0...docs-v2.17.1) (2026-03-13)
+
+
+### Refactoring
+
+* eliminate remaining scope references ([#4703](https://github.com/vm0-ai/vm0/issues/4703)) ([fd85a3b](https://github.com/vm0-ai/vm0/commit/fd85a3b6b4f4fe10eb0ff36a1f5140888d9a57f1))
+* rename remaining scope references to org in contracts ([#4695](https://github.com/vm0-ai/vm0/issues/4695)) ([9d4a05e](https://github.com/vm0-ai/vm0/commit/9d4a05e89cd28a98f3496149bdaf5f19e93207eb)), closes [#4688](https://github.com/vm0-ai/vm0/issues/4688)
+
 ## [2.17.0](https://github.com/vm0-ai/vm0/compare/docs-v2.16.5...docs-v2.17.0) (2026-03-13)
 
 

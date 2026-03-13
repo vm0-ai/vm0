@@ -1,5 +1,34 @@
 # Changelog
 
+## [9.57.0](https://github.com/vm0-ai/vm0/compare/cli-v9.56.10...cli-v9.57.0) (2026-03-13)
+
+
+### Features
+
+* **compose:** add permission validation and filtering for experimental_services ([#4680](https://github.com/vm0-ai/vm0/issues/4680)) ([05a8638](https://github.com/vm0-ai/vm0/commit/05a86380f0652f182a3b09b938b7417a5f1111e7))
+* **services:** permission-based request matching in mitm_addon ([#4721](https://github.com/vm0-ai/vm0/issues/4721)) ([98267dd](https://github.com/vm0-ai/vm0/commit/98267ddeb6d01e7b9b1c4599ead7a9c173b67130))
+
+
+### Bug Fixes
+
+* update platform to send ?org= and clean up remaining scope references ([#4690](https://github.com/vm0-ai/vm0/issues/4690)) ([3788240](https://github.com/vm0-ai/vm0/commit/37882409b710bea326429c5bf3cf5f2d944abfd2))
+
+
+### Refactoring
+
+* **cli:** rename scope references to org in cli package ([#4691](https://github.com/vm0-ai/vm0/issues/4691)) ([#4713](https://github.com/vm0-ai/vm0/issues/4713)) ([10227ad](https://github.com/vm0-ai/vm0/commit/10227adc451df224f95f562a5eef5a9913209250))
+* eliminate remaining scope references ([#4703](https://github.com/vm0-ai/vm0/issues/4703)) ([fd85a3b](https://github.com/vm0-ai/vm0/commit/fd85a3b6b4f4fe10eb0ff36a1f5140888d9a57f1))
+* rename remaining scope references to org in contracts ([#4695](https://github.com/vm0-ai/vm0/issues/4695)) ([9d4a05e](https://github.com/vm0-ai/vm0/commit/9d4a05e89cd28a98f3496149bdaf5f19e93207eb)), closes [#4688](https://github.com/vm0-ai/vm0/issues/4688)
+* rename remaining scope variables and remove dead scope field ([#4687](https://github.com/vm0-ai/vm0/issues/4687)) ([e1a8995](https://github.com/vm0-ai/vm0/commit/e1a8995bf95ccc2d71f69a6b080304f1a39497af))
+* rename scope wire format to org across all packages ([#4656](https://github.com/vm0-ai/vm0/issues/4656)) ([43ac1f3](https://github.com/vm0-ai/vm0/commit/43ac1f30220a0d285b639f35cacaac842bccd5ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.61.0
+
 ## [9.56.10](https://github.com/vm0-ai/vm0/compare/cli-v9.56.9...cli-v9.56.10) (2026-03-13)
 
 

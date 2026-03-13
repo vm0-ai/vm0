@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.61.0](https://github.com/vm0-ai/vm0/compare/core-v8.60.0...core-v8.61.0) (2026-03-13)
+
+
+### Features
+
+* **compose:** add permission validation and filtering for experimental_services ([#4680](https://github.com/vm0-ai/vm0/issues/4680)) ([05a8638](https://github.com/vm0-ai/vm0/commit/05a86380f0652f182a3b09b938b7417a5f1111e7))
+* **services:** permission-based request matching in mitm_addon ([#4721](https://github.com/vm0-ai/vm0/issues/4721)) ([98267dd](https://github.com/vm0-ai/vm0/commit/98267ddeb6d01e7b9b1c4599ead7a9c173b67130))
+
+
+### Bug Fixes
+
+* resolve redos vulnerability in profile regex ([#4694](https://github.com/vm0-ai/vm0/issues/4694)) ([bec01d8](https://github.com/vm0-ai/vm0/commit/bec01d8b38b9bf206914d41d84e317727433bd2b)), closes [#4692](https://github.com/vm0-ai/vm0/issues/4692)
+
+
+### Refactoring
+
+* change experimental services from flat apis to nested service entries ([#4711](https://github.com/vm0-ai/vm0/issues/4711)) ([a7dbfc8](https://github.com/vm0-ai/vm0/commit/a7dbfc8a18e65350ef701628f1b3e6ed6837d282))
+* eliminate remaining scope references ([#4703](https://github.com/vm0-ai/vm0/issues/4703)) ([fd85a3b](https://github.com/vm0-ai/vm0/commit/fd85a3b6b4f4fe10eb0ff36a1f5140888d9a57f1))
+* rename remaining scope references to org in contracts ([#4695](https://github.com/vm0-ai/vm0/issues/4695)) ([9d4a05e](https://github.com/vm0-ai/vm0/commit/9d4a05e89cd28a98f3496149bdaf5f19e93207eb)), closes [#4688](https://github.com/vm0-ai/vm0/issues/4688)
+* rename scope wire format to org across all packages ([#4656](https://github.com/vm0-ai/vm0/issues/4656)) ([43ac1f3](https://github.com/vm0-ai/vm0/commit/43ac1f30220a0d285b639f35cacaac842bccd5ff))
+* rename VOLUME_SCOPE_USER_ID to VOLUME_ORG_USER_ID with data migration ([#4697](https://github.com/vm0-ai/vm0/issues/4697)) ([4ab266c](https://github.com/vm0-ai/vm0/commit/4ab266cebf9096caa4718a452680e91a74000e36))
+
 ## [8.60.0](https://github.com/vm0-ai/vm0/compare/core-v8.59.2...core-v8.60.0) (2026-03-13)
 
 

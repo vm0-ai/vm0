@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.108.0](https://github.com/vm0-ai/vm0/compare/platform-v0.107.4...platform-v0.108.0) (2026-03-13)
+
+
+### Features
+
+* **platform:** upgrade vite from v6 to v7 ([#4728](https://github.com/vm0-ai/vm0/issues/4728)) ([9dd617e](https://github.com/vm0-ai/vm0/commit/9dd617e27990ea52a93c5502b8ed9e946941e3e9)), closes [#4716](https://github.com/vm0-ai/vm0/issues/4716)
+
+
+### Bug Fixes
+
+* update platform to send ?org= and clean up remaining scope references ([#4690](https://github.com/vm0-ai/vm0/issues/4690)) ([3788240](https://github.com/vm0-ai/vm0/commit/37882409b710bea326429c5bf3cf5f2d944abfd2))
+
+
+### Refactoring
+
+* eliminate remaining scope references ([#4703](https://github.com/vm0-ai/vm0/issues/4703)) ([fd85a3b](https://github.com/vm0-ai/vm0/commit/fd85a3b6b4f4fe10eb0ff36a1f5140888d9a57f1))
+* eliminate scope references in web, platform, and tests ([#4700](https://github.com/vm0-ai/vm0/issues/4700)) ([7451fc6](https://github.com/vm0-ai/vm0/commit/7451fc6bcb062d1163179667fff656cc55c182e9)), closes [#4693](https://github.com/vm0-ai/vm0/issues/4693)
+* rename scope wire format to org across all packages ([#4656](https://github.com/vm0-ai/vm0/issues/4656)) ([43ac1f3](https://github.com/vm0-ai/vm0/commit/43ac1f30220a0d285b639f35cacaac842bccd5ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.61.0
+
 ## [0.107.4](https://github.com/vm0-ai/vm0/compare/platform-v0.107.3...platform-v0.107.4) (2026-03-13)
 
 
