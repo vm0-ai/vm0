@@ -241,10 +241,10 @@ describe("zero-job-detail signals", () => {
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const scope = url.searchParams.get("scope");
+          const org = url.searchParams.get("org");
 
           expect(name).toBe("sub-agent");
-          expect(scope).toBe("my-org");
+          expect(org).toBe("my-org");
 
           return HttpResponse.json({
             ...mockAgentResponse(),
