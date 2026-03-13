@@ -1,0 +1,110 @@
+name: Validate Skills
+
+on:
+  pull_request:
+    paths:
+      - "**/SKILL.md"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/SKILL.md"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate SKILL.md frontmatter
+        run: |
+          set -euo pipefail
+
+          errors=0
+
+          while IFS= read -r file; do
+            echo "Validating: $file"
+
+            # Check file starts with frontmatter delimiter
+            if ! head -1 "$file" | grep -q '^---$'; then
+              echo "::error file=$file::Missing frontmatter — file must start with ---"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            # Extract frontmatter (between first and second ---)
+            frontmatter=$(sed -n '2,/^---$/{ /^---$/d; p }' "$file")
+
+            if [ -z "$frontmatter" ]; then
+              echo "::error file=$file::Empty frontmatter"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            # Validate YAML syntax using python (available on ubuntu-latest)
+            if ! echo "$frontmatter" | python3 -c "
+          import sys, yaml
+          try:
+              data = yaml.safe_load(sys.stdin.read())
+              if not isinstance(data, dict):
+                  print('Frontmatter is not a YAML mapping')
+                  sys.exit(1)
+          except yaml.YAMLError as e:
+              print(f'Invalid YAML: {e}')
+              sys.exit(1)
+          "; then
+              echo "::error file=$file::YAML parse error in frontmatter"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            # Validate required fields: name, description
+            echo "$frontmatter" | python3 -c "
+          import sys, yaml
+
+          data = yaml.safe_load(sys.stdin.read())
+          missing = []
+
+          for field in ['name', 'description']:
+              val = data.get(field)
+              if val is None:
+                  missing.append(field)
+              elif not isinstance(val, str) or val.strip() == '':
+                  missing.append(f'{field} (must be a non-empty string)')
+
+          if missing:
+              print('Missing or invalid required fields: ' + ', '.join(missing))
+              sys.exit(1)
+
+          # Validate optional array fields if present
+          for field in ['vm0_secrets', 'vm0_vars']:
+              val = data.get(field)
+              if val is not None:
+                  if not isinstance(val, list):
+                      print(f'{field} must be an array')
+                      sys.exit(1)
+                  for item in val:
+                      if not isinstance(item, str):
+                          print(f'{field} must contain only strings')
+                          sys.exit(1)
+
+          print('OK')
+          "
+            if [ $? -ne 0 ]; then
+              echo "::error file=$file::Required field validation failed"
+              errors=$((errors + 1))
+              continue
+            fi
+
+            echo "  ✓ Valid"
+
+          done < <(find . -name "SKILL.md" -type f)
+
+          if [ "$errors" -gt 0 ]; then
+            echo ""
+            echo "::error::$errors SKILL.md file(s) failed validation"
+            exit 1
+          fi
+
+          echo ""
+          echo "All SKILL.md files are valid."
