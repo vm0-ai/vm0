@@ -7,6 +7,7 @@ import {
   Link,
   Hr,
 } from "@react-email/components";
+import { UnsubscribeFooter } from "./unsubscribe-footer";
 
 interface AgentReplyEmailProps {
   agentName: string;
@@ -35,13 +36,7 @@ export function AgentReplyEmail({
             </Link>{" "}
             · Reply to continue
           </Text>
-          {unsubscribeUrl && (
-            <Text style={unsubscribeFooterStyle}>
-              <Link href={unsubscribeUrl} style={linkStyle}>
-                Unsubscribe
-              </Link>
-            </Text>
-          )}
+          <UnsubscribeFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>
       </Body>
     </Html>
@@ -86,12 +81,6 @@ const footerStyle = {
   fontSize: "13px",
   color: "#6b7280",
   margin: "0",
-};
-
-const unsubscribeFooterStyle = {
-  fontSize: "12px",
-  color: "#9ca3af",
-  margin: "16px 0 0",
 };
 
 const linkStyle = {

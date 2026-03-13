@@ -301,14 +301,14 @@ export function buildLogsUrl(runId: string, agentName: string): string {
 
 /**
  * Generate an HMAC-signed unsubscribe token for a user.
- * Format: {userId}.{hmac16chars}
+ * Format: {userId}.{hmac32chars}
  */
 function generateUnsubscribeToken(userId: string): string {
   const hmac = crypto
     .createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
     .update(`unsubscribe:${userId}`)
     .digest("hex")
-    .slice(0, 16);
+    .slice(0, 32);
   return `${userId}.${hmac}`;
 }
 
@@ -329,7 +329,7 @@ export function verifyUnsubscribeToken(token: string): string | null {
     .createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
     .update(`unsubscribe:${userId}`)
     .digest("hex")
-    .slice(0, 16);
+    .slice(0, 32);
 
   // Timing-safe comparison
   if (providedHmac.length !== expectedHmac.length) return null;

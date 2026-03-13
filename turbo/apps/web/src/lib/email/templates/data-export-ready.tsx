@@ -7,6 +7,7 @@ import {
   Link,
   Hr,
 } from "@react-email/components";
+import { UnsubscribeFooter } from "./unsubscribe-footer";
 
 interface DataExportReadyEmailProps {
   downloadUrl: string;
@@ -48,13 +49,7 @@ export function DataExportReadyEmail({
             This download link expires on {expiresAt}. If you need a new export
             after it expires, you can request one again.
           </Text>
-          {unsubscribeUrl && (
-            <Text style={unsubscribeFooterStyle}>
-              <Link href={unsubscribeUrl} style={linkStyle}>
-                Unsubscribe
-              </Link>
-            </Text>
-          )}
+          <UnsubscribeFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>
       </Body>
     </Html>
@@ -98,12 +93,6 @@ const footerStyle = {
   fontSize: "13px",
   color: "#6b7280",
   margin: "0",
-};
-
-const unsubscribeFooterStyle = {
-  fontSize: "12px",
-  color: "#9ca3af",
-  margin: "16px 0 0",
 };
 
 const linkStyle = {

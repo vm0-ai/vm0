@@ -272,7 +272,8 @@ export async function cleanupExpiredOutbox(): Promise<number> {
  */
 function normalizeAddresses(raw: unknown): string[] {
   if (typeof raw === "string") return [raw];
-  if (Array.isArray(raw)) return raw as string[];
+  if (Array.isArray(raw))
+    return raw.filter((x): x is string => typeof x === "string");
   return [];
 }
 

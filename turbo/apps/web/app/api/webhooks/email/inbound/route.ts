@@ -61,15 +61,9 @@ async function handleComplaint(event: WebhookEvent): Promise<Response> {
       })
       .onConflictDoNothing();
 
-    // Try to unsubscribe the user if we can resolve their userId
-    const userId = await getCachedUserIdByEmail(addr).catch(() => null);
+    const userId = await getCachedUserIdByEmail(addr);
     if (userId) {
-      await unsubscribeUser(userId).catch((err) =>
-        log.error("Failed to unsubscribe user after complaint", {
-          userId,
-          err,
-        }),
-      );
+      await unsubscribeUser(userId);
     }
   }
   log.debug("Processed email.complained event", { recipients });
