@@ -155,3 +155,108 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
     expect(environment!.AIRTABLE_TOKEN).toBe("VM0_PLACEHOLDER_AIRTABLE_TOKEN");
   });
 });
+
+describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
+  it("merges additional env vars into expansion", () => {
+    const compose = makeCompose({
+      MY_VAR: "hello",
+    });
+
+    const { environment } = expandEnvironmentFromCompose(
+      compose,
+      undefined,
+      { ANTHROPIC_API_KEY: "sk-xxx" },
+      false,
+      { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" },
+    );
+
+    expect(environment).toBeDefined();
+    expect(environment!.MY_VAR).toBe("hello");
+    expect(environment!.ANTHROPIC_API_KEY).toBe("sk-xxx");
+  });
+
+  it("compose entries take precedence over additional entries", () => {
+    const compose = makeCompose({
+      API_KEY: "compose-value",
+    });
+
+    const { environment } = expandEnvironmentFromCompose(
+      compose,
+      undefined,
+      undefined,
+      false,
+      { API_KEY: "additional-value" },
+    );
+
+    expect(environment).toBeDefined();
+    expect(environment!.API_KEY).toBe("compose-value");
+  });
+
+  it("additional secret templates go through service placeholder logic", () => {
+    const compose = makeCompose(
+      {
+        MY_VAR: "hello",
+      },
+      [githubService],
+    );
+
+    const { environment } = expandEnvironmentFromCompose(
+      compose,
+      undefined,
+      { GITHUB_TOKEN: "real-token" },
+      false,
+      { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+    );
+
+    expect(environment).toBeDefined();
+    expect(environment!.MY_VAR).toBe("hello");
+    // Service placeholder should replace the real value
+    expect(environment!.GH_TOKEN).toBe(
+      "gho_vm0placeholder0000000000000000000000",
+    );
+  });
+
+  it("processes additional env when compose has no environment", () => {
+    const { environment } = expandEnvironmentFromCompose(
+      undefined,
+      undefined,
+      { ANTHROPIC_API_KEY: "sk-xxx" },
+      false,
+      { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" },
+    );
+
+    expect(environment).toBeDefined();
+    expect(environment!.ANTHROPIC_API_KEY).toBe("sk-xxx");
+  });
+
+  it("returns undefined when no compose env and no additional env", () => {
+    const { environment } = expandEnvironmentFromCompose(
+      undefined,
+      undefined,
+      undefined,
+      false,
+      undefined,
+    );
+
+    expect(environment).toBeUndefined();
+  });
+
+  it("passes through literal additional entries without expansion", () => {
+    const compose = makeCompose({});
+
+    const { environment } = expandEnvironmentFromCompose(
+      compose,
+      undefined,
+      undefined,
+      false,
+      {
+        OPENAI_BASE_URL: "https://api.moonshot.cn/v1",
+        ANTHROPIC_MODEL: "claude-sonnet-4-20250514",
+      },
+    );
+
+    expect(environment).toBeDefined();
+    expect(environment!.OPENAI_BASE_URL).toBe("https://api.moonshot.cn/v1");
+    expect(environment!.ANTHROPIC_MODEL).toBe("claude-sonnet-4-20250514");
+  });
+});

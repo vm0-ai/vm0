@@ -511,14 +511,6 @@ async function fetchReferencedSecrets(
 }
 
 /**
- * Auto-inject environment variables from a provider source (model provider, connector, etc.)
- * Returns the potentially modified environment.
- *
- * Only injects variables not already set (user-defined environment takes precedence).
- *
- * @param source - Label for logging (e.g., "model provider", "connector")
- */
-/**
  * Fetch server-stored variables and merge with CLI-provided vars
  * Priority: CLI vars > server-stored vars
  *
