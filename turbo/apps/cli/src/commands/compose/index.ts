@@ -19,10 +19,14 @@ import {
   listSecrets,
   listVariables,
   listConnectors,
+  resolveSkills,
 } from "../../lib/api";
 import { getApiUrl } from "../../lib/api/config";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
-import { downloadGitHubDirectory } from "../../lib/domain/github-skills";
+import {
+  downloadGitHubDirectory,
+  parseGitHubTreeUrl,
+} from "../../lib/domain/github-skills";
 import {
   uploadInstructions,
   uploadSkill,
@@ -196,7 +200,30 @@ async function uploadAssets(
     if (!jsonMode) {
       console.log(`Uploading ${agent.skills.length} skill(s)...`);
     }
+
+    // Batch resolve official skills against server cache
+    const { resolved, unresolved } = await resolveSkills(agent.skills);
+
+    // Use resolved skills directly (no download, no upload)
     for (const skillUrl of agent.skills) {
+      const skill = resolved[skillUrl];
+      if (skill) {
+        const parsed = parseGitHubTreeUrl(skillUrl);
+        skillResults.push({
+          name: skill.storageName,
+          versionId: skill.versionHash,
+          action: "resolved",
+          skillName: parsed.skillName,
+          frontmatter: skill.frontmatter,
+        });
+        if (!jsonMode) {
+          console.log(chalk.green(`  ✓ ${parsed.skillName} (cached)`));
+        }
+      }
+    }
+
+    // Fall back to old flow for unresolved skills
+    for (const skillUrl of unresolved) {
       if (!jsonMode) {
         console.log(chalk.dim(`  Downloading: ${skillUrl}`));
       }

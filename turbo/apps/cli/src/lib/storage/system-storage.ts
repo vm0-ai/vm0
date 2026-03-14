@@ -20,9 +20,13 @@ interface StorageUploadResult {
 }
 
 /**
- * Result of uploading a skill, including parsed frontmatter
+ * Result of uploading or resolving a skill, including parsed frontmatter.
+ * Action "resolved" means the skill was found in server cache (no download/upload needed).
  */
-export interface SkillUploadResult extends StorageUploadResult {
+export interface SkillUploadResult {
+  name: string;
+  versionId: string;
+  action: "created" | "deduplicated" | "resolved";
   skillName: string;
   frontmatter: SkillFrontmatter;
 }

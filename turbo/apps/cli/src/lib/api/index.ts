@@ -93,3 +93,6 @@ export {
   getUserPreferences,
   updateUserPreferences,
 } from "./domains/user-preferences";
+
+// Domain modules - Skills
+export { resolveSkills } from "./domains/skills";

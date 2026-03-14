@@ -170,11 +170,12 @@ EOF
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Step 3: Verify skill was downloaded and uploaded"
-    assert_output --partial "Downloading"
+    echo "# Step 3: Verify skill was downloaded or resolved from cache"
+    assert_output --regexp "(Downloading|cached)"
     assert_output --partial "github"
-    # Version ID should be shown (8 chars)
-    assert_output --regexp "[a-f0-9]{8}"
+    # Version ID should be shown (8 chars) for downloaded skills
+    # Cached skills may not show a truncated version ID
+    assert_output --regexp "([a-f0-9]{8}|cached)"
 }
 
 @test "vm0 compose with multiple skills works correctly" {
