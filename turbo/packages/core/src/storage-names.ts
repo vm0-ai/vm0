@@ -12,6 +12,12 @@
 export const VOLUME_ORG_USER_ID = "__org__";
 
 /**
+ * Sentinel orgId for system-level storages (shared across all orgs).
+ * Used for official skills that are cached globally, not per-org.
+ */
+export const SYSTEM_ORG_ID = "__system__";
+
+/**
  * Generate the storage name for agent instructions.
  * Format: agent-instructions@{agentName}
  *
