@@ -255,6 +255,7 @@ async function collectSkillVariables(
   skillResults: SkillUploadResult[],
   environment: Record<string, string>,
   agentName: string,
+  options: { json?: boolean },
 ): Promise<SkillVariables> {
   const skillSecrets = new Map<string, string[]>();
   const skillVars = new Map<string, string[]>();
@@ -286,16 +287,19 @@ async function collectSkillVariables(
     ([name]) => !(name in environment),
   );
 
-  // Fetch HEAD version to compare secrets
-  let headSecrets = new Set<string>();
-  const existingCompose = await getComposeByName(agentName);
-  if (existingCompose?.content) {
-    headSecrets = getSecretsFromComposeContent(existingCompose.content);
+  // In --json mode, skip HEAD comparison — trulyNewSecrets is only used for
+  // interactive display ("new" markers) and confirmation prompts, both skipped in --json.
+  let trulyNewSecrets: string[] = [];
+  if (!options.json) {
+    let headSecrets = new Set<string>();
+    const existingCompose = await getComposeByName(agentName);
+    if (existingCompose?.content) {
+      headSecrets = getSecretsFromComposeContent(existingCompose.content);
+    }
+    trulyNewSecrets = newSecrets
+      .map(([name]) => name)
+      .filter((name) => !headSecrets.has(name));
   }
-
-  const trulyNewSecrets = newSecrets
-    .map(([name]) => name)
-    .filter((name) => !headSecrets.has(name));
 
   return { newSecrets, newVars, trulyNewSecrets };
 }
@@ -770,10 +774,11 @@ async function finalizeCompose(
   }
   const response = await createOrUpdateCompose({ content: config });
 
-  // Get org for display name
-  const orgResponse = await getOrg();
   const shortVersionId = response.versionId.slice(0, 8);
-  const displayName = `${orgResponse.slug}/${response.name}`;
+  // In --json mode, skip getOrg() — the org prefix in displayName is for human display only
+  const displayName = options.json
+    ? response.name
+    : `${(await getOrg()).slug}/${response.name}`;
 
   // Build result
   const result: ComposeResult = {
@@ -784,15 +789,17 @@ async function finalizeCompose(
     displayName,
   };
 
-  // Check for missing secrets/vars before showing run command
-  const missingItems = await checkAndPromptMissingItems(config, options);
-  if (
-    missingItems.missingSecrets.length > 0 ||
-    missingItems.missingVars.length > 0
-  ) {
-    result.missingSecrets = missingItems.missingSecrets;
-    result.missingVars = missingItems.missingVars;
-    result.setupUrl = missingItems.setupUrl;
+  // In --json mode, skip missing items check — E2B doesn't read these fields
+  if (!options.json) {
+    const missingItems = await checkAndPromptMissingItems(config, options);
+    if (
+      missingItems.missingSecrets.length > 0 ||
+      missingItems.missingVars.length > 0
+    ) {
+      result.missingSecrets = missingItems.missingSecrets;
+      result.missingVars = missingItems.missingVars;
+      result.setupUrl = missingItems.setupUrl;
+    }
   }
 
   // Display human-readable result (skip in JSON mode)
@@ -911,6 +918,7 @@ async function handleGitHubCompose(
       skillResults,
       environment,
       agentName,
+      options,
     );
 
     // Finalize compose (confirm, merge, upload, display)
@@ -1004,6 +1012,7 @@ export const composeCommand = new Command()
               skillResults,
               environment,
               agentName,
+              options,
             );
 
             // 5. Finalize compose (confirm, merge, upload, display)

@@ -1641,9 +1641,6 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
-        }),
       );
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
@@ -1666,7 +1663,7 @@ agents:
         versionId:
           "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
         action: "created",
-        displayName: "user-abc12345/test-agent",
+        displayName: "test-agent",
       });
     });
 
@@ -1684,9 +1681,6 @@ agents:
               "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
             action: "created",
           });
-        }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1744,9 +1738,6 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
-        }),
       );
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
@@ -1758,6 +1749,56 @@ agents:
 
       expect(allLogs.some((log) => log.includes("confirm"))).toBe(false);
       expect(allLogs.some((log) => log.includes("Approve"))).toBe(false);
+    });
+
+    it("should not call getOrg or checkMissingItems in --json mode", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+      );
+
+      let orgCalled = false;
+      let secretsCalled = false;
+      let variablesCalled = false;
+      let connectorsCalled = false;
+
+      server.use(
+        http.post("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json({
+            composeId: "cmp-123",
+            name: "test-agent",
+            versionId:
+              "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+            action: "created",
+          });
+        }),
+        http.get("http://localhost:3000/api/org", () => {
+          orgCalled = true;
+          return HttpResponse.json(orgResponse);
+        }),
+        http.get("http://localhost:3000/api/secrets", () => {
+          secretsCalled = true;
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/variables", () => {
+          variablesCalled = true;
+          return HttpResponse.json({ variables: [] });
+        }),
+        http.get("http://localhost:3000/api/connectors", () => {
+          connectorsCalled = true;
+          return HttpResponse.json({
+            connectors: [],
+            connectorProvidedSecretNames: [],
+          });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli", "--json"]);
+
+      expect(orgCalled).toBe(false);
+      expect(secretsCalled).toBe(false);
+      expect(variablesCalled).toBe(false);
+      expect(connectorsCalled).toBe(false);
     });
 
     it("should skip auto-update in JSON mode", async () => {
@@ -1779,9 +1820,6 @@ agents:
               "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
             action: "created",
           });
-        }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -1805,9 +1843,6 @@ agents:
               "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
             action: "created",
           });
-        }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2541,9 +2576,6 @@ agents:
             action: "created",
           });
         }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
-        }),
       );
 
       await composeCommand.parseAsync([
@@ -2570,7 +2602,7 @@ agents:
         composeName: "intro",
         versionId: "b".repeat(64),
         action: "created",
-        displayName: "user-abc12345/intro",
+        displayName: "intro",
       });
     });
 
@@ -2600,9 +2632,6 @@ agents:
             versionId: "a".repeat(64),
             action: "created",
           });
-        }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
         }),
       );
 
@@ -2811,16 +2840,7 @@ agents:
         }),
       );
 
-      server.use(
-        composeApiHandler,
-        orgApiHandler,
-        http.get("http://localhost:3000/api/secrets", () => {
-          return HttpResponse.json({ secrets: [] });
-        }),
-        http.get("http://localhost:3000/api/variables", () => {
-          return HttpResponse.json({ variables: [] });
-        }),
-      );
+      server.use(composeApiHandler);
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
 
@@ -2835,9 +2855,9 @@ agents:
 
       expect(jsonOutputCall).toBeDefined();
       const result = JSON.parse(jsonOutputCall![0] as string);
-      expect(result.missingSecrets).toEqual(["API_KEY"]);
-      expect(result.setupUrl).toContain("environment-variables-setup");
-      expect(result.setupUrl).toContain("secrets=API_KEY");
+      // In --json mode, missing items check is skipped for performance
+      expect(result.missingSecrets).toBeUndefined();
+      expect(result.setupUrl).toBeUndefined();
     });
 
     it("should not include setupUrl in JSON output when no items missing", async () => {
@@ -2857,7 +2877,7 @@ agents:
         }),
       );
 
-      server.use(composeApiHandler, orgApiHandler);
+      server.use(composeApiHandler);
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
 
@@ -2897,38 +2917,7 @@ agents:
         }),
       );
 
-      server.use(
-        composeApiHandler,
-        orgApiHandler,
-        http.get("http://localhost:3000/api/secrets", () => {
-          return HttpResponse.json({
-            secrets: [
-              {
-                id: "1",
-                name: "EXISTING_KEY",
-                description: null,
-                type: "user",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              },
-            ],
-          });
-        }),
-        http.get("http://localhost:3000/api/variables", () => {
-          return HttpResponse.json({
-            variables: [
-              {
-                id: "1",
-                name: "EXISTING_VAR",
-                value: "val",
-                description: null,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              },
-            ],
-          });
-        }),
-      );
+      server.use(composeApiHandler);
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
 
@@ -2943,192 +2932,13 @@ agents:
 
       expect(jsonOutputCall).toBeDefined();
       const result = JSON.parse(jsonOutputCall![0] as string);
-      expect(result.missingSecrets).toEqual(["MISSING_KEY"]);
-      expect(result.missingVars).toEqual(["MISSING_VAR"]);
-      expect(result.setupUrl).toContain("secrets=MISSING_KEY");
-      expect(result.setupUrl).toContain("vars=MISSING_VAR");
-      expect(result.setupUrl).not.toContain("EXISTING_KEY");
-      expect(result.setupUrl).not.toContain("EXISTING_VAR");
-    });
-
-    it("should not show connector-provided secrets as missing", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        yaml.stringify({
-          version: "1.0",
-          agents: {
-            test: {
-              framework: "claude-code",
-              working_dir: "/",
-              environment: {
-                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
-                OTHER_KEY: "${{ secrets.OTHER_KEY }}",
-              },
-            },
-          },
-        }),
-      );
-
-      server.use(
-        composeApiHandler,
-        orgApiHandler,
-        http.get("http://localhost:3000/api/secrets", () => {
-          return HttpResponse.json({ secrets: [] });
-        }),
-        http.get("http://localhost:3000/api/variables", () => {
-          return HttpResponse.json({ variables: [] });
-        }),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "conn-1",
-                type: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "testuser",
-                externalEmail: null,
-                oauthScopes: ["repo"],
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              },
-            ],
-            connectorProvidedSecretNames: ["GH_TOKEN", "GITHUB_TOKEN"],
-          });
-        }),
-      );
-
-      await composeCommand.parseAsync(["node", "cli", "--json"]);
-
-      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
-        try {
-          const parsed = JSON.parse(call[0] as string);
-          return parsed.composeId !== undefined;
-        } catch {
-          return false;
-        }
-      });
-
-      expect(jsonOutputCall).toBeDefined();
-      const result = JSON.parse(jsonOutputCall![0] as string);
-      // GH_TOKEN is provided by GitHub connector, should not be missing
-      expect(result.missingSecrets).toEqual(["OTHER_KEY"]);
-      expect(result.setupUrl).toContain("secrets=OTHER_KEY");
-      expect(result.setupUrl).not.toContain("GH_TOKEN");
-    });
-
-    it("should use server-provided secret names for unknown connector types", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        yaml.stringify({
-          version: "1.0",
-          agents: {
-            test: {
-              framework: "claude-code",
-              working_dir: "/",
-              environment: {
-                JIRA_TOKEN: "${{ secrets.JIRA_TOKEN }}",
-                OTHER_KEY: "${{ secrets.OTHER_KEY }}",
-              },
-            },
-          },
-        }),
-      );
-
-      server.use(
-        composeApiHandler,
-        orgApiHandler,
-        http.get("http://localhost:3000/api/secrets", () => {
-          return HttpResponse.json({ secrets: [] });
-        }),
-        http.get("http://localhost:3000/api/variables", () => {
-          return HttpResponse.json({ variables: [] });
-        }),
-        http.get("http://localhost:3000/api/connectors", () => {
-          // Server knows about "jira" even if CLI schema doesn't
-          return HttpResponse.json({
-            connectors: [],
-            connectorProvidedSecretNames: ["JIRA_TOKEN"],
-          });
-        }),
-      );
-
-      await composeCommand.parseAsync(["node", "cli", "--json"]);
-
-      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
-        try {
-          const parsed = JSON.parse(call[0] as string);
-          return parsed.composeId !== undefined;
-        } catch {
-          return false;
-        }
-      });
-
-      expect(jsonOutputCall).toBeDefined();
-      const result = JSON.parse(jsonOutputCall![0] as string);
-      // JIRA_TOKEN is server-reported as connector-provided, should not be missing
-      expect(result.missingSecrets).toEqual(["OTHER_KEY"]);
-      expect(result.setupUrl).not.toContain("JIRA_TOKEN");
-    });
-
-    it("should not show warning when all secrets are connector-provided", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        yaml.stringify({
-          version: "1.0",
-          agents: {
-            test: {
-              framework: "claude-code",
-              working_dir: "/",
-              environment: {
-                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
-                SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
-              },
-            },
-          },
-        }),
-      );
-
-      server.use(
-        composeApiHandler,
-        orgApiHandler,
-        http.get("http://localhost:3000/api/secrets", () => {
-          return HttpResponse.json({ secrets: [] });
-        }),
-        http.get("http://localhost:3000/api/variables", () => {
-          return HttpResponse.json({ variables: [] });
-        }),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [],
-            connectorProvidedSecretNames: [
-              "GH_TOKEN",
-              "GITHUB_TOKEN",
-              "SLACK_TOKEN",
-            ],
-          });
-        }),
-      );
-
-      await composeCommand.parseAsync(["node", "cli", "--json"]);
-
-      const jsonOutputCall = mockConsoleLog.mock.calls.find((call) => {
-        try {
-          const parsed = JSON.parse(call[0] as string);
-          return parsed.composeId !== undefined;
-        } catch {
-          return false;
-        }
-      });
-
-      expect(jsonOutputCall).toBeDefined();
-      const result = JSON.parse(jsonOutputCall![0] as string);
-      // All secrets covered by connectors — no missing, no setupUrl
+      // In --json mode, missing items check is skipped for performance
       expect(result.missingSecrets).toBeUndefined();
+      expect(result.missingVars).toBeUndefined();
       expect(result.setupUrl).toBeUndefined();
     });
 
-    it("should show all secrets as missing when no connectors are connected", async () => {
+    it("should not include connector or secrets info in JSON output", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         yaml.stringify({
@@ -3139,28 +2949,14 @@ agents:
               working_dir: "/",
               environment: {
                 GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+                OTHER_KEY: "${{ secrets.OTHER_KEY }}",
               },
             },
           },
         }),
       );
 
-      server.use(
-        composeApiHandler,
-        orgApiHandler,
-        http.get("http://localhost:3000/api/secrets", () => {
-          return HttpResponse.json({ secrets: [] });
-        }),
-        http.get("http://localhost:3000/api/variables", () => {
-          return HttpResponse.json({ variables: [] });
-        }),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [],
-            connectorProvidedSecretNames: [],
-          });
-        }),
-      );
+      server.use(composeApiHandler);
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
 
@@ -3175,8 +2971,9 @@ agents:
 
       expect(jsonOutputCall).toBeDefined();
       const result = JSON.parse(jsonOutputCall![0] as string);
-      // No connector connected, GH_TOKEN should still be missing
-      expect(result.missingSecrets).toEqual(["GH_TOKEN"]);
+      // In --json mode, missing items check is skipped for performance
+      expect(result.missingSecrets).toBeUndefined();
+      expect(result.setupUrl).toBeUndefined();
     });
   });
 });
