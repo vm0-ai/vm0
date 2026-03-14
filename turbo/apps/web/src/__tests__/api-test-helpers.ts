@@ -1192,6 +1192,55 @@ export async function createTestVolume(
 }
 
 /**
+ * Create a volume storage directly in the DB for a specific org.
+ * Unlike createTestVolume() which uses the mock user's org via API,
+ * this allows creating storages under any org (e.g., SYSTEM_ORG_ID).
+ *
+ * @param orgId - The org to create the storage under
+ * @param name - Storage name
+ * @returns The created storage with versionId
+ */
+export async function createTestVolumeForOrg(
+  orgId: string,
+  name: string,
+): Promise<{ storageId: string; versionId: string }> {
+  const { randomUUID } = await import("crypto");
+  const { eq } = await import("drizzle-orm");
+
+  const versionId = randomUUID().replace(/-/g, "").repeat(2).slice(0, 64);
+  const s3Key = `${orgId}/${name}/${versionId}`;
+
+  const [storage] = await globalThis.services.db
+    .insert(storages)
+    .values({
+      orgId,
+      userId: VOLUME_ORG_USER_ID,
+      name,
+      type: "volume",
+      s3Prefix: `${orgId}/${name}`,
+    })
+    .returning();
+
+  const storageId = storage!.id;
+
+  await globalThis.services.db.insert(storageVersions).values({
+    id: versionId,
+    storageId,
+    s3Key,
+    size: 100,
+    fileCount: 1,
+    createdBy: "test",
+  });
+
+  await globalThis.services.db
+    .update(storages)
+    .set({ headVersionId: versionId })
+    .where(eq(storages.id, storageId));
+
+  return { storageId, versionId };
+}
+
+/**
  * Create a test memory storage via API route handlers.
  * Convenience wrapper around createTestStorage with type="memory".
  *

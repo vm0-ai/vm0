@@ -15,7 +15,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { env } from "../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
 import { computeContentHashFromHashes } from "./content-hash";
-import { VOLUME_ORG_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core";
 
 const log = logger("storage");
 
@@ -342,13 +342,36 @@ export async function prepareStorageManifest(
       }
 
       try {
-        const { versionId, s3Key } = await resolveVersion(
-          agentClerkOrgId,
-          volume.vasStorageName,
-          "volume",
-          volume.vasVersion,
-          VOLUME_ORG_USER_ID,
-        );
+        // Skill volumes: try system org first (pre-cached official skills),
+        // then fall back to agent org (old CLI uploads, third-party skills)
+        const isSkill = volume.vasStorageName.startsWith("agent-skills@");
+        let resolved: { versionId: string; s3Key: string } | undefined;
+
+        if (isSkill) {
+          try {
+            resolved = await resolveVersion(
+              SYSTEM_ORG_ID,
+              volume.vasStorageName,
+              "volume",
+              volume.vasVersion,
+              VOLUME_ORG_USER_ID,
+            );
+          } catch {
+            // System org miss — fall through to agent org
+          }
+        }
+
+        if (!resolved) {
+          resolved = await resolveVersion(
+            agentClerkOrgId,
+            volume.vasStorageName,
+            "volume",
+            volume.vasVersion,
+            VOLUME_ORG_USER_ID,
+          );
+        }
+
+        const { versionId, s3Key } = resolved;
 
         // Generate archive URL for tar.gz
         const archiveKey = `${s3Key}/archive.tar.gz`;
