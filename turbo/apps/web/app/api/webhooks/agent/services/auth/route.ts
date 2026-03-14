@@ -64,15 +64,18 @@ async function refreshExpiredTokens(
   const now = Math.floor(Date.now() / 1000);
   const REFRESH_BUFFER_SECS = 60;
 
-  // Refresh tokens that are expired or expiring within the buffer window
-  let refreshed = false;
-  for (const connectorType of connectorTypes) {
-    const tokenExpiry = expiryMap.get(connectorType);
-    if (
+  // Refresh tokens that are expired or expiring within the buffer window (parallel)
+  const toRefresh = connectorTypes.filter((ct) => {
+    const tokenExpiry = expiryMap.get(ct);
+    return (
       tokenExpiry !== undefined &&
       tokenExpiry !== null &&
       tokenExpiry <= now + REFRESH_BUFFER_SECS
-    ) {
+    );
+  });
+
+  const results = await Promise.all(
+    toRefresh.map(async (connectorType) => {
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
       const freshToken = await refreshConnectorAccessToken(
         connectorType,
@@ -80,15 +83,15 @@ async function refreshExpiredTokens(
         auth.userId,
         secrets,
       );
-      if (freshToken) {
-        refreshed = true;
-      } else {
+      if (!freshToken) {
         log.warn(
           `[${auth.runId}] Failed to refresh ${connectorType} token, using existing`,
         );
       }
-    }
-  }
+      return !!freshToken;
+    }),
+  );
+  const refreshed = results.some(Boolean);
 
   // Use accurate DB values after refresh; skip extra query if nothing changed
   const finalExpiryMap = refreshed
