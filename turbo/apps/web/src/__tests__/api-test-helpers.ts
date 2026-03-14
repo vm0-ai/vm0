@@ -5,6 +5,7 @@
  * instead of direct database operations. This ensures tests validate the
  * complete API flow, catching issues that direct DB operations might miss.
  */
+import { randomUUID } from "crypto";
 import { vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
@@ -1204,9 +1205,6 @@ export async function createTestVolumeForOrg(
   orgId: string,
   name: string,
 ): Promise<{ storageId: string; versionId: string }> {
-  const { randomUUID } = await import("crypto");
-  const { eq } = await import("drizzle-orm");
-
   const versionId = randomUUID().replace(/-/g, "").repeat(2).slice(0, 64);
   const s3Key = `${orgId}/${name}/${versionId}`;
 

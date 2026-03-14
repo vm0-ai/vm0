@@ -356,7 +356,12 @@ export async function prepareStorageManifest(
               volume.vasVersion,
               VOLUME_ORG_USER_ID,
             );
-          } catch {
+          } catch (error) {
+            if (
+              !(error instanceof Error && error.message.includes("not found"))
+            ) {
+              throw error;
+            }
             // System org miss — fall through to agent org
           }
         }
