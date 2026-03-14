@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.64.0](https://github.com/vm0-ai/vm0/compare/core-v8.63.0...core-v8.64.0) (2026-03-14)
+
+
+### Features
+
+* add skills table and system org id constant ([#4770](https://github.com/vm0-ai/vm0/issues/4770)) ([68ebaeb](https://github.com/vm0-ai/vm0/commit/68ebaebafd0b9159e5c8218a32048af31e18b684)), closes [#4769](https://github.com/vm0-ai/vm0/issues/4769)
+
+
+### Bug Fixes
+
+* **services:** allow same permission name across different api_entries ([#4754](https://github.com/vm0-ai/vm0/issues/4754)) ([2b84536](https://github.com/vm0-ai/vm0/commit/2b845369ead0589dfc6e26dded933b75f94f2ab0))
+
 ## [8.63.0](https://github.com/vm0-ai/vm0/compare/core-v8.62.0...core-v8.63.0) (2026-03-13)
 
 

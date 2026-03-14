@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.58.1](https://github.com/vm0-ai/vm0/compare/cli-v9.58.0...cli-v9.58.1) (2026-03-14)
+
+
+### Bug Fixes
+
+* **services:** allow same permission name across different api_entries ([#4754](https://github.com/vm0-ai/vm0/issues/4754)) ([2b84536](https://github.com/vm0-ai/vm0/commit/2b845369ead0589dfc6e26dded933b75f94f2ab0))
+* upgrade undici and flatted to resolve pnpm audit vulnerabilities ([#4765](https://github.com/vm0-ai/vm0/issues/4765)) ([#4766](https://github.com/vm0-ai/vm0/issues/4766)) ([0112195](https://github.com/vm0-ai/vm0/commit/011219579e67672ae457d8b4455515fa38b43a8e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.64.0
+
 ## [9.58.0](https://github.com/vm0-ai/vm0/compare/cli-v9.57.1...cli-v9.58.0) (2026-03-13)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.24.0...runner-rs-v0.24.1) (2026-03-14)
+
+
+### Bug Fixes
+
+* **services:** allow same permission name across different api_entries ([#4754](https://github.com/vm0-ai/vm0/issues/4754)) ([2b84536](https://github.com/vm0-ai/vm0/commit/2b845369ead0589dfc6e26dded933b75f94f2ab0))
+
 ## [0.24.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.23.0...runner-rs-v0.24.0) (2026-03-13)
 
 

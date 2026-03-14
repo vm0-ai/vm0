@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.107.0](https://github.com/vm0-ai/vm0/compare/web-v12.106.0...web-v12.107.0) (2026-03-14)
+
+
+### Features
+
+* add skills table and system org id constant ([#4770](https://github.com/vm0-ai/vm0/issues/4770)) ([68ebaeb](https://github.com/vm0-ai/vm0/commit/68ebaebafd0b9159e5c8218a32048af31e18b684)), closes [#4769](https://github.com/vm0-ai/vm0/issues/4769)
+
+
+### Bug Fixes
+
+* **compose:** pass org context to e2b compose job sandbox ([#4755](https://github.com/vm0-ai/vm0/issues/4755)) ([f1e0b66](https://github.com/vm0-ai/vm0/commit/f1e0b6678bb585de4d787f39240130f3ee6725e4)), closes [#4752](https://github.com/vm0-ai/vm0/issues/4752)
+* **email:** pass explicit org context in email handlers ([#4762](https://github.com/vm0-ai/vm0/issues/4762)) ([81220ea](https://github.com/vm0-ai/vm0/commit/81220ea91db65ccf991c79ae6ce09d5ca93a2071))
+
+
+### Refactoring
+
+* consolidate org resolution into single resolve-org function ([#4761](https://github.com/vm0-ai/vm0/issues/4761)) ([5735e7e](https://github.com/vm0-ai/vm0/commit/5735e7e63ffb9822af8aeab211b74265266cc389))
+* **web:** remove unused runid parameter from resolve-secrets-and-environment ([#4763](https://github.com/vm0-ai/vm0/issues/4763)) ([0a46058](https://github.com/vm0-ai/vm0/commit/0a46058336112fda33f949c7820b831e56ade8e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.64.0
+
 ## [12.106.0](https://github.com/vm0-ai/vm0/compare/web-v12.105.0...web-v12.106.0) (2026-03-13)
 
 
