@@ -34,11 +34,21 @@ export async function fetchHeadCommitSha(): Promise<string> {
  *   {40-char SHA} {ref-name}
  */
 function parseMainRef(pktLineText: string, branch: string): string {
-  const refPattern = new RegExp(`([0-9a-f]{40})\\s+refs/heads/${branch}`);
+  const refSuffix = `refs/heads/${branch}`;
+  // In pkt-line format, each ref line contains: {sha} {ref-name}
+  // Find lines containing the target ref, then extract the 40-char SHA
+  // that immediately precedes the whitespace before the ref name.
+  const shaLength = 40;
   for (const line of pktLineText.split("\n")) {
-    const match = line.match(refPattern);
-    if (match) {
-      return match[1]!;
+    const refIndex = line.indexOf(refSuffix);
+    if (refIndex < 0) continue;
+    // SHA ends at refIndex - 1 (space separator) and starts 40 chars before that
+    const shaEnd = refIndex - 1;
+    const shaStart = shaEnd - shaLength;
+    if (shaStart < 0) continue;
+    const sha = line.substring(shaStart, shaEnd);
+    if (/^[0-9a-f]{40}$/.test(sha)) {
+      return sha;
     }
   }
   throw new Error(`refs/heads/${branch} not found in git refs`);

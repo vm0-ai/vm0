@@ -54,7 +54,6 @@ import {
   SYSTEM_ORG_ID,
   type StoredExecutionContext,
 } from "@vm0/core";
-import { skills } from "../db/schema/skill";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
