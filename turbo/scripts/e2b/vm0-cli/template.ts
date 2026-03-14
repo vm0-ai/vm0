@@ -11,4 +11,4 @@ import { Template } from "e2b";
 export const template = Template()
   .fromNodeImage("24")
   .aptInstall(["curl", "git", "jq", "tzdata"])
-  .npmInstall("@vm0/cli@9.58.0", { g: true });
+  .npmInstall("@vm0/cli@9.59.0", { g: true });
