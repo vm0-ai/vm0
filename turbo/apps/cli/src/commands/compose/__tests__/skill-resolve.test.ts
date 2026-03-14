@@ -158,6 +158,7 @@ describe("skill resolve integration", () => {
   let originalCwd: string;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     tempDir = mkdtempSync(path.join(os.tmpdir(), "test-skill-resolve-"));
     originalCwd = process.cwd();
     process.chdir(tempDir);

@@ -1,5 +1,6 @@
 import { httpPost } from "../core/http";
 import type { SkillFrontmatter } from "@vm0/core";
+import chalk from "chalk";
 
 interface ResolvedSkill {
   storageName: string;
@@ -10,6 +11,18 @@ interface ResolvedSkill {
 interface ResolveSkillsResponse {
   resolved: Record<string, ResolvedSkill>;
   unresolved: string[];
+}
+
+function isResolveSkillsResponse(
+  value: unknown,
+): value is ResolveSkillsResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.resolved === "object" &&
+    obj.resolved !== null &&
+    Array.isArray(obj.unresolved)
+  );
 }
 
 /**
@@ -25,10 +38,25 @@ export async function resolveSkills(
       skills: skillUrls,
     });
     if (!response.ok) {
+      console.error(
+        chalk.dim("  Skill resolve unavailable, downloading all skills"),
+      );
       return { resolved: {}, unresolved: skillUrls };
     }
-    return (await response.json()) as ResolveSkillsResponse;
+    const body: unknown = await response.json();
+    if (!isResolveSkillsResponse(body)) {
+      console.error(
+        chalk.dim(
+          "  Skill resolve returned unexpected format, downloading all skills",
+        ),
+      );
+      return { resolved: {}, unresolved: skillUrls };
+    }
+    return body;
   } catch {
+    console.error(
+      chalk.dim("  Skill resolve unavailable, downloading all skills"),
+    );
     return { resolved: {}, unresolved: skillUrls };
   }
 }
