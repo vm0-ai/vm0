@@ -1,0 +1,87 @@
+import {
+  createHandler,
+  tsr,
+  createSafeErrorHandler,
+} from "../../../../src/lib/ts-rest-handler";
+import {
+  skillsResolveContract,
+  createErrorResponse,
+  getSkillStorageName,
+} from "@vm0/core";
+import { initServices } from "../../../../src/lib/init-services";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { skills } from "../../../../src/db/schema/skill";
+import { inArray } from "drizzle-orm";
+
+interface SkillFrontmatter {
+  name?: string;
+  description?: string;
+  vm0_secrets?: string[];
+  vm0_vars?: string[];
+}
+
+const router = tsr.router(skillsResolveContract, {
+  resolve: async ({ body, headers }) => {
+    initServices();
+
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
+      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
+    }
+
+    // Batch query skills by URL
+    const rows = await globalThis.services.db
+      .select({
+        url: skills.url,
+        fullPath: skills.fullPath,
+        versionHash: skills.versionHash,
+        frontmatter: skills.frontmatter,
+      })
+      .from(skills)
+      .where(inArray(skills.url, body.skills));
+
+    // Build resolved map
+    const resolved: Record<
+      string,
+      {
+        storageName: string;
+        versionHash: string;
+        frontmatter: SkillFrontmatter;
+      }
+    > = {};
+
+    const foundUrls = new Set<string>();
+
+    for (const row of rows) {
+      if (!row.versionHash) continue; // Skip skills not yet synced
+      foundUrls.add(row.url);
+
+      const fm = (row.frontmatter ?? {}) as SkillFrontmatter;
+
+      resolved[row.url] = {
+        storageName: getSkillStorageName(row.fullPath),
+        versionHash: row.versionHash,
+        frontmatter: {
+          name: fm.name,
+          description: fm.description,
+          vm0_secrets: fm.vm0_secrets,
+          vm0_vars: fm.vm0_vars,
+        },
+      };
+    }
+
+    // Unresolved = requested but not found (or not yet synced)
+    const unresolved = body.skills.filter((url) => !foundUrls.has(url));
+
+    return {
+      status: 200 as const,
+      body: { resolved, unresolved },
+    };
+  },
+});
+
+const handler = createHandler(skillsResolveContract, router, {
+  errorHandler: createSafeErrorHandler("skills-resolve"),
+});
+
+export { handler as POST };

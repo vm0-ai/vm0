@@ -48,6 +48,7 @@ import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecretsMap } from "../lib/crypto/secrets-encryption";
 import { VOLUME_ORG_USER_ID, type StoredExecutionContext } from "@vm0/core";
+import { skills } from "../db/schema/skill";
 
 // Route handlers - imported here so callers don't need to pass them
 import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
@@ -3076,4 +3077,31 @@ export async function insertTestArtifactStorage(
     .where(eq(storages.id, storage!.id));
 
   return { storageId: storage!.id, versionId };
+}
+
+/**
+ * Seed a skill record in the skills table for testing.
+ */
+export async function seedTestSkill(
+  overrides: Partial<typeof skills.$inferInsert> = {},
+) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(skills)
+    .values({
+      url: "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
+      name: "slack",
+      fullPath: "vm0-ai/vm0-skills/tree/main/slack",
+      versionHash:
+        "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+      frontmatter: {
+        name: "Slack",
+        description: "Slack integration",
+        vm0_secrets: ["SLACK_BOT_TOKEN"],
+        vm0_vars: [],
+      },
+      ...overrides,
+    })
+    .returning();
+  return row;
 }
