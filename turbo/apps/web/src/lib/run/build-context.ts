@@ -36,7 +36,7 @@ import { getVariableValues } from "../variable/variable-service";
 import { getDefaultModelProvider } from "../model-provider/model-provider-service";
 import { connectors } from "../../db/schema/connector";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
-import { upsertConnectorSecret } from "../connector/connector-service";
+import { refreshConnectorAccessToken } from "../connector/connector-service";
 
 const log = logger("run:build-context");
 
@@ -304,84 +304,6 @@ async function resolveModelProviderSecrets(
   );
 
   return { secrets, injectedEnvironment };
-}
-
-/**
- * Generic connector access token refresh.
- * Looks up the connector's handler from PROVIDER_HANDLERS, calls its refreshToken
- * method, persists new tokens, and updates the in-memory secrets map.
- *
- * Returns null if refresh token is unavailable, OAuth credentials are missing,
- * or the refresh fails (caller should fall back to the existing access token).
- */
-async function refreshConnectorAccessToken(
-  connectorType: string,
-  orgId: string,
-  userId: string,
-  connectorSecrets: Record<string, string>,
-): Promise<string | null> {
-  const handler =
-    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
-  if (!handler?.refreshToken || !handler.getRefreshSecretName) {
-    return null;
-  }
-
-  const refreshTokenSecret = handler.getRefreshSecretName();
-  const currentRefreshToken = connectorSecrets[refreshTokenSecret];
-  if (!currentRefreshToken) {
-    log.debug(`No ${connectorType} refresh token available, skipping`);
-    return null;
-  }
-
-  const env = globalThis.services.env;
-  const clientId = handler.getClientId(env);
-  const clientSecret = handler.getClientSecret(env);
-
-  if (!clientId || !clientSecret) {
-    log.debug(
-      `${connectorType} OAuth credentials not configured, skipping token refresh`,
-    );
-    return null;
-  }
-
-  const accessTokenSecret = handler.getSecretName();
-
-  try {
-    const result = await handler.refreshToken(
-      clientId,
-      clientSecret,
-      currentRefreshToken,
-    );
-
-    // Persist new tokens to database
-    await upsertConnectorSecret(
-      orgId,
-      userId,
-      accessTokenSecret,
-      result.accessToken,
-    );
-    if (result.refreshToken) {
-      await upsertConnectorSecret(
-        orgId,
-        userId,
-        refreshTokenSecret,
-        result.refreshToken,
-      );
-    }
-
-    // Update in-memory secrets map so subsequent mapping uses fresh token
-    connectorSecrets[accessTokenSecret] = result.accessToken;
-    if (result.refreshToken) {
-      connectorSecrets[refreshTokenSecret] = result.refreshToken;
-    }
-
-    log.debug(`${connectorType} access token refreshed successfully`);
-    return result.accessToken;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    log.warn(`${connectorType} token refresh failed: ${message}`);
-    return null;
-  }
 }
 
 /**
