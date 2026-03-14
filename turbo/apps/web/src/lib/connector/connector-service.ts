@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -536,17 +536,21 @@ export async function getConnectorExpiry(
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(connectors)
-    .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
+    .where(
+      and(
+        eq(connectors.orgId, orgId),
+        eq(connectors.userId, userId),
+        inArray(connectors.type, connectorTypes),
+      ),
+    );
 
   for (const row of rows) {
-    if (connectorTypes.includes(row.type)) {
-      result.set(
-        row.type,
-        row.tokenExpiresAt
-          ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
-          : null,
-      );
-    }
+    result.set(
+      row.type,
+      row.tokenExpiresAt
+        ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
+        : null,
+    );
   }
   return result;
 }

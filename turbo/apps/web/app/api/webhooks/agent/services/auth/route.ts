@@ -59,17 +59,17 @@ async function refreshExpiredTokens(
   );
 
   const now = Math.floor(Date.now() / 1000);
-  let earliestExpiry: number | null = null;
+  const REFRESH_BUFFER_SECS = 60;
 
+  // Refresh tokens that are expired or expiring within the buffer window
+  let refreshed = false;
   for (const connectorType of connectorTypes) {
     const tokenExpiry = expiryMap.get(connectorType);
-
     if (
       tokenExpiry !== undefined &&
       tokenExpiry !== null &&
-      tokenExpiry <= now
+      tokenExpiry <= now + REFRESH_BUFFER_SECS
     ) {
-      // Token expired — refresh
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
       await refreshConnectorAccessToken(
         connectorType,
@@ -77,20 +77,22 @@ async function refreshExpiredTokens(
         auth.userId,
         secrets,
       );
-      // After refresh, tokenExpiresAt is ~55 min from now
-      const newExpiry = now + 55 * 60;
-      earliestExpiry =
-        earliestExpiry === null
-          ? newExpiry
-          : Math.min(earliestExpiry, newExpiry);
-    } else if (tokenExpiry !== undefined && tokenExpiry !== null) {
-      // Token still valid — track expiry for cache TTL
-      earliestExpiry =
-        earliestExpiry === null
-          ? tokenExpiry
-          : Math.min(earliestExpiry, tokenExpiry);
+      refreshed = true;
     }
-    // tokenExpiry null/undefined = non-expiring or not found, no TTL needed
+  }
+
+  // Use accurate DB values after refresh; skip extra query if nothing changed
+  const finalExpiryMap = refreshed
+    ? await getConnectorExpiry(run.orgId, auth.userId, connectorTypes)
+    : expiryMap;
+
+  let earliestExpiry: number | null = null;
+  for (const connectorType of connectorTypes) {
+    const expiry = finalExpiryMap.get(connectorType);
+    if (expiry !== undefined && expiry !== null) {
+      earliestExpiry =
+        earliestExpiry === null ? expiry : Math.min(earliestExpiry, expiry);
+    }
   }
 
   return earliestExpiry;
