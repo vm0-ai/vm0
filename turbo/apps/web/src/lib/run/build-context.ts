@@ -714,8 +714,8 @@ async function resolveSecretsAndEnvironment(
   // Filter secretConnectorMap: remove keys overridden by higher-priority sources.
   // If a secret is provided by CLI, user DB, or model-provider, OAuth refresh should
   // not overwrite it at runtime.
-  let secretConnectorMap = connectorResult.secretConnectorMap;
-  if (secretConnectorMap) {
+  let secretConnectorMap: Record<string, string> | undefined;
+  if (connectorResult.secretConnectorMap) {
     const overrideKeys = new Set(
       [
         connectorResult.injectedEnvVars,
@@ -724,8 +724,12 @@ async function resolveSecretsAndEnvironment(
         cliSecrets,
       ].flatMap((s) => (s ? Object.keys(s) : [])),
     );
-    for (const key of overrideKeys) delete secretConnectorMap[key];
-    if (!Object.keys(secretConnectorMap).length) secretConnectorMap = undefined;
+    const filtered = Object.fromEntries(
+      Object.entries(connectorResult.secretConnectorMap).filter(
+        ([key]) => !overrideKeys.has(key),
+      ),
+    );
+    if (Object.keys(filtered).length) secretConnectorMap = filtered;
   }
 
   // Expand environment variables from compose config.
