@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.65.0](https://github.com/vm0-ai/vm0/compare/core-v8.64.0...core-v8.65.0) (2026-03-14)
+
+
+### Features
+
+* add skills resolve endpoint for instant skill lookup ([#4781](https://github.com/vm0-ai/vm0/issues/4781)) ([63070a1](https://github.com/vm0-ai/vm0/commit/63070a1010bda485314c3a0f275494347377b177))
+* **runner:** plumb secret-connector map from build to proxy addon ([#4764](https://github.com/vm0-ai/vm0/issues/4764)) ([dcde11d](https://github.com/vm0-ai/vm0/commit/dcde11dd12a1484e4050370848e51f8bd4a14946))
+
 ## [8.64.0](https://github.com/vm0-ai/vm0/compare/core-v8.63.0...core-v8.64.0) (2026-03-14)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.59.0](https://github.com/vm0-ai/vm0/compare/cli-v9.58.1...cli-v9.59.0) (2026-03-14)
+
+
+### Features
+
+* **cli:** call /api/skills/resolve before downloading official skills ([#4784](https://github.com/vm0-ai/vm0/issues/4784)) ([d48a4eb](https://github.com/vm0-ai/vm0/commit/d48a4ebfb7a11919e4c172b5498fd1b4ad22f5d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.65.0
+
 ## [9.58.1](https://github.com/vm0-ai/vm0/compare/cli-v9.58.0...cli-v9.58.1) (2026-03-14)
 
 

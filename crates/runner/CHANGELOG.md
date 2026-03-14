@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.24.1...runner-rs-v0.25.0) (2026-03-14)
+
+
+### Features
+
+* **runner:** plumb secret-connector map from build to proxy addon ([#4764](https://github.com/vm0-ai/vm0/issues/4764)) ([dcde11d](https://github.com/vm0-ai/vm0/commit/dcde11dd12a1484e4050370848e51f8bd4a14946))
+
 ## [0.24.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.24.0...runner-rs-v0.24.1) (2026-03-14)
 
 

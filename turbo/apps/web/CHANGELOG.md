@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.108.0](https://github.com/vm0-ai/vm0/compare/web-v12.107.0...web-v12.108.0) (2026-03-14)
+
+
+### Features
+
+* add cron job to sync official skills from github ([#4782](https://github.com/vm0-ai/vm0/issues/4782)) ([d2d8a1a](https://github.com/vm0-ai/vm0/commit/d2d8a1ac644a527ff79ad8ee5b6129c83ccf48ca))
+* add skills resolve endpoint for instant skill lookup ([#4781](https://github.com/vm0-ai/vm0/issues/4781)) ([63070a1](https://github.com/vm0-ai/vm0/commit/63070a1010bda485314c3a0f275494347377b177))
+* resolve skill volumes from system org with agent org fallback ([#4780](https://github.com/vm0-ai/vm0/issues/4780)) ([f8962f4](https://github.com/vm0-ai/vm0/commit/f8962f4d75adf905600a4fe9405bfa1f1a095ff2))
+* **runner:** plumb secret-connector map from build to proxy addon ([#4764](https://github.com/vm0-ai/vm0/issues/4764)) ([dcde11d](https://github.com/vm0-ai/vm0/commit/dcde11dd12a1484e4050370848e51f8bd4a14946))
+
+
+### Refactoring
+
+* **connector:** extract token refresh to connector-service ([#4795](https://github.com/vm0-ai/vm0/issues/4795)) ([f42bfe9](https://github.com/vm0-ai/vm0/commit/f42bfe95682775ca406dc5b2d4848982860dfe40))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.65.0
+
 ## [12.107.0](https://github.com/vm0-ai/vm0/compare/web-v12.106.0...web-v12.107.0) (2026-03-14)
 
 
