@@ -47,6 +47,8 @@ interface SyncResult {
   synced: number;
   /** Skills unchanged (same version hash) */
   skipped: number;
+  /** Skills that failed to sync (e.g. bad frontmatter) */
+  failed: number;
   /** Total skills found in tarball */
   total: number;
 }
@@ -72,7 +74,7 @@ export async function syncSkills(): Promise<SyncResult> {
     .limit(1);
 
   if (existing?.commitSha === headSha) {
-    return { commitSha: headSha, synced: 0, skipped: 0, total: 0 };
+    return { commitSha: headSha, synced: 0, skipped: 0, failed: 0, total: 0 };
   }
 
   // 3. Download and extract tarball
@@ -81,13 +83,22 @@ export async function syncSkills(): Promise<SyncResult> {
   // 4. Sync each skill
   let synced = 0;
   let skipped = 0;
+  let failed = 0;
 
   for (const extracted of extractedSkills) {
-    const wasUpdated = await syncSingleSkill(db, extracted, headSha);
-    if (wasUpdated) {
-      synced++;
-    } else {
-      skipped++;
+    try {
+      const wasUpdated = await syncSingleSkill(db, extracted, headSha);
+      if (wasUpdated) {
+        synced++;
+      } else {
+        skipped++;
+      }
+    } catch (error) {
+      failed++;
+      log.warn("Skipping skill due to sync error", {
+        skillName: extracted.skillName,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -95,6 +106,7 @@ export async function syncSkills(): Promise<SyncResult> {
     commitSha: headSha,
     synced,
     skipped,
+    failed,
     total: extractedSkills.length,
   });
 
@@ -102,6 +114,7 @@ export async function syncSkills(): Promise<SyncResult> {
     commitSha: headSha,
     synced,
     skipped,
+    failed,
     total: extractedSkills.length,
   };
 }

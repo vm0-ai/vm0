@@ -263,6 +263,49 @@ describe("GET /api/cron/sync-skills", () => {
     });
   });
 
+  describe("Malformed frontmatter resilience", () => {
+    it("should skip skill with malformed frontmatter and sync others", async () => {
+      const skillsWithBadFrontmatter = [
+        MOCK_SKILLS[0]!, // slack — valid
+        {
+          name: "bad-yaml",
+          files: [
+            {
+              path: "SKILL.md",
+              content: [
+                "---",
+                "name: bad-yaml",
+                "vm0_vars:",
+                "  - GOOD_VAR",
+                "- BAD_VAR",
+                "---",
+                "",
+                "# Bad YAML Skill",
+              ].join("\n"),
+            },
+            { path: "index.ts", content: 'console.log("bad");' },
+          ],
+        },
+        MOCK_SKILLS[1]!, // github — valid
+      ];
+      const tarball = createMockTarball(skillsWithBadFrontmatter);
+      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+
+      const response = await GET(cronRequest(cronSecret));
+      expect(response.status).toBe(200);
+      const data = await response.json();
+
+      expect(data.success).toBe(true);
+      expect(data.synced).toBe(2); // slack + github
+      expect(data.failed).toBe(1); // bad-yaml
+      expect(data.total).toBe(3);
+
+      // Verify only the valid skills were synced
+      const allSkills = await findAllTestSkills();
+      expect(allSkills).toHaveLength(2);
+    });
+  });
+
   describe("Incremental sync", () => {
     it("should only update changed skills", async () => {
       const tarball1 = createMockTarball(MOCK_SKILLS);
