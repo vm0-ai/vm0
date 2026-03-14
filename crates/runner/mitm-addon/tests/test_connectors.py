@@ -368,7 +368,7 @@ class TestGetServiceHeaders:
             headers = mitm_addon.get_service_headers("run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz")
 
         assert headers == mock_headers
-        mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz")
+        mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz", None)
 
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
