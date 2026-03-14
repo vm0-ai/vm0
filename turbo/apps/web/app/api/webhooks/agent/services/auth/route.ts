@@ -74,13 +74,19 @@ async function refreshExpiredTokens(
       tokenExpiry <= now + REFRESH_BUFFER_SECS
     ) {
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
-      await refreshConnectorAccessToken(
+      const freshToken = await refreshConnectorAccessToken(
         connectorType,
         run.orgId,
         auth.userId,
         secrets,
       );
-      refreshed = true;
+      if (freshToken) {
+        refreshed = true;
+      } else {
+        log.warn(
+          `[${auth.runId}] Failed to refresh ${connectorType} token, using existing`,
+        );
+      }
     }
   }
 

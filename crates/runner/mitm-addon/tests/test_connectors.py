@@ -388,6 +388,55 @@ class TestGetServiceHeaders:
         assert headers == cached_headers
         mock_fetch.assert_not_called()
 
+    def test_cache_hit_with_valid_ttl_returns_cached(self):
+        """Cached entry with expiresAt in the future should be returned without fetching."""
+        cache_key = ("run-1", "api-1")
+        cached_headers = {"Authorization": "Bearer valid-token"}
+        mitm_addon._service_header_cache[cache_key] = {
+            "headers": cached_headers,
+            "expiresAt": time.time() + 3600,  # 1 hour from now
+        }
+
+        with patch.object(mitm_addon, "fetch_service_headers") as mock_fetch:
+            headers = mitm_addon.get_service_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert headers == cached_headers
+        mock_fetch.assert_not_called()
+
+    def test_cache_evicted_when_ttl_expired(self):
+        """Cached entry with expiresAt in the past should trigger a re-fetch."""
+        cache_key = ("run-1", "api-1")
+        mitm_addon._service_header_cache[cache_key] = {
+            "headers": {"Authorization": "Bearer stale-token"},
+            "expiresAt": time.time() - 10,  # expired 10 seconds ago
+        }
+
+        fresh_headers = {"Authorization": "Bearer fresh-token"}
+        mock_result = {"headers": fresh_headers, "expiresAt": time.time() + 3600}
+
+        with patch.object(mitm_addon, "fetch_service_headers", return_value=mock_result) as mock_fetch:
+            headers = mitm_addon.get_service_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert headers == fresh_headers
+        mock_fetch.assert_called_once()
+        # Verify cache was updated with new entry
+        assert mitm_addon._service_header_cache[cache_key]["headers"] == fresh_headers
+
+    def test_cache_with_null_expires_at_never_evicts(self):
+        """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
+        cache_key = ("run-1", "api-1")
+        cached_headers = {"Authorization": "Bearer permanent-token"}
+        mitm_addon._service_header_cache[cache_key] = {
+            "headers": cached_headers,
+            "expiresAt": None,
+        }
+
+        with patch.object(mitm_addon, "fetch_service_headers") as mock_fetch:
+            headers = mitm_addon.get_service_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert headers == cached_headers
+        mock_fetch.assert_not_called()
+
 
 # =========================================================================
 # handle_service_request

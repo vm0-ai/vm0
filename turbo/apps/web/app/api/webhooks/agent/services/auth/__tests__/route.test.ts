@@ -458,5 +458,43 @@ describe("POST /api/webhooks/agent/services/auth", () => {
       const expectedMin = Date.now() + 1700 * 1000; // ~1800s minus small margin
       expect(newExpiry).toBeGreaterThan(expectedMin);
     });
+
+    it("should use existing token when refresh fails", async () => {
+      const expiredAt = new Date(Date.now() - 60 * 1000);
+      await setupNotionConnector({ tokenExpiresAt: expiredAt });
+
+      // Provider returns error
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () =>
+          HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
+        ),
+      );
+
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "old-notion-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${secrets.NOTION_ACCESS_TOKEN}",
+            },
+            secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Falls back to old token
+      expect(data.headers.Authorization).toBe("Bearer old-notion-token");
+      // expiresAt is the original expired value (not cached for long by addon)
+      const expiredEpoch = Math.floor(expiredAt.getTime() / 1000);
+      expect(data.expiresAt).toBe(expiredEpoch);
+    });
   });
 });
