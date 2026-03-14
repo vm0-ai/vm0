@@ -5,6 +5,7 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import {
   skillsResolveContract,
+  skillFrontmatterSchema,
   createErrorResponse,
   getSkillStorageName,
 } from "@vm0/core";
@@ -12,13 +13,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { skills } from "../../../../src/db/schema/skill";
 import { inArray } from "drizzle-orm";
-
-interface SkillFrontmatter {
-  name?: string;
-  description?: string;
-  vm0_secrets?: string[];
-  vm0_vars?: string[];
-}
+import { z } from "zod";
 
 const router = tsr.router(skillsResolveContract, {
   resolve: async ({ body, headers }) => {
@@ -46,7 +41,7 @@ const router = tsr.router(skillsResolveContract, {
       {
         storageName: string;
         versionHash: string;
-        frontmatter: SkillFrontmatter;
+        frontmatter: z.infer<typeof skillFrontmatterSchema>;
       }
     > = {};
 
@@ -56,7 +51,7 @@ const router = tsr.router(skillsResolveContract, {
       if (!row.versionHash) continue; // Skip skills not yet synced
       foundUrls.add(row.url);
 
-      const fm = (row.frontmatter ?? {}) as SkillFrontmatter;
+      const fm = skillFrontmatterSchema.parse(row.frontmatter ?? {});
 
       resolved[row.url] = {
         storageName: getSkillStorageName(row.fullPath),

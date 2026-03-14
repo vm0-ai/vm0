@@ -4,7 +4,7 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-const skillFrontmatterSchema = z.object({
+export const skillFrontmatterSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   vm0_secrets: z.array(z.string()).optional(),
