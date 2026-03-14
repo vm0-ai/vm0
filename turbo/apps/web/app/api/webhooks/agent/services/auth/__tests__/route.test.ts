@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
-import { eq, and } from "drizzle-orm";
 import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  insertTestConnectorSecret,
+  findTestConnectorTokenExpiresAt,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -14,12 +15,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
-import {
-  encryptSecretsMap,
-  encryptSecretValue,
-} from "../../../../../../../src/lib/crypto/secrets-encryption";
-import { connectors } from "../../../../../../../src/db/schema/connector";
-import { secrets as secretsTable } from "../../../../../../../src/db/schema/secret";
+import { encryptSecretsMap } from "../../../../../../../src/lib/crypto/secrets-encryption";
 
 const context = testContext();
 
@@ -219,7 +215,6 @@ describe("POST /api/webhooks/agent/services/auth", () => {
     }) {
       const accessToken = opts.accessToken ?? "old-notion-token";
       const refreshToken = opts.refreshToken ?? "notion-refresh-token";
-      const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
       // Stub Notion OAuth credentials
       vi.stubEnv("NOTION_OAUTH_CLIENT_ID", "test-notion-client-id");
@@ -228,32 +223,27 @@ describe("POST /api/webhooks/agent/services/auth", () => {
       const { reloadEnv } = await import("../../../../../../../src/env");
       reloadEnv();
 
-      // Insert connector record with tokenExpiresAt
-      await globalThis.services.db.insert(connectors).values({
+      // Create connector record with tokenExpiresAt
+      await context.createConnector(user.orgId, {
         userId: user.userId,
-        orgId: user.orgId,
         type: "notion",
         authMethod: "oauth",
         tokenExpiresAt: opts.tokenExpiresAt,
       });
 
       // Insert access token and refresh token secrets
-      await globalThis.services.db.insert(secretsTable).values([
-        {
-          name: "NOTION_ACCESS_TOKEN",
-          encryptedValue: encryptSecretValue(accessToken, encryptionKey),
-          type: "connector",
-          userId: user.userId,
-          orgId: user.orgId,
-        },
-        {
-          name: "NOTION_REFRESH_TOKEN",
-          encryptedValue: encryptSecretValue(refreshToken, encryptionKey),
-          type: "connector",
-          userId: user.userId,
-          orgId: user.orgId,
-        },
-      ]);
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "NOTION_ACCESS_TOKEN",
+        accessToken,
+      );
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "NOTION_REFRESH_TOKEN",
+        refreshToken,
+      );
 
       return { accessToken, refreshToken };
     }
@@ -457,20 +447,14 @@ describe("POST /api/webhooks/agent/services/auth", () => {
       );
 
       // Verify tokenExpiresAt was updated in the database
-      const [connector] = await globalThis.services.db
-        .select({ tokenExpiresAt: connectors.tokenExpiresAt })
-        .from(connectors)
-        .where(
-          and(
-            eq(connectors.orgId, user.orgId),
-            eq(connectors.userId, user.userId),
-            eq(connectors.type, "notion"),
-          ),
-        )
-        .limit(1);
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.orgId,
+        "notion",
+      );
 
-      expect(connector).toBeDefined();
-      const newExpiry = connector!.tokenExpiresAt!.getTime();
+      expect(tokenExpiresAt).toBeDefined();
+      expect(tokenExpiresAt).not.toBeNull();
+      const newExpiry = tokenExpiresAt!.getTime();
       const expectedMin = Date.now() + 1700 * 1000; // ~1800s minus small margin
       expect(newExpiry).toBeGreaterThan(expectedMin);
     });

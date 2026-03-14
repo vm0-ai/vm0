@@ -205,7 +205,12 @@ interface TestContext {
   ): Promise<{ id: string; name: string; orgId: string }>;
   createConnector(
     orgId: string,
-    options: { userId: string; type?: string; authMethod?: string },
+    options: {
+      userId: string;
+      type?: string;
+      authMethod?: string;
+      tokenExpiresAt?: Date | null;
+    },
   ): Promise<{ id: string; type: string }>;
 }
 
@@ -630,7 +635,12 @@ export function testContext(): TestContext {
    */
   async function createConnector(
     orgId: string,
-    options: { userId: string; type?: string; authMethod?: string },
+    options: {
+      userId: string;
+      type?: string;
+      authMethod?: string;
+      tokenExpiresAt?: Date | null;
+    },
   ): Promise<{ id: string; type: string }> {
     const { userId, type = "github", authMethod = "oauth" } = options;
 
@@ -643,6 +653,7 @@ export function testContext(): TestContext {
         orgId,
         type,
         authMethod,
+        tokenExpiresAt: options.tokenExpiresAt ?? undefined,
       })
       .returning();
 

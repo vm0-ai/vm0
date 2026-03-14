@@ -1809,6 +1809,26 @@ export async function findTestConnectorTokenExpiresAt(
 }
 
 /**
+ * Insert an encrypted connector secret into the database.
+ * Used for setting up test state (e.g., access tokens, refresh tokens) without going through the OAuth flow.
+ */
+export async function insertTestConnectorSecret(
+  orgId: string,
+  userId: string,
+  name: string,
+  value: string,
+): Promise<void> {
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  await globalThis.services.db.insert(secrets).values({
+    name,
+    encryptedValue: encryptSecretValue(value, encryptionKey),
+    type: "connector",
+    userId,
+    orgId,
+  });
+}
+
+/**
  * Generate a unique session code for testing (format: XXXX-XXXX, max 9 chars)
  */
 function generateTestSessionCode(): string {
