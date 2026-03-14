@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.108.1](https://github.com/vm0-ai/vm0/compare/web-v12.108.0...web-v12.108.1) (2026-03-14)
+
+
+### Bug Fixes
+
+* **connector:** update token expiry after oauth refresh with accurate expires_in ([#4799](https://github.com/vm0-ai/vm0/issues/4799)) ([8bcd794](https://github.com/vm0-ai/vm0/commit/8bcd794beeba60763441ca2440a20a3de31157e9))
+* skip malformed frontmatter in sync-skills instead of crashing ([#4804](https://github.com/vm0-ai/vm0/issues/4804)) ([b3a74c9](https://github.com/vm0-ai/vm0/commit/b3a74c93c11af2e6b14698115aed700c00e2c8b9)), closes [#4803](https://github.com/vm0-ai/vm0/issues/4803)
+
 ## [12.108.0](https://github.com/vm0-ai/vm0/compare/web-v12.107.0...web-v12.108.0) (2026-03-14)
 
 
