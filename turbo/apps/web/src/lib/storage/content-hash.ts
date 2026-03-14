@@ -40,7 +40,7 @@ export function isValidVersionPrefix(prefix: string): boolean {
  * File entry with pre-computed hash (no content needed)
  * Used for direct upload flow where client computes hashes
  */
-interface FileEntryWithHash {
+export interface FileEntryWithHash {
   /** Relative path within the storage */
   path: string;
   /** SHA-256 hash of file content (computed by client) */
@@ -87,5 +87,30 @@ export function computeContentHashFromHashes(
 
   // Include storageId prefix and combine with file entries
   const combined = `storage:${storageId}\n${entries.join("\n")}`;
+  return createHash("sha256").update(combined).digest("hex");
+}
+
+/**
+ * Compute content-addressable hash for a system skill.
+ *
+ * Uses a fixed prefix (skill URL) instead of storageId so the same
+ * skill content always produces the same hash across environments.
+ *
+ * @param skillUrl Canonical GitHub tree URL for the skill
+ * @param files Array of file entries with path and pre-computed hash
+ * @returns 64-character lowercase hexadecimal SHA-256 hash
+ */
+export function computeSystemSkillHash(
+  skillUrl: string,
+  files: FileEntryWithHash[],
+): string {
+  if (files.length === 0) {
+    return createHash("sha256")
+      .update(`system-skill:${skillUrl}\n`)
+      .digest("hex");
+  }
+
+  const entries = files.map((file) => `${file.path}:${file.hash}`).sort();
+  const combined = `system-skill:${skillUrl}\n${entries.join("\n")}`;
   return createHash("sha256").update(combined).digest("hex");
 }

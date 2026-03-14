@@ -431,6 +431,9 @@ importers:
       svix:
         specifier: ^1.84.1
         version: 1.84.1
+      tar:
+        specifier: ^7.5.11
+        version: 7.5.11
       zod:
         specifier: ^4.3.6
         version: 4.3.6

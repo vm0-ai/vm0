@@ -23,6 +23,7 @@ import { runnerJobQueue } from "../db/schema/runner-job-queue";
 import { composeJobs } from "../db/schema/compose-job";
 import { exportJobs } from "../db/schema/export-job";
 import { storages, storageVersions } from "../db/schema/storage";
+import { skills } from "../db/schema/skill";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackComposeRequests } from "../db/schema/slack-compose-request";
 import { slackInstallations } from "../db/schema/slack-installation";
@@ -48,7 +49,11 @@ import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecretsMap } from "../lib/crypto/secrets-encryption";
-import { VOLUME_ORG_USER_ID, type StoredExecutionContext } from "@vm0/core";
+import {
+  VOLUME_ORG_USER_ID,
+  SYSTEM_ORG_ID,
+  type StoredExecutionContext,
+} from "@vm0/core";
 import { skills } from "../db/schema/skill";
 
 // Route handlers - imported here so callers don't need to pass them
@@ -3151,4 +3156,45 @@ export async function seedTestSkill(
     })
     .returning();
   return row;
+}
+
+/**
+ * Delete all skills and system storages.
+ * Used for test isolation in cron/sync-skills tests.
+ */
+export async function clearSkillsData(): Promise<void> {
+  initServices();
+  await globalThis.services.db.delete(skills);
+  await globalThis.services.db
+    .delete(storages)
+    .where(eq(storages.orgId, SYSTEM_ORG_ID));
+}
+
+/**
+ * Find a skill by its canonical URL.
+ */
+export async function findTestSkillByUrl(url: string) {
+  const [skill] = await globalThis.services.db
+    .select()
+    .from(skills)
+    .where(eq(skills.url, url))
+    .limit(1);
+  return skill ?? null;
+}
+
+/**
+ * Get all skills from the database.
+ */
+export async function findAllTestSkills() {
+  return globalThis.services.db.select().from(skills);
+}
+
+/**
+ * Get all system storages (orgId = SYSTEM_ORG_ID).
+ */
+export async function findTestSystemStorages() {
+  return globalThis.services.db
+    .select()
+    .from(storages)
+    .where(eq(storages.orgId, SYSTEM_ORG_ID));
 }
