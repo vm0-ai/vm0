@@ -86,24 +86,27 @@ Review new comments for:
 - **If blocked or need clarification**: Post comment explaining the situation, add "pending" label, and exit
 - **If intermediate checkpoint**: Post progress update comment, add "pending" label, and exit (optional)
 
-### Step 8: Create PR and Verify CI Pipeline
+### Step 8: Create PR, Review, and Verify CI Pipeline
 
 1. Push branch and create Pull Request
 
-2. Run `/pr-check` skill to monitor and fix CI pipeline
+2. Run `/pr-review-loop` skill to perform a full code review and fix cycle
+   - The pr-review-loop skill will review the PR, post comments, fix issues, and re-review until LGTM
+
+3. Run `/pr-check` skill to monitor and fix CI pipeline
    - The pr-check skill will auto-fix lint/format issues
    - If type or test errors occur, pr-check will exit with details for manual intervention
 
-3. **If pr-check completes successfully**: Post comment to issue:
+4. **If both pr-review-loop and pr-check complete successfully**: Post comment to issue:
    ```bash
    gh issue comment {issue-id} --body "Work completed. PR created: {pr-url}
 
-   All CI checks passing"
+   Code review passed and all CI checks passing."
    ```
 
-4. **If pr-check exits with manual intervention required**: Add "pending" label and exit
+5. **If pr-review-loop or pr-check exits with manual intervention required**: Add "pending" label and exit
 
-5. Keep issue open (user will close it after merging PR)
+6. Keep issue open (user will close it after merging PR)
 
 ## Label Management
 
