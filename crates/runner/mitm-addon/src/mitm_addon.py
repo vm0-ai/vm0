@@ -240,11 +240,19 @@ def match_service_request(url: str, method: str, vm_services: list | None) -> Se
     return None
 
 
-def fetch_service_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str) -> dict:
-    """Resolve auth headers via server-side decryption."""
+def fetch_service_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
+                          secret_connector_map: dict | None = None) -> dict:
+    """Resolve auth headers via server-side decryption.
+
+    When secret_connector_map is provided, the auth endpoint can refresh
+    expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
+    """
     api_url = get_api_url()
     url = f"{api_url}/api/webhooks/agent/services/auth"
-    data = json.dumps({"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}).encode()
+    body: dict = {"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}
+    if secret_connector_map:
+        body["secretConnectorMap"] = secret_connector_map
+    data = json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, headers={
         "Authorization": f"Bearer {sandbox_token}",
         "Content-Type": "application/json",
@@ -255,20 +263,26 @@ def fetch_service_headers(encrypted_secrets: str, auth_headers: dict, sandbox_to
     return json.loads(resp.read())
 
 
-def get_service_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict, sandbox_token: str) -> dict:
-    """Get service auth headers with caching.
+def get_service_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict,
+                        sandbox_token: str, secret_connector_map: dict | None = None) -> dict:
+    """Get service auth headers with TTL-based caching.
 
-    Cache is evicted when the run is removed from the registry (see
-    load_registry) or on 401 response (see response handler).
+    Cache is evicted when:
+    - The run is removed from the registry (see load_registry)
+    - A 401 response is received (see response handler)
+    - The expiresAt timestamp from the auth endpoint has passed
     """
     cache_key = (run_id, api_id)
     cached = _service_header_cache.get(cache_key)
     if cached:
-        return cached["headers"]
+        expires_at = cached.get("expiresAt")
+        if expires_at is None or time.time() < expires_at:
+            return cached["headers"]
+        # Token expired — evict and re-fetch
 
-    result = fetch_service_headers(encrypted_secrets, auth_headers, sandbox_token)
+    result = fetch_service_headers(encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
     headers = result["headers"]
-    _service_header_cache[cache_key] = {"headers": headers}
+    _service_header_cache[cache_key] = {"headers": headers, "expiresAt": result.get("expiresAt")}
     return headers
 
 
@@ -281,6 +295,7 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, 
     sandbox_token = vm_info.get("sandboxToken", "")
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
+    secret_connector_map = vm_info.get("secretConnectorMap")
 
     if not encrypted_secrets:
         ctx.log.error(f"[{run_id}] No encryptedSecrets for service {service_base}")
@@ -295,7 +310,7 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, 
         return
 
     try:
-        headers = get_service_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token)
+        headers = get_service_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
     except Exception as e:
         ctx.log.error(f"[{run_id}] Service {service_base} header fetch failed: {e}")
         flow.metadata["firewall_action"] = "DENY"

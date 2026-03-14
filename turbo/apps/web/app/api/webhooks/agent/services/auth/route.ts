@@ -1,26 +1,137 @@
 import { NextResponse } from "next/server";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifySandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
+import type { SandboxAuth } from "../../../../../../src/lib/auth/sandbox-token";
 import { decryptSecretsMap } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { logger } from "../../../../../../src/lib/logger";
+import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import {
+  refreshConnectorAccessToken,
+  getConnectorExpiry,
+} from "../../../../../../src/lib/connector/connector-service";
 
 const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),
   authHeaders: z.record(z.string(), z.string()),
+  secretConnectorMap: z.record(z.string(), z.string()).optional(),
 });
 
 const log = logger("webhook:service-auth");
 
 /**
+ * Refresh expired OAuth tokens referenced by auth templates.
+ * Mutates `secrets` in place with fresh token values.
+ * Returns the earliest expiry timestamp (epoch seconds) or null if all are non-expiring.
+ */
+async function refreshExpiredTokens(
+  auth: SandboxAuth,
+  secrets: Record<string, string>,
+  secretConnectorMap: Record<string, string>,
+  referencedKeys: Set<string>,
+): Promise<number | null> {
+  // Find which referenced secrets are refreshable OAuth tokens
+  const refreshable = new Map<string, string>();
+  for (const key of referencedKeys) {
+    const connectorType = secretConnectorMap[key];
+    if (connectorType) refreshable.set(key, connectorType);
+  }
+  if (refreshable.size === 0) return null;
+
+  // Look up orgId from runId
+  const [run] = await globalThis.services.db
+    .select({ orgId: agentRuns.orgId })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.id, auth.runId), eq(agentRuns.userId, auth.userId)))
+    .limit(1);
+
+  if (!run) {
+    log.warn(`[${auth.runId}] Run not found for token refresh`);
+    return null;
+  }
+
+  const connectorTypes = [...new Set(refreshable.values())];
+  const expiryMap = await getConnectorExpiry(
+    run.orgId,
+    auth.userId,
+    connectorTypes,
+  );
+
+  const now = Math.floor(Date.now() / 1000);
+  let earliestExpiry: number | null = null;
+
+  for (const connectorType of connectorTypes) {
+    const tokenExpiry = expiryMap.get(connectorType);
+
+    if (
+      tokenExpiry !== undefined &&
+      tokenExpiry !== null &&
+      tokenExpiry <= now
+    ) {
+      // Token expired — refresh
+      log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
+      await refreshConnectorAccessToken(
+        connectorType,
+        run.orgId,
+        auth.userId,
+        secrets,
+      );
+      // After refresh, tokenExpiresAt is ~55 min from now
+      const newExpiry = now + 55 * 60;
+      earliestExpiry =
+        earliestExpiry === null
+          ? newExpiry
+          : Math.min(earliestExpiry, newExpiry);
+    } else if (tokenExpiry !== undefined && tokenExpiry !== null) {
+      // Token still valid — track expiry for cache TTL
+      earliestExpiry =
+        earliestExpiry === null
+          ? tokenExpiry
+          : Math.min(earliestExpiry, tokenExpiry);
+    }
+    // tokenExpiry null/undefined = non-expiring or not found, no TTL needed
+  }
+
+  return earliestExpiry;
+}
+
+/**
+ * Resolve ${secrets.XXX} templates with decrypted secret values.
+ */
+function resolveTemplates(
+  authHeaders: Record<string, string>,
+  secrets: Record<string, string>,
+  runId: string,
+): Record<string, string> {
+  const resolved: Record<string, string> = {};
+  for (const [name, template] of Object.entries(authHeaders)) {
+    resolved[name] = template.replace(
+      /\$\{secrets\.([^}]+)\}/g,
+      (_match, key: string) => {
+        if (!(key in secrets)) {
+          log.warn(`[${runId}] No secret value for "${key}" in template`);
+          return "";
+        }
+        return secrets[key] ?? "";
+      },
+    );
+  }
+  return resolved;
+}
+
+/**
  * POST /api/webhooks/agent/services/auth
  *
- * Pure decrypter/template resolver for service auth headers.
+ * Decrypter/template resolver for service auth headers.
  * Called by the mitmproxy addon when it intercepts a service-matched request.
  *
+ * When secretConnectorMap is provided, expired OAuth tokens are refreshed
+ * on demand and an expiresAt timestamp is returned for addon-side TTL caching.
+ *
  * Auth: Sandbox JWT
- * Body: { encryptedSecrets: string, authHeaders: Record<string, string> }
- * Response: { headers: Record<string, string> }
+ * Body: { encryptedSecrets, authHeaders, secretConnectorMap? }
+ * Response: { headers, expiresAt? }
  */
 export async function POST(request: Request) {
   initServices();
@@ -65,7 +176,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { encryptedSecrets, authHeaders } = parsed.data;
+  const { encryptedSecrets, authHeaders, secretConnectorMap } = parsed.data;
 
   // Decrypt secrets
   let secrets: Record<string, string> | null;
@@ -84,20 +195,27 @@ export async function POST(request: Request) {
     );
   }
 
-  // Resolve ${secrets.XXX} templates with decrypted values
-  const resolved: Record<string, string> = {};
-  for (const [name, template] of Object.entries(authHeaders)) {
-    resolved[name] = template.replace(
-      /\$\{secrets\.([^}]+)\}/g,
-      (_match, key: string) => {
-        if (!(key in secrets)) {
-          log.warn(`[${auth.runId}] No secret value for "${key}" in template`);
-          return "";
-        }
-        return secrets[key] ?? "";
-      },
+  // Collect which secret keys are referenced in auth templates
+  const referencedKeys = new Set<string>();
+  for (const template of Object.values(authHeaders)) {
+    for (const match of template.matchAll(/\$\{secrets\.([^}]+)\}/g)) {
+      if (match[1]) referencedKeys.add(match[1]);
+    }
+  }
+
+  // Refresh expired OAuth tokens (mutates secrets map with fresh values)
+  let expiresAt: number | null = null;
+  if (secretConnectorMap) {
+    expiresAt = await refreshExpiredTokens(
+      auth,
+      secrets,
+      secretConnectorMap,
+      referencedKeys,
     );
   }
 
-  return NextResponse.json({ headers: resolved });
+  // Resolve templates with (possibly refreshed) secret values
+  const headers = resolveTemplates(authHeaders, secrets, auth.runId);
+
+  return NextResponse.json({ headers, expiresAt });
 }

@@ -519,6 +519,39 @@ export async function refreshConnectorAccessToken(
 }
 
 /**
+ * Get tokenExpiresAt for connectors matching the given types.
+ * Returns a map of connector type → expiry timestamp (epoch seconds), or null if non-expiring.
+ */
+export async function getConnectorExpiry(
+  orgId: string,
+  userId: string,
+  connectorTypes: string[],
+): Promise<Map<string, number | null>> {
+  const result = new Map<string, number | null>();
+  if (connectorTypes.length === 0) return result;
+
+  const rows = await globalThis.services.db
+    .select({
+      type: connectors.type,
+      tokenExpiresAt: connectors.tokenExpiresAt,
+    })
+    .from(connectors)
+    .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
+
+  for (const row of rows) {
+    if (connectorTypes.includes(row.type)) {
+      result.set(
+        row.type,
+        row.tokenExpiresAt
+          ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
+          : null,
+      );
+    }
+  }
+  return result;
+}
+
+/**
  * Create or update a connector secret (e.g., refresh token)
  */
 async function upsertConnectorSecret(
