@@ -20,6 +20,9 @@ const bodySchema = z.object({
 
 const log = logger("webhook:service-auth");
 
+/** Matches ${secrets.KEY_NAME} template placeholders in auth header values. */
+const SECRET_TEMPLATE_RE = /\$\{secrets\.([^}]+)\}/g;
+
 /**
  * Refresh expired OAuth tokens referenced by auth templates.
  * Mutates `secrets` in place with fresh token values.
@@ -109,7 +112,7 @@ function resolveTemplates(
   const resolved: Record<string, string> = {};
   for (const [name, template] of Object.entries(authHeaders)) {
     resolved[name] = template.replace(
-      /\$\{secrets\.([^}]+)\}/g,
+      SECRET_TEMPLATE_RE,
       (_match, key: string) => {
         if (!(key in secrets)) {
           log.warn(`[${runId}] No secret value for "${key}" in template`);
@@ -200,7 +203,7 @@ export async function POST(request: Request) {
   // Collect which secret keys are referenced in auth templates
   const referencedKeys = new Set<string>();
   for (const template of Object.values(authHeaders)) {
-    for (const match of template.matchAll(/\$\{secrets\.([^}]+)\}/g)) {
+    for (const match of template.matchAll(SECRET_TEMPLATE_RE)) {
       if (match[1]) referencedKeys.add(match[1]);
     }
   }
