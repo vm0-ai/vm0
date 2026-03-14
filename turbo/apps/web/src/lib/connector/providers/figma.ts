@@ -20,6 +20,7 @@ interface FigmaTokenResult {
 interface FigmaRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -115,6 +116,7 @@ export async function exchangeFigmaCode(
  * Refresh a Figma access token using the refresh token.
  * Figma uses Basic Auth for token requests.
  * Returns new access token and new refresh token (both must be stored).
+ * Access token expires_in: ~7776000s (90 days). Ref: https://developers.figma.com/docs/rest-api/authentication/
  */
 export async function refreshFigmaToken(
   clientId: string,
@@ -150,6 +152,7 @@ export async function refreshFigmaToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -166,6 +169,7 @@ export async function refreshFigmaToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

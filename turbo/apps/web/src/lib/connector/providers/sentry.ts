@@ -18,6 +18,7 @@ interface SentryTokenResult {
 interface SentryRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -123,6 +124,7 @@ export async function exchangeSentryCode(
 
 /**
  * Refresh a Sentry access token using the refresh token.
+ * Access token expires_in: ~2592000s (30 days). Ref: https://docs.sentry.io/api/auth/
  */
 export async function refreshSentryToken(
   clientId: string,
@@ -155,6 +157,7 @@ export async function refreshSentryToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -171,6 +174,7 @@ export async function refreshSentryToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

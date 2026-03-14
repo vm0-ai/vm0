@@ -20,6 +20,7 @@ interface StravaTokenResult {
 interface StravaRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -130,6 +131,7 @@ export async function exchangeStravaCode(
 /**
  * Refresh a Strava access token using the refresh token.
  * Strava rotates refresh tokens — both must be stored.
+ * Access token expires_in: 21600s (6 hours). Ref: https://developers.strava.com/docs/authentication/
  */
 export async function refreshStravaToken(
   clientId: string,
@@ -162,6 +164,7 @@ export async function refreshStravaToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -178,6 +181,7 @@ export async function refreshStravaToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

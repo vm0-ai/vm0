@@ -19,6 +19,7 @@ interface StripeTokenResult {
 interface StripeRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -113,6 +114,7 @@ export async function exchangeStripeCode(
 
 /**
  * Refresh a Stripe access token using the refresh token.
+ * Access token expires_in: 3600s (1 hour). Ref: https://docs.stripe.com/stripe-apps/api-authentication/oauth
  */
 export async function refreshStripeToken(
   _clientId: string,
@@ -144,6 +146,7 @@ export async function refreshStripeToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -160,6 +163,7 @@ export async function refreshStripeToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

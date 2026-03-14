@@ -20,6 +20,7 @@ interface MicrosoftTokenResult {
 interface MicrosoftRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -119,6 +120,7 @@ export async function exchangeMicrosoftOAuthCode(
  * Refresh a Microsoft access token using the refresh token.
  * Works for any Microsoft connector (Outlook Calendar, etc.).
  * Microsoft rotates refresh tokens on each refresh.
+ * Access token expires_in: 3600-5400s (~75 min). Ref: https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
  */
 export async function refreshMicrosoftToken(
   connectorType: ConnectorType,
@@ -154,6 +156,7 @@ export async function refreshMicrosoftToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -170,6 +173,7 @@ export async function refreshMicrosoftToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

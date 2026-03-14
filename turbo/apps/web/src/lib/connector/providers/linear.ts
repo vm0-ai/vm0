@@ -22,6 +22,7 @@ interface LinearTokenResult {
 interface LinearRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -115,6 +116,7 @@ export async function exchangeLinearCode(
 /**
  * Refresh a Linear access token using the refresh token.
  * Returns new access token and new refresh token (both must be stored).
+ * Access token expires_in: 86399s (24 hours). Ref: https://developers.linear.app/docs/oauth/authentication
  */
 export async function refreshLinearToken(
   clientId: string,
@@ -147,6 +149,7 @@ export async function refreshLinearToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -163,6 +166,7 @@ export async function refreshLinearToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

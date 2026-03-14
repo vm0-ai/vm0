@@ -18,6 +18,7 @@ interface MondayTokenResult {
 interface MondayRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 const MONDAY_GRAPHQL_URL = "https://api.monday.com/v2";
@@ -111,6 +112,7 @@ export async function exchangeMondayCode(
 
 /**
  * Refresh a Monday.com access token.
+ * Note: Monday.com tokens reportedly do not expire. expires_in may not be returned. Ref: https://developer.monday.com/apps/docs/oauth
  */
 export async function refreshMondayToken(
   clientId: string,
@@ -143,6 +145,7 @@ export async function refreshMondayToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -159,6 +162,7 @@ export async function refreshMondayToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

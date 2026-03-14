@@ -489,6 +489,20 @@ export async function refreshConnectorAccessToken(
       );
     }
 
+    // Update tokenExpiresAt so subsequent expiry checks are accurate
+    const expiresInSec = result.expiresIn ?? 3600; // default 1 hour
+    const expiresAt = new Date(Date.now() + expiresInSec * 1000);
+    await globalThis.services.db
+      .update(connectors)
+      .set({ tokenExpiresAt: expiresAt, updatedAt: new Date() })
+      .where(
+        and(
+          eq(connectors.orgId, orgId),
+          eq(connectors.userId, userId),
+          eq(connectors.type, connectorType),
+        ),
+      );
+
     // Update in-memory secrets map so subsequent mapping uses fresh token
     connectorSecrets[accessTokenSecret] = result.accessToken;
     if (result.refreshToken) {

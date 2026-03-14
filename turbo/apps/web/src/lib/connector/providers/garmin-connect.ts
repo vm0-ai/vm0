@@ -20,6 +20,7 @@ interface GarminConnectTokenResult {
 interface GarminConnectRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -151,6 +152,7 @@ export async function exchangeGarminConnectCode(
  * Refresh a Garmin Connect access token using the refresh token.
  * PKCE is not required for refresh — only client credentials and refresh token.
  * Garmin rotates refresh tokens — both must be stored.
+ * Access token expires_in: 86400s (1 day). Ref: https://developerportal.garmin.com
  */
 export async function refreshGarminConnectToken(
   clientId: string,
@@ -183,6 +185,7 @@ export async function refreshGarminConnectToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -199,6 +202,7 @@ export async function refreshGarminConnectToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

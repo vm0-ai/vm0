@@ -21,6 +21,7 @@ interface AhrefsTokenResult {
 interface AhrefsRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -112,6 +113,7 @@ export async function exchangeAhrefsCode(
 
 /**
  * Refresh an Ahrefs access token using the refresh token.
+ * Access token expires_in: returned but value undocumented. Ref: https://docs.ahrefs.com/docs/ahrefs-connect/developers/oauth-guide
  */
 export async function refreshAhrefsToken(
   clientId: string,
@@ -144,6 +146,7 @@ export async function refreshAhrefsToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -160,6 +163,7 @@ export async function refreshAhrefsToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

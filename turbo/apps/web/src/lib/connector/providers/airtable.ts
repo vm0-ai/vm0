@@ -20,6 +20,7 @@ interface AirtableTokenResult {
 interface AirtableRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -153,6 +154,7 @@ export async function exchangeAirtableCode(
 /**
  * Refresh an Airtable access token using the refresh token.
  * Airtable uses Basic auth for refresh as well.
+ * Access token expires_in: 3600s (1 hour). Ref: https://airtable.com/developers/web/api/oauth-reference
  */
 export async function refreshAirtableToken(
   clientId: string,
@@ -186,6 +188,7 @@ export async function refreshAirtableToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -202,6 +205,7 @@ export async function refreshAirtableToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

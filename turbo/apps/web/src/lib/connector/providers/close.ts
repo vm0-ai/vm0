@@ -18,6 +18,7 @@ interface CloseTokenResult {
 interface CloseRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -113,6 +114,7 @@ export async function exchangeCloseCode(
 
 /**
  * Refresh a Close access token using the refresh token.
+ * Access token expires_in: 3600s (1 hour). Ref: https://developer.close.com/topics/authentication-oauth2/
  */
 export async function refreshCloseToken(
   clientId: string,
@@ -145,6 +147,7 @@ export async function refreshCloseToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -161,6 +164,7 @@ export async function refreshCloseToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

@@ -20,6 +20,7 @@ interface XeroTokenResult {
 interface XeroRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -113,6 +114,7 @@ export async function exchangeXeroCode(
 /**
  * Refresh a Xero access token using the refresh token.
  * Xero rotates both access and refresh tokens on each refresh.
+ * Access token expires_in: 1800s (30 min). Ref: https://developer.xero.com/documentation/guides/oauth2/auth-flow/
  */
 export async function refreshXeroToken(
   clientId: string,
@@ -145,6 +147,7 @@ export async function refreshXeroToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -161,6 +164,7 @@ export async function refreshXeroToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

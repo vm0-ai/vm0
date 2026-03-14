@@ -18,6 +18,7 @@ interface NotionTokenResult {
 interface NotionRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -129,6 +130,7 @@ export async function exchangeNotionCode(
 /**
  * Refresh a Notion access token using the refresh token.
  * Returns new access token and new refresh token (both must be stored).
+ * Note: Notion does not return expires_in. Token lifetime ~1 hour (undocumented). Ref: https://developers.notion.com/reference/refresh-a-token
  */
 export async function refreshNotionToken(
   clientId: string,
@@ -160,6 +162,7 @@ export async function refreshNotionToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -176,6 +179,7 @@ export async function refreshNotionToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

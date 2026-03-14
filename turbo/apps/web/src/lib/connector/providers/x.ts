@@ -21,6 +21,7 @@ interface XTokenResult {
 interface XRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -86,6 +87,7 @@ export async function buildXAuthorizationUrl(
 /**
  * Refresh an X access token using the refresh token.
  * PKCE is not required for refresh — only client credentials and refresh token.
+ * Access token expires_in: 7200s (2 hours). Ref: https://developer.twitter.com/en/docs/authentication/oauth-2-0/authorization-code
  */
 export async function refreshXToken(
   clientId: string,
@@ -121,6 +123,7 @@ export async function refreshXToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -137,6 +140,7 @@ export async function refreshXToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

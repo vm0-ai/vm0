@@ -20,6 +20,7 @@ interface NeonTokenResult {
 interface NeonRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -113,6 +114,7 @@ export async function exchangeNeonCode(
 
 /**
  * Refresh an expired Neon access token using the refresh token.
+ * Access token expires_in: expected (OIDC-compliant) but not explicitly documented. Ref: https://neon.com/docs/guides/oauth-integration
  */
 export async function refreshNeonToken(
   clientId: string,
@@ -145,6 +147,7 @@ export async function refreshNeonToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -161,6 +164,7 @@ export async function refreshNeonToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

@@ -20,6 +20,7 @@ interface PosthogTokenResult {
 interface PosthogRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -110,6 +111,7 @@ export async function exchangePosthogCode(
 
 /**
  * Refresh a PostHog access token using the refresh token.
+ * Access token expires_in: 36000s (10 hours). Ref: https://posthog.com/handbook/engineering/oauth-development-guide
  */
 export async function refreshPosthogToken(
   clientId: string,
@@ -142,6 +144,7 @@ export async function refreshPosthogToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -158,6 +161,7 @@ export async function refreshPosthogToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

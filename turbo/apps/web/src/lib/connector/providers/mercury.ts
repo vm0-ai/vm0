@@ -20,6 +20,7 @@ interface MercuryTokenResult {
 interface MercuryRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -112,6 +113,7 @@ export async function exchangeMercuryCode(
 /**
  * Refresh a Mercury access token using the refresh token.
  * Returns new access token and new refresh token (both must be stored).
+ * Access token expires_in: 3600s (1 hour). Ref: https://docs.mercury.com/reference/obtain-the-tokens
  */
 export async function refreshMercuryToken(
   clientId: string,
@@ -144,6 +146,7 @@ export async function refreshMercuryToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -160,6 +163,7 @@ export async function refreshMercuryToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

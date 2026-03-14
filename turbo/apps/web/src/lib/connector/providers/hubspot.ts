@@ -20,6 +20,7 @@ interface HubSpotTokenResult {
 interface HubSpotRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -108,6 +109,7 @@ export async function exchangeHubSpotCode(
 
 /**
  * Refresh a HubSpot access token using the refresh token.
+ * Access token expires_in: 1800s (30 min). Ref: https://developers.hubspot.com/docs/api-reference/auth-oauth-v1/guide
  */
 export async function refreshHubSpotToken(
   clientId: string,
@@ -140,6 +142,7 @@ export async function refreshHubSpotToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -156,6 +159,7 @@ export async function refreshHubSpotToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

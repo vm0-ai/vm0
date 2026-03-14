@@ -20,6 +20,7 @@ interface DocuSignTokenResult {
 interface DocuSignRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -158,6 +159,7 @@ export async function exchangeDocuSignCode(
  * Refresh a DocuSign access token using the refresh token.
  * DocuSign uses Basic Auth for token requests. PKCE is not required for refresh.
  * Returns new access token and new refresh token (both must be stored).
+ * Access token expires_in: 28800s (8 hours) for auth code grant. Ref: https://developers.docusign.com/platform/auth/reference/obtain-access-token/
  */
 export async function refreshDocuSignToken(
   clientId: string,
@@ -193,6 +195,7 @@ export async function refreshDocuSignToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -209,6 +212,7 @@ export async function refreshDocuSignToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

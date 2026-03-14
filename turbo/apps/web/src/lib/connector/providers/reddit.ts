@@ -152,11 +152,13 @@ async function fetchRedditUserInfo(
 interface RedditRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
  * Refresh a Reddit access token using the refresh token.
  * Reddit uses Basic Auth (same as token exchange) and may rotate refresh tokens.
+ * Access token expires_in: 3600s (1 hour). Ref: https://github.com/reddit-archive/reddit/wiki/oauth2
  */
 export async function refreshRedditToken(
   clientId: string,
@@ -189,6 +191,7 @@ export async function refreshRedditToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -205,6 +208,7 @@ export async function refreshRedditToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

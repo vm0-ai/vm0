@@ -18,6 +18,7 @@ interface AsanaTokenResult {
 interface AsanaRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -157,6 +158,7 @@ async function fetchAsanaUserInfo(accessToken: string): Promise<{
 
 /**
  * Refresh an Asana access token using the refresh token.
+ * Access token expires_in: 3600s (1 hour). Ref: https://developers.asana.com/docs/oauth
  */
 export async function refreshAsanaToken(
   clientId: string,
@@ -189,6 +191,7 @@ export async function refreshAsanaToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
     })
     .parse(await response.json());
@@ -204,6 +207,7 @@ export async function refreshAsanaToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

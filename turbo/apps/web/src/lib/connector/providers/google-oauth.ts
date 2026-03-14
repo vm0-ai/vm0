@@ -20,6 +20,7 @@ interface GoogleTokenResult {
 interface GoogleRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -120,6 +121,7 @@ export async function exchangeGoogleOAuthCode(
  * Refresh a Google access token using the refresh token.
  * Works for any Google connector (Gmail, Sheets, Docs, Drive).
  * Returns new access token (Google does not rotate refresh tokens).
+ * Access token expires_in: 3600s (1 hour). Ref: https://developers.google.com/identity/protocols/oauth2/web-server
  */
 export async function refreshGoogleToken(
   connectorType: ConnectorType,
@@ -155,6 +157,7 @@ export async function refreshGoogleToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -171,6 +174,7 @@ export async function refreshGoogleToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

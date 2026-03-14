@@ -39,5 +39,9 @@ export interface ProviderHandler {
     clientId: string,
     clientSecret: string,
     refreshToken: string,
-  ): Promise<{ accessToken: string; refreshToken: string | null }>;
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    expiresIn?: number;
+  }>;
 }

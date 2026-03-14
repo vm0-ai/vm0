@@ -21,6 +21,7 @@ interface DropboxTokenResult {
 interface DropboxRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -114,6 +115,7 @@ export async function exchangeDropboxCode(
 /**
  * Refresh a Dropbox access token using the refresh token.
  * Returns new access token (Dropbox does not rotate refresh tokens).
+ * Access token expires_in: 14400s (4 hours). Ref: https://developers.dropbox.com/oauth-guide
  */
 export async function refreshDropboxToken(
   clientId: string,
@@ -146,6 +148,7 @@ export async function refreshDropboxToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -162,6 +165,7 @@ export async function refreshDropboxToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

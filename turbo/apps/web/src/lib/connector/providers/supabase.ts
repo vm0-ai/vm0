@@ -20,6 +20,7 @@ interface SupabaseTokenResult {
 interface SupabaseRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -85,6 +86,7 @@ export async function buildSupabaseAuthorizationUrl(
 /**
  * Refresh a Supabase access token using the refresh token.
  * Supabase uses Basic Auth for token requests. PKCE is not required for refresh.
+ * Access token expires_in: 3600s (1 hour, configurable). Ref: https://supabase.com/docs/guides/auth/oauth-server/oauth-flows
  */
 export async function refreshSupabaseToken(
   clientId: string,
@@ -120,6 +122,7 @@ export async function refreshSupabaseToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -136,6 +139,7 @@ export async function refreshSupabaseToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 

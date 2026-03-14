@@ -20,6 +20,7 @@ interface DeelTokenResult {
 interface DeelRefreshResult {
   accessToken: string;
   refreshToken: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -86,6 +87,7 @@ export async function buildDeelAuthorizationUrl(
  * Refresh a Deel access token using the refresh token.
  * Deel uses Basic Auth for token requests. PKCE is not required for refresh.
  * Returns new access token and new refresh token (both must be stored).
+ * Access token expires_in: 2592000s (30 days). Ref: https://developer.deel.com/docs/oauth2
  */
 export async function refreshDeelToken(
   clientId: string,
@@ -121,6 +123,7 @@ export async function refreshDeelToken(
     .object({
       access_token: z.string().optional(),
       refresh_token: z.string().nullable().optional(),
+      expires_in: z.number().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
@@ -137,6 +140,7 @@ export async function refreshDeelToken(
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
+    expiresIn: data.expires_in,
   };
 }
 
