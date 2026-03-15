@@ -1620,18 +1620,16 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
-          BASE_DIR="\$HOME/.vm0-runner"
-          BIN_DIR="${BASE_DIR}/bin/${JOB_REF}"
-          RUNNER_DIR="${BASE_DIR}/runners/${JOB_REF}"
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            REMOTE="${METAL_USER}@${HOST}"
             echo "Cleaning up ${HOST}..."
-            ssh "$REMOTE" "
-              for svc in \$(systemctl list-units 'vm0-runner-${JOB_REF}-*' --no-legend --plain 2>/dev/null | awk '{print \$1}'); do
-                sudo systemctl stop \$svc || true
+            ssh "${METAL_USER}@${HOST}" bash -s "$JOB_REF" <<'SCRIPT' || true
+              JOB_REF="$1"
+              BASE_DIR="$HOME/.vm0-runner"
+              for svc in $(systemctl list-units "vm0-runner-${JOB_REF}-*" --no-legend --plain 2>/dev/null | awk '{print $1}'); do
+                sudo systemctl stop "$svc" || true
               done
-              rm -rf ${BIN_DIR} ${RUNNER_DIR}
-            " || true
+              rm -rf "${BASE_DIR}/bin/${JOB_REF}" "${BASE_DIR}/runners/${JOB_REF}"
+            SCRIPT
           done
 
   # Build E2B templates (development account)
