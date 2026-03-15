@@ -16,7 +16,7 @@
     "JetBrains Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
 
   /* Sidebar colors - using tokens for dark mode support */
-  --color-sidebar: hsl(var(--gray-0));
+  --color-sidebar: hsl(var(--gray-100));
   --color-sidebar-foreground: hsl(var(--gray-950));
   --color-sidebar-border: hsl(var(--gray-200));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
