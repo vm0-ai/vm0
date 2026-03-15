@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.109.0](https://github.com/vm0-ai/vm0/compare/web-v12.108.1...web-v12.109.0) (2026-03-15)
+
+
+### Features
+
+* **services:** add oauth token refresh and ttl caching to auth endpoint ([#4802](https://github.com/vm0-ai/vm0/issues/4802)) ([eab1747](https://github.com/vm0-ai/vm0/commit/eab17475db94fbbc8e5a4d8317851fb09fef28a9))
+
 ## [12.108.1](https://github.com/vm0-ai/vm0/compare/web-v12.108.0...web-v12.108.1) (2026-03-14)
 
 

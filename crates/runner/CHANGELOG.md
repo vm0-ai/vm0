@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.25.0...runner-rs-v0.26.0) (2026-03-15)
+
+
+### Features
+
+* **services:** add oauth token refresh and ttl caching to auth endpoint ([#4802](https://github.com/vm0-ai/vm0/issues/4802)) ([eab1747](https://github.com/vm0-ai/vm0/commit/eab17475db94fbbc8e5a4d8317851fb09fef28a9))
+
 ## [0.25.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.24.1...runner-rs-v0.25.0) (2026-03-14)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.11.3...sandbox-fc-v0.11.4) (2026-03-15)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** lazy initialization and batched replenishment for overlay pool ([#4603](https://github.com/vm0-ai/vm0/issues/4603)) ([862144b](https://github.com/vm0-ai/vm0/commit/862144bef70fa6e4f61b847bf41aa52ebddbeeb2))
+
 ## [0.11.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.11.2...sandbox-fc-v0.11.3) (2026-03-12)
 
 

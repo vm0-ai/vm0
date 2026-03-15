@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.59.1](https://github.com/vm0-ai/vm0/compare/cli-v9.59.0...cli-v9.59.1) (2026-03-15)
+
+
+### Performance Improvements
+
+* skip unnecessary api calls in compose --json mode ([#4807](https://github.com/vm0-ai/vm0/issues/4807)) ([5569685](https://github.com/vm0-ai/vm0/commit/5569685e4a5c2add6ecdf45d10674cb94cb9bd60)), closes [#4805](https://github.com/vm0-ai/vm0/issues/4805)
+
 ## [9.59.0](https://github.com/vm0-ai/vm0/compare/cli-v9.58.1...cli-v9.59.0) (2026-03-14)
 
 
