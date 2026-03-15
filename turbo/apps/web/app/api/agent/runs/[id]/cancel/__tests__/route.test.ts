@@ -5,8 +5,10 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  createTestCallback,
   findTestQueueEntry,
   findTestRunRecord,
+  findTestRunCallbacks,
   setTestRunStatus,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -112,6 +114,38 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(queued.runId);
       expect(queueEntry).toBeUndefined();
+    });
+  });
+
+  describe("Callback Dispatch on Cancel", () => {
+    it("should dispatch registered callbacks after cancel", async () => {
+      // Create a running run with a registered callback
+      const run = await createTestRun(testComposeId, "Loop iteration");
+      await createTestCallback({
+        runId: run.runId,
+        url: "http://localhost:3000/api/internal/callbacks/schedule/loop",
+        payload: { scheduleId: "test-schedule", intervalSeconds: 60 },
+      });
+
+      // Verify callback is pending before cancel
+      const beforeCallbacks = await findTestRunCallbacks(run.runId);
+      expect(beforeCallbacks).toHaveLength(1);
+      expect(beforeCallbacks[0]!.status).toBe("pending");
+
+      // Cancel the run
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
+        { method: "POST" },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Flush the after() callback which triggers dispatchTerminalSideEffects
+      await context.mocks.flushAfter();
+
+      // Verify callback was dispatched (status changed from "pending")
+      const afterCallbacks = await findTestRunCallbacks(run.runId);
+      expect(afterCallbacks[0]!.status).not.toBe("pending");
     });
   });
 
