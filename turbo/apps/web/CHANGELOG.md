@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.110.0](https://github.com/vm0-ai/vm0/compare/web-v12.109.0...web-v12.110.0) (2026-03-15)
+
+
+### Features
+
+* server-side instruction upload utility for direct S3 write ([#4838](https://github.com/vm0-ai/vm0/issues/4838)) ([5097676](https://github.com/vm0-ai/vm0/commit/5097676007e9e25761a1ad30d2eee3a25ba95ae5))
+
+
+### Bug Fixes
+
+* add heartbeat update during build-and-dispatch-run pipeline ([#4827](https://github.com/vm0-ai/vm0/issues/4827)) ([5b0f605](https://github.com/vm0-ai/vm0/commit/5b0f60555221afec557a7366fa4a46adf43aa3a2))
+* align stale queue drain with per-org concurrency and preserve ttl on re-enqueue ([#4828](https://github.com/vm0-ai/vm0/issues/4828)) ([1a061d9](https://github.com/vm0-ai/vm0/commit/1a061d9bd6f2b8747265a0ef3d62f2179a6f88dd))
+* **web:** add atomic run status transition guards to prevent race conditions ([#4829](https://github.com/vm0-ai/vm0/issues/4829)) ([6f1d29e](https://github.com/vm0-ai/vm0/commit/6f1d29e0324cd6cf857ddd72dd9414c11aa2c34c))
+
+
+### Refactoring
+
+* unify run queue operations from per-user to per-org ([#4837](https://github.com/vm0-ai/vm0/issues/4837)) ([a01526f](https://github.com/vm0-ai/vm0/commit/a01526f04785723dafcad0d2992e79a862247650)), closes [#4832](https://github.com/vm0-ai/vm0/issues/4832)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.65.1
+
 ## [12.109.0](https://github.com/vm0-ai/vm0/compare/web-v12.108.1...web-v12.109.0) (2026-03-15)
 
 

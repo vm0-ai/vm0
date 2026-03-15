@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.65.1](https://github.com/vm0-ai/vm0/compare/core-v8.65.0...core-v8.65.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* **web:** add atomic run status transition guards to prevent race conditions ([#4829](https://github.com/vm0-ai/vm0/issues/4829)) ([6f1d29e](https://github.com/vm0-ai/vm0/commit/6f1d29e0324cd6cf857ddd72dd9414c11aa2c34c))
+
+
+### Refactoring
+
+* extract service expander utilities to @vm0/core ([#4839](https://github.com/vm0-ai/vm0/issues/4839)) ([02d70a5](https://github.com/vm0-ai/vm0/commit/02d70a597bddfef047c43cc83bf49b310335d577))
+
 ## [8.65.0](https://github.com/vm0-ai/vm0/compare/core-v8.64.0...core-v8.65.0) (2026-03-14)
 
 
