@@ -437,6 +437,15 @@ export {
 } from "./services";
 
 export {
+  expandServiceConfigs,
+  resolveServiceConfig,
+  collectAndValidatePermissions,
+  validateRule,
+  validateBaseUrl,
+  type ServiceSelection,
+} from "./service-expander";
+
+export {
   userPreferencesContract,
   userPreferencesResponseSchema,
   updateUserPreferencesRequestSchema,
