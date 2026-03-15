@@ -16,11 +16,11 @@
     "JetBrains Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
 
   /* Sidebar colors - using tokens for dark mode support */
-  --color-sidebar: hsl(var(--gray-50));
+  --color-sidebar: hsl(var(--gray-100));
   --color-sidebar-foreground: hsl(var(--gray-950));
-  --color-sidebar-border: hsl(var(--divider));
-  --color-sidebar-active: hsl(var(--primary-100));
-  --color-sidebar-primary: hsl(var(--primary-800));
+  --color-sidebar-border: hsl(var(--gray-200));
+  --color-sidebar-active: hsl(var(--primary) / 0.95);
+  --color-sidebar-primary: hsl(var(--white));
   --color-sidebar-accent: hsl(var(--gray-100));
 }
 
@@ -39,35 +39,10 @@
   animation: zero-tagline-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Zero app: all grays cool-toned (blue-gray hue 215–220), direct overrides so they always win */
+/* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
-  --gray-0: 215 28% 99%;
-  --gray-50: 215 24% 96%;
-  --gray-100: 215 20% 93%;
-  --gray-200: 215 18% 90%;
-  --gray-300: 215 16% 87%;
-  --gray-400: 215 14% 84%;
-  --gray-500: 215 12% 78%;
-  --gray-600: 218 11% 70%;
-  --gray-700: 218 10% 54%;
-  --gray-800: 218 9% 48%;
-  --gray-900: 218 9% 37%;
-  --gray-950: 220 14% 11%;
-  /* All dividers and borders: same cool gray, light and elegant */
-  --divider: 215 8% 93%;
-  --border: 215 8% 93%;
-  /* Semantic tokens as direct cool values (no var) so they override :root */
-  --background: 215 28% 99%;
-  --card: 0 0% 100%;
-  --muted: 215 20% 93%;
-  --secondary: 215 20% 93%;
-  --sidebar: 215 24% 96%;
-  --sidebar-accent: 215 20% 93%;
-  --background-50: 215 24% 96%;
-  --muted-foreground: 218 9% 48%;
-  /* White card: single border, radius, elegant layered shadow (excludes chat bubbles) */
-  --zero-card-radius: 1rem;
-  --zero-card-border: hsl(220 5% 92%);
+  --zero-card-radius: 0.75rem;
+  --zero-card-border: hsl(var(--border));
   --zero-card-shadow:
     0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025),
     0 8px 24px hsl(220 12% 20% / 0.02);
@@ -81,168 +56,114 @@
     0 16px 40px hsl(220 12% 20% / 0.05);
 }
 
-/* Search bar / text input: cool gray background and border (not warm) */
+/* Search bar / text input */
 .zero-app .zero-search-input {
-  background-color: hsl(220 6% 97%);
-  border-color: hsl(220 5% 92%);
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--border));
 }
 .zero-app .zero-search-input::placeholder {
-  color: hsl(218 9% 48%);
+  color: hsl(var(--muted-foreground));
 }
 .zero-app .zero-search-input:focus {
   border-color: hsl(var(--primary));
   outline: none;
 }
-.dark .zero-app .zero-search-input,
-[data-theme="dark"] .zero-app .zero-search-input {
-  background-color: hsl(220 10% 22%);
-  border-color: hsl(220 8% 26%);
-}
 
-/* Pill/tag (e.g. "Super agent"): cool gray, not warm */
+/* Pill/tag (e.g. status badge, "Super agent") */
 .zero-app .zero-pill {
-  background-color: hsl(220 6% 97%);
-  border-color: hsl(220 5% 92%);
-  color: hsl(218 9% 48%);
+  background-color: hsl(var(--gray-0));
+  border-color: hsl(var(--border) / 0.8);
+  color: hsl(var(--muted-foreground));
 }
 
-/* Zero chip-style gray (tone options, tone hint box, skill tags, Add skill): consistent cool gray */
+/* Zero chip-style gray (tone options, skill tags, Add skill) */
 .zero-app .zero-chip {
-  background-color: hsl(220 6% 97%);
-  border-color: hsl(220 5% 92%);
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--border));
 }
 .zero-app .zero-chip:hover {
-  background-color: hsl(220 5% 94%);
-  border-color: hsl(220 4% 90%);
-}
-.dark .zero-app .zero-chip,
-[data-theme="dark"] .zero-app .zero-chip {
-  background-color: hsl(220 10% 22%);
-  border-color: hsl(220 8% 26%);
-}
-.dark .zero-app .zero-chip:hover,
-[data-theme="dark"] .zero-app .zero-chip:hover {
-  background-color: hsl(220 10% 26%);
-  border-color: hsl(220 8% 30%);
+  background-color: hsl(var(--gray-100));
+  border-color: hsl(var(--gray-200));
 }
 
-/* Zero tabs (e.g. All agents / For you / For team): color only — neutral gray track, white active, inactive transparent */
+/* Zero tabs (e.g. All agents / For you / For team) */
 .zero-app .zero-tabs {
-  background-color: hsl(220 6% 93%);
+  background-color: hsl(var(--gray-100));
 }
 .zero-app .zero-tabs [role="tab"] {
   background-color: transparent;
-  color: hsl(218 9% 48%);
+  color: hsl(var(--muted-foreground));
 }
 .zero-app .zero-tabs [role="tab"]:hover {
-  color: hsl(218 9% 25%);
+  color: hsl(var(--foreground));
 }
 .zero-app .zero-tabs [role="tab"].bg-background {
-  background-color: hsl(0 0% 100%);
-  color: hsl(218 9% 25%);
-}
-.dark .zero-app .zero-tabs,
-[data-theme="dark"] .zero-app .zero-tabs {
-  background-color: hsl(220 10% 20%);
-}
-.dark .zero-app .zero-tabs [role="tab"] {
-  color: hsl(220 14% 70%);
-}
-.dark .zero-app .zero-tabs [role="tab"]:hover {
-  color: hsl(220 14% 93%);
-}
-.dark .zero-app .zero-tabs [role="tab"].bg-background,
-[data-theme="dark"] .zero-app .zero-tabs [role="tab"].bg-background {
-  background-color: hsl(220 12% 14%);
-  color: hsl(220 14% 93%);
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
 }
 
 /* View toggle (list/gallery): track like zero-tabs, selected segment like white card */
 .zero-app .zero-view-toggle {
-  background-color: hsl(220 6% 93%);
-  border: 1px solid hsl(220 5% 92%);
+  background-color: hsl(var(--gray-100));
+  border: 0.7px solid hsl(var(--gray-400));
 }
 .zero-app .zero-view-toggle .zero-view-toggle-selected {
-  background-color: hsl(0 0% 100%);
+  background-color: hsl(var(--card));
   box-shadow: var(--zero-card-shadow);
 }
-.dark .zero-app .zero-view-toggle,
-[data-theme="dark"] .zero-app .zero-view-toggle {
-  background-color: hsl(220 10% 20%);
-  border-color: hsl(220 8% 26%);
-}
-.dark .zero-app .zero-view-toggle .zero-view-toggle-selected,
-[data-theme="dark"] .zero-app .zero-view-toggle .zero-view-toggle-selected {
-  background-color: hsl(220 12% 14%);
-}
 
-/* Zero left nav: same cool gray for sidebar border (slightly lighter for subtlety). */
+/* Zero left nav */
 .zero-nav {
-  --color-sidebar: hsl(var(--background));
+  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-accent: hsl(var(--muted));
-  --color-sidebar-active: hsl(var(--primary-100));
-  --color-sidebar-border: hsl(215 8% 94%);
-  --color-divider: hsl(215 8% 93%);
+  --color-sidebar-active: hsl(var(--primary) / 0.95);
+  --color-sidebar-border: hsl(var(--gray-200));
+  --color-divider: hsl(var(--divider));
 }
 
-/* Morandi outline buttons (very light border, elegant) */
+/* Morandi outline buttons */
 .zero-app .zero-btn-morandi {
-  background-color: hsl(220 6% 97%);
-  border-color: hsl(220 5% 92%);
-  color: hsl(220 6% 22%);
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
 }
 .zero-app .zero-btn-morandi:hover {
-  background-color: hsl(220 5% 94%);
-  border-color: hsl(220 4% 90%);
+  background-color: hsl(var(--gray-100));
+  border-color: hsl(var(--gray-200));
 }
 
-/* Morandi cards (e.g. suggested prompts — same border, radius, shadow as .zero-card) */
+/* Morandi cards (e.g. suggested prompts) */
 .zero-app .zero-card-morandi {
-  background-color: hsl(0 0% 100%);
-  border: 1px solid var(--zero-card-border);
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
   box-shadow: var(--zero-card-shadow);
 }
 .zero-app .zero-card-morandi:hover {
-  background-color: hsl(220 6% 97%);
-  border-color: hsl(220 4% 90%);
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--gray-200));
 }
 
-/* White card: shared border, radius, shadow (all white cards except chat bubbles) */
+/* White card: shared border, radius (all white cards except chat bubbles) */
 .zero-app .zero-card {
-  background-color: hsl(0 0% 100%);
-  border: 1px solid var(--zero-card-border);
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
   transition: background-color 0.15s;
 }
-.zero-app .zero-card:hover {
-  background-color: hsl(220 6% 98%);
+.zero-app .zero-card.cursor-pointer {
+  border-color: hsl(var(--gray-400));
+  box-shadow: var(--zero-card-shadow);
 }
-.dark .zero-app .zero-card,
-[data-theme="dark"] .zero-app .zero-card {
-  background-color: hsl(220 12% 12%);
-  border-color: hsl(220 8% 22%);
-}
-.dark .zero-app .zero-card:hover,
-[data-theme="dark"] .zero-app .zero-card:hover {
-  background-color: hsl(220 12% 14%);
+.zero-app .zero-card.cursor-pointer:hover {
+  background-color: hsl(var(--gray-0));
 }
 
 /* Onboarding modal footer: frosted glass */
 .zero-onboarding-footer,
 .zero-app .zero-onboarding-footer {
-  border-top: 1px solid hsl(220 5% 90% / 0.6);
+  border-top: 1px solid hsl(var(--border) / 0.6);
   background: hsl(var(--background) / 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-.dark .zero-onboarding-footer,
-.dark .zero-app .zero-onboarding-footer,
-[data-theme="dark"] .zero-onboarding-footer,
-[data-theme="dark"] .zero-app .zero-onboarding-footer {
-  border-top-color: hsl(220 8% 26% / 0.6);
-  background: hsl(var(--background) / 0.7);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -278,102 +199,68 @@
 
 /* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */
 .zero-app .zero-card-rectangle {
-  background-color: hsl(0 0% 100%);
-  border: 1px solid var(--zero-card-border);
-  border-radius: 0.5rem;
-  box-shadow: var(--zero-card-shadow);
-}
-.dark .zero-app .zero-card-rectangle,
-[data-theme="dark"] .zero-app .zero-card-rectangle {
-  background-color: hsl(220 12% 12%);
-  border-color: hsl(220 8% 22%);
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: var(--zero-card-radius);
 }
 
 /* Instructions/content card: uses .zero-card style */
 .zero-app .zero-card-white {
-  background-color: hsl(0 0% 100%);
-  border: 1px solid var(--zero-card-border);
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
-}
-.dark .zero-app .zero-card-white,
-[data-theme="dark"] .zero-app .zero-card-white {
-  background-color: hsl(220 12% 12%);
-  border-color: hsl(220 8% 22%);
 }
 
-/* Instructions/feature cards: cool gray gradient (replaces stone) */
+/* Instructions/feature cards: cool gray gradient */
 .zero-app .zero-card-cool {
   background: linear-gradient(
     to bottom right,
-    hsl(215 22% 96% / 0.98),
-    hsl(215 24% 97%),
-    hsl(215 22% 96% / 0.95)
+    hsl(var(--gray-50) / 0.98),
+    hsl(var(--gray-0)),
+    hsl(var(--gray-50) / 0.95)
   );
-  border-color: hsl(215 8% 93%);
-  box-shadow: 0 1px 3px hsl(215 10% 92% / 0.06);
-}
-.dark .zero-app .zero-card-cool,
-[data-theme="dark"] .zero-app .zero-card-cool {
-  background: linear-gradient(
-    to bottom right,
-    hsl(220 12% 14% / 0.98),
-    hsl(220 12% 12%),
-    hsl(220 12% 11% / 0.95)
-  );
-  border-color: hsl(220 10% 22%);
+  border-color: hsl(var(--divider));
+  box-shadow: 0 1px 3px hsl(var(--border) / 0.06);
 }
 
-/* Message bubble (e.g. Meet Zero tone samples): cool gray */
+/* Message bubble (e.g. Meet Zero tone samples) */
 .zero-app .zero-bubble-cool {
-  background-color: hsl(215 18% 92% / 0.95);
-  color: hsl(218 9% 25%);
-}
-.dark .zero-app .zero-bubble-cool,
-[data-theme="dark"] .zero-app .zero-bubble-cool {
-  background-color: hsl(218 11% 28% / 0.95);
-  color: hsl(220 14% 93%);
+  background-color: hsl(var(--gray-100) / 0.95);
+  color: hsl(var(--foreground));
 }
 
-/* Chat: user message bubble (cool gray, same as Morandi) */
+/* Chat: user message bubble */
 .zero-app .zero-chat-bubble-user {
-  background-color: hsl(220 6% 94%);
-  color: hsl(220 6% 18%);
+  background-color: hsl(var(--gray-100));
+  color: hsl(var(--foreground));
 }
 
-/* Chat: assistant (Zero) message bubble — white */
+/* Chat: assistant (Zero) message bubble */
 .zero-app .zero-chat-bubble-assistant {
-  background-color: hsl(0 0% 100%);
-  border-color: hsl(220 5% 92%);
-}
-.dark .zero-app .zero-chat-bubble-assistant,
-[data-theme="dark"] .zero-app .zero-chat-bubble-assistant {
-  background-color: hsl(220 12% 12%);
-  border-color: hsl(220 8% 22%);
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
 }
 
 /* Composer / input card (white, light border — “Just ask” / chat input) */
 .zero-app .zero-composer {
-  background-color: hsl(0 0% 100%);
-  border: 1px solid var(--zero-card-border);
+  background-color: hsl(var(--card));
+  border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
-}
-.dark .zero-app .zero-composer,
-[data-theme="dark"] .zero-app .zero-composer {
-  background-color: hsl(220 12% 12%);
-  border-color: hsl(220 8% 22%);
+  box-shadow:
+    0 1px 2px hsl(var(--primary) / 0.04),
+    0 4px 12px hsl(220 20% 40% / 0.06),
+    0 12px 32px hsl(220 20% 40% / 0.04);
 }
 
-/* Chat: outline buttons inside dialogue (Morandi, light border) */
+/* Chat: outline buttons inside dialogue */
 .zero-app .zero-chat-btn {
-  background-color: hsl(220 6% 97%);
-  border-color: hsl(220 5% 92%);
-  color: hsl(220 6% 22%);
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
 }
 .zero-app .zero-chat-btn:hover {
-  background-color: hsl(220 5% 94%);
-  border-color: hsl(220 4% 90%);
+  background-color: hsl(var(--gray-100));
+  border-color: hsl(var(--gray-200));
 }
 
 /* Lighter icons and "Recent dialogue" label; other styles unchanged */
@@ -381,7 +268,7 @@
   opacity: 0.7;
 }
 .zero-nav .zero-nav-recent-label {
-  opacity: 0.55;
+  opacity: 1;
 }
 
 @layer base {
@@ -439,7 +326,7 @@
     background-color: hsl(
       var(--gray-50)
     ) !important; /* sidebar color (gray-50) */
-    border-bottom: 1px solid hsl(var(--gray-200)) !important; /* border token (gray-200) */
+    border-bottom: 0.7px solid hsl(var(--gray-400)) !important; /* border token (gray-200) */
   }
 }
 
@@ -601,35 +488,24 @@ details[open] > summary > span:first-child {
 /* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
 /* Document card body: serif for reading */
-/* Document card (gallery): same border, radius, shadow as .zero-card so it matches other white cards */
+/* Document card (gallery): same border, radius as .zero-card so it matches other white cards */
 .zero-app .zero-doc-card {
-  border: 1px solid var(--zero-card-border);
+  border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
-  background-color: hsl(0 0% 100%);
-}
-.dark .zero-app .zero-doc-card,
-[data-theme="dark"] .zero-app .zero-doc-card {
-  background-color: hsl(220 12% 12%);
-  border-color: hsl(220 8% 22%);
+  background-color: hsl(var(--card));
 }
 
 .zero-app .zero-doc-card-content {
   font-family: Georgia, "Times New Roman", "SimSun", serif;
-  background-color: hsl(220 6% 98%);
-  border-top-color: hsl(220 5% 92%);
-}
-.dark .zero-app .zero-doc-card-content,
-[data-theme="dark"] .zero-app .zero-doc-card-content {
-  background-color: hsl(220 10% 18%);
-  border-top-color: hsl(220 8% 22%);
+  background-color: hsl(var(--gray-0));
+  border-top-color: hsl(var(--border));
 }
 
 /* Fade text to 30% opacity at bottom edge (no grey gradient overlay) */
 /* Only the last ~2 lines fade to 30% opacity */
-/* Activity table header divider: cold gray (matches --divider) */
+/* Activity table header divider */
 .zero-app .zero-activity-header {
-  border-bottom-color: hsl(215 8% 93%);
+  border-bottom-color: hsl(var(--divider));
 }
 
 .zero-app .zero-doc-card-fade {
@@ -658,42 +534,20 @@ details[open] > summary > span:first-child {
   inset: 0;
   z-index: -1;
   background-color: hsl(var(--background));
-  background-image:
-    radial-gradient(
-      ellipse 120% 80% at 50% -20%,
-      hsl(var(--background-50) / 0.5),
-      transparent 50%
-    ),
-    radial-gradient(
-      circle at center,
-      hsl(var(--foreground) / 0.06) 1px,
-      transparent 1px
-    );
-  background-size:
-    100% 100%,
-    14px 14px;
+  background-image: radial-gradient(
+    ellipse 120% 80% at 50% -20%,
+    hsl(var(--background-50) / 0.5),
+    transparent 50%
+  );
+  background-size: 100% 100%;
 }
 
 .dark .zero-workspace-bg::before,
 [data-theme="dark"] .zero-workspace-bg::before {
-  background-image:
-    radial-gradient(
-      ellipse 100% 70% at 50% 0%,
-      hsl(var(--background-50) / 0.4),
-      transparent 48%
-    ),
-    radial-gradient(
-      circle at center,
-      hsl(var(--foreground) / 0.05) 1px,
-      transparent 1px
-    );
-  background-size:
-    100% 100%,
-    14px 14px;
-}
-
-.dark .zero-nav,
-[data-theme="dark"] .zero-nav {
-  --color-sidebar-border: hsl(220 8% 26%);
-  --color-divider: hsl(220 10% 28%);
+  background-image: radial-gradient(
+    ellipse 100% 70% at 50% 0%,
+    hsl(var(--background-50) / 0.4),
+    transparent 48%
+  );
+  background-size: 100% 100%;
 }

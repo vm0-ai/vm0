@@ -37,7 +37,7 @@ function getSectionTitles(
   return {
     chat: `Chat with ${agentName}`,
     meet: `Meet ${agentName}`,
-    schedule: "Schedule",
+    schedule: "Scheduled",
     team: `${agentName}'s team`,
     activity: "Activities",
     works: `Where ${agentName} works`,

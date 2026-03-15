@@ -88,12 +88,7 @@ export function ZeroSkillsTab({
   };
 
   return (
-    <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-4">
-      <p className="text-sm text-muted-foreground">
-        Connectors manage your connections and help you get more out of these
-        services.
-      </p>
-
+    <div className="mx-auto max-w-[900px] flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {/* Add skill */}
         <button

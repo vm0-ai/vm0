@@ -154,22 +154,22 @@
     --primary-900: 16 100% 41%; /* #D03200 */
     --primary-950: 16 38% 23%; /* #5C2918 */
 
-    /* Background/Gray Color Scale (Neutral) */
-    --gray-0: 30 100% 99%; /* #FFFCF9 */
-    --gray-50: 28 38% 95%; /* #F9F4EF */
-    --gray-100: 28 18% 92%; /* #F0EBE5 */
-    --gray-200: 28 18% 90%; /* #E8E2DD */
-    --gray-300: 28 15% 87%; /* #E1DBD5 */
-    --gray-400: 28 13% 84%; /* #D9D3CD */
-    --gray-500: 28 12% 79%; /* #CEC8C2 */
-    --gray-600: 28 10% 71%; /* #BAB5AF */
-    --gray-700: 20 6% 54%; /* #8C8782 */
-    --gray-800: 20 6% 49%; /* #827D77 */
-    --gray-900: 20 6% 38%; /* #635E59 */
-    --gray-950: 20 12% 12%; /* #231F1B */
+    /* Background/Gray Color Scale (Cool Neutral) */
+    --gray-0: 210 25% 98%; /* #FAFBFC */
+    --gray-50: 216 26% 96%; /* #F3F5F8 */
+    --gray-100: 213 23% 92%; /* #E7EBF0 */
+    --gray-200: 215 21% 89%; /* #DCE1E8 */
+    --gray-300: 216 19% 85%; /* #D1D7E0 */
+    --gray-400: 217 18% 81%; /* #C5CCD7 */
+    --gray-500: 218 17% 74%; /* #B2BAC8 */
+    --gray-600: 220 14% 65%; /* #9BA3B3 */
+    --gray-700: 219 11% 52%; /* #788192 */
+    --gray-800: 215 12% 36%; /* #525B68 */
+    --gray-900: 220 19% 13%; /* #1A1E26 */
+    --gray-950: 220 18% 10%; /* #14171D */
 
     /* Divider Color */
-    --divider: 20 35% 88%; /* Warm orange-tinted divider with brand presence */
+    --divider: 215 18% 90%; /* Cool neutral divider aligned with grey scale */
 
     /* Theme-aware Colors */
     --white: 0 0% 100%; /* #FFFFFF */
@@ -178,7 +178,7 @@
     /* ===================================
      * Semantic Colors (Light Theme)
      * =================================== */
-    --background: var(--gray-0); /* gray-0 */
+    --background: 216 5% 99.5%; /* very subtle cool gray tint */
     --foreground: var(--gray-950); /* gray-950 */
 
     --card: var(--white); /* white */
@@ -192,13 +192,13 @@
       --on-filled
     ); /* on-filled - white text on primary */
 
-    --secondary: 28 18% 92%; /* gray-100 - direct value for opacity modifier support */
+    --secondary: 213 23% 92%; /* gray-100 - direct value for opacity modifier support */
     --secondary-foreground: var(--gray-950); /* gray-950 */
 
     --muted: var(--gray-100); /* gray-100 */
     --muted-foreground: var(--gray-800); /* gray-800 */
 
-    --accent: var(--primary-100); /* primary-100 */
+    --accent: var(--gray-100); /* gray-100 - matches navigation hover */
     --accent-foreground: var(--gray-950); /* gray-950 */
 
     --destructive: 0 84% 60%; /* red/600 */
@@ -296,7 +296,7 @@
     --muted: var(--gray-100); /* gray-100 */
     --muted-foreground: var(--gray-800); /* gray-800 */
 
-    --accent: var(--primary-100); /* primary-100 */
+    --accent: var(--gray-100); /* gray-100 - matches navigation hover */
     --accent-foreground: var(--gray-950); /* gray-950 */
 
     --destructive: 0 84% 60%; /* red/600 */

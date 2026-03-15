@@ -20,7 +20,8 @@ export function ClerkOrgSwitcher() {
             organizationPreviewMainIdentifier:
               "!text-sm !font-semibold !leading-tight !truncate",
             organizationPreviewTextContainer: "!min-w-0 !overflow-hidden",
-            organizationSwitcherTriggerIcon: "!w-4 !h-4 !ml-auto !shrink-0",
+            organizationSwitcherTriggerIcon:
+              "!w-4 !h-4 !ml-auto !shrink-0 !text-muted-foreground [&_svg]:!stroke-[1.5]",
             organizationSwitcherPopoverCard: "!left-2",
           },
         }}

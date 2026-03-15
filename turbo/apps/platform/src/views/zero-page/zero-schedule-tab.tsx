@@ -46,7 +46,7 @@ export function ZeroScheduleTab({
 
   if (scheduleError) {
     return (
-      <div className="mx-auto max-w-[900px] px-7">
+      <div className="mx-auto max-w-[900px]">
         <Card className="zero-card">
           <CardContent className="px-6 py-6 text-center">
             <p className="text-sm text-destructive">{scheduleError}</p>
@@ -66,10 +66,10 @@ export function ZeroScheduleTab({
   };
 
   return (
-    <div className="mx-auto max-w-[900px] px-7">
+    <div className="mx-auto max-w-[900px]">
       <ZeroScheduleCard
-        title={`${agentName}'s schedule`}
-        subtitle={`Set a time and prompt for ${agentName} to run automatically.`}
+        title={`${agentName}'s scheduled tasks`}
+        subtitle={`Tasks you've scheduled with ${agentName} to run automatically.`}
         initialSchedule={entries}
         onSave={handleSave}
         onDelete={onDelete}

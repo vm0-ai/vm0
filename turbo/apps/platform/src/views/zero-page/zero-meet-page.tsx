@@ -7,7 +7,7 @@ import {
   IconPlug,
   IconCalendar,
   IconCrown,
-  IconArrowLeft,
+  IconUsers,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -235,21 +235,24 @@ export function ZeroMeetPage({
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
-        <div className="mx-auto max-w-[900px] px-7">
-          <div className="mb-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 -ml-2"
-              onClick={() =>
-                navigateRoute("/zero/:tab", { pathParams: { tab: "team" } })
-              }
-              aria-label="Back to team"
-            >
-              <IconArrowLeft size={20} stroke={1.5} />
-            </Button>
-          </div>
+      <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+        <button
+          type="button"
+          onClick={() =>
+            navigateRoute("/zero/:tab", { pathParams: { tab: "team" } })
+          }
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+        >
+          <IconUsers size={14} stroke={1.5} className="shrink-0" />
+          Team
+        </button>
+        <span className="text-muted-foreground/40 select-none">/</span>
+        <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
+          {resolvedAgentName}
+        </span>
+      </nav>
+      <header className="shrink-0 bg-transparent px-4 pt-6 pb-3 sm:px-6">
+        <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -269,7 +272,7 @@ export function ZeroMeetPage({
                 <h1 className="text-xl font-semibold tracking-tight text-foreground leading-tight">
                   {resolvedAgentName}
                 </h1>
-                <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium">
+                <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
                   <IconCrown
                     size={12}
                     stroke={1.8}
@@ -278,7 +281,7 @@ export function ZeroMeetPage({
                   Super agent
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground mt-0.5 leading-tight">
+              <p className="text-sm text-muted-foreground mt-1.5 leading-tight">
                 {resolvedDescription || "Your AI teammate, tuned to you"}
               </p>
             </div>
@@ -303,7 +306,7 @@ export function ZeroMeetPage({
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconCalendar size={14} stroke={1.5} />
-                  Schedule
+                  Scheduled
                 </TabsTrigger>
                 <TabsTrigger
                   value="profile"
@@ -327,7 +330,7 @@ export function ZeroMeetPage({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+                    className="h-9 shrink-0 gap-2 rounded-lg border-border bg-card px-4 shadow-[0_1px_3px_0_rgba(0,0,0,0.08)] transition-colors hover:bg-muted/60"
                     onClick={() => navigate("/zero/chat")}
                   >
                     <IconMessageCircle size={14} stroke={1.5} />

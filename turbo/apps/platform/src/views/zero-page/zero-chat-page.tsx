@@ -10,8 +10,6 @@ import {
 import {
   IconSend,
   IconPaperclip,
-  IconBriefcase,
-  IconSettings,
   IconPlug,
   IconSparkles,
   IconChartBar,
@@ -22,11 +20,31 @@ import {
   IconArrowLeft,
   IconChartLine,
   IconCalendar,
+  IconPlus,
 } from "@tabler/icons-react";
-import { Button, Card, CardContent, cn } from "@vm0/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  cn,
+} from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-mock-data";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
+import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
+import { AddConnectionDialog } from "../settings-page/add-connection-dialog.tsx";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -38,26 +56,6 @@ type DemoScenarioId =
   | "agent-operations";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
-type ActionId = "automate" | "customize" | "connectors";
-function getActionButtons(agentName: string) {
-  return [
-    {
-      id: "automate" as ActionId,
-      label: "Automate workflows",
-      icon: IconBriefcase as NavIcon,
-    },
-    {
-      id: "customize" as ActionId,
-      label: `Customize ${agentName}`,
-      icon: IconSettings as NavIcon,
-    },
-    {
-      id: "connectors" as ActionId,
-      label: "Add connectors",
-      icon: IconPlug as NavIcon,
-    },
-  ] as const;
-}
 
 const SUGGESTED_PROMPTS = [
   {
@@ -65,13 +63,41 @@ const SUGGESTED_PROMPTS = [
     description: "Smart categorization, reply, and daily email digest",
     icon: IconChartBar as NavIcon,
     iconClassName: "text-emerald-600 dark:text-emerald-400",
+    prompt:
+      "Set up auto-organization for my inbox with smart categorization, auto-reply rules, and a daily email digest",
   },
   {
     title: "Daily morning brief",
     description: "Trending topics on a schedule, your personalized digest",
     icon: IconReceipt as NavIcon,
     iconClassName: "text-primary",
+    prompt:
+      "Create a daily morning brief that curates trending topics and delivers a personalized digest every morning",
   },
+  {
+    title: "Create a sub-agent",
+    description: "Build a specialized agent for a specific workflow",
+    icon: IconUsers as NavIcon,
+    iconClassName: "text-sky-600 dark:text-sky-400",
+    prompt:
+      "I want to create a new sub-agent to handle a specific workflow for my team",
+  },
+] as const;
+
+const COMPOSER_MODEL_OPTIONS = [
+  { value: "default", label: "Default" },
+  { value: "fast", label: "Fast" },
+  { value: "smart", label: "Smart" },
+] as const;
+
+const COMPOSER_CONNECTORS = [
+  {
+    type: "google-calendar" as const,
+    label: "Google Calendar",
+    connected: true,
+  },
+  { type: "notion" as const, label: "Notion", connected: true },
+  { type: "github" as const, label: "GitHub", connected: false },
 ] as const;
 
 function getStreamedScenarios(agentName: string): readonly Readonly<{
@@ -122,16 +148,21 @@ function getStreamedScenarios(agentName: string): readonly Readonly<{
 
 const STREAM_DELAY_MS = 1400;
 
-function getLandingTaglines(agentName: string) {
-  return [
-    `I'm ${agentName}. Customize me and assign tasks anytime.`,
-    "Your intelligent teammate, tuned to you.",
-    "Create workflows, run automations, get things done.",
-    "Ask me anything, I'll route it to the right minions.",
-    "200+ connectors, ready when you are.",
-  ] as const;
+function getRandomTagline(agentName: string): string {
+  const taglines = [
+    `Hi there~ I'm ${agentName}.`,
+    "What shall we do today?",
+    "I'm here whenever you need me.",
+    "Got something on your mind?",
+    "Ready when you are~",
+    "Let's make something nice today.",
+    "How can I help you?",
+    "Take your time, I'll be right here.",
+    `${agentName} at your service~`,
+    "What would you like to try?",
+  ];
+  return taglines[Math.floor(Math.random() * taglines.length)];
 }
-const CAROUSEL_INTERVAL_MS = 4000;
 
 interface StreamedScenario {
   id: DemoScenarioId;
@@ -185,7 +216,7 @@ function HelloFromZeroBlock({
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
           <p className="text-foreground">
             Hi! I&apos;m {agentName}, your AI teammate. I help you automate
             tasks, run workflows, and get things done across your connected
@@ -195,7 +226,7 @@ function HelloFromZeroBlock({
       </div>
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-2">
+        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-2">
           <p className="font-medium text-foreground">
             You&apos;ve connected Notion.
           </p>
@@ -238,7 +269,7 @@ function ChatScenarioBlock({
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         <div className="w-9 h-9 shrink-0" />
         <div className="flex min-w-0 justify-end">
-          <div className="zero-chat-bubble-user rounded-2xl px-4 py-3 max-w-[85%] text-sm leading-relaxed">
+          <div className="zero-chat-bubble-user rounded-xl px-4 py-3 max-w-[85%] text-sm leading-relaxed">
             {scene.userMessage}
           </div>
         </div>
@@ -257,7 +288,7 @@ function ChatScenarioBlock({
             className="h-9 w-9 rounded-full object-cover object-top"
           />
         </button>
-        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
+        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
           <ChatScenarioAssistantContent
             scene={scene}
             onNavigateToActivity={onNavigateToActivity}
@@ -646,6 +677,118 @@ function ChatScenarioAgentOperations({
   );
 }
 
+function ConnectorsPopoverButton({
+  onOpenAddDialog,
+  onManageConnectors,
+  agentName,
+}: {
+  onOpenAddDialog: () => void;
+  onManageConnectors?: () => void;
+  agentName: string;
+}) {
+  return (
+    <Popover>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <PopoverTrigger asChild>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex shrink-0 items-center rounded-lg h-9 px-1.5 hover:bg-muted/60 transition-colors"
+              >
+                <span className="flex items-center -space-x-1.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background border border-border/60">
+                    <ConnectorIcon type="google-calendar" size={14} />
+                  </span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background border border-border/60">
+                    <ConnectorIcon type="notion" size={14} />
+                  </span>
+                </span>
+              </button>
+            </TooltipTrigger>
+          </PopoverTrigger>
+          <TooltipContent side="top" className="text-xs">
+            Connectors
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <PopoverContent side="top" align="start" className="w-64 p-0 rounded-xl">
+        <div className="p-2">
+          <div className="flex flex-col">
+            {COMPOSER_CONNECTORS.map((skill) => (
+              <div
+                key={skill.type}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
+              >
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center",
+                    !skill.connected && "opacity-40",
+                  )}
+                >
+                  <ConnectorIcon type={skill.type} size={20} />
+                </span>
+                <span
+                  className={cn(
+                    "text-sm flex-1",
+                    skill.connected
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {skill.label}
+                </span>
+                {skill.connected ? (
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                ) : (
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenAddDialog();
+                    }}
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="border-t border-border/50 p-2 flex flex-col">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted/50 transition-colors"
+            onClick={() => onOpenAddDialog()}
+          >
+            <IconPlus
+              size={20}
+              stroke={1.5}
+              className="shrink-0 text-muted-foreground"
+            />
+            Add connector
+          </button>
+          {onManageConnectors && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted/50 transition-colors"
+              onClick={onManageConnectors}
+            >
+              <IconPlug
+                size={20}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              Manage connectors in {agentName}
+            </button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
@@ -676,6 +819,14 @@ export function ZeroChatPage({
   const defaultAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const agentName = chatAgentName ?? defaultAgentName;
+  const skillsDialogOpen$ = useCCState(false);
+  const skillsDialogOpen = useGet(skillsDialogOpen$);
+  const setSkillsDialogOpen = useSet(skillsDialogOpen$);
+  const selectedModel$ = useCCState<
+    (typeof COMPOSER_MODEL_OPTIONS)[number]["value"]
+  >(COMPOSER_MODEL_OPTIONS[0].value);
+  const selectedModel = useGet(selectedModel$);
+  const setSelectedModel = useSet(selectedModel$);
   const input$ = useCCState("");
   const input = useGet(input$);
   const setInput = useSet(input$);
@@ -711,22 +862,8 @@ export function ZeroChatPage({
   const setCommandAllowed = useSet(commandAllowed$);
   const showSubAgentList$ = useCCState(false);
   const showSubAgentList = useGet(showSubAgentList$);
-  const carouselIndex$ = useCCState(0);
-  const carouselIndex = useGet(carouselIndex$);
-  // Carousel interval — starts on mount via onRef, cleans up on unmount
-  const carouselCommand$ = useCommand(
-    ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-      const id = window.setInterval(() => {
-        set(
-          carouselIndex$,
-          (i: number) => (i + 1) % getLandingTaglines(agentName).length,
-        );
-      }, CAROUSEL_INTERVAL_MS);
-      signal.addEventListener("abort", () => window.clearInterval(id));
-    },
-  );
-  const carouselRef$ = onRef(carouselCommand$);
-  const carouselRef = useSet(carouselRef$);
+  const tagline$ = useCCState(getRandomTagline(agentName));
+  const tagline = useGet(tagline$);
 
   // Stream tick — schedules the next streamed message after a delay
   const streamTimeoutId$ = useCCState<number | null>(null);
@@ -902,7 +1039,7 @@ export function ZeroChatPage({
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={onNavigateToSchedule}
-              aria-label={`${agentName} schedule`}
+              aria-label={`${agentName} scheduled tasks`}
             >
               <IconCalendar size={18} stroke={1.5} />
             </Button>
@@ -957,7 +1094,7 @@ export function ZeroChatPage({
                     className="h-9 w-9 rounded-full object-cover object-top"
                   />
                 </button>
-                <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
+                <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
                   <div className="px-4 pt-4 pb-2">
                     <p className="text-sm text-foreground leading-relaxed">
                       You have {ZERO_TEAM_JOBS.length} sub-agents with different
@@ -985,7 +1122,7 @@ export function ZeroChatPage({
                             <span className="text-sm font-medium text-foreground">
                               {job.title}
                             </span>
-                            <span className="zero-pill inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium">
+                            <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-0.5 text-xs font-medium">
                               {job.scope === "team" ? (
                                 <IconUsers
                                   size={12}
@@ -1045,24 +1182,58 @@ export function ZeroChatPage({
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                   />
-                  <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/50">
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors duration-200"
-                      aria-label="Attach"
-                      onClick={handleFileSelect}
-                    >
-                      <IconPaperclip size={18} stroke={1.5} />
-                    </button>
-                    <Button
-                      size="sm"
-                      className="rounded-lg h-9 w-9 p-0 shrink-0"
-                      onClick={() => handleSend()}
-                      disabled={!input.trim()}
-                      aria-label="Send"
-                    >
-                      <IconSend size={16} stroke={2} />
-                    </Button>
+                  <div className="flex items-center justify-between gap-2 px-4 py-3">
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <button
+                        type="button"
+                        className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200"
+                        aria-label="Attach"
+                        onClick={handleFileSelect}
+                      >
+                        <IconPaperclip size={18} stroke={1.5} />
+                      </button>
+                      <ConnectorsPopoverButton
+                        onOpenAddDialog={() => setSkillsDialogOpen(true)}
+                        onManageConnectors={() =>
+                          onNavigateToMeet?.("connections")
+                        }
+                        agentName={agentName}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={selectedModel}
+                        onValueChange={(value) =>
+                          setSelectedModel(
+                            value as (typeof COMPOSER_MODEL_OPTIONS)[number]["value"],
+                          )
+                        }
+                      >
+                        <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border bg-transparent text-sm text-foreground">
+                          <SelectValue placeholder="Model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COMPOSER_MODEL_OPTIONS.map((opt) => (
+                            <SelectItem
+                              key={opt.value}
+                              value={opt.value}
+                              className="text-sm"
+                            >
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        className="rounded-lg h-9 w-9 p-0 shrink-0"
+                        onClick={() => handleSend()}
+                        disabled={!input.trim()}
+                        aria-label="Send"
+                      >
+                        <IconSend size={16} stroke={2} />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -1075,7 +1246,7 @@ export function ZeroChatPage({
 
   // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
-    <div ref={carouselRef} className="flex flex-1 flex-col min-h-0">
+    <div className="relative flex flex-1 flex-col min-h-0">
       {fileInput}
       <header
         className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-2"
@@ -1098,12 +1269,9 @@ export function ZeroChatPage({
                 className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
               />
             </button>
-            <div className="h-[4.5rem] sm:h-20 overflow-hidden flex-1 min-w-0 flex flex-col justify-center">
-              <h2
-                key={carouselIndex}
-                className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground zero-tagline-animate-in"
-              >
-                {getLandingTaglines(agentName)[carouselIndex]}
+            <div className="flex-1 min-w-0 flex flex-col justify-center">
+              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
+                {tagline}
               </h2>
             </div>
           </div>
@@ -1126,86 +1294,90 @@ export function ZeroChatPage({
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                 />
-                <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/50">
-                  <button
-                    type="button"
-                    className="p-2 rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors duration-200"
-                    aria-label="Attach"
-                    onClick={handleFileSelect}
-                  >
-                    <IconPaperclip size={18} stroke={1.5} />
-                  </button>
-                  <Button
-                    size="sm"
-                    className="rounded-lg h-9 w-9 p-0 shrink-0"
-                    onClick={() => handleSend()}
-                    disabled={!input.trim()}
-                    aria-label="Send"
-                  >
-                    <IconSend size={16} stroke={2} />
-                  </Button>
+                <div className="flex items-center justify-between gap-2 px-4 py-3">
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <button
+                      type="button"
+                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200"
+                      aria-label="Attach"
+                      onClick={handleFileSelect}
+                    >
+                      <IconPaperclip size={18} stroke={1.5} />
+                    </button>
+                    <ConnectorsPopoverButton
+                      onOpenAddDialog={() => setSkillsDialogOpen(true)}
+                      onManageConnectors={() =>
+                        onNavigateToMeet?.("connections")
+                      }
+                      agentName={agentName}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-lg h-9 px-3 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
+                      onClick={handleFeelingLucky}
+                    >
+                      <IconSparkles size={16} className="shrink-0" />
+                      Feeling great
+                    </button>
+                    <Select
+                      value={selectedModel}
+                      onValueChange={(value) =>
+                        setSelectedModel(
+                          value as (typeof COMPOSER_MODEL_OPTIONS)[number]["value"],
+                        )
+                      }
+                    >
+                      <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border bg-transparent text-sm text-foreground">
+                        <SelectValue placeholder="Model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COMPOSER_MODEL_OPTIONS.map((opt) => (
+                          <SelectItem
+                            key={opt.value}
+                            value={opt.value}
+                            className="text-sm"
+                          >
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="rounded-lg h-9 w-9 p-0 shrink-0"
+                      onClick={() => handleSend()}
+                      disabled={!input.trim()}
+                      aria-label="Send"
+                    >
+                      <IconSend size={16} stroke={2} />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Action buttons */}
-          <div className="flex flex-wrap justify-between items-center gap-2 w-full">
-            <div className="flex flex-wrap gap-2">
-              {getActionButtons(agentName).map(({ id, label, icon: Icon }) => (
-                <Button
-                  key={id}
-                  variant="outline"
-                  size="sm"
-                  className="zero-btn-morandi rounded-lg h-8 px-3.5 text-sm font-medium gap-2 border"
-                  onClick={() => {
-                    if (id === "automate") {
-                      onNavigateToSchedule?.();
-                    } else if (id === "customize") {
-                      onNavigateToMeet?.("settings");
-                    } else if (id === "connectors") {
-                      onNavigateToMeet?.("connections");
-                    }
-                  }}
-                >
-                  <Icon size={16} />
-                  {label}
-                </Button>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-lg h-8 px-3.5 text-sm font-medium gap-2 border-primary/30 text-primary hover:bg-primary/5 hover:border-primary/50 shrink-0"
-              type="button"
-              onClick={handleFeelingLucky}
-            >
-              <IconSparkles size={16} />
-              Feeling great
-            </Button>
-          </div>
-
-          {/* Suggested prompts grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+          {/* Suggested prompts */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
             {SUGGESTED_PROMPTS.map(
-              ({ title, description, icon: Icon, iconClassName }) => (
+              ({ title, description, icon: Icon, iconClassName, prompt }) => (
                 <button
                   key={title}
                   type="button"
-                  className={cn(
-                    "zero-card-morandi p-4 text-left transition-colors",
-                    "flex gap-3 items-start",
-                  )}
+                  className="zero-card cursor-pointer p-4 text-left flex gap-3 items-start"
+                  onClick={() => setInput(prompt)}
                 >
                   <span
                     className={cn(
-                      "shrink-0 mt-0.5 rounded-lg p-1.5 bg-[hsl(220,6%,95%)]",
+                      "shrink-0 mt-0.5",
                       iconClassName ?? "text-muted-foreground",
                     )}
                   >
                     <Icon size={18} />
                   </span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
                       {title}
                     </p>
@@ -1219,6 +1391,23 @@ export function ZeroChatPage({
           </div>
         </div>
       </main>
+      <img
+        src="/images/chat-mac.png"
+        alt=""
+        role="presentation"
+        className="pointer-events-none absolute bottom-10 left-6 h-30 w-30 object-contain opacity-60 select-none"
+      />
+      <img
+        src="/images/chat-coffee.png"
+        alt=""
+        role="presentation"
+        className="pointer-events-none absolute bottom-6 right-6 h-36 w-36 object-contain opacity-60 select-none"
+      />
+      <AddConnectionDialog
+        open={skillsDialogOpen}
+        onOpenChange={setSkillsDialogOpen}
+        variant="zero"
+      />
     </div>
   );
 }

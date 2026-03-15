@@ -34,7 +34,7 @@ export function ZeroSettingsPage() {
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
-        <div className="mx-auto max-w-[900px] px-7">
+        <div className="mx-auto max-w-[900px]">
           <div className="flex items-center">
             <h1 className="text-xl font-semibold tracking-tight text-foreground">
               Settings
@@ -47,7 +47,7 @@ export function ZeroSettingsPage() {
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-8">
+        <div className="mx-auto max-w-[900px] flex flex-col gap-8">
           <ZeroDefaultProvider />
           <ZeroProviderList />
         </div>

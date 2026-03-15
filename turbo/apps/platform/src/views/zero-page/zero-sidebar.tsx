@@ -89,7 +89,7 @@ export type ZeroNavId =
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MANAGE_NAV = [
   { id: "team", label: "Zero's team", icon: IconUsers as NavIcon },
-  { id: "schedule", label: "Schedule", icon: IconCalendar as NavIcon },
+  { id: "schedule", label: "Scheduled", icon: IconCalendar as NavIcon },
   { id: "activity", label: "Activity logs", icon: IconChartLine as NavIcon },
 ] as const;
 
@@ -410,14 +410,12 @@ function RecentChatSection({
   recentSessionsError,
   selectedRecentId,
   onRecentSelect,
-  onNewChat,
 }: {
   recentSessions: SessionListItem[];
   recentSessionsLoading: boolean;
   recentSessionsError: string | null;
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
-  onNewChat?: () => void;
 }) {
   const searchOpen$ = useCCState(false);
   const searchOpen = useGet(searchOpen$);
@@ -463,29 +461,19 @@ function RecentChatSection({
           </button>
         </div>
       ) : (
-        <div className="shrink-0 zero-nav-recent-label h-8 flex items-center justify-between px-2">
-          <span className="text-xs leading-4 text-sidebar-foreground uppercase tracking-wider">
-            recent chat
+        <div className="shrink-0 zero-nav-recent-label h-7 flex items-center justify-between pl-2 pr-1">
+          <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
+            Recent chat
           </span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
               aria-label="Search chats"
             >
-              <IconSearch size={14} />
+              <IconSearch size={16} />
             </button>
-            {onNewChat && (
-              <button
-                type="button"
-                onClick={onNewChat}
-                className="text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors"
-                aria-label="New chat"
-              >
-                <IconPlus size={14} />
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -793,7 +781,7 @@ export function ZeroSidebar({
   if (collapsed) {
     return (
       <VM0ClerkProvider>
-        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
+        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
           {/* Expand button */}
           <div className="shrink-0 flex items-center justify-center pt-3 pb-1">
             <button
@@ -855,7 +843,7 @@ export function ZeroSidebar({
 
   return (
     <VM0ClerkProvider>
-      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
+      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
         {/* Organization switcher */}
         <div className="shrink-0 px-2 pt-1.5 pb-0">
           <div className="flex items-center justify-between rounded-lg pr-0 py-0.5">
@@ -1005,7 +993,6 @@ export function ZeroSidebar({
             recentSessionsError={recentSessionsError}
             selectedRecentId={selectedRecentId}
             onRecentSelect={onRecentSelect}
-            onNewChat={() => onNewChat?.(currentChatAgentId ?? null)}
           />
         </nav>
 

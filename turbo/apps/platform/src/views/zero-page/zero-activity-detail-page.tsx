@@ -1,11 +1,11 @@
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
-  IconArrowLeft,
   IconSearch,
   IconLoader2,
   IconDownload,
   IconLock,
+  IconChartLine,
 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
 import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
@@ -54,19 +54,20 @@ interface ZeroActivityDetailPageProps {
 function ActivityNotFound({ onBack }: { onBack: () => void }) {
   return (
     <div className="h-full flex flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
-        <div className="mb-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 -ml-2"
-            onClick={onBack}
-            aria-label="Back to activity"
-          >
-            <IconArrowLeft size={20} stroke={1.5} />
-          </Button>
-        </div>
-      </header>
+      <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+        >
+          <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+          Activity
+        </button>
+        <span className="text-muted-foreground/40 select-none">/</span>
+        <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
+          Log
+        </span>
+      </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
           <IconLock size={24} stroke={1.5} className="text-muted-foreground" />
@@ -128,20 +129,21 @@ export function ZeroActivityDetailPage({
   return (
     <div className="h-full flex flex-col min-h-0">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
-        <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
-          <div className="mb-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 -ml-2"
-              onClick={onBack}
-              aria-label="Back to activity"
-            >
-              <IconArrowLeft size={20} stroke={1.5} />
-            </Button>
-          </div>
-        </header>
-        <div className="max-w-[900px] w-full mx-auto px-4 sm:px-6 pb-8">
+        <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+            Activity
+          </button>
+          <span className="text-muted-foreground/40 select-none">/</span>
+          <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
+            {agentName}
+          </span>
+        </nav>
+        <div className="mx-auto max-w-[900px] pb-8">
           {/* Compact header card */}
           <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2">
@@ -184,7 +186,7 @@ export function ZeroActivityDetailPage({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 shrink-0 gap-1 rounded-md text-sm text-muted-foreground hover:text-foreground ml-auto"
+                className="h-8 shrink-0 gap-1 rounded-lg text-sm text-muted-foreground hover:text-foreground ml-auto"
                 onClick={() => downloadCsv(events, detail?.id ?? "activity")}
               >
                 <IconDownload size={14} stroke={1.5} />
@@ -192,7 +194,7 @@ export function ZeroActivityDetailPage({
               </Button>
             </div>
             {detail?.error && status === "failed" && (
-              <div className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {detail.error}
               </div>
             )}

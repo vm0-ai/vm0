@@ -95,8 +95,6 @@ export function ZeroJobsPage({
             </CardContent>
           </Card>
 
-          <div className="border-t border-border/60" />
-
           {/* Sub-agents grid */}
           {loading && (!agents || agents.length === 0) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -134,10 +132,20 @@ export function ZeroJobsPage({
 
           {!loading && !error && agents && agents.length === 0 && (
             <Card className="zero-card">
-              <CardContent className="px-6 py-8 text-center">
-                <p className="text-sm text-muted-foreground">
-                  No teammates yet. Start a chat with {agentName} to create one.
-                </p>
+              <CardContent className="flex flex-col items-center justify-center px-6 py-12 gap-3">
+                <img
+                  src="/images/empty-chat.png"
+                  alt="No teammates"
+                  className="h-20 w-20 object-contain opacity-80"
+                />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    No teammates yet
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Start a chat with {agentName} to create one.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           )}

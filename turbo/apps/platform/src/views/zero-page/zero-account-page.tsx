@@ -30,9 +30,7 @@ function AppearanceSettings() {
     <Card className="zero-card">
       <CardContent className="py-5 flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Theme
-          </span>
+          <span className="text-sm font-medium text-foreground">Theme</span>
           <p className="text-sm text-muted-foreground">
             Choose how the interface looks.
           </p>
@@ -68,7 +66,7 @@ export function ZeroPreferencesPage() {
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
-        <div className="mx-auto max-w-[900px] px-7">
+        <div className="mx-auto max-w-[900px]">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
             Preferences
           </h1>
@@ -79,7 +77,7 @@ export function ZeroPreferencesPage() {
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        <div className="mx-auto max-w-[900px] px-7 flex flex-col gap-8">
+        <div className="mx-auto max-w-[900px] flex flex-col gap-8">
           <Tabs value={tab} onValueChange={(v) => setTab(v)}>
             <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
               <TabsTrigger

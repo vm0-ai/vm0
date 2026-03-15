@@ -668,9 +668,21 @@ export function ZeroScheduleCard({
         {scheduleViewMode === "list" && (
           <section className="flex flex-col">
             {scheduleList.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">
-                No entries yet. Add a time and prompt above.
-              </p>
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <img
+                  src="/images/empty-schedule.png"
+                  alt="No entries"
+                  className="h-20 w-20 object-contain opacity-80"
+                />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    No entries yet
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Add a time and prompt above to get started.
+                  </p>
+                </div>
+              </div>
             ) : (
               <ul className="flex flex-col" role="list">
                 {scheduleList.map((entry) => {
@@ -1008,7 +1020,7 @@ export function ZeroScheduleCard({
                       <button
                         key={value}
                         type="button"
-                        className={`h-8 min-w-[40px] rounded-md border text-xs font-medium transition-colors ${
+                        className={`h-8 min-w-[40px] rounded-lg border text-xs font-medium transition-colors ${
                           selected
                             ? "border-primary bg-primary text-primary-foreground"
                             : "border-input bg-background text-muted-foreground hover:bg-muted"

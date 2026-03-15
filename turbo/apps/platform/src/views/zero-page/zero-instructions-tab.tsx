@@ -33,7 +33,7 @@ export function ZeroInstructionsTab({
   const displayContent = editedContent ?? strippedContent;
 
   return (
-    <div className="mx-auto max-w-[900px] px-7">
+    <div className="mx-auto max-w-[900px]">
       <Card className="zero-card-white">
         <CardContent className="py-7">
           {loading ? (

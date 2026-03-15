@@ -113,14 +113,14 @@ export function ZeroSettingsTab({
 
   return (
     <>
-      <div className="mx-auto max-w-[900px] px-7">
-        <Card className="zero-card">
+      <div className="mx-auto max-w-[900px]">
+        <Card className="zero-card-white">
           <CardContent className="py-5 flex flex-col gap-4">
             <div className="flex flex-col gap-8">
               <div className="flex flex-col gap-2">
                 <label
                   htmlFor={inputId}
-                  className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                  className="text-sm font-medium text-foreground"
                 >
                   Name
                 </label>
@@ -135,7 +135,7 @@ export function ZeroSettingsTab({
               <div className="flex flex-col gap-2">
                 <label
                   htmlFor={`${inputId}-description`}
-                  className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                  className="text-sm font-medium text-foreground"
                 >
                   Description
                 </label>
@@ -153,7 +153,7 @@ export function ZeroSettingsTab({
                 role="group"
                 aria-label={`How ${resolvedAgentName} sounds`}
               >
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="text-sm font-medium text-foreground">
                   How they sound
                 </span>
                 <div
@@ -178,7 +178,7 @@ export function ZeroSettingsTab({
                   ))}
                 </div>
                 <div
-                  className="zero-chip rounded-lg border px-3 py-2 transition-colors duration-200"
+                  className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -187,12 +187,12 @@ export function ZeroSettingsTab({
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
-                      <div className="zero-bubble-cool max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
+                      <div className="zero-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
                         {TONE_SAMPLES[tone].user}
                       </div>
                     </div>
                     <div className="flex justify-start">
-                      <div className="zero-chat-bubble-assistant max-w-[85%] rounded-2xl border px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
+                      <div className="zero-chat-bubble-assistant max-w-[85%] rounded-xl border px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
                         {TONE_SAMPLES[tone].zero}
                       </div>
                     </div>

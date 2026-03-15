@@ -689,9 +689,21 @@ function ScheduleListView({
 
   if (combinedSchedule.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground py-6 text-center">
-        No schedules yet.
-      </p>
+      <div className="flex flex-col items-center justify-center py-12 gap-3">
+        <img
+          src="/images/empty-schedule.png"
+          alt="No schedules"
+          className="h-20 w-20 object-contain opacity-80"
+        />
+        <div className="text-center">
+          <p className="text-sm font-medium text-foreground">
+            No scheduled tasks yet
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Schedule tasks to run automatically at the times you choose.
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -863,10 +875,10 @@ export function ZeroSchedulePage() {
         <div className="mx-auto max-w-[900px] flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Schedule
+              Scheduled tasks
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Schedules for all agents in this org.
+              Automated tasks scheduled across all agents in your workspace.
             </p>
           </div>
           <Tabs

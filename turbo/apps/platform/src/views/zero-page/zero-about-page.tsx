@@ -12,7 +12,7 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto">
-      <div className="mx-auto max-w-[720px] w-full px-4 sm:px-6 py-10 sm:py-14">
+      <div className="mx-auto max-w-[900px] w-full px-4 sm:px-6 py-10 sm:py-14">
         <div className="flex flex-col gap-10">
           <div>
             {onBack && (

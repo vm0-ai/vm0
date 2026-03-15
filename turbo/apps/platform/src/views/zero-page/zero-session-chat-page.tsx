@@ -159,7 +159,7 @@ export function ZeroSessionChatPage({
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={onNavigateToSchedule}
-            aria-label="Schedule"
+            aria-label="Scheduled"
           >
             <IconCalendar size={18} stroke={1.5} />
           </Button>
@@ -226,7 +226,7 @@ export function ZeroSessionChatPage({
                   onKeyDown={handleKeyDown}
                   disabled={sending}
                 />
-                <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border/50">
+                <div className="flex items-center justify-between gap-2 px-4 py-3">
                   <div className="flex items-center gap-1 text-muted-foreground">
                     <input
                       ref={setFileInputEl}
@@ -279,7 +279,7 @@ function ChatSkeleton() {
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         <div className="w-9 h-9 shrink-0" />
         <div className="flex min-w-0 justify-end">
-          <Skeleton className="h-10 w-[60%] rounded-2xl" />
+          <Skeleton className="h-10 w-[60%] rounded-xl" />
         </div>
       </div>
       {/* Assistant bubble skeleton */}
@@ -295,7 +295,7 @@ function ChatSkeleton() {
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         <div className="w-9 h-9 shrink-0" />
         <div className="flex min-w-0 justify-end">
-          <Skeleton className="h-10 w-[45%] rounded-2xl" />
+          <Skeleton className="h-10 w-[45%] rounded-xl" />
         </div>
       </div>
       {/* Assistant bubble skeleton */}
@@ -391,7 +391,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="w-9 h-9 shrink-0" />
         <div className="flex flex-col items-end min-w-0">
-          <div className="zero-chat-bubble-user rounded-2xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
             <div className="px-4 py-3">
               <Markdown source={cleanContent} />
             </div>
@@ -499,7 +499,7 @@ function AssistantMessage({
     return (
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
           <div className="flex items-start gap-1.5 text-destructive">
             <IconAlertCircle size={14} className="shrink-0 mt-0.5" />
             <span>{message.error}</span>
@@ -513,7 +513,7 @@ function AssistantMessage({
     return (
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
           <Markdown source={message.content} />
         </div>
       </div>
@@ -524,7 +524,7 @@ function AssistantMessage({
   return (
     <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
       {avatarButton}
-      <div className="zero-chat-bubble-assistant rounded-2xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+      <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
         <div className="flex items-center gap-2">
           <IconLoader2
             size={14}

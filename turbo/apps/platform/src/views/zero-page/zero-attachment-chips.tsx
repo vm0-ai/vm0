@@ -44,7 +44,7 @@ export function FileAttachmentChip({
       href={url}
       download={filename}
       title={filename}
-      className="inline-flex items-center justify-center rounded-md hover:bg-foreground/10 transition-colors p-0.5"
+      className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
     >
       {iconSrc ? (
         <img
@@ -79,7 +79,7 @@ export function AttachmentChip({
       title={attachment.filename}
     >
       {isImage ? (
-        <div className="relative h-6 w-6 rounded-md overflow-hidden border border-foreground/10">
+        <div className="relative h-6 w-6 rounded-lg overflow-hidden border border-foreground/10">
           {attachment.url ? (
             <img
               src={attachment.url}

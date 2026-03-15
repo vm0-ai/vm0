@@ -1,9 +1,10 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
-  IconFilter,
   IconClock,
   IconChevronRight,
   IconLoader2,
+  IconUsers,
+  IconCircleDot,
 } from "@tabler/icons-react";
 import {
   Select,
@@ -40,7 +41,7 @@ import { updatePathname$ } from "../../signals/route.ts";
 import { Reason, detach } from "../../signals/utils.ts";
 
 const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
-  { value: "all", label: "All Status" },
+  { value: "all", label: "All status" },
   { value: "completed", label: "Completed" },
   { value: "failed", label: "Failed" },
   { value: "running", label: "Running" },
@@ -71,10 +72,10 @@ function ActivityRow({
           onSelect(entry.id);
         }
       }}
-      className="py-3 rounded-r-sm transition-colors hover:bg-muted/20 cursor-pointer"
+      className="py-3 -mx-4 px-4 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0"
     >
       <div className={cn(ROW_GRID)}>
-        <div className="min-w-0 truncate text-left text-sm text-foreground">
+        <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
           {agentName}
         </div>
         <div className="text-left">
@@ -150,7 +151,7 @@ export function ZeroActivityPage() {
 
   // Agent filter options: show display names, map back to compose name
   const agentOptions = [
-    { value: "all", label: "All Agents" },
+    { value: "all", label: "All agents" },
     ...orgAgents.map((a) => ({ value: a.name, label: a.displayName })),
   ];
 
@@ -164,105 +165,100 @@ export function ZeroActivityPage() {
       {/* Fixed header: title + filters */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">
-              Activity
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Logs and runs from your agents.
-            </p>
-          </div>
-
-          <div className="mt-4 flex items-center gap-3">
-            <Select
-              value={agentFilter}
-              onValueChange={(v) => setFilter("agent", v)}
-            >
-              <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
-                <IconFilter
-                  size={14}
-                  stroke={1.5}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {agentOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={statusFilter}
-              onValueChange={(v) => setFilter("status", v)}
-            >
-              <SelectTrigger className="h-9 w-[140px] gap-2 rounded-lg bg-muted/40 border-border/70">
-                <IconFilter
-                  size={14}
-                  stroke={1.5}
-                  className="shrink-0 text-muted-foreground"
-                />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                Activity
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Logs and runs from your agents.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+                value={agentFilter}
+                onValueChange={(v) => setFilter("agent", v)}
+              >
+                <SelectTrigger className="h-9 w-auto gap-1.5 rounded-lg border-border bg-card px-3.5 text-sm font-medium text-muted-foreground shadow-[0_1px_3px_0_rgba(0,0,0,0.08)]">
+                  <IconUsers size={14} stroke={1.5} className="shrink-0" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {agentOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => setFilter("status", v)}
+              >
+                <SelectTrigger className="h-9 w-auto gap-1.5 rounded-lg border-border bg-card px-3.5 text-sm font-medium text-muted-foreground shadow-[0_1px_3px_0_rgba(0,0,0,0.08)]">
+                  <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Scrollable table area */}
-      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6">
+      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-4">
         <div className="mx-auto max-w-[900px]">
-          {(logs.length > 0 || isLoading) && (
-            <div
-              className={cn(
-                ROW_GRID,
-                "sticky top-0 z-10 py-2 pb-1.5 border-b text-sm font-medium text-muted-foreground backdrop-blur-md bg-background/60",
-              )}
-            >
-              <div className="text-left">Agent</div>
-              <div className="text-left">Status</div>
-              <div className="text-left">Start Time</div>
-              <div className="text-left">Duration</div>
-              <div />
-            </div>
-          )}
-          {isLoading ? (
-            <div className="flex items-center justify-center min-h-[20rem]">
-              <IconLoader2
-                size={20}
-                stroke={1.5}
-                className="animate-spin text-muted-foreground"
-              />
-            </div>
-          ) : logs.length === 0 ? (
-            <div className="flex items-center justify-center min-h-[20rem]">
-              <p className="text-sm text-muted-foreground">
-                {agentFilter === "all" && statusFilter === "all"
-                  ? "No activity found."
-                  : "No activity matches your filters."}
-              </p>
-            </div>
-          ) : (
-            logs.map((entry) => (
-              <ActivityRow
-                key={entry.id}
-                entry={entry}
-                onSelect={(id) => navigate(`/zero/activity/${id}`)}
-                agentName={
-                  nameToDisplay.get(entry.agentName) ?? entry.agentName
-                }
-              />
-            ))
-          )}
+          <div className="zero-card overflow-hidden px-7 pb-3">
+            {(logs.length > 0 || isLoading) && (
+              <div
+                className={cn(
+                  ROW_GRID,
+                  "sticky top-0 z-10 -mx-4 px-4 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
+                )}
+              >
+                <div className="text-left">Agent</div>
+                <div className="text-left">Status</div>
+                <div className="text-left">Start Time</div>
+                <div className="text-left">Duration</div>
+                <div />
+              </div>
+            )}
+            {isLoading ? (
+              <div className="flex items-center justify-center min-h-[20rem]">
+                <IconLoader2
+                  size={20}
+                  stroke={1.5}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            ) : logs.length === 0 ? (
+              <div className="flex items-center justify-center min-h-[20rem]">
+                <p className="text-sm text-muted-foreground">
+                  {agentFilter === "all" && statusFilter === "all"
+                    ? "No activity found."
+                    : "No activity matches your filters."}
+                </p>
+              </div>
+            ) : (
+              logs.map((entry) => (
+                <ActivityRow
+                  key={entry.id}
+                  entry={entry}
+                  onSelect={(id) => navigate(`/zero/activity/${id}`)}
+                  agentName={
+                    nameToDisplay.get(entry.agentName) ?? entry.agentName
+                  }
+                />
+              ))
+            )}
+          </div>
         </div>
       </div>
 

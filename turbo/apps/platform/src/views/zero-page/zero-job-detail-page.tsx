@@ -1,12 +1,12 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import {
-  IconArrowLeft,
   IconFileText,
   IconUserCircle,
   IconPlug,
   IconCalendar,
   IconMessageCircle,
+  IconUsers,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -72,29 +72,32 @@ function useNavigateBack() {
   return () => navigate("/zero/:tab", { pathParams: { tab: "team" } });
 }
 
-function BackButton() {
+function Breadcrumb({ currentName }: { currentName?: string }) {
   const navigateBack = useNavigateBack();
   return (
-    <div className="mb-3">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 shrink-0 -ml-2"
+    <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+      <button
+        type="button"
         onClick={navigateBack}
-        aria-label="Back to agents"
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
       >
-        <IconArrowLeft size={20} stroke={1.5} />
-      </Button>
-    </div>
+        <IconUsers size={14} stroke={1.5} className="shrink-0" />
+        Team
+      </button>
+      <span className="text-muted-foreground/40 select-none">/</span>
+      <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
+        {currentName ?? "Agent"}
+      </span>
+    </nav>
   );
 }
 
 function DetailSkeleton() {
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
-        <div className="mx-auto max-w-[900px] px-7">
-          <BackButton />
+      <Breadcrumb />
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
+        <div className="mx-auto max-w-[900px]">
           <div className="animate-pulse space-y-3">
             <div className="h-5 w-48 rounded bg-muted" />
             <div className="h-4 w-72 rounded bg-muted" />
@@ -116,13 +119,9 @@ function DetailError({
   const navigate = useSet(navigateInReact$);
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
-        <div className="mx-auto max-w-[900px] px-7">
-          <BackButton />
-        </div>
-      </header>
+      <Breadcrumb />
       <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
-        <div className="mx-auto max-w-[900px] px-7">
+        <div className="mx-auto max-w-[900px]">
           <Card className="zero-card">
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
@@ -294,7 +293,6 @@ function JobInstructionsTab() {
 
 export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
   const navigate = useSet(navigateInReact$);
-  const navigateBack = useNavigateBack();
   const detail = useGet(zeroJobDetail$);
   const loading = useGet(zeroJobDetailLoading$);
   const error = useGet(zeroJobDetailError$);
@@ -329,19 +327,9 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-3">
-        <div className="mb-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 -ml-2"
-            onClick={navigateBack}
-            aria-label="Back to agents"
-          >
-            <IconArrowLeft size={20} stroke={1.5} />
-          </Button>
-        </div>
-        <div className="mx-auto max-w-[900px] px-7">
+      <Breadcrumb currentName={displayName} />
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
+        <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-3 text-base">
             <img
               src={getAgentAvatar(agentName)}
@@ -352,7 +340,7 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
               <h1 className="font-semibold tracking-tight text-foreground">
                 {displayName}
               </h1>
-              <p className="text-sm text-muted-foreground mt-0.5 leading-tight">
+              <p className="text-sm text-muted-foreground mt-1.5 leading-tight">
                 {description || "Your AI teammate, tuned to you"}
               </p>
             </div>
@@ -371,7 +359,7 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
                 </TabsTrigger>
                 <TabsTrigger value="schedule" className={TAB_TRIGGER_CLASS}>
                   <IconCalendar size={14} stroke={1.5} />
-                  Schedule
+                  Scheduled
                 </TabsTrigger>
                 <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
                   <IconUserCircle size={14} stroke={1.5} />
@@ -389,7 +377,7 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-4"
+                    className="h-9 shrink-0 gap-2 rounded-lg border-border bg-card px-4 shadow-[0_1px_3px_0_rgba(0,0,0,0.08)] transition-colors hover:bg-muted/60"
                     onClick={() =>
                       navigate("/zero/:tab", { pathParams: { tab: "chat" } })
                     }
