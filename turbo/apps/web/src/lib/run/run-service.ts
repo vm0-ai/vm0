@@ -16,7 +16,7 @@ import {
   concurrentRunLimit,
   isConcurrentRunLimit,
 } from "../errors";
-import { enqueueRun } from "./run-queue-service";
+import { enqueueRun, drainOrgQueue } from "./run-queue-service";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
@@ -477,12 +477,15 @@ async function registerCallbacks(
 /**
  * Mark a run as failed, dispatch terminal side effects, and attach run
  * metadata to the error for callers.
+ *
+ * @param drain - Optional queue drain function. Injected by callers to release
+ *   concurrency slots when a run that occupied one fails during dispatch.
  */
 async function markRunFailed(
   runId: string,
   createdAt: Date,
   error: unknown,
-  orgId?: string,
+  drain?: () => Promise<void>,
 ): Promise<void> {
   const errorMessage = error instanceof Error ? error.message : "Unknown error";
   log.error(`Run ${runId} failed: ${errorMessage}`);
@@ -497,9 +500,9 @@ async function markRunFailed(
     ["queued", "pending", "running"],
   );
 
-  // Dispatch callbacks (e.g., loop schedule advancement) if transition succeeded
+  // Dispatch callbacks (e.g., loop schedule advancement) and drain queue if transition succeeded
   if (transitioned) {
-    await dispatchTerminalSideEffects(runId, "failed", errorMessage);
+    await dispatchTerminalSideEffects(runId, "failed", errorMessage, drain);
   }
 
   // Attach run metadata so callers can return partial results
@@ -647,7 +650,12 @@ async function buildAndDispatchRun(opts: {
     log.debug(`Run ${runId} dispatched with status: ${result.status}`);
     return result;
   } catch (error) {
-    await markRunFailed(runId, createdAt, error);
+    await markRunFailed(
+      runId,
+      createdAt,
+      error,
+      orgId ? () => drainOrgQueue(orgId, executeQueuedRun) : undefined,
+    );
     throw error;
   }
 }
