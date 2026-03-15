@@ -14,8 +14,10 @@ import { deleteS3Objects } from "../../../../src/lib/s3/s3-client";
 import {
   cleanupExpiredQueueEntries,
   drainStaleQueues,
+  drainOrgQueue,
 } from "../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../src/lib/run/run-service";
+import { dispatchCallbacks } from "../../../../src/lib/callback";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";
 
@@ -143,6 +145,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     const staleRuns = await globalThis.services.db
       .select({
         id: agentRuns.id,
+        orgId: agentRuns.orgId,
         status: agentRuns.status,
         sandboxId: agentRuns.sandboxId,
         lastHeartbeatAt: agentRuns.lastHeartbeatAt,
@@ -225,6 +228,21 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             log.debug(`Run ${run.id} already transitioned, skipping timeout`);
             continue;
           }
+
+          // Dispatch callbacks so loop schedules can advance, and drain queue
+          // to release concurrency slots. Uses "failed" status since timeout
+          // is a non-successful terminal state.
+          await dispatchCallbacks(
+            run.id,
+            "failed",
+            undefined,
+            timeoutReason,
+          ).catch((err) =>
+            log.error("Failed to dispatch callbacks after timeout", { err }),
+          );
+          await drainOrgQueue(run.orgId, executeQueuedRun).catch((err) =>
+            log.error("Failed to drain org queue after timeout", { err }),
+          );
 
           const isDebug =
             run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;

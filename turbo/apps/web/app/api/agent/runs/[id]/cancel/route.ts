@@ -9,6 +9,7 @@ import { logger } from "../../../../../../src/lib/logger";
 import { transitionRunStatus } from "../../../../../../src/lib/run/run-status";
 import { drainOrgQueue } from "../../../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../../../src/lib/run/run-service";
+import { dispatchCallbacks } from "../../../../../../src/lib/callback";
 import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
@@ -88,14 +89,21 @@ const router = tsr.router(runsCancelContract, {
       };
     }
 
-    // Drain queue if cancelling a running/pending run freed a concurrency slot
-    if (run.status === "running" || run.status === "pending") {
-      after(async () => {
-        await drainOrgQueue(run.orgId, executeQueuedRun).catch((err) =>
-          log.error("Failed to drain org queue after cancel", { err }),
-        );
-      });
-    }
+    // Dispatch callbacks (so loop schedules can advance) and drain queue
+    // if cancelling a running/pending run freed a concurrency slot.
+    after(async () => {
+      await Promise.all([
+        dispatchCallbacks(runId, "failed", undefined, "Run cancelled").catch(
+          (err) =>
+            log.error("Failed to dispatch callbacks after cancel", { err }),
+        ),
+        run.status === "running" || run.status === "pending"
+          ? drainOrgQueue(run.orgId, executeQueuedRun).catch((err) =>
+              log.error("Failed to drain org queue after cancel", { err }),
+            )
+          : null,
+      ]);
+    });
 
     log.debug(
       `Run ${runId} cancelled by user ${userId}, sandbox: ${run.sandboxId ?? "none"}`,
