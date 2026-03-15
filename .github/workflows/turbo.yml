@@ -1388,7 +1388,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: ./.github/actions/toolchain-init
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install CLI dependencies
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli
 
       - name: Setup pnpm global directory
         run: |
