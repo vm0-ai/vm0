@@ -14,6 +14,7 @@ export const ALL_RUN_STATUSES = [
   "completed",
   "failed",
   "timeout",
+  "cancelled",
 ] as const;
 
 /**
