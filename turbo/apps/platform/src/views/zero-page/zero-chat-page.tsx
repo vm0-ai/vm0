@@ -1395,13 +1395,13 @@ export function ZeroChatPage({
         src="/images/chat-mac.png"
         alt=""
         role="presentation"
-        className="pointer-events-none absolute bottom-10 left-6 h-30 w-30 object-contain opacity-60 select-none"
+        className="absolute bottom-8 left-8 h-40 w-40 object-contain opacity-70 select-none transition-all duration-500 ease-out hover:opacity-100 hover:scale-110 hover:-translate-y-2"
       />
       <img
         src="/images/chat-coffee.png"
         alt=""
         role="presentation"
-        className="pointer-events-none absolute bottom-6 right-6 h-36 w-36 object-contain opacity-60 select-none"
+        className="absolute bottom-8 right-8 h-44 w-44 object-contain opacity-70 select-none transition-all duration-500 ease-out hover:opacity-100 hover:scale-110 hover:-translate-y-2"
       />
       <AddConnectionDialog
         open={skillsDialogOpen}
