@@ -7,7 +7,9 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
+use std::collections::HashMap;
 use std::process::Stdio;
+use std::time::{Duration, Instant};
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWriteExt;
 
@@ -225,6 +227,21 @@ pub async fn execute_cli(
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
 
+    // Stuck-tool watchdog: workaround for Claude Code bug where
+    // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
+    // if a network tool exceeds STUCK_TOOL_TIMEOUT_SECS without producing
+    // a tool_result, kill the process. Keyed by tool_use_id to handle
+    // parallel tool calls correctly.
+    // See: https://github.com/anthropics/claude-code/issues/11650
+    let mut stuck_tool_tracker: HashMap<String, (String, Instant)> = HashMap::new();
+    let stuck_tool_interval = Duration::from_secs(crate::constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
+    let mut stuck_tool_check = tokio::time::interval_at(
+        tokio::time::Instant::now() + stuck_tool_interval,
+        stuck_tool_interval,
+    );
+    // MAINTENANCE: update if Claude Code adds new network tools that can hang.
+    const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
+
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
@@ -262,6 +279,17 @@ pub async fn execute_cli(
                             {
                                 println!("{result}");
                             }
+                            // Extract tool info BEFORE masking (masker may replace tool names)
+                            for tool_event in events::extract_claude_tool_info(&event) {
+                                match tool_event {
+                                    events::ClaudeToolEvent::Use { id, name } => {
+                                        stuck_tool_tracker.insert(id.to_string(), (name.to_string(), Instant::now()));
+                                    }
+                                    events::ClaudeToolEvent::Result { tool_use_id } => {
+                                        stuck_tool_tracker.remove(tool_use_id);
+                                    }
+                                }
+                            }
                             // Prepare event (fast: mask secrets, add seq) and enqueue
                             // for background sending.  Never blocks the reading loop.
                             if let Some(payload) = events::prepare_event(&mut event, seq, masker)
@@ -283,6 +311,30 @@ pub async fn execute_cli(
                         cli_status = Some(s);
                     }
                     Err(e) => break Err(AgentError::Io(e)),
+                }
+            }
+            _ = stuck_tool_check.tick() => {
+                let timeout_secs = env::stuck_tool_timeout_secs();
+                // Find the oldest network tool that has exceeded the timeout.
+                let stuck = stuck_tool_tracker
+                    .values()
+                    .filter(|(name, started)| {
+                        started.elapsed().as_secs() >= timeout_secs
+                            && STUCK_TOOL_NAMES.contains(&name.as_str())
+                    })
+                    .min_by_key(|(_, started)| *started)
+                    .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
+                if let Some((name, elapsed)) = stuck {
+                    log_warn!(
+                        LOG_TAG,
+                        "Tool timeout: {name} stuck for {elapsed}s, killing process"
+                    );
+                    if let Some(pid) = pgid {
+                        unsafe { libc::kill(-pid, libc::SIGTERM); }
+                    }
+                    break Err(AgentError::Execution(format!(
+                        "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
+                    )));
                 }
             }
             hb_result = &mut heartbeat_handle => {

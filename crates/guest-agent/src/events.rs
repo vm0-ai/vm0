@@ -77,6 +77,54 @@ pub async fn post_event(payload: &Value) -> Result<(), AgentError> {
     }
 }
 
+/// Tool event extracted from a Claude Code JSONL line.
+#[derive(Debug, PartialEq)]
+pub(crate) enum ClaudeToolEvent<'a> {
+    /// Tool invocation: `(tool_use_id, tool_name)`.
+    Use { id: &'a str, name: &'a str },
+    /// Tool result: `(tool_use_id)`.
+    Result { tool_use_id: &'a str },
+}
+
+/// Extract tool call info from a Claude Code JSONL event.
+///
+/// Iterates all content blocks (handles `[text, tool_use]` and parallel
+/// `[tool_use, tool_use]` patterns).  Returns an empty vec for non-tool
+/// events or non-Claude-Code formats (e.g. Codex).
+pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>> {
+    let Some(contents) = event
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let mut results = Vec::new();
+    for content in contents {
+        let Some(content_type) = content.get("type").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        match content_type {
+            "tool_use" => {
+                if let (Some(id), Some(name)) = (
+                    content.get("id").and_then(|v| v.as_str()),
+                    content.get("name").and_then(|v| v.as_str()),
+                ) {
+                    results.push(ClaudeToolEvent::Use { id, name });
+                }
+            }
+            "tool_result" => {
+                if let Some(tool_use_id) = content.get("tool_use_id").and_then(|v| v.as_str()) {
+                    results.push(ClaudeToolEvent::Result { tool_use_id });
+                }
+            }
+            _ => {}
+        }
+    }
+    results
+}
+
 /// If this is an init event, extract session ID and write temp files.
 fn extract_session_id(event: &Value) {
     let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -126,4 +174,153 @@ fn extract_session_id(event: &Value) {
 
     let _ = std::fs::write(paths::session_history_path_file(), &history_path);
     log_info!(LOG_TAG, "Session history will be at: {history_path}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_tool_use() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "id": "t1", "name": "WebFetch", "input": {}}]
+            }
+        });
+        assert_eq!(
+            extract_claude_tool_info(&event),
+            vec![ClaudeToolEvent::Use {
+                id: "t1",
+                name: "WebFetch"
+            }]
+        );
+    }
+
+    #[test]
+    fn extract_tool_result() {
+        let event = serde_json::json!({
+            "type": "user",
+            "message": {
+                "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]
+            }
+        });
+        assert_eq!(
+            extract_claude_tool_info(&event),
+            vec![ClaudeToolEvent::Result { tool_use_id: "t1" }]
+        );
+    }
+
+    #[test]
+    fn extract_text_then_tool_use() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "Let me search..."},
+                    {"type": "tool_use", "id": "t2", "name": "WebSearch", "input": {}}
+                ]
+            }
+        });
+        assert_eq!(
+            extract_claude_tool_info(&event),
+            vec![ClaudeToolEvent::Use {
+                id: "t2",
+                name: "WebSearch"
+            }]
+        );
+    }
+
+    #[test]
+    fn extract_parallel_tool_uses() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "t1", "name": "WebFetch", "input": {}},
+                    {"type": "tool_use", "id": "t2", "name": "WebSearch", "input": {}}
+                ]
+            }
+        });
+        assert_eq!(
+            extract_claude_tool_info(&event),
+            vec![
+                ClaudeToolEvent::Use {
+                    id: "t1",
+                    name: "WebFetch"
+                },
+                ClaudeToolEvent::Use {
+                    id: "t2",
+                    name: "WebSearch"
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_tool_use_missing_id_skipped() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "name": "WebFetch", "input": {}}]
+            }
+        });
+        assert!(extract_claude_tool_info(&event).is_empty());
+    }
+
+    #[test]
+    fn extract_tool_result_missing_id_skipped() {
+        let event = serde_json::json!({
+            "type": "user",
+            "message": {
+                "content": [{"type": "tool_result", "content": "ok"}]
+            }
+        });
+        assert!(extract_claude_tool_info(&event).is_empty());
+    }
+
+    #[test]
+    fn extract_text_event_returns_empty() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "text", "text": "hello"}]
+            }
+        });
+        assert!(extract_claude_tool_info(&event).is_empty());
+    }
+
+    #[test]
+    fn extract_non_network_tool_still_parsed() {
+        // Non-network tools (Bash, Read, etc.) ARE parsed by extract_claude_tool_info.
+        // Filtering by STUCK_TOOL_NAMES happens in the caller (cli.rs watchdog).
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "sleep 999"}}]
+            }
+        });
+        assert_eq!(
+            extract_claude_tool_info(&event),
+            vec![ClaudeToolEvent::Use {
+                id: "t1",
+                name: "Bash"
+            }]
+        );
+    }
+
+    #[test]
+    fn extract_init_event_returns_empty() {
+        let event = serde_json::json!({"type": "system", "subtype": "init"});
+        assert!(extract_claude_tool_info(&event).is_empty());
+    }
+
+    #[test]
+    fn extract_empty_content_returns_empty() {
+        let event = serde_json::json!({
+            "type": "assistant",
+            "message": {"content": []}
+        });
+        assert!(extract_claude_tool_info(&event).is_empty());
+    }
 }

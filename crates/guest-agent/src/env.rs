@@ -34,6 +34,23 @@ static USE_MOCK_CLAUDE: LazyLock<bool> = LazyLock::new(|| {
         .map(|v| v == "true")
         .unwrap_or(false)
 });
+/// Workaround for Claude Code bug: WebSearch/WebFetch can hang indefinitely.
+/// See: https://github.com/anthropics/claude-code/issues/11650
+static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
+    match std::env::var("VM0_STUCK_TOOL_TIMEOUT_SECS") {
+        Ok(v) => match v.parse() {
+            Ok(secs) => secs,
+            Err(_) => {
+                eprintln!(
+                    "[WARN] VM0_STUCK_TOOL_TIMEOUT_SECS={v:?} is not a valid u64, using default {}s",
+                    crate::constants::STUCK_TOOL_TIMEOUT_SECS
+                );
+                crate::constants::STUCK_TOOL_TIMEOUT_SECS
+            }
+        },
+        Err(_) => crate::constants::STUCK_TOOL_TIMEOUT_SECS,
+    }
+});
 
 // ---------------------------------------------------------------------------
 // Artifact
@@ -111,6 +128,9 @@ pub fn memory_mount_path() -> &'static str {
 }
 pub fn memory_name() -> &'static str {
     &MEMORY_NAME
+}
+pub fn stuck_tool_timeout_secs() -> u64 {
+    *STUCK_TOOL_TIMEOUT
 }
 /// Whether a backend API is available (token set).
 ///

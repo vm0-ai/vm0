@@ -233,6 +233,55 @@ fn main() -> ExitCode {
         return ExitCode::from(1);
     }
 
+    // Special test prefix: @stuck-tool — emit tool_use for WebFetch then hang
+    if parsed.prompt.starts_with("@stuck-tool") {
+        if parsed.output_format == "stream-json" {
+            let session_id = generate_session_id();
+            let cwd = std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| "/".to_string());
+
+            // Init event
+            println!(
+                "{}",
+                json!({
+                    "type": "system",
+                    "subtype": "init",
+                    "cwd": cwd,
+                    "session_id": session_id,
+                    "tools": ["WebFetch"],
+                    "model": "mock-claude"
+                })
+            );
+
+            // Tool use event — WebFetch that never completes
+            println!(
+                "{}",
+                json!({
+                    "type": "assistant",
+                    "session_id": session_id,
+                    "message": {
+                        "role": "assistant",
+                        "content": [{
+                            "type": "tool_use",
+                            "id": "toolu_stuck_001",
+                            "name": "WebFetch",
+                            "input": {"url": "https://example.com/hang"}
+                        }]
+                    }
+                })
+            );
+
+            // Flush stdout so guest-agent receives the events before we hang.
+            // When piped, stdout is fully buffered and println! may not flush.
+            let _ = std::io::stdout().flush();
+
+            // Hang forever — simulates a stuck WebFetch
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
+        return ExitCode::from(1);
+    }
+
     let session_id = generate_session_id();
 
     if parsed.output_format == "stream-json" {
