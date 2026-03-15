@@ -1,4 +1,4 @@
-import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
+import { eq, lt, and, or, count, gt, sql, inArray, asc } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { env } from "../../env";
@@ -294,6 +294,7 @@ export async function drainStaleQueues(
         .from(agentRunQueue)
         .innerJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
         .where(eq(agentRuns.orgId, orgId))
+        .orderBy(asc(agentRunQueue.createdAt))
         .limit(1);
 
       if (userRow) {
