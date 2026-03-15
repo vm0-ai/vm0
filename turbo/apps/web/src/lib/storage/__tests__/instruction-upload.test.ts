@@ -115,14 +115,15 @@ describe("uploadInstructionsServerSide", () => {
       content: "# Same content",
     };
 
-    // First upload — creates new version
+    // First upload — no existing version in DB, so verifyS3FilesExist is never
+    // reached. Set it to false to make the mock state explicit.
+    context.mocks.s3.verifyS3FilesExist.mockResolvedValue(false);
     const result1 = await uploadInstructionsServerSide(params);
     expect(context.mocks.s3.putS3Object).toHaveBeenCalledTimes(2);
 
-    // Mock verifyS3FilesExist to return true (S3 files exist from first upload)
+    // Second upload — existing version found in DB, verifyS3FilesExist is
+    // called and returns true so the S3 upload is skipped (dedup).
     context.mocks.s3.verifyS3FilesExist.mockResolvedValue(true);
-
-    // Second upload with same content — should skip S3 upload
     const result2 = await uploadInstructionsServerSide(params);
 
     expect(result2.versionId).toBe(result1.versionId);
