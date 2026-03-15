@@ -718,7 +718,8 @@ describe("Platform session auth (no CLI token)", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.jobId).toBeDefined();
-    expect(data.status).toBe("pending");
+    // Server-side compose completes synchronously when no skills need caching
+    expect(data.status).toBe("completed");
     expect(data.source).toBe("platform");
   });
 
@@ -798,13 +799,27 @@ describe("Platform session auth (no CLI token)", () => {
   it("should complete full lifecycle: session auth → webhook → poll", async () => {
     const user = await context.setupUser();
 
+    // Use content with an uncached skill to force sandbox path
+    const sandboxContent = {
+      version: "1",
+      agents: {
+        "my-agent": {
+          framework: "claude-code",
+          description: "A test agent",
+          skills: [
+            "https://github.com/vm0-ai/vm0-skills/tree/main/uncached-for-test",
+          ],
+        },
+      },
+    };
+
     // 1. Create job via session auth (no CLI token)
     const createRequest = createTestRequest(
       "http://localhost:3000/api/compose/jobs",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: testContent }),
+        body: JSON.stringify({ content: sandboxContent }),
       },
     );
 
