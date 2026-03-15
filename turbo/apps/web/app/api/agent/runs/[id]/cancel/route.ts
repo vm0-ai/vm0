@@ -6,10 +6,12 @@ import { agentRunQueue } from "../../../../../../src/db/schema/agent-run-queue";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../../src/lib/logger";
-import { transitionRunStatus } from "../../../../../../src/lib/run/run-status";
+import {
+  transitionRunStatus,
+  dispatchTerminalSideEffects,
+} from "../../../../../../src/lib/run/run-status";
 import { drainOrgQueue } from "../../../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../../../src/lib/run/run-service";
-import { dispatchCallbacks } from "../../../../../../src/lib/callback";
 import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
@@ -89,20 +91,17 @@ const router = tsr.router(runsCancelContract, {
       };
     }
 
-    // Dispatch callbacks (so loop schedules can advance) and drain queue
-    // if cancelling a running/pending run freed a concurrency slot.
+    // Dispatch callbacks (e.g., loop schedule advancement) and drain queue
     after(async () => {
-      await Promise.all([
-        dispatchCallbacks(runId, "failed", undefined, "Run cancelled").catch(
-          (err) =>
-            log.error("Failed to dispatch callbacks after cancel", { err }),
-        ),
-        run.status === "running" || run.status === "pending"
-          ? drainOrgQueue(run.orgId, executeQueuedRun).catch((err) =>
-              log.error("Failed to drain org queue after cancel", { err }),
-            )
-          : null,
-      ]);
+      const shouldDrain = run.status === "running" || run.status === "pending";
+      await dispatchTerminalSideEffects(
+        runId,
+        "cancelled",
+        "Run cancelled",
+        shouldDrain
+          ? () => drainOrgQueue(run.orgId, executeQueuedRun)
+          : undefined,
+      );
     });
 
     log.debug(

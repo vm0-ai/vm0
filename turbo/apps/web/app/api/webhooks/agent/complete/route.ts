@@ -9,7 +9,10 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { eq, and } from "drizzle-orm";
-import { transitionRunStatus } from "../../../../../src/lib/run/run-status";
+import {
+  transitionRunStatus,
+  dispatchTerminalSideEffects,
+} from "../../../../../src/lib/run/run-status";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import type {
   ArtifactSnapshot,
@@ -17,7 +20,6 @@ import type {
 } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
-import { dispatchCallbacks } from "../../../../../src/lib/callback";
 import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../../src/lib/run/run-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
@@ -77,23 +79,18 @@ async function persistChatMessages(
 }
 
 /**
- * Schedule callback dispatch and queue drain in a non-blocking after() block.
+ * Schedule terminal side effects in a non-blocking after() block.
  */
-function scheduleCallbackDispatch(
+function scheduleTerminalSideEffects(
   runId: string,
   status: "completed" | "failed",
   orgId: string,
   errorMsg?: string,
 ): void {
   after(async () => {
-    await Promise.all([
-      dispatchCallbacks(runId, status, undefined, errorMsg).catch((err) =>
-        log.error("Failed to dispatch callbacks", { err }),
-      ),
-      drainOrgQueue(orgId, executeQueuedRun).catch((err) =>
-        log.error("Failed to drain org queue", { err }),
-      ),
-    ]);
+    await dispatchTerminalSideEffects(runId, status, errorMsg, () =>
+      drainOrgQueue(orgId, executeQueuedRun),
+    );
   });
 }
 
@@ -211,7 +208,7 @@ const router = tsr.router(webhookCompleteContract, {
         // Dispatch callbacks so the user gets notified about the failure
         // (previously this path returned without dispatching)
         if (transitioned) {
-          scheduleCallbackDispatch(
+          scheduleTerminalSideEffects(
             body.runId,
             "failed",
             run.orgId,
@@ -310,7 +307,7 @@ const router = tsr.router(webhookCompleteContract, {
       finalStatus === "failed"
         ? (body.error ?? `Agent exited with code ${body.exitCode}`)
         : undefined;
-    scheduleCallbackDispatch(body.runId, finalStatus, run.orgId, errorMsg);
+    scheduleTerminalSideEffects(body.runId, finalStatus, run.orgId, errorMsg);
 
     return {
       status: 200 as const,

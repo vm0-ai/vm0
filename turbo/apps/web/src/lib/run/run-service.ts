@@ -2,7 +2,7 @@ import { eq, and, count, gt, or, sql } from "drizzle-orm";
 import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
-import { transitionRunStatus } from "./run-status";
+import { transitionRunStatus, dispatchTerminalSideEffects } from "./run-status";
 import {
   agentComposeVersions,
   agentComposes,
@@ -475,17 +475,19 @@ async function registerCallbacks(
 }
 
 /**
- * Mark a run as failed and attach run metadata to the error for callers.
+ * Mark a run as failed, dispatch terminal side effects, and attach run
+ * metadata to the error for callers.
  */
 async function markRunFailed(
   runId: string,
   createdAt: Date,
   error: unknown,
+  orgId?: string,
 ): Promise<void> {
   const errorMessage = error instanceof Error ? error.message : "Unknown error";
   log.error(`Run ${runId} failed: ${errorMessage}`);
 
-  await transitionRunStatus(
+  const transitioned = await transitionRunStatus(
     runId,
     {
       status: "failed",
@@ -494,6 +496,11 @@ async function markRunFailed(
     },
     ["queued", "pending", "running"],
   );
+
+  // Dispatch callbacks (e.g., loop schedule advancement) if transition succeeded
+  if (transitioned) {
+    await dispatchTerminalSideEffects(runId, "failed", errorMessage);
+  }
 
   // Attach run metadata so callers can return partial results
   if (error instanceof Error) {

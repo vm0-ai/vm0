@@ -1,7 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
+import { dispatchCallbacks } from "../callback";
+import { logger } from "../logger";
 import type { RunResult, RunStatus } from "./types";
 import type { Database } from "../../types/global";
+
+const log = logger("service:run-status");
 
 /**
  * Atomically transition a run to a new status.
@@ -34,4 +38,33 @@ export async function transitionRunStatus(
     )
     .returning({ id: agentRuns.id });
   return !!updated;
+}
+
+/**
+ * Dispatch side effects after a successful terminal status transition.
+ *
+ * Every terminal transition (completed, failed, timeout, cancelled) must call
+ * this to ensure:
+ * 1. Registered callbacks fire (e.g., loop schedule advancement)
+ * 2. Concurrency slots are released via queue drain
+ *
+ * @param drain - Optional queue drain function. Injected by callers to avoid
+ *   circular dependency with run-queue-service. Omit when callbacks are not
+ *   yet registered (e.g., markQueuedRunFailed for runs that never dispatched).
+ */
+export async function dispatchTerminalSideEffects(
+  runId: string,
+  status: RunStatus,
+  error?: string,
+  drain?: () => Promise<void>,
+): Promise<void> {
+  const callbackStatus = status === "completed" ? "completed" : "failed";
+  await dispatchCallbacks(runId, callbackStatus, undefined, error).catch(
+    (err) => log.error("Failed to dispatch callbacks", { err }),
+  );
+  if (drain) {
+    await drain().catch((err) =>
+      log.error("Failed to drain org queue", { err }),
+    );
+  }
 }

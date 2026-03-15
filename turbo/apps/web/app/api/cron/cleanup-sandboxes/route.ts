@@ -2,7 +2,10 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { transitionRunStatus } from "../../../../src/lib/run/run-status";
+import {
+  transitionRunStatus,
+  dispatchTerminalSideEffects,
+} from "../../../../src/lib/run/run-status";
 import {
   agentComposeVersions,
   agentComposes,
@@ -17,7 +20,6 @@ import {
   drainOrgQueue,
 } from "../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../src/lib/run/run-service";
-import { dispatchCallbacks } from "../../../../src/lib/callback";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";
 
@@ -229,19 +231,12 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             continue;
           }
 
-          // Dispatch callbacks so loop schedules can advance, and drain queue
-          // to release concurrency slots. Uses "failed" status since timeout
-          // is a non-successful terminal state.
-          await dispatchCallbacks(
+          // Dispatch callbacks (e.g., loop schedule advancement) and drain queue
+          await dispatchTerminalSideEffects(
             run.id,
-            "failed",
-            undefined,
+            "timeout",
             timeoutReason,
-          ).catch((err) =>
-            log.error("Failed to dispatch callbacks after timeout", { err }),
-          );
-          await drainOrgQueue(run.orgId, executeQueuedRun).catch((err) =>
-            log.error("Failed to drain org queue after timeout", { err }),
+            () => drainOrgQueue(run.orgId, executeQueuedRun),
           );
 
           const isDebug =
