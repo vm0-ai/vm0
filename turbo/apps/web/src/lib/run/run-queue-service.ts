@@ -154,6 +154,7 @@ export async function drainUserQueue(
           userId,
           entry.encryptedParams,
           entry.createdAt,
+          entry.expiresAt,
         );
         return;
       }
@@ -171,6 +172,7 @@ interface QueueEntry {
   runId: string;
   encryptedParams: string | null;
   createdAt: Date;
+  expiresAt: Date;
 }
 
 /**
@@ -186,8 +188,9 @@ async function dequeueNext(userId: string): Promise<QueueEntry | undefined> {
       run_id: string;
       encrypted_params: string | null;
       created_at: string;
+      expires_at: string;
     }>(
-      sql`SELECT run_id, encrypted_params, created_at
+      sql`SELECT run_id, encrypted_params, created_at, expires_at
        FROM agent_run_queue
        WHERE user_id = ${userId}
        ORDER BY created_at ASC
@@ -208,6 +211,7 @@ async function dequeueNext(userId: string): Promise<QueueEntry | undefined> {
       runId: row.run_id,
       encryptedParams: row.encrypted_params,
       createdAt: new Date(row.created_at),
+      expiresAt: new Date(row.expires_at),
     };
   });
 }
@@ -256,21 +260,22 @@ export async function drainStaleQueues(
 ): Promise<number> {
   const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
 
-  // Find distinct users with queued runs
-  const usersWithQueued = await globalThis.services.db
-    .selectDistinct({ userId: agentRunQueue.userId })
-    .from(agentRunQueue);
+  // Find distinct orgs with queued runs (JOIN queue with runs to get orgId)
+  const orgsWithQueued = await globalThis.services.db
+    .selectDistinct({ orgId: agentRuns.orgId })
+    .from(agentRunQueue)
+    .innerJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id));
 
   let drained = 0;
 
-  for (const { userId } of usersWithQueued) {
-    // Check if user has any active runs
+  for (const { orgId } of orgsWithQueued) {
+    // Check if org has any active runs (same logic as checkRunConcurrencyLimit)
     const [result] = await globalThis.services.db
       .select({ count: count() })
       .from(agentRuns)
       .where(
         and(
-          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, orgId),
           or(
             eq(agentRuns.status, "running"),
             and(
@@ -283,9 +288,21 @@ export async function drainStaleQueues(
 
     const activeCount = Number(result?.count ?? 0);
     if (activeCount === 0) {
-      log.debug(`Draining stale queue for user ${userId}`);
-      await drainUserQueue(userId, execute);
-      drained++;
+      // Find a userId with queued runs in this org to drain
+      const [userRow] = await globalThis.services.db
+        .select({ userId: agentRunQueue.userId })
+        .from(agentRunQueue)
+        .innerJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
+        .where(eq(agentRuns.orgId, orgId))
+        .limit(1);
+
+      if (userRow) {
+        log.debug(
+          `Draining stale queue for org ${orgId}, user ${userRow.userId}`,
+        );
+        await drainUserQueue(userRow.userId, execute);
+        drained++;
+      }
     }
   }
 
@@ -301,14 +318,14 @@ async function reEnqueueRun(
   userId: string,
   encryptedParams: string | null,
   originalCreatedAt: Date,
+  originalExpiresAt: Date,
 ): Promise<void> {
-  const expiresAt = new Date(Date.now() + QUEUE_TTL_MS);
   await globalThis.services.db.insert(agentRunQueue).values({
     runId,
     userId,
     encryptedParams,
     createdAt: originalCreatedAt,
-    expiresAt,
+    expiresAt: originalExpiresAt,
   });
   log.debug(`Re-enqueued run ${runId} (concurrency conflict)`);
 }
