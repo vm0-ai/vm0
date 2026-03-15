@@ -1437,37 +1437,6 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Verify runners are deployed
-        env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          HOST_INDEX=0
-          for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            HOST_INDEX=$((HOST_INDEX + 1))
-            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
-            REMOTE="${METAL_USER}@${HOST}"
-            echo "Checking runner ${RUNNER_NAME} on ${HOST}..."
-            if ! ssh "$REMOTE" "test -x ${BIN_DIR}/runner"; then
-              echo "::error::Runner binary not found on ${HOST}. The cleanup job may have already run. Use 'Re-run all jobs' to redeploy the runner first."
-              exit 1
-            fi
-            if ! ssh "$REMOTE" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"; then
-              echo "::error::Runner ${RUNNER_NAME} not healthy on ${HOST}. Use 'Re-run all jobs' to redeploy the runner first."
-              exit 1
-            fi
-          done
-          echo "All runners reachable"
-
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
           if [ -z "$RUNNER_CHUNK_COUNT" ] || [ "$RUNNER_CHUNK_COUNT" -eq 0 ]; then
