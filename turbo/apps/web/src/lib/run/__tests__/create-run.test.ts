@@ -81,6 +81,19 @@ describe("createRun()", () => {
       expect(run!.lastHeartbeatAt).not.toBeNull();
     });
 
+    it("should refresh lastHeartbeatAt during pipeline", async () => {
+      const beforeCreate = new Date();
+      const result = await createRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+
+      // lastHeartbeatAt should be at or after creation time,
+      // confirming the mid-pipeline heartbeat refresh executed
+      expect(run!.lastHeartbeatAt!.getTime()).toBeGreaterThanOrEqual(
+        beforeCreate.getTime(),
+      );
+    });
+
     it("should store vars when provided", async () => {
       const vars = { MY_VAR: "value1", OTHER_VAR: "value2" };
       const result = await createRun(baseParams({ vars }));

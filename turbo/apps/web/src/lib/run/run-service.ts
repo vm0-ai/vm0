@@ -571,6 +571,19 @@ async function buildAndDispatchRun(opts: {
     });
     const buildContextTime = Date.now();
 
+    // Refresh heartbeat after the heaviest pipeline step to prevent the
+    // cleanup cron from timing out runs whose dispatch takes > 5 minutes.
+    // Status guard avoids touching runs cancelled/failed while in-flight.
+    await globalThis.services.db
+      .update(agentRuns)
+      .set({ lastHeartbeatAt: new Date() })
+      .where(
+        and(
+          eq(agentRuns.id, runId),
+          or(eq(agentRuns.status, "pending"), eq(agentRuns.status, "running")),
+        ),
+      );
+
     // Prepare execution context (storage manifest, working dir, etc.)
     const prepareResult = await prepareForExecution(context, runtimeOrg);
     const prepareTime = Date.now();
