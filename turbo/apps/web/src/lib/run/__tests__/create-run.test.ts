@@ -82,15 +82,15 @@ describe("createRun()", () => {
     });
 
     it("should refresh lastHeartbeatAt during pipeline", async () => {
-      const beforeCreate = new Date();
       const result = await createRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
 
-      // lastHeartbeatAt should be at or after creation time,
-      // confirming the mid-pipeline heartbeat refresh executed
-      expect(run!.lastHeartbeatAt!.getTime()).toBeGreaterThanOrEqual(
-        beforeCreate.getTime(),
+      // The mid-pipeline heartbeat UPDATE runs after generateSandboxToken +
+      // buildContext, so lastHeartbeatAt must be strictly later than
+      // createdAt (which is set by the initial INSERT's defaultNow()).
+      expect(run!.lastHeartbeatAt!.getTime()).toBeGreaterThan(
+        run!.createdAt.getTime(),
       );
     });
 
