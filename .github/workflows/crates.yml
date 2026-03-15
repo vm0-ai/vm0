@@ -695,7 +695,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install Ansible
-        run: pip3 install ansible
+        run: pip3 install ansible-core
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel

@@ -639,7 +639,7 @@ jobs:
       - name: Install Python3 and Ansible
         run: |
           rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y python3 python3-pip
-          pip3 install ansible
+          pip3 install ansible-core
 
       - name: Notify Slack - Starting
         id: slack-start

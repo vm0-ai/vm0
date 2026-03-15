@@ -29,7 +29,7 @@ jobs:
 
       - name: Install Ansible
         if: steps.check.outputs.should-cleanup == 'true'
-        run: pip3 install ansible
+        run: pip3 install ansible-core
 
       - name: Setup SSH via Cloudflare Tunnel
         if: steps.check.outputs.should-cleanup == 'true'
