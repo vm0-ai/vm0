@@ -10,6 +10,7 @@ import {
   findTestQueueEntry,
   markRunningRunsAsCompleted,
   expireQueueEntry,
+  setTestRunStatus,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import {
@@ -163,6 +164,27 @@ describe("run-queue-service", () => {
 
       const cleaned = await cleanupExpiredQueueEntries();
       expect(cleaned).toBe(0);
+    });
+
+    it("should skip runs that are no longer queued", async () => {
+      // Drain any pre-existing expired entries from other test suites
+      await cleanupExpiredQueueEntries();
+
+      const result = await enqueueRun(baseParams({ prompt: "Will expire" }));
+
+      // Simulate a concurrent completion: mark the run as completed
+      await setTestRunStatus(result.runId, "completed");
+
+      // Expire the queue entry
+      await expireQueueEntry(result.runId);
+
+      // Cleanup should delete the queue entry but NOT overwrite completed status
+      const cleaned = await cleanupExpiredQueueEntries();
+      expect(cleaned).toBe(1); // queue entry was deleted
+
+      // Run should still be completed (not timeout)
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.status).toBe("completed");
     });
   });
 });

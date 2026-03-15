@@ -7,6 +7,7 @@ import {
   createTestRun,
   findTestQueueEntry,
   findTestRunRecord,
+  setTestRunStatus,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -190,6 +191,27 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
       expect(response.status).toBe(400);
       expect(data.error.message).toContain("cannot be cancelled");
+    });
+
+    it("should not overwrite a concurrently completed run", async () => {
+      const run = await createTestRun(testComposeId, "Run to cancel");
+
+      // Simulate a concurrent completion between the SELECT and the transaction
+      await setTestRunStatus(run.runId, "completed");
+
+      // Cancel should fail — either fast-path or transaction guard catches it
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
+        { method: "POST" },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(400);
+
+      // Run should still be completed (not overwritten to cancelled)
+      const record = await findTestRunRecord(run.runId);
+      expect(record!.status).toBe("completed");
     });
   });
 });

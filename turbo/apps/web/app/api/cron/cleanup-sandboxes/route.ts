@@ -2,6 +2,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { cronCleanupSandboxesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { transitionRunStatus } from "../../../../src/lib/run/run-status";
 import {
   agentComposeVersions,
   agentComposes,
@@ -209,15 +210,21 @@ const router = tsr.router(cronCleanupSandboxesContract, {
               ? "Run timed out while pending (never started)"
               : "Run timed out (no heartbeat)";
 
-          // Update run status to timeout
-          await globalThis.services.db
-            .update(agentRuns)
-            .set({
+          // Update run status to timeout (only if still pending/running)
+          const transitioned = await transitionRunStatus(
+            run.id,
+            {
               status: "timeout",
               completedAt: new Date(),
               error: timeoutReason,
-            })
-            .where(eq(agentRuns.id, run.id));
+            },
+            ["pending", "running"],
+          );
+
+          if (!transitioned) {
+            log.debug(`Run ${run.id} already transitioned, skipping timeout`);
+            continue;
+          }
 
           const isDebug =
             run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;

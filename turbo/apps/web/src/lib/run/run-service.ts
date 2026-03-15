@@ -2,6 +2,7 @@ import { eq, and, count, gt, or, sql } from "drizzle-orm";
 import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
+import { transitionRunStatus } from "./run-status";
 import {
   agentComposeVersions,
   agentComposes,
@@ -484,14 +485,15 @@ async function markRunFailed(
   const errorMessage = error instanceof Error ? error.message : "Unknown error";
   log.error(`Run ${runId} failed: ${errorMessage}`);
 
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({
+  await transitionRunStatus(
+    runId,
+    {
       status: "failed",
       error: errorMessage,
       completedAt: new Date(),
-    })
-    .where(eq(agentRuns.id, runId));
+    },
+    ["queued", "pending", "running"],
+  );
 
   // Attach run metadata so callers can return partial results
   if (error instanceof Error) {

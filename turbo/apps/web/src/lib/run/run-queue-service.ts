@@ -1,5 +1,6 @@
 import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
+import { transitionRunStatus } from "./run-status";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { env } from "../../env";
 import { logger } from "../logger";
@@ -231,7 +232,7 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
 
   const runIds = deleted.map((e) => e.runId);
 
-  // Mark associated runs as timeout
+  // Mark associated runs as timeout (only if still queued)
   await globalThis.services.db
     .update(agentRuns)
     .set({
@@ -239,7 +240,7 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
       completedAt: now,
       error: "Queued run expired (exceeded queue TTL)",
     })
-    .where(inArray(agentRuns.id, runIds));
+    .where(and(inArray(agentRuns.id, runIds), eq(agentRuns.status, "queued")));
 
   log.debug(`Cleaned up ${deleted.length} expired queue entries`);
   return deleted.length;
@@ -317,12 +318,13 @@ async function markQueuedRunFailed(
   runId: string,
   errorMessage: string,
 ): Promise<void> {
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({
+  await transitionRunStatus(
+    runId,
+    {
       status: "failed",
       error: errorMessage,
       completedAt: new Date(),
-    })
-    .where(eq(agentRuns.id, runId));
+    },
+    ["queued", "pending"],
+  );
 }

@@ -8,7 +8,8 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { transitionRunStatus } from "../../../../../src/lib/run/run-status";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import type {
   ArtifactSnapshot,
@@ -28,33 +29,6 @@ import {
 import { after } from "next/server";
 
 const log = logger("webhook:complete");
-
-/**
- * Atomically transition a run to a terminal status.
- * Uses WHERE status IN ('pending', 'running') to prevent double transitions.
- * Returns true if the transition was applied (this caller "won" the race).
- */
-async function atomicTransition(
-  runId: string,
-  update: {
-    status: "completed" | "failed";
-    completedAt: Date;
-    result?: RunResult;
-    error?: string;
-  },
-): Promise<boolean> {
-  const [updated] = await globalThis.services.db
-    .update(agentRuns)
-    .set(update)
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        inArray(agentRuns.status, ["pending", "running"]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
-  return !!updated;
-}
 
 /**
  * Query Axiom for the last "result" event of a run.
@@ -224,11 +198,15 @@ const router = tsr.router(webhookCompleteContract, {
         .limit(1);
 
       if (!checkpoint) {
-        const transitioned = await atomicTransition(body.runId, {
-          status: "failed",
-          completedAt: new Date(),
-          error: "Checkpoint for run not found",
-        });
+        const transitioned = await transitionRunStatus(
+          body.runId,
+          {
+            status: "failed",
+            completedAt: new Date(),
+            error: "Checkpoint for run not found",
+          },
+          ["pending", "running"],
+        );
 
         // Dispatch callbacks so the user gets notified about the failure
         // (previously this path returned without dispatching)
@@ -262,11 +240,15 @@ const router = tsr.router(webhookCompleteContract, {
       const result = buildRunResult(checkpoint, session?.id);
 
       // Atomically transition to "completed" only if still pending/running
-      const transitioned = await atomicTransition(body.runId, {
-        status: "completed",
-        completedAt: new Date(),
-        result,
-      });
+      const transitioned = await transitionRunStatus(
+        body.runId,
+        {
+          status: "completed",
+          completedAt: new Date(),
+          result,
+        },
+        ["pending", "running"],
+      );
 
       if (!transitioned) {
         log.debug(
@@ -299,11 +281,15 @@ const router = tsr.router(webhookCompleteContract, {
       const errorMessage =
         body.error || `Agent exited with code ${body.exitCode}`;
 
-      const transitioned = await atomicTransition(body.runId, {
-        status: "failed",
-        completedAt: new Date(),
-        error: errorMessage,
-      });
+      const transitioned = await transitionRunStatus(
+        body.runId,
+        {
+          status: "failed",
+          completedAt: new Date(),
+          error: errorMessage,
+        },
+        ["pending", "running"],
+      );
 
       if (!transitioned) {
         log.debug(

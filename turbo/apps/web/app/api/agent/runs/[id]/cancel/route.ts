@@ -6,6 +6,7 @@ import { agentRunQueue } from "../../../../../../src/db/schema/agent-run-queue";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../../src/lib/logger";
+import { transitionRunStatus } from "../../../../../../src/lib/run/run-status";
 import { drainUserQueue } from "../../../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../../../src/lib/run/run-service";
 import { after } from "next/server";
@@ -61,21 +62,31 @@ const router = tsr.router(runsCancelContract, {
       };
     }
 
-    // If queued, remove from queue table (encrypted secrets deleted)
-    if (run.status === "queued") {
-      await globalThis.services.db
-        .delete(agentRunQueue)
-        .where(eq(agentRunQueue.runId, runId));
-    }
+    // Atomically delete queue entry (if present) and transition status.
+    // The transaction prevents a concurrent drainUserQueue from dequeuing
+    // the run between the queue delete and the status update.
+    const cancelled = await globalThis.services.db.transaction(async (tx) => {
+      await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
 
-    // Update run status to cancelled
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({
-        status: "cancelled",
-        completedAt: new Date(),
-      })
-      .where(eq(agentRuns.id, runId));
+      return transitionRunStatus(
+        runId,
+        { status: "cancelled", completedAt: new Date() },
+        ["queued", "pending", "running"],
+        tx,
+      );
+    });
+
+    if (!cancelled) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Run cannot be cancelled: status has already changed`,
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
 
     // Drain queue if cancelling a running/pending run freed a concurrency slot
     if (run.status === "running" || run.status === "pending") {

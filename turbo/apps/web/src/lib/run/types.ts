@@ -10,7 +10,8 @@ export type RunStatus =
   | "running"
   | "completed"
   | "failed"
-  | "timeout";
+  | "timeout"
+  | "cancelled";
 
 /**
  * Run result stored in agent_runs.result when status = 'completed'

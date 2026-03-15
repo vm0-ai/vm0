@@ -110,7 +110,7 @@ const router = tsr.router(runnersJobClaimContract, {
       );
     }
 
-    // Update agent_runs status to running
+    // Update agent_runs status to running (only if still pending)
     const [run] = await globalThis.services.db
       .update(agentRuns)
       .set({
@@ -118,7 +118,7 @@ const router = tsr.router(runnersJobClaimContract, {
         startedAt: now,
         lastHeartbeatAt: now,
       })
-      .where(eq(agentRuns.id, runId))
+      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
       .returning();
 
     if (!run) {

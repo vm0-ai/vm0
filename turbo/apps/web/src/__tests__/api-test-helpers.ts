@@ -2814,6 +2814,21 @@ export async function markRunningRunsAsCompleted(userId: string) {
     );
 }
 
+export async function setTestRunStatus(
+  runId: string,
+  status: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status,
+      ...(["completed", "failed", "timeout", "cancelled"].includes(status)
+        ? { completedAt: new Date() }
+        : {}),
+    })
+    .where(eq(agentRuns.id, runId));
+}
+
 export async function expireQueueEntry(runId: string) {
   // Set expiresAt far enough in the past to avoid any timing issues in CI
   await globalThis.services.db
