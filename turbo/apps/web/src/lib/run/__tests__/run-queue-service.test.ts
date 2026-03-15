@@ -261,5 +261,35 @@ describe("run-queue-service", () => {
         originalExpiresAt.getTime(),
       );
     });
+
+    it("should expire re-enqueued run via cleanup", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
+
+      // Drain any pre-existing expired entries from other test suites
+      await cleanupExpiredQueueEntries();
+
+      // Create a running run and a queued run
+      await createRun(baseParams({ prompt: "Running" }));
+      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      expect(queued.status).toBe("queued");
+
+      // Drain — concurrency limit still hit → re-enqueue with preserved TTL
+      await drainUserQueue(user.userId, executeQueuedRun);
+
+      // Simulate TTL expiry on the re-enqueued entry
+      await expireQueueEntry(queued.runId);
+
+      // Cleanup should remove the expired entry and mark run as timeout
+      const cleaned = await cleanupExpiredQueueEntries();
+      expect(cleaned).toBe(1);
+
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("timeout");
+      expect(run!.error).toContain("expired");
+
+      const queueEntry = await findTestQueueEntry(queued.runId);
+      expect(queueEntry).toBeUndefined();
+    });
   });
 });
