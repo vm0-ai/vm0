@@ -196,6 +196,33 @@ const SERVICE_CONFIGS: Partial<
             ],
           },
           {
+            name: "user-read",
+            description: "Read authenticated user profile and related data",
+            rules: [
+              "GET /user",
+              "GET /user/emails",
+              "GET /user/repos",
+              "GET /user/orgs",
+              "GET /user/teams",
+              "GET /user/starred",
+              "GET /user/subscriptions",
+              "GET /users/{username}",
+              "GET /users/{username}/repos",
+              "GET /users/{username}/orgs",
+            ],
+          },
+          {
+            name: "user-write",
+            description: "Update user profile, manage starred repos and email",
+            rules: [
+              "PATCH /user",
+              "POST /user/emails",
+              "DELETE /user/emails",
+              "PUT /user/starred/{owner}/{repo}",
+              "DELETE /user/starred/{owner}/{repo}",
+            ],
+          },
+          {
             name: "search",
             description: "Search code, issues, and repositories",
             rules: [
