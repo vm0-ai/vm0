@@ -1408,7 +1408,7 @@ jobs:
         run: cd turbo/apps/cli && pnpm link --global
 
       - name: Install GNU parallel for bats
-        run: rm -rf /var/lib/apt/lists/* && apt-get update && apt-get install -y parallel
+        run: curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel > /usr/local/bin/parallel && chmod +x /usr/local/bin/parallel
 
       - name: Restore test token from cache
         uses: actions/cache/restore@v5
