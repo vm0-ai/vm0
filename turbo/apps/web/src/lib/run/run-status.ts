@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
-import type { RunResult } from "./types";
+import type { RunResult, RunStatus } from "./types";
 import type { Database } from "../../types/global";
 
 /**
@@ -12,14 +12,14 @@ import type { Database } from "../../types/global";
 export async function transitionRunStatus(
   runId: string,
   update: {
-    status: string;
+    status: RunStatus;
     completedAt?: Date;
     startedAt?: Date;
     lastHeartbeatAt?: Date;
     error?: string;
     result?: RunResult;
   },
-  allowedFromStatuses: string[],
+  allowedFromStatuses: RunStatus[],
   db?: Database,
 ): Promise<boolean> {
   const queryDb = db ?? globalThis.services.db;
