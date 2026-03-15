@@ -1298,6 +1298,7 @@ jobs:
               --runner-dirname ${JOB_REF} \
               --vcpu ${RUNNER_VCPU} \
               --memory-mb ${RUNNER_MEMORY_MB} \
+              --concurrency-factor 2.0 \
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
