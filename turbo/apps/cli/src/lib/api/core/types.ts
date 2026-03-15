@@ -54,7 +54,8 @@ type RunStatus =
   | "running"
   | "completed"
   | "failed"
-  | "timeout";
+  | "timeout"
+  | "cancelled";
 
 export interface CreateRunResponse {
   runId: string;
