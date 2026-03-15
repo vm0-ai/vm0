@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.111.0](https://github.com/vm0-ai/vm0/compare/web-v12.110.0...web-v12.111.0) (2026-03-15)
+
+
+### Features
+
+* server-side compose for platform mode — bypass e2b sandbox ([#4830](https://github.com/vm0-ai/vm0/issues/4830)) ([#4841](https://github.com/vm0-ai/vm0/issues/4841)) ([88fb052](https://github.com/vm0-ai/vm0/commit/88fb052366c75a9a47eae2ee949c665994b80bf7))
+
 ## [12.110.0](https://github.com/vm0-ai/vm0/compare/web-v12.109.0...web-v12.110.0) (2026-03-15)
 
 
