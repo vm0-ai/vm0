@@ -18,7 +18,7 @@ import type {
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { dispatchCallbacks } from "../../../../../src/lib/callback";
-import { drainUserQueue } from "../../../../../src/lib/run/run-queue-service";
+import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../../src/lib/run/run-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
 import {
@@ -82,7 +82,7 @@ async function persistChatMessages(
 function scheduleCallbackDispatch(
   runId: string,
   status: "completed" | "failed",
-  userId: string,
+  orgId: string,
   errorMsg?: string,
 ): void {
   after(async () => {
@@ -90,8 +90,8 @@ function scheduleCallbackDispatch(
       dispatchCallbacks(runId, status, undefined, errorMsg).catch((err) =>
         log.error("Failed to dispatch callbacks", { err }),
       ),
-      drainUserQueue(userId, executeQueuedRun).catch((err) =>
-        log.error("Failed to drain user queue", { err }),
+      drainOrgQueue(orgId, executeQueuedRun).catch((err) =>
+        log.error("Failed to drain org queue", { err }),
       ),
     ]);
   });
@@ -214,7 +214,7 @@ const router = tsr.router(webhookCompleteContract, {
           scheduleCallbackDispatch(
             body.runId,
             "failed",
-            userId,
+            run.orgId,
             "Checkpoint for run not found",
           );
         }
@@ -310,7 +310,7 @@ const router = tsr.router(webhookCompleteContract, {
       finalStatus === "failed"
         ? (body.error ?? `Agent exited with code ${body.exitCode}`)
         : undefined;
-    scheduleCallbackDispatch(body.runId, finalStatus, userId, errorMsg);
+    scheduleCallbackDispatch(body.runId, finalStatus, run.orgId, errorMsg);
 
     return {
       status: 200 as const,

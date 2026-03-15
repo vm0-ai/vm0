@@ -1,4 +1,4 @@
-import { eq, lt, and, or, count, gt, sql, inArray, asc } from "drizzle-orm";
+import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { transitionRunStatus } from "./run-status";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
@@ -83,6 +83,7 @@ export async function enqueueRun(
     await tx.insert(agentRunQueue).values({
       runId: inserted.id,
       userId,
+      orgId,
       encryptedParams,
       createdAt: inserted.createdAt,
       expiresAt,
@@ -101,7 +102,7 @@ export async function enqueueRun(
 }
 
 /**
- * Drain the run queue for a user.
+ * Drain the run queue for an org.
  *
  * Dequeues the oldest entry using SELECT FOR UPDATE SKIP LOCKED,
  * deletes the queue record (encrypted secrets removed), and dispatches
@@ -113,17 +114,18 @@ export async function enqueueRun(
  *
  * Called from:
  * - Completion webhook (event-driven, primary path)
+ * - Cancel handler (when cancelling frees a slot)
  * - Cleanup cron (fallback for missed dequeues)
  *
- * @param userId - User whose queue to drain
+ * @param orgId - Org whose queue to drain
  * @param execute - Executor function (injected to avoid circular dependency)
  */
-export async function drainUserQueue(
-  userId: string,
+export async function drainOrgQueue(
+  orgId: string,
   execute: QueuedRunExecutor,
 ): Promise<void> {
   const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
-  let entry = await dequeueNext(userId);
+  let entry = await dequeueNext(orgId);
 
   while (entry) {
     const runId = entry.runId;
@@ -136,7 +138,7 @@ export async function drainUserQueue(
     if (!decryptedMap?.__params) {
       log.error(`Failed to decrypt params for queued run ${runId}`);
       await markQueuedRunFailed(runId, "Failed to decrypt queued run params");
-      entry = await dequeueNext(userId);
+      entry = await dequeueNext(orgId);
       continue;
     }
 
@@ -152,7 +154,8 @@ export async function drainUserQueue(
         // Slot was claimed by another request — re-enqueue and stop
         await reEnqueueRun(
           runId,
-          userId,
+          entry.userId,
+          entry.orgId,
           entry.encryptedParams,
           entry.createdAt,
           entry.expiresAt,
@@ -163,7 +166,7 @@ export async function drainUserQueue(
         error instanceof Error ? error.message : "Unknown error";
       log.error(`Failed to dispatch queued run ${runId}: ${errorMessage}`);
       await markQueuedRunFailed(runId, errorMessage);
-      entry = await dequeueNext(userId);
+      entry = await dequeueNext(orgId);
       continue;
     }
   }
@@ -171,29 +174,33 @@ export async function drainUserQueue(
 
 interface QueueEntry {
   runId: string;
+  userId: string;
+  orgId: string;
   encryptedParams: string | null;
   createdAt: Date;
   expiresAt: Date;
 }
 
 /**
- * Atomically dequeue the oldest queue entry for a user.
+ * Atomically dequeue the oldest queue entry for an org.
  *
  * SELECT FOR UPDATE SKIP LOCKED + DELETE run inside a single transaction
  * so the row-level lock is held until the delete commits, preventing
  * concurrent dequeue of the same entry.
  */
-async function dequeueNext(userId: string): Promise<QueueEntry | undefined> {
+async function dequeueNext(orgId: string): Promise<QueueEntry | undefined> {
   return globalThis.services.db.transaction(async (tx) => {
     const rows = await tx.execute<{
       run_id: string;
+      user_id: string;
+      org_id: string;
       encrypted_params: string | null;
       created_at: string;
       expires_at: string;
     }>(
-      sql`SELECT run_id, encrypted_params, created_at, expires_at
+      sql`SELECT run_id, user_id, org_id, encrypted_params, created_at, expires_at
        FROM agent_run_queue
-       WHERE user_id = ${userId}
+       WHERE org_id = ${orgId}
        ORDER BY created_at ASC
        LIMIT 1
        FOR UPDATE SKIP LOCKED`,
@@ -207,9 +214,11 @@ async function dequeueNext(userId: string): Promise<QueueEntry | undefined> {
     // Delete queue entry within the same transaction
     await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, row.run_id));
 
-    log.debug(`Dequeued run ${row.run_id} for user ${userId}`);
+    log.debug(`Dequeued run ${row.run_id} for org ${orgId}`);
     return {
       runId: row.run_id,
+      userId: row.user_id,
+      orgId: row.org_id,
       encryptedParams: row.encrypted_params,
       createdAt: new Date(row.created_at),
       expiresAt: new Date(row.expires_at),
@@ -251,7 +260,7 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
 }
 
 /**
- * Drain queues for users who have queued runs but no active runs.
+ * Drain queues for orgs that have queued runs but no active runs.
  * Used as a cron fallback in case completion webhooks miss the drain.
  *
  * @param execute - Executor function (injected to avoid circular dependency)
@@ -261,11 +270,10 @@ export async function drainStaleQueues(
 ): Promise<number> {
   const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
 
-  // Find distinct orgs with queued runs (JOIN queue with runs to get orgId)
+  // Find distinct orgs with queued runs (orgId is denormalized on queue table)
   const orgsWithQueued = await globalThis.services.db
-    .selectDistinct({ orgId: agentRuns.orgId })
-    .from(agentRunQueue)
-    .innerJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id));
+    .selectDistinct({ orgId: agentRunQueue.orgId })
+    .from(agentRunQueue);
 
   let drained = 0;
 
@@ -289,22 +297,9 @@ export async function drainStaleQueues(
 
     const activeCount = Number(result?.count ?? 0);
     if (activeCount === 0) {
-      // Find a userId with queued runs in this org to drain
-      const [userRow] = await globalThis.services.db
-        .select({ userId: agentRunQueue.userId })
-        .from(agentRunQueue)
-        .innerJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
-        .where(eq(agentRuns.orgId, orgId))
-        .orderBy(asc(agentRunQueue.createdAt))
-        .limit(1);
-
-      if (userRow) {
-        log.debug(
-          `Draining stale queue for org ${orgId}, user ${userRow.userId}`,
-        );
-        await drainUserQueue(userRow.userId, execute);
-        drained++;
-      }
+      log.debug(`Draining stale queue for org ${orgId}`);
+      await drainOrgQueue(orgId, execute);
+      drained++;
     }
   }
 
@@ -318,6 +313,7 @@ export async function drainStaleQueues(
 async function reEnqueueRun(
   runId: string,
   userId: string,
+  orgId: string,
   encryptedParams: string | null,
   originalCreatedAt: Date,
   originalExpiresAt: Date,
@@ -325,6 +321,7 @@ async function reEnqueueRun(
   await globalThis.services.db.insert(agentRunQueue).values({
     runId,
     userId,
+    orgId,
     encryptedParams,
     createdAt: originalCreatedAt,
     expiresAt: originalExpiresAt,

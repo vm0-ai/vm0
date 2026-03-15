@@ -7,7 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { logger } from "../../../../../../src/lib/logger";
 import { transitionRunStatus } from "../../../../../../src/lib/run/run-status";
-import { drainUserQueue } from "../../../../../../src/lib/run/run-queue-service";
+import { drainOrgQueue } from "../../../../../../src/lib/run/run-queue-service";
 import { executeQueuedRun } from "../../../../../../src/lib/run/run-service";
 import { after } from "next/server";
 
@@ -63,7 +63,7 @@ const router = tsr.router(runsCancelContract, {
     }
 
     // Atomically delete queue entry (if present) and transition status.
-    // The transaction prevents a concurrent drainUserQueue from dequeuing
+    // The transaction prevents a concurrent drainOrgQueue from dequeuing
     // the run between the queue delete and the status update.
     const cancelled = await globalThis.services.db.transaction(async (tx) => {
       await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
@@ -91,8 +91,8 @@ const router = tsr.router(runsCancelContract, {
     // Drain queue if cancelling a running/pending run freed a concurrency slot
     if (run.status === "running" || run.status === "pending") {
       after(async () => {
-        await drainUserQueue(userId, executeQueuedRun).catch((err) =>
-          log.error("Failed to drain user queue after cancel", { err }),
+        await drainOrgQueue(run.orgId, executeQueuedRun).catch((err) =>
+          log.error("Failed to drain org queue after cancel", { err }),
         );
       });
     }

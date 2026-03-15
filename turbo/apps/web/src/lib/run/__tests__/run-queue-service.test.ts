@@ -20,7 +20,7 @@ import {
 } from "../run-service";
 import {
   enqueueRun,
-  drainUserQueue,
+  drainOrgQueue,
   drainStaleQueues,
   cleanupExpiredQueueEntries,
 } from "../run-queue-service";
@@ -60,10 +60,11 @@ describe("run-queue-service", () => {
       expect(run!.status).toBe("queued");
       expect(run!.prompt).toBe("Queued run");
 
-      // Verify queue entry exists
+      // Verify queue entry exists with both userId and orgId
       const queueEntry = await findTestQueueEntry(result.runId);
       expect(queueEntry).toBeDefined();
       expect(queueEntry!.userId).toBe(user.userId);
+      expect(queueEntry!.orgId).toBe(user.orgId);
       expect(queueEntry!.encryptedParams).toBeTruthy();
       expect(queueEntry!.expiresAt).toBeInstanceOf(Date);
     });
@@ -103,10 +104,10 @@ describe("run-queue-service", () => {
     });
   });
 
-  describe("drainUserQueue", () => {
+  describe("drainOrgQueue", () => {
     it("should be a no-op when queue is empty", async () => {
       // Should not throw
-      await drainUserQueue(user.userId, executeQueuedRun);
+      await drainOrgQueue(user.orgId, executeQueuedRun);
     });
 
     it("should dequeue and execute the oldest entry", async () => {
@@ -121,8 +122,8 @@ describe("run-queue-service", () => {
       // Simulate completion: mark running runs as completed
       await markRunningRunsAsCompleted(user.userId);
 
-      // Drain queue
-      await drainUserQueue(user.userId, executeQueuedRun);
+      // Drain queue by orgId
+      await drainOrgQueue(user.orgId, executeQueuedRun);
 
       // Queued run should now be dispatched (pending)
       const run = await findTestRunRecord(queued.runId);
@@ -130,6 +131,46 @@ describe("run-queue-service", () => {
 
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(queued.runId);
+      expect(queueEntry).toBeUndefined();
+    });
+
+    it("should drain across users in the same org", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      reloadEnv();
+
+      // Alice creates a run → pending
+      await createRun(baseParams({ prompt: "Alice run", orgId: user.orgId }));
+
+      // Bob is a different user in the same org
+      const bob = await context.setupUser({ prefix: "test-bob" });
+
+      // Bob's run gets queued (enqueue directly to bypass authorization)
+      const bobRun = await enqueueRun(
+        baseParams({
+          userId: bob.userId,
+          orgId: user.orgId,
+          prompt: "Bob run",
+        }),
+      );
+      expect(bobRun.status).toBe("queued");
+
+      // Alice's run completes
+      await markRunningRunsAsCompleted(user.userId);
+
+      // Track which runs the executor was called with
+      const executedRunIds: string[] = [];
+      const mockExecutor = async (runId: string) => {
+        executedRunIds.push(runId);
+      };
+
+      // Drain org queue — should dequeue Bob's run from Alice's org
+      await drainOrgQueue(user.orgId, mockExecutor);
+
+      // Executor should have been called with Bob's run
+      expect(executedRunIds).toContain(bobRun.runId);
+
+      // Queue entry should be deleted
+      const queueEntry = await findTestQueueEntry(bobRun.runId);
       expect(queueEntry).toBeUndefined();
     });
   });
@@ -274,7 +315,7 @@ describe("run-queue-service", () => {
       const originalExpiresAt = originalEntry!.expiresAt;
 
       // Drain — concurrency limit still hit → re-enqueue
-      await drainUserQueue(user.userId, executeQueuedRun);
+      await drainOrgQueue(user.orgId, executeQueuedRun);
 
       // Verify re-enqueued entry preserves original expiresAt
       const reEnqueuedEntry = await findTestQueueEntry(queued.runId);
@@ -297,7 +338,7 @@ describe("run-queue-service", () => {
       expect(queued.status).toBe("queued");
 
       // Drain — concurrency limit still hit → re-enqueue with preserved TTL
-      await drainUserQueue(user.userId, executeQueuedRun);
+      await drainOrgQueue(user.orgId, executeQueuedRun);
 
       // Simulate TTL expiry on the re-enqueued entry
       await expireQueueEntry(queued.runId);

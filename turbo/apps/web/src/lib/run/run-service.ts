@@ -785,7 +785,7 @@ export async function createRun(
  * Re-checks concurrency (another request may have claimed the slot),
  * then skips INSERT (record already exists) and dispatches.
  *
- * Called from drainUserQueue() after dequeuing an entry.
+ * Called from drainOrgQueue() after dequeuing an entry.
  *
  * @throws ConcurrentRunLimitError if the slot was claimed by another request
  */

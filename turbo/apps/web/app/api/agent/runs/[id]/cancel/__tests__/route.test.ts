@@ -102,7 +102,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Flush the after() callback which triggers drainUserQueue
+      // Flush the after() callback which triggers drainOrgQueue
       await context.mocks.flushAfter();
 
       // Queued run should now be dispatched (pending)

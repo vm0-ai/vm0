@@ -19,6 +19,9 @@ export const agentRunQueue = pgTable(
     // Denormalized for efficient per-user queue queries
     userId: text("user_id").notNull(),
 
+    // Denormalized for efficient per-org queue queries (partition key for dequeue)
+    orgId: text("org_id").notNull(),
+
     // AES-256-GCM encrypted CreateRunParams JSON
     encryptedParams: text("encrypted_params"),
 
@@ -27,8 +30,10 @@ export const agentRunQueue = pgTable(
     expiresAt: timestamp("expires_at").notNull(), // TTL for auto-cleanup
   },
   (table) => [
-    // Index for per-user FIFO dequeue
+    // Index for per-user FIFO dequeue (kept for backward compatibility)
     index("agent_run_queue_user_created_idx").on(table.userId, table.createdAt),
+    // Index for per-org FIFO dequeue (primary partition key)
+    index("agent_run_queue_org_created_idx").on(table.orgId, table.createdAt),
     // Index for TTL cleanup
     index("agent_run_queue_expires_at_idx").on(table.expiresAt),
   ],
