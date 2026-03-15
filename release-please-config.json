@@ -8,7 +8,7 @@
         {"type": "docs", "section": "Documentation"},
         {"type": "style", "hidden": true},
         {"type": "refactor", "section": "Refactoring"},
-        {"type": "perf", "hidden": true},
+        {"type": "perf", "section": "Performance Improvements"},
         {"type": "test", "hidden": true},
         {"type": "build", "hidden": true},
         {"type": "revert", "hidden": true}
