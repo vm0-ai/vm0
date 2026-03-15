@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.66.0](https://github.com/vm0-ai/vm0/compare/core-v8.65.1...core-v8.66.0) (2026-03-15)
+
+
+### Features
+
+* **core:** add github user-read and user-write service permissions ([#4850](https://github.com/vm0-ai/vm0/issues/4850)) ([d54aadc](https://github.com/vm0-ai/vm0/commit/d54aadcd1e62c9047b7e99959c5f185f63b4ecba))
+
 ## [8.65.1](https://github.com/vm0-ai/vm0/compare/core-v8.65.0...core-v8.65.1) (2026-03-15)
 
 

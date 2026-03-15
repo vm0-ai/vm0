@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.111.1](https://github.com/vm0-ai/vm0/compare/web-v12.111.0...web-v12.111.1) (2026-03-15)
+
+
+### Refactoring
+
+* strengthen type safety in run status transition function ([#4843](https://github.com/vm0-ai/vm0/issues/4843)) ([d9f5f86](https://github.com/vm0-ai/vm0/commit/d9f5f86dc865729ed9fef385453f70dd5ea7ca1a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.66.0
+
 ## [12.111.0](https://github.com/vm0-ai/vm0/compare/web-v12.110.0...web-v12.111.0) (2026-03-15)
 
 
