@@ -56,11 +56,6 @@ import {
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
-import { setZeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
-import {
-  startNewZeroSession$,
-  fetchZeroSessionList$,
-} from "../../signals/zero-page/zero-chat.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
@@ -88,7 +83,7 @@ function Breadcrumb({ currentName }: { currentName?: string }) {
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
-        Team
+        Zero&apos;s team
       </button>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
@@ -299,9 +294,6 @@ function JobInstructionsTab() {
 
 export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
   const navigate = useSet(navigateInReact$);
-  const setChatAgentId = useSet(setZeroChatAgentId$);
-  const startNewSession = useSet(startNewZeroSession$);
-  const fetchSessionList = useSet(fetchZeroSessionList$);
   const detail = useGet(zeroJobDetail$);
   const loading = useGet(zeroJobDetailLoading$);
   const error = useGet(zeroJobDetailError$);
@@ -404,13 +396,9 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
                     variant="outline"
                     size="sm"
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors"
-                    onClick={() => {
-                      const composeId = detail?.id ?? null;
-                      setChatAgentId(composeId);
-                      startNewSession();
-                      detach(fetchSessionList(), Reason.DomCallback);
-                      navigate("/zero/:tab", { pathParams: { tab: "chat" } });
-                    }}
+                    onClick={() =>
+                      navigate("/zero/:tab", { pathParams: { tab: "chat" } })
+                    }
                   >
                     <IconMessageCircle size={14} stroke={1.5} />
                     Chat with {displayName}

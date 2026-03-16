@@ -45,7 +45,7 @@ export const firewallSchema = z.object({
  * Experimental firewall configuration for proxy-side token replacement.
  * Flat array of firewall entries: [{ name, ref, apis }]
  */
-export const experimentalFirewallSchema = z.array(firewallSchema);
+export const experimentalFirewallsSchema = z.array(firewallSchema);
 
 /**
  * Zod schema for validating firewall config (GitHub-hosted YAML).
@@ -63,7 +63,7 @@ export const firewallConfigSchema = z.object({
 export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
 export type Firewall = z.infer<typeof firewallSchema>;
-export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;
+export type ExperimentalFirewalls = z.infer<typeof experimentalFirewallsSchema>;
 
 /**
  * Regex pattern matching `${{ secrets.XXX }}` references in auth header templates.

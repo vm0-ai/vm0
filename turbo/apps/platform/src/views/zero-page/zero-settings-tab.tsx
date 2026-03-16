@@ -194,10 +194,7 @@ export function ZeroSettingsTab({
                       </div>
                     </div>
                     <div className="flex justify-start">
-                      <div
-                        className="zero-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200"
-                        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-                      >
+                      <div className="zero-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
                         {TONE_SAMPLES[tone].zero}
                       </div>
                     </div>

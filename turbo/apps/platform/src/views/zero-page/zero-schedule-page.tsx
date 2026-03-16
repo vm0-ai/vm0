@@ -731,10 +731,10 @@ function ScheduleListView({
         />
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">
-            No scheduled tasks yet
+            Nothing on the calendar
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Schedule tasks to run automatically at the times you choose.
+            Set up a schedule and your agents will handle the rest.
           </p>
         </div>
       </div>

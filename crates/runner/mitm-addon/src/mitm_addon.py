@@ -171,9 +171,12 @@ class FirewallAllow(NamedTuple):
 class FirewallBlock(NamedTuple):
     """Base URL matched but no permission granted — return 403."""
     base: str
+    firewall_ref: str
+    method: str
+    path: str
 
 
-def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> FirewallAllow | FirewallBlock | None:
+def match_firewall_request(url: str, method: str, vm_firewalls: list | None) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions.
 
     Returns:
@@ -181,15 +184,18 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
       FirewallBlock — base URL matched but no permission granted
       None — no base URL match (not a firewall request)
     """
-    if not vm_firewall:
+    if not vm_firewalls:
         return None
 
     # Track the first base URL that matched. If we find a base match but no
     # permission rule allows the request, we block it (fail-closed). Only the
     # first matched base is recorded — subsequent base matches don't overwrite.
     blocked_base = None
+    blocked_ref = ""
 
-    for fw_entry in vm_firewall:
+    upper_method = method.upper()
+
+    for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
         fw_ref = fw_entry.get("ref", "")
         for api_entry in fw_entry.get("apis", []):
@@ -203,6 +209,7 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
             # Base URL matched
             if blocked_base is None:
                 blocked_base = base
+                blocked_ref = fw_ref
 
             permissions = api_entry.get("permissions")
             if not permissions:
@@ -212,7 +219,6 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
             # Extract relative path, strip query/fragment
             rel_path = rest.split("?")[0].split("#")[0] or "/"
 
-            upper_method = method.upper()
             for perm in permissions:
                 perm_name = perm.get("name", "")
                 for rule_str in perm.get("rules", []):
@@ -233,7 +239,10 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
                         })
 
     if blocked_base is not None:
-        return FirewallBlock(blocked_base)
+        # Extract relative path for the error message
+        rest = url[len(blocked_base):]
+        rel_path = rest.split("?")[0].split("#")[0] or "/"
+        return FirewallBlock(blocked_base, blocked_ref, upper_method, rel_path)
     return None
 
 
@@ -299,10 +308,16 @@ def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict,
         flow.metadata["firewall_action"] = "DENY"
         flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
+        error_body = json.dumps({
+            "error": "firewall_auth_unavailable",
+            "message": "Firewall auth secrets not configured",
+            "firewall": match_info.get("ref", ""),
+            "base": firewall_base,
+        })
         flow.response = http.Response.make(
             502,
-            b"Firewall auth unavailable",
-            {"Content-Type": "text/plain"},
+            error_body.encode(),
+            {"Content-Type": "application/json"},
         )
         return
 
@@ -313,10 +328,16 @@ def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict,
         flow.metadata["firewall_action"] = "DENY"
         flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
+        error_body = json.dumps({
+            "error": "firewall_auth_failed",
+            "message": f"Failed to resolve firewall auth headers: {e}",
+            "firewall": match_info.get("ref", ""),
+            "base": firewall_base,
+        })
         flow.response = http.Response.make(
             502,
-            b"Firewall header fetch failed",
-            {"Content-Type": "text/plain"},
+            error_body.encode(),
+            {"Content-Type": "application/json"},
         )
         return
 
@@ -421,19 +442,28 @@ def request(flow: http.HTTPFlow) -> None:
 
     # --- Step 2: Firewall match with permission check ---
     # Match base URL, then check permission rules before injecting auth headers.
-    vm_firewall = vm_info.get("firewall")
-    if vm_firewall:
+    vm_firewalls = vm_info.get("firewalls")
+    if vm_firewalls:
         original_url = get_original_url(flow)
-        result = match_firewall_request(original_url, flow.request.method, vm_firewall)
+        result = match_firewall_request(original_url, flow.request.method, vm_firewalls)
         if isinstance(result, FirewallBlock):
-            ctx.log.warn(f"[{run_id}] Firewall {result.base}: no matching permission for {flow.request.method} {flow.request.path}")
+            ctx.log.warn(f"[{run_id}] Firewall {result.firewall_ref}: no matching permission for {result.method} {result.path}")
             flow.metadata["firewall_action"] = "DENY"
             flow.metadata["firewall_rule"] = f"firewall:{result.base}"
             flow.metadata["original_url"] = original_url
+            error_body = json.dumps({
+                "error": "firewall_permission_denied",
+                "message": "Request blocked: no matching permission rule",
+                "method": result.method,
+                "path": result.path,
+                "firewall": result.firewall_ref,
+                "base": result.base,
+                "hint": f"Add a permission rule for '{result.method} {result.path}' to the {result.firewall_ref} firewall in vm0.yaml",
+            })
             flow.response = http.Response.make(
                 403,
-                b"No matching firewall permission",
-                {"Content-Type": "text/plain"},
+                error_body.encode(),
+                {"Content-Type": "application/json"},
             )
             return
         if isinstance(result, FirewallAllow):

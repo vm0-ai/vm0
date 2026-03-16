@@ -1433,7 +1433,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should reject sandbox token without agent-run:read for list", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
-        "storage:read",
+        "artifact:read",
       ]);
 
       const request = createTestRequest(

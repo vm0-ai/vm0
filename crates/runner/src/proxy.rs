@@ -25,7 +25,7 @@ struct VmEntry {
     sandbox_token: String,
     registered_at: i64,
     network_log_path: String,
-    firewall: Option<Vec<crate::types::Firewall>>,
+    firewalls: Option<Vec<crate::types::Firewall>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
 }
@@ -36,7 +36,7 @@ pub struct VmRegistration<'a> {
     pub run_id: &'a str,
     pub sandbox_token: &'a str,
     pub network_log_path: &'a std::path::Path,
-    pub firewall: Option<&'a [crate::types::Firewall]>,
+    pub firewalls: Option<&'a [crate::types::Firewall]>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
 }
@@ -399,7 +399,7 @@ impl ProxyRegistryHandle {
 
         let mut registry = read_registry(&self.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
-        let firewall = registration.firewall.map(|s| {
+        let firewalls = registration.firewalls.map(|s| {
             let mut s = s.to_vec();
             let mut idx = 0usize;
             for entry in &mut s {
@@ -419,7 +419,7 @@ impl ProxyRegistryHandle {
                 sandbox_token: registration.sandbox_token.to_string(),
                 registered_at: now,
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
-                firewall,
+                firewalls,
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
                 secret_connector_map: registration.secret_connector_map.cloned(),
             },
@@ -494,7 +494,7 @@ mod tests {
                 sandbox_token: String::new(),
                 registered_at: 1000,
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
-                firewall: None,
+                firewalls: None,
                 encrypted_secrets: None,
                 secret_connector_map: None,
             },
@@ -540,7 +540,7 @@ mod tests {
             run_id: "run-1",
             sandbox_token: "tok-1",
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
-            firewall: None,
+            firewalls: None,
             encrypted_secrets: None,
             secret_connector_map: None,
         };
@@ -559,7 +559,7 @@ mod tests {
             sandbox_token: "tok-2",
 
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
-            firewall: None,
+            firewalls: None,
             encrypted_secrets: None,
             secret_connector_map: None,
         };
@@ -611,7 +611,7 @@ mod tests {
                     sandbox_token: "",
 
                     network_log_path: &log_path,
-                    firewall: None,
+                    firewalls: None,
                     encrypted_secrets: None,
                     secret_connector_map: None,
                 };
@@ -628,7 +628,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn registry_with_firewall() {
+    async fn registry_with_firewalls() {
         let dir = tempfile::tempdir().unwrap();
         let registry_path = dir.path().join("proxy-registry.json");
         let lock_path = dir.path().join("proxy-registry.json.lock");
@@ -670,7 +670,7 @@ mod tests {
             run_id: "run-fw",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-fw.jsonl"),
-            firewall: Some(&firewall_entries),
+            firewalls: Some(&firewall_entries),
             encrypted_secrets: None,
             secret_connector_map: None,
         };
@@ -682,7 +682,7 @@ mod tests {
         // Verify firewall entries are stored in registry.
         let loaded = read_registry(&registry_path).await.unwrap();
         let vm = loaded.vms.get("10.200.0.5").unwrap();
-        let stored = vm.firewall.as_ref().unwrap();
+        let stored = vm.firewalls.as_ref().unwrap();
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].apis.len(), 1);
         assert_eq!(
@@ -697,7 +697,7 @@ mod tests {
         let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
         let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let vm_json = &value["vms"]["10.200.0.5"];
-        let fw = &vm_json["firewall"][0];
+        let fw = &vm_json["firewalls"][0];
         assert_eq!(fw["name"], "gmail");
         assert_eq!(fw["ref"], "gmail");
         assert_eq!(
@@ -735,7 +735,7 @@ mod tests {
             sandbox_token: "tok",
 
             network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
-            firewall: None,
+            firewalls: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
             secret_connector_map: None,
         };

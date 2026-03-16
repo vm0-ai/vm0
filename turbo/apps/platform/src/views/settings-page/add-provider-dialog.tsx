@@ -5,11 +5,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import {
+  MODEL_PROVIDER_TYPES,
+  isProviderVisible,
+  type ModelProviderType,
+} from "@vm0/core";
 import {
   configuredProviders$,
   openAddDialog$,
 } from "../../signals/settings-page/model-providers.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
@@ -66,6 +71,7 @@ export function AddProviderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const configuredProviders = useLastResolved(configuredProviders$);
+  const features = useLastResolved(featureSwitch$);
   const openAdd = useSet(openAddDialog$);
   const configuredSet = new Set(configuredProviders?.map((p) => p.type) ?? []);
 
@@ -74,7 +80,8 @@ export function AddProviderDialog({
   };
 
   const availableTypes = getProviderTypes().filter(
-    (type) => !configuredSet.has(type),
+    (type) =>
+      !configuredSet.has(type) && isProviderVisible(type, features ?? {}),
   );
 
   return (

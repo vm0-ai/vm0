@@ -76,7 +76,7 @@ export function getEffectiveConcurrencyLimit(orgTier: OrgTier): number {
  * @param db Optional database instance (for use within transactions)
  * @throws ConcurrentRunLimitError if limit exceeded
  */
-async function checkRunConcurrencyLimit(
+export async function checkRunConcurrencyLimit(
   orgId: string,
   orgTier: OrgTier = "free",
   db?: Database,
@@ -518,7 +518,7 @@ async function markRunFailed(
 
 /**
  * Shared dispatch pipeline for steps 6-10 of the run creation flow.
- * Used by both createRun (new runs) and executeQueuedRun (dequeued runs).
+ * Used by both createRun (new runs) and dispatchQueuedRun (dequeued runs).
  */
 async function buildAndDispatchRun(opts: {
   runId: string;
@@ -668,7 +668,7 @@ async function buildAndDispatchRun(opts: {
       runId,
       createdAt,
       error,
-      orgId ? () => drainOrgQueue(orgId, executeQueuedRun) : undefined,
+      orgId ? () => drainOrgQueue(orgId, dispatchQueuedRun) : undefined,
     );
     throw error;
   }
@@ -809,48 +809,27 @@ export async function createRun(
 }
 
 /**
- * Execute a previously queued run.
+ * Dispatch a previously queued run that has already been dequeued and
+ * transitioned to "pending" by drainOrgQueue().
  *
- * Runs the createRun pipeline steps 1-10 for an existing agent_runs record.
- * Re-checks concurrency (another request may have claimed the slot),
- * then skips INSERT (record already exists) and dispatches.
+ * Loads compose content, authorizes, and dispatches. Does NOT acquire
+ * advisory lock or check concurrency — that is handled atomically in
+ * the drain transaction.
  *
- * Called from drainOrgQueue() after dequeuing an entry.
- *
- * @throws ConcurrentRunLimitError if the slot was claimed by another request
+ * Called from drainOrgQueue() after the atomic dequeue + status update.
  */
-export async function executeQueuedRun(
+export async function dispatchQueuedRun(
   runId: string,
+  createdAt: Date,
   params: CreateRunParams,
 ): Promise<void> {
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId } = params;
+  const transactionTime = apiStartTime; // No separate transaction step
 
-  // Step 1: Re-check concurrency + update status atomically with advisory lock
-  // to prevent TOCTOU race where a concurrent createRun claims the slot.
-  const orgId = params.orgId ?? "";
-  const [run] = await globalThis.services.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
-    await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
+  log.debug(`Dispatching queued run ${runId} for user ${userId}`);
 
-    return tx
-      .update(agentRuns)
-      .set({
-        status: "pending",
-        lastHeartbeatAt: new Date(),
-      })
-      .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "queued")))
-      .returning();
-  });
-  const transactionTime = Date.now();
-
-  if (!run) {
-    throw new Error(`Queued run ${runId} not found or already processed`);
-  }
-
-  log.debug(`Executing queued run ${runId} for user ${userId}`);
-
-  // Steps 2-3: Load compose and authorize
+  // Load compose and authorize
   const { composeContent, compose: queuedCompose } = await loadCompose(
     agentComposeVersionId,
     params.composeId,
@@ -858,7 +837,7 @@ export async function executeQueuedRun(
   await authorizeCompose(userId, queuedCompose);
   const authorizeTime = Date.now();
 
-  // Step 4: Validate template vars and image access (for new runs only)
+  // Validate template vars and image access (for new runs only)
   if (!params.checkpointId && !params.sessionId) {
     await validateComposeRequirements(
       userId,
@@ -869,11 +848,9 @@ export async function executeQueuedRun(
     );
   }
 
-  // Steps 5 already validated at enqueue time, skip
-
   await buildAndDispatchRun({
     runId,
-    createdAt: run.createdAt,
+    createdAt,
     params,
     composeContent,
     apiStartTime,

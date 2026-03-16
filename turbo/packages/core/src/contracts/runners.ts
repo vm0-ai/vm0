@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { VALID_CAPABILITIES } from "./composes";
-import { experimentalFirewallSchema } from "./firewalls";
+import { experimentalFirewallsSchema } from "./firewalls";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -115,7 +115,7 @@ export const storedExecutionContextSchema = z.object({
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement
-  experimentalFirewall: experimentalFirewallSchema.optional(),
+  experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });
@@ -155,7 +155,7 @@ export const executionContextSchema = z.object({
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement
-  experimentalFirewall: experimentalFirewallSchema.optional(),
+  experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });

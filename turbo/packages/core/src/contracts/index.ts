@@ -232,6 +232,9 @@ export {
   hasModelSelection,
   allowsCustomModel,
   getCustomModelPlaceholder,
+  // Feature-gated provider support
+  getProviderFeatureFlag,
+  isProviderVisible,
   // Multi-auth provider support
   hasAuthMethods,
   getAuthMethodsForType,
@@ -434,13 +437,13 @@ export {
   firewallPermissionSchema,
   firewallApiSchema,
   firewallSchema,
-  experimentalFirewallSchema,
+  experimentalFirewallsSchema,
   firewallConfigSchema,
   type FirewallConfig,
   type ExpandedFirewallConfig,
   type FirewallApi,
   type Firewall,
-  type ExperimentalFirewall,
+  type ExperimentalFirewalls,
 } from "./firewalls";
 
 export {

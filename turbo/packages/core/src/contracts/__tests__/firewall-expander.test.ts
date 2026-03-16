@@ -76,7 +76,7 @@ describe("expandFirewallConfigs", () => {
       agents: {
         myagent: {
           framework: "claude-code",
-          experimental_firewall: configs,
+          experimental_firewalls: configs,
         },
       },
     };
@@ -88,7 +88,7 @@ describe("expandFirewallConfigs", () => {
   ) {
     await expandFirewallConfigs(config, fetchFn);
     return config.agents.myagent
-      .experimental_firewall as unknown as ExpandedFirewallConfig[];
+      .experimental_firewalls as unknown as ExpandedFirewallConfig[];
   }
 
   /** Mock fetch that returns the right YAML based on URL */
@@ -178,14 +178,14 @@ describe("expandFirewallConfigs", () => {
       agents: {
         myagent: {
           framework: "claude-code",
-          experimental_firewall: [
+          experimental_firewalls: [
             { name: "github", ref: "github", apis: [], placeholders: {} },
           ],
         },
       },
     };
     await expandFirewallConfigs(config);
-    expect(Array.isArray(config.agents.myagent.experimental_firewall)).toBe(
+    expect(Array.isArray(config.agents.myagent.experimental_firewalls)).toBe(
       true,
     );
   });

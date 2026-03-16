@@ -253,12 +253,24 @@ export function ZeroActivityPage() {
                 />
               </div>
             ) : logs.length === 0 ? (
-              <div className="flex items-center justify-center min-h-[20rem]">
-                <p className="text-sm text-muted-foreground">
-                  {agentFilter === "all" && statusFilter === "all"
-                    ? "No activity found."
-                    : "No activity matches your filters."}
-                </p>
+              <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
+                <img
+                  src="/images/empty-activity.png"
+                  alt=""
+                  className="h-20 w-20 object-contain opacity-80"
+                />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    {agentFilter === "all" && statusFilter === "all"
+                      ? "All quiet for now"
+                      : "Nothing matches those filters"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {agentFilter === "all" && statusFilter === "all"
+                      ? "When your agents start working, their activity will show up here."
+                      : "Try different filters to find what you're looking for."}
+                  </p>
+                </div>
               </div>
             ) : (
               logs.map((entry) => (
@@ -276,26 +288,30 @@ export function ZeroActivityPage() {
         </div>
       </div>
 
-      {/* Fixed pagination footer */}
-      <div className="shrink-0 px-4 sm:px-6 py-4">
-        <div className="mx-auto max-w-[900px]">
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            rowsPerPage={rowsPerPage}
-            hasNext={hasNext}
-            hasPrev={hasPrev}
-            isLoading={isLoading}
-            labelClassName="font-normal text-muted-foreground"
-            buttonClassName="bg-transparent border-border/70"
-            onNextPage={() => detach(goToNext(), Reason.DomCallback)}
-            onPrevPage={() => goToPrev()}
-            onForwardTwoPages={() => detach(goForwardTwo(), Reason.DomCallback)}
-            onBackTwoPages={() => goBackTwo()}
-            onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
-          />
+      {/* Fixed pagination footer — hidden when everything fits on one page */}
+      {(totalPages === undefined || totalPages > 1) && (
+        <div className="shrink-0 px-4 sm:px-6 py-4">
+          <div className="mx-auto max-w-[900px]">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              rowsPerPage={rowsPerPage}
+              hasNext={hasNext}
+              hasPrev={hasPrev}
+              isLoading={isLoading}
+              labelClassName="font-normal text-muted-foreground"
+              buttonClassName="bg-transparent border-border/70"
+              onNextPage={() => detach(goToNext(), Reason.DomCallback)}
+              onPrevPage={() => goToPrev()}
+              onForwardTwoPages={() =>
+                detach(goForwardTwo(), Reason.DomCallback)
+              }
+              onBackTwoPages={() => goBackTwo()}
+              onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

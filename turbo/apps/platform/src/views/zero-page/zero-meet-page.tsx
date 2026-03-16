@@ -244,7 +244,7 @@ export function ZeroMeetPage({
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
         >
           <IconUsers size={14} stroke={1.5} className="shrink-0" />
-          Team
+          Zero&apos;s team
         </button>
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
@@ -276,9 +276,9 @@ export function ZeroMeetPage({
                   <IconCrown
                     size={12}
                     stroke={1.8}
-                    className="shrink-0 text-blue-600"
+                    className="shrink-0 text-amber-500 dark:text-amber-400"
                   />
-                  Super agent
+                  Lead
                 </span>
               </div>
               <p className="text-sm text-muted-foreground mt-1.5 leading-tight">

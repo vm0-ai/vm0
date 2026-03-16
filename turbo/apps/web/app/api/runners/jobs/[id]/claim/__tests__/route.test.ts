@@ -322,7 +322,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         versionId,
         `${orgSlug}/default`,
         {
-          experimentalCapabilities: ["storage:read", "storage:write"],
+          experimentalCapabilities: ["artifact:read", "artifact:write"],
         },
       );
 
@@ -346,8 +346,8 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const sandboxAuth = verifySandboxToken(data.sandboxToken);
       expect(sandboxAuth).not.toBeNull();
       expect(sandboxAuth!.capabilities).toEqual([
-        "storage:read",
-        "storage:write",
+        "artifact:read",
+        "artifact:write",
       ]);
     });
 
