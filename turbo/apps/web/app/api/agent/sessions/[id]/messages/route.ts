@@ -8,10 +8,9 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { appendChatMessages } from "../../../../../../src/lib/agent-session";
-import { isNotFound, isForbidden } from "../../../../../../src/lib/errors";
+import { isNotFound } from "../../../../../../src/lib/errors";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import { verifyComposeOrgAccess } from "../../../../../../src/lib/org/verify-compose-org-access";
 
 const router = tsr.router(sessionMessagesContract, {
   append: async ({ params, body, headers }, { request }) => {
@@ -46,35 +45,18 @@ const router = tsr.router(sessionMessagesContract, {
       };
     }
 
-    const [compose] = await globalThis.services.db
-      .select({ orgId: agentComposes.orgId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, session.agentComposeId))
-      .limit(1);
-
-    if (compose) {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      try {
-        const { org } = await resolveOrg(userId, orgSlug);
-        if (compose.orgId !== org.orgId) {
-          return {
-            status: 404 as const,
-            body: {
-              error: { message: "Session not found", code: "NOT_FOUND" },
-            },
-          };
-        }
-      } catch (error) {
-        if (isNotFound(error) || isForbidden(error)) {
-          return {
-            status: 404 as const,
-            body: {
-              error: { message: "Session not found", code: "NOT_FOUND" },
-            },
-          };
-        }
-        throw error;
-      }
+    const hasOrgAccess = await verifyComposeOrgAccess(
+      session.agentComposeId,
+      userId,
+      request.url,
+    );
+    if (!hasOrgAccess) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Session not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     await appendChatMessages(params.id, userId, body.messages);

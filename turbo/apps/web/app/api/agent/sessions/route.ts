@@ -1,12 +1,9 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { sessionsContract } from "@vm0/core";
-import { eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { listAgentSessions } from "../../../../src/lib/agent-session";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { isNotFound, isForbidden } from "../../../../src/lib/errors";
+import { verifyComposeOrgAccess } from "../../../../src/lib/org/verify-compose-org-access";
 
 const router = tsr.router(sessionsContract, {
   list: async ({ query, headers }, { request }) => {
@@ -23,34 +20,18 @@ const router = tsr.router(sessionsContract, {
     }
 
     // Verify the requested compose belongs to the caller's active org
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    try {
-      const { org } = await resolveOrg(userId, orgSlug);
-
-      const [compose] = await globalThis.services.db
-        .select({ orgId: agentComposes.orgId })
-        .from(agentComposes)
-        .where(eq(agentComposes.id, query.agentComposeId))
-        .limit(1);
-
-      if (!compose || compose.orgId !== org.orgId) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Agent not found", code: "NOT_FOUND" },
-          },
-        };
-      }
-    } catch (error) {
-      if (isNotFound(error) || isForbidden(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Agent not found", code: "NOT_FOUND" },
-          },
-        };
-      }
-      throw error;
+    const hasOrgAccess = await verifyComposeOrgAccess(
+      query.agentComposeId,
+      userId,
+      request.url,
+    );
+    if (!hasOrgAccess) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     const sessions = await listAgentSessions(userId, query.agentComposeId);

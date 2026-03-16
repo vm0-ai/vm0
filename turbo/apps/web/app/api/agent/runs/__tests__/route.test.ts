@@ -373,11 +373,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // Returns 403 Forbidden for unauthorized access
-      expect(response.status).toBe(403);
-      expect(data.error.message).toMatch(
-        /access denied|not authorized|permission/i,
-      );
+      // Returns 404 to avoid leaking resource existence (cross-org check)
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -436,11 +434,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // Returns 403 Forbidden for unauthorized access
-      expect(response.status).toBe(403);
-      expect(data.error.message).toMatch(
-        /access denied|not authorized|permission/i,
-      );
+      // Returns 404 to avoid leaking resource existence (cross-org check)
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });

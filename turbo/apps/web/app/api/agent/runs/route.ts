@@ -81,7 +81,11 @@ async function resolveNewRun(body: {
 }): Promise<ResolvedCompose | ErrorResponse> {
   if (body.agentComposeVersionId) {
     const [versionRow] = await globalThis.services.db
-      .select({ composeName: agentComposes.name })
+      .select({
+        composeName: agentComposes.name,
+        composeOrgId: agentComposes.orgId,
+        composeId: agentComposes.id,
+      })
       .from(agentComposeVersions)
       .leftJoin(
         agentComposes,
@@ -93,6 +97,8 @@ async function resolveNewRun(body: {
     return {
       agentComposeVersionId: body.agentComposeVersionId,
       agentComposeName: versionRow?.composeName || undefined,
+      composeId: versionRow?.composeId || undefined,
+      composeOrgId: versionRow?.composeOrgId || undefined,
     };
   }
 
@@ -101,6 +107,7 @@ async function resolveNewRun(body: {
     .select({
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, composeId))
@@ -131,6 +138,7 @@ async function resolveNewRun(body: {
     agentComposeVersionId: compose.headVersionId,
     agentComposeName: compose.name || undefined,
     composeId,
+    composeOrgId: compose.orgId,
   };
 }
 
