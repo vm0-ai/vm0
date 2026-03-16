@@ -79,9 +79,13 @@ const getRunResponseSchema = z.object({
   sandboxId: z.string().optional(),
   result: z
     .object({
-      output: z.string(),
-      executionTimeMs: z.number(),
+      output: z.string().optional(),
+      executionTimeMs: z.number().optional(),
+      agentSessionId: z.string().optional(),
+      checkpointId: z.string().optional(),
+      conversationId: z.string().optional(),
     })
+    .passthrough()
     .optional(),
   error: z.string().optional(),
   createdAt: z.string(),

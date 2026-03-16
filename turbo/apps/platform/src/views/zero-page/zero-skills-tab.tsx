@@ -135,49 +135,51 @@ export function ZeroSkillsTab({
           </>
         )}
 
-        {/* Skill cards */}
-        {addedSkills.map((name) => {
-          const skill = skillMap.get(name);
-          const connector = connectorMap.get(name as ConnectorType) ?? null;
-          const effectiveConnector =
-            optimisticConnected.has(name) && connector && !connector.connected
-              ? { ...connector, connected: true }
-              : connector;
-          return (
-            <ZeroSkillCard
-              key={name}
-              name={name}
-              label={skill?.label ?? name}
-              iconUrl={skill?.icon}
-              connector={effectiveConnector}
-              pollingType={pollingType}
-              onConnect={() => {
-                const ct = connectorMap.get(name as ConnectorType);
-                if (
-                  ct &&
-                  ct.availableAuthMethods.length === 1 &&
-                  ct.availableAuthMethods[0] === "api-token"
-                ) {
-                  setSelected(name as ConnectorType);
-                } else {
-                  detach(
-                    connect(name as ConnectorType, signal),
-                    Reason.DomCallback,
-                  );
-                }
-              }}
-              onDisconnect={() => {
-                detach(disconnect(name as ConnectorType), Reason.DomCallback);
-                const label =
-                  skillMap.get(name)?.label ??
-                  connectorMap.get(name as ConnectorType)?.label ??
-                  name;
-                toast.success(`${label} disconnected`);
-              }}
-              onRemove={() => handleRemoveSkill(name)}
-            />
-          );
-        })}
+        {/* Skill cards — only show skills that have a matching connector */}
+        {addedSkills
+          .filter((name) => connectorMap.has(name as ConnectorType))
+          .map((name) => {
+            const skill = skillMap.get(name);
+            const connector = connectorMap.get(name as ConnectorType) ?? null;
+            const effectiveConnector =
+              optimisticConnected.has(name) && connector && !connector.connected
+                ? { ...connector, connected: true }
+                : connector;
+            return (
+              <ZeroSkillCard
+                key={name}
+                name={name}
+                label={skill?.label ?? name}
+                iconUrl={skill?.icon}
+                connector={effectiveConnector}
+                pollingType={pollingType}
+                onConnect={() => {
+                  const ct = connectorMap.get(name as ConnectorType);
+                  if (
+                    ct &&
+                    ct.availableAuthMethods.length === 1 &&
+                    ct.availableAuthMethods[0] === "api-token"
+                  ) {
+                    setSelected(name as ConnectorType);
+                  } else {
+                    detach(
+                      connect(name as ConnectorType, signal),
+                      Reason.DomCallback,
+                    );
+                  }
+                }}
+                onDisconnect={() => {
+                  detach(disconnect(name as ConnectorType), Reason.DomCallback);
+                  const label =
+                    skillMap.get(name)?.label ??
+                    connectorMap.get(name as ConnectorType)?.label ??
+                    name;
+                  toast.success(`${label} disconnected`);
+                }}
+                onRemove={() => handleRemoveSkill(name)}
+              />
+            );
+          })}
       </div>
 
       <AddConnectionDialog

@@ -1038,9 +1038,11 @@ export function ZeroChatPage({
     addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
   const addedSet = new Set(addedSkills);
 
-  const composerConnectors: ComposerConnectorItem[] = addedSkills.map((name) =>
-    buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
-  );
+  const composerConnectors: ComposerConnectorItem[] = addedSkills
+    .filter((name) => connectorMap.has(name as ConnectorType))
+    .map((name) =>
+      buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
+    );
 
   // Model provider selector (shared logic)
   const { modelOptions, selectedModel, setSelectedModel, persistSelection } =

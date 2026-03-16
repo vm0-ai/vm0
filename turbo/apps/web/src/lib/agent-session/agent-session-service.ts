@@ -129,19 +129,17 @@ export async function listAgentSessions(
     )
     .orderBy(desc(agentSessions.updatedAt));
 
-  return rows
-    .map((row) => {
-      const messages = (row.chatMessages ?? []) as StoredChatMessage[];
-      const firstUserMsg = messages.find((m) => m.role === "user");
-      return {
-        id: row.id,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        messageCount: messages.length,
-        preview: firstUserMsg ? firstUserMsg.content.slice(0, 100) : null,
-      };
-    })
-    .filter((s) => s.messageCount > 0);
+  return rows.map((row) => {
+    const messages = (row.chatMessages ?? []) as StoredChatMessage[];
+    const firstUserMsg = messages.find((m) => m.role === "user");
+    return {
+      id: row.id,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      messageCount: messages.length,
+      preview: firstUserMsg ? firstUserMsg.content.slice(0, 100) : null,
+    };
+  });
 }
 
 /**
