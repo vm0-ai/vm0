@@ -9,17 +9,20 @@ import * as path from "path";
 import * as os from "os";
 import chalk from "chalk";
 
-// Configurable handler called when exec encounters a "git checkout" command.
+// Configurable handler called when execFile encounters a "git checkout" command.
 let onGitCheckout: ((cwd: string) => void) | undefined;
 
+// Mock child_process — the true external boundary for both spawn and execFile.
+// spawn is used by silentUpgradeAfterCommand; execFile is used by git-client for git operations.
 vi.mock("child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("child_process")>();
   return {
     ...original,
     spawn: vi.fn(),
-    exec: vi.fn(
+    execFile: vi.fn(
       (
-        cmd: string,
+        file: string,
+        args: string[],
         optionsOrCallback: unknown,
         maybeCallback?: unknown,
       ): { pid: number } => {
@@ -38,15 +41,19 @@ vi.mock("child_process", async (importOriginal) => {
             ? (optionsOrCallback as { cwd?: string })
             : undefined;
         const cwd = options?.cwd;
+        const cmd = [file, ...args].join(" ");
 
+        // git init: create .git/info/ so sparse-checkout file writes succeed
         if (cmd.startsWith("git init") && cwd) {
           mkdirSync(path.join(cwd, ".git", "info"), { recursive: true });
         }
 
+        // git checkout: populate the working directory via test-provided handler
         if (cmd.startsWith("git checkout") && cwd && onGitCheckout) {
           onGitCheckout(cwd);
         }
 
+        // git ls-remote: return a fake default branch reference
         if (cmd.includes("git ls-remote")) {
           callback(null, {
             stdout: "ref: refs/heads/main\tHEAD\n",

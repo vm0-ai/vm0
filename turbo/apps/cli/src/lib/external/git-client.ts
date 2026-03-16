@@ -11,6 +11,17 @@ import {
 const execFileAsync = promisify(execFile);
 
 /**
+ * Validate that a value intended as a git positional argument does not
+ * look like a command-line option. This prevents second-order command
+ * injection via flags such as `--upload-pack`.
+ */
+function assertNotOption(value: string, label: string): void {
+  if (value.startsWith("-")) {
+    throw new Error(`Invalid ${label}: must not start with a dash`);
+  }
+}
+
+/**
  * Result of downloading a GitHub directory
  */
 interface GitHubDownloadResult {
@@ -31,6 +42,8 @@ export async function downloadGitHubSkill(
   parsed: ParsedGitHubTreeUrl,
   destDir: string,
 ): Promise<string> {
+  assertNotOption(parsed.owner, "repository owner");
+  assertNotOption(parsed.repo, "repository name");
   const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
   const skillDir = path.join(destDir, parsed.skillName);
 
@@ -55,6 +68,7 @@ export async function downloadGitHubSkill(
     await fs.writeFile(sparseFile, sparsePattern + "\n");
 
     // Fetch only the required branch
+    assertNotOption(parsed.branch, "branch name");
     await execFileAsync(
       "git",
       ["fetch", "--depth", "1", "origin", parsed.branch],
@@ -96,6 +110,8 @@ export async function downloadGitHubSkill(
  * @returns Default branch name
  */
 async function getDefaultBranch(owner: string, repo: string): Promise<string> {
+  assertNotOption(owner, "repository owner");
+  assertNotOption(repo, "repository name");
   const repoUrl = `https://github.com/${owner}/${repo}.git`;
   try {
     // git ls-remote --symref outputs:
@@ -158,6 +174,8 @@ export async function downloadGitHubDirectory(
     );
   }
 
+  assertNotOption(parsed.owner, "repository owner");
+  assertNotOption(parsed.repo, "repository name");
   const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-github-"));
 
@@ -192,6 +210,7 @@ export async function downloadGitHubDirectory(
     await fs.writeFile(sparseFile, sparsePattern + "\n");
 
     // Fetch only the required branch with better error handling
+    assertNotOption(branch, "branch name");
     try {
       await execFileAsync("git", ["fetch", "--depth", "1", "origin", branch], {
         cwd: tempDir,
