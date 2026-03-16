@@ -1,0 +1,49 @@
+name: Test Slack Notification
+
+on:
+  push:
+    branches:
+      - fix/release-slack-notifications
+
+jobs:
+  test-slack:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Send test message
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "Test: Slack notification from release pipeline fix PR"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Test Notification* deploying...\n\nThis is a test to verify Slack notifications are working with `slackapi/slack-github-action@v3.0.1`."
+
+      - name: Debug output
+        if: ${{ always() }}
+        run: |
+          echo "response output: ${{ steps.slack-start.outputs.response }}"
+          echo "ts from response: ${{ fromJSON(steps.slack-start.outputs.response).ts }}"
+
+      - name: Update message with success
+        if: ${{ success() && fromJSON(steps.slack-start.outputs.response).ts }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
+            text: "Test: Slack notification working correctly"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Test Notification* updated successfully\n\nThe `chat.postMessage` -> `chat.update` flow works correctly with `fromJSON(steps.slack-start.outputs.response).ts`."

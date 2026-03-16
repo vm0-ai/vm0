@@ -107,14 +107,14 @@ jobs:
           echo "text=$text" >> $GITHUB_OUTPUT
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
+        if: ${{ success() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Database Migration* ✅ Migration completed"
             blocks:
               - type: section
@@ -123,14 +123,14 @@ jobs:
                   text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        if: ${{ failure() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Database Migration* ❌ Migration failed"
             blocks:
               - type: section
@@ -311,14 +311,14 @@ jobs:
           echo "text=$text" >> $GITHUB_OUTPUT
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
+        if: ${{ success() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Web App* ✅ Deployed successfully"
             blocks:
               - type: section
@@ -327,14 +327,14 @@ jobs:
                   text: "*Web App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
       - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        if: ${{ failure() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Web App* ❌ Deploy failed"
             blocks:
               - type: section
@@ -399,14 +399,14 @@ jobs:
           echo "text=$text" >> $GITHUB_OUTPUT
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
+        if: ${{ success() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Docs* ✅ Deployed successfully"
             blocks:
               - type: section
@@ -415,14 +415,14 @@ jobs:
                   text: "*Docs* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
 
       - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        if: ${{ failure() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Docs* ❌ Deploy failed"
             blocks:
               - type: section
@@ -494,14 +494,14 @@ jobs:
           echo "text=$text" >> $GITHUB_OUTPUT
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
+        if: ${{ success() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Platform* ✅ Deployed successfully"
             blocks:
               - type: section
@@ -510,14 +510,14 @@ jobs:
                   text: "*Platform* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.platform_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.platform_version }}|View Release>"
 
       - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        if: ${{ failure() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Platform* ❌ Deploy failed"
             blocks:
               - type: section
@@ -590,14 +590,14 @@ jobs:
           echo "text=$text" >> $GITHUB_OUTPUT
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
+        if: ${{ success() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*CLI* ✅ Published successfully"
             blocks:
               - type: section
@@ -606,14 +606,14 @@ jobs:
                   text: "*CLI* ✅ Published successfully\n📦 Version: `${{ needs.release-please.outputs.cli_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/cli-v${{ needs.release-please.outputs.cli_version }}|View Release>\n📦 <https://www.npmjs.com/package/@vm0/cli/v/${{ needs.release-please.outputs.cli_version }}|View on npm>"
 
       - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        if: ${{ failure() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*CLI* ❌ Publish failed"
             blocks:
               - type: section
@@ -766,14 +766,14 @@ jobs:
           echo "text=$text" >> $GITHUB_OUTPUT
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
+        if: ${{ success() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Runner RS* ✅ Deployed successfully"
             blocks:
               - type: section
@@ -782,14 +782,14 @@ jobs:
                   text: "*Runner RS* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
 
       - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        if: ${{ failure() && fromJSON(steps.slack-start.outputs.response).ts }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
+            ts: "${{ fromJSON(steps.slack-start.outputs.response).ts }}"
             text: "*Runner RS* ❌ Deploy failed"
             blocks:
               - type: section
