@@ -767,20 +767,14 @@ jobs:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
-      - run: cp /tmp/e2e-token-serial.json ~/.vm0/config.json
-      - name: Save serial token to cache
-        uses: actions/cache/save@v5
+      - name: Upload E2E test tokens
+        uses: actions/upload-artifact@v4
         with:
-          path: ~/.vm0
-          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
-
-
-      - run: cp /tmp/e2e-token-runner.json ~/.vm0/config.json
-      - name: Save runner token to cache
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.vm0
-          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
+          name: e2e-tokens
+          path: |
+            /tmp/e2e-token-serial.json
+            /tmp/e2e-token-runner.json
+          retention-days: 1
 
   # Deploy docs application
   deploy-docs:
@@ -991,8 +985,6 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     timeout-minutes: 5
-    permissions:
-      actions: read # Required to query cache API
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1008,14 +1000,13 @@ jobs:
       - name: Link CLI globally
         run: cd turbo/apps/cli/dist && sudo npm link
 
-      - name: Restore test token from cache
-        uses: actions/cache/restore@v5
+      - name: Download E2E test tokens
+        uses: actions/download-artifact@v4
         with:
-          path: ~/.vm0
-          key: e2e-token-serial-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            e2e-token-serial-${{ github.run_id }}-
-          fail-on-cache-miss: true
+          name: e2e-tokens
+          path: /tmp
+      - name: Setup test token
+        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-serial.json ~/.vm0/config.json
 
       - name: Start Cron Simulator
         run: |
@@ -1430,14 +1421,13 @@ jobs:
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
 
-      - name: Restore test token from cache
-        uses: actions/cache/restore@v5
+      - name: Download E2E test tokens
+        uses: actions/download-artifact@v4
         with:
-          path: ~/.vm0
-          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            e2e-token-runner-${{ github.run_id }}-
-          fail-on-cache-miss: true
+          name: e2e-tokens
+          path: /tmp
+      - name: Setup test token
+        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
 
       - name: Bootstrap test account
         run: |
@@ -1519,14 +1509,13 @@ jobs:
       - name: Link CLI globally
         run: cd turbo/apps/cli/dist && sudo npm link
 
-      - name: Restore test token from cache
-        uses: actions/cache/restore@v5
+      - name: Download E2E test tokens
+        uses: actions/download-artifact@v4
         with:
-          path: ~/.vm0
-          key: e2e-token-runner-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            e2e-token-runner-${{ github.run_id }}-
-          fail-on-cache-miss: true
+          name: e2e-tokens
+          path: /tmp
+      - name: Setup test token
+        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
 
       - name: Bootstrap test account
         run: |
