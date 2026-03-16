@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import { GET as listGET } from "../list/route";
 import { GET as getByIdGET, DELETE as deleteDELETE } from "../[id]/route";
+import { GET as versionsGET } from "../versions/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -289,4 +290,50 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(response.status).toBe(401);
     });
   });
+
+  describe("GET /api/agent/composes/versions", () => {
+    it("sandbox token with agent:read can resolve version", async () => {
+      const agentName = `test-sandbox-versions-${Date.now()}`;
+      const { composeId, versionId } = await createTestCompose(agentName);
+
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-123", [
+        "agent:read",
+      ]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/versions?composeId=${composeId}&version=latest`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      const response = await versionsGET(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.versionId).toBe(versionId);
+    });
+
+    it("sandbox token without agent:read gets 401", async () => {
+      const agentName = `test-sandbox-noversions-${Date.now()}`;
+      const { composeId } = await createTestCompose(agentName);
+
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-123", [
+        "volume:read",
+      ]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/versions?composeId=${composeId}&version=latest`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      const response = await versionsGET(request);
+      expect(response.status).toBe(401);
+    });
+  });
+
 });

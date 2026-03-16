@@ -16,7 +16,9 @@ const router = tsr.router(composesVersionsContract, {
   resolveVersion: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
+    const userId = await getUserId(headers.authorization, {
+      requiredCapability: "agent:read",
+    });
     if (!userId) {
       return {
         status: 401 as const,

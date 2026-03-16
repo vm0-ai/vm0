@@ -44,7 +44,9 @@ export async function GET(
   initServices();
 
   const authorization = request.headers.get("authorization") ?? undefined;
-  const userId = await getUserId(authorization);
+  const userId = await getUserId(authorization, {
+    requiredCapability: "agent:read",
+  });
   if (!userId) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
