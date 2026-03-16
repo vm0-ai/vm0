@@ -54,8 +54,7 @@
     - name: Build rootfs and snapshot
       command: >
         {{ bin_dir }}/runner build
-        --vcpu {{ vcpu }}
-        --memory-mb {{ memory_mb }}
+        --profile vm0/default
       register: build_output
 
     - name: Parse build hashes
@@ -69,13 +68,12 @@
     - name: Generate runner config
       command: >
         {{ bin_dir }}/runner config
+        --profile vm0/default
         --rootfs-hash {{ rootfs_hash }}
         --snapshot-hash {{ snapshot_hash }}
         --name {{ runner_name }}
         --group {{ runner_group }}
         --runner-dirname {{ runner_name }}
-        --vcpu {{ vcpu }}
-        --memory-mb {{ memory_mb }}
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
 

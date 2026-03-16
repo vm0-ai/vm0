@@ -1,11 +1,10 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
 
-pub(crate) const DEFAULT_VCPU: u32 = 2;
-pub(crate) const DEFAULT_MEMORY_MB: u32 = 2048;
 /// 0 means auto-detect from host CPU and memory at startup.
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
 pub(crate) const DEFAULT_CONCURRENCY_FACTOR: f64 = 1.0;
@@ -19,6 +18,7 @@ pub struct RunnerConfig {
     pub firecracker: FirecrackerConfig,
     #[serde(default)]
     pub sandbox: SandboxConfig,
+    pub profiles: BTreeMap<String, ProfileConfig>,
     pub server: Option<ServerConfig>,
 }
 
@@ -26,8 +26,15 @@ pub struct RunnerConfig {
 pub struct FirecrackerConfig {
     pub binary: PathBuf,
     pub kernel: PathBuf,
-    pub rootfs: PathBuf,
-    pub snapshot: Option<SnapshotConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProfileConfig {
+    pub rootfs_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_hash: Option<String>,
+    pub vcpu: u32,
+    pub memory_mb: u32,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -54,19 +61,14 @@ impl From<sandbox_fc::SnapshotConfig> for SnapshotConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxConfig {
-    pub vcpu: u32,
-    pub memory_mb: u32,
     pub max_concurrent: usize,
-    /// CPU overcommit factor for auto-detected concurrency (default: 1.0).
-    /// Only used when max_concurrent is 0 (auto mode).
+    /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
 }
 
 impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
-            vcpu: DEFAULT_VCPU,
-            memory_mb: DEFAULT_MEMORY_MB,
             max_concurrent: DEFAULT_MAX_CONCURRENT,
             concurrency_factor: DEFAULT_CONCURRENCY_FACTOR,
         }
@@ -83,6 +85,11 @@ pub struct ServerConfig {
 ///
 /// Relative paths in the config are resolved against the config file's parent directory.
 pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
+    let home = crate::paths::HomePaths::new()?;
+    load_with_home(path, &home).await
+}
+
+async fn load_with_home(path: &Path, home: &crate::paths::HomePaths) -> RunnerResult<RunnerConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
         .map_err(|e| RunnerError::Config(format!("read {}: {e}", path.display())))?;
@@ -91,17 +98,7 @@ pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
     if let Some(config_dir) = path.parent() {
         config.resolve_relative_paths(config_dir);
     }
-    validate_paths(&config).await?;
-    if config.sandbox.vcpu == 0 || config.sandbox.memory_mb == 0 {
-        return Err(RunnerError::Config(
-            "sandbox.vcpu and sandbox.memory_mb must be non-zero".into(),
-        ));
-    }
-    if !config.sandbox.concurrency_factor.is_finite() || config.sandbox.concurrency_factor <= 0.0 {
-        return Err(RunnerError::Config(
-            "sandbox.concurrency_factor must be a positive finite number".into(),
-        ));
-    }
+    validate(&config, home).await?;
     Ok(config)
 }
 
@@ -135,19 +132,54 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
     Ok(())
 }
 
-async fn validate_paths(config: &RunnerConfig) -> RunnerResult<()> {
+async fn validate(config: &RunnerConfig, home: &crate::paths::HomePaths) -> RunnerResult<()> {
     check_path_exists(&config.ca_dir, "ca_dir").await?;
     check_path_exists(&config.firecracker.binary, "firecracker binary").await?;
     check_path_exists(&config.firecracker.kernel, "kernel").await?;
-    check_path_exists(&config.firecracker.rootfs, "rootfs").await?;
 
-    if let Some(snap) = &config.firecracker.snapshot {
-        check_path_exists(&snap.snapshot_path, "snapshot state").await?;
-        check_path_exists(&snap.memory_path, "snapshot memory").await?;
-        check_path_exists(&snap.overlay_path, "snapshot overlay").await?;
-        // overlay_bind_path and vsock_bind_dir are created at sandbox runtime
+    if config.profiles.is_empty() {
+        return Err(RunnerError::Config("profiles must not be empty".into()));
+    }
+    for (name, profile) in &config.profiles {
+        if !crate::profile::validate_name(name) {
+            return Err(RunnerError::Config(format!(
+                "invalid profile name: {name} (must be org/name format, lowercase alphanumeric + hyphens)"
+            )));
+        }
+        if profile.vcpu == 0 || profile.memory_mb == 0 {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: vcpu and memory_mb must be non-zero"
+            )));
+        }
+        // Validate rootfs exists on disk.
+        let rootfs_path = crate::paths::RootfsPaths::new(home, &profile.rootfs_hash).rootfs();
+        check_path_exists(&rootfs_path, &format!("profile {name} rootfs")).await?;
+        // Validate snapshot files exist if snapshot_hash is set.
+        if let Some(hash) = &profile.snapshot_hash {
+            let snap_dir = home.snapshots_dir().join(hash);
+            check_path_exists(
+                &snap_dir.join("snapshot.bin"),
+                &format!("profile {name} snapshot"),
+            )
+            .await?;
+            check_path_exists(
+                &snap_dir.join("memory.bin"),
+                &format!("profile {name} snapshot memory"),
+            )
+            .await?;
+            check_path_exists(
+                &snap_dir.join("overlay.ext4"),
+                &format!("profile {name} snapshot overlay"),
+            )
+            .await?;
+        }
     }
 
+    if !config.sandbox.concurrency_factor.is_finite() || config.sandbox.concurrency_factor <= 0.0 {
+        return Err(RunnerError::Config(
+            "sandbox.concurrency_factor must be a positive finite number".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -163,40 +195,33 @@ impl RunnerConfig {
         resolve(&mut self.ca_dir);
         resolve(&mut self.firecracker.binary);
         resolve(&mut self.firecracker.kernel);
-        resolve(&mut self.firecracker.rootfs);
-        if let Some(snap) = &mut self.firecracker.snapshot {
-            resolve(&mut snap.snapshot_path);
-            resolve(&mut snap.memory_path);
-            resolve(&mut snap.overlay_path);
-            resolve(&mut snap.overlay_bind_path);
-            resolve(&mut snap.vsock_bind_dir);
-        }
     }
 
-    /// Build a `sandbox_fc::SnapshotConfig` from the config's snapshot paths.
-    pub fn snapshot_config(&self) -> Option<sandbox_fc::SnapshotConfig> {
-        self.firecracker
-            .snapshot
-            .as_ref()
-            .map(|s| sandbox_fc::SnapshotConfig {
-                snapshot_path: s.snapshot_path.clone(),
-                memory_path: s.memory_path.clone(),
-                overlay_path: s.overlay_path.clone(),
-                overlay_bind_path: s.overlay_bind_path.clone(),
-                vsock_bind_dir: s.vsock_bind_dir.clone(),
-            })
-    }
-
-    /// Build a `sandbox_fc::FirecrackerConfig` from this runner config.
-    pub fn firecracker_config(&self) -> sandbox_fc::FirecrackerConfig {
+    /// Build a `sandbox_fc::FirecrackerConfig` for a given profile.
+    ///
+    /// Resolves rootfs and snapshot paths from the profile's hashes
+    /// using the standard content-addressed storage layout.
+    pub fn firecracker_config(
+        &self,
+        profile: &ProfileConfig,
+        home: &crate::paths::HomePaths,
+        concurrency: usize,
+        proxy_port: Option<u16>,
+    ) -> sandbox_fc::FirecrackerConfig {
+        let rootfs_paths = crate::paths::RootfsPaths::new(home, &profile.rootfs_hash);
+        let snapshot = profile.snapshot_hash.as_ref().map(|hash| {
+            let snapshot_output =
+                sandbox_fc::SnapshotOutputPaths::new(home.snapshots_dir().join(hash));
+            snapshot_output.snapshot_config(hash)
+        });
         sandbox_fc::FirecrackerConfig {
             binary_path: self.firecracker.binary.clone(),
             kernel_path: self.firecracker.kernel.clone(),
-            rootfs_path: self.firecracker.rootfs.clone(),
+            rootfs_path: rootfs_paths.rootfs(),
             base_dir: self.base_dir.clone(),
-            concurrency: self.sandbox.max_concurrent,
-            proxy_port: None,
-            snapshot: self.snapshot_config(),
+            concurrency,
+            proxy_port,
+            snapshot,
         }
     }
 }
@@ -205,13 +230,50 @@ impl RunnerConfig {
 mod tests {
     use super::*;
 
+    /// Create a HomePaths rooted in a temp dir and populate fake rootfs/snapshot
+    /// files for the given profile hashes so config validation passes.
+    async fn test_home_with_artifacts(
+        dir: &std::path::Path,
+        profiles: &[(&str, Option<&str>)], // (rootfs_hash, snapshot_hash)
+    ) -> crate::paths::HomePaths {
+        let home = crate::paths::HomePaths::with_root(dir.join(".vm0-runner"));
+        for &(rootfs_hash, snapshot_hash) in profiles {
+            let rootfs = crate::paths::RootfsPaths::new(&home, rootfs_hash).rootfs();
+            tokio::fs::create_dir_all(rootfs.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&rootfs, b"").await.unwrap();
+            if let Some(hash) = snapshot_hash {
+                let snap_dir = home.snapshots_dir().join(hash);
+                tokio::fs::create_dir_all(&snap_dir).await.unwrap();
+                for name in ["snapshot.bin", "memory.bin", "overlay.ext4"] {
+                    tokio::fs::write(snap_dir.join(name), b"").await.unwrap();
+                }
+            }
+        }
+        home
+    }
+
+    fn make_profiles() -> BTreeMap<String, ProfileConfig> {
+        let mut profiles = BTreeMap::new();
+        profiles.insert(
+            "vm0/default".into(),
+            ProfileConfig {
+                rootfs_hash: "abc123".into(),
+                snapshot_hash: Some("def456".into()),
+                vcpu: 2,
+                memory_mb: 2048,
+            },
+        );
+        profiles
+    }
+
     #[tokio::test]
-    async fn load_full_config() {
+    async fn load_config_with_profiles() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        for f in [&fc, &kernel, &rootfs] {
+        for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
 
@@ -224,10 +286,18 @@ ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
-  rootfs: {rootfs}
+profiles:
+  vm0/default:
+    rootfs_hash: abc123
+    snapshot_hash: def456
+    vcpu: 2
+    memory_mb: 2048
+  vm0/browser:
+    rootfs_hash: fed987
+    snapshot_hash: cba654
+    vcpu: 4
+    memory_mb: 4096
 sandbox:
-  vcpu: 4
-  memory_mb: 4096
   max_concurrent: 8
   concurrency_factor: 2.0
 server:
@@ -238,17 +308,26 @@ server:
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            rootfs = rootfs.display(),
         );
+
+        let home = test_home_with_artifacts(
+            dir.path(),
+            &[("abc123", Some("def456")), ("fed987", Some("cba654"))],
+        )
+        .await;
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let config = load(&config_path).await.unwrap();
+        let config = load_with_home(&config_path, &home).await.unwrap();
         assert_eq!(config.name, "test-runner");
-        assert_eq!(config.group, "acme/prod");
-        assert_eq!(config.sandbox.vcpu, 4);
-        assert_eq!(config.sandbox.memory_mb, 4096);
+        assert_eq!(config.profiles.len(), 2);
+        let default = &config.profiles["vm0/default"];
+        assert_eq!(default.vcpu, 2);
+        assert_eq!(default.rootfs_hash, "abc123");
+        let browser = &config.profiles["vm0/browser"];
+        assert_eq!(browser.vcpu, 4);
+        assert_eq!(browser.memory_mb, 4096);
         assert_eq!(config.sandbox.max_concurrent, 8);
         assert!((config.sandbox.concurrency_factor - 2.0).abs() < f64::EPSILON);
         let server = config.server.unwrap();
@@ -261,10 +340,10 @@ server:
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        for f in [&fc, &kernel, &rootfs] {
+        for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
+        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
 
         let yaml = format!(
             r#"
@@ -275,21 +354,22 @@ ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
-  rootfs: {rootfs}
+profiles:
+  vm0/default:
+    rootfs_hash: abc
+    vcpu: 2
+    memory_mb: 2048
 "#,
             base_dir = dir.path().display(),
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            rootfs = rootfs.display(),
         );
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let config = load(&config_path).await.unwrap();
-        assert_eq!(config.sandbox.vcpu, DEFAULT_VCPU);
-        assert_eq!(config.sandbox.memory_mb, DEFAULT_MEMORY_MB);
+        let config = load_with_home(&config_path, &home).await.unwrap();
         assert_eq!(config.sandbox.max_concurrent, DEFAULT_MAX_CONCURRENT);
         assert!(
             (config.sandbox.concurrency_factor - DEFAULT_CONCURRENCY_FACTOR).abs() < f64::EPSILON
@@ -298,38 +378,14 @@ firecracker:
     }
 
     #[tokio::test]
-    async fn load_fails_on_missing_paths() {
-        let dir = tempfile::tempdir().unwrap();
-        let yaml = format!(
-            r#"
-name: test
-group: test/group
-base_dir: {base_dir}
-ca_dir: /nonexistent/ca
-firecracker:
-  binary: /nonexistent/firecracker
-  kernel: /nonexistent/kernel
-  rootfs: /nonexistent/rootfs
-"#,
-            base_dir = dir.path().display(),
-        );
-
-        let config_path = dir.path().join("runner.yaml");
-        tokio::fs::write(&config_path, &yaml).await.unwrap();
-
-        let err = load(&config_path).await.unwrap_err();
-        assert!(err.to_string().contains("not found"), "got: {err}");
-    }
-
-    #[tokio::test]
-    async fn load_rejects_zero_vcpu() {
+    async fn load_rejects_empty_profiles() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        for f in [&fc, &kernel, &rootfs] {
+        for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
+        let home = test_home_with_artifacts(dir.path(), &[]).await;
 
         let yaml = format!(
             r#"
@@ -340,37 +396,33 @@ ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
-  rootfs: {rootfs}
-sandbox:
-  vcpu: 0
-  memory_mb: 2048
+profiles: {{}}
 "#,
             base_dir = dir.path().display(),
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            rootfs = rootfs.display(),
         );
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load(&config_path).await.unwrap_err();
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
         assert!(
-            err.to_string().contains("non-zero"),
-            "expected non-zero error, got: {err}"
+            err.to_string().contains("profiles must not be empty"),
+            "got: {err}"
         );
     }
 
     #[tokio::test]
-    async fn load_rejects_zero_memory_mb() {
+    async fn load_rejects_invalid_profile_name() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        for f in [&fc, &kernel, &rootfs] {
+        for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
+        let home = test_home_with_artifacts(dir.path(), &[]).await;
 
         let yaml = format!(
             r#"
@@ -381,26 +433,64 @@ ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
-  rootfs: {rootfs}
-sandbox:
-  vcpu: 2
-  memory_mb: 0
+profiles:
+  bad-name:
+    rootfs_hash: abc
+    vcpu: 2
+    memory_mb: 2048
 "#,
             base_dir = dir.path().display(),
             ca_dir = dir.path().display(),
             fc = fc.display(),
             kernel = kernel.display(),
-            rootfs = rootfs.display(),
         );
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load(&config_path).await.unwrap_err();
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
         assert!(
-            err.to_string().contains("non-zero"),
-            "expected non-zero error, got: {err}"
+            err.to_string().contains("invalid profile name"),
+            "got: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn load_rejects_zero_vcpu_in_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[]).await;
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    rootfs_hash: abc
+    vcpu: 0
+    memory_mb: 2048
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(err.to_string().contains("non-zero"), "got: {err}");
     }
 
     #[tokio::test]
@@ -408,10 +498,11 @@ sandbox:
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        for f in [&fc, &kernel, &rootfs] {
+        for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
+
+        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
 
         for bad_value in ["0.0", "-1.0", ".nan", ".inf", "-.inf"] {
             let yaml = format!(
@@ -423,7 +514,11 @@ ca_dir: {ca_dir}
 firecracker:
   binary: {fc}
   kernel: {kernel}
-  rootfs: {rootfs}
+profiles:
+  vm0/default:
+    rootfs_hash: abc
+    vcpu: 2
+    memory_mb: 2048
 sandbox:
   concurrency_factor: {bad_value}
 "#,
@@ -431,13 +526,12 @@ sandbox:
                 ca_dir = dir.path().display(),
                 fc = fc.display(),
                 kernel = kernel.display(),
-                rootfs = rootfs.display(),
             );
 
             let config_path = dir.path().join("runner.yaml");
             tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-            let err = load(&config_path).await.unwrap_err();
+            let err = load_with_home(&config_path, &home).await.unwrap_err();
             assert!(
                 err.to_string().contains("concurrency_factor"),
                 "expected concurrency_factor error for {bad_value}, got: {err}"
@@ -446,70 +540,14 @@ sandbox:
     }
 
     #[tokio::test]
-    async fn load_with_snapshot() {
-        let dir = tempfile::tempdir().unwrap();
-        let fc = dir.path().join("firecracker");
-        let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        let snap = dir.path().join("snapshot.bin");
-        let mem = dir.path().join("memory.bin");
-        let overlay = dir.path().join("overlay.ext4");
-        let overlay_bind = dir.path().join("overlay_bind.ext4");
-        let vsock_dir = dir.path().join("vsock");
-        for f in [&fc, &kernel, &rootfs, &snap, &mem, &overlay] {
-            tokio::fs::write(f, b"").await.unwrap();
-        }
-
-        let yaml = format!(
-            r#"
-name: test
-group: test/group
-base_dir: {base_dir}
-ca_dir: {ca_dir}
-firecracker:
-  binary: {fc}
-  kernel: {kernel}
-  rootfs: {rootfs}
-  snapshot:
-    snapshot_path: {snap}
-    memory_path: {mem}
-    overlay_path: {overlay}
-    overlay_bind_path: {overlay_bind}
-    vsock_bind_dir: {vsock_dir}
-"#,
-            base_dir = dir.path().display(),
-            ca_dir = dir.path().display(),
-            fc = fc.display(),
-            kernel = kernel.display(),
-            rootfs = rootfs.display(),
-            snap = snap.display(),
-            mem = mem.display(),
-            overlay = overlay.display(),
-            overlay_bind = overlay_bind.display(),
-            vsock_dir = vsock_dir.display(),
-        );
-
-        let config_path = dir.path().join("runner.yaml");
-        tokio::fs::write(&config_path, &yaml).await.unwrap();
-
-        let config = load(&config_path).await.unwrap();
-        let snap_config = config.snapshot_config().unwrap();
-        assert_eq!(snap_config.snapshot_path, snap);
-        assert_eq!(snap_config.memory_path, mem);
-        assert_eq!(snap_config.overlay_path, overlay);
-        assert_eq!(snap_config.overlay_bind_path, overlay_bind);
-        assert_eq!(snap_config.vsock_bind_dir, vsock_dir);
-    }
-
-    #[tokio::test]
     async fn generate_then_load_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        for f in [&fc, &kernel, &rootfs] {
+        for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
+        let home = test_home_with_artifacts(dir.path(), &[("abc123", Some("def456"))]).await;
 
         let runner_dir = dir.path().join("my-runner");
         let config = RunnerConfig {
@@ -517,15 +555,9 @@ firecracker:
             group: "acme/prod".into(),
             base_dir: runner_dir.clone(),
             ca_dir: dir.path().to_path_buf(),
-            firecracker: FirecrackerConfig {
-                binary: fc.clone(),
-                kernel: kernel.clone(),
-                rootfs: rootfs.clone(),
-                snapshot: None,
-            },
+            firecracker: FirecrackerConfig { binary: fc, kernel },
+            profiles: make_profiles(),
             sandbox: SandboxConfig {
-                vcpu: 4,
-                memory_mb: 4096,
                 max_concurrent: 8,
                 concurrency_factor: 2.0,
             },
@@ -537,48 +569,9 @@ firecracker:
 
         generate(&config).await.unwrap();
 
-        let loaded = load(&runner_dir.join("runner.yaml")).await.unwrap();
-        assert_eq!(loaded, config);
-    }
-
-    #[tokio::test]
-    async fn generate_then_load_round_trip_with_snapshot() {
-        let dir = tempfile::tempdir().unwrap();
-        let fc = dir.path().join("firecracker");
-        let kernel = dir.path().join("vmlinux");
-        let rootfs = dir.path().join("rootfs.squashfs");
-        let snap = dir.path().join("snapshot.bin");
-        let mem = dir.path().join("memory.bin");
-        let overlay = dir.path().join("overlay.ext4");
-        for f in [&fc, &kernel, &rootfs, &snap, &mem, &overlay] {
-            tokio::fs::write(f, b"").await.unwrap();
-        }
-
-        let runner_dir = dir.path().join("my-runner");
-        let config = RunnerConfig {
-            name: "snap-runner".into(),
-            group: "acme/staging".into(),
-            base_dir: runner_dir.clone(),
-            ca_dir: dir.path().to_path_buf(),
-            firecracker: FirecrackerConfig {
-                binary: fc,
-                kernel,
-                rootfs,
-                snapshot: Some(SnapshotConfig {
-                    snapshot_path: snap,
-                    memory_path: mem,
-                    overlay_path: overlay,
-                    overlay_bind_path: dir.path().join("work/overlay.ext4"),
-                    vsock_bind_dir: dir.path().join("work/vsock"),
-                }),
-            },
-            sandbox: SandboxConfig::default(),
-            server: None,
-        };
-
-        generate(&config).await.unwrap();
-
-        let loaded = load(&runner_dir.join("runner.yaml")).await.unwrap();
+        let loaded = load_with_home(&runner_dir.join("runner.yaml"), &home)
+            .await
+            .unwrap();
         assert_eq!(loaded, config);
     }
 
@@ -586,14 +579,13 @@ firecracker:
     async fn load_resolves_relative_paths() {
         let dir = tempfile::tempdir().unwrap();
 
-        // Create files in a subdirectory
         let sub = dir.path().join("artifacts");
         tokio::fs::create_dir_all(&sub).await.unwrap();
-        for name in ["firecracker", "vmlinux", "rootfs.squashfs"] {
+        for name in ["firecracker", "vmlinux"] {
             tokio::fs::write(sub.join(name), b"").await.unwrap();
         }
+        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
 
-        // YAML uses relative paths (relative to config file location)
         let yaml = r#"
 name: test
 group: test/group
@@ -602,20 +594,55 @@ ca_dir: artifacts
 firecracker:
   binary: artifacts/firecracker
   kernel: artifacts/vmlinux
-  rootfs: artifacts/rootfs.squashfs
+profiles:
+  vm0/default:
+    rootfs_hash: abc
+    vcpu: 2
+    memory_mb: 2048
 "#;
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, yaml).await.unwrap();
 
-        let config = load(&config_path).await.unwrap();
+        let config = load_with_home(&config_path, &home).await.unwrap();
 
-        // All paths should be resolved to absolute paths under dir
         assert!(config.base_dir.is_absolute());
         assert_eq!(config.base_dir, dir.path().join("my-runner"));
         assert_eq!(config.ca_dir, sub);
         assert_eq!(config.firecracker.binary, sub.join("firecracker"));
         assert_eq!(config.firecracker.kernel, sub.join("vmlinux"));
-        assert_eq!(config.firecracker.rootfs, sub.join("rootfs.squashfs"));
+    }
+
+    #[test]
+    fn firecracker_config_resolves_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+
+        let config = RunnerConfig {
+            name: "test".into(),
+            group: "test/group".into(),
+            base_dir: dir.path().join("runner"),
+            ca_dir: dir.path().join("ca"),
+            firecracker: FirecrackerConfig {
+                binary: dir.path().join("firecracker"),
+                kernel: dir.path().join("vmlinux"),
+            },
+            profiles: make_profiles(),
+            sandbox: SandboxConfig::default(),
+            server: None,
+        };
+
+        let profile = &config.profiles["vm0/default"];
+        let fc = config.firecracker_config(profile, &home, 4, Some(8080));
+
+        assert_eq!(fc.binary_path, dir.path().join("firecracker"));
+        assert_eq!(fc.kernel_path, dir.path().join("vmlinux"));
+        assert_eq!(
+            fc.rootfs_path,
+            home.rootfs_dir().join("abc123").join("rootfs.squashfs")
+        );
+        assert_eq!(fc.concurrency, 4);
+        assert_eq!(fc.proxy_port, Some(8080));
+        assert!(fc.snapshot.is_some());
     }
 }

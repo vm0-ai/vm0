@@ -98,24 +98,18 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
                 runner_config.base_dir.display()
             ))
         })?;
-    // Shared locks on rootfs/snapshot — allows `runner gc` to detect in-use resources.
-    let _rootfs_lock =
-        if let Some(hash) = home.extract_rootfs_hash(&runner_config.firecracker.rootfs) {
-            let lock = lock::acquire_shared(home.rootfs_lock(&hash)).await?;
-            crate::paths::touch_mtime(&home.rootfs_dir().join(&hash));
-            Some(lock)
-        } else {
-            None
-        };
-    let _snapshot_lock = if let Some(ref snap) = runner_config.firecracker.snapshot
-        && let Some(hash) = home.extract_snapshot_hash(&snap.snapshot_path)
-    {
-        let lock = lock::acquire_shared(home.snapshot_lock(&hash)).await?;
-        crate::paths::touch_mtime(&home.snapshots_dir().join(&hash));
-        Some(lock)
-    } else {
-        None
-    };
+    // Shared locks on rootfs/snapshot per profile — allows `runner gc` to detect in-use resources.
+    let mut _resource_locks = Vec::new();
+    for profile in runner_config.profiles.values() {
+        let lock = lock::acquire_shared(home.rootfs_lock(&profile.rootfs_hash)).await?;
+        crate::paths::touch_mtime(&home.rootfs_dir().join(&profile.rootfs_hash));
+        _resource_locks.push(lock);
+        if let Some(hash) = &profile.snapshot_hash {
+            let lock = lock::acquire_shared(home.snapshot_lock(hash)).await?;
+            crate::paths::touch_mtime(&home.snapshots_dir().join(hash));
+            _resource_locks.push(lock);
+        }
+    }
 
     let log_paths = crate::paths::LogPaths::new(home.logs_dir());
     tokio::fs::create_dir_all(log_paths.dir())
@@ -127,11 +121,26 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             ))
         })?;
 
-    // Start background prefetch so memory.bin is in page cache before the first VM.
-    if let Some(snapshot) = &runner_config.firecracker.snapshot {
-        let path = snapshot.memory_path.clone();
-        tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path));
+    // Start background prefetch of snapshot memory for all profiles.
+    for profile in runner_config.profiles.values() {
+        if let Some(hash) = &profile.snapshot_hash {
+            let path = home.snapshots_dir().join(hash).join("memory.bin");
+            tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path));
+        }
     }
+
+    // Use the default profile for vcpu/memory (used for budget and pool sizing).
+    let default_profile = runner_config
+        .profiles
+        .get(crate::profile::DEFAULT_PROFILE)
+        .ok_or_else(|| {
+            RunnerError::Config(format!(
+                "profile '{}' not found in config",
+                crate::profile::DEFAULT_PROFILE
+            ))
+        })?;
+    let vcpu = default_profile.vcpu;
+    let memory_mb = default_profile.memory_mb;
 
     // Start proxy before factory so proxy_port is available for netns pool.
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
@@ -147,23 +156,13 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     mitm.start().await?;
     info!(port = mitm.port(), "proxy ready");
 
-    let mut fc_config = runner_config.firecracker_config();
-    fc_config.proxy_port = Some(mitm.port());
     let registry_handle = mitm.registry_handle();
 
-    // Destructure — no clones needed
-    let config::RunnerConfig {
-        name,
-        group,
-        sandbox,
-        ..
-    } = runner_config;
+    // Resource budget from host resources + config.
     let config::SandboxConfig {
         max_concurrent,
-        vcpu,
-        memory_mb,
         concurrency_factor,
-    } = sandbox;
+    } = runner_config.sandbox;
     let host_cpus = crate::host::cpu_count()?;
     let host_memory_mb = crate::host::memory_mb()?;
     let budget = Arc::new(ResourceBudget::new(
@@ -183,26 +182,35 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         effective_memory_mb = budget.effective_memory_mb(),
         "resource budget initialized"
     );
+
     // Factory concurrency hint for pool sizing (overlay + netns pre-warming).
-    assert!(vcpu > 0, "sandbox.vcpu must be > 0");
-    assert!(memory_mb > 0, "sandbox.memory_mb must be > 0");
+    assert!(vcpu > 0, "profile vcpu must be > 0");
+    assert!(memory_mb > 0, "profile memory_mb must be > 0");
     let resource_limit = std::cmp::min(
         budget.effective_vcpu() as usize / vcpu as usize,
         budget.effective_memory_mb() as usize / memory_mb as usize,
     )
     .max(1);
-    fc_config.concurrency = if max_concurrent > 0 {
+    let concurrency = if max_concurrent > 0 {
         std::cmp::min(resource_limit, max_concurrent)
     } else {
         resource_limit
     };
-    let mut status = StatusTracker::new(paths.status(), fc_config.concurrency);
+
+    // Build firecracker config with all parameters resolved.
+    let fc_config =
+        runner_config.firecracker_config(default_profile, &home, concurrency, Some(mitm.port()));
+    let is_snapshot = fc_config.snapshot.is_some();
+
+    let mut status = StatusTracker::new(paths.status(), concurrency);
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
 
     // Create provider — handles discovery + claim + complete
     let cancel = CancellationToken::new();
     let http = crate::http::HttpClient::new(server.url.clone())?;
+    let name = runner_config.name;
+    let group = runner_config.group;
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
         let group_dir = home.groups_dir().join(&group);
         std::fs::create_dir_all(&group_dir).map_err(|e| {
@@ -216,7 +224,6 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         (provider, group_name)
     };
 
-    let is_snapshot = fc_config.snapshot.is_some();
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
         vcpu,

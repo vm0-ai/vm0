@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 
 use sandbox_fc::SnapshotOutputPaths;
 
-use crate::config::{DEFAULT_MEMORY_MB, DEFAULT_VCPU, SnapshotConfig};
+use crate::config::SnapshotConfig;
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::{HomePaths, RootfsPaths};
@@ -14,10 +14,10 @@ pub struct SnapshotArgs {
     #[arg(long)]
     pub rootfs_hash: String,
     /// Number of vCPUs for the snapshot VM.
-    #[arg(long, default_value_t = DEFAULT_VCPU)]
+    #[arg(long)]
     pub vcpu: u32,
     /// Memory size in MiB for the snapshot VM.
-    #[arg(long, default_value_t = DEFAULT_MEMORY_MB)]
+    #[arg(long)]
     pub memory_mb: u32,
     /// Compute and print the snapshot hash without building
     #[arg(long)]

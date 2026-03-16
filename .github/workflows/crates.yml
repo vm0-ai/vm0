@@ -241,7 +241,7 @@ jobs:
           # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Running build ==="
           BUILD_LOG=$(mktemp)
-          ssh $REMOTE "${BIN_DIR}/runner build" | tee "$BUILD_LOG"
+          ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG"
           ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
           SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
           rm -f "$BUILD_LOG"
@@ -282,6 +282,7 @@ jobs:
 
           echo "=== Generating config ==="
           ssh $REMOTE "${BIN_DIR}/runner config \
+            --profile vm0/default \
             --rootfs-hash ${ROOTFS_HASH} \
             --snapshot-hash ${SNAPSHOT_HASH} \
             --name ${JOB_REF}-bench \
@@ -293,6 +294,7 @@ jobs:
           echo "=== Running benchmark ==="
           ssh $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
+            --profile vm0/default \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
   runner-exec:
@@ -323,6 +325,7 @@ jobs:
 
           echo "=== Generating config ==="
           ssh $REMOTE "${BIN_DIR}/runner config \
+            --profile vm0/default \
             --rootfs-hash ${ROOTFS_HASH} \
             --snapshot-hash ${SNAPSHOT_HASH} \
             --name ${JOB_REF}-exec \
@@ -423,6 +426,7 @@ jobs:
 
           echo "=== Generating config ==="
           ssh $REMOTE "${BIN_DIR}/runner config \
+            --profile vm0/default \
             --rootfs-hash ${ROOTFS_HASH} \
             --snapshot-hash ${SNAPSHOT_HASH} \
             --name ${JOB_REF}-balloon \
@@ -602,6 +606,7 @@ jobs:
           echo "=== Generating configs for runner A and B ==="
           for SUFFIX in upgrade-a upgrade-b; do
             ssh $REMOTE "${BIN_DIR}/runner config \
+              --profile vm0/default \
               --rootfs-hash ${ROOTFS_HASH} \
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${JOB_REF}-${SUFFIX} \

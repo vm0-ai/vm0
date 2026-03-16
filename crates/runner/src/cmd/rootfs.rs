@@ -8,7 +8,6 @@ use crate::paths::{HomePaths, RootfsPaths};
 
 const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
-const EMBEDDED_DOCKERFILE: &str = include_str!("../../scripts/rootfs.Dockerfile");
 
 #[cfg(bundled_guests)]
 mod embedded {
@@ -72,6 +71,9 @@ pub struct RootfsArgs {
         arg(long, help = "Path to guest-mock-claude binary (required)")
     )]
     guest_mock_claude: Option<PathBuf>,
+    /// Profile to build (determines Dockerfile)
+    #[arg(long)]
+    pub profile: String,
     /// Compute and print the input hash without building
     #[arg(long)]
     pub dry_run: bool,
@@ -109,6 +111,8 @@ async fn resolve_guest(
 
 /// Build rootfs and return the content hash of the inputs.
 pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
+    let def = crate::profile::get(&args.profile)?;
+    let dockerfile = def.dockerfile;
     let dry_run = args.dry_run;
 
     // Create temp dir for any bundled guest binaries that need extracting.
@@ -137,7 +141,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
 
     // Compute input hash: script + dockerfile + guest binaries.
     // The build script content is included so any logic change invalidates cache.
-    let hash = compute_input_hash(&bins).await?;
+    let hash = compute_input_hash(dockerfile, &bins).await?;
     tracing::info!("rootfs input hash: {hash}");
     // Machine-readable output — do not change format without updating consumers
     println!("rootfs_hash={hash}");
@@ -186,7 +190,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     tokio::fs::write(work_dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
         .await
         .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
-    tokio::fs::write(work_dir.path().join("Dockerfile"), EMBEDDED_DOCKERFILE)
+    tokio::fs::write(work_dir.path().join("Dockerfile"), dockerfile)
         .await
         .map_err(|e| RunnerError::Internal(format!("write Dockerfile: {e}")))?;
 
@@ -267,7 +271,10 @@ async fn is_build_complete(rootfs: &RootfsPaths) -> RunnerResult<bool> {
 }
 
 /// Hash all deterministic inputs: build script, Dockerfile, and guest binaries.
-async fn compute_input_hash(guest_bins: &[(&Path, &str)]) -> RunnerResult<String> {
+async fn compute_input_hash(
+    dockerfile: &str,
+    guest_bins: &[(&Path, &str)],
+) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
 
     // Hash build script content (includes resolv.conf, constants, all logic)
@@ -276,7 +283,7 @@ async fn compute_input_hash(guest_bins: &[(&Path, &str)]) -> RunnerResult<String
 
     // Hash Dockerfile content
     hasher.update(b"dockerfile:");
-    hasher.update(EMBEDDED_DOCKERFILE.as_bytes());
+    hasher.update(dockerfile.as_bytes());
 
     // Hash guest binaries (already sorted by name via guest_bins())
     for (src, dest) in guest_bins {
