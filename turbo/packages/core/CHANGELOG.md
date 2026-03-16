@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.71.1](https://github.com/vm0-ai/vm0/compare/core-v8.71.0...core-v8.71.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* **auth:** return 403 instead of 401 for sandbox tokens with insufficient capabilities ([#4955](https://github.com/vm0-ai/vm0/issues/4955)) ([14f8a6c](https://github.com/vm0-ai/vm0/commit/14f8a6c2c7904f9ada120ce103ffc8d1c3b94a32))
+
 ## [8.71.0](https://github.com/vm0-ai/vm0/compare/core-v8.70.0...core-v8.71.0) (2026-03-16)
 
 
