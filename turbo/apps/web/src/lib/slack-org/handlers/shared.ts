@@ -222,13 +222,13 @@ export {
 /**
  * Build the logs URL for a run in the org flow.
  */
-export function buildLogsUrl(runId: string, _agentName: string): string {
+export function buildLogsUrl(runId: string): string {
   return `${getPlatformUrl()}/zero/activity/${encodeURIComponent(runId)}`;
 }
 
 /**
  * Build the agent-level activity URL (no specific run).
  */
-export function buildAgentLogsUrl(_agentName: string): string {
+export function buildAgentLogsUrl(): string {
   return `${getPlatformUrl()}/zero/activity`;
 }

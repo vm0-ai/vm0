@@ -124,7 +124,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createSlackClient(botToken);
 
-  const logsUrl = buildLogsUrl(runId, composeName);
+  const logsUrl = buildLogsUrl(runId);
 
   // Resolve display name for user-visible messages
   const agentInfo = await getWorkspaceAgent(payload.composeId);

@@ -299,7 +299,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Post text response
   if (responseText) {
-    const logsUrl = buildLogsUrl(runId, payload.agentName);
+    const logsUrl = buildLogsUrl(runId);
     const deepLinks = detectDeepLinks(
       responseText,
       getPlatformUrl(),

@@ -196,9 +196,7 @@ export async function handleOrgMention(
   } else if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });
     const errorText = response ?? "Sorry, an error occurred. Please try again.";
-    const logsUrl = runId
-      ? buildLogsUrl(runId, agentName)
-      : buildAgentLogsUrl(agentName);
+    const logsUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
     const deepLinks = detectDeepLinks(errorText, getPlatformUrl(), agentName);
     await client.chat.postMessage({
       channel: context.channelId,

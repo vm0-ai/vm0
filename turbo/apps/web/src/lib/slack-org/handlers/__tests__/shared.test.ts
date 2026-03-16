@@ -45,13 +45,13 @@ describe("buildOrgConnectUrl", () => {
 
 describe("buildLogsUrl", () => {
   it("should return platform URL with zero/activity path", () => {
-    const url = buildLogsUrl("run-123", "my-agent");
+    const url = buildLogsUrl("run-123");
 
     expect(url).toBe("http://localhost:3001/zero/activity/run-123");
   });
 
   it("should encode run ID in URL", () => {
-    const url = buildLogsUrl("run/with/slashes", "agent");
+    const url = buildLogsUrl("run/with/slashes");
 
     expect(url).toBe(
       "http://localhost:3001/zero/activity/run%2Fwith%2Fslashes",
@@ -61,7 +61,7 @@ describe("buildLogsUrl", () => {
 
 describe("buildAgentLogsUrl", () => {
   it("should return platform URL with zero/activity path", () => {
-    const url = buildAgentLogsUrl("my-agent");
+    const url = buildAgentLogsUrl();
 
     expect(url).toBe("http://localhost:3001/zero/activity");
   });
