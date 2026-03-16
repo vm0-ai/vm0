@@ -6,6 +6,7 @@ import {
   IconDeviceDesktop,
   IconPalette,
   IconKeyboard,
+  IconLoader2,
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { cn } from "@vm0/ui";
@@ -93,6 +94,20 @@ function SendModeSettings() {
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
   const updatePref = useSet(updateNotificationPreference$);
+  const saving$ = useCCState<SendMode | null>(null);
+  const saving = useGet(saving$);
+  const setSaving = useSet(saving$);
+
+  const handleChange = (value: SendMode) => {
+    setSaving(value);
+    detach(
+      (async () => {
+        await updatePref({ sendMode: value });
+        setSaving(null);
+      })().catch(() => setSaving(null)),
+      Reason.DomCallback,
+    );
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -127,17 +142,20 @@ function SendModeSettings() {
             <button
               key={value}
               type="button"
-              onClick={() =>
-                detach(updatePref({ sendMode: value }), Reason.DomCallback)
-              }
+              disabled={saving !== null}
+              onClick={() => handleChange(value)}
               style={{ borderWidth: "0.7px" }}
               className={cn(
                 "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                current === value
+                (saving === value ? true : saving === null && current === value)
                   ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                   : "zero-chip text-muted-foreground hover:text-foreground",
+                saving !== null && "opacity-60 cursor-not-allowed",
               )}
             >
+              {saving === value && (
+                <IconLoader2 size={14} className="animate-spin" />
+              )}
               {label}
             </button>
           ))}
