@@ -575,6 +575,20 @@ const queueEntrySchema = z.object({
   userEmail: z.string().nullable(),
   createdAt: z.string(),
   runId: z.string().nullable(),
+  prompt: z.string().nullable(),
+  triggerSource: z.enum(["schedule", "chat", "api"]).nullable(),
+  sessionLink: z.string().nullable(),
+});
+
+/**
+ * Running task schema — shows currently executing runs
+ */
+const runningTaskSchema = z.object({
+  runId: z.string().nullable(),
+  agentName: z.string(),
+  userEmail: z.string(),
+  startedAt: z.string().nullable(),
+  isOwner: z.boolean(),
 });
 
 /**
@@ -593,6 +607,8 @@ const concurrencyInfoSchema = z.object({
 const queueResponseSchema = z.object({
   concurrency: concurrencyInfoSchema,
   queue: z.array(queueEntrySchema),
+  runningTasks: z.array(runningTaskSchema),
+  estimatedTimePerRun: z.number().nullable(),
 });
 
 /**
@@ -642,6 +658,7 @@ export {
   searchResultSchema,
   logsSearchResponseSchema,
   queueEntrySchema,
+  runningTaskSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
 };
@@ -667,5 +684,6 @@ export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type LogsSearchResponse = z.infer<typeof logsSearchResponseSchema>;
 export type QueueEntry = z.infer<typeof queueEntrySchema>;
+export type RunningTask = z.infer<typeof runningTaskSchema>;
 export type ConcurrencyInfo = z.infer<typeof concurrencyInfoSchema>;
 export type QueueResponse = z.infer<typeof queueResponseSchema>;

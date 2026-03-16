@@ -105,10 +105,12 @@ export {
   type LogsSearchResponse,
   runsQueueContract,
   queueEntrySchema,
+  runningTaskSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
   type RunsQueueContract,
   type QueueEntry,
+  type RunningTask,
   type ConcurrencyInfo,
   type QueueResponse,
 } from "./runs";

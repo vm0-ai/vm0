@@ -13,7 +13,30 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "../../../../../src/db/schema/agent-compose";
-import { eq, and, or, gt, count, asc } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  gt,
+  count,
+  asc,
+  desc,
+  isNotNull,
+  avg,
+  sql,
+} from "drizzle-orm";
+
+const RECENT_RUNS_FOR_ETA = 20;
+const PROMPT_TRUNCATE_LENGTH = 200;
+
+function inferTriggerSource(run: {
+  scheduleId: string | null;
+  continuedFromSessionId: string | null;
+}): "schedule" | "chat" | "api" {
+  if (run.scheduleId) return "schedule";
+  if (run.continuedFromSessionId) return "chat";
+  return "api";
+}
 
 const router = tsr.router(runsQueueContract, {
   getQueue: async ({ headers }, { request }) => {
@@ -38,9 +61,11 @@ const router = tsr.router(runsQueueContract, {
 
     const limit = getEffectiveConcurrencyLimit(orgTier);
 
+    const db = globalThis.services.db;
+
     // Count active runs (same logic as checkRunConcurrencyLimit)
     const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
-    const [activeResult] = await globalThis.services.db
+    const [activeResult] = await db
       .select({ count: count() })
       .from(agentRuns)
       .where(
@@ -57,13 +82,16 @@ const router = tsr.router(runsQueueContract, {
       );
     const active = Number(activeResult?.count ?? 0);
 
-    // Fetch queued runs in FIFO order
-    const queuedRuns = await globalThis.services.db
+    // Fetch queued runs in FIFO order (with extra fields for owner details)
+    const queuedRuns = await db
       .select({
         id: agentRuns.id,
         runUserId: agentRuns.userId,
         createdAt: agentRuns.createdAt,
         agentName: agentComposes.name,
+        prompt: agentRuns.prompt,
+        scheduleId: agentRuns.scheduleId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
       })
       .from(agentRuns)
       .leftJoin(
@@ -79,19 +107,104 @@ const router = tsr.router(runsQueueContract, {
       )
       .orderBy(asc(agentRuns.createdAt));
 
-    // Only resolve email for the requesting user (skip others for privacy + perf)
-    const hasOwnRuns = queuedRuns.some((r) => r.runUserId === userId);
-    const ownEmail = hasOwnRuns ? (await getCachedUser(userId)).email : null;
+    // Fetch running tasks
+    const runningRuns = await db
+      .select({
+        id: agentRuns.id,
+        runUserId: agentRuns.userId,
+        startedAt: agentRuns.startedAt,
+        agentName: agentComposes.name,
+      })
+      .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .leftJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .where(
+        and(eq(agentRuns.orgId, org.orgId), eq(agentRuns.status, "running")),
+      )
+      .orderBy(asc(agentRuns.startedAt));
 
-    // Build response with privacy masking
+    // Calculate estimated time per run from recent completed runs
+    const recentRuns = db
+      .select({
+        durationMs:
+          sql<number>`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000`.as(
+            "duration_ms",
+          ),
+      })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.orgId, org.orgId),
+          eq(agentRuns.status, "completed"),
+          isNotNull(agentRuns.completedAt),
+          isNotNull(agentRuns.startedAt),
+        ),
+      )
+      .orderBy(desc(agentRuns.completedAt))
+      .limit(RECENT_RUNS_FOR_ETA)
+      .as("recent_runs");
+    const [etaResult] = await db
+      .select({
+        avgMs: avg(recentRuns.durationMs),
+      })
+      .from(recentRuns);
+    const estimatedTimePerRun = etaResult?.avgMs
+      ? Math.round(Number(etaResult.avgMs))
+      : null;
+
+    // Resolve user emails in parallel (for both queued and running)
+    const allUserIds = [
+      ...new Set([
+        ...queuedRuns.map((r) => r.runUserId),
+        ...runningRuns.map((r) => r.runUserId),
+      ]),
+    ];
+    const userMap = new Map<string, string>();
+    await Promise.all(
+      allUserIds.map(async (uid) => {
+        const user = await getCachedUser(uid);
+        userMap.set(uid, user.email);
+      }),
+    );
+
+    // Build queue response with privacy filtering
     const queue = queuedRuns.map((run, index) => {
       const isOwner = run.runUserId === userId;
       return {
         position: index + 1,
-        agentName: isOwner ? (run.agentName ?? "unknown") : null,
-        userEmail: isOwner ? (ownEmail ?? "unknown") : null,
+        agentName: run.agentName ?? "unknown",
+        userEmail: userMap.get(run.runUserId) ?? "unknown",
         createdAt: run.createdAt.toISOString(),
+        isOwner,
         runId: isOwner ? run.id : null,
+        prompt: isOwner
+          ? run.prompt.length > PROMPT_TRUNCATE_LENGTH
+            ? run.prompt.slice(0, PROMPT_TRUNCATE_LENGTH) + "..."
+            : run.prompt
+          : null,
+        triggerSource: isOwner ? inferTriggerSource(run) : null,
+        sessionLink:
+          isOwner && run.continuedFromSessionId
+            ? `/zero/chat/${run.continuedFromSessionId}`
+            : null,
+      };
+    });
+
+    // Build running tasks response with privacy filtering
+    const runningTasks = runningRuns.map((run) => {
+      const isOwner = run.runUserId === userId;
+      return {
+        runId: isOwner ? run.id : null,
+        agentName: run.agentName ?? "unknown",
+        userEmail: userMap.get(run.runUserId) ?? "unknown",
+        startedAt: run.startedAt?.toISOString() ?? null,
+        isOwner,
       };
     });
 
@@ -105,6 +218,8 @@ const router = tsr.router(runsQueueContract, {
           available: limit === 0 ? -1 : Math.max(0, limit - active),
         },
         queue,
+        runningTasks,
+        estimatedTimePerRun,
       },
     };
   },
