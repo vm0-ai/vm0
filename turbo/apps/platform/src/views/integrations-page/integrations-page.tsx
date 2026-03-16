@@ -86,7 +86,7 @@ export function GitHubIntegrationCard() {
   return (
     <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
       <div className="shrink-0">
-        <img src={githubIcon} alt="GitHub" className="h-7 w-7" />
+        <img src={githubIcon} alt="GitHub" className="h-7 w-7 zero-icon-mono" />
       </div>
       <div className="flex flex-1 flex-col gap-1 min-w-0">
         <div className="text-sm font-medium text-foreground">VM0 in GitHub</div>
