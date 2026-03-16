@@ -4,7 +4,10 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentRunQueue } from "../../../../../../src/db/schema/agent-run-queue";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../../src/lib/auth/require-auth";
 import { logger } from "../../../../../../src/lib/logger";
 import {
   transitionRunStatus,
@@ -20,17 +23,11 @@ const router = tsr.router(runsCancelContract, {
   cancel: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "agent-run:write",
     });
-    if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
     const { id: runId } = params;
 

@@ -5,7 +5,10 @@ import {
 } from "../../../../../../src/lib/ts-rest-handler";
 import { scheduleRunsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../../src/lib/auth/require-auth";
 import { getScheduleRecentRuns } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
@@ -17,17 +20,10 @@ const router = tsr.router(scheduleRunsContract, {
   listRuns: async ({ params, query, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "schedule:read",
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     log.debug(

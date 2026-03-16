@@ -20,7 +20,10 @@ import {
   storages,
   storageVersions,
 } from "../../../../../../src/db/schema/storage";
-import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../../src/lib/auth/require-auth";
 import { canAccessCompose } from "../../../../../../src/lib/agent/compose-access";
 import {
   downloadManifest,
@@ -43,15 +46,13 @@ export async function GET(
   initServices();
 
   const authorization = request.headers.get("authorization") ?? undefined;
-  const userId = await getUserId(authorization, {
+  const authResult = await requireAuth(authorization, {
     requiredCapability: "agent:read",
   });
-  if (!userId) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+  if (isAuthError(authResult)) {
+    return NextResponse.json(authResult.body, { status: authResult.status });
   }
+  const { userId } = authResult;
 
   const { id } = await params;
 

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
 import { logger } from "../../../../../src/lib/logger";
 import { eq } from "drizzle-orm";
 import { secrets } from "../../../../../src/db/schema/secret";
@@ -31,16 +34,13 @@ export async function GET(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined, {
+  const authResult = await requireAuth(authHeader ?? undefined, {
     requiredCapability: "schedule:read",
   });
-
-  if (!userId) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+  if (isAuthError(authResult)) {
+    return NextResponse.json(authResult.body, { status: authResult.status });
   }
+  const userId = authResult.userId;
 
   log.debug(`Checking missing secrets for user ${userId}`);
 

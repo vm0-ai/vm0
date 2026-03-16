@@ -1,22 +1,17 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { authContract } from "@vm0/core";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 
 const router = tsr.router(authContract, {
   me: async ({ headers }) => {
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       acceptAnySandboxCapability: true,
     });
-
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Unauthorized", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
 
     const email = await getUserEmail(authCtx.userId);
 
