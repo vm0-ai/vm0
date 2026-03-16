@@ -46,6 +46,61 @@ export const zeroNeedsOnboarding$ = computed(async (get) => {
   return status.needsOnboarding;
 });
 
+// ---------------------------------------------------------------------------
+// Member onboarding (simple welcome for non-admin users)
+// ---------------------------------------------------------------------------
+
+const MEMBER_ONBOARDING_KEY = "zero-member-onboarding-done";
+const MEMBER_ONBOARDING_TEST_KEY = "zero-member-onboarding-test";
+
+/**
+ * Whether the current user is an org admin.
+ * Clerk exposes the active membership role on `clerk.organization.membership`.
+ */
+const zeroIsOrgAdmin$ = computed(async (get) => {
+  const clerk = await get(clerk$);
+  const org = clerk.organization as
+    | (typeof clerk.organization & { membership?: { role: string } })
+    | null;
+  const role = org?.membership?.role;
+  if (!role) {
+    return true;
+  }
+  return role === "org:admin";
+});
+
+/**
+ * Whether a member (non-admin) needs to see the welcome screen.
+ * True when: org exists, user is a member (not admin), and hasn't dismissed
+ * the welcome yet (tracked via localStorage).
+ */
+export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
+  get(internalReload$);
+  // Dev test mode: skip role and status checks when test flag is set
+  const testMode = localStorage.getItem(MEMBER_ONBOARDING_TEST_KEY) === "1";
+
+  if (testMode) {
+    return !localStorage.getItem(MEMBER_ONBOARDING_KEY);
+  }
+
+  const status = await get(zeroOnboardingStatus$);
+  if (!status.hasOrg || !status.hasDefaultAgent) {
+    return false;
+  }
+  const isAdmin = await get(zeroIsOrgAdmin$);
+  if (isAdmin) {
+    return false;
+  }
+  return !localStorage.getItem(MEMBER_ONBOARDING_KEY);
+});
+
+/** Mark member onboarding as complete. */
+export const completeMemberOnboarding$ = command(({ set }) => {
+  localStorage.setItem(MEMBER_ONBOARDING_KEY, "1");
+  localStorage.removeItem(MEMBER_ONBOARDING_TEST_KEY);
+  set(internalReload$, (x) => x + 1);
+});
+
 export const zeroHasModelProvider$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   return status.hasModelProvider;

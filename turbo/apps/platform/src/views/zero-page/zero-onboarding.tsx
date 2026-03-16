@@ -1,3 +1,4 @@
+import { Component } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import {
   useGet,
@@ -14,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
   Button,
-  Input,
 } from "@vm0/ui";
 import { ProviderIcon } from "./components/settings/provider-icons";
 import {
@@ -34,7 +34,6 @@ import {
   zeroSaving$,
   zeroCanSave$,
   setZeroStep$,
-  setZeroAgentName$,
   setZeroProviderType$,
   setZeroSecret$,
   setZeroModel$,
@@ -48,12 +47,14 @@ import {
   toggleZeroSkill$,
   zeroOnboardingError$,
   clearZeroOnboardingError$,
+  completeMemberOnboarding$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   sendZeroChatMessage$,
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { updatePathname$ } from "../../signals/route.ts";
+import { setZeroActiveId$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -67,6 +68,117 @@ import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { IconCircleCheck, IconLoader } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { create as createConfetti } from "canvas-confetti";
+
+class WelcomeAnimation extends Component<
+  { title: string; subtitle: string },
+  { displayed: string; showSubtitle: boolean; confettiFired: boolean }
+> {
+  private static readonly COLORS = [
+    "#26ccff",
+    "#fcff42",
+    "#ff5e7e",
+    "#88ff5a",
+    "#ffa62d",
+    "#ffdb4d",
+  ];
+  private timer: number | undefined;
+  private canvasRef: HTMLCanvasElement | null = null;
+  state = { displayed: "", showSubtitle: false, confettiFired: false };
+
+  componentDidMount() {
+    this.startTypewriter();
+  }
+
+  componentWillUnmount() {
+    if (this.timer !== undefined) {
+      window.clearInterval(this.timer);
+    }
+  }
+
+  private startTypewriter() {
+    let i = 0;
+    const { title } = this.props;
+    this.timer = window.setInterval(() => {
+      i++;
+      this.setState({ displayed: title.slice(0, i) });
+      if (i >= title.length) {
+        window.clearInterval(this.timer);
+        this.timer = undefined;
+        window.setTimeout(() => {
+          this.setState({ showSubtitle: true });
+          window.setTimeout(() => this.fireConfetti(), 400);
+        }, 600);
+      }
+    }, 40);
+  }
+
+  private fireConfetti() {
+    if (this.state.confettiFired || !this.canvasRef) {
+      return;
+    }
+    this.setState({ confettiFired: true });
+    const fire = createConfetti(this.canvasRef, { resize: true });
+    if (!fire) {
+      return;
+    }
+    const end = Date.now() + 800;
+    const frame = () => {
+      fire({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0, y: 0.5 },
+        colors: WelcomeAnimation.COLORS,
+      })?.catch(() => undefined);
+      fire({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1, y: 0.5 },
+        colors: WelcomeAnimation.COLORS,
+      })?.catch(() => undefined);
+      if (Date.now() < end) {
+        window.requestAnimationFrame(frame);
+      }
+    };
+    frame();
+  }
+
+  render() {
+    const { subtitle } = this.props;
+    const { displayed, showSubtitle } = this.state;
+    return (
+      <>
+        <canvas
+          ref={(el) => {
+            this.canvasRef = el;
+          }}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            zIndex: 10,
+          }}
+        />
+        <h2 className="text-xl font-semibold tracking-tight min-h-[1.75rem]">
+          {displayed}
+          {displayed.length < this.props.title.length && (
+            <span className="inline-block w-[2px] h-5 bg-foreground align-text-bottom animate-pulse ml-0.5" />
+          )}
+        </h2>
+        <p
+          className="text-sm text-muted-foreground leading-relaxed max-w-[380px] mt-3 transition-opacity duration-700"
+          style={{ opacity: showSubtitle ? 1 : 0 }}
+        >
+          {subtitle}
+        </p>
+      </>
+    );
+  }
+}
 
 const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
   "claude-code-oauth-token",
@@ -99,7 +211,7 @@ function OnboardingSkillCard({
       type="button"
       onClick={onClick}
       disabled={isPolling}
-      className={`zero-card flex items-center gap-2 rounded-xl border px-3 py-2 min-w-0 transition-colors ${
+      className={`zero-card flex items-center gap-2 rounded-xl border px-3 py-2 min-w-0 transition-colors focus:outline-none ${
         isSelected
           ? "border-green-500/30 bg-green-500/5 cursor-pointer"
           : isPolling
@@ -225,7 +337,6 @@ export function ZeroOnboarding({
   const step = useGet(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
   const name = useGet(zeroAgentName$);
-  const setName = useSet(setZeroAgentName$);
   const providerType = useGet(zeroProviderType$);
   const setProviderType = useSet(setZeroProviderType$);
   const formValues = useGet(zeroFormValues$);
@@ -353,7 +464,11 @@ export function ZeroOnboarding({
           onPointerDownOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
           aria-describedby={undefined}
+          style={{ position: "fixed", overflow: "hidden" }}
         >
+          <DialogTitle className="sr-only">
+            Meet Zero, your new teammate!
+          </DialogTitle>
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl mb-5">
               <img
@@ -363,24 +478,10 @@ export function ZeroOnboarding({
                 className="h-16 w-16 rounded-full object-cover object-top"
               />
             </div>
-            <DialogHeader className="space-y-2">
-              <DialogTitle className="text-xl font-semibold tracking-tight">
-                Meet your new teammate
-              </DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-[360px] mt-1 mb-6">
-              Your AI teammate works across all your tools, learns what you
-              need, and gets better over time. Give it a name to get started.
-            </p>
-            <div className="w-full max-w-[320px] flex flex-col gap-2 text-left">
-              <Input
-                id="onboarding-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Zero"
-                className="w-full h-10 rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
+            <WelcomeAnimation
+              title="Meet Zero, your new teammate!"
+              subtitle="Think of Zero as a teammate in the office you can casually talk to, delegate tasks, and count on to get things done."
+            />
           </div>
           <div className={`${footerClass} justify-end`}>
             <Button
@@ -604,6 +705,203 @@ export function ZeroOnboarding({
               className="rounded-lg text-muted-foreground"
               onClick={handleStep4Back}
               disabled={saving}
+            >
+              Back
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Member welcome (two-step onboarding for invited team members)
+// ---------------------------------------------------------------------------
+
+export function MemberWelcome({
+  agentName = "Zero",
+  zeroAvatarSrc = "/zero-avatar.png",
+}: {
+  agentName?: string;
+  zeroAvatarSrc?: string;
+}) {
+  const step$ = useCCState<"welcome" | "connectors" | "where">("welcome");
+  const step = useGet(step$);
+  const setStep = useSet(step$);
+  const completeMember = useSet(completeMemberOnboarding$);
+  const setActiveId = useSet(setZeroActiveId$);
+  const sendIntro = useSet(sendZeroChatMessage$);
+  const allSkills = useGet(skills$);
+  const selectedSkills = useGet(zeroSelectedSkills$);
+  const selectedConnectorType = useGet(selectedConnectorType$);
+  const setSelected = useSet(setSelectedConnectorType$);
+  const toggleSkill = useSet(toggleZeroSkill$);
+
+  const handleOpenSlack = () => {
+    completeMember();
+    setActiveId("works");
+  };
+
+  const handleContinueWeb = () => {
+    completeMember();
+    setActiveId("chat");
+    detach(sendIntro("Who are you and what can you do?"), Reason.DomCallback);
+  };
+
+  const dialogBaseClass =
+    "zero-app sm:max-w-[720px] h-[500px] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg";
+  const footerClass =
+    "zero-onboarding-footer shrink-0 border-t h-16 flex items-center gap-2 px-8";
+
+  return (
+    <>
+      {/* Step 1: Welcome */}
+      <Dialog open={step === "welcome"}>
+        <DialogContent
+          className={`${dialogBaseClass} zero-onboarding-dialog`}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
+          style={{ position: "fixed", overflow: "hidden" }}
+        >
+          <DialogTitle className="sr-only">
+            Meet {agentName}, your new teammate!
+          </DialogTitle>
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full mb-5">
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-16 w-16 rounded-full object-cover object-top"
+              />
+            </span>
+            <WelcomeAnimation
+              title={`Meet ${agentName}, your new teammate!`}
+              subtitle={`Think of ${agentName} as a teammate in the office you can casually talk to, delegate tasks, and count on to get things done.`}
+            />
+          </div>
+          <div className={`${footerClass} justify-end`}>
+            <Button
+              onClick={() => setStep("connectors")}
+              className="rounded-lg min-w-[100px]"
+            >
+              Next
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 2: Add connectors */}
+      <Dialog open={step === "connectors"}>
+        <DialogContent
+          className={`${dialogBaseClass} zero-onboarding-dialog`}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
+        >
+          <OnboardingSkillsStep
+            name={agentName}
+            allSkills={allSkills}
+            selectedSkills={selectedSkills}
+          />
+          <div className={`${footerClass} justify-between`}>
+            <Button
+              variant="ghost"
+              className="rounded-lg text-muted-foreground"
+              onClick={() => setStep("welcome")}
+            >
+              Back
+            </Button>
+            <Button
+              onClick={() => setStep("where")}
+              className="rounded-lg min-w-[100px]"
+            >
+              Next
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {selectedConnectorType && (
+        <ConnectModal
+          onClose={() => setSelected(null)}
+          onSuccess={() => toggleSkill(selectedConnectorType)}
+        />
+      )}
+
+      {/* Step 3: Where to work */}
+      <Dialog open={step === "where"}>
+        <DialogContent
+          className={`${dialogBaseClass} zero-onboarding-dialog`}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
+            <DialogHeader className="space-y-2">
+              <DialogTitle className="text-xl font-semibold tracking-tight">
+                Where would you like to work with {agentName}?
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-[400px] mt-1 mb-6">
+              Your admin has already added {agentName} to your workspace. Pick
+              how you&apos;d like to get started.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-[560px]">
+              <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center mb-3 overflow-hidden">
+                  <img src={slackIcon} alt="" className="h-7 w-7" />
+                </span>
+                <span className="text-sm font-semibold text-foreground mb-1">
+                  Open in Slack
+                </span>
+                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
+                  {agentName} is already in your Slack workspace. Send a DM to
+                  start chatting.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full rounded-lg zero-btn-morandi"
+                  onClick={handleOpenSlack}
+                >
+                  Go to Slack
+                </Button>
+              </div>
+              <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full mb-3">
+                  <img
+                    src={zeroAvatarSrc}
+                    alt=""
+                    role="presentation"
+                    className="h-12 w-12 rounded-full object-cover object-top"
+                  />
+                </span>
+                <span className="text-sm font-semibold text-foreground mb-1">
+                  Continue in web
+                </span>
+                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
+                  Chat with {agentName} right here with full access to workflows
+                  and settings.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full rounded-lg zero-btn-morandi"
+                  onClick={handleContinueWeb}
+                >
+                  Chat with {agentName}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className={`${footerClass} justify-start`}>
+            <Button
+              variant="ghost"
+              className="rounded-lg text-muted-foreground"
+              onClick={() => setStep("connectors")}
             >
               Back
             </Button>

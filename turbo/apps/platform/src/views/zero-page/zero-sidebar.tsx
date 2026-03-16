@@ -440,6 +440,17 @@ function AccountDropdown({
               <IconRefresh size={18} stroke={1.5} />
               <span>Reset Default Agent</span>
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                localStorage.removeItem("zero-member-onboarding-done");
+                localStorage.setItem("zero-member-onboarding-test", "1");
+                window.location.reload();
+              }}
+              className="gap-3 px-3 py-2.5 text-amber-500"
+            >
+              <IconRefresh size={18} stroke={1.5} />
+              <span>Test Member Onboarding</span>
+            </DropdownMenuItem>
           </>
         )}
         <DropdownMenuSeparator />

@@ -10,9 +10,12 @@ import {
 import { Button } from "@vm0/ui";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
-import { ZeroOnboarding } from "./zero-onboarding.tsx";
+import { ZeroOnboarding, MemberWelcome } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
-import { zeroNeedsOnboarding$ } from "../../signals/zero-page/zero-onboarding.ts";
+import {
+  zeroNeedsOnboarding$,
+  zeroNeedsMemberOnboarding$,
+} from "../../signals/zero-page/zero-onboarding.ts";
 import {
   agentDisplayName$,
   defaultAgentName$,
@@ -285,11 +288,17 @@ function useZeroLoadables() {
           displayName: a.displayName,
         }))
       : [];
+  const memberOnboarding = useLastLoadable(zeroNeedsMemberOnboarding$);
+  const showMemberWelcome =
+    isLoggedIn &&
+    memberOnboarding.state === "hasData" &&
+    memberOnboarding.data === true;
   return {
     isLoggedIn,
     onboardingReady,
     needsOnboarding,
     showOnboarding: isLoggedIn && needsOnboarding,
+    showMemberWelcome,
     agentNameReady,
     agentDisplayName,
     defaultRawName,
@@ -306,6 +315,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     isLoggedIn,
     onboardingReady,
     showOnboarding,
+    showMemberWelcome,
     agentNameReady,
     agentDisplayName,
     defaultRawName,
@@ -424,6 +434,12 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     <div className="zero-app flex h-dvh w-full bg-background">
       <ZeroAppSkeleton visible={showSkeleton} />
       {showOnboarding && <ZeroOnboarding zeroAvatarSrc={zeroAvatarSrc} />}
+      {showMemberWelcome && (
+        <MemberWelcome
+          agentName={agentDisplayName}
+          zeroAvatarSrc={zeroAvatarSrc}
+        />
+      )}
       <ZeroSidebar
         activeId={activeId}
         agentName={agentDisplayName}
