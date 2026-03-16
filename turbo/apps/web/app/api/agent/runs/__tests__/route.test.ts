@@ -750,20 +750,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should skip injection when compose has explicit OPENAI_API_KEY (codex)", async () => {
-      // Create compose with OPENAI_API_KEY for codex framework
-      const { composeId } = await createTestCompose(uniqueId("codex"), {
-        overrides: {
-          framework: "codex",
-          environment: { OPENAI_API_KEY: "explicit-openai-key" },
-        },
-      });
-
-      const data = await createTestRun(composeId, "Test codex with key");
-
-      expect(data.status).toBe("pending");
-    });
-
     it("should skip injection when compose has CLAUDE_CODE_USE_FOUNDRY", async () => {
       // Create compose with alternative auth method
       const { composeId } = await createTestCompose(uniqueId("foundry"), {

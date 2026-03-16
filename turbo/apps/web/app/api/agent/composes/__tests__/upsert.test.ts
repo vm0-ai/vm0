@@ -432,43 +432,6 @@ describe("Agent Compose Upsert Behavior", () => {
       const response = await POST(request);
       expect(response.status).toBe(201);
     });
-
-    it("should accept codex framework", async () => {
-      const agentName = `test-codex-framework-${Date.now()}`;
-      const config = {
-        version: "1.0",
-        agents: {
-          [agentName]: {
-            framework: "codex",
-          },
-        },
-      };
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: config }),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(201);
-
-      // Get the created compose to verify codex image
-      const data = await response.json();
-      const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${data.composeId}`,
-        { method: "GET" },
-      );
-
-      const getResponse = await GET(getRequest);
-      const composeData = await getResponse.json();
-
-      const agent = composeData.content.agents[agentName];
-      expect(agent.image).toMatch(/^vm0\/codex:/);
-    });
   });
 
   describe("GET /api/agent/composes/:id", () => {

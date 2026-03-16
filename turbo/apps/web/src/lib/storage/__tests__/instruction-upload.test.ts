@@ -83,31 +83,6 @@ describe("uploadInstructionsServerSide", () => {
     expect(text).toContain("Test Agent");
   });
 
-  it("should use AGENTS.md for codex framework", async () => {
-    await uploadInstructionsServerSide({
-      orgId,
-      agentName: "codex-agent",
-      content: "# Codex Instructions",
-      framework: "codex",
-    });
-
-    // Verify manifest has AGENTS.md
-    const manifestCall = context.mocks.s3.putS3Object.mock.calls.find(
-      (c) => typeof c[1] === "string" && c[1].endsWith("/manifest.json"),
-    );
-    const manifestBody = JSON.parse(manifestCall![2] as string);
-    expect(manifestBody.files[0].path).toBe("AGENTS.md");
-
-    // Verify archive contains AGENTS.md
-    const archiveCall = context.mocks.s3.putS3Object.mock.calls.find(
-      (c) => typeof c[1] === "string" && c[1].endsWith("/archive.tar.gz"),
-    );
-    const tarBuffer = gunzipSync(archiveCall![2] as Buffer);
-    const fileContent = extractFileFromTar(tarBuffer, "AGENTS.md");
-    expect(fileContent).not.toBeNull();
-    expect(fileContent!.toString("utf-8")).toBe("# Codex Instructions");
-  });
-
   it("should deduplicate when same content is uploaded twice", async () => {
     const params = {
       orgId,

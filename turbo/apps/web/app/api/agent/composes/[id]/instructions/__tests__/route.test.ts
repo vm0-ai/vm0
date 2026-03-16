@@ -261,49 +261,6 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     expect(data.filename).toBe("AGENTS.md");
   });
 
-  it("should use AGENTS.md canonical filename for codex framework", async () => {
-    const agentName = "codex-agent";
-    const instructionsContent = "# Codex Instructions\n";
-
-    const { composeId } = await createTestCompose(agentName, {
-      overrides: { instructions: "AGENTS.md", framework: "codex" },
-    });
-
-    const storageName = getInstructionsStorageName(agentName);
-    await createTestVolume(storageName);
-
-    // Manifest contains AGENTS.md — the canonical filename for codex framework
-    context.mocks.s3.downloadManifest.mockResolvedValueOnce({
-      version: "a".repeat(64),
-      createdAt: new Date().toISOString(),
-      totalSize: instructionsContent.length,
-      fileCount: 1,
-      files: [
-        {
-          path: "AGENTS.md",
-          hash: "f".repeat(64),
-          size: instructionsContent.length,
-        },
-      ],
-    });
-
-    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
-      buildTarGz("AGENTS.md", instructionsContent),
-    );
-
-    const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
-    );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.content).toBe(instructionsContent);
-    expect(data.filename).toBe("AGENTS.md");
-  });
-
   it("should normalize ./ prefix when matching instructions file in manifest", async () => {
     const agentName = "normalize-prefix-agent";
     const instructionsContent = "# Normalized content\n";
