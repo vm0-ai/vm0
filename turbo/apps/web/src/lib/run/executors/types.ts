@@ -1,7 +1,7 @@
 import type { StorageManifest } from "../../storage/types";
 import type { ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import type { ExperimentalServices } from "@vm0/core";
+import type { ExperimentalServices, VALID_CAPABILITIES } from "@vm0/core";
 
 /**
  * Prepared execution context for executors
@@ -46,7 +46,7 @@ export interface PreparedContext {
   experimentalServices: ExperimentalServices | null;
 
   // Experimental capabilities for agent permission enforcement
-  experimentalCapabilities: string[] | null;
+  experimentalCapabilities: (typeof VALID_CAPABILITIES)[number][] | null;
 
   // Routing hint (runner group name)
   runnerGroup: string | null;

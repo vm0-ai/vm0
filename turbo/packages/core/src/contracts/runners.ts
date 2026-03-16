@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { VALID_CAPABILITIES } from "./composes";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -147,7 +148,7 @@ export const storedExecutionContextSchema = z.object({
   // Experimental services for proxy-side token replacement
   experimentalServices: experimentalServicesSchema.optional(),
   // Experimental capabilities for agent permission enforcement
-  experimentalCapabilities: z.array(z.string()).optional(),
+  experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });
 
 /**
@@ -187,7 +188,7 @@ export const executionContextSchema = z.object({
   // Experimental services for proxy-side token replacement
   experimentalServices: experimentalServicesSchema.optional(),
   // Experimental capabilities for agent permission enforcement
-  experimentalCapabilities: z.array(z.string()).optional(),
+  experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });
 
 /**

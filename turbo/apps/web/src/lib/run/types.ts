@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { ExperimentalServices } from "@vm0/core";
+import type { ExperimentalServices, VALID_CAPABILITIES } from "@vm0/core";
 
 /**
  * Run status values
@@ -81,7 +81,7 @@ export interface ExecutionContext {
   experimentalServices?: ExperimentalServices;
 
   // Experimental capabilities for agent permission enforcement
-  experimentalCapabilities?: string[];
+  experimentalCapabilities?: (typeof VALID_CAPABILITIES)[number][];
 
   // Resume-specific (optional)
   resumeSession?: ResumeSession;

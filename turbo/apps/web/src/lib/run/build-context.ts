@@ -10,6 +10,7 @@ import {
   getConnectorEnvironmentMapping,
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
+  VALID_CAPABILITIES,
   type ExperimentalServices,
   type ConnectorType,
   type ModelProviderType,
@@ -806,7 +807,7 @@ function buildExperimentalServices(
  */
 function buildExperimentalCapabilities(
   agentCompose: unknown,
-): string[] | undefined {
+): (typeof VALID_CAPABILITIES)[number][] | undefined {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) return undefined;
 
