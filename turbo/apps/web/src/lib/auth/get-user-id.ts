@@ -1,7 +1,7 @@
 import { eq, and, gt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { cliTokens } from "../../db/schema/cli-tokens";
-import { isSandboxToken } from "./sandbox-token";
+import { isSandboxToken, verifySandboxToken } from "./sandbox-token";
 import { logger } from "../logger";
 
 const log = logger("auth:user");
@@ -9,19 +9,22 @@ const log = logger("auth:user");
 /**
  * Authentication context returned by getAuthContext.
  */
-type AuthContext = {
+export type AuthContext = {
   userId: string;
+  capabilities?: readonly string[];
+  runId?: string;
 };
 
 /**
  * Get the full authentication context from CLI token or Clerk session.
  * Returns null if not authenticated.
  *
- * IMPORTANT: This function rejects sandbox JWT tokens.
- * Sandbox tokens can only be used on webhook endpoints via getSandboxAuth().
+ * By default, sandbox JWT tokens are rejected. Pass `options.requiredCapability`
+ * to accept sandbox tokens that include the specified capability.
  */
 export async function getAuthContext(
   authHeader?: string,
+  options?: { requiredCapability?: string },
 ): Promise<AuthContext | null> {
   // Session auth via Clerk
   const { userId } = await auth();
@@ -35,10 +38,37 @@ export async function getAuthContext(
 
   const token = authHeader.substring(7); // Remove "Bearer "
 
-  // Reject sandbox JWT tokens on normal APIs
   if (isSandboxToken(token)) {
-    log.debug("Rejected sandbox JWT token on normal API endpoint");
-    return null;
+    // Without requiredCapability, reject sandbox tokens (existing behavior)
+    if (!options?.requiredCapability) {
+      log.debug("Rejected sandbox JWT token on normal API endpoint");
+      return null;
+    }
+
+    // With requiredCapability, verify sandbox token and check capability
+    const sandboxAuth = verifySandboxToken(token);
+    if (!sandboxAuth) {
+      log.debug("Invalid or expired sandbox token");
+      return null;
+    }
+
+    const hasCap = sandboxAuth.capabilities?.some(
+      (cap) => cap === options.requiredCapability,
+    );
+    if (!hasCap) {
+      log.debug(
+        `Sandbox token missing required capability: ${options.requiredCapability}`,
+      );
+      return null;
+    }
+
+    return {
+      userId: sandboxAuth.userId,
+      runId: sandboxAuth.runId,
+      capabilities: sandboxAuth.capabilities
+        ? [...sandboxAuth.capabilities]
+        : undefined,
+    };
   }
 
   // Check for CLI token format (vm0_live_)
@@ -72,8 +102,11 @@ export async function getAuthContext(
  * Get the current user ID from CLI token or Clerk session.
  * Returns null if not authenticated.
  */
-export async function getUserId(authHeader?: string): Promise<string | null> {
-  const ctx = await getAuthContext(authHeader);
+export async function getUserId(
+  authHeader?: string,
+  options?: { requiredCapability?: string },
+): Promise<string | null> {
+  const ctx = await getAuthContext(authHeader, options);
   return ctx?.userId ?? null;
 }
 
