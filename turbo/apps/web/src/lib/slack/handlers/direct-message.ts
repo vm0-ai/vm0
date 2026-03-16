@@ -116,7 +116,6 @@ export async function handleDirectMessage(
     return;
   }
   const agentName = defaultAgent.name;
-  const agentLabel = defaultAgent.displayName ?? defaultAgent.name;
 
   // 5. Show assistant thinking status
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -213,12 +212,7 @@ export async function handleDirectMessage(
     const deepLinks = detectDeepLinks(errorText, getPlatformUrl());
     await postMessage(client, context.channelId, errorText, {
       threadTs,
-      blocks: buildAgentResponseMessage(
-        errorText,
-        agentLabel,
-        logsUrl,
-        deepLinks,
-      ),
+      blocks: buildAgentResponseMessage(errorText, logsUrl, deepLinks),
     });
     // Clear thinking status on failure since callback won't be invoked
     await setThreadStatus(client, context.channelId, threadTs, "").catch(

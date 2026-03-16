@@ -484,17 +484,15 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 export { detectDeepLinks } from "../deep-links";
 
 /**
- * Build an agent response message with agent name context and optional logs link
+ * Build an agent response message with optional logs link
  *
  * @param content - The agent's response content
- * @param agentName - The name of the agent that responded
  * @param logsUrl - Optional URL to the run logs
  * @param deepLinks - Optional deep links to append for configuration help
- * @returns Block Kit blocks with agent context header
+ * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
-  agentName: string,
   logsUrl?: string,
   deepLinks?: DeepLink[],
 ): (Block | KnownBlock)[] {

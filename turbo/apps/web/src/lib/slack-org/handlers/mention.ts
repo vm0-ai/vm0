@@ -109,7 +109,6 @@ export async function handleOrgMention(
     return;
   }
   const agentName = agent.name;
-  const agentLabel = agent.displayName ?? agent.name;
 
   // 4. Show thinking indicator
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -202,12 +201,7 @@ export async function handleOrgMention(
       channel: context.channelId,
       thread_ts: threadTs,
       text: errorText,
-      blocks: buildAgentResponseMessage(
-        errorText,
-        agentLabel,
-        logsUrl,
-        deepLinks,
-      ),
+      blocks: buildAgentResponseMessage(errorText, logsUrl, deepLinks),
     });
     await setThreadStatus(client, context.channelId, threadTs, "").catch(
       (err) => log.warn("Failed to clear thread status", { error: err }),
