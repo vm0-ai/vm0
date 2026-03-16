@@ -168,6 +168,7 @@ const router = tsr.router(platformLogsByIdContract, {
         sessionId: runResult?.agentSessionId ?? null,
         agentName: compose?.name ?? "unknown",
         framework: extractFramework(composeContent),
+        modelProvider: run.modelProvider ?? null,
         status: run.status as
           | "pending"
           | "running"

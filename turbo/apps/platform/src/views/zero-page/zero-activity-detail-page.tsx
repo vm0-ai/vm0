@@ -8,12 +8,13 @@ import {
   IconChartLine,
 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
+import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
 import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
+  zeroActivityOrgAgents$,
   formatLogTime,
   formatDuration,
 } from "../../signals/zero-page/zero-activity.ts";
@@ -93,26 +94,32 @@ function ActivityNotFound({ onBack }: { onBack: () => void }) {
 export function ZeroActivityDetailPage({
   onBack,
 }: ZeroActivityDetailPageProps) {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-
   const detailLoadable = useLoadable(zeroActivityDetail$);
   const eventsLoadable = useLoadable(zeroActivityEvents$);
+  const orgAgents = useGet(zeroActivityOrgAgents$);
+
+  // Resolve agent display name from the detail's agentName
+  const detail =
+    detailLoadable.state === "hasData" ? detailLoadable.data : null;
+  const nameToDisplay = new Map(orgAgents.map((a) => [a.name, a.displayName]));
+  const agentName = detail
+    ? (nameToDisplay.get(detail.agentName) ?? detail.agentName)
+    : "Agent";
 
   const stepSearch$ = useCCState("");
   const stepSearch = useGet(stepSearch$);
   const setStepSearch = useSet(stepSearch$);
 
-  // Detail not found or no permission
-  if (detailLoadable.state === "hasError") {
-    return <ActivityNotFound onBack={onBack} />;
+  // Skeleton until both detail and initial events are loaded
+  const eventsReady = eventsLoadable.state === "hasData";
+  if (!detail || !eventsReady) {
+    if (detailLoadable.state === "hasError") {
+      return <ActivityNotFound onBack={onBack} />;
+    }
+    return <ActivitySkeleton onBack={onBack} />;
   }
 
-  const detail =
-    detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const events: AgentEvent[] =
-    eventsLoadable.state === "hasData" ? eventsLoadable.data : [];
+  const events: AgentEvent[] = eventsLoadable.data;
 
   const allMessages = groupEventsIntoMessages(events);
 
@@ -125,14 +132,12 @@ export function ZeroActivityDetailPage({
     groupedMessageMatchesSearch(m, stepSearch.trim()),
   );
 
-  const prompt = detail?.prompt ?? "";
-  const status: LogStatus = detail?.status ?? "running";
-  const time = detail ? formatLogTime(detail.createdAt) : "";
-  const duration = detail
-    ? formatDuration(detail.startedAt, detail.completedAt)
-    : undefined;
+  const prompt = detail.prompt ?? "";
+  const status: LogStatus = detail.status;
+  const time = formatLogTime(detail.createdAt);
+  const duration = formatDuration(detail.startedAt, detail.completedAt);
   return (
-    <div className="h-full flex flex-col min-h-0">
+    <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           <button
@@ -148,7 +153,7 @@ export function ZeroActivityDetailPage({
             {agentName}
           </span>
         </nav>
-        <div className="mx-auto max-w-[900px] pb-8">
+        <div className="mx-auto w-full max-w-[900px] pt-4 pb-8 overflow-hidden">
           {/* Compact header card */}
           <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2">
@@ -168,6 +173,26 @@ export function ZeroActivityDetailPage({
                   className="w-px h-3.5 shrink-0 bg-border self-center"
                   aria-hidden
                 />
+                {(detail.modelProvider || detail.framework) && (
+                  <>
+                    <div className="flex items-center gap-1.5 pl-3 pr-3">
+                      <span className="text-muted-foreground shrink-0">
+                        Model
+                      </span>
+                      <span className="text-foreground whitespace-nowrap">
+                        {detail.modelProvider
+                          ? (MODEL_PROVIDER_TYPES[
+                              detail.modelProvider as ModelProviderType
+                            ]?.label ?? detail.modelProvider)
+                          : detail.framework}
+                      </span>
+                    </div>
+                    <span
+                      className="w-px h-3.5 shrink-0 bg-border self-center"
+                      aria-hidden
+                    />
+                  </>
+                )}
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">
                     Duration
@@ -192,13 +217,13 @@ export function ZeroActivityDetailPage({
                 variant="ghost"
                 size="sm"
                 className="h-8 shrink-0 gap-1 rounded-lg text-sm text-muted-foreground hover:text-foreground ml-auto"
-                onClick={() => downloadCsv(events, detail?.id ?? "activity")}
+                onClick={() => downloadCsv(events, detail.id)}
               >
                 <IconDownload size={14} stroke={1.5} />
                 Download
               </Button>
             </div>
-            {detail?.error && status === "failed" && (
+            {detail.error && status === "failed" && (
               <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {detail.error}
               </div>
@@ -206,8 +231,8 @@ export function ZeroActivityDetailPage({
           </div>
 
           {/* Steps section */}
-          <div className="flex flex-col gap-4 flex-1 min-h-0 mt-6">
-            <div className="flex flex-col gap-4 pb-8">
+          <div className="flex flex-col gap-4 flex-1 min-h-0 min-w-0 mt-6">
+            <div className="flex flex-col gap-4 pb-8 min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <span className="text-base font-medium text-foreground whitespace-nowrap">
@@ -238,10 +263,68 @@ export function ZeroActivityDetailPage({
                 prompt={prompt}
                 messages={messages}
                 stepSearch={stepSearch}
-                isLoading={
-                  eventsLoadable.state === "loading" && events.length === 0
-                }
+                isLoading={false}
               />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivitySkeleton({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="h-full flex flex-col min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
+        <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+            Activity
+          </button>
+          <span className="text-muted-foreground/40 select-none">/</span>
+          <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
+        </nav>
+        <div className="mx-auto max-w-[900px] pt-4 pb-8 w-full">
+          {/* Header card skeleton */}
+          <div className="zero-card shrink-0 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-y-2 gap-x-3">
+              <div className="h-5 w-28 rounded bg-muted/50 animate-pulse" />
+              <span
+                className="w-px h-3.5 shrink-0 bg-border self-center"
+                aria-hidden
+              />
+              <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
+              <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
+              <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
+            </div>
+          </div>
+
+          {/* Steps skeleton */}
+          <div className="flex flex-col gap-4 flex-1 min-h-0 mt-6">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-12 rounded bg-muted/50 animate-pulse" />
+            </div>
+            <div className="flex flex-col gap-3">
+              {["sk-1", "sk-2", "sk-3"].map((id) => (
+                <div
+                  key={id}
+                  className="rounded-lg border border-border/40 p-4"
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="h-2 w-2 rounded-full bg-muted/50 animate-pulse" />
+                    <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
+                  </div>
+                  <div className="space-y-2 ml-4">
+                    <div className="h-3 w-full rounded bg-muted/30 animate-pulse" />
+                    <div className="h-3 w-3/4 rounded bg-muted/30 animate-pulse" />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -262,7 +345,7 @@ function StepsList({
   isLoading: boolean;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       {prompt.trim().length > 0 && (
         <PromptCard prompt={prompt} showConnector={messages.length > 0} />
       )}

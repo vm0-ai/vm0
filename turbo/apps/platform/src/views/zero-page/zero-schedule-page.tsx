@@ -47,6 +47,7 @@ import {
   type ScheduleEntry,
 } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
 import { COMMON_TIMEZONES } from "../../signals/agent-detail/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -70,6 +71,7 @@ function buildCombinedSchedule(
   entries: OrgScheduleEntry[],
   agentName: string,
   defaultComposeId: string | null,
+  nameToDisplay: Map<string, string>,
 ): CombinedEntry[] {
   return entries.map((e) => ({
     id: e.id,
@@ -78,7 +80,10 @@ function buildCombinedSchedule(
     enabled: e.enabled,
     name: e.name,
     intervalSeconds: e.intervalSeconds,
-    agentLabel: e.composeId === defaultComposeId ? agentName : e.composeName,
+    agentLabel:
+      e.composeId === defaultComposeId
+        ? agentName
+        : (nameToDisplay.get(e.composeName) ?? e.composeName),
     composeId: e.composeId,
   }));
 }
@@ -796,6 +801,12 @@ export function ZeroSchedulePage() {
   const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
   const entries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+
+  const agentsLoadable = useLoadable(agentsList$);
+  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
+  const nameToDisplay = new Map(
+    agents.filter((a) => a.displayName).map((a) => [a.name, a.displayName!]),
+  );
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;
 
@@ -827,6 +838,7 @@ export function ZeroSchedulePage() {
     entries,
     agentName,
     defaultComposeId,
+    nameToDisplay,
   );
 
   const agentOrder = [

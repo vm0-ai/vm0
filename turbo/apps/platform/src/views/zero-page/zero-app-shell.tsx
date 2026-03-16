@@ -28,7 +28,11 @@ import {
   navigateToZeroSession$,
   navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
-import { updateSearchParams$, updatePathname$ } from "../../signals/route.ts";
+import {
+  updateSearchParams$,
+  updatePathname$,
+  navigateInReact$,
+} from "../../signals/route.ts";
 import {
   zeroSessionList$,
   zeroSessionListLoading$,
@@ -351,11 +355,13 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     detach(fetchSessionList(), Reason.DomCallback);
   };
 
-  const handleSendFromDemo$ = useCommand(({ set }, message: string) => {
-    set(updatePathname$, "/zero/chat");
-    startNewSession();
-    detach(sendMessage(message), Reason.DomCallback);
-  });
+  const handleSendFromDemo$ = useCommand(
+    ({ set }, message: string, options?: { modelProvider?: string }) => {
+      set(updatePathname$, "/zero/chat");
+      startNewSession();
+      detach(sendMessage(message, options), Reason.DomCallback);
+    },
+  );
   const handleSendFromDemo = useSet(handleSendFromDemo$);
 
   const handleBackFromSession$ = useCommand(({ set }) => {
@@ -382,6 +388,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const handleAccountAction = useSet(handleAccountAction$);
 
   const updateSearchParams = useSet(updateSearchParams$);
+  const navigateInReact = useSet(navigateInReact$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
 
   const sidebarCollapsed$ = useCCState(false);
@@ -430,15 +437,34 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             onSendMessage={handleSendFromDemo}
             selectedAgentName={initialJobAgent}
             onNavigateToActivity={() => setActiveId("activity")}
-            onNavigateToSchedule={() => setActiveId("schedule")}
+            onNavigateToSchedule={() => {
+              if (selectedSubagent) {
+                navigateInReact("/zero/team/:name", {
+                  pathParams: { name: selectedSubagent.name },
+                  searchParams: new URLSearchParams({ tab: "schedule" }),
+                });
+              } else {
+                setActiveId("schedule");
+              }
+            }}
             onNavigateToTeam={() => setActiveId("team")}
             onNavigateToChat={() => setActiveId("chat")}
-            onNavigateToMeet={(section) => {
-              setActiveId("meet");
-              if (section) {
-                const next = new URLSearchParams();
-                next.set("section", section);
-                updateSearchParams(next);
+            onNavigateToMeet={(tab) => {
+              if (selectedSubagent) {
+                const searchParams = tab
+                  ? new URLSearchParams({ tab })
+                  : undefined;
+                navigateInReact("/zero/team/:name", {
+                  pathParams: { name: selectedSubagent.name },
+                  searchParams,
+                });
+              } else {
+                setActiveId("meet");
+                if (tab) {
+                  const next = new URLSearchParams();
+                  next.set("tab", tab);
+                  updateSearchParams(next);
+                }
               }
             }}
             onBackFromSession={handleBackFromSession}

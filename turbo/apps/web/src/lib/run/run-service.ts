@@ -759,6 +759,7 @@ export async function createRun(
           resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
           continuedFromSessionId: params.sessionId ?? null,
           scheduleId: params.scheduleId ?? null,
+          modelProvider: params.modelProvider ?? null,
           lastHeartbeatAt: new Date(),
         })
         .returning();

@@ -34,6 +34,7 @@ export const mockLogDetail: LogDetail = {
   sessionId: "mock-session-001",
   agentName: "claude-code",
   framework: "claude-code",
+  modelProvider: null,
   status: "completed",
   prompt: [
     "# Slack Thread Context",

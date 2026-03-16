@@ -56,6 +56,11 @@ import {
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
+import { setZeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  startNewZeroSession$,
+  fetchZeroSessionList$,
+} from "../../signals/zero-page/zero-chat.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { getAgentAvatar } from "./zero-sidebar.tsx";
 
@@ -293,6 +298,9 @@ function JobInstructionsTab() {
 
 export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
   const navigate = useSet(navigateInReact$);
+  const setChatAgentId = useSet(setZeroChatAgentId$);
+  const startNewSession = useSet(startNewZeroSession$);
+  const fetchSessionList = useSet(fetchZeroSessionList$);
   const detail = useGet(zeroJobDetail$);
   const loading = useGet(zeroJobDetailLoading$);
   const error = useGet(zeroJobDetailError$);
@@ -378,9 +386,13 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
                     variant="outline"
                     size="sm"
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors"
-                    onClick={() =>
-                      navigate("/zero/:tab", { pathParams: { tab: "chat" } })
-                    }
+                    onClick={() => {
+                      const composeId = detail?.id ?? null;
+                      setChatAgentId(composeId);
+                      startNewSession();
+                      detach(fetchSessionList(), Reason.DomCallback);
+                      navigate("/zero/:tab", { pathParams: { tab: "chat" } });
+                    }}
                   >
                     <IconMessageCircle size={14} stroke={1.5} />
                     Chat with {displayName}

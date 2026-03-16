@@ -15,7 +15,10 @@ interface ZeroContentProps {
   sectionId: ZeroNavId;
   /** When set, shows the real session chat page instead of the demo page. */
   inSession?: boolean;
-  onSendMessage?: (message: string) => void;
+  onSendMessage?: (
+    message: string,
+    options?: { modelProvider?: string },
+  ) => void;
   onNavigateToActivity?: () => void;
   onNavigateToSchedule?: () => void;
   onNavigateToTeam?: () => void;
@@ -69,7 +72,8 @@ export function ZeroContent({
     if (inSession) {
       return (
         <ZeroSessionChatPage
-          zeroAvatarSrc={zeroAvatarSrc}
+          zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
+          chatAgentName={chatAgentName}
           onAvatarClick={onAvatarClick}
           onBack={onBackFromSession}
           onNavigateToTeam={onNavigateToTeam}

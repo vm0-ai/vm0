@@ -14,6 +14,7 @@ import {
   type ScheduleBody,
   type CronTimeOption,
 } from "../agent-detail/cron.ts";
+import { fetchAgentsList$ } from "./zero-agents.ts";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 
 const L = logger("ZeroJobDetail");
@@ -344,7 +345,10 @@ export const zeroJobUpdateSettings$ = command(
       }
 
       await set(fetchZeroJobDetail$);
-      await set(fetchZeroJobInstructions$);
+      await Promise.all([
+        set(fetchZeroJobInstructions$),
+        set(fetchAgentsList$),
+      ]);
       toast.success("Profile saved");
     } catch (error) {
       throwIfAbort(error);

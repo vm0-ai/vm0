@@ -16,11 +16,10 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { conversations } from "../../../../src/db/schema/conversation";
-import {
-  getOrgData,
-  getOrgBySlug,
-} from "../../../../src/lib/org/org-cache-service";
+import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
 
@@ -42,20 +41,14 @@ interface LogsQuery {
 }
 
 /**
- * Build agent name/org filter conditions from query params.
- * name+org take precedence over legacy agent param, which takes precedence over search.
+ * Build agent name filter conditions from query params.
+ * name takes precedence over legacy agent param, which takes precedence over search.
  */
-function buildAgentFilterConditions(
-  query: LogsQuery,
-  orgId: string | null,
-): SQL[] {
+function buildAgentFilterConditions(query: LogsQuery): SQL[] {
   const conditions: SQL[] = [];
 
   if (query.name) {
     conditions.push(eq(agentComposes.name, query.name));
-    if (orgId) {
-      conditions.push(eq(agentComposes.orgId, orgId));
-    }
   } else if (query.agent) {
     conditions.push(eq(agentComposes.name, query.agent));
   } else if (query.search) {
@@ -89,38 +82,30 @@ function buildCursorCondition(cursor: string): SQL | null {
 async function getTotalCount(
   userId: string,
   query: LogsQuery,
-  orgId: string | null,
+  orgId: string,
 ): Promise<number> {
-  const conditions: SQL[] = [eq(agentRuns.userId, userId)];
-  conditions.push(...buildAgentFilterConditions(query, orgId));
+  const conditions: SQL[] = [
+    eq(agentRuns.userId, userId),
+    eq(agentComposes.orgId, orgId),
+  ];
+  conditions.push(...buildAgentFilterConditions(query));
   if (query.status) {
     conditions.push(eq(agentRuns.status, query.status));
   }
 
-  const needsComposeJoin = !!(query.name || query.agent || query.search);
+  const [result] = await globalThis.services.db
+    .select({ count: count() })
+    .from(agentRuns)
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+    )
+    .innerJoin(
+      agentComposes,
+      eq(agentComposeVersions.composeId, agentComposes.id),
+    )
+    .where(and(...conditions));
 
-  let countQuery;
-  if (needsComposeJoin) {
-    countQuery = globalThis.services.db
-      .select({ count: count() })
-      .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
-      .leftJoin(
-        agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
-      )
-      .where(and(...conditions));
-  } else {
-    countQuery = globalThis.services.db
-      .select({ count: count() })
-      .from(agentRuns)
-      .where(and(...conditions));
-  }
-
-  const [result] = await countQuery;
   return result?.count ?? 0;
 }
 
@@ -151,12 +136,13 @@ const router = tsr.router(platformLogsListContract, {
 
     const limit = query.limit ?? 20;
 
-    // Resolve org slug to orgId for filtering
-    let orgId: string | null = null;
-    if (query.org) {
-      const orgData = await getOrgBySlug(query.org);
-      orgId = orgData?.orgId ?? null;
-      if (!orgId) {
+    // Resolve active org — always scope logs to the user's current org
+    let orgId: string;
+    try {
+      const { org } = await resolveOrg(userId, query.org);
+      orgId = org.orgId;
+    } catch (error) {
+      if (isNotFound(error) || isForbidden(error)) {
         return {
           status: 200 as const,
           body: {
@@ -165,10 +151,14 @@ const router = tsr.router(platformLogsListContract, {
           },
         };
       }
+      throw error;
     }
 
-    // Build conditions
-    const conditions: SQL[] = [eq(agentRuns.userId, userId)];
+    // Build conditions — always filter by userId + orgId
+    const conditions: SQL[] = [
+      eq(agentRuns.userId, userId),
+      eq(agentComposes.orgId, orgId),
+    ];
 
     if (query.cursor) {
       const cursorCondition = buildCursorCondition(query.cursor);
@@ -177,7 +167,7 @@ const router = tsr.router(platformLogsListContract, {
       }
     }
 
-    conditions.push(...buildAgentFilterConditions(query, orgId));
+    conditions.push(...buildAgentFilterConditions(query));
 
     if (query.status) {
       conditions.push(eq(agentRuns.status, query.status));
@@ -187,6 +177,7 @@ const router = tsr.router(platformLogsListContract, {
       .select({
         id: agentRuns.id,
         status: agentRuns.status,
+        modelProvider: agentRuns.modelProvider,
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
@@ -196,11 +187,11 @@ const router = tsr.router(platformLogsListContract, {
         composeContent: agentComposeVersions.content,
       })
       .from(agentRuns)
-      .leftJoin(
+      .innerJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
-      .leftJoin(
+      .innerJoin(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
@@ -251,6 +242,7 @@ const router = tsr.router(platformLogsListContract, {
           agentName: run.composeName ?? "unknown",
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
+          modelProvider: run.modelProvider ?? null,
           status: run.status as PlatformLogStatus,
           createdAt: run.createdAt.toISOString(),
           startedAt: run.startedAt?.toISOString() ?? null,

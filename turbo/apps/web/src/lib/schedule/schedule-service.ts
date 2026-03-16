@@ -479,18 +479,26 @@ export async function deploySchedule(
 }
 
 /**
- * List all schedules for a user
+ * List schedules for a user, optionally scoped to an org.
  */
 export async function listSchedules(
   userId: string,
+  orgId?: string,
 ): Promise<ScheduleResponse[]> {
-  log.debug(`Listing schedules for user ${userId}`);
+  log.debug(
+    `Listing schedules for user ${userId}${orgId ? ` in org ${orgId}` : ""}`,
+  );
 
-  // Query schedules directly by userId (schedule owner)
+  // Query schedules by userId, optionally filtered by orgId
+  const conditions = [eq(agentSchedules.userId, userId)];
+  if (orgId) {
+    conditions.push(eq(agentSchedules.orgId, orgId));
+  }
+
   const userSchedules = await globalThis.services.db
     .select()
     .from(agentSchedules)
-    .where(eq(agentSchedules.userId, userId));
+    .where(and(...conditions));
 
   if (userSchedules.length === 0) {
     return [];

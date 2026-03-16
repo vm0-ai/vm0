@@ -8,7 +8,11 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
-import { isNotFound, isBadRequest } from "../../../../src/lib/errors";
+import {
+  isNotFound,
+  isBadRequest,
+  isForbidden,
+} from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
 const log = logger("api:schedules");
@@ -91,9 +95,24 @@ const router = tsr.router(schedulesMainContract, {
     }
     const { userId } = authCtx;
 
-    log.debug(`Listing schedules for user ${userId}`);
+    // Resolve active org — scope schedules to the user's current org
+    let orgId: string;
+    try {
+      const { org } = await resolveOrg(userId);
+      orgId = org.orgId;
+    } catch (error) {
+      if (isNotFound(error) || isForbidden(error)) {
+        return {
+          status: 200 as const,
+          body: { schedules: [] },
+        };
+      }
+      throw error;
+    }
 
-    const schedules = await listSchedules(userId);
+    log.debug(`Listing schedules for user ${userId} in org ${orgId}`);
+
+    const schedules = await listSchedules(userId, orgId);
 
     return {
       status: 200 as const,

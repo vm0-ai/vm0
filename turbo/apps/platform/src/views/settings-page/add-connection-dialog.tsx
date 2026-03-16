@@ -646,10 +646,10 @@ function ZeroAddConnectionDialog({
     >
       <DialogContent className="max-w-2xl h-[85vh] flex flex-col overflow-hidden pr-0 pb-0 zero-app">
         <DialogHeader>
-          <DialogTitle>Add skill</DialogTitle>
+          <DialogTitle>Add connector</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground pr-6">
-          Skills manage your connections and help you get more out of these
+          Connectors let your agents access and interact with third-party
           services.
         </p>
         <div className="relative pr-6">
@@ -662,7 +662,7 @@ function ZeroAddConnectionDialog({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search skills..."
+            placeholder="Search connectors..."
             className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
@@ -670,7 +670,7 @@ function ZeroAddConnectionDialog({
           <div className="pt-4 pb-6 pr-6">
             {filteredTypes && filteredTypes.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No matching skills found.
+                No matching connectors found.
               </p>
             ) : (
               <ConnectorGrid

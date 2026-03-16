@@ -1,5 +1,5 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { LogStatus } from "../logs-page/types.ts";
+import type { AgentEvent, LogStatus } from "../logs-page/types.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -47,6 +47,7 @@ async function startAgentRun(
   composeId: string,
   prompt: string,
   sessionId?: string | null,
+  modelProvider?: string | null,
 ): Promise<string | null> {
   const body: Record<string, string> = {
     agentComposeId: composeId,
@@ -54,6 +55,9 @@ async function startAgentRun(
   };
   if (sessionId) {
     body.sessionId = sessionId;
+  }
+  if (modelProvider) {
+    body.modelProvider = modelProvider;
   }
 
   const response = await fetchFn("/api/agent/runs", {
@@ -108,6 +112,126 @@ const internalRunEvents$ = state<Computed<Promise<PageResult>>[]>([]);
 
 const internalSending$ = state(false);
 export const zeroChatSending$ = computed((get) => get(internalSending$));
+
+/** Latest event summaries for the active run (for display while thinking). */
+export const zeroChatRunSummaries$ = computed(async (get) => {
+  const pages = get(internalRunEvents$);
+  if (pages.length === 0) {
+    return [];
+  }
+  // Collect all events across pages
+  const allEvents: AgentEvent[] = [];
+  for (const page of pages) {
+    const result = await get(page);
+    allEvents.push(...result.events);
+  }
+  // Find the last text event index to exclude it (it's typically the result)
+  let lastTextIdx = -1;
+  for (let i = allEvents.length - 1; i >= 0; i--) {
+    if (hasTextBlock(allEvents[i])) {
+      lastTextIdx = i;
+      break;
+    }
+  }
+  const summaries: string[] = [];
+  for (let i = 0; i < allEvents.length; i++) {
+    const s = summarizeEvent(allEvents[i], i === lastTextIdx);
+    if (s) {
+      summaries.push(s);
+    }
+  }
+  return summaries;
+});
+
+interface EventContent {
+  type: string;
+  text?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+}
+
+interface EventData {
+  message?: { content?: EventContent[] };
+}
+
+function getEventContent(event: AgentEvent): EventContent[] {
+  const data = event.eventData as EventData | null;
+  return data?.message?.content ?? [];
+}
+
+function hasTextBlock(event: AgentEvent): boolean {
+  return getEventContent(event).some((b) => b.type === "text" && b.text);
+}
+
+function basename(filepath: string): string {
+  return filepath.split("/").pop() ?? filepath;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) + "…" : text;
+}
+
+const TOOL_LABELS: Readonly<
+  Record<string, (input: Record<string, unknown> | undefined) => string>
+> = {
+  Bash: (i) =>
+    i?.command
+      ? `Running: ${truncate(String(i.command), 60)}`
+      : "Running a command",
+  Read: (i) =>
+    i?.file_path
+      ? `Reading ${basename(String(i.file_path))}`
+      : "Reading a file",
+  Write: (i) =>
+    i?.file_path
+      ? `Writing ${basename(String(i.file_path))}`
+      : "Writing a file",
+  Edit: (i) =>
+    i?.file_path
+      ? `Editing ${basename(String(i.file_path))}`
+      : "Editing a file",
+  Grep: (i) =>
+    i?.pattern
+      ? `Searching for "${truncate(String(i.pattern), 40)}"`
+      : "Searching code",
+  Glob: (i) =>
+    i?.pattern
+      ? `Finding files: ${truncate(String(i.pattern), 40)}`
+      : "Finding files",
+  Skill: (i) => (i?.skill ? `Using ${String(i.skill)}` : "Using a skill"),
+  WebSearch: (i) =>
+    i?.query
+      ? `Searching: ${truncate(String(i.query), 50)}`
+      : "Searching the web",
+  WebFetch: (i) =>
+    i?.url ? `Fetching: ${truncate(String(i.url), 50)}` : "Fetching a page",
+  Agent: () => "Working on a subtask",
+};
+
+function humanizeToolUse(
+  name: string,
+  input: Record<string, unknown> | undefined,
+): string {
+  const fn = TOOL_LABELS[name];
+  if (fn) {
+    return fn(input);
+  }
+  return name.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+}
+
+function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
+  const content = getEventContent(event);
+  for (const block of content) {
+    if (block.type === "tool_use" && block.name) {
+      return humanizeToolUse(block.name, block.input);
+    }
+    if (!skipText && block.type === "text" && block.text) {
+      const line = block.text.split("\n")[0] ?? "";
+      return truncate(line, 80);
+    }
+  }
+  return null;
+}
 
 const pollingAbortController$ = state<AbortController | null>(null);
 
@@ -331,7 +455,11 @@ export const startNewZeroSession$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 
 export const sendZeroChatMessage$ = command(
-  async ({ get, set }, prompt: string) => {
+  async (
+    { get, set },
+    prompt: string,
+    options?: { modelProvider?: string },
+  ) => {
     const chatAgentId = get(zeroChatAgentId$);
     const composeId =
       chatAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentComposeId;
@@ -340,6 +468,9 @@ export const sendZeroChatMessage$ = command(
     }
 
     set(internalSending$, true);
+    set(internalRunEvents$, []);
+    set(internalRunStatus$, null);
+    set(internalRunError$, null);
 
     // Build full prompt with attachments
     const attachments = get(internalAttachments$).filter((a) => !a.uploading);
@@ -382,11 +513,16 @@ export const sendZeroChatMessage$ = command(
       const fetchFn = get(fetch$);
       const sessionId = get(internalSessionId$);
 
+      const modelProvider =
+        options?.modelProvider && options.modelProvider !== "default"
+          ? options.modelProvider
+          : undefined;
       const runId = await startAgentRun(
         fetchFn,
         composeId,
         fullPrompt,
         sessionId,
+        modelProvider,
       );
 
       if (!runId) {
@@ -412,9 +548,6 @@ export const sendZeroChatMessage$ = command(
       });
 
       set(internalActiveRunId$, runId);
-      set(internalRunEvents$, []);
-      set(internalRunStatus$, null);
-      set(internalRunError$, null);
 
       // Abort any existing polling
       const prev = get(pollingAbortController$);

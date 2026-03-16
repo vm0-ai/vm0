@@ -176,12 +176,12 @@ function OnboardingSkillsStep({
     <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center text-center px-8 pt-8">
       <DialogHeader className="space-y-2">
         <DialogTitle className="text-xl font-semibold tracking-tight">
-          Add skills
+          Add connector
         </DialogTitle>
       </DialogHeader>
       <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6">
-        Add skills so {name || "Zero"} can work with your tools. You can skip
-        and add more later.
+        Add connectors so {name || "Zero"} can work with your tools. You can
+        skip and add more later.
       </p>
       <div className="w-full px-4 flex-1 min-h-0">
         <div className="w-full flex flex-wrap justify-center gap-3 pb-4">

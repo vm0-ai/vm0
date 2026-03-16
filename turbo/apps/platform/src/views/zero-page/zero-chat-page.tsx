@@ -1,6 +1,6 @@
 import { Component, type KeyboardEvent, type ChangeEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { onRef, detach, Reason } from "../../signals/utils.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
@@ -42,8 +42,29 @@ import {
 import { ZERO_TEAM_JOBS } from "./zero-mock-data";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
+import { MODEL_PROVIDER_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
-import { AddConnectionDialog } from "../settings-page/add-connection-dialog.tsx";
+import {
+  AddConnectionDialog,
+  ConnectModal,
+} from "../settings-page/add-connection-dialog.tsx";
+import { skills$ } from "../../data/skills.ts";
+import {
+  allConnectorTypes$,
+  connectConnector$,
+  selectedConnectorType$,
+  setSelectedConnectorType$,
+  justConnectedTypes$,
+  clearJustConnectedTypes$,
+} from "../../signals/settings-page/connectors.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  zeroAddedSkills$,
+  addZeroSkill$,
+  saveZeroSkills$,
+} from "../../signals/zero-page/zero-meet.ts";
+import { modelProviders$ } from "../../signals/external/model-providers.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -79,18 +100,6 @@ const SUGGESTED_PROMPTS = [
     prompt:
       "I want to create a new sub-agent to handle a specific workflow for my team",
   },
-] as const;
-
-const COMPOSER_MODEL_OPTIONS = [
-  { value: "default", label: "Default" },
-  { value: "fast", label: "Fast" },
-  { value: "smart", label: "Smart" },
-] as const;
-
-const COMPOSER_CONNECTORS = [
-  { type: "gmail" as const, label: "Gmail", connected: true },
-  { type: "notion" as const, label: "Notion", connected: true },
-  { type: "slack" as const, label: "Slack", connected: false },
 ] as const;
 
 function getStreamedScenarios(agentName: string): readonly Readonly<{
@@ -740,12 +749,50 @@ function ChatScenarioAgentOperations({
   );
 }
 
+interface ComposerConnectorItem {
+  type: string;
+  label: string;
+  iconUrl?: string;
+  connected: boolean;
+}
+
+function ConnectorTriggerIcons({
+  connectors,
+}: {
+  connectors: ComposerConnectorItem[];
+}) {
+  const connected = connectors.filter((c) => c.connected).slice(0, 3);
+  if (connected.length === 0) {
+    return <IconPlug size={18} stroke={1.5} />;
+  }
+  return (
+    <span className="flex items-center -space-x-1.5">
+      {connected.map((c) => (
+        <span
+          key={c.type}
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-background border border-border/60"
+        >
+          {c.iconUrl ? (
+            <img src={c.iconUrl} alt="" className="h-3.5 w-3.5" />
+          ) : (
+            <ConnectorIcon type={c.type as ConnectorType} size={14} />
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function ConnectorsPopoverButton({
+  connectors,
   onOpenAddDialog,
+  onConnect,
   onManageConnectors,
   agentName,
 }: {
+  connectors: ComposerConnectorItem[];
   onOpenAddDialog: () => void;
+  onConnect: (type: string) => void;
   onManageConnectors?: () => void;
   agentName: string;
 }) {
@@ -759,26 +806,7 @@ function ConnectorsPopoverButton({
                 type="button"
                 className="inline-flex shrink-0 items-center rounded-lg h-9 px-1.5 hover:bg-accent transition-colors"
               >
-                <span className="flex items-center -space-x-2">
-                  <span
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-background"
-                    style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-                  >
-                    <ConnectorIcon type="gmail" size={15} />
-                  </span>
-                  <span
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-background"
-                    style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-                  >
-                    <ConnectorIcon type="notion" size={15} />
-                  </span>
-                  <span
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-background"
-                    style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-                  >
-                    <ConnectorIcon type="slack" size={15} />
-                  </span>
-                </span>
+                <ConnectorTriggerIcons connectors={connectors} />
               </button>
             </TooltipTrigger>
           </PopoverTrigger>
@@ -790,30 +818,37 @@ function ConnectorsPopoverButton({
       <PopoverContent side="top" align="start" className="w-64 p-0 rounded-xl">
         <div className="p-2">
           <div className="flex flex-col">
-            {COMPOSER_CONNECTORS.map((skill) => (
+            {connectors.map((item) => (
               <div
-                key={skill.type}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+                key={item.type}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
               >
                 <span
                   className={cn(
                     "flex h-5 w-5 shrink-0 items-center justify-center",
-                    !skill.connected && "opacity-40",
+                    !item.connected && "opacity-40",
                   )}
                 >
-                  <ConnectorIcon type={skill.type} size={20} />
+                  {item.iconUrl ? (
+                    <img src={item.iconUrl} alt="" className="h-5 w-5" />
+                  ) : (
+                    <ConnectorIcon
+                      type={item.type as ConnectorType}
+                      size={20}
+                    />
+                  )}
                 </span>
                 <span
                   className={cn(
                     "text-sm flex-1",
-                    skill.connected
+                    item.connected
                       ? "text-foreground"
                       : "text-muted-foreground",
                   )}
                 >
-                  {skill.label}
+                  {item.label}
                 </span>
-                {skill.connected ? (
+                {item.connected ? (
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                 ) : (
                   <button
@@ -821,7 +856,7 @@ function ConnectorsPopoverButton({
                     className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onOpenAddDialog();
+                      onConnect(item.type);
                     }}
                   >
                     Connect
@@ -864,6 +899,98 @@ function ConnectorsPopoverButton({
   );
 }
 
+function maybeClearOptimistic(
+  optimistic: Set<string>,
+  connectorMap: Map<ConnectorType, { connected: boolean }>,
+  clear: () => void,
+) {
+  if (optimistic.size === 0) {
+    return;
+  }
+  const allConfirmed = [...optimistic].every(
+    (t) => connectorMap.get(t as ConnectorType)?.connected,
+  );
+  if (allConfirmed) {
+    clear();
+  }
+}
+
+function buildConnectorItem(
+  name: string,
+  skillMap: Map<string, { label: string; icon?: string }>,
+  connectorMap: Map<ConnectorType, { label: string; connected: boolean }>,
+  optimistic: Set<string>,
+): ComposerConnectorItem {
+  const skill = skillMap.get(name);
+  const connector = connectorMap.get(name as ConnectorType);
+  return {
+    type: name,
+    label: skill?.label ?? connector?.label ?? name,
+    iconUrl: skill?.icon,
+    connected: optimistic.has(name) ? true : (connector?.connected ?? false),
+  };
+}
+
+function useUserFirstName(): string | undefined {
+  const loadable = useLoadable(user$);
+  if (loadable.state !== "hasData") {
+    return undefined;
+  }
+  return loadable.data?.firstName ?? undefined;
+}
+
+function resolveConnectorLabel(
+  type: string,
+  skillMap: Map<string, { label: string }>,
+  connectorMap: Map<ConnectorType, { label: string }>,
+): string {
+  return (
+    skillMap.get(type)?.label ??
+    connectorMap.get(type as ConnectorType)?.label ??
+    type
+  );
+}
+
+function buildModelOpts(model: string): { modelProvider: string } | undefined {
+  return model !== "default" ? { modelProvider: model } : undefined;
+}
+
+function startConnectorFlow(
+  type: string,
+  connectorMap: Map<ConnectorType, { availableAuthMethods: string[] }>,
+  setSelectedType: (t: ConnectorType | null) => void,
+  connect: (t: ConnectorType, signal: AbortSignal) => Promise<boolean>,
+  signal: AbortSignal,
+) {
+  const ct = connectorMap.get(type as ConnectorType);
+  if (!ct) {
+    return;
+  }
+  if (
+    ct.availableAuthMethods.length === 1 &&
+    ct.availableAuthMethods[0] === "api-token"
+  ) {
+    setSelectedType(type as ConnectorType);
+  } else {
+    detach(connect(type as ConnectorType, signal), Reason.DomCallback);
+  }
+}
+
+function readModelPreference(key: string): string {
+  if (typeof window === "undefined") {
+    return "default";
+  }
+  return localStorage.getItem(key) ?? "default";
+}
+
+function writeModelPreference(key: string, value: string) {
+  if (value === "default") {
+    localStorage.removeItem(key);
+  } else {
+    localStorage.setItem(key, value);
+  }
+}
+
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
@@ -871,7 +998,10 @@ interface ZeroChatPageProps {
   onNavigateToSchedule?: () => void;
   onNavigateToTeam?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
-  onSendMessage?: (message: string) => void;
+  onSendMessage?: (
+    message: string,
+    options?: { modelProvider?: string },
+  ) => void;
   zeroAvatarSrc?: string;
   /** Override agent name when chatting with a sub-agent. */
   chatAgentName?: string;
@@ -894,17 +1024,54 @@ export function ZeroChatPage({
   const defaultAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
   const agentName = chatAgentName ?? defaultAgentName;
-  const userLoadable = useLoadable(user$);
-  const userName =
-    userLoadable.state === "hasData"
-      ? (userLoadable.data?.firstName ?? undefined)
-      : undefined;
-  const skillsDialogOpen$ = useCCState(false);
-  const skillsDialogOpen = useGet(skillsDialogOpen$);
-  const setSkillsDialogOpen = useSet(skillsDialogOpen$);
-  const selectedModel$ = useCCState<
-    (typeof COMPOSER_MODEL_OPTIONS)[number]["value"]
-  >(COMPOSER_MODEL_OPTIONS[0].value);
+  const userName = useUserFirstName();
+
+  // Connector signals
+  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const addedSkillsLoadable = useLastLoadable(zeroAddedSkills$);
+  const connectConnector = useSet(connectConnector$);
+  const pageSignal = useGet(pageSignal$);
+  const selectedConnType = useGet(selectedConnectorType$);
+  const setSelectedConnType = useSet(setSelectedConnectorType$);
+  const allSkills = useGet(skills$);
+  const addSkill = useSet(addZeroSkill$);
+  const saveSkills = useSet(saveZeroSkills$);
+  const optimisticConnected = useGet(justConnectedTypes$);
+  const clearOptimistic = useSet(clearJustConnectedTypes$);
+  const addDialogOpen$ = useCCState(false);
+  const addDialogOpen = useGet(addDialogOpen$);
+  const setAddDialogOpen = useSet(addDialogOpen$);
+
+  const allConnectors =
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
+
+  // Clear optimistic state only once fresh data confirms the connection
+  maybeClearOptimistic(optimisticConnected, connectorMap, clearOptimistic);
+  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
+  const addedSkills =
+    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
+  const addedSet = new Set(addedSkills);
+
+  const composerConnectors: ComposerConnectorItem[] = addedSkills.map((name) =>
+    buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
+  );
+
+  // Model provider signals
+  const modelProvidersLoadable = useLastLoadable(modelProviders$);
+  const configuredProviders =
+    modelProvidersLoadable.state === "hasData"
+      ? modelProvidersLoadable.data.modelProviders
+      : [];
+  const modelOptions = [
+    { value: "default", label: "Default" },
+    ...configuredProviders.map((p) => ({
+      value: p.type,
+      label: MODEL_PROVIDER_TYPES[p.type].label,
+    })),
+  ];
+  const modelStorageKey = `zero.modelProvider.${agentName}`;
+  const selectedModel$ = useCCState(readModelPreference(modelStorageKey));
   const selectedModel = useGet(selectedModel$);
   const setSelectedModel = useSet(selectedModel$);
   const input$ = useCCState("");
@@ -945,6 +1112,15 @@ export function ZeroChatPage({
   const taglineIndex$ = useCCState(Math.floor(Math.random() * 18));
   const taglineIndex = useGet(taglineIndex$);
   const tagline = userName ? getTagline(agentName, userName, taglineIndex) : "";
+  const prevAgentName$ = useCCState(agentName);
+  const prevAgentName = useGet(prevAgentName$);
+  const setPrevAgentName = useSet(prevAgentName$);
+  if (agentName !== prevAgentName) {
+    queueMicrotask(() => {
+      setPrevAgentName(agentName);
+      setSelectedModel(readModelPreference(`zero.modelProvider.${agentName}`));
+    });
+  }
 
   // Stream tick — schedules the next streamed message after a delay
   const streamTimeoutId$ = useCCState<number | null>(null);
@@ -997,6 +1173,27 @@ export function ZeroChatPage({
   });
   const toggleSubAgentList = useSet(toggleSubAgentList$);
 
+  const handleConnectSuccess = (type: string) => {
+    const label = resolveConnectorLabel(type, skillMap, connectorMap);
+    detach(
+      (async () => {
+        await addSkill(type);
+        await saveSkills();
+        toast.success(`${label} connected`);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleConnectConnector = (type: string) =>
+    startConnectorFlow(
+      type,
+      connectorMap,
+      setSelectedConnType,
+      connectConnector,
+      pageSignal,
+    );
+
   const handleSend = (messageOverride?: string) => {
     const text = (messageOverride ?? input).trim();
     if (!text) {
@@ -1005,11 +1202,15 @@ export function ZeroChatPage({
     if (!messageOverride) {
       setInput("");
     }
-    onSendMessage?.(text);
+    writeModelPreference(modelStorageKey, selectedModel);
+    onSendMessage?.(text, buildModelOpts(selectedModel));
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.nativeEvent.isComposing) {
+      return;
+    }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSend();
     }
@@ -1261,9 +1462,11 @@ export function ZeroChatPage({
                         <IconPaperclip size={18} stroke={1.5} />
                       </button>
                       <ConnectorsPopoverButton
-                        onOpenAddDialog={() => setSkillsDialogOpen(true)}
+                        connectors={composerConnectors}
+                        onOpenAddDialog={() => setAddDialogOpen(true)}
+                        onConnect={handleConnectConnector}
                         onManageConnectors={() =>
-                          onNavigateToMeet?.("connections")
+                          onNavigateToMeet?.("connectors")
                         }
                         agentName={agentName}
                       />
@@ -1271,17 +1474,13 @@ export function ZeroChatPage({
                     <div className="flex items-center gap-2">
                       <Select
                         value={selectedModel}
-                        onValueChange={(value) =>
-                          setSelectedModel(
-                            value as (typeof COMPOSER_MODEL_OPTIONS)[number]["value"],
-                          )
-                        }
+                        onValueChange={setSelectedModel}
                       >
                         <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-accent transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
                           <SelectValue placeholder="Model" />
                         </SelectTrigger>
                         <SelectContent>
-                          {COMPOSER_MODEL_OPTIONS.map((opt) => (
+                          {modelOptions.map((opt) => (
                             <SelectItem
                               key={opt.value}
                               value={opt.value}
@@ -1373,9 +1572,11 @@ export function ZeroChatPage({
                       <IconPaperclip size={18} stroke={1.5} />
                     </button>
                     <ConnectorsPopoverButton
-                      onOpenAddDialog={() => setSkillsDialogOpen(true)}
+                      connectors={composerConnectors}
+                      onOpenAddDialog={() => setAddDialogOpen(true)}
+                      onConnect={handleConnectConnector}
                       onManageConnectors={() =>
-                        onNavigateToMeet?.("connections")
+                        onNavigateToMeet?.("connectors")
                       }
                       agentName={agentName}
                     />
@@ -1383,17 +1584,13 @@ export function ZeroChatPage({
                   <div className="flex items-center gap-2">
                     <Select
                       value={selectedModel}
-                      onValueChange={(value) =>
-                        setSelectedModel(
-                          value as (typeof COMPOSER_MODEL_OPTIONS)[number]["value"],
-                        )
-                      }
+                      onValueChange={setSelectedModel}
                     >
                       <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-accent transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
                         <SelectValue placeholder="Model" />
                       </SelectTrigger>
                       <SelectContent>
-                        {COMPOSER_MODEL_OPTIONS.map((opt) => (
+                        {modelOptions.map((opt) => (
                           <SelectItem
                             key={opt.value}
                             value={opt.value}
@@ -1454,10 +1651,23 @@ export function ZeroChatPage({
         </div>
       </main>
       <AddConnectionDialog
-        open={skillsDialogOpen}
-        onOpenChange={setSkillsDialogOpen}
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
         variant="zero"
+        excludeTypes={addedSet}
+        onConnectSuccess={handleConnectSuccess}
+        onAdd={handleConnectSuccess}
       />
+      {selectedConnType && (
+        <ConnectModal
+          onClose={() => setSelectedConnType(null)}
+          onSuccess={() => {
+            if (selectedConnType && !addedSet.has(selectedConnType)) {
+              handleConnectSuccess(selectedConnType);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

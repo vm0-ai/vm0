@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
 import {
   IconClock,
   IconChevronRight,
@@ -28,6 +29,7 @@ import {
   zeroActivityHasPrev$,
   zeroActivityCurrentPage$,
   syncZeroActivitySub$,
+  refreshZeroActivity$,
   goToNextZeroActivityPage$,
   goToPrevZeroActivityPage$,
   goForwardTwoZeroActivityPages$,
@@ -126,6 +128,18 @@ export function ZeroActivityPage() {
   const goForwardTwo = useSet(goForwardTwoZeroActivityPages$);
   const goBackTwo = useSet(goBackTwoZeroActivityPages$);
   const setRowsPerPage = useSet(setZeroActivityRowsPerPage$);
+  const refresh = useSet(refreshZeroActivity$);
+
+  // Refresh activity data every time this tab is entered
+  const didRefresh$ = useCCState(false);
+  const didRefresh = useGet(didRefresh$);
+  const setDidRefresh = useSet(didRefresh$);
+  if (!didRefresh) {
+    queueMicrotask(() => {
+      setDidRefresh(true);
+      refresh();
+    });
+  }
 
   // URL-driven detail: /zero/activity/:logId
   const sub = useGet(zeroTabSub$);

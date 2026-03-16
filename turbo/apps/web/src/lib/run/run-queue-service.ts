@@ -72,6 +72,7 @@ export async function enqueueRun(
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
         continuedFromSessionId: params.sessionId ?? null,
         scheduleId: params.scheduleId ?? null,
+        modelProvider: params.modelProvider ?? null,
         lastHeartbeatAt: new Date(),
       })
       .returning();

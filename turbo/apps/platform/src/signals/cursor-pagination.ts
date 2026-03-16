@@ -191,7 +191,14 @@ export function createCursorPagination(config: CursorPaginationConfig) {
     return get(searchParams$).get("cursor") ?? null;
   });
 
+  const refreshTick$ = state(0);
+
+  const refresh$ = command(({ set }) => {
+    set(refreshTick$, (n) => n + 1);
+  });
+
   const data$ = computed(async (get) => {
+    get(refreshTick$);
     const fetchFn = get(fetch$);
     const limit = get(limit$);
     const cursor = get(cursor$);
@@ -281,6 +288,7 @@ export function createCursorPagination(config: CursorPaginationConfig) {
     limit$,
     cursor$,
     data$,
+    refresh$,
     seedCursorHistory$,
     hasPrev$,
     currentPage$,

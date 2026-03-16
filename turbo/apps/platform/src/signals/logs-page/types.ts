@@ -11,6 +11,7 @@ export interface LogEntry {
   agentName: string;
   orgSlug: string | null;
   framework: string | null;
+  modelProvider: string | null;
   status: LogStatus;
   createdAt: string;
   startedAt: string | null;
@@ -37,6 +38,7 @@ export interface LogDetail {
   sessionId: string | null;
   agentName: string;
   framework: string | null;
+  modelProvider: string | null;
   status: LogStatus;
   prompt: string;
   error: string | null;
