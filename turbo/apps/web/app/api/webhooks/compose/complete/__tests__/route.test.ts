@@ -146,6 +146,14 @@ describe("POST /api/webhooks/compose/complete", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+
+    // Re-apply mock return values after clearMocks resets them
+    vi.mocked(Sandbox.create).mockResolvedValue({
+      sandboxId: "mock-sandbox-id",
+      files: { write: vi.fn().mockResolvedValue(undefined) },
+      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
+    } as never);
+
     user = await context.setupUser();
 
     // Create a test job via API
