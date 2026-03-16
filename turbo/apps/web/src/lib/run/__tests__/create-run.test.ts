@@ -12,6 +12,7 @@ import {
   createTestRequest,
   createTestSandboxToken,
   createTestRun,
+  createTestModelProvider,
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
@@ -713,6 +714,32 @@ describe("createRun()", () => {
       const memory = await findTestStorage(user.orgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);
+    });
+  });
+
+  describe("Model Provider Env Var Injection", () => {
+    it("should inject Vercel AI Gateway model provider env vars into sandbox environment", async () => {
+      // Create compose without default ANTHROPIC_API_KEY so auto-injection is triggered
+      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
+        skipDefaultApiKey: true,
+      });
+
+      await createTestModelProvider("vercel-ai-gateway", "test-gateway-key");
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
+      );
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("pending");
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        ANTHROPIC_AUTH_TOKEN: "test-gateway-key",
+        ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
+        ANTHROPIC_API_KEY: "",
+      });
     });
   });
 

@@ -232,6 +232,9 @@ export {
   hasModelSelection,
   allowsCustomModel,
   getCustomModelPlaceholder,
+  // Feature-gated provider support
+  getProviderFeatureFlag,
+  isProviderVisible,
   // Multi-auth provider support
   hasAuthMethods,
   getAuthMethodsForType,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 const c = initContract();
 
@@ -160,6 +161,19 @@ export const MODEL_PROVIDER_TYPES = {
     models: ["glm-5", "glm-4.7", "glm-4.5-air"] as string[],
     defaultModel: "glm-4.7",
   },
+  "vercel-ai-gateway": {
+    framework: "claude-code" as const,
+    secretName: "VERCEL_AI_GATEWAY_API_KEY",
+    label: "Vercel AI Gateway",
+    secretLabel: "API key",
+    helpText: "Get your API key from the Vercel AI Gateway dashboard",
+    featureFlag: FeatureSwitchKey.VercelAiGateway,
+    environmentMapping: {
+      ANTHROPIC_AUTH_TOKEN: "$secret",
+      ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
+      ANTHROPIC_API_KEY: "",
+    } as Record<string, string>,
+  },
   "azure-foundry": {
     framework: "claude-code" as const,
     label: "Azure Foundry",
@@ -275,6 +289,7 @@ export const modelProviderTypeSchema = z.enum([
   "minimax-api-key",
   "deepseek-api-key",
   "zai-api-key",
+  "vercel-ai-gateway",
   "azure-foundry",
   "aws-bedrock",
 ]);
@@ -409,6 +424,30 @@ export function hasModelSelection(type: ModelProviderType): boolean {
 export function allowsCustomModel(type: ModelProviderType): boolean {
   const config = MODEL_PROVIDER_TYPES[type];
   return "allowCustomModel" in config && config.allowCustomModel === true;
+}
+
+/**
+ * Get the feature flag key for a model provider type, if any.
+ * Returns undefined for providers without feature gating.
+ */
+export function getProviderFeatureFlag(
+  type: ModelProviderType,
+): FeatureSwitchKey | undefined {
+  const config = MODEL_PROVIDER_TYPES[type];
+  return "featureFlag" in config ? config.featureFlag : undefined;
+}
+
+/**
+ * Check if a model provider type is visible given the current feature switch states.
+ * Providers without a featureFlag are always visible.
+ */
+export function isProviderVisible(
+  type: ModelProviderType,
+  features: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  const flag = getProviderFeatureFlag(type);
+  if (!flag) return true;
+  return features[flag] === true;
 }
 
 /**

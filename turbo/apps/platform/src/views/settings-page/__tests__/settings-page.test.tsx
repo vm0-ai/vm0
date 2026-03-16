@@ -206,6 +206,109 @@ describe("settings page", () => {
     expect(capturedBody!.selectedModel).toBe("glm-5");
   });
 
+  it("can add Vercel AI Gateway provider via dialog when feature enabled", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("/api/model-providers", () => {
+        return HttpResponse.json({ modelProviders: [] });
+      }),
+      http.put("/api/model-providers", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            provider: {
+              id: crypto.randomUUID(),
+              type: capturedBody.type,
+              framework: "claude-code",
+              secretName: "VERCEL_AI_GATEWAY_API_KEY",
+              authMethod: null,
+              secretNames: null,
+              isDefault: true,
+              selectedModel: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { vercelAiGateway: true },
+    });
+
+    // Click Add to open add provider dialog
+    const addButton = screen.getByRole("button", { name: /add/i });
+    await user.click(addButton);
+
+    // In add provider dialog, find the Vercel AI Gateway card
+    const addProviderDialog = await screen.findByRole("dialog", {
+      name: /add model provider/i,
+    });
+    const vercelCard = within(addProviderDialog).getByTestId(
+      "provider-card-vercel-ai-gateway",
+    );
+    await user.click(vercelCard);
+
+    // Provider form dialog should open with API key input
+    const providerFormTitle = await screen.findByText(
+      "Add your Vercel AI Gateway",
+    );
+    const dialog = providerFormTitle.closest("[role='dialog']") as HTMLElement;
+    expect(dialog).toBeTruthy();
+
+    // Fill in the API key
+    const input = within(dialog).getByPlaceholderText("Enter your API key");
+    await user.click(input);
+    await user.paste("vag-test-key-12345");
+
+    // Submit
+    const addProviderButton = within(dialog).getByRole("button", {
+      name: /^add$/i,
+    });
+    await user.click(addProviderButton);
+
+    // Verify request was sent with correct data
+    await vi.waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody!.type).toBe("vercel-ai-gateway");
+    expect(capturedBody!.secret).toBe("vag-test-key-12345");
+  });
+
+  it("hides Vercel AI Gateway when feature is disabled", async () => {
+    server.use(
+      http.get("/api/model-providers", () => {
+        return HttpResponse.json({ modelProviders: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/settings",
+      featureSwitches: { vercelAiGateway: false },
+    });
+
+    // Click Add to open add provider dialog
+    const addButton = screen.getByRole("button", { name: /add/i });
+    await user.click(addButton);
+
+    // In add provider dialog, verify Vercel AI Gateway card is NOT present
+    const addProviderDialog = await screen.findByRole("dialog", {
+      name: /add model provider/i,
+    });
+    expect(
+      within(addProviderDialog).queryByTestId(
+        "provider-card-vercel-ai-gateway",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("can delete a provider via kebab menu", async () => {
     let deletedType: string | null = null;
 

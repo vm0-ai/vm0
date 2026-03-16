@@ -9,6 +9,7 @@ import deepseekIcon from "./icons/deepseek.svg";
 import kimiIcon from "./icons/kimi.svg";
 import minimaxIcon from "./icons/minimax.svg";
 import openrouterIcon from "./icons/openrouter.svg";
+import vercelIcon from "./icons/vercel.svg";
 
 const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
   Object.freeze({
@@ -19,6 +20,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "deepseek-api-key": deepseekIcon,
     "zai-api-key": chatglmIcon,
     "moonshot-api-key": kimiIcon,
+    "vercel-ai-gateway": vercelIcon,
     "azure-foundry": azureIcon,
     "aws-bedrock": bedrockIcon,
   });
