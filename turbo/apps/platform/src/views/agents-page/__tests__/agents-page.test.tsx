@@ -10,7 +10,7 @@ const context = testContext();
 describe("agents page", () => {
   it("shows agents table with agent names", async () => {
     server.use(
-      http.get("/api/agent/composes/list", () => {
+      http.get("/api/platform/team", () => {
         return HttpResponse.json({
           composes: [
             {
@@ -35,7 +35,7 @@ describe("agents page", () => {
 
   it("shows empty state when no agents exist", async () => {
     server.use(
-      http.get("/api/agent/composes/list", () => {
+      http.get("/api/platform/team", () => {
         return HttpResponse.json({ composes: [] });
       }),
     );
@@ -51,7 +51,7 @@ describe("agents page", () => {
 
   it("shows error state when agents API fails", async () => {
     server.use(
-      http.get("/api/agent/composes/list", () => {
+      http.get("/api/platform/team", () => {
         return HttpResponse.json(
           { error: "Unauthorized" },
           { status: 401, statusText: "Unauthorized" },
@@ -68,7 +68,7 @@ describe("agents page", () => {
 
   it("shows missing environment variables count for agent with missing items", async () => {
     server.use(
-      http.get("/api/agent/composes/list", () => {
+      http.get("/api/platform/team", () => {
         return HttpResponse.json({
           composes: [
             {
@@ -118,7 +118,7 @@ describe("agents page", () => {
 
   it("shows singular label for one missing environment variable", async () => {
     server.use(
-      http.get("/api/agent/composes/list", () => {
+      http.get("/api/platform/team", () => {
         return HttpResponse.json({
           composes: [
             {
@@ -163,7 +163,7 @@ describe("agents page", () => {
 
   it("does not show missing env count when all items are provided", async () => {
     server.use(
-      http.get("/api/agent/composes/list", () => {
+      http.get("/api/platform/team", () => {
         return HttpResponse.json({
           composes: [
             {

@@ -33,7 +33,7 @@ describe("agents-list signals", () => {
       ];
 
       server.use(
-        http.get("http://localhost:3000/api/agent/composes/list", () => {
+        http.get("http://localhost:3000/api/platform/team", () => {
           return HttpResponse.json({ composes: mockAgents });
         }),
         http.get("http://localhost:3000/api/agent/schedules", () => {
@@ -58,7 +58,7 @@ describe("agents-list signals", () => {
 
     it("should set error state when agents API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes/list", () => {
+        http.get("http://localhost:3000/api/platform/team", () => {
           return HttpResponse.json(
             { error: "Unauthorized" },
             { status: 401, statusText: "Unauthorized" },
@@ -83,7 +83,7 @@ describe("agents-list signals", () => {
       ];
 
       server.use(
-        http.get("http://localhost:3000/api/agent/composes/list", () => {
+        http.get("http://localhost:3000/api/platform/team", () => {
           return HttpResponse.json({ composes: mockAgents });
         }),
         http.get("http://localhost:3000/api/agent/schedules", () => {
