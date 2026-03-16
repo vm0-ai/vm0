@@ -40,6 +40,7 @@ interface ResolvedCompose {
   agentComposeVersionId: string;
   agentComposeName?: string;
   composeId?: string;
+  composeOrgId?: string;
 }
 
 type ErrorResponse = {
@@ -192,6 +193,7 @@ async function resolveSessionContinue(
     .select({
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, sessionData.agentComposeId))
@@ -225,6 +227,7 @@ async function resolveSessionContinue(
     agentComposeVersionId: compose.headVersionId,
     agentComposeName: compose.name || undefined,
     composeId: sessionData.agentComposeId,
+    composeOrgId: compose.orgId,
   };
 }
 
@@ -441,6 +444,16 @@ const router = tsr.router(runsMainContract, {
     // The actual variable fetching happens in build-context.ts.
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(userId, orgSlug);
+
+    // Cross-org session access check: session's compose must belong to the resolved org
+    if (resolved.composeOrgId && resolved.composeOrgId !== org.orgId) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Resource not found", code: "NOT_FOUND" },
+        },
+      };
+    }
 
     // Delegate run creation, validation, and dispatch to createRun()
     try {

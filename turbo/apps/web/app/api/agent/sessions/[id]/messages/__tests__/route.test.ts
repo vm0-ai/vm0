@@ -6,6 +6,7 @@ import {
   createTestCompose,
   createTestRun,
   completeTestRun,
+  insertOrgCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -170,6 +171,39 @@ describe("POST /api/agent/sessions/:id/messages", () => {
     const data = await response.json();
 
     // appendChatMessages uses WHERE userId = ... so it's a 404 (not found or not owned)
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
+  });
+
+  it("should return 404 when appending messages to session from a different org", async () => {
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    const { agentSessionId } = await completeTestRun(user.userId, runId);
+
+    // Switch to org B — different org for the same user
+    const otherOrgId = uniqueId("org-other");
+    const otherOrgSlug = uniqueId("org-other");
+    await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+    mockClerk({
+      userId: user.userId,
+      orgId: otherOrgId,
+      orgSlug: otherOrgSlug,
+      clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+    });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/sessions/${agentSessionId}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "Cross-org message" }],
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
   });

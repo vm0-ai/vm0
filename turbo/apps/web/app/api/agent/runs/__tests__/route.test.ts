@@ -1013,6 +1013,41 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.code).toBe("NOT_FOUND");
     });
 
+    it("should return 404 when continuing session from a different org", async () => {
+      // Create compose and run under user's default org (org A)
+      const { runId } = await createTestRun(testComposeId, "Session run");
+      const { agentSessionId } = await completeTestRun(user.userId, runId);
+
+      // Switch to org B — different org for the same user
+      const otherOrgId = uniqueId("org-other");
+      const otherOrgSlug = uniqueId("org-other");
+      await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrgId,
+        orgSlug: otherOrgSlug,
+        clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: agentSessionId,
+            prompt: "Cross-org continue",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
     // Note: "Missing required secrets" validation is tested in the Validation
     // describe block above (lines 138-197).
   });
