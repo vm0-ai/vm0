@@ -116,6 +116,7 @@ export async function handleDirectMessage(
     return;
   }
   const agentName = defaultAgent.name;
+  const agentLabel = defaultAgent.displayName ?? defaultAgent.name;
 
   // 5. Show assistant thinking status
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -214,7 +215,7 @@ export async function handleDirectMessage(
       threadTs,
       blocks: buildAgentResponseMessage(
         errorText,
-        agentName,
+        agentLabel,
         logsUrl,
         deepLinks,
       ),

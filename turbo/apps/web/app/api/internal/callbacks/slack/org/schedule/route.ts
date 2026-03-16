@@ -14,6 +14,7 @@ import { getRunOutput } from "../../../../../../../src/lib/slack/handlers/run-ag
 import {
   saveThreadSession,
   buildLogsUrl,
+  getWorkspaceAgent,
 } from "../../../../../../../src/lib/slack-org/handlers/shared";
 import { env } from "../../../../../../../src/env";
 import { logger } from "../../../../../../../src/lib/logger";
@@ -125,6 +126,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const logsUrl = buildLogsUrl(runId, composeName);
 
+  // Resolve display name for user-visible messages
+  const agentInfo = await getWorkspaceAgent(payload.composeId);
+  const displayName = agentInfo?.displayName ?? composeName;
+
   if (status === "completed") {
     const rawOutput = await getRunOutput(runId);
     const truncatedOutput = rawOutput
@@ -136,14 +141,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { ts: messageTs, channel: dmChannelId } = await postMessage(
       client,
       connection.slackUserId,
-      `Scheduled run for "${composeName}" completed`,
+      `Scheduled run for "${displayName}" completed`,
       {
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:white_check_mark: *Scheduled run for \`${composeName}\` completed*`,
+              text: `:white_check_mark: *Scheduled run for \`${displayName}\` completed*`,
             },
           },
           {
@@ -192,14 +197,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await postMessage(
       client,
       connection.slackUserId,
-      `Scheduled run for "${composeName}" failed`,
+      `Scheduled run for "${displayName}" failed`,
       {
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `:x: *Scheduled run for \`${composeName}\` failed*\n\n${errMsg}`,
+              text: `:x: *Scheduled run for \`${displayName}\` failed*\n\n${errMsg}`,
             },
           },
           {

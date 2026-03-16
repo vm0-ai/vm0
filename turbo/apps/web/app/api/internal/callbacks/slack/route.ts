@@ -19,7 +19,10 @@ import {
   getRunResultData,
   formatAskUserDenials,
 } from "../../../../../src/lib/slack/handlers/run-agent";
-import { buildLogsUrl } from "../../../../../src/lib/slack/handlers/shared";
+import {
+  buildLogsUrl,
+  getWorkspaceAgent,
+} from "../../../../../src/lib/slack/handlers/shared";
 import { getPlatformUrl } from "../../../../../src/lib/url";
 import { slackPendingQuestions } from "../../../../../src/db/schema/slack-pending-question";
 import { env } from "../../../../../src/env";
@@ -310,6 +313,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // when the callback payload was constructed).
   const resolvedSessionId = await saveThreadSession(payload, runId, status);
 
+  // Resolve display name for user-visible blocks
+  const agentInfo = await getWorkspaceAgent(payload.composeId);
+  const agentLabel = agentInfo?.displayName ?? payload.agentName;
+
   // Post text response (if any content)
   if (responseText) {
     const logsUrl = buildLogsUrl(runId, payload.agentName);
@@ -322,7 +329,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(
         responseText,
-        payload.agentName,
+        agentLabel,
         logsUrl,
         deepLinks,
       ),

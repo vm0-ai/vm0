@@ -88,7 +88,7 @@ export async function refreshOrgAppHome(
     const composeId = await resolveDefaultComposeId(installation.orgId);
     if (composeId) {
       const agent = await getWorkspaceAgent(composeId);
-      agentName = agent?.name;
+      agentName = agent?.displayName ?? agent?.name;
     }
   }
 
@@ -181,7 +181,7 @@ export async function handleOrgMessagesTabOpened(
     const composeId = await resolveDefaultComposeId(installation.orgId);
     if (composeId) {
       const agent = await getWorkspaceAgent(composeId);
-      agentName = agent?.name;
+      agentName = agent?.displayName ?? agent?.name;
     }
   }
 

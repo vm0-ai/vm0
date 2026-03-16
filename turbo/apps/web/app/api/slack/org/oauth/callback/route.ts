@@ -41,21 +41,23 @@ function parseOAuthState(state: string | null): OAuthState {
  *
  * GET /api/slack/org/oauth/callback
  *
- * Handles the OAuth redirect from Slack after authorization.
+ * Handles the OAuth redirect from Slack after app installation.
  *
  * Platform flow (state has orgId + vm0UserId):
- *   - Verify user is org admin via Clerk
+ *   - Verify user is org admin
  *   - Upsert installation with org_id and installed_by_user_id
  *   - Create connection record
- *   - Redirect to platform settings
+ *   - Redirect to platform
  *
  * Slack flow (no orgId in state):
  *   - Upsert installation with org_id = NULL
- *   - Redirect to "workspace installed, ask admin to connect" page
+ *   - Redirect to "workspace installed" page
  *
  * Re-install (installation exists with org_id):
  *   - Preserve org_id and installed_by_user_id
  *   - Update bot token only
+ *
+ * Note: User-level connect is handled by /api/slack/org/connect (cookie-based).
  */
 export async function GET(request: Request) {
   initServices();
@@ -157,7 +159,7 @@ export async function GET(request: Request) {
     });
   }
 
-  // Platform flow: verify admin and create connection
+  // Platform install flow: verify admin and create connection
   if (state.orgId && state.vm0UserId) {
     // Verify user is org admin
     const member = await requireOrgMember(state.orgId, state.vm0UserId);

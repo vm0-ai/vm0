@@ -110,6 +110,7 @@ export async function handleOrgMention(
     return;
   }
   const agentName = agent.name;
+  const agentLabel = agent.displayName ?? agent.name;
 
   // 4. Show thinking indicator
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -206,7 +207,7 @@ export async function handleOrgMention(
       text: errorText,
       blocks: buildAgentResponseMessage(
         errorText,
-        agentName,
+        agentLabel,
         logsUrl,
         deepLinks,
       ),

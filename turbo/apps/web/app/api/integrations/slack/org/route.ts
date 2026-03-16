@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   extractAndGroupVariables,
   getConnectorProvidedSecretNames,
@@ -11,6 +11,7 @@ import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
+import { slackOrgPendingQuestions } from "../../../../../src/db/schema/slack-org-pending-question";
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
@@ -24,7 +25,10 @@ import { listVariables } from "../../../../../src/lib/variable/variable-service"
 import { listConnectors } from "../../../../../src/lib/connector/connector-service";
 import { removePermission } from "../../../../../src/lib/agent/permission-service";
 import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
-import { createSlackClient } from "../../../../../src/lib/slack";
+import {
+  createSlackClient,
+  getSlackRedirectBaseUrl,
+} from "../../../../../src/lib/slack";
 import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
@@ -68,9 +72,43 @@ export async function GET(request: Request) {
     .limit(1);
 
   if (!connection) {
+    // Check if a workspace is installed for this org
+    const [installation] = await db
+      .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.orgId, org.orgId))
+      .limit(1);
+
+    const isAdmin = member.role === "admin";
+    const { SLACK_CLIENT_ID } = env();
+    const baseUrl = SLACK_CLIENT_ID
+      ? getSlackRedirectBaseUrl(request.url)
+      : null;
+
+    // Build install URL for admins when no workspace is installed
+    let installUrl: string | null = null;
+    if (isAdmin && !installation && baseUrl) {
+      const url = new URL(`${baseUrl}/api/slack/org/oauth/install`);
+      url.searchParams.set("orgId", org.orgId);
+      url.searchParams.set("vm0UserId", userId);
+      installUrl = url.toString();
+    }
+
+    // Build connect URL when workspace is installed but user not connected
+    let connectUrl: string | null = null;
+    if (installation && baseUrl) {
+      const url = new URL(`${baseUrl}/api/slack/org/oauth/connect`);
+      url.searchParams.set("orgId", org.orgId);
+      url.searchParams.set("vm0UserId", userId);
+      connectUrl = url.toString();
+    }
+
     return NextResponse.json({
       isConnected: false,
-      isAdmin: member.role === "admin",
+      isInstalled: !!installation,
+      isAdmin,
+      installUrl,
+      connectUrl,
     });
   }
 
@@ -94,7 +132,7 @@ export async function GET(request: Request) {
 
   if (composeId) {
     const agent = await getWorkspaceAgent(composeId);
-    defaultAgentName = agent?.name ?? null;
+    defaultAgentName = agent?.displayName ?? agent?.name ?? null;
 
     // Get agent compose details for org slug and environment info
     const [compose] = await db
@@ -167,8 +205,8 @@ export async function GET(request: Request) {
 /**
  * DELETE /api/integrations/slack/org
  *
- * Disconnects the authenticated user's org-aware Slack connection.
- * Deletes the connection record, revokes agent permission, and refreshes App Home.
+ * ?action=uninstall — Admin-only: removes the workspace installation and all connections.
+ * (default)         — Disconnects the authenticated user's connection.
  */
 export async function DELETE(request: Request) {
   initServices();
@@ -182,6 +220,85 @@ export async function DELETE(request: Request) {
     );
   }
 
+  const url = new URL(request.url);
+  const action = url.searchParams.get("action");
+
+  if (action === "uninstall") {
+    return handleUninstall(authCtx);
+  }
+  return handleDisconnect(authCtx);
+}
+
+async function handleUninstall(authCtx: { userId: string; orgId?: string }) {
+  const { userId, orgId: tokenOrgId } = authCtx;
+  const { org, member } = await resolveOrg(userId, null, null, tokenOrgId);
+
+  if (member.role !== "admin") {
+    return NextResponse.json(
+      { error: { message: "Admin access required", code: "FORBIDDEN" } },
+      { status: 403 },
+    );
+  }
+
+  const db = globalThis.services.db;
+
+  const [installation] = await db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, org.orgId))
+    .limit(1);
+
+  if (!installation) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "No Slack installation found",
+          code: "NOT_FOUND",
+        },
+      },
+      { status: 404 },
+    );
+  }
+
+  // Delete pending questions for connections in this workspace
+  const connections = await db
+    .select({ id: slackOrgConnections.id })
+    .from(slackOrgConnections)
+    .where(
+      eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
+    );
+
+  if (connections.length > 0) {
+    const connectionIds = connections.map((c) => c.id);
+    await db
+      .delete(slackOrgPendingQuestions)
+      .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
+  }
+
+  // Delete all connections (cascades to thread sessions)
+  await db
+    .delete(slackOrgConnections)
+    .where(
+      eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
+    );
+
+  // Delete the installation
+  await db
+    .delete(slackOrgInstallations)
+    .where(
+      eq(slackOrgInstallations.slackWorkspaceId, installation.slackWorkspaceId),
+    );
+
+  log.info("Slack workspace uninstalled", {
+    workspaceId: installation.slackWorkspaceId,
+    orgId: org.orgId,
+    uninstalledBy: authCtx.userId,
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
+async function handleDisconnect(authCtx: { userId: string; orgId?: string }) {
   const { userId, orgId: tokenOrgId } = authCtx;
   const { org } = await resolveOrg(userId, null, null, tokenOrgId);
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -206,7 +323,7 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Revoke agent permission (best-effort: failure must not block disconnect)
+  // Revoke agent permission (best-effort)
   const composeId = await resolveDefaultComposeId(org.orgId);
   if (composeId) {
     const email = await getUserEmail(userId);
@@ -222,7 +339,7 @@ export async function DELETE(request: Request) {
     .delete(slackOrgConnections)
     .where(eq(slackOrgConnections.id, connection.id));
 
-  // Refresh App Home to reflect disconnected state (best-effort: failure must not block disconnect)
+  // Refresh App Home (best-effort)
   const [installation] = await db
     .select()
     .from(slackOrgInstallations)

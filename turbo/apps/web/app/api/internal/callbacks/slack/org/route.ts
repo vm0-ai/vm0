@@ -25,6 +25,7 @@ import {
 import {
   saveThreadSession,
   buildLogsUrl,
+  getWorkspaceAgent,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
 import { getPlatformUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
@@ -292,6 +293,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Resolve session before posting interactive card
   const resolvedSessionId = await saveOrgThreadSession(payload, runId, status);
 
+  // Resolve display name for user-visible blocks
+  const agentInfo = await getWorkspaceAgent(payload.composeId);
+  const agentLabel = agentInfo?.displayName ?? payload.agentName;
+
   // Post text response
   if (responseText) {
     const logsUrl = buildLogsUrl(runId, payload.agentName);
@@ -304,7 +309,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(
         responseText,
-        payload.agentName,
+        agentLabel,
         logsUrl,
         deepLinks,
       ),

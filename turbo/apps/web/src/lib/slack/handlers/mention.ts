@@ -121,6 +121,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     return;
   }
   const agentName = defaultAgent.name;
+  const agentLabel = defaultAgent.displayName ?? defaultAgent.name;
 
   // 5. Show assistant thinking status
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -219,7 +220,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
       threadTs,
       blocks: buildAgentResponseMessage(
         errorText,
-        agentName,
+        agentLabel,
         logsUrl,
         deepLinks,
       ),

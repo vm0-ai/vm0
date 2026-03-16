@@ -4,6 +4,7 @@ import { slackOrgInstallations } from "../../../db/schema/slack-org-installation
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
 import { getPlatformUrl } from "../../url";
+import { getSlackRedirectBaseUrl } from "../../slack";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
 import { ensureStorageExists } from "../../storage/storage-service";
 
@@ -185,13 +186,13 @@ export function buildOrgConnectUrl(
   slackUserId: string,
   channelId: string,
 ): string {
-  const baseUrl = getPlatformUrl();
+  const baseUrl = getSlackRedirectBaseUrl();
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
     c: channelId,
   });
-  return `${baseUrl}/integrations/slack/org/connect?${params.toString()}`;
+  return `${baseUrl}/api/slack/org/connect?${params.toString()}`;
 }
 
 /**

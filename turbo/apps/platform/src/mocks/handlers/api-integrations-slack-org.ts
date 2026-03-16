@@ -9,8 +9,11 @@ import { http, HttpResponse } from "msw";
 
 interface MockSlackOrgData {
   isConnected: boolean;
+  isInstalled: boolean;
   workspaceName: string | null;
   isAdmin: boolean;
+  installUrl?: string | null;
+  connectUrl?: string | null;
   defaultAgentName: string | null;
   agentOrgSlug: string | null;
   environment: {
@@ -23,6 +26,7 @@ interface MockSlackOrgData {
 
 let mockSlackOrgData: MockSlackOrgData = {
   isConnected: true,
+  isInstalled: true,
   workspaceName: "Test Org Workspace",
   isAdmin: true,
   defaultAgentName: "default-agent",
@@ -38,6 +42,7 @@ let mockSlackOrgData: MockSlackOrgData = {
 export function resetMockSlackOrgIntegration(): void {
   mockSlackOrgData = {
     isConnected: true,
+    isInstalled: true,
     workspaceName: "Test Org Workspace",
     isAdmin: true,
     defaultAgentName: "default-agent",

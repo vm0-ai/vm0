@@ -4,8 +4,11 @@ import { fetch$ } from "../fetch.ts";
 
 interface SlackOrgData {
   isConnected: boolean;
+  isInstalled?: boolean;
   workspaceName: string | null;
   isAdmin: boolean;
+  installUrl?: string | null;
+  connectUrl?: string | null;
   defaultAgentName: string | null;
   agentOrgSlug: string | null;
   environment: {
@@ -29,7 +32,6 @@ const slackOrgState$ = state<SlackOrgState>({
 });
 
 export const slackOrgData$ = computed((get) => get(slackOrgState$).data);
-export const slackOrgLoading$ = computed((get) => get(slackOrgState$).loading);
 
 const fetchSlackOrg$ = command(async ({ get, set }) => {
   set(slackOrgState$, (prev) => ({
@@ -62,20 +64,6 @@ const fetchSlackOrg$ = command(async ({ get, set }) => {
   });
 });
 
-const slackOrgDisconnectDialogState$ = state(false);
-
-export const slackOrgDisconnectDialogOpen$ = computed((get) =>
-  get(slackOrgDisconnectDialogState$),
-);
-
-export const openSlackOrgDisconnectDialog$ = command(({ set }) => {
-  set(slackOrgDisconnectDialogState$, true);
-});
-
-export const closeSlackOrgDisconnectDialog$ = command(({ set }) => {
-  set(slackOrgDisconnectDialogState$, false);
-});
-
 export const disconnectSlackOrg$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn("/api/integrations/slack/org", {
@@ -87,7 +75,22 @@ export const disconnectSlackOrg$ = command(async ({ get, set }) => {
     return;
   }
 
-  // Re-fetch to get updated state
+  await set(fetchSlackOrg$);
+});
+
+export const uninstallSlackOrg$ = command(async ({ get, set }) => {
+  const fetchFn = get(fetch$);
+  const response = await fetchFn(
+    "/api/integrations/slack/org?action=uninstall",
+    { method: "DELETE" },
+  );
+
+  if (!response.ok) {
+    toast.error("Failed to uninstall Slack");
+    return;
+  }
+
+  toast.success("Slack workspace uninstalled");
   await set(fetchSlackOrg$);
 });
 

@@ -112,6 +112,7 @@ export async function handleOrgDirectMessage(
     return;
   }
   const agentName = agent.name;
+  const agentLabel = agent.displayName ?? agent.name;
 
   // 4. Show thinking indicator
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -203,7 +204,7 @@ export async function handleOrgDirectMessage(
       threadTs,
       blocks: buildAgentResponseMessage(
         errorText,
-        agentName,
+        agentLabel,
         logsUrl,
         deepLinks,
       ),

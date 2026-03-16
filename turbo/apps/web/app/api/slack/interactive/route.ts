@@ -22,6 +22,7 @@ import {
 import type { AskUserQuestion } from "../../../../src/lib/slack";
 import { runAgentForSlack } from "../../../../src/lib/slack/handlers/run-agent";
 import type { SlackCallbackContext } from "../../../../src/lib/slack/handlers/run-agent";
+import { getWorkspaceAgent } from "../../../../src/lib/slack/handlers/shared";
 import { logger } from "../../../../src/lib/logger";
 
 const askUserQuestionSchema = z.array(
@@ -540,12 +541,16 @@ async function finishSubmit(
   );
   const client = createSlackClient(botToken);
 
+  // Resolve display name for user-visible blocks
+  const agentInfo = await getWorkspaceAgent(claimed.composeId);
+  const agentLabel = agentInfo?.displayName ?? claimed.agentName;
+
   // Replace interactive card with answered summary
   if (claimed.slackMessageTs) {
     const answeredBlocks = buildAskUserAnsweredBlocks(
       questions,
       answers,
-      claimed.agentName,
+      agentLabel,
     );
     await updateMessage(
       client,

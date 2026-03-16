@@ -9,7 +9,11 @@ import {
   type SlackFile,
 } from "../context";
 import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
-import { agentComposes } from "../../../db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../db/schema/agent-compose";
+import type { AgentComposeYaml } from "../../../types/agent-compose";
 import { getPlatformUrl } from "../../url";
 import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../run";
@@ -220,17 +224,45 @@ export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
 }
 
 /**
- * Resolve workspace agent name from composeId
+ * Resolve workspace agent from composeId.
+ * Returns id, name, and displayName (extracted from compose version metadata).
  */
 export async function getWorkspaceAgent(
   composeId: string,
-): Promise<{ id: string; name: string } | undefined> {
-  const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id, name: agentComposes.name })
+): Promise<
+  { id: string; name: string; displayName: string | null } | undefined
+> {
+  const db = globalThis.services.db;
+  const [compose] = await db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      headVersionId: agentComposes.headVersionId,
+    })
     .from(agentComposes)
     .where(eq(agentComposes.id, composeId))
     .limit(1);
-  return compose ?? undefined;
+
+  if (!compose) return undefined;
+
+  let displayName: string | null = null;
+  if (compose.headVersionId) {
+    const [version] = await db
+      .select({ content: agentComposeVersions.content })
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, compose.headVersionId))
+      .limit(1);
+
+    if (version) {
+      const content = version.content as AgentComposeYaml;
+      const agentKey = Object.keys(content.agents ?? {})[0];
+      if (agentKey) {
+        displayName = content.agents[agentKey]?.metadata?.displayName ?? null;
+      }
+    }
+  }
+
+  return { id: compose.id, name: compose.name, displayName };
 }
 
 /**
@@ -241,7 +273,10 @@ export async function getWorkspaceAgent(
 export async function resolveSessionCompose(
   sessionId: string,
   userId: string,
-): Promise<{ composeId: string; agentName: string } | undefined> {
+): Promise<
+  | { composeId: string; agentName: string; agentDisplayName: string | null }
+  | undefined
+> {
   try {
     const sessionData = await validateAgentSession(sessionId, userId);
     const agent = await getWorkspaceAgent(sessionData.agentComposeId);
@@ -249,6 +284,7 @@ export async function resolveSessionCompose(
       return {
         composeId: sessionData.agentComposeId,
         agentName: agent.name,
+        agentDisplayName: agent.displayName,
       };
     }
   } catch (error) {
