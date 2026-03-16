@@ -125,7 +125,7 @@ describe("sandbox-token", () => {
 
   describe("capabilities", () => {
     it("should include capabilities in verified token", async () => {
-      const capabilities = ["volume:read", "artifact:write"];
+      const capabilities = ["volume:read", "artifact:write"] as const;
       const token = await generateSandboxToken(
         "user-123",
         "run-456",
@@ -164,7 +164,7 @@ describe("sandbox-token", () => {
         "artifact:write",
         "memory:read",
         "memory:write",
-      ];
+      ] as const;
       const token = await generateSandboxToken(
         "user-123",
         "run-456",

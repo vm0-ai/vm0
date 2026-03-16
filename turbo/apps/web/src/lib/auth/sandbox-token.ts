@@ -1,6 +1,9 @@
 import { createHmac, hkdfSync } from "crypto";
+import type { VALID_CAPABILITIES } from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../logger";
+
+type Capability = (typeof VALID_CAPABILITIES)[number];
 
 const log = logger("auth:sandbox");
 
@@ -11,7 +14,7 @@ interface SandboxTokenPayload {
   userId: string;
   runId: string;
   scope: "sandbox";
-  capabilities?: string[];
+  capabilities?: readonly Capability[];
   iat: number;
   exp: number;
 }
@@ -33,7 +36,7 @@ interface ComposeJobTokenPayload {
 export interface SandboxAuth {
   userId: string;
   runId: string;
-  capabilities?: string[];
+  capabilities?: readonly Capability[];
 }
 
 /**
@@ -152,7 +155,7 @@ function verifyJwt(token: string): SandboxTokenPayload | null {
 export async function generateSandboxToken(
   userId: string,
   runId: string,
-  capabilities?: string[],
+  capabilities?: readonly Capability[],
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiresIn = 2 * 60 * 60; // 2 hours in seconds
