@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.114.0](https://github.com/vm0-ai/vm0/compare/platform-v0.113.2...platform-v0.114.0) (2026-03-16)
+
+
+### Features
+
+* configurable send mode preference (enter vs cmd+enter) ([#4953](https://github.com/vm0-ai/vm0/issues/4953)) ([d8a43b8](https://github.com/vm0-ai/vm0/commit/d8a43b846595cf4beec259e50400e3d3ccd04a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.71.0
+
 ## [0.113.2](https://github.com/vm0-ai/vm0/compare/platform-v0.113.1...platform-v0.113.2) (2026-03-16)
 
 

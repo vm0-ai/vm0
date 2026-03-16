@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.116.0](https://github.com/vm0-ai/vm0/compare/web-v12.115.0...web-v12.116.0) (2026-03-16)
+
+
+### Features
+
+* configurable send mode preference (enter vs cmd+enter) ([#4953](https://github.com/vm0-ai/vm0/issues/4953)) ([d8a43b8](https://github.com/vm0-ai/vm0/commit/d8a43b846595cf4beec259e50400e3d3ccd04a62))
+* **firewall:** support github-hosted yaml firewall configs ([#4940](https://github.com/vm0-ai/vm0/issues/4940)) ([8f75e89](https://github.com/vm0-ai/vm0/commit/8f75e89c1d786242c4ce39880f032ccf9d118ef4)), closes [#4853](https://github.com/vm0-ai/vm0/issues/4853)
+
+
+### Bug Fixes
+
+* **slack:** remove documentation links from app home and help message ([#4958](https://github.com/vm0-ai/vm0/issues/4958)) ([471b148](https://github.com/vm0-ai/vm0/commit/471b14887813a2cd0b6c095f420b512827be9557))
+
+
+### Refactoring
+
+* merge volume/artifact/memory capabilities into storage:read and storage:write ([#4959](https://github.com/vm0-ai/vm0/issues/4959)) ([cc0c3b4](https://github.com/vm0-ai/vm0/commit/cc0c3b40c3c6a5a8a6167a46531fb1db16191341)), closes [#4956](https://github.com/vm0-ai/vm0/issues/4956)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.71.0
+
 ## [12.115.0](https://github.com/vm0-ai/vm0/compare/web-v12.114.2...web-v12.115.0) (2026-03-16)
 
 

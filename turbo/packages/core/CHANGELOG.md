@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.71.0](https://github.com/vm0-ai/vm0/compare/core-v8.70.0...core-v8.71.0) (2026-03-16)
+
+
+### Features
+
+* configurable send mode preference (enter vs cmd+enter) ([#4953](https://github.com/vm0-ai/vm0/issues/4953)) ([d8a43b8](https://github.com/vm0-ai/vm0/commit/d8a43b846595cf4beec259e50400e3d3ccd04a62))
+* **firewall:** support github-hosted yaml firewall configs ([#4940](https://github.com/vm0-ai/vm0/issues/4940)) ([8f75e89](https://github.com/vm0-ai/vm0/commit/8f75e89c1d786242c4ce39880f032ccf9d118ef4)), closes [#4853](https://github.com/vm0-ai/vm0/issues/4853)
+
+
+### Refactoring
+
+* merge volume/artifact/memory capabilities into storage:read and storage:write ([#4959](https://github.com/vm0-ai/vm0/issues/4959)) ([cc0c3b4](https://github.com/vm0-ai/vm0/commit/cc0c3b40c3c6a5a8a6167a46531fb1db16191341)), closes [#4956](https://github.com/vm0-ai/vm0/issues/4956)
+
 ## [8.70.0](https://github.com/vm0-ai/vm0/compare/core-v8.69.1...core-v8.70.0) (2026-03-16)
 
 
