@@ -65,7 +65,9 @@ const router = tsr.router(composesListContract, {
   list: async ({ query, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: "agent:read",
+    });
     if (!authCtx) {
       return {
         status: 401 as const,

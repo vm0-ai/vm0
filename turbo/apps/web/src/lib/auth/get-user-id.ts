@@ -23,11 +23,15 @@ export type AuthContext = {
  * Returns null if not authenticated.
  *
  * By default, sandbox JWT tokens are rejected. Pass `options.requiredCapability`
- * to accept sandbox tokens that include the specified capability.
+ * to accept sandbox tokens that include the specified capability, or
+ * `options.acceptAnySandboxCapability` to accept tokens with any capability.
  */
 export async function getAuthContext(
   authHeader?: string,
-  options?: { requiredCapability?: Capability },
+  options?: {
+    requiredCapability?: Capability;
+    acceptAnySandboxCapability?: boolean;
+  },
 ): Promise<AuthContext | null> {
   // Session auth via Clerk
   const { userId } = await auth();
@@ -42,19 +46,33 @@ export async function getAuthContext(
   const token = authHeader.substring(7); // Remove "Bearer "
 
   if (isSandboxToken(token)) {
-    // Without requiredCapability, reject sandbox tokens (existing behavior)
-    if (!options?.requiredCapability) {
+    // Without any sandbox opt-in, reject sandbox tokens (existing behavior)
+    if (!options?.requiredCapability && !options?.acceptAnySandboxCapability) {
       log.debug("Rejected sandbox JWT token on normal API endpoint");
       return null;
     }
 
-    // With requiredCapability, verify sandbox token and check capability
+    // Verify sandbox token signature and expiry
     const sandboxAuth = verifySandboxToken(token);
     if (!sandboxAuth) {
       log.debug("Invalid or expired sandbox token");
       return null;
     }
 
+    // acceptAnySandboxCapability: accept if token has any capability
+    if (options?.acceptAnySandboxCapability) {
+      if (!sandboxAuth.capabilities || sandboxAuth.capabilities.length === 0) {
+        log.debug("Sandbox token has no capabilities");
+        return null;
+      }
+      return {
+        userId: sandboxAuth.userId,
+        runId: sandboxAuth.runId,
+        capabilities: [...sandboxAuth.capabilities],
+      };
+    }
+
+    // requiredCapability: check specific capability
     const hasCap = sandboxAuth.capabilities?.some(
       (cap) => cap === options.requiredCapability,
     );
@@ -107,7 +125,10 @@ export async function getAuthContext(
  */
 export async function getUserId(
   authHeader?: string,
-  options?: { requiredCapability?: Capability },
+  options?: {
+    requiredCapability?: Capability;
+    acceptAnySandboxCapability?: boolean;
+  },
 ): Promise<string | null> {
   const ctx = await getAuthContext(authHeader, options);
   return ctx?.userId ?? null;

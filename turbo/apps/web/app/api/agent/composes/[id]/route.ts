@@ -25,7 +25,9 @@ const router = tsr.router(composesByIdContract, {
   getById: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
+    const userId = await getUserId(headers.authorization, {
+      requiredCapability: "agent:read",
+    });
     if (!userId) {
       return {
         status: 401 as const,
@@ -93,7 +95,9 @@ const router = tsr.router(composesByIdContract, {
     initServices();
 
     // 1. Authenticate
-    const userId = await getUserId(headers.authorization);
+    const userId = await getUserId(headers.authorization, {
+      requiredCapability: "agent:write",
+    });
     if (!userId) {
       return {
         status: 401 as const,

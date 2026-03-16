@@ -115,3 +115,65 @@ describe("getAuthContext with requiredCapability", () => {
     expect(result?.capabilities).toBeUndefined();
   });
 });
+
+describe("getAuthContext with acceptAnySandboxCapability", () => {
+  const mockAuth = vi.mocked(auth);
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({
+      userId: null,
+    } as Awaited<ReturnType<typeof auth>>);
+  });
+
+  it("should accept sandbox token with any capability", async () => {
+    const token = await generateSandboxToken("user-123", "run-456", [
+      "agent:read",
+    ]);
+    const result = await getAuthContext(`Bearer ${token}`, {
+      acceptAnySandboxCapability: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("user-123");
+    expect(result?.runId).toBe("run-456");
+    expect(result?.capabilities).toContain("agent:read");
+  });
+
+  it("should accept sandbox token with multiple capabilities", async () => {
+    const token = await generateSandboxToken("user-123", "run-456", [
+      "volume:read",
+      "agent:write",
+    ]);
+    const result = await getAuthContext(`Bearer ${token}`, {
+      acceptAnySandboxCapability: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("user-123");
+    expect(result?.capabilities).toContain("volume:read");
+    expect(result?.capabilities).toContain("agent:write");
+  });
+
+  it("should reject sandbox token with no capabilities", async () => {
+    const token = await generateSandboxToken("user-123", "run-456");
+    const result = await getAuthContext(`Bearer ${token}`, {
+      acceptAnySandboxCapability: true,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("should return Clerk session auth regardless of acceptAnySandboxCapability", async () => {
+    mockAuth.mockResolvedValue({
+      userId: "clerk-user",
+    } as Awaited<ReturnType<typeof auth>>);
+
+    const result = await getAuthContext(undefined, {
+      acceptAnySandboxCapability: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("clerk-user");
+    expect(result?.capabilities).toBeUndefined();
+  });
+});
