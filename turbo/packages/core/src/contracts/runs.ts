@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { orgTierSchema } from "./orgs";
 
 const c = initContract();
 
@@ -557,6 +558,60 @@ export const logsSearchContract = c.router({
 
 export type LogsSearchContract = typeof logsSearchContract;
 
+/**
+ * Queue entry schema — runId only present for own runs
+ */
+const queueEntrySchema = z.object({
+  position: z.number(),
+  agentName: z.string(),
+  userEmail: z.string(),
+  createdAt: z.string(),
+  isOwner: z.boolean(),
+  runId: z.string().nullable(),
+});
+
+/**
+ * Concurrency info schema
+ */
+const concurrencyInfoSchema = z.object({
+  tier: orgTierSchema,
+  limit: z.number(),
+  active: z.number(),
+  available: z.number(),
+});
+
+/**
+ * Queue response schema
+ */
+const queueResponseSchema = z.object({
+  concurrency: concurrencyInfoSchema,
+  queue: z.array(queueEntrySchema),
+});
+
+/**
+ * Runs queue route contract (/api/agent/runs/queue)
+ * Returns org-wide queue status with concurrency context
+ */
+export const runsQueueContract = c.router({
+  /**
+   * GET /api/agent/runs/queue
+   * Get org run queue status including concurrency context and queued entries
+   */
+  getQueue: {
+    method: "GET",
+    path: "/api/agent/runs/queue",
+    headers: authHeadersSchema,
+    responses: {
+      200: queueResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Get org run queue status",
+  },
+});
+
+export type RunsQueueContract = typeof runsQueueContract;
+
 // Export schemas for reuse
 export {
   runStatusSchema,
@@ -579,6 +634,9 @@ export {
   networkLogsResponseSchema,
   searchResultSchema,
   logsSearchResponseSchema,
+  queueEntrySchema,
+  concurrencyInfoSchema,
+  queueResponseSchema,
 };
 
 // Export inferred types for consumers
@@ -601,3 +659,6 @@ export type NetworkLogEntry = z.infer<typeof networkLogEntrySchema>;
 export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type LogsSearchResponse = z.infer<typeof logsSearchResponseSchema>;
+export type QueueEntry = z.infer<typeof queueEntrySchema>;
+export type ConcurrencyInfo = z.infer<typeof concurrencyInfoSchema>;
+export type QueueResponse = z.infer<typeof queueResponseSchema>;

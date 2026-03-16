@@ -103,6 +103,14 @@ export {
   type NetworkLogsResponse,
   type SearchResult,
   type LogsSearchResponse,
+  runsQueueContract,
+  queueEntrySchema,
+  concurrencyInfoSchema,
+  queueResponseSchema,
+  type RunsQueueContract,
+  type QueueEntry,
+  type ConcurrencyInfo,
+  type QueueResponse,
 } from "./runs";
 export {
   storagesContract,
