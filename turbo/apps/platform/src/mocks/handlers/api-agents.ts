@@ -8,6 +8,22 @@
 import { http, HttpResponse } from "msw";
 
 export const apiAgentsHandlers = [
+  // GET /api/platform/team
+  http.get("/api/platform/team", () => {
+    return HttpResponse.json({
+      composes: [
+        {
+          id: "mock-compose-id",
+          name: "zero",
+          displayName: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+          isOwner: true,
+        },
+      ],
+    });
+  }),
+
   // GET /api/agent/composes/list
   http.get("/api/agent/composes/list", () => {
     return HttpResponse.json({
