@@ -343,6 +343,7 @@ export const composesVersionsContract = c.router({
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Resolve version specifier to full version ID",

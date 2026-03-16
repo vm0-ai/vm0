@@ -9,24 +9,21 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
 import { eq, and, like } from "drizzle-orm";
 
 const router = tsr.router(composesVersionsContract, {
   resolveVersion: async ({ query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "agent:read",
     });
-    if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
     const { composeId, version } = query;
 

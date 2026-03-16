@@ -108,7 +108,9 @@ describe("Storage capability enforcement", () => {
         ),
       );
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
+      const body = await response.json();
+      expect(body.error.code).toBe("FORBIDDEN");
     });
 
     it("should reject sandbox token with no capabilities", async () => {
@@ -122,7 +124,9 @@ describe("Storage capability enforcement", () => {
         ),
       );
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
+      const body = await response.json();
+      expect(body.error.code).toBe("FORBIDDEN");
     });
   });
 
@@ -170,7 +174,9 @@ describe("Storage capability enforcement", () => {
         }),
       );
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
+      const body = await response.json();
+      expect(body.error.code).toBe("FORBIDDEN");
     });
   });
 
