@@ -202,7 +202,7 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
     // Build and send checkpoint payload
     let mut payload = json!({
         "runId": env::run_id(),
-        "cliAgentType": env::cli_agent_type(),
+        "cliAgentType": "claude-code",
         "cliAgentSessionId": session_id,
         "cliAgentSessionHistory": session_history,
     });

@@ -58,7 +58,7 @@ pub async fn execute_cli(
     masker: &SecretMasker,
     mut heartbeat_handle: tokio::task::JoinHandle<Result<(), AgentError>>,
 ) -> Result<(i32, Vec<String>), AgentError> {
-    log_info!(LOG_TAG, "Starting {} execution...", env::cli_agent_type());
+    log_info!(LOG_TAG, "Starting claude-code execution...");
 
     let cmd = build_cli_command()?;
     let (bin, args) = cmd

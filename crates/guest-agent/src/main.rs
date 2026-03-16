@@ -192,7 +192,7 @@ async fn execute(
 
     // Checkpoint on success (skip when no API — local/test mode)
     if cli_exit_code == 0 && exit_code == 0 && env::has_api() {
-        log_info!(LOG_TAG, "{} completed successfully", env::cli_agent_type());
+        log_info!(LOG_TAG, "claude-code completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
@@ -217,13 +217,9 @@ async fn execute(
             }
         }
     } else if cli_exit_code == 0 && exit_code == 0 {
-        log_info!(LOG_TAG, "{} completed successfully", env::cli_agent_type());
+        log_info!(LOG_TAG, "claude-code completed successfully");
     } else if cli_exit_code != 0 {
-        log_info!(
-            LOG_TAG,
-            "{} failed with exit code {cli_exit_code}",
-            env::cli_agent_type()
-        );
+        log_info!(LOG_TAG, "claude-code failed with exit code {cli_exit_code}");
     }
 
     exit_code
