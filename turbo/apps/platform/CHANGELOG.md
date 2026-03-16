@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.110.0](https://github.com/vm0-ai/vm0/compare/platform-v0.109.5...platform-v0.110.0) (2026-03-16)
+
+
+### Features
+
+* **platform:** zero app v4 ui overhaul ([#4820](https://github.com/vm0-ai/vm0/issues/4820)) ([f219ec6](https://github.com/vm0-ai/vm0/commit/f219ec6d4a664ffef660e060647d1e577bd5212a))
+
 ## [0.109.5](https://github.com/vm0-ai/vm0/compare/platform-v0.109.4...platform-v0.109.5) (2026-03-15)
 
 

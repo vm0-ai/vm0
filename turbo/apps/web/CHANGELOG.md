@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.111.2](https://github.com/vm0-ai/vm0/compare/web-v12.111.1...web-v12.111.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* dispatch callbacks on timeout and cancel to prevent loop schedule stall ([#4851](https://github.com/vm0-ai/vm0/issues/4851)) ([9cc6cc2](https://github.com/vm0-ai/vm0/commit/9cc6cc21e146559959c56f905c5d8f84dfefc776))
+
 ## [12.111.1](https://github.com/vm0-ai/vm0/compare/web-v12.111.0...web-v12.111.1) (2026-03-15)
 
 
