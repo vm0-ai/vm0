@@ -6,9 +6,15 @@ import {
 import { storagesDownloadContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
+import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  storageCapability,
+  isSandboxAuth,
+} from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/storage/version-resolver";
@@ -20,8 +26,13 @@ const router = tsr.router(storagesDownloadContract, {
   download: async ({ query, headers }, { request }) => {
     initServices();
 
-    // Authenticate user
-    const authCtx = await getAuthContext(headers.authorization);
+    const { name: storageName, type: storageType, version: versionId } = query;
+    const capability = storageCapability(storageType, "read");
+
+    // Authenticate user (sandbox tokens accepted if they have the required capability)
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: capability,
+    });
     if (!authCtx) {
       return {
         status: 401 as const,
@@ -32,11 +43,30 @@ const router = tsr.router(storagesDownloadContract, {
     }
     const { userId } = authCtx;
 
-    // Resolve user's default org
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: runtimeOrg } = await resolveOrg(userId, orgSlug);
-
-    const { name: storageName, type: storageType, version: versionId } = query;
+    // Resolve org: sandbox tokens use the run's org; CLI/session use resolveOrg
+    let runtimeOrg: { orgId: string; slug: string };
+    if (isSandboxAuth(authCtx)) {
+      const [run] = await globalThis.services.db
+        .select({ orgId: agentRuns.orgId })
+        .from(agentRuns)
+        .where(
+          and(eq(agentRuns.id, authCtx.runId!), eq(agentRuns.userId, userId)),
+        )
+        .limit(1);
+      if (!run) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent run not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      runtimeOrg = await getOrgData(run.orgId);
+    } else {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org } = await resolveOrg(userId, orgSlug);
+      runtimeOrg = org;
+    }
 
     log.debug(
       `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for org ${runtimeOrg.slug}`,

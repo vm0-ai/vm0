@@ -9,7 +9,12 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  storageCapability,
+  isSandboxAuth,
+} from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,
@@ -24,8 +29,14 @@ const router = tsr.router(storagesCommitContract, {
   commit: async ({ body, headers }, { request }) => {
     initServices();
 
-    // Authenticate user
-    const authCtx = await getAuthContext(headers.authorization);
+    const { storageName, storageType, versionId, files, runId, message } = body;
+
+    const capability = storageCapability(storageType, "write");
+
+    // Authenticate user (sandbox tokens accepted if they have the required capability)
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: capability,
+    });
     if (!authCtx) {
       return {
         status: 401 as const,
@@ -36,24 +47,21 @@ const router = tsr.router(storagesCommitContract, {
     }
     const { userId } = authCtx;
 
-    // Resolve user's default org
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: runtimeOrg } = await resolveOrg(userId, orgSlug);
-
-    const { storageName, storageType, versionId, files, runId, message } = body;
-
     log.debug(
       `Committing version ${versionId} for "${storageName}" (type: ${storageType}), ${files.length} files`,
     );
 
-    // If runId provided, verify it belongs to the user (sandbox auth)
-    if (runId) {
+    // Resolve org: sandbox tokens use the run's org; CLI/session use resolveOrg
+    let runtimeOrg: { orgId: string; slug: string };
+    if (isSandboxAuth(authCtx)) {
+      // Sandbox: run lookup also verifies ownership (runId + userId from signed JWT)
       const [run] = await globalThis.services.db
-        .select()
+        .select({ orgId: agentRuns.orgId })
         .from(agentRuns)
-        .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
+        .where(
+          and(eq(agentRuns.id, authCtx.runId!), eq(agentRuns.userId, userId)),
+        )
         .limit(1);
-
       if (!run) {
         return {
           status: 404 as const,
@@ -61,6 +69,28 @@ const router = tsr.router(storagesCommitContract, {
             error: { message: "Agent run not found", code: "NOT_FOUND" },
           },
         };
+      }
+      runtimeOrg = await getOrgData(run.orgId);
+    } else {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org } = await resolveOrg(userId, orgSlug);
+      runtimeOrg = org;
+
+      // For CLI tokens, verify body.runId belongs to the user if provided
+      if (runId) {
+        const [run] = await globalThis.services.db
+          .select({ id: agentRuns.id })
+          .from(agentRuns)
+          .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
+          .limit(1);
+        if (!run) {
+          return {
+            status: 404 as const,
+            body: {
+              error: { message: "Agent run not found", code: "NOT_FOUND" },
+            },
+          };
+        }
       }
     }
 

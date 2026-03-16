@@ -6,9 +6,15 @@ import {
 import { storagesListContract, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { storages } from "../../../../src/db/schema/storage";
+import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq, and, desc } from "drizzle-orm";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  storageCapability,
+  isSandboxAuth,
+} from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:list");
@@ -17,8 +23,13 @@ const router = tsr.router(storagesListContract, {
   list: async ({ query, headers }, { request }) => {
     initServices();
 
-    // Authenticate user
-    const authCtx = await getAuthContext(headers.authorization);
+    const { type: storageType } = query;
+    const capability = storageCapability(storageType, "read");
+
+    // Authenticate user (sandbox tokens accepted if they have the required capability)
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: capability,
+    });
     if (!authCtx) {
       return {
         status: 401 as const,
@@ -29,11 +40,30 @@ const router = tsr.router(storagesListContract, {
     }
     const { userId } = authCtx;
 
-    const { type: storageType } = query;
-
-    // Resolve user's default org
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: runtimeOrg } = await resolveOrg(userId, orgSlug);
+    // Resolve org: sandbox tokens use the run's org; CLI/session use resolveOrg
+    let runtimeOrg: { orgId: string; slug: string };
+    if (isSandboxAuth(authCtx)) {
+      const [run] = await globalThis.services.db
+        .select({ orgId: agentRuns.orgId })
+        .from(agentRuns)
+        .where(
+          and(eq(agentRuns.id, authCtx.runId!), eq(agentRuns.userId, userId)),
+        )
+        .limit(1);
+      if (!run) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent run not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      runtimeOrg = await getOrgData(run.orgId);
+    } else {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org } = await resolveOrg(userId, orgSlug);
+      runtimeOrg = org;
+    }
 
     // Volumes use sentinel userId (org-shared); artifacts/memory use real userId
     const storageUserId =
