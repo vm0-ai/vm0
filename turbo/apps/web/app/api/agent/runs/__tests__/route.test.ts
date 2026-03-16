@@ -628,7 +628,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should allow unlimited runs when limit is 0", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
       const run1 = await createTestRun(testComposeId, "Run 1");

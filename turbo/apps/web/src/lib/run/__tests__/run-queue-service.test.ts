@@ -87,7 +87,7 @@ describe("run-queue-service", () => {
 
   describe("createRun with queue", () => {
     it("should enqueue second run when concurrency limit hit", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // First run succeeds normally
@@ -111,7 +111,7 @@ describe("run-queue-service", () => {
     });
 
     it("should dequeue and execute the oldest entry", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Create a running run and a queued run
@@ -135,7 +135,7 @@ describe("run-queue-service", () => {
     });
 
     it("should drain across users in the same org", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Alice creates a run → pending
@@ -232,7 +232,7 @@ describe("run-queue-service", () => {
 
   describe("drainStaleQueues", () => {
     it("should not drain when another user in the same org has an active run", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
@@ -267,7 +267,7 @@ describe("run-queue-service", () => {
     });
 
     it("should drain when org has no active runs", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
@@ -302,7 +302,7 @@ describe("run-queue-service", () => {
 
   describe("reEnqueueRun TTL preservation", () => {
     it("should preserve original expiresAt on re-enqueue", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Create a running run and a queued run
@@ -326,7 +326,7 @@ describe("run-queue-service", () => {
     });
 
     it("should expire re-enqueued run via cleanup", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Drain any pre-existing expired entries from other test suites

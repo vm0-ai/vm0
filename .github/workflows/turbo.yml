@@ -419,7 +419,7 @@ jobs:
           USE_MOCK_CLAUDE: "true"
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
-          CONCURRENT_RUN_LIMIT: "0"
+          CONCURRENT_RUN_LIMIT_CAP: "0"
           VM0_DEBUG: "*"
           CLAUDE_CODE_VERSION_URL: ${{ vars.CLAUDE_CODE_VERSION_URL }}
           SLACK_CLIENT_ID: ${{ vars.SLACK_CLIENT_ID }}
@@ -613,7 +613,7 @@ jobs:
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
-            CONCURRENT_RUN_LIMIT=0
+            CONCURRENT_RUN_LIMIT_CAP=0
             VM0_DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
             SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}

@@ -68,15 +68,16 @@ async function checkRunConcurrencyLimit(
   orgTier: OrgTier = "free",
   db?: Database,
 ): Promise<void> {
-  // Use env var override if set, otherwise use tier-based limit
-  // Note: 0 means no limit, so we need explicit undefined check
-  const envLimit = env().CONCURRENT_RUN_LIMIT;
+  // Tier-based limit is the baseline; env var acts as a global cap.
+  // 0 means no limit (unlimited).
+  const tierLimit = getConcurrencyLimitForTier(orgTier);
+  const envCap = env().CONCURRENT_RUN_LIMIT_CAP;
   const effectiveLimit =
-    envLimit === 0
+    envCap === 0
       ? 0
-      : envLimit !== undefined && !isNaN(envLimit)
-        ? envLimit
-        : getConcurrencyLimitForTier(orgTier);
+      : envCap !== undefined && !isNaN(envCap)
+        ? Math.min(tierLimit, envCap)
+        : tierLimit;
 
   // Skip check if limit is 0 (no limit)
   if (effectiveLimit === 0) {
