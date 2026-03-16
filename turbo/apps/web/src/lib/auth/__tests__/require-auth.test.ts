@@ -18,7 +18,7 @@ describe("requireAuth", () => {
     } as Awaited<ReturnType<typeof auth>>);
 
     const result = await requireAuth(undefined, {
-      requiredCapability: "volume:read",
+      requiredCapability: "storage:read",
     });
 
     expect(isAuthError(result)).toBe(false);
@@ -29,28 +29,28 @@ describe("requireAuth", () => {
 
   it("should return AuthContext for sandbox token with matching capability", async () => {
     const token = await generateSandboxToken("user-1", "run-1", [
-      "volume:read",
+      "storage:read",
     ]);
 
     const result = await requireAuth(`Bearer ${token}`, {
-      requiredCapability: "volume:read",
+      requiredCapability: "storage:read",
     });
 
     expect(isAuthError(result)).toBe(false);
     if (!isAuthError(result)) {
       expect(result.userId).toBe("user-1");
       expect(result.runId).toBe("run-1");
-      expect(result.capabilities).toContain("volume:read");
+      expect(result.capabilities).toContain("storage:read");
     }
   });
 
   it("should return 403 for sandbox token missing required capability", async () => {
     const token = await generateSandboxToken("user-1", "run-1", [
-      "volume:read",
+      "storage:read",
     ]);
 
     const result = await requireAuth(`Bearer ${token}`, {
-      requiredCapability: "artifact:write",
+      requiredCapability: "storage:write",
     });
 
     expect(isAuthError(result)).toBe(true);
@@ -58,7 +58,7 @@ describe("requireAuth", () => {
       expect(result.status).toBe(403);
       expect(result.body.error.code).toBe("FORBIDDEN");
       expect(result.body.error.message).toBe(
-        "Missing required capability: artifact:write",
+        "Missing required capability: storage:write",
       );
     }
   });
@@ -67,7 +67,7 @@ describe("requireAuth", () => {
     const token = await generateSandboxToken("user-1", "run-1");
 
     const result = await requireAuth(`Bearer ${token}`, {
-      requiredCapability: "volume:read",
+      requiredCapability: "storage:read",
     });
 
     expect(isAuthError(result)).toBe(true);
@@ -75,14 +75,14 @@ describe("requireAuth", () => {
       expect(result.status).toBe(403);
       expect(result.body.error.code).toBe("FORBIDDEN");
       expect(result.body.error.message).toBe(
-        "Missing required capability: volume:read",
+        "Missing required capability: storage:read",
       );
     }
   });
 
   it("should return 403 for sandbox token on uncovered endpoint", async () => {
     const token = await generateSandboxToken("user-1", "run-1", [
-      "volume:read",
+      "storage:read",
     ]);
 
     // No requiredCapability = uncovered endpoint
