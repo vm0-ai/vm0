@@ -334,4 +334,58 @@ describe("GET /api/agent/runs/queue", () => {
     expect(data.queue).toEqual([]);
     expect(data.estimatedTimePerRun).toBeNull();
   });
+
+  it("computes estimatedTimePerRun from completed runs", async () => {
+    const now = Date.now();
+
+    // Create two completed runs with known durations (60s and 120s)
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "completed",
+      startedAt: new Date(now - 120_000),
+      completedAt: new Date(now - 60_000),
+    });
+
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "completed",
+      startedAt: new Date(now - 180_000),
+      completedAt: new Date(now - 60_000),
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    // Run 1: 60s = 60000ms, Run 2: 120s = 120000ms, average = 90000ms
+    expect(data.estimatedTimePerRun).toBe(90000);
+  });
+
+  it("truncates long prompts at 200 characters for own runs", async () => {
+    const longPrompt = "a".repeat(250);
+
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "queued",
+      prompt: longPrompt,
+    });
+
+    await insertUserCacheEntry({
+      userId: user.userId,
+      email: "test@example.com",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.queue).toHaveLength(1);
+    expect(data.queue[0].isOwner).toBe(true);
+    // Should be truncated to 200 chars + "..."
+    expect(data.queue[0].prompt).toBe("a".repeat(200) + "...");
+    expect(data.queue[0].prompt.length).toBe(203);
+  });
 });
