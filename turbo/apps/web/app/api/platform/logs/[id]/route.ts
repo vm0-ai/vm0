@@ -134,11 +134,11 @@ const router = tsr.router(platformLogsByIdContract, {
         composeVersion: agentComposeVersions,
       })
       .from(agentRuns)
-      .innerJoin(
+      .leftJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
-      .innerJoin(
+      .leftJoin(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
@@ -146,7 +146,7 @@ const router = tsr.router(platformLogsByIdContract, {
         and(
           eq(agentRuns.id, params.id),
           eq(agentRuns.userId, userId),
-          eq(agentComposes.orgId, orgId),
+          eq(agentRuns.orgId, orgId),
         ),
       )
       .limit(1);

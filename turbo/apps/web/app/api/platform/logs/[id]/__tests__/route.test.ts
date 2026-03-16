@@ -7,6 +7,7 @@ import {
   completeTestRun,
   failTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import {
   testContext,
   type UserContext,
@@ -164,5 +165,31 @@ describe("GET /api/platform/logs/[id]", () => {
     expect(response.status).toBe(200);
     expect(data.status).toBe("failed");
     expect(data.error).toBeDefined();
+  });
+
+  it("should return run details when compose version has been deleted", async () => {
+    // Create a run with no compose version (simulates deleted compose)
+    const [orphanRun] = await globalThis.services.db
+      .insert(agentRuns)
+      .values({
+        userId: user.userId,
+        orgId: user.orgId,
+        agentComposeVersionId: null,
+        status: "completed",
+        prompt: "Orphan run prompt",
+      })
+      .returning({ id: agentRuns.id });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/platform/logs/${orphanRun!.id}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe(orphanRun!.id);
+    expect(data.prompt).toBe("Orphan run prompt");
+    expect(data.agentName).toBe("unknown");
+    expect(data.framework).toBeNull();
   });
 });
