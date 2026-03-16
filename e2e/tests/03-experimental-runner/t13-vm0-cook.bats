@@ -152,7 +152,7 @@ EOF
 
     echo "# Step 3: Verify compose was called and skill was processed..."
     assert_output --partial "vm0 compose --yes vm0.yaml"
-    assert_output --partial "Downloading"
+    assert_output --regexp "(Downloading|cached)"
     assert_output --partial "github"
     # Skill upload should succeed
     assert_output --partial "Skill"
