@@ -43,13 +43,12 @@ describe("run queue command", () => {
             },
             {
               position: 2,
-              agentName: "-",
-              userEmail: "-",
+              agentName: null,
+              userEmail: null,
               createdAt: new Date(Date.now() - 60000).toISOString(),
               runId: null,
             },
           ],
-          total: 2,
         });
       }),
     );
@@ -84,13 +83,12 @@ describe("run queue command", () => {
             },
             {
               position: 2,
-              agentName: "-",
-              userEmail: "-",
+              agentName: null,
+              userEmail: null,
               createdAt: new Date().toISOString(),
               runId: null,
             },
           ],
-          total: 2,
         });
       }),
     );
@@ -108,7 +106,6 @@ describe("run queue command", () => {
         return HttpResponse.json({
           concurrency: { tier: "free", limit: 1, active: 0, available: 1 },
           queue: [],
-          total: 0,
         });
       }),
     );
@@ -159,7 +156,6 @@ describe("run queue command", () => {
               runId: "run-1",
             },
           ],
-          total: 1,
         });
       }),
     );

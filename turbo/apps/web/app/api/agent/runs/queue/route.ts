@@ -88,8 +88,8 @@ const router = tsr.router(runsQueueContract, {
       const isOwner = run.runUserId === userId;
       return {
         position: index + 1,
-        agentName: isOwner ? (run.agentName ?? "unknown") : "-",
-        userEmail: isOwner ? (ownEmail ?? "unknown") : "-",
+        agentName: isOwner ? (run.agentName ?? "unknown") : null,
+        userEmail: isOwner ? (ownEmail ?? "unknown") : null,
         createdAt: run.createdAt.toISOString(),
         runId: isOwner ? run.id : null,
       };
@@ -105,7 +105,6 @@ const router = tsr.router(runsQueueContract, {
           available: limit === 0 ? -1 : Math.max(0, limit - active),
         },
         queue,
-        total: queue.length,
       },
     };
   },

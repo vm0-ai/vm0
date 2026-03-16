@@ -32,8 +32,14 @@ export const queueCommand = new Command()
 
       // Dynamic column widths
       const posWidth = Math.max(1, String(queue.length).length);
-      const agentWidth = Math.max(5, ...queue.map((e) => e.agentName.length));
-      const emailWidth = Math.max(4, ...queue.map((e) => e.userEmail.length));
+      const agentWidth = Math.max(
+        5,
+        ...queue.map((e) => (e.agentName ?? "-").length),
+      );
+      const emailWidth = Math.max(
+        4,
+        ...queue.map((e) => (e.userEmail ?? "-").length),
+      );
 
       // Header
       const header = [
@@ -49,8 +55,8 @@ export const queueCommand = new Command()
         const marker = entry.runId !== null ? chalk.cyan("  ← you") : "";
         const row = [
           String(entry.position).padEnd(posWidth),
-          entry.agentName.padEnd(agentWidth),
-          entry.userEmail.padEnd(emailWidth),
+          (entry.agentName ?? "-").padEnd(agentWidth),
+          (entry.userEmail ?? "-").padEnd(emailWidth),
           formatRelativeTime(entry.createdAt),
         ].join("  ");
         console.log(row + marker);

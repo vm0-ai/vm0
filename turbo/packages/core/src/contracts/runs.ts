@@ -566,13 +566,13 @@ export const logsSearchContract = c.router({
 export type LogsSearchContract = typeof logsSearchContract;
 
 /**
- * Queue entry schema — own entries have real data, others are masked with "-"
+ * Queue entry schema — own entries have real data, others have null for private fields
  * Ownership is detected via runId: non-null = own entry, null = other user's entry
  */
 const queueEntrySchema = z.object({
   position: z.number(),
-  agentName: z.string(),
-  userEmail: z.string(),
+  agentName: z.string().nullable(),
+  userEmail: z.string().nullable(),
   createdAt: z.string(),
   runId: z.string().nullable(),
 });
@@ -593,7 +593,6 @@ const concurrencyInfoSchema = z.object({
 const queueResponseSchema = z.object({
   concurrency: concurrencyInfoSchema,
   queue: z.array(queueEntrySchema),
-  total: z.number(),
 });
 
 /**

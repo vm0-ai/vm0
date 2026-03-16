@@ -54,7 +54,6 @@ describe("GET /api/agent/runs/queue", () => {
       }),
     );
     expect(data.queue).toEqual([]);
-    expect(data.total).toBe(0);
   });
 
   it("counts active runs (running + fresh pending)", async () => {
@@ -138,7 +137,6 @@ describe("GET /api/agent/runs/queue", () => {
 
     expect(response.status).toBe(200);
     expect(data.queue).toHaveLength(2);
-    expect(data.total).toBe(2);
 
     const ownEntry = data.queue.find(
       (e: { runId: string | null }) => e.runId !== null,
@@ -152,13 +150,12 @@ describe("GET /api/agent/runs/queue", () => {
     expect(ownEntry.runId).toBeTruthy();
     expect(ownEntry.userEmail).toBe("alice@example.com");
     expect(ownEntry.agentName).toBeTruthy();
-    expect(ownEntry.agentName).not.toBe("-");
 
-    // Other user's run should have masked fields
+    // Other user's run should have null for private fields
     expect(otherEntry).toBeDefined();
     expect(otherEntry.runId).toBeNull();
-    expect(otherEntry.agentName).toBe("-");
-    expect(otherEntry.userEmail).toBe("-");
+    expect(otherEntry.agentName).toBeNull();
+    expect(otherEntry.userEmail).toBeNull();
   });
 
   it("never exposes prompt in response", async () => {
