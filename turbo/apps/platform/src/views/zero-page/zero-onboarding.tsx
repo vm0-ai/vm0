@@ -41,7 +41,8 @@ import {
   zeroOnboardingError$,
   clearZeroOnboardingError$,
 } from "../../signals/zero-page/zero-onboarding.ts";
-import { fetchSlackIntegration$ } from "../../signals/integrations-page/slack-integration.ts";
+import { setZeroActiveId$ } from "../../signals/zero-page/zero-nav.ts";
+import { sendZeroIntroMessage$ } from "../../signals/zero-page/zero-chat.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -228,7 +229,8 @@ export function ZeroOnboarding({
   const toggleSkill = useSet(toggleZeroSkill$);
   const saveModelProvider = useSet(saveZeroModelProvider$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
-  const fetchSlack = useSet(fetchSlackIntegration$);
+  const setActiveId = useSet(setZeroActiveId$);
+  const sendIntro = useSet(sendZeroIntroMessage$);
   const hasModelProviderLoadable = useLoadable(zeroHasModelProvider$);
   const hasModelProvider =
     hasModelProviderLoadable.state === "hasData" &&
@@ -289,11 +291,8 @@ export function ZeroOnboarding({
     detach(
       (async () => {
         await completeOnboarding(controller.signal);
-        // Fetch Slack integration to get install URL
-        const url = await fetchSlack();
-        if (url) {
-          window.location.href = url;
-        }
+        // Navigate to works page where user can install Slack
+        setActiveId("works");
       })(),
       Reason.DomCallback,
     );
@@ -302,7 +301,15 @@ export function ZeroOnboarding({
   const handleContinueWithWeb = () => {
     clearOnboardingError();
     const controller = new AbortController();
-    detach(completeOnboarding(controller.signal), Reason.DomCallback);
+    detach(
+      (async () => {
+        await completeOnboarding(controller.signal);
+        // Navigate to chat and send intro message
+        setActiveId("chat");
+        sendIntro("Who are you and what can you do?");
+      })(),
+      Reason.DomCallback,
+    );
   };
 
   if (step === "done") {

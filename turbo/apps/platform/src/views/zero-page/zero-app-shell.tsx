@@ -38,7 +38,6 @@ import {
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
-  sendZeroIntroMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 
 const ZERO_AVATARS = [
@@ -156,8 +155,6 @@ function useSessionLifecycle(
   const recentSessionsLoading = useGet(zeroSessionListLoading$);
   const recentSessionsError = useGet(zeroSessionListError$);
   const fetchSessionList = useSet(fetchZeroSessionList$);
-  const sendIntro = useSet(sendZeroIntroMessage$);
-
   // "init" → "onboarding" → "ready" lifecycle
   const lifecycleRef$ = useCCState<"init" | "onboarding" | "ready">("init");
   const lifecycle = useGet(lifecycleRef$);
@@ -167,17 +164,10 @@ function useSessionLifecycle(
     if (needsOnboarding && lifecycle === "init") {
       queueMicrotask(() => setLifecycle("onboarding"));
     } else if (!needsOnboarding && lifecycle !== "ready") {
-      const wasOnboarding = lifecycle === "onboarding";
       queueMicrotask(() => {
         setLifecycle("ready");
         // fetchZeroSessionList$ reads zeroChatAgentId$ from localStorage
         detach(fetchSessionList(), Reason.DomCallback);
-        if (wasOnboarding) {
-          detach(
-            sendIntro("Who are you and what can you do?"),
-            Reason.DomCallback,
-          );
-        }
       });
     }
   }
