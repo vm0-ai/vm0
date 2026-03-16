@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { fetch$ } from "../fetch.ts";
 import { testContext } from "./test-helpers.ts";
 import { setupPage } from "../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../__tests__/mock-auth.ts";
 
 const context = testContext();
 
@@ -232,6 +233,57 @@ describe("url handling", () => {
     expect(captured.request?.url).toBe(
       "http://localhost:3000/api/users?page=1&size=10",
     );
+  });
+});
+
+describe("401 redirect", () => {
+  it("should redirect to sign-in when API returns 401", async () => {
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    server.use(
+      http.get("http://localhost:3000/test", () => {
+        return HttpResponse.json(
+          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    mockedClerk.redirectToSignIn.mockClear();
+
+    const fch = context.store.get(fetch$);
+    const response = await fch("/test");
+
+    expect(response.status).toBe(401);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
+  });
+
+  it("should not redirect on non-401 errors", async () => {
+    await setupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    server.use(
+      http.get("http://localhost:3000/test", () => {
+        return HttpResponse.json(
+          { error: { message: "Forbidden", code: "FORBIDDEN" } },
+          { status: 403 },
+        );
+      }),
+    );
+
+    mockedClerk.redirectToSignIn.mockClear();
+
+    const fch = context.store.get(fetch$);
+    await fch("/test");
+
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 });
 

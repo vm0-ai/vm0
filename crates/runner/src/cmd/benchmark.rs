@@ -37,6 +37,9 @@ pub struct BenchmarkArgs {
     /// Run the command as root (sudo)
     #[arg(long)]
     sudo: bool,
+    /// Profile to benchmark
+    #[arg(long)]
+    profile: String,
 }
 
 pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
@@ -45,17 +48,30 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     // 1. Load config, force concurrency=1
     let mut runner_config = config::load(&args.config).await?;
     runner_config.sandbox.max_concurrent = 1;
-    let is_snapshot = runner_config.firecracker.snapshot.is_some();
+
+    let home = HomePaths::new()?;
+
+    // Use the default profile for benchmark.
+    let default_profile = runner_config
+        .profiles
+        .get(&args.profile)
+        .ok_or_else(|| {
+            crate::error::RunnerError::Config(format!(
+                "profile '{}' not found in config",
+                args.profile
+            ))
+        })?
+        .clone();
+    let is_snapshot = default_profile.snapshot_hash.is_some();
 
     // Block until memory.bin is in page cache so benchmark numbers are stable.
-    if let Some(snapshot) = &runner_config.firecracker.snapshot {
-        let path = snapshot.memory_path.clone();
+    if let Some(hash) = &default_profile.snapshot_hash {
+        let path = home.snapshots_dir().join(hash).join("memory.bin");
         let _ = tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path)).await;
     }
 
     // 2. Start proxy (unconditional — benchmark always uses proxy)
     let t = Instant::now();
-    let home = HomePaths::new()?;
     let runner_paths = RunnerPaths::new(runner_config.base_dir.clone());
     // Benchmark runs a single short-lived sandbox; crash recovery is not needed.
     let (mut mitm, _crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
@@ -72,8 +88,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     info!(proxy_ms, port = mitm.port(), "proxy ready");
 
     // 3. Factory init (with proxy port)
-    let mut fc_config = runner_config.firecracker_config();
-    fc_config.proxy_port = Some(mitm.port());
+    let fc_config = runner_config.firecracker_config(&default_profile, &home, 1, Some(mitm.port()));
 
     let t = Instant::now();
     let mut factory = FirecrackerFactory::new(fc_config).await?;
@@ -85,8 +100,8 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     let sandbox_config = SandboxConfig {
         id: Uuid::new_v4(),
         resources: sandbox::ResourceLimits {
-            cpu_count: runner_config.sandbox.vcpu,
-            memory_mb: runner_config.sandbox.memory_mb,
+            cpu_count: default_profile.vcpu,
+            memory_mb: default_profile.memory_mb,
         },
         use_proxy: true,
     };

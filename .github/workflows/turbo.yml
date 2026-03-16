@@ -1166,9 +1166,7 @@ jobs:
             ssh $REMOTE "${BIN_DIR}/runner setup"
 
             # Run build to create rootfs + snapshot (outputs hashes to stdout)
-            ssh $REMOTE "${BIN_DIR}/runner build \
-              --vcpu ${RUNNER_VCPU} \
-              --memory-mb ${RUNNER_MEMORY_MB}"
+            ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/default"
             echo "=== Done deploying to ${HOST} ==="
           }
 
@@ -1266,13 +1264,12 @@ jobs:
 
             # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
             ssh $REMOTE "${BIN_DIR}/runner config \
+              --profile vm0/default \
               --rootfs-hash ${ROOTFS_HASH} \
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
-              --vcpu ${RUNNER_VCPU} \
-              --memory-mb ${RUNNER_MEMORY_MB} \
               --concurrency-factor 2.0 \
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"

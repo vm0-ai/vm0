@@ -167,10 +167,15 @@ function useSessionLifecycle(
     if (needsOnboarding && lifecycle === "init") {
       queueMicrotask(() => setLifecycle("onboarding"));
     } else if (!needsOnboarding && lifecycle !== "ready") {
+      const wasOnboarding = lifecycle === "onboarding";
       queueMicrotask(() => {
         setLifecycle("ready");
-        // fetchZeroSessionList$ reads zeroChatAgentId$ from localStorage
-        detach(fetchSessionList(), Reason.DomCallback);
+        // Skip fetching sessions right after onboarding — the onboarding
+        // handler already navigates to chat and sends the intro message,
+        // which will create the first session.
+        if (!wasOnboarding) {
+          detach(fetchSessionList(), Reason.DomCallback);
+        }
       });
     }
   }
@@ -252,8 +257,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const onboardingReady = onboardingLoadable.state === "hasData";
   const needsOnboarding =
     onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
-  const ONBOARDING_ENABLED = false;
-  const showOnboarding = ONBOARDING_ENABLED && isLoggedIn && needsOnboarding;
+  const showOnboarding = isLoggedIn && needsOnboarding;
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentDisplayNameLoadable.state === "hasData";
   const agentDisplayName = agentNameReady

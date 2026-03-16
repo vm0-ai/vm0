@@ -85,10 +85,6 @@ LINEAR_OAUTH_CLIENT_SECRET=op://Development/linear/LINEAR_OAUTH_CLIENT_SECRET
 FIGMA_OAUTH_CLIENT_ID=op://Development/figma/FIGMA_OAUTH_CLIENT_ID
 FIGMA_OAUTH_CLIENT_SECRET=op://Development/figma/FIGMA_OAUTH_CLIENT_SECRET
 
-# Optional: Strava OAuth Connector
-STRAVA_OAUTH_CLIENT_ID=op://Development/strava/STRAVA_OAUTH_CLIENT_ID
-STRAVA_OAUTH_CLIENT_SECRET=op://Development/strava/STRAVA_OAUTH_CLIENT_SECRET
-
 # Optional: X OAuth Connector
 X_OAUTH_CLIENT_ID=op://Development/x/X_OAUTH_CLIENT_ID
 X_OAUTH_CLIENT_SECRET=op://Development/x/X_OAUTH_CLIENT_SECRET
@@ -101,10 +97,6 @@ VERCEL_INTEGRATION_SLUG=op://Development/vercel/VERCEL_INTEGRATION_SLUG
 # Optional: Sentry OAuth Connector
 SENTRY_OAUTH_CLIENT_ID=op://Development/sentry/SENTRY_OAUTH_CLIENT_ID
 SENTRY_OAUTH_CLIENT_SECRET=op://Development/sentry/SENTRY_OAUTH_CLIENT_SECRET
-
-# Optional: Intervals.icu OAuth Connector
-INTERVALS_ICU_OAUTH_CLIENT_ID=op://Development/intervals-icu/INTERVALS_ICU_OAUTH_CLIENT_ID
-INTERVALS_ICU_OAUTH_CLIENT_SECRET=op://Development/intervals-icu/INTERVALS_ICU_OAUTH_CLIENT_SECRET
 
 # Optional: Xero OAuth Connector
 XERO_OAUTH_CLIENT_ID=op://Development/xero/XERO_OAUTH_CLIENT_ID

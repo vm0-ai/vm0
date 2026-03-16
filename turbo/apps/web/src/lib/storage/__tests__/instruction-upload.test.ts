@@ -79,7 +79,7 @@ describe("uploadInstructionsServerSide", () => {
     expect(fileContent).not.toBeNull();
 
     const text = fileContent!.toString("utf-8");
-    expect(text).toContain("ZERO_PROFILE");
+    expect(text).toContain("[AGENT_PROFILE]");
     expect(text).toContain("Test Agent");
   });
 

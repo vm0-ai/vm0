@@ -1,23 +1,28 @@
+use std::collections::BTreeMap;
+
 use clap::Args;
 
-use sandbox_fc::SnapshotOutputPaths;
-
 use crate::config::{
-    self, DEFAULT_CONCURRENCY_FACTOR, DEFAULT_MAX_CONCURRENT, DEFAULT_MEMORY_MB, DEFAULT_VCPU,
-    FirecrackerConfig, RunnerConfig, SandboxConfig, ServerConfig,
+    self, DEFAULT_CONCURRENCY_FACTOR, DEFAULT_MAX_CONCURRENT, FirecrackerConfig, ProfileConfig,
+    RunnerConfig, SandboxConfig, ServerConfig,
 };
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::{HomePaths, RootfsPaths};
+use crate::paths::HomePaths;
+use crate::profile;
 
 #[derive(Args)]
 pub struct ConfigArgs {
-    /// SHA-256 hash of the rootfs inputs (output of `runner build` or `runner rootfs`).
-    #[arg(long)]
-    rootfs_hash: String,
-    /// SHA-256 hash of the snapshot inputs (output of `runner build` or `runner snapshot`).
-    #[arg(long)]
-    snapshot_hash: String,
+    /// Profile entries: --profile vm0/default --rootfs-hash abc --snapshot-hash def
+    /// Can be repeated for multiple profiles. Each --profile starts a new entry.
+    #[arg(long, required = true)]
+    profile: Vec<String>,
+    /// Rootfs hash for the preceding --profile (one per profile, in order)
+    #[arg(long, required = true)]
+    rootfs_hash: Vec<String>,
+    /// Snapshot hash for the preceding --profile (one per profile, in order)
+    #[arg(long, required = true)]
+    snapshot_hash: Vec<String>,
 
     /// Runner logical name
     #[arg(long)]
@@ -29,16 +34,10 @@ pub struct ConfigArgs {
     #[arg(long)]
     runner_dirname: String,
 
-    /// Number of vCPUs for sandbox VMs
-    #[arg(long, default_value_t = DEFAULT_VCPU)]
-    vcpu: u32,
-    /// Memory size in MiB for sandbox VMs
-    #[arg(long, default_value_t = DEFAULT_MEMORY_MB)]
-    memory_mb: u32,
     /// Maximum concurrent VMs (0 = auto-detect from host CPU/memory)
     #[arg(long, default_value_t = DEFAULT_MAX_CONCURRENT)]
     max_concurrent: usize,
-    /// CPU overcommit factor for auto-detected concurrency (must be > 0)
+    /// Overcommit factor for auto-detected concurrency (must be > 0)
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
@@ -51,33 +50,67 @@ pub struct ConfigArgs {
 }
 
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
+    // Validate parallel arrays have same length.
+    if args.profile.len() != args.rootfs_hash.len()
+        || args.profile.len() != args.snapshot_hash.len()
+    {
+        return Err(RunnerError::Config(
+            "--profile, --rootfs-hash, and --snapshot-hash must be specified the same number of times".into(),
+        ));
+    }
+
     let paths = HomePaths::new()?;
-    let rootfs_paths = RootfsPaths::new(&paths, &args.rootfs_hash);
 
-    // Fail fast if referenced artifacts don't exist.
-    let rootfs_dir = rootfs_paths.dir();
-    if !tokio::fs::try_exists(rootfs_dir)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("check rootfs dir: {e}")))?
-    {
-        return Err(RunnerError::Config(format!(
-            "rootfs not found for hash {}; run `build` or `rootfs` first",
-            args.rootfs_hash
-        )));
-    }
-    let snapshot_dir = paths.snapshots_dir().join(&args.snapshot_hash);
-    if !tokio::fs::try_exists(&snapshot_dir)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("check snapshot dir: {e}")))?
-    {
-        return Err(RunnerError::Config(format!(
-            "snapshot not found for hash {}; run `build` or `snapshot` first",
-            args.snapshot_hash
-        )));
-    }
+    // Build profiles map, validating each entry.
+    let mut profiles = BTreeMap::new();
+    for (i, profile_name) in args.profile.iter().enumerate() {
+        if !profile::validate_name(profile_name) {
+            return Err(RunnerError::Config(format!(
+                "invalid profile name: {profile_name}"
+            )));
+        }
 
-    let snapshot_output = SnapshotOutputPaths::new(snapshot_dir);
-    let snapshot_config = snapshot_output.snapshot_config(&args.snapshot_hash).into();
+        let def = profile::get(profile_name)?;
+        // Length equality is validated above, so these indices are safe.
+        let rootfs_hash = args
+            .rootfs_hash
+            .get(i)
+            .ok_or_else(|| RunnerError::Internal(format!("missing rootfs_hash at index {i}")))?;
+        let snapshot_hash = args
+            .snapshot_hash
+            .get(i)
+            .ok_or_else(|| RunnerError::Internal(format!("missing snapshot_hash at index {i}")))?;
+
+        // Verify artifacts exist on disk.
+        let rootfs_dir = paths.rootfs_dir().join(rootfs_hash);
+        if !tokio::fs::try_exists(&rootfs_dir)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("check rootfs dir: {e}")))?
+        {
+            return Err(RunnerError::Config(format!(
+                "rootfs not found for hash {rootfs_hash}; run `build --profile {profile_name}` first"
+            )));
+        }
+        let snapshot_dir = paths.snapshots_dir().join(snapshot_hash);
+        if !tokio::fs::try_exists(&snapshot_dir)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("check snapshot dir: {e}")))?
+        {
+            return Err(RunnerError::Config(format!(
+                "snapshot not found for hash {snapshot_hash}; run `build --profile {profile_name}` first"
+            )));
+        }
+
+        profiles.insert(
+            profile_name.clone(),
+            ProfileConfig {
+                rootfs_hash: rootfs_hash.clone(),
+                snapshot_hash: Some(snapshot_hash.clone()),
+                vcpu: def.vcpu,
+                memory_mb: def.memory_mb,
+            },
+        );
+    }
 
     let runner_dir = paths.runners_dir().join(&args.runner_dirname);
 
@@ -89,12 +122,9 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
         firecracker: FirecrackerConfig {
             binary: paths.firecracker_bin(FIRECRACKER_VERSION),
             kernel: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),
-            rootfs: rootfs_paths.rootfs(),
-            snapshot: Some(snapshot_config),
         },
+        profiles,
         sandbox: SandboxConfig {
-            vcpu: args.vcpu,
-            memory_mb: args.memory_mb,
             max_concurrent: args.max_concurrent,
             concurrency_factor: args.concurrency_factor,
         },

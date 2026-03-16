@@ -1,5 +1,6 @@
 import { computed } from "ccstate";
 import { clerk$ } from "./auth.ts";
+import { detach, Reason } from "./utils.ts";
 
 function getConfiguredApiUrl(): string {
   const url = import.meta.env.VITE_API_URL as string | undefined;
@@ -198,6 +199,12 @@ export const fetch$ = computed((get) => {
       }
     }
 
-    return await fetch(finalUrl, finalInit);
+    const response = await fetch(finalUrl, finalInit);
+
+    if (response.status === 401) {
+      detach(clerk.redirectToSignIn(), Reason.DomCallback);
+    }
+
+    return response;
   };
 });

@@ -4,19 +4,28 @@ interface AgentMetadata {
   sound?: string;
 }
 
-const PROFILE_START = "<!-- ZERO_PROFILE";
-const PROFILE_END = "ZERO_PROFILE -->";
+// Legacy HTML comment markers (for backward-compatible stripping)
+const LEGACY_PROFILE_START = "<!-- ZERO_PROFILE";
+const LEGACY_PROFILE_END = "ZERO_PROFILE -->";
+
+// New plain-text markers visible to the agent at runtime
+const PROFILE_START = "[AGENT_PROFILE]";
+const PROFILE_END = "[/AGENT_PROFILE]";
 
 /**
- * Remove all ZERO_PROFILE blocks from content in O(n) time.
- * Uses indexOf instead of regex to avoid ReDoS with nested/repeated markers.
+ * Remove all profile blocks (both legacy HTML comment and new plain-text
+ * markers) from content in O(n) time.
  */
-function stripProfileBlocks(content: string): string {
+function stripMarkerBlocks(
+  content: string,
+  startMarker: string,
+  endMarker: string,
+): string {
   let result = "";
   let searchFrom = 0;
 
   while (searchFrom < content.length) {
-    const startIdx = content.indexOf(PROFILE_START + "\n", searchFrom);
+    const startIdx = content.indexOf(startMarker + "\n", searchFrom);
     if (startIdx === -1) {
       result += content.slice(searchFrom);
       break;
@@ -25,8 +34,8 @@ function stripProfileBlocks(content: string): string {
     result += content.slice(searchFrom, startIdx);
 
     const endIdx = content.indexOf(
-      PROFILE_END,
-      startIdx + PROFILE_START.length + 1,
+      endMarker,
+      startIdx + startMarker.length + 1,
     );
     if (endIdx === -1) {
       // No closing marker — keep the rest as-is
@@ -35,7 +44,7 @@ function stripProfileBlocks(content: string): string {
     }
 
     // Skip past the end marker and optional trailing newline
-    let afterEnd = endIdx + PROFILE_END.length;
+    let afterEnd = endIdx + endMarker.length;
     if (content[afterEnd] === "\n") {
       afterEnd++;
     }
@@ -43,6 +52,16 @@ function stripProfileBlocks(content: string): string {
   }
 
   return result;
+}
+
+function stripProfileBlocks(content: string): string {
+  // Strip both legacy and new format
+  const withoutLegacy = stripMarkerBlocks(
+    content,
+    LEGACY_PROFILE_START,
+    LEGACY_PROFILE_END,
+  );
+  return stripMarkerBlocks(withoutLegacy, PROFILE_START, PROFILE_END);
 }
 
 /** Keys used by the legacy YAML frontmatter format. */
@@ -108,22 +127,22 @@ function buildProfileParagraph(metadata: AgentMetadata): string | null {
 }
 
 /**
- * Inject agent metadata into instructions content as a hidden profile block.
+ * Inject agent metadata into instructions content as a profile block.
  *
- * The block uses HTML comment syntax so it can be stripped before displaying
- * in the instructions editor, while remaining readable to the agent at runtime.
+ * The block uses plain-text markers so it is fully visible to the agent
+ * at runtime. It can be stripped before displaying in the instructions editor.
  *
  * Format:
  * ```
- * <!-- ZERO_PROFILE
+ * [AGENT_PROFILE]
  * Your name is Aria. Communicate in a clear, polished, and business-appropriate tone.
  * This should be reflected in all your responses.
- * ZERO_PROFILE -->
+ * [/AGENT_PROFILE]
  * ```
  *
  * - If metadata is undefined/null or has no truthy fields, returns content unchanged.
  * - If content already has a profile block, replaces it.
- * - Otherwise appends it at the end.
+ * - Otherwise prepends it at the beginning.
  */
 export function injectMetadataFrontmatter(
   content: string,
@@ -143,17 +162,17 @@ export function injectMetadataFrontmatter(
   // Remove any existing profile block and legacy frontmatter first
   const stripped = stripProfileBlocks(
     stripLegacyFrontmatter(content),
-  ).trimEnd();
+  ).trimStart();
 
   if (!stripped) {
     return `${block}\n`;
   }
 
-  return `${stripped}\n\n${block}\n`;
+  return `${block}\n\n${stripped}`;
 }
 
 /**
- * Strip the hidden profile block (and legacy YAML frontmatter) from
+ * Strip the profile block (and legacy YAML frontmatter) from
  * instructions content for display in the editor.
  */
 export function stripMetadataFrontmatter(content: string): string {

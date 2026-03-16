@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.71.2](https://github.com/vm0-ai/vm0/compare/core-v8.71.1...core-v8.71.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* normalize deprecated capability names to unified storage prefix ([#4996](https://github.com/vm0-ai/vm0/issues/4996)) ([c13cffa](https://github.com/vm0-ai/vm0/commit/c13cffa1d050dd1fe189ab5b20d05ae8663b7907))
+
 ## [8.71.1](https://github.com/vm0-ai/vm0/compare/core-v8.71.0...core-v8.71.1) (2026-03-16)
 
 

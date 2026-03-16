@@ -11,6 +11,7 @@ mod network_logs;
 mod paths;
 mod prefetch;
 mod process;
+mod profile;
 mod provider;
 mod proxy;
 mod resource_budget;

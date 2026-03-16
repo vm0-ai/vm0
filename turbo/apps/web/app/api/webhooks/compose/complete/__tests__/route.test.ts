@@ -12,6 +12,7 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { Sandbox } from "@e2b/code-interpreter";
 import { randomUUID } from "crypto";
 
 vi.mock("@e2b/code-interpreter", () => ({
@@ -140,6 +141,14 @@ describe("POST /api/webhooks/compose/complete", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+
+    // Re-apply mock return values after clearMocks resets them
+    vi.mocked(Sandbox.create).mockResolvedValue({
+      sandboxId: "mock-sandbox-id",
+      files: { write: vi.fn().mockResolvedValue(undefined) },
+      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
+    } as never);
+
     user = await context.setupUser();
 
     // Create a test job via API

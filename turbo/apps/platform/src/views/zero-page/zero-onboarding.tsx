@@ -48,8 +48,11 @@ import {
   zeroOnboardingError$,
   clearZeroOnboardingError$,
 } from "../../signals/zero-page/zero-onboarding.ts";
-import { setZeroActiveId$ } from "../../signals/zero-page/zero-nav.ts";
-import { sendZeroIntroMessage$ } from "../../signals/zero-page/zero-chat.ts";
+import {
+  sendZeroChatMessage$,
+  startNewZeroSession$,
+} from "../../signals/zero-page/zero-chat.ts";
+import { updatePathname$ } from "../../signals/route.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -59,6 +62,7 @@ import {
 } from "../../signals/settings-page/connectors.ts";
 import { ConnectModal } from "../settings-page/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { IconCircleCheck, IconLoader } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -238,8 +242,9 @@ export function ZeroOnboarding({
   const toggleSkill = useSet(toggleZeroSkill$);
   const saveModelProvider = useSet(saveZeroModelProvider$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
-  const setActiveId = useSet(setZeroActiveId$);
-  const sendIntro = useSet(sendZeroIntroMessage$);
+  const sendMessage = useSet(sendZeroChatMessage$);
+  const startNewSession = useSet(startNewZeroSession$);
+  const navigate = useSet(updatePathname$);
   const hasModelProviderLoadable = useLoadable(zeroHasModelProvider$);
   const hasModelProvider =
     hasModelProviderLoadable.state === "hasData" &&
@@ -249,6 +254,7 @@ export function ZeroOnboarding({
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
   const features = useLastResolved(featureSwitch$);
+  const slackData = useGet(slackOrgData$);
 
   // Local UI state: whether user has picked a provider (showing form vs list)
   const providerPicked$ = useCCState(false);
@@ -301,8 +307,11 @@ export function ZeroOnboarding({
     detach(
       (async () => {
         await completeOnboarding(controller.signal);
-        // Navigate to works page where user can install Slack
-        setActiveId("works");
+        // Admin with install URL: open Slack OAuth install flow
+        if (slackData?.isAdmin && slackData.installUrl) {
+          window.open(slackData.installUrl, "_blank");
+        }
+        navigate("/zero/works");
       })(),
       Reason.DomCallback,
     );
@@ -314,9 +323,12 @@ export function ZeroOnboarding({
     detach(
       (async () => {
         await completeOnboarding(controller.signal);
-        // Navigate to chat and send intro message
-        setActiveId("chat");
-        await sendIntro("Who are you and what can you do?");
+        navigate("/zero/chat");
+        startNewSession();
+        detach(
+          sendMessage("Who are you and what can you do?"),
+          Reason.DomCallback,
+        );
       })(),
       Reason.DomCallback,
     );
