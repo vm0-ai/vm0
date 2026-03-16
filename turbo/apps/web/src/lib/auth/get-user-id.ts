@@ -1,8 +1,11 @@
 import { eq, and, gt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
+import type { VALID_CAPABILITIES } from "@vm0/core";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { isSandboxToken, verifySandboxToken } from "./sandbox-token";
 import { logger } from "../logger";
+
+type Capability = (typeof VALID_CAPABILITIES)[number];
 
 const log = logger("auth:user");
 
@@ -11,7 +14,7 @@ const log = logger("auth:user");
  */
 export type AuthContext = {
   userId: string;
-  capabilities?: readonly string[];
+  capabilities?: readonly Capability[];
   runId?: string;
 };
 
@@ -24,7 +27,7 @@ export type AuthContext = {
  */
 export async function getAuthContext(
   authHeader?: string,
-  options?: { requiredCapability?: string },
+  options?: { requiredCapability?: Capability },
 ): Promise<AuthContext | null> {
   // Session auth via Clerk
   const { userId } = await auth();
@@ -104,7 +107,7 @@ export async function getAuthContext(
  */
 export async function getUserId(
   authHeader?: string,
-  options?: { requiredCapability?: string },
+  options?: { requiredCapability?: Capability },
 ): Promise<string | null> {
   const ctx = await getAuthContext(authHeader, options);
   return ctx?.userId ?? null;

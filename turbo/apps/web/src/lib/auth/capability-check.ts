@@ -1,4 +1,7 @@
+import type { VALID_CAPABILITIES } from "@vm0/core";
 import type { AuthContext } from "./get-user-id";
+
+type Capability = (typeof VALID_CAPABILITIES)[number];
 
 /**
  * Check if an auth context has a specific capability.
@@ -7,7 +10,7 @@ import type { AuthContext } from "./get-user-id";
  */
 export function hasCapability(
   authCtx: AuthContext,
-  capability: string,
+  capability: Capability,
 ): boolean {
   if (!authCtx.capabilities) {
     return true;
@@ -16,7 +19,7 @@ export function hasCapability(
 }
 
 /**
- * Type guard: check if auth context is from a sandbox token.
+ * Check if auth context is from a sandbox token.
  * Sandbox auth contexts have a runId field.
  */
 export function isSandboxAuth(authCtx: AuthContext): boolean {
@@ -30,15 +33,15 @@ export function isSandboxAuth(authCtx: AuthContext): boolean {
 export function storageCapability(
   storageType: "volume" | "artifact" | "memory",
   action: "read" | "write",
-): string {
-  return `${storageType}:${action}`;
+): Capability {
+  return `${storageType}:${action}` as Capability;
 }
 
 /**
  * Build 403 response body for missing capability.
  * Response body tells which capability is missing (aids debugging).
  */
-export function missingCapabilityError(capability: string): {
+export function missingCapabilityError(capability: Capability): {
   error: { message: string; code: string };
 } {
   return {
