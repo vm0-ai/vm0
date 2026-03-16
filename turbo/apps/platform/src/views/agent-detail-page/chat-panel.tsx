@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
   IconX,
   IconLoader2,
@@ -19,6 +19,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   chatMessages$,
   chatSending$,
+  chatStreamingState$,
   closeChatPanel$,
   sendChatMessage$,
   chatInput$,
@@ -30,6 +31,7 @@ import {
   startNewSession$,
   currentSessionId$,
   type ChatMessage,
+  type ChatStreamingState,
   type SessionListItem,
 } from "../../signals/agent-detail/chat.ts";
 import { agentName$ } from "../../signals/agent-detail/agent-detail.ts";
@@ -206,7 +208,102 @@ function UserMessage({ content }: { content: string }) {
   );
 }
 
+function BouncingDots() {
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-label="Loading">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce"
+          style={{ animationDelay: `${i * 150}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function StreamingToolIndicator({
+  name,
+  keyParam,
+}: {
+  name: string;
+  keyParam: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <StatusDot variant="pending" className="animate-pulse" />
+      <span className="font-medium">{name}</span>
+      {keyParam ? (
+        <span className="truncate max-w-[200px] opacity-70">{keyParam}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function StreamingAssistantContent({
+  streaming,
+}: {
+  streaming: ChatStreamingState;
+}) {
+  const { latestText, toolUses } = streaming;
+
+  // State 1: No content yet — bouncing dots
+  if (!latestText && toolUses.length === 0) {
+    return (
+      <div className="py-2">
+        <div className="rounded-lg border border-border bg-background px-3 py-2">
+          <BouncingDots />
+        </div>
+      </div>
+    );
+  }
+
+  // State 2: Tool uses only, no text yet
+  if (!latestText && toolUses.length > 0) {
+    return (
+      <div className="py-2 space-y-1">
+        {toolUses.map((tool) => (
+          <StreamingToolIndicator
+            key={`${tool.name}-${tool.keyParam}`}
+            name={tool.name}
+            keyParam={tool.keyParam}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // State 3/4: Has text (possibly with tool uses after)
+  return (
+    <div className="py-2 space-y-2">
+      <div className="rounded-lg border border-border bg-background px-3 py-2">
+        <div className="text-sm">
+          <Markdown source={latestText} />
+        </div>
+        {toolUses.length === 0 ? (
+          <div className="mt-1">
+            <BouncingDots />
+          </div>
+        ) : null}
+      </div>
+      {toolUses.length > 0 ? (
+        <div className="space-y-1 pl-1">
+          {toolUses.map((tool) => (
+            <StreamingToolIndicator
+              key={`${tool.name}-${tool.keyParam}`}
+              name={tool.name}
+              keyParam={tool.keyParam}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AssistantMessage({ message }: { message: ChatMessage }) {
+  const streaming = useLastResolved(chatStreamingState$);
+
   if (message.error) {
     return (
       <div className="py-2">
@@ -236,15 +333,9 @@ function AssistantMessage({ message }: { message: ChatMessage }) {
     );
   }
 
-  // Waiting: run in progress or output still loading
-  return (
-    <div className="py-2">
-      <div className="flex gap-2 items-center">
-        <StatusDot variant="pending" className="animate-pulse" />
-        <span className="text-sm text-muted-foreground">Thinking...</span>
-      </div>
-    </div>
-  );
+  // Streaming: show live text + tool use indicators
+  const state = streaming ?? { latestText: "", toolUses: [] };
+  return <StreamingAssistantContent streaming={state} />;
 }
 
 // ---------------------------------------------------------------------------

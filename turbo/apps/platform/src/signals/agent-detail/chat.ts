@@ -1,5 +1,5 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { LogStatus } from "../logs-page/types.ts";
+import type { AgentEvent, LogStatus } from "../logs-page/types.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -13,8 +13,109 @@ export type { SessionListItem };
 const L = logger("Chat");
 
 // ---------------------------------------------------------------------------
+// Streaming state types
+// ---------------------------------------------------------------------------
+
+interface ToolUseInfo {
+  name: string;
+  keyParam: string;
+}
+
+export interface ChatStreamingState {
+  latestText: string;
+  toolUses: ToolUseInfo[];
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Extract key parameter from tool input for display. */
+function extractKeyParam(
+  toolName: string,
+  input: Record<string, unknown>,
+): string {
+  const name = toolName.toLowerCase();
+
+  if (name === "bash" && typeof input.command === "string") {
+    const cmd = input.command;
+    return cmd.length > 60 ? `${cmd.slice(0, 57)}...` : cmd;
+  }
+  if (
+    (name === "webfetch" || name === "websearch") &&
+    typeof input.url === "string"
+  ) {
+    return input.url;
+  }
+  if (
+    (name === "webfetch" || name === "websearch") &&
+    typeof input.query === "string"
+  ) {
+    return input.query;
+  }
+  if (["read", "write", "edit", "glob", "grep"].includes(name)) {
+    const filePath = input.file_path ?? input.path ?? input.pattern;
+    if (typeof filePath === "string") {
+      return filePath;
+    }
+  }
+  if (name === "skill" && typeof input.skill === "string") {
+    return input.skill;
+  }
+  return "";
+}
+
+interface StreamingEventData {
+  subtype?: string;
+  message?: {
+    content: Array<{
+      type: string;
+      text?: string;
+      name?: string;
+      input?: Record<string, unknown>;
+    }> | null;
+  };
+}
+
+/** Extract streaming display state from flat events following the UX spec rules. */
+function extractStreamingState(events: AgentEvent[]): ChatStreamingState {
+  let latestText = "";
+  let toolUses: ToolUseInfo[] = [];
+
+  for (const event of events) {
+    if (event.eventType === "system") {
+      const data = event.eventData as StreamingEventData;
+      if (data.subtype === "init") {
+        // System init shows as a tool-like indicator
+        toolUses = [{ name: "Initialize", keyParam: "" }];
+      }
+      continue;
+    }
+
+    if (event.eventType !== "assistant") {
+      continue;
+    }
+
+    const data = event.eventData as StreamingEventData;
+    const contents = data.message?.content ?? [];
+
+    for (const content of contents) {
+      if (content.type === "text" && content.text) {
+        // New text appears → replace latestText, clear tool uses (UX rule 3/5)
+        latestText = content.text;
+        toolUses = [];
+      } else if (content.type === "tool_use" && content.name) {
+        // Tool use after text → append to tool uses (UX rule 4)
+        toolUses.push({
+          name: content.name,
+          keyParam: extractKeyParam(content.name, content.input ?? {}),
+        });
+      }
+    }
+  }
+
+  return { latestText, toolUses };
+}
 
 /** Scan telemetry event pages for the last "result" event content. */
 async function extractResultFromEvents(
@@ -81,6 +182,22 @@ const internalRunEvents$ = state<Computed<Promise<PageResult>>[]>([]);
 
 const internalSending$ = state(false);
 export const chatSending$ = computed((get) => get(internalSending$));
+
+/** Derived streaming state from run events — used by chat panel during loading. */
+export const chatStreamingState$ = computed(async (get) => {
+  const pages = get(internalRunEvents$);
+  if (pages.length === 0) {
+    return { latestText: "", toolUses: [] };
+  }
+
+  const allEvents: AgentEvent[] = [];
+  for (const page$ of pages) {
+    const page = await get(page$);
+    allEvents.push(...page.events);
+  }
+  allEvents.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+  return extractStreamingState(allEvents);
+});
 
 const pollingAbortController$ = state<AbortController | null>(null);
 
