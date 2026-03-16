@@ -98,7 +98,7 @@ describe("run command", () => {
       http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
         return HttpResponse.json(defaultEventsResponse);
       }),
-      // Default org handler for experimental-shared-agent validation
+      // Default org handler
       http.get("http://localhost:3000/api/org", () => {
         return HttpResponse.json({
           id: "org-123",
@@ -472,7 +472,6 @@ describe("run command", () => {
         "node",
         "cli",
         "user-abc123/my-agent",
-        "--experimental-shared-agent",
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -550,7 +549,6 @@ describe("run command", () => {
         "node",
         "cli",
         "user-abc123/my-agent:abc12345",
-        "--experimental-shared-agent",
         "test prompt",
         "--artifact-name",
         "test-artifact",
@@ -1323,120 +1321,6 @@ describe("run command", () => {
     });
   });
 
-  describe("--experimental-shared-agent flag", () => {
-    it("should require flag when running agent from another user's org", async () => {
-      await expect(async () => {
-        await runCommand.parseAsync([
-          "node",
-          "cli",
-          "other-user/my-agent",
-          "test prompt",
-          "--artifact-name",
-          "test-artifact",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Running shared agents requires --experimental-shared-agent flag",
-        ),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Use: vm0 run other-user/my-agent --experimental-shared-agent",
-        ),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should allow running agent from own org without flag", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
-          const url = new URL(request.url);
-          const name = url.searchParams.get("name");
-          const org = url.searchParams.get("org");
-
-          if (org === "test-user" && name === "my-agent") {
-            return HttpResponse.json({
-              id: "compose-123",
-              name: "my-agent",
-              headVersionId: "version-123",
-              content: {
-                version: "1",
-                agents: { "my-agent": { provider: "claude" } },
-              },
-              createdAt: "2025-01-01T00:00:00Z",
-              updatedAt: "2025-01-01T00:00:00Z",
-            });
-          }
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-      );
-
-      // Should not throw - own org doesn't require the flag
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        "test-user/my-agent",
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-      ]);
-
-      // Should not have error about the flag
-      expect(mockConsoleError).not.toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-shared-agent"),
-      );
-    });
-
-    it("should allow running agent from another org with flag", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
-          const url = new URL(request.url);
-          const name = url.searchParams.get("name");
-          const org = url.searchParams.get("org");
-
-          if (org === "other-user" && name === "shared-agent") {
-            return HttpResponse.json({
-              id: "compose-456",
-              name: "shared-agent",
-              headVersionId: "version-456",
-              content: {
-                version: "1",
-                agents: { "shared-agent": { provider: "claude" } },
-              },
-              createdAt: "2025-01-01T00:00:00Z",
-              updatedAt: "2025-01-01T00:00:00Z",
-            });
-          }
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-      );
-
-      // Should not throw - flag is provided
-      await runCommand.parseAsync([
-        "node",
-        "cli",
-        "other-user/shared-agent",
-        "--experimental-shared-agent",
-        "test prompt",
-        "--artifact-name",
-        "test-artifact",
-      ]);
-
-      // Should not have error about the flag
-      expect(mockConsoleError).not.toHaveBeenCalledWith(
-        expect.stringContaining("--experimental-shared-agent"),
-      );
-    });
-  });
-
   describe("org error handling", () => {
     it("should show error when org does not exist", async () => {
       server.use(
@@ -1467,7 +1351,6 @@ describe("run command", () => {
           "node",
           "cli",
           "nonexistent-org-xyz123/my-agent",
-          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1500,7 +1383,6 @@ describe("run command", () => {
           "node",
           "cli",
           "invalid-org/test-agent",
-          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1546,7 +1428,6 @@ describe("run command", () => {
           "node",
           "cli",
           "user-abc12345/nonexistent-agent-xyz123",
-          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1579,7 +1460,6 @@ describe("run command", () => {
           "node",
           "cli",
           "user-org/missing-agent",
-          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1621,7 +1501,6 @@ describe("run command", () => {
           "node",
           "cli",
           "other-user-org/my-agent",
-          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",
@@ -1654,7 +1533,6 @@ describe("run command", () => {
           "node",
           "cli",
           "another-org/secret-agent",
-          "--experimental-shared-agent",
           "test prompt",
           "--artifact-name",
           "test-artifact",

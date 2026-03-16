@@ -77,17 +77,3 @@ export async function httpPost(path: string, body: unknown): Promise<Response> {
     body: JSON.stringify(body),
   });
 }
-
-/**
- * Generic DELETE request
- */
-export async function httpDelete(path: string): Promise<Response> {
-  const baseUrl = await getBaseUrl();
-  const headers = await getRawHeaders();
-  const orgPath = await appendOrgParam(path);
-
-  return fetch(`${baseUrl}${orgPath}`, {
-    method: "DELETE",
-    headers,
-  });
-}

@@ -3,7 +3,6 @@ import {
   getComposeById,
   getComposeByName,
   getComposeVersion,
-  getOrg,
   createRun,
 } from "../../lib/api";
 import {
@@ -71,10 +70,6 @@ export const mainRunCommand = new Command()
     "Override model provider (e.g., anthropic-api-key)",
   )
   .option("--verbose", "Show full tool inputs and outputs")
-  .option(
-    "--experimental-shared-agent",
-    "Allow running agents shared by other users (required when running org/agent format)",
-  )
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
@@ -94,7 +89,6 @@ export const mainRunCommand = new Command()
           conversation?: string;
           modelProvider?: string;
           verbose?: boolean;
-          experimentalSharedAgent?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
           autoUpdate?: boolean;
@@ -107,24 +101,6 @@ export const mainRunCommand = new Command()
 
         // 1. Parse identifier for optional org and version specifier
         const { org, name, version } = parseIdentifier(identifier);
-
-        // 1.5. Validate: running another user's agent requires explicit opt-in
-        if (org && !options.experimentalSharedAgent) {
-          // Check if it's the user's own org
-          const defaultOrg = await getOrg();
-          const isOwnOrg = defaultOrg.slug === org;
-
-          if (!isOwnOrg) {
-            throw new Error(
-              "Running shared agents requires --experimental-shared-agent flag",
-              {
-                cause: new Error(
-                  `Use: vm0 run ${identifier} --experimental-shared-agent "your prompt"`,
-                ),
-              },
-            );
-          }
-        }
 
         // 2. Resolve name to composeId and get compose content
         let composeId: string;

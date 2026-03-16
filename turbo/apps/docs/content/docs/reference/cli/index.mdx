@@ -148,11 +148,6 @@ Organizations are namespaces for organizing agents.
 | `vm0 agent status <name[:version]>` | Show agent compose status | `--no-sources` |
 | `vm0 agent clone <name> [destination]` | Clone agent compose to local directory (latest version) | - |
 | `vm0 agent delete <name>` | Delete an agent | Alias: `rm`. Options: `-y, --yes` |
-| `vm0 agent permission <name>` | List all permissions for an agent | `--experimental-shared-agent` |
-| `vm0 agent public <name>` | Make an agent public (accessible to all authenticated users) | `--experimental-shared-agent` |
-| `vm0 agent private <name>` | Make an agent private (remove public access) | `--experimental-shared-agent` |
-| `vm0 agent share <name>` | Share an agent with a user by email | `--email <email>` (required), `--experimental-shared-agent` |
-| `vm0 agent unshare <name>` | Remove sharing from a user | `--email <email>` (required), `--experimental-shared-agent` |
 
 ### `vm0 run` Options
 
@@ -167,7 +162,6 @@ Organizations are namespaces for organizing agents.
 | `--conversation <id>` | Resume from conversation ID |
 | `--model-provider <type>` | Override model provider |
 | `--verbose` | Show full tool inputs and outputs |
-| `--experimental-shared-agent` | Allow running agents shared by other users |
 | `--check-env` | Validate secrets and vars before running |
 
 ### `vm0 run` Examples
