@@ -7,7 +7,6 @@ import {
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
-import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
@@ -23,7 +22,6 @@ import {
 import { listSecrets } from "../../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../../src/lib/connector/connector-service";
-import { removePermission } from "../../../../../src/lib/agent/permission-service";
 import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import {
   createSlackClient,
@@ -345,17 +343,6 @@ async function handleDisconnect(authCtx: { userId: string }) {
       { error: { message: "No Slack connection found", code: "NOT_FOUND" } },
       { status: 404 },
     );
-  }
-
-  // Revoke agent permission (best-effort)
-  const composeId = await resolveDefaultComposeId(org.orgId);
-  if (composeId) {
-    const email = await getUserEmail(userId);
-    if (email) {
-      await removePermission(composeId, "email", email).catch((error) => {
-        log.warn("Failed to revoke agent permission on disconnect", { error });
-      });
-    }
   }
 
   // Delete connection record

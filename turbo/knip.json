@@ -18,7 +18,6 @@
       "ignoreDependencies": [
         "e2b",
         "@testing-library/react",
-        "@types/tar",
         "import-in-the-middle",
         "require-in-the-middle",
         "cpu-features"
@@ -41,7 +40,7 @@
     "apps/docs": {
       "entry": ["source.config.ts"],
       "project": ["**/*.{ts,tsx,mdx,js,mjs}"],
-      "ignoreDependencies": ["@vm0/typescript-config", "tailwindcss"]
+      "ignoreDependencies": ["@vm0/typescript-config"]
     },
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
