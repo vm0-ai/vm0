@@ -253,6 +253,8 @@ describe("401 redirect", () => {
       }),
     );
 
+    mockedClerk.redirectToSignIn.mockClear();
+
     const fch = context.store.get(fetch$);
     const response = await fch("/test");
 
