@@ -144,7 +144,7 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/settings?tab=connectors`,
+      url: `${platformUrl}/zero/meet`,
     });
   });
 
@@ -170,7 +170,7 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/settings?tab=connectors`,
+      url: `${platformUrl}/zero/meet`,
     });
   });
 
@@ -186,7 +186,7 @@ describe("detectDeepLinks", () => {
       platformUrl,
     );
     expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(`${platformUrl}/settings?tab=connectors`);
+    expect(links[0]?.url).toBe(`${platformUrl}/zero/meet`);
   });
 
   it("should return multiple links for different destinations", () => {
@@ -198,7 +198,7 @@ describe("detectDeepLinks", () => {
     const urls = links.map((l) => l.url);
     expect(urls).toContain(`${platformUrl}/settings`);
     expect(urls).toContain(`${platformUrl}/settings/slack`);
-    expect(urls).toContain(`${platformUrl}/settings?tab=connectors`);
+    expect(urls).toContain(`${platformUrl}/zero/meet`);
   });
 
   it("should use agent-specific paths when agentName is provided", () => {
@@ -211,7 +211,7 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/agents/my-agent/connections`,
+      url: `${platformUrl}/zero/meet`,
     });
   });
 
@@ -222,9 +222,7 @@ describe("detectDeepLinks", () => {
       "agent with spaces",
     );
     expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(
-      `${platformUrl}/agents/agent%20with%20spaces/connections`,
-    );
+    expect(links[0]?.url).toBe(`${platformUrl}/zero/meet`);
   });
 
   it("should not use agent paths for categories without agentPath", () => {

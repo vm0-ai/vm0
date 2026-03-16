@@ -40,8 +40,8 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
       "tool not found",
     ],
     label: "Configure connectors",
-    path: "/settings?tab=connectors",
-    agentPath: "/agents/:name/connections",
+    path: "/zero/meet",
+    agentPath: "/zero/meet",
     emoji: "🔌",
   },
   {
