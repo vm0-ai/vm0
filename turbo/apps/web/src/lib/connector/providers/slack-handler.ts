@@ -4,6 +4,7 @@ import {
   exchangeSlackCode,
   fetchSlackUserInfo,
   getSlackSecretName,
+  revokeSlackToken,
 } from "./slack";
 
 export const slackHandler: ProviderHandler = {
@@ -32,4 +33,5 @@ export const slackHandler: ProviderHandler = {
   getClientId: (e) => e.SLACK_CLIENT_ID,
   getClientSecret: (e) => e.SLACK_CLIENT_SECRET,
   getSecretName: getSlackSecretName,
+  revokeToken: revokeSlackToken,
 };

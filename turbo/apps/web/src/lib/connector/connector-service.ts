@@ -12,7 +12,7 @@ import { secrets } from "../../db/schema/secret";
 import { variables } from "../../db/schema/variable";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
-import { upsertSecretByOrg } from "../secret/secret-service";
+import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
 
 const log = logger("service:connector");
@@ -322,6 +322,53 @@ export async function upsertOAuthConnector(
 }
 
 /**
+ * Best-effort revocation of an OAuth provider's remote token/grant.
+ * Looks up the connector's handler, reads the access token from DB,
+ * and calls the handler's revokeToken method if available.
+ * Errors are logged and swallowed — revocation must never block disconnect.
+ */
+async function revokeConnectorToken(
+  orgId: string,
+  userId: string,
+  type: ConnectorType,
+): Promise<void> {
+  if (type === "computer") return;
+
+  const handler = PROVIDER_HANDLERS[type as Exclude<ConnectorType, "computer">];
+  if (!handler.revokeToken) return;
+
+  const env = globalThis.services.env;
+  const clientId = handler.getClientId(env);
+  const clientSecret = handler.getClientSecret(env);
+  if (!clientId || !clientSecret) {
+    log.debug(
+      `${type} OAuth credentials not configured, skipping token revocation`,
+    );
+    return;
+  }
+
+  const accessTokenName = handler.getSecretName();
+  const accessToken = await getSecretValue(
+    orgId,
+    userId,
+    accessTokenName,
+    "connector",
+  );
+  if (!accessToken) {
+    log.debug(`${type} access token not found, skipping revocation`);
+    return;
+  }
+
+  try {
+    await handler.revokeToken(clientId, clientSecret, accessToken);
+    log.debug(`${type} token revoked successfully`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    log.warn(`${type} token revocation failed: ${message}`);
+  }
+}
+
+/**
  * Delete a connector and its associated secrets.
  * For OAuth connectors: deletes DB record + connector-type secrets.
  * For api-token connectors (no DB record): deletes user secrets matching required api-token secret names.
@@ -347,6 +394,11 @@ export async function deleteConnector(
     .limit(1);
 
   if (existing) {
+    // Revoke remote token before deleting local state (best-effort)
+    if (existing.authMethod === "oauth") {
+      await revokeConnectorToken(orgId, userId, type);
+    }
+
     // OAuth connector: delete DB record + connector-type secrets
     await db.delete(connectors).where(eq(connectors.id, existing.id));
 

@@ -4,6 +4,7 @@ import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
   getGitHubSecretName,
+  revokeGitHubGrant,
 } from "./github";
 
 export const githubHandler: ProviderHandler = {
@@ -21,4 +22,5 @@ export const githubHandler: ProviderHandler = {
   getClientId: (e) => e.GH_OAUTH_CLIENT_ID,
   getClientSecret: (e) => e.GH_OAUTH_CLIENT_SECRET,
   getSecretName: getGitHubSecretName,
+  revokeToken: revokeGitHubGrant,
 };

@@ -121,6 +121,35 @@ export async function fetchGitHubUserInfo(
 }
 
 /**
+ * Revoke GitHub OAuth app authorization grant.
+ * Uses the grant revocation endpoint (not token) to force re-consent on next connect.
+ * Ref: https://docs.github.com/en/rest/apps/oauth-applications#delete-an-app-authorization
+ */
+export async function revokeGitHubGrant(
+  clientId: string,
+  clientSecret: string,
+  accessToken: string,
+): Promise<void> {
+  const response = await fetch(
+    `${GITHUB_API_BASE}/applications/${clientId}/grant`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify({ access_token: accessToken }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`GitHub grant revocation failed: ${response.status}`);
+  }
+}
+
+/**
  * Get the primary secret name for GitHub connector (the access token).
  * Uses an explicit key rather than Object.keys() ordering to avoid
  * fragile dependency on property insertion order.

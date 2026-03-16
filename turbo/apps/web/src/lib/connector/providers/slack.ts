@@ -145,6 +145,32 @@ export async function fetchSlackUserInfo(
 }
 
 /**
+ * Revoke a Slack user token.
+ * Ref: https://api.slack.com/methods/auth.revoke
+ */
+export async function revokeSlackToken(
+  _clientId: string,
+  _clientSecret: string,
+  accessToken: string,
+): Promise<void> {
+  const response = await fetch("https://slack.com/api/auth.revoke", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Slack token revocation failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as { ok: boolean; error?: string };
+  if (!data.ok) {
+    throw new Error(data.error ?? "Slack token revocation returned ok=false");
+  }
+}
+
+/**
  * Get the primary secret name for Slack connector (the user access token).
  */
 export function getSlackSecretName(): string {

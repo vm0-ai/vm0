@@ -45,6 +45,7 @@ export function buildDropboxAuthorizationUrl(
     scope: oauthConfig.scopes.join(" "),
     state,
     token_access_type: "offline",
+    force_reapprove: "true",
   });
 
   return `${oauthConfig.authorizationUrl}?${params.toString()}`;

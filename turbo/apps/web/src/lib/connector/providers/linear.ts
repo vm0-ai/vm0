@@ -225,6 +225,33 @@ async function fetchLinearUserInfo(
 }
 
 /**
+ * Revoke a Linear OAuth token.
+ * Uses RFC 7009 token revocation endpoint with Basic Auth.
+ * Ref: https://linear.app/developers/oauth-2-0-authentication
+ */
+export async function revokeLinearToken(
+  clientId: string,
+  clientSecret: string,
+  accessToken: string,
+): Promise<void> {
+  const response = await fetch("https://api.linear.app/oauth/revoke", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+    },
+    body: new URLSearchParams({
+      token: accessToken,
+      token_type_hint: "access_token",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Linear token revocation failed: ${response.status}`);
+  }
+}
+
+/**
  * Get the primary secret name for Linear connector (the access token).
  */
 export function getLinearSecretName(): string {

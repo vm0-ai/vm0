@@ -44,4 +44,9 @@ export interface ProviderHandler {
     refreshToken: string | null;
     expiresIn?: number;
   }>;
+  revokeToken?(
+    clientId: string,
+    clientSecret: string,
+    accessToken: string,
+  ): Promise<void>;
 }

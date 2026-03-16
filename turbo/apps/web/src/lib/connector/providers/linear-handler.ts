@@ -4,6 +4,7 @@ import {
   exchangeLinearCode,
   getLinearSecretName,
   refreshLinearToken,
+  revokeLinearToken,
 } from "./linear";
 
 export const linearHandler: ProviderHandler = {
@@ -32,4 +33,5 @@ export const linearHandler: ProviderHandler = {
   getSecretName: getLinearSecretName,
   getRefreshSecretName: () => "LINEAR_REFRESH_TOKEN",
   refreshToken: refreshLinearToken,
+  revokeToken: revokeLinearToken,
 };
