@@ -1044,6 +1044,38 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.code).toBe("NOT_FOUND");
     });
 
+    it("should return 404 when creating new run against compose from a different org", async () => {
+      // testComposeId belongs to user's default org (org A)
+      // Switch to org B
+      const otherOrgId = uniqueId("org-other");
+      const otherOrgSlug = uniqueId("org-other");
+      await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrgId,
+        orgSlug: otherOrgSlug,
+        clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Cross-org new run",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
     // Note: "Missing required secrets" validation is tested in the Validation
     // describe block above (lines 138-197).
   });
@@ -1103,6 +1135,41 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await response.json();
 
       // Returns 404 for security (don't leak checkpoint existence)
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return 404 when resuming checkpoint from a different org", async () => {
+      // Create compose and run under org A, then complete it (creates checkpoint)
+      const { runId } = await createTestRun(testComposeId, "Checkpoint run");
+      const { checkpointId } = await completeTestRun(user.userId, runId);
+
+      // Switch to org B
+      const otherOrgId = uniqueId("org-other");
+      const otherOrgSlug = uniqueId("org-other");
+      await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrgId,
+        orgSlug: otherOrgSlug,
+        clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            checkpointId,
+            prompt: "Cross-org checkpoint resume",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
       expect(response.status).toBe(404);
       expect(data.error.code).toBe("NOT_FOUND");
     });
