@@ -104,7 +104,7 @@ function formatGitHubComment(opts: {
   parts.push(`<sub>🤖 **${agentName}**</sub>`, "", content, "");
 
   // Detect deep links for missing connectors, model providers, etc.
-  const deepLinks = detectDeepLinks(content, platformUrl, agentName);
+  const deepLinks = detectDeepLinks(content, platformUrl);
   if (deepLinks.length > 0) {
     const linkText = deepLinks
       .map((link) => `${link.emoji} [${link.label}](${link.url})`)

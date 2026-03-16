@@ -215,7 +215,7 @@ export async function handleAppMention(context: MentionContext): Promise<void> {
     const logsUrl = runId
       ? buildLogsUrl(runId, agentName)
       : buildAgentLogsUrl(agentName);
-    const deepLinks = detectDeepLinks(errorText, getPlatformUrl(), agentName);
+    const deepLinks = detectDeepLinks(errorText, getPlatformUrl());
     await postMessage(client, context.channelId, errorText, {
       threadTs,
       blocks: buildAgentResponseMessage(
