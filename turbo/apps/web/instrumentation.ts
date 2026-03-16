@@ -5,8 +5,14 @@ export async function register() {
     // Sync skills cache on startup (needed for dev environments without Vercel cron)
     const { initServices } = await import("./src/lib/init-services");
     initServices();
+    const { logger } = await import("./src/lib/logger");
+    const log = logger("instrumentation");
     const { syncSkills } = await import("./src/lib/skills/sync-skills");
-    syncSkills().catch(() => {}); // fire-and-forget, don't block startup
+    syncSkills().catch((error: unknown) => {
+      log.error("Failed to sync skills on startup", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {
