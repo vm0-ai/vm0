@@ -44,19 +44,6 @@ class TestRequestHandler:
     def setup_method(self):
         _reset()
 
-    def test_denied_flow_returns_403(self, registry_file):
-        flow = _make_http_flow(host="blocked.com")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.request(flow)
-
-        assert flow.response is not None
-        assert flow.response.status_code == 403
-
     def test_allowed_domain_passes_through(self, registry_file):
         flow = _make_http_flow(host="api.anthropic.com")
 
@@ -125,16 +112,12 @@ class TestRequestHandler:
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
     def test_service_match_calls_handler(self, tmp_path):
-        """When URL matches a service and firewall allows, handle_service_request is called."""
+        """When URL matches a service, handle_service_request is called."""
         registry = {
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
-                    "firewallRules": [
-                        {"domain": "*.github.com", "action": "ALLOW"},
-                        {"final": "DENY"},
-                    ],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": [
                         {"name": "github", "ref": "github", "apis": [
@@ -180,10 +163,6 @@ class TestRequestHandler:
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
-                    "firewallRules": [
-                        {"domain": "*.github.com", "action": "ALLOW"},
-                        {"final": "DENY"},
-                    ],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": [
                         {"name": "github", "ref": "github", "apis": [
@@ -228,10 +207,6 @@ class TestRequestHandler:
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
-                    "firewallRules": [
-                        {"domain": "*.github.com", "action": "ALLOW"},
-                        {"final": "DENY"},
-                    ],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": [
                         {"name": "github", "ref": "github", "apis": [
@@ -281,10 +256,6 @@ class TestRequestHandler:
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
-                    "firewallRules": [
-                        {"domain": "*.example.com", "action": "ALLOW"},
-                        {"final": "DENY"},
-                    ],
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "services": [
                         {"name": "github", "ref": "github", "apis": [
@@ -302,7 +273,7 @@ class TestRequestHandler:
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        # Request to example.com — allowed by firewall but not a service
+        # Request to example.com — not a service, passes through
         flow = _make_http_flow(
             client_ip="10.200.0.5", host="api.example.com", path="/data"
         )
@@ -319,65 +290,6 @@ class TestRequestHandler:
         mock_handler.assert_not_called()
         assert flow.response is None
         assert flow.metadata["firewall_action"] == "ALLOW"
-
-    def test_firewall_denies_service_domain(self, tmp_path):
-        """Firewall DENY blocks service-matched domains — firewall is the security boundary."""
-        registry = {
-            "vms": {
-                "10.200.0.5": {
-                    "runId": "run-conn-1",
-                    "sandboxToken": "tok-conn",
-                    "firewallRules": [{"final": "DENY"}],
-                    "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "services": [
-                        {"name": "github", "ref": "github", "apis": [
-                            {
-                                "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-                            },
-                        ]},
-                    ],
-                    "encryptedSecrets": "iv:tag:data",
-                }
-            }
-        }
-        reg_path = tmp_path / "registry.json"
-        reg_path.write_text(json.dumps(registry))
-
-        flow = _make_http_flow(
-            client_ip="10.200.0.5", host="api.github.com", path="/repos"
-        )
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_service_request") as mock_handler,
-        ):
-            mitm_addon.request(flow)
-
-        # Firewall should block before service matching
-        mock_handler.assert_not_called()
-        assert flow.response is not None
-        assert flow.response.status_code == 403
-        assert flow.metadata["firewall_action"] == "DENY"
-
-    def test_no_rules_allows_through(self, registry_file):
-        """VM with no firewall rules allows all requests through."""
-        # 10.200.0.2 has no rules (empty firewallRules = ALLOW all)
-        flow = _make_http_flow(client_ip="10.200.0.2", host="example.com", path="/test")
-
-        with (
-            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            mitm_addon.request(flow)
-
-        # Request should pass through with no block
-        assert flow.response is None
-        assert flow.metadata.get("original_url") == "https://example.com/test"
 
 
 class TestResponseHeadersHandler:

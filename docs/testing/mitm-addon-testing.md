@@ -29,7 +29,6 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | File | Tests |
 |------|-------|
 | `test_handlers.py` | Request routing, service auth, cache invalidation |
-| `test_firewall.py` | Domain matching, firewall rules, ALLOW/DENY |
 | `test_registry.py` | Registry loading, caching, file watching |
 | `test_connectors.py` | Service URL matching, token handling |
 | `test_utils.py` | Utility functions |
@@ -49,10 +48,7 @@ def registry_file(tmp_path):
             "10.200.0.1": {
                 "runId": "run-abc-123",
                 "sandboxToken": "tok-xyz",
-                "mitmEnabled": True,
-                "firewallRules": [
-                    {"domain": "*.vm0.ai", "action": "ALLOW"},
-                ],
+                "networkLogPath": str(tmp_path / "network.jsonl"),
             },
         },
     }
@@ -123,11 +119,6 @@ def test_service_match_calls_handler(self, registry_file):
 Check flow metadata and response after handler execution:
 
 ```python
-# Firewall blocked
-assert flow.response is not None
-assert flow.response.status_code == 403
-assert flow.metadata["firewall_action"] == "DENY"
-
 # Service auth injected
 assert flow.request.headers["Authorization"] == "Bearer real-token"
 assert flow.metadata["firewall_action"] == "ALLOW"
@@ -137,7 +128,6 @@ assert flow.metadata["service_base"] == "https://api.github.com"
 ## What to Test
 
 - **URL matching**: `match_service()` with various URLs, path boundaries
-- **Firewall rules**: domain/IP matching, rule ordering, wildcards
 - **Request routing**: correct handler called based on registry state
 - **Cache behavior**: token caching, expiry, invalidation on 401
 - **Registry loading**: valid JSON, missing file, cache refresh

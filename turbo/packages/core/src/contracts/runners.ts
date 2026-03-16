@@ -171,7 +171,6 @@ export const executionContextSchema = z.object({
   // Maps secret names to OAuth connector types for runtime token refresh
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   cliAgentType: z.string(),
-  // Experimental firewall configuration
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics

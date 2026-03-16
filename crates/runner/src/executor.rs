@@ -121,7 +121,6 @@ async fn execute_inner(
         let registration = proxy::VmRegistration {
             run_id: &run_id_str,
             sandbox_token: &context.sandbox_token,
-            firewall_rules: &[],
             network_log_path: &network_log_path,
             services: context.experimental_services.as_deref(),
             encrypted_secrets: context.encrypted_secrets.as_deref(),

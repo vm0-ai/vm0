@@ -192,7 +192,6 @@ sandbox:
 **HTTP Proxy**: mitmproxy (dynamically allocated port)
 - Intercepts all HTTP/HTTPS traffic
 - Logs requests/responses to per-run JSONL files
-- Firewall enforcement with first-match-wins rules (domain, IP, terminal)
 - CA certificate injected into VM trust store
 - Proxy registry: `{base_dir}/proxy-registry.json` (flock-based coordination)
 

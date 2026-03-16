@@ -173,7 +173,6 @@ async fn run_sandbox(
     let registration = proxy::VmRegistration {
         run_id: &run_id,
         sandbox_token: "",
-        firewall_rules: &[],
         network_log_path: &network_log_path,
         services: None,
         encrypted_secrets: None,

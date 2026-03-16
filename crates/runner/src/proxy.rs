@@ -24,37 +24,10 @@ struct VmEntry {
     run_id: String,
     sandbox_token: String,
     registered_at: i64,
-    firewall_rules: Vec<FirewallRule>,
     network_log_path: String,
     services: Option<Vec<crate::types::ServiceEntry>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
-}
-
-/// Firewall rule for network filtering (first-match-wins).
-///
-/// Variants:
-/// - Domain rule: `{ "domain": "*.example.com", "action": "ALLOW" }`
-/// - IP rule: `{ "ip": "10.0.0.0/8", "action": "DENY" }`
-/// - Terminal rule: `{ "final": "DENY" }`
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FirewallRule {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub domain: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ip: Option<String>,
-    #[serde(rename = "final", skip_serializing_if = "Option::is_none")]
-    pub terminal: Option<FirewallAction>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action: Option<FirewallAction>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FirewallAction {
-    #[serde(rename = "ALLOW")]
-    Allow,
-    #[serde(rename = "DENY")]
-    Deny,
 }
 
 /// Parameters for registering a VM in the proxy registry.
@@ -62,7 +35,6 @@ pub enum FirewallAction {
 pub struct VmRegistration<'a> {
     pub run_id: &'a str,
     pub sandbox_token: &'a str,
-    pub firewall_rules: &'a [FirewallRule],
     pub network_log_path: &'a std::path::Path,
     pub services: Option<&'a [crate::types::ServiceEntry]>,
     pub encrypted_secrets: Option<&'a str>,
@@ -446,7 +418,6 @@ impl ProxyRegistryHandle {
                 run_id: registration.run_id.to_string(),
                 sandbox_token: registration.sandbox_token.to_string(),
                 registered_at: now,
-                firewall_rules: registration.firewall_rules.to_vec(),
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
                 services,
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
@@ -522,8 +493,6 @@ mod tests {
                 run_id: "test-run".to_string(),
                 sandbox_token: String::new(),
                 registered_at: 1000,
-                firewall_rules: Vec::new(),
-
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 services: None,
                 encrypted_secrets: None,
@@ -550,63 +519,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn firewall_rule_serializes_to_ts_format() {
-        let rules = vec![
-            FirewallRule {
-                domain: Some("*.example.com".to_string()),
-                ip: None,
-                terminal: None,
-                action: Some(FirewallAction::Allow),
-            },
-            FirewallRule {
-                domain: None,
-                ip: Some("10.0.0.0/8".to_string()),
-                terminal: None,
-                action: Some(FirewallAction::Deny),
-            },
-            FirewallRule {
-                domain: None,
-                ip: None,
-                terminal: Some(FirewallAction::Deny),
-                action: None,
-            },
-        ];
-        let json = serde_json::to_value(&rules).unwrap();
-        let arr = json.as_array().unwrap();
-
-        // Domain rule
-        assert_eq!(arr[0]["domain"], "*.example.com");
-        assert_eq!(arr[0]["action"], "ALLOW");
-        assert!(arr[0].get("ip").is_none());
-        assert!(arr[0].get("final").is_none());
-
-        // IP rule
-        assert_eq!(arr[1]["ip"], "10.0.0.0/8");
-        assert_eq!(arr[1]["action"], "DENY");
-
-        // Terminal rule (field name is "final" in JSON)
-        assert_eq!(arr[2]["final"], "DENY");
-        assert!(arr[2].get("action").is_none());
-    }
-
-    #[test]
-    fn firewall_rule_round_trip() {
-        let json = r#"[
-            {"domain": "example.com", "action": "ALLOW"},
-            {"ip": "192.168.0.0/16", "action": "DENY"},
-            {"final": "DENY"}
-        ]"#;
-        let rules: Vec<FirewallRule> = serde_json::from_str(json).unwrap();
-        assert_eq!(rules.len(), 3);
-        assert_eq!(rules[0].domain.as_deref(), Some("example.com"));
-        assert!(matches!(rules[0].action, Some(FirewallAction::Allow)));
-        assert_eq!(rules[1].ip.as_deref(), Some("192.168.0.0/16"));
-        assert!(matches!(rules[1].action, Some(FirewallAction::Deny)));
-        assert!(matches!(rules[2].terminal, Some(FirewallAction::Deny)));
-        assert!(rules[2].action.is_none());
-    }
-
     #[tokio::test]
     async fn registry_handle_register_and_unregister() {
         let dir = tempfile::tempdir().unwrap();
@@ -627,8 +539,6 @@ mod tests {
         let registration = VmRegistration {
             run_id: "run-1",
             sandbox_token: "tok-1",
-            firewall_rules: &[],
-
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             services: None,
             encrypted_secrets: None,
@@ -647,7 +557,7 @@ mod tests {
         let registration2 = VmRegistration {
             run_id: "run-2",
             sandbox_token: "tok-2",
-            firewall_rules: &[],
+
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             services: None,
             encrypted_secrets: None,
@@ -699,7 +609,7 @@ mod tests {
                 let registration = VmRegistration {
                     run_id: &run_id_owned,
                     sandbox_token: "",
-                    firewall_rules: &[],
+
                     network_log_path: &log_path,
                     services: None,
                     encrypted_secrets: None,
@@ -715,55 +625,6 @@ mod tests {
         // All 10 VMs should be registered (no lost updates).
         let loaded = read_registry(&registry_path).await.unwrap();
         assert_eq!(loaded.vms.len(), 10);
-    }
-
-    #[tokio::test]
-    async fn registry_with_firewall_rules() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-
-        let mut registry = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-        registry.vms.insert(
-            "10.200.0.2".to_string(),
-            VmEntry {
-                run_id: "run-1".to_string(),
-                sandbox_token: "tok".to_string(),
-                registered_at: 1000,
-                firewall_rules: vec![
-                    FirewallRule {
-                        domain: Some("*.allowed.com".to_string()),
-                        ip: None,
-                        terminal: None,
-                        action: Some(FirewallAction::Allow),
-                    },
-                    FirewallRule {
-                        domain: None,
-                        ip: None,
-                        terminal: Some(FirewallAction::Deny),
-                        action: None,
-                    },
-                ],
-
-                network_log_path: "/tmp/network-run-1.jsonl".to_string(),
-                services: None,
-                encrypted_secrets: None,
-                secret_connector_map: None,
-            },
-        );
-        write_registry(&registry_path, &registry).await.unwrap();
-
-        let loaded = read_registry(&registry_path).await.unwrap();
-        let vm = loaded.vms.get("10.200.0.2").unwrap();
-        assert_eq!(vm.firewall_rules.len(), 2);
-
-        // Verify JSON field names match TS/Python format.
-        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
-        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        let vm_json = &value["vms"]["10.200.0.2"];
-        assert!(vm_json["firewallRules"].is_array());
     }
 
     #[tokio::test]
@@ -808,8 +669,6 @@ mod tests {
         let registration = VmRegistration {
             run_id: "run-svc",
             sandbox_token: "tok",
-            firewall_rules: &[],
-
             network_log_path: std::path::Path::new("/tmp/network-run-svc.jsonl"),
             services: Some(&services),
             encrypted_secrets: None,
@@ -874,7 +733,7 @@ mod tests {
         let registration = VmRegistration {
             run_id: "run-enc",
             sandbox_token: "tok",
-            firewall_rules: &[],
+
             network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
             services: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
