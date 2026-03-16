@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.115.0](https://github.com/vm0-ai/vm0/compare/platform-v0.114.3...platform-v0.115.0) (2026-03-16)
+
+
+### Features
+
+* add vercel ai gateway as staff-only model provider ([#5032](https://github.com/vm0-ai/vm0/issues/5032)) ([53b5845](https://github.com/vm0-ai/vm0/commit/53b5845a8903721ea0d6dbafcd2815641552f254)), closes [#5029](https://github.com/vm0-ai/vm0/issues/5029)
+* **platform:** zero app v4 ui polish and refinements ([#4995](https://github.com/vm0-ai/vm0/issues/4995)) ([a8cd2dc](https://github.com/vm0-ai/vm0/commit/a8cd2dcec8678d25090df5b155446f612e4a3868))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.0
+
 ## [0.114.3](https://github.com/vm0-ai/vm0/compare/platform-v0.114.2...platform-v0.114.3) (2026-03-16)
 
 

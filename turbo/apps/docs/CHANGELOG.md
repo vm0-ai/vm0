@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.19.0](https://github.com/vm0-ai/vm0/compare/docs-v2.18.1...docs-v2.19.0) (2026-03-16)
+
+
+### Features
+
+* **docs:** add claude 4.6 series models to openrouter available models ([#5056](https://github.com/vm0-ai/vm0/issues/5056)) ([f7330c3](https://github.com/vm0-ai/vm0/commit/f7330c38507c7fce49d99a8ee8d366b80acb78c4)), closes [#5041](https://github.com/vm0-ai/vm0/issues/5041)
+* **docs:** add vm0 memory command documentation ([#5057](https://github.com/vm0-ai/vm0/issues/5057)) ([3c51ceb](https://github.com/vm0-ai/vm0/commit/3c51ceb5954635ff6e2e8f07df4033228e3fd395)), closes [#5043](https://github.com/vm0-ai/vm0/issues/5043)
+* **docs:** add vm0 run queue to cli reference ([#5054](https://github.com/vm0-ai/vm0/issues/5054)) ([54c697a](https://github.com/vm0-ai/vm0/commit/54c697aca13effff999fa53c3853eb93e55817f6))
+* **docs:** remove connector references from strava and intervals.icu skill pages ([#5059](https://github.com/vm0-ai/vm0/issues/5059)) ([74f5042](https://github.com/vm0-ai/vm0/commit/74f504204dabd492ebc16876503114db31a30a6f)), closes [#5044](https://github.com/vm0-ai/vm0/issues/5044)
+* **docs:** remove non-existent vm0 org create from cli reference ([#5050](https://github.com/vm0-ai/vm0/issues/5050)) ([1a5ce49](https://github.com/vm0-ai/vm0/commit/1a5ce49f0d2c5a0d48581661441dac0e6d8e3322)), closes [#5039](https://github.com/vm0-ai/vm0/issues/5039)
+* **docs:** update azure foundry example model id ([#5052](https://github.com/vm0-ai/vm0/issues/5052)) ([06e689c](https://github.com/vm0-ai/vm0/commit/06e689c7b15cc212598eb262e5b7bb44031b0aaf)), closes [#5042](https://github.com/vm0-ai/vm0/issues/5042)
+* **docs:** update claude model version examples to current models ([#5055](https://github.com/vm0-ai/vm0/issues/5055)) ([3e8de20](https://github.com/vm0-ai/vm0/commit/3e8de2006efe5d7f8695f4e6045a158d72e40145)), closes [#5040](https://github.com/vm0-ai/vm0/issues/5040)
+
 ## [2.18.1](https://github.com/vm0-ai/vm0/compare/docs-v2.18.0...docs-v2.18.1) (2026-03-16)
 
 

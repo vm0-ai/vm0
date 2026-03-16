@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.72.0](https://github.com/vm0-ai/vm0/compare/core-v8.71.3...core-v8.72.0) (2026-03-16)
+
+
+### Features
+
+* add vercel ai gateway as staff-only model provider ([#5032](https://github.com/vm0-ai/vm0/issues/5032)) ([53b5845](https://github.com/vm0-ai/vm0/commit/53b5845a8903721ea0d6dbafcd2815641552f254)), closes [#5029](https://github.com/vm0-ai/vm0/issues/5029)
+* constrain vercel ai gateway to moonshot provider with kimi-k2.5 model ([#5049](https://github.com/vm0-ai/vm0/issues/5049)) ([6ac1739](https://github.com/vm0-ai/vm0/commit/6ac1739e5d07ca86675a8b577b5f139a70ba6a07)), closes [#5048](https://github.com/vm0-ai/vm0/issues/5048)
+* **docs:** add claude 4.6 series models to openrouter available models ([#5056](https://github.com/vm0-ai/vm0/issues/5056)) ([f7330c3](https://github.com/vm0-ai/vm0/commit/f7330c38507c7fce49d99a8ee8d366b80acb78c4)), closes [#5041](https://github.com/vm0-ai/vm0/issues/5041)
+
+
+### Refactoring
+
+* align experimental_capabilities with resource model ([#5063](https://github.com/vm0-ai/vm0/issues/5063)) ([9d025ce](https://github.com/vm0-ai/vm0/commit/9d025ce6e43570242af0604181adb3047fe81370))
+* rename firewall array fields to plural form ([#5034](https://github.com/vm0-ai/vm0/issues/5034)) ([79bd167](https://github.com/vm0-ai/vm0/commit/79bd1675288e6a5a92acb6ef9c199099b9dd11bf))
+
 ## [8.71.3](https://github.com/vm0-ai/vm0/compare/core-v8.71.2...core-v8.71.3) (2026-03-16)
 
 
