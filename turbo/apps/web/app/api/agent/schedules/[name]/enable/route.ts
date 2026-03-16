@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 const log = logger("api:schedules:enable");
 
 const enableScheduleBodySchema = z.object({
-  composeId: z.string().uuid(),
+  composeId: z.uuid(),
 });
 
 export async function POST(

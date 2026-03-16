@@ -96,7 +96,7 @@ export const composeJobsByIdContract = c.router({
     path: "/api/compose/jobs/:jobId",
     headers: authHeadersSchema,
     pathParams: z.object({
-      jobId: z.string().uuid(),
+      jobId: z.uuid(),
     }),
     responses: {
       200: composeJobResponseSchema,
@@ -120,7 +120,7 @@ export const webhookComposeCompleteContract = c.router({
     path: "/api/webhooks/compose/complete",
     headers: authHeadersSchema,
     body: z.object({
-      jobId: z.string().uuid(),
+      jobId: z.uuid(),
       success: z.boolean(),
       // Result from CLI compose command
       result: composeJobResultSchema.optional(),

@@ -470,7 +470,7 @@ export function getCustomModelPlaceholder(
  * Model provider response
  */
 export const modelProviderResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   type: modelProviderTypeSchema,
   framework: modelProviderFrameworkSchema,
   secretName: z.string().nullable(), // Legacy single-secret (deprecated for multi-auth)

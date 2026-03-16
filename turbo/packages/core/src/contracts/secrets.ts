@@ -32,7 +32,7 @@ export type SecretType = z.infer<typeof secretTypeSchema>;
  * Secret metadata response (value is never returned)
  */
 export const secretResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string(),
   description: z.string().nullable(),
   type: secretTypeSchema,

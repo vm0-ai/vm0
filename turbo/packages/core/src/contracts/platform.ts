@@ -48,7 +48,7 @@ const platformLogStatusSchema = z.enum([
  * Log entry in list response - includes basic fields for list display
  */
 const platformLogEntrySchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   sessionId: z.string().nullable(),
   agentName: z.string(),
   orgSlug: z.string().nullable(),
@@ -79,7 +79,7 @@ const artifactSchema = z.object({
  * Log detail response schema
  */
 const platformLogDetailSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   sessionId: z.string().nullable(),
   agentName: z.string(),
   framework: z.string().nullable(),

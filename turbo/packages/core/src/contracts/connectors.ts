@@ -3045,7 +3045,7 @@ export function deriveApiTokenConnectedTypes(
  * Connector response schema
  */
 export const connectorResponseSchema = z.object({
-  id: z.string().uuid().nullable(),
+  id: z.uuid().nullable(),
   type: connectorTypeSchema,
   authMethod: z.string(),
   externalId: z.string().nullable(),
@@ -3144,7 +3144,7 @@ export type ConnectorSessionStatus = z.infer<
  * Connector session response schema
  */
 export const connectorSessionResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   code: z.string(),
   type: connectorTypeSchema,
   status: connectorSessionStatusSchema,
@@ -3214,7 +3214,7 @@ export const connectorSessionByIdContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({
       type: connectorTypeSchema,
-      sessionId: z.string().uuid(),
+      sessionId: z.uuid(),
     }),
     responses: {
       200: connectorSessionStatusResponseSchema,
@@ -3233,7 +3233,7 @@ export type ConnectorSessionByIdContract = typeof connectorSessionByIdContract;
  * Computer connector create response
  */
 export const computerConnectorCreateResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   ngrokToken: z.string(),
   bridgeToken: z.string(),
   endpointPrefix: z.string(),
