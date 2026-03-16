@@ -24,6 +24,25 @@ const composeVersionQuerySchema = z
 export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
 
 /**
+ * Valid capability strings for experimental_capabilities.
+ * Format: {resource}:{action}
+ */
+export const VALID_CAPABILITIES = [
+  "volume:read",
+  "volume:write",
+  "artifact:read",
+  "artifact:write",
+  "memory:read",
+  "memory:write",
+  "agent:read",
+  "agent:write",
+  "agent-run:read",
+  "agent-run:write",
+  "schedule:read",
+  "schedule:write",
+] as const;
+
+/**
  * Agent name validation schema
  * - Must be 3-64 characters
  * - Letters, numbers, and hyphens only
@@ -104,6 +123,16 @@ const agentDefinitionSchema = z.object({
         permissions: z.union([z.literal("all"), z.array(z.string()).min(1)]),
       }),
     )
+    .optional(),
+  /**
+   * Capabilities that the agent is allowed to use.
+   * Validated against VALID_CAPABILITIES at compose time.
+   */
+  experimental_capabilities: z
+    .array(z.enum(VALID_CAPABILITIES))
+    .refine((arr) => new Set(arr).size === arr.length, {
+      message: "Duplicate capabilities are not allowed",
+    })
     .optional(),
   /**
    * Agent metadata for display and personalization.

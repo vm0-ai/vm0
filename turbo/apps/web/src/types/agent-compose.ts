@@ -51,6 +51,11 @@ interface AgentDefinition {
    */
   experimental_services?: ExpandedServiceConfig[];
   /**
+   * Capabilities that the agent is allowed to use.
+   * Validated at compose time against VALID_CAPABILITIES.
+   */
+  experimental_capabilities?: string[];
+  /**
    * Agent metadata for display and personalization.
    */
   metadata?: {

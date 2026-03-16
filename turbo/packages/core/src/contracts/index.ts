@@ -36,6 +36,7 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
+  VALID_CAPABILITIES,
   // Inferred types
   type ComposeResponse,
   type ComposeListItem,
