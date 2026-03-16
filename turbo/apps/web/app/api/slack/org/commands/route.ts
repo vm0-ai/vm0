@@ -102,7 +102,7 @@ async function handleConnect(
 
     return ephemeral(
       buildSuccessMessage(
-        `You are already connected.\n\n${agentLine}\nMention \`@VM0\` in any channel or send a DM to start chatting with your agent.`,
+        `You are already connected.\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
       ),
     );
   }
@@ -159,6 +159,66 @@ async function handleDisconnect(
       "You have been disconnected and your agent access has been revoked.",
     ),
   );
+}
+
+function buildNotInstalledMessage(detail?: string): unknown[] {
+  const platformUrl = getPlatformUrl();
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text:
+          detail ??
+          "The Zero Slack app hasn't been set up for this workspace yet.",
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Set up on Platform" },
+          url: `${platformUrl}/zero/works`,
+          action_id: "open_platform_setup",
+        },
+      ],
+    },
+  ];
+}
+
+async function handleSettings(
+  installation: typeof slackOrgInstallations.$inferSelect,
+): Promise<NextResponse> {
+  const platformUrl = getPlatformUrl();
+  let agentLabel = "Agent";
+  if (installation.orgId) {
+    const composeId = await resolveDefaultComposeId(installation.orgId);
+    if (composeId) {
+      const agent = await getWorkspaceAgent(composeId);
+      agentLabel = agent?.displayName ?? agent?.name ?? agentLabel;
+    }
+  }
+  return ephemeral([
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:gear: *Settings*\n\nConfigure your workspace agent *${agentLabel}* on the Zero platform.`,
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: `Configure ${agentLabel}` },
+          url: `${platformUrl}/zero/meet`,
+          action_id: "open_platform_settings",
+        },
+      ],
+    },
+  ]);
 }
 
 /**
@@ -219,54 +279,18 @@ export async function POST(request: Request) {
   // Handle connect command
   if (subCommand === "connect") {
     if (!installation) {
-      const platformUrl = getPlatformUrl();
-      return ephemeral([
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "The VM0 Slack app hasn't been set up for this workspace yet. An org admin can complete the setup from the platform.",
-          },
-        },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Set up on Platform" },
-              url: `${platformUrl}/zero/works`,
-              action_id: "open_platform_setup",
-            },
-          ],
-        },
-      ]);
+      return ephemeral(
+        buildNotInstalledMessage(
+          "The Zero Slack app hasn't been set up for this workspace yet. An org admin can complete the setup from the platform.",
+        ),
+      );
     }
     return handleConnect(payload, installation);
   }
 
   // Other commands require installation
   if (!installation) {
-    const platformUrl = getPlatformUrl();
-    return ephemeral([
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "The VM0 Slack app hasn't been set up for this workspace yet.",
-        },
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "Set up on Platform" },
-            url: `${platformUrl}/zero/works`,
-            action_id: "open_platform_setup",
-          },
-        ],
-      },
-    ]);
+    return ephemeral(buildNotInstalledMessage());
   }
 
   // Check if user is connected
@@ -301,35 +325,7 @@ export async function POST(request: Request) {
 
   // Handle settings command
   if (subCommand === "settings") {
-    const platformUrl = getPlatformUrl();
-    let agentLabel = "Agent";
-    if (installation.orgId) {
-      const composeId = await resolveDefaultComposeId(installation.orgId);
-      if (composeId) {
-        const agent = await getWorkspaceAgent(composeId);
-        agentLabel = agent?.displayName ?? agent?.name ?? agentLabel;
-      }
-    }
-    return ephemeral([
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `:gear: *Settings*\n\nConfigure your workspace agent *${agentLabel}* on the VM0 platform.`,
-        },
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: `Configure ${agentLabel}` },
-            url: `${platformUrl}/zero/meet`,
-            action_id: "open_platform_settings",
-          },
-        ],
-      },
-    ]);
+    return handleSettings(installation);
   }
 
   // Unknown command

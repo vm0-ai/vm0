@@ -5,11 +5,13 @@ import { env } from "../../../../../../src/env";
 import {
   exchangeOAuthCode,
   getSlackRedirectBaseUrl,
+  createSlackClient,
 } from "../../../../../../src/lib/slack";
 import { encryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
 import { requireOrgMember } from "../../../../../../src/lib/org/org-member-service";
+import { refreshOrgAppHome } from "../../../../../../src/lib/slack-org/handlers/app-home";
 import { getPlatformUrl } from "../../../../../../src/lib/url";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -125,7 +127,19 @@ export async function GET(request: Request) {
     .then((rows) => rows[0] ?? null);
 
   if (existing) {
-    // Re-install: update bot token, preserve org binding
+    // Reject if workspace is bound to a different org
+    if (existing.orgId && state.orgId && existing.orgId !== state.orgId) {
+      log.warn("Install rejected: workspace already bound to another org", {
+        workspaceId: oauthResult.teamId,
+        existingOrgId: existing.orgId,
+        requestedOrgId: state.orgId,
+      });
+      return NextResponse.redirect(
+        `${platformUrl}/zero/works?error=${encodeURIComponent("This Slack workspace is already installed by another organization. Please contact the workspace admin to uninstall first.")}`,
+      );
+    }
+
+    // Re-install (same org): update bot token, preserve org binding
     await db
       .update(slackOrgInstallations)
       .set({
@@ -180,7 +194,21 @@ export async function GET(request: Request) {
       })
       .onConflictDoNothing();
 
-    return NextResponse.redirect(`${platformUrl}/zero/works`);
+    // Refresh App Home for the installing user (best-effort)
+    const client = createSlackClient(oauthResult.accessToken);
+    const [inst] = await db
+      .select()
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId))
+      .limit(1);
+    if (inst) {
+      await refreshOrgAppHome(client, inst, oauthResult.authedUserId).catch(
+        (err) =>
+          log.warn("Failed to refresh App Home after install", { error: err }),
+      );
+    }
+
+    return NextResponse.redirect(`${platformUrl}/zero/works?installed=1`);
   }
 
   // Slack flow: redirect to success page

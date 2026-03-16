@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
@@ -12,6 +13,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui/components/ui/dialog";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   slackOrgData$,
@@ -30,6 +40,24 @@ export function ZeroWorksPage() {
   const slackData = useGet(slackOrgData$);
   const disconnect = useSet(disconnectSlackOrg$);
   const uninstall = useSet(uninstallSlackOrg$);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("installed") === "1") {
+      toast.success("Slack installed successfully");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("connected") === "1") {
+      toast.success("Slack connected successfully");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("error")) {
+      toast.error(params.get("error"));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false);
 
   const isConnected = slackData?.isConnected ?? false;
   const isInstalled = slackData?.isInstalled ?? isConnected;
@@ -111,7 +139,7 @@ export function ZeroWorksPage() {
                 Connect
               </Button>
             )}
-            {isInstalled && (
+            {isInstalled && (isConnected || isAdmin) && (
               <Popover>
                 <PopoverTrigger asChild>
                   <button
@@ -141,9 +169,7 @@ export function ZeroWorksPage() {
                     <button
                       type="button"
                       className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
-                      onClick={() => {
-                        detach(uninstall(), Reason.DomCallback);
-                      }}
+                      onClick={() => setShowUninstallDialog(true)}
                     >
                       Uninstall
                     </button>
@@ -154,6 +180,37 @@ export function ZeroWorksPage() {
           </div>
         </div>
       </main>
+
+      <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Uninstall Slack integration?</DialogTitle>
+            <DialogDescription>
+              This will remove the Slack integration for your entire workspace.
+              All connected users will be disconnected and {agentName} will no
+              longer respond to messages or mentions in Slack. This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowUninstallDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowUninstallDialog(false);
+                detach(uninstall(), Reason.DomCallback);
+              }}
+            >
+              Uninstall
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

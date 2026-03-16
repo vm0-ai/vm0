@@ -194,7 +194,7 @@ export async function handleOrgMessagesTabOpened(
   await postMessage(
     client,
     context.channelId,
-    "Hi! I'm VM0. I can connect you to AI agents to help with your tasks.",
+    "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
     { blocks: buildWelcomeMessage(agentName) },
   );
 }

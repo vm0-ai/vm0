@@ -21,6 +21,7 @@ const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/integrations/slack";
  */
 export function buildAppHomeView(options: {
   isLinked: boolean;
+  isInstalled?: boolean;
   vm0UserId?: string;
   userEmail?: string;
   agentName?: string;
@@ -32,7 +33,7 @@ export function buildAppHomeView(options: {
       type: "header",
       text: {
         type: "plain_text",
-        text: "Welcome to VM0! :wave:",
+        text: "Welcome to Zero! :wave:",
       },
     },
     {
@@ -45,13 +46,46 @@ export function buildAppHomeView(options: {
     { type: "divider" },
   ];
 
+  // Not installed — prompt to ask admin
+  if (options.isInstalled === false) {
+    blocks.push(
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":warning: *Zero is not installed for this workspace*\nAsk a workspace admin to install Zero from the platform.",
+        },
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Open Zero Settings",
+            },
+            url: `${getPlatformUrl()}/zero/works`,
+            action_id: "home_open_settings",
+            style: "primary",
+          },
+        ],
+      },
+    );
+
+    return {
+      type: "home",
+      blocks,
+    };
+  }
+
   // Account status
   if (options.isLinked) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `:white_check_mark: *Connected to VM0*\nAccount: ${options.userEmail || options.vm0UserId}`,
+        text: `:white_check_mark: *Connected to Zero*\nAccount: ${options.userEmail || options.vm0UserId}`,
       },
     });
   } else {
@@ -111,7 +145,7 @@ export function buildAppHomeView(options: {
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "Settings" },
-        url: `${getPlatformUrl()}/settings/slack`,
+        url: `${getPlatformUrl()}/zero/works`,
         action_id: "home_environment_setup",
       },
     });
@@ -144,7 +178,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*Commands*\n\u2022 \`/vm0 connect\` - Connect to VM0\n\u2022 \`/vm0 disconnect\` - Disconnect from VM0\n\u2022 \`/vm0 settings\` - ${settingsDesc}`,
+      text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero disconnect\` - Disconnect from Zero\n\u2022 \`/zero settings\` - ${settingsDesc}`,
     },
   });
 
@@ -152,7 +186,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Usage*\nSend a DM or `@VM0` in any channel to chat with your agents",
+      text: "*Usage*\nSend a DM or `@Zero` in any channel to chat with your agents",
     },
   });
 
@@ -172,7 +206,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "*Disconnect VM0 Account*\nThis will remove your VM0 account connection",
+      text: "*Disconnect Zero Account*\nThis will remove your Zero account connection",
     },
     accessory: {
       type: "button",
@@ -183,10 +217,10 @@ export function buildAppHomeView(options: {
       action_id: "home_disconnect",
       style: "danger",
       confirm: {
-        title: { type: "plain_text", text: "Disconnect VM0 Account" },
+        title: { type: "plain_text", text: "Disconnect Zero Account" },
         text: {
           type: "plain_text",
-          text: "This will remove your VM0 account connection",
+          text: "This will remove your Zero account connection",
         },
         confirm: { type: "plain_text", text: "Disconnect" },
         deny: { type: "plain_text", text: "Cancel" },
@@ -232,7 +266,7 @@ export function buildLoginPromptMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "To use VM0 in Slack, please connect your account first.",
+        text: "To use Zero in Slack, please connect your account first.",
       },
     },
     {
@@ -264,7 +298,7 @@ export function buildWelcomeMessage(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: ":wave: *Hi! I'm VM0.*\n\nI can connect you to AI agents to help with your tasks.",
+        text: ":wave: *Hi! I'm Zero.*\n\nI can connect you to AI agents to help with your tasks.",
       },
     },
     {
@@ -319,7 +353,7 @@ export function buildHelpMessage(options?: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*VM0 Slack Bot Help*",
+        text: "*Zero Slack Bot Help*",
       },
     },
     {
@@ -329,14 +363,14 @@ export function buildHelpMessage(options?: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`/vm0 connect\` - Connect to VM0\n\u2022 \`/vm0 disconnect\` - Disconnect from VM0\n\u2022 \`/vm0 settings\` - ${settingsDesc}`,
+        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero disconnect\` - Disconnect from Zero\n\u2022 \`/zero settings\` - ${settingsDesc}`,
       },
     },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Usage*\n\u2022 `@VM0 <message>` - Send a message to your agent",
+        text: "*Usage*\n\u2022 `@Zero <message>` - Send a message to your agent",
       },
     },
     {
@@ -702,7 +736,7 @@ export function buildLoginMessage(loginUrl: string): (Block | KnownBlock)[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "Please connect your account to use VM0 in this workspace.",
+        text: "Please connect your account to use Zero in this workspace.",
       },
     },
     {

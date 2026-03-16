@@ -71,7 +71,7 @@ export async function handleOrgMention(
   );
 
   if (!connection) {
-    // Post ephemeral login prompt
+    // Post ephemeral login prompt (no thread_ts so it's visible in the channel)
     const connectUrl = buildOrgConnectUrl(
       context.workspaceId,
       context.userId,
@@ -80,7 +80,6 @@ export async function handleOrgMention(
     await client.chat.postEphemeral({
       channel: context.channelId,
       user: context.userId,
-      thread_ts: threadTs,
       text: "Please connect your account first",
       blocks: buildLoginPromptMessage(connectUrl),
     });

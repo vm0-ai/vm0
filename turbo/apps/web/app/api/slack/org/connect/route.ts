@@ -2,16 +2,73 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
+import { env } from "../../../../../src/env";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import {
   adminConnect,
   memberConnect,
 } from "../../../../../src/lib/slack-org/connect-service";
+import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import {
+  createSlackClient,
+  postMessage,
+} from "../../../../../src/lib/slack/client";
+import { buildSuccessMessage } from "../../../../../src/lib/slack/blocks";
+import {
+  resolveDefaultComposeId,
+  getWorkspaceAgent,
+} from "../../../../../src/lib/slack-org/handlers/shared";
+import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import { getPlatformUrl } from "../../../../../src/lib/url";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("slack-org:connect");
+
+/**
+ * Send a Slack DM confirming successful connection and refresh App Home.
+ * Fire-and-forget to avoid delaying the browser redirect.
+ */
+function notifyConnectSuccess(
+  installation: typeof slackOrgInstallations.$inferSelect,
+  slackUserId: string,
+  channelId: string | null,
+  threadTs: string | null,
+  orgId: string,
+): void {
+  void (async () => {
+    const { SECRETS_ENCRYPTION_KEY } = env();
+    const botToken = decryptSecretValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    const client = createSlackClient(botToken);
+
+    // Resolve agent name for the message
+    let agentName: string | undefined;
+    const composeId = await resolveDefaultComposeId(orgId);
+    if (composeId) {
+      const agent = await getWorkspaceAgent(composeId);
+      agentName = agent?.displayName ?? agent?.name;
+    }
+
+    const agentLine = agentName
+      ? `Your workspace agent is *${agentName}*.`
+      : `No workspace agent configured yet.`;
+
+    const target = channelId || slackUserId;
+    await postMessage(client, target, "You're connected!", {
+      threadTs: threadTs ?? undefined,
+      blocks: buildSuccessMessage(
+        `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+      ),
+    });
+
+    await refreshOrgAppHome(client, installation, slackUserId).catch((e) =>
+      log.warn("Failed to refresh App Home after connect", { error: e }),
+    );
+  })().catch((e) => log.warn("Failed to notify connect success", { error: e }));
+}
 
 /**
  * GET /api/slack/org/connect?w={workspaceId}&u={slackUserId}&c={channelId}
@@ -34,6 +91,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const workspaceId = url.searchParams.get("w");
   const slackUserId = url.searchParams.get("u");
+  const channelId = url.searchParams.get("c");
+  const threadTs = url.searchParams.get("t");
   const platformUrl = getPlatformUrl();
 
   if (!workspaceId || !slackUserId) {
@@ -55,7 +114,7 @@ export async function GET(request: Request) {
   }
 
   if (!installation.orgId) {
-    const { org, member } = await resolveOrg(userId, null, null, null);
+    const { org, member } = await resolveOrg(userId);
 
     if (member.role !== "admin") {
       return NextResponse.redirect(
@@ -63,7 +122,7 @@ export async function GET(request: Request) {
       );
     }
 
-    await adminConnect({
+    const { installation: updatedInstallation } = await adminConnect({
       userId,
       orgId: org.orgId,
       workspaceId,
@@ -76,15 +135,17 @@ export async function GET(request: Request) {
       workspaceId,
     });
 
-    return NextResponse.redirect(`${platformUrl}/zero/works`);
+    notifyConnectSuccess(
+      updatedInstallation,
+      slackUserId,
+      channelId,
+      threadTs,
+      org.orgId,
+    );
+    return NextResponse.redirect(`${platformUrl}/zero/works?connected=1`);
   }
 
-  const { org, member } = await resolveOrg(
-    userId,
-    null,
-    null,
-    installation.orgId,
-  );
+  const { org, member } = await resolveOrg(userId, null, installation.orgId);
 
   if (member.role === "admin") {
     await adminConnect({
@@ -109,5 +170,12 @@ export async function GET(request: Request) {
     role: member.role,
   });
 
-  return NextResponse.redirect(`${platformUrl}/zero/works`);
+  notifyConnectSuccess(
+    installation,
+    slackUserId,
+    channelId,
+    threadTs,
+    org.orgId,
+  );
+  return NextResponse.redirect(`${platformUrl}/zero/works?connected=1`);
 }

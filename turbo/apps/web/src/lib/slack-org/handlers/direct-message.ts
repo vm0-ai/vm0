@@ -79,12 +79,13 @@ export async function handleOrgDirectMessage(
       context.workspaceId,
       context.userId,
       context.channelId,
+      threadTs,
     );
     await postMessage(
       client,
       context.channelId,
       "Please connect your account first",
-      { blocks: buildLoginPromptMessage(connectUrl) },
+      { threadTs, blocks: buildLoginPromptMessage(connectUrl) },
     );
     return;
   }

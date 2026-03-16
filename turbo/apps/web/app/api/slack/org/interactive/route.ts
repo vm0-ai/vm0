@@ -484,7 +484,7 @@ async function finishSubmit(
       claimed.slackChannelId,
       claimed.slackMessageTs,
       claimed.slackWorkspaceId,
-      "Slack installation not found. Please reconnect the VM0 app.",
+      "Slack installation not found. Please reconnect the Zero app.",
     );
     return;
   }
@@ -540,7 +540,7 @@ async function finishSubmit(
       claimed.slackChannelId,
       claimed.slackMessageTs,
       claimed.slackWorkspaceId,
-      "Your VM0 account connection was not found. Please reconnect your account.",
+      "Your Zero account connection was not found. Please reconnect your account.",
     );
     return;
   }

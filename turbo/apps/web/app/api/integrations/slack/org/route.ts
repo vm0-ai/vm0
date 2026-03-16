@@ -29,6 +29,8 @@ import {
   createSlackClient,
   getSlackRedirectBaseUrl,
 } from "../../../../../src/lib/slack";
+import { publishAppHome } from "../../../../../src/lib/slack/client";
+import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
 import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
@@ -54,8 +56,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const { userId, orgId: tokenOrgId } = authCtx;
-  const { org, member } = await resolveOrg(userId, null, null, tokenOrgId);
+  const { userId } = authCtx;
+  const { org, member } = await resolveOrg(userId);
 
   const db = globalThis.services.db;
 
@@ -229,9 +231,9 @@ export async function DELETE(request: Request) {
   return handleDisconnect(authCtx);
 }
 
-async function handleUninstall(authCtx: { userId: string; orgId?: string }) {
-  const { userId, orgId: tokenOrgId } = authCtx;
-  const { org, member } = await resolveOrg(userId, null, null, tokenOrgId);
+async function handleUninstall(authCtx: { userId: string }) {
+  const { userId } = authCtx;
+  const { org, member } = await resolveOrg(userId);
 
   if (member.role !== "admin") {
     return NextResponse.json(
@@ -260,15 +262,37 @@ async function handleUninstall(authCtx: { userId: string; orgId?: string }) {
     );
   }
 
-  // Delete pending questions for connections in this workspace
+  // Refresh App Home for all connected users before deleting (best-effort)
   const connections = await db
-    .select({ id: slackOrgConnections.id })
+    .select({
+      id: slackOrgConnections.id,
+      slackUserId: slackOrgConnections.slackUserId,
+    })
     .from(slackOrgConnections)
     .where(
       eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
     );
 
   if (connections.length > 0) {
+    const { SECRETS_ENCRYPTION_KEY } = env();
+    const botToken = decryptSecretValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    const client = createSlackClient(botToken);
+
+    // Publish an unlinked App Home for each connected user
+    await Promise.allSettled(
+      connections.map((c) =>
+        publishAppHome(
+          client,
+          c.slackUserId,
+          buildAppHomeView({ isLinked: false, isInstalled: false }),
+        ),
+      ),
+    );
+
+    // Delete pending questions
     const connectionIds = connections.map((c) => c.id);
     await db
       .delete(slackOrgPendingQuestions)
@@ -298,9 +322,9 @@ async function handleUninstall(authCtx: { userId: string; orgId?: string }) {
   return NextResponse.json({ ok: true });
 }
 
-async function handleDisconnect(authCtx: { userId: string; orgId?: string }) {
-  const { userId, orgId: tokenOrgId } = authCtx;
-  const { org } = await resolveOrg(userId, null, null, tokenOrgId);
+async function handleDisconnect(authCtx: { userId: string }) {
+  const { userId } = authCtx;
+  const { org } = await resolveOrg(userId);
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 

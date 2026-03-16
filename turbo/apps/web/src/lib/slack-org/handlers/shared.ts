@@ -4,7 +4,6 @@ import { slackOrgInstallations } from "../../../db/schema/slack-org-installation
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
 import { getPlatformUrl } from "../../url";
-import { getSlackRedirectBaseUrl } from "../../slack";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
 import { ensureStorageExists } from "../../storage/storage-service";
 
@@ -185,14 +184,19 @@ export function buildOrgConnectUrl(
   workspaceId: string,
   slackUserId: string,
   channelId: string,
+  threadTs?: string,
 ): string {
-  const baseUrl = getSlackRedirectBaseUrl();
+  const url = new URL(getPlatformUrl());
+  url.hostname = url.hostname.replace("platform", "www");
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
     c: channelId,
   });
-  return `${baseUrl}/api/slack/org/connect?${params.toString()}`;
+  if (threadTs) {
+    params.set("t", threadTs);
+  }
+  return `${url.origin}/api/slack/org/connect?${params.toString()}`;
 }
 
 /**
@@ -211,8 +215,20 @@ export async function ensureOrgArtifact(
 export {
   fetchConversationContexts,
   enrichMessageContent,
-  buildLogsUrl,
-  buildAgentLogsUrl,
   getWorkspaceAgent,
   resolveSessionCompose,
 } from "../../slack/handlers/shared";
+
+/**
+ * Build the logs URL for a run in the org flow.
+ */
+export function buildLogsUrl(runId: string, _agentName: string): string {
+  return `${getPlatformUrl()}/zero/activity/${encodeURIComponent(runId)}`;
+}
+
+/**
+ * Build the agent-level activity URL (no specific run).
+ */
+export function buildAgentLogsUrl(_agentName: string): string {
+  return `${getPlatformUrl()}/zero/activity`;
+}
