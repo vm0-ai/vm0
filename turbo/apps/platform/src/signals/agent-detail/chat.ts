@@ -31,7 +31,7 @@ export interface ChatStreamingState {
 // ---------------------------------------------------------------------------
 
 /** Extract key parameter from tool input for display. */
-function extractKeyParam(
+export function extractKeyParam(
   toolName: string,
   input: Record<string, unknown>,
 ): string {
@@ -77,15 +77,31 @@ interface StreamingEventData {
   };
 }
 
+function isStreamingEventData(data: unknown): data is StreamingEventData {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  if ("subtype" in obj && typeof obj.subtype !== "string") {
+    return false;
+  }
+  return true;
+}
+
 /** Extract streaming display state from flat events following the UX spec rules. */
-function extractStreamingState(events: AgentEvent[]): ChatStreamingState {
+export function extractStreamingState(
+  events: AgentEvent[],
+): ChatStreamingState {
   let latestText = "";
   let toolUses: ToolUseInfo[] = [];
 
   for (const event of events) {
+    if (!isStreamingEventData(event.eventData)) {
+      continue;
+    }
+
     if (event.eventType === "system") {
-      const data = event.eventData as StreamingEventData;
-      if (data.subtype === "init") {
+      if (event.eventData.subtype === "init") {
         // System init shows as a tool-like indicator
         toolUses = [{ name: "Initialize", keyParam: "" }];
       }
@@ -96,7 +112,7 @@ function extractStreamingState(events: AgentEvent[]): ChatStreamingState {
       continue;
     }
 
-    const data = event.eventData as StreamingEventData;
+    const data = event.eventData;
     const contents = data.message?.content ?? [];
 
     for (const content of contents) {
