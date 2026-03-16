@@ -1,6 +1,9 @@
 import { chromium } from "playwright";
 import { spawn, ChildProcess } from "child_process";
 import * as dotenv from "dotenv";
+import * as os from "os";
+import * as fs from "fs";
+import * as path from "path";
 
 // Load environment variables
 dotenv.config({ path: ".env.local" });
@@ -148,7 +151,6 @@ export async function automateCliAuth(apiHost?: string) {
     // Enter email address
     const emailInput = page.locator('input[name="identifier"]');
     await emailInput.waitFor({ state: "visible", timeout: 10000 });
-    const os = require("os");
     const testEmail = `${os.hostname()}+clerk_test@vm0.ai`;
     await emailInput.fill(testEmail);
     console.log(`📧 Using test email: ${testEmail}`);
@@ -279,9 +281,6 @@ export async function automateCliAuth(apiHost?: string) {
     console.log("🎉 CLI authentication flow complete!");
 
     // Verify auth file was created
-    const fs = require("fs");
-    const os = require("os");
-    const path = require("path");
     const configPath = path.join(os.homedir(), ".vm0", "config.json");
 
     if (fs.existsSync(configPath)) {
