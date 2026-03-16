@@ -1,9 +1,7 @@
 import { eq, and, isNull } from "drizzle-orm";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
-import { addPermission } from "../agent/permission-service";
-import { getUserEmail } from "../auth/get-user-email";
-import { resolveDefaultComposeId, ensureOrgArtifact } from "./handlers/shared";
+import { ensureOrgArtifact } from "./handlers/shared";
 import { getOrgData } from "../org/org-cache-service";
 import { logger } from "../logger";
 
@@ -99,9 +97,6 @@ export async function adminConnect(params: {
         .limit(1)
     )[0]!;
 
-  // Grant agent permission via email
-  await grantAgentPermission(userId, orgId);
-
   // Ensure artifact storage
   const orgData = await getOrgData(orgId);
   await ensureOrgArtifact(userId, orgId, orgData.slug);
@@ -182,9 +177,6 @@ export async function memberConnect(params: {
         .limit(1)
     )[0]!;
 
-  // Grant agent permission
-  await grantAgentPermission(userId, orgId);
-
   // Ensure artifact storage
   const orgData = await getOrgData(orgId);
   await ensureOrgArtifact(userId, orgId, orgData.slug);
@@ -212,22 +204,4 @@ export async function disconnect(params: {
     .where(eq(slackOrgConnections.id, connectionId));
 
   log.info("User disconnected from Slack", params);
-}
-
-/**
- * Grant agent permission to user via email for the org's default agent.
- */
-async function grantAgentPermission(
-  userId: string,
-  orgId: string,
-): Promise<void> {
-  const email = await getUserEmail(userId);
-  if (!email) return;
-
-  const composeId = await resolveDefaultComposeId(orgId);
-  if (!composeId) return;
-
-  await addPermission(composeId, "email", userId, email).catch((error) => {
-    log.warn("Failed to grant agent permission", { error, userId, orgId });
-  });
 }

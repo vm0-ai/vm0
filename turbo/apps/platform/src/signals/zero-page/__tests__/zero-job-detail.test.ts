@@ -236,15 +236,13 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobInstructions$)).not.toBeNull();
     });
 
-    it("should parse org-qualified agent name correctly", async () => {
+    it("should pass agent name directly to API", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
-          const org = url.searchParams.get("org");
 
-          expect(name).toBe("sub-agent");
-          expect(org).toBe("my-org");
+          expect(name).toBe("my-org/sub-agent");
 
           return HttpResponse.json({
             ...mockAgentResponse(),
@@ -267,7 +265,6 @@ describe("zero-job-detail signals", () => {
 
       const detail = context.store.get(zeroJobDetail$);
       expect(detail).not.toBeNull();
-      expect(detail!.isOwner).toBeFalsy();
     });
   });
 

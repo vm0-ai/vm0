@@ -42,11 +42,6 @@ export const agentDetailError$ = computed(
   (get) => get(agentDetailState$).error,
 );
 
-export const isOwner$ = computed((get) => {
-  const detail = get(agentDetail$);
-  return detail?.isOwner ?? false;
-});
-
 export const fetchAgentDetail$ = command(async ({ get, set }) => {
   const name = get(agentName$);
   if (!name) {
@@ -59,16 +54,7 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
   try {
     const fetchFn = get(fetch$);
 
-    // Shared agents have org/agentName format; split for the API
-    const slashIndex = name.indexOf("/");
-    const isOwner = slashIndex === -1;
-    const agentName = isOwner ? name : name.slice(slashIndex + 1);
-    const org = isOwner ? undefined : name.slice(0, slashIndex);
-
-    const params = new URLSearchParams({ name: agentName });
-    if (org) {
-      params.set("org", org);
-    }
+    const params = new URLSearchParams({ name });
 
     const response = await fetchFn(`/api/agent/composes?${params.toString()}`);
 
@@ -76,17 +62,10 @@ export const fetchAgentDetail$ = command(async ({ get, set }) => {
       throw new Error(`Failed to fetch agent: ${response.statusText}`);
     }
 
-    const data = (await response.json()) as {
-      id: string;
-      name: string;
-      headVersionId: string | null;
-      content: AgentDetail["content"];
-      createdAt: string;
-      updatedAt: string;
-    };
+    const data = (await response.json()) as AgentDetail;
 
     set(agentDetailState$, {
-      detail: { ...data, isOwner },
+      detail: data,
       loading: false,
       error: null,
     });

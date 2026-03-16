@@ -18,13 +18,11 @@ import type { AgentInstructions as AgentInstructionsType } from "../../signals/a
 interface AgentInstructionsProps {
   instructions: AgentInstructionsType | null;
   loading: boolean;
-  isOwner: boolean;
 }
 
 export function AgentInstructions({
   instructions,
   loading,
-  isOwner,
 }: AgentInstructionsProps) {
   const viewMode = useGet(instructionsViewMode$);
   const setViewMode = useSet(setInstructionsViewMode$);
@@ -42,19 +40,6 @@ export function AgentInstructions({
       <div className="rounded-lg border border-border bg-card p-4">
         <Skeleton className="h-5 w-40 mb-6" />
         <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (!instructions?.content && !isOwner) {
-    return (
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-base font-medium text-foreground">
-          Agent instructions
-        </h2>
-        <p className="text-sm text-muted-foreground mt-6">
-          No instructions configured
-        </p>
       </div>
     );
   }
@@ -99,19 +84,13 @@ export function AgentInstructions({
 
       <div className="mt-2 flex-1 overflow-y-auto min-h-0">
         {viewMode === "markdown" ? (
-          isOwner ? (
-            <textarea
-              aria-label="Agent instructions editor"
-              className="px-1 text-sm font-mono text-foreground w-full min-h-[200px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
-              value={displayContent}
-              onChange={(e) => setEdited(e.target.value)}
-              rows={displayContent.split("\n").length + 2}
-            />
-          ) : (
-            <pre className="px-1 text-sm font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
-              {instructions?.content}
-            </pre>
-          )
+          <textarea
+            aria-label="Agent instructions editor"
+            className="px-1 text-sm font-mono text-foreground w-full min-h-[200px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap"
+            value={displayContent}
+            onChange={(e) => setEdited(e.target.value)}
+            rows={displayContent.split("\n").length + 2}
+          />
         ) : (
           <div className="px-1">
             <Markdown source={displayContent} />

@@ -10,7 +10,6 @@ import {
   IconSettings,
   IconPlug,
   IconList,
-  IconLink,
   IconLoader2,
   IconClockHour3,
   IconEdit,
@@ -34,10 +33,9 @@ import { detach, Reason } from "../../signals/utils.ts";
 
 interface AgentHeaderProps {
   detail: AgentDetail;
-  isOwner: boolean;
 }
 
-export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
+export function AgentHeader({ detail }: AgentHeaderProps) {
   const openConfig = useSet(openConfigDialog$);
   const openRun = useSet(openRunDialog$);
   const openChat = useSet(openChatPanel$);
@@ -64,12 +62,6 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
           <h1 className="text-2xl leading-8 font-normal text-foreground truncate">
             {detail.name}
           </h1>
-          {!isOwner && (
-            <span className="inline-flex h-[22px] items-center gap-1 shrink-0 rounded-md border border-border bg-background px-1.5 text-xs font-medium leading-4 text-muted-foreground">
-              <IconLink size={14} className="shrink-0 text-lime-600" />
-              Shared
-            </span>
-          )}
         </div>
         {description && (
           <p className="text-sm text-muted-foreground truncate">
@@ -137,39 +129,35 @@ export function AgentHeader({ detail, isOwner }: AgentHeaderProps) {
             </TooltipContent>
           </Tooltip>
 
-          {isOwner && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9"
-                  onClick={() => openChat()}
-                  aria-label="Chat"
-                >
-                  <IconMessageChatbot size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Chat</TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => openChat()}
+                aria-label="Chat"
+              >
+                <IconMessageChatbot size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Chat</TooltipContent>
+          </Tooltip>
 
-          {isOwner && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9"
-                  onClick={() => openConfig()}
-                  aria-label="Settings"
-                >
-                  <IconSettings size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Settings</TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => openConfig()}
+                aria-label="Settings"
+              >
+                <IconSettings size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
 
           {agentName && (
             <Tooltip>

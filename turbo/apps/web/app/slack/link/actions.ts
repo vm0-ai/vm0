@@ -12,8 +12,6 @@ import {
   ensureOrgAndArtifact,
   getWorkspaceAgent,
 } from "../../../src/lib/slack/handlers/shared";
-import { getUserEmail } from "../../../src/lib/auth/get-user-email";
-import { addPermission } from "../../../src/lib/agent/permission-service";
 import { logger } from "../../../src/lib/logger";
 
 const log = logger("slack:link");
@@ -151,19 +149,6 @@ export async function linkSlackAccount(
       vm0UserId: userId,
     })
     .returning({ id: slackUserLinks.id });
-
-  // Auto-share workspace agent with the new user
-  const email = await getUserEmail(userId);
-  if (email && installation.defaultComposeId) {
-    await addPermission(
-      installation.defaultComposeId,
-      "email",
-      installation.adminSlackUserId,
-      email,
-    ).catch((error) => {
-      log.warn("Failed to auto-share workspace agent", { error });
-    });
-  }
 
   // Send success message to the Slack channel
   if (channelId) {

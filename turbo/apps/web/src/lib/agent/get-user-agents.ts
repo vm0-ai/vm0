@@ -3,8 +3,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
-import { getUserEmail } from "../auth/get-user-email";
-import { getEmailSharedAgents } from "./permission-service";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 
 interface UserAgent {
@@ -14,18 +12,12 @@ interface UserAgent {
 }
 
 /**
- * Fetch all agents accessible to a user (own + email-shared).
- * Shared agents are returned with `orgSlug/name` format for agentName.
- *
- * Note: This always includes shared agents, unlike `composes/list` which
- * only includes them when no `?org=` param is provided. This is intentional
- * — routes like `required-env` and `missing-secrets` need the full picture
- * regardless of org filtering.
+ * Fetch all agents owned by a user.
  */
 export async function getUserAgents(userId: string): Promise<UserAgent[]> {
   const db = globalThis.services.db;
 
-  const ownAgents = await db
+  return db
     .select({
       composeId: agentComposes.id,
       agentName: agentComposes.name,
@@ -33,18 +25,6 @@ export async function getUserAgents(userId: string): Promise<UserAgent[]> {
     })
     .from(agentComposes)
     .where(eq(agentComposes.userId, userId));
-
-  const userEmail = await getUserEmail(userId);
-  const sharedAgents = await getEmailSharedAgents(userId, userEmail);
-
-  return [
-    ...ownAgents,
-    ...sharedAgents.map((a) => ({
-      composeId: a.id,
-      agentName: `${a.orgSlug}/${a.name}`,
-      headVersionId: a.headVersionId,
-    })),
-  ];
 }
 
 /**

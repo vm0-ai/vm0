@@ -12,7 +12,6 @@ import {
   notFound,
   unauthorized,
   badRequest,
-  forbidden,
   concurrentRunLimit,
   isConcurrentRunLimit,
 } from "../errors";
@@ -28,8 +27,6 @@ import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { buildExecutionContext as buildContext } from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
 import { recordSandboxOperation } from "../metrics";
-import { canAccessCompose } from "../agent/permission-service";
-import { getUserEmail } from "../auth/get-user-email";
 import { extractTemplateVars } from "../config-validator";
 
 import { resolveOrg, resolveOrgOrNull } from "../org/resolve-org";
@@ -400,17 +397,6 @@ async function loadCompose(
   };
 }
 
-async function authorizeCompose(
-  userId: string,
-  userEmail: string,
-  compose: { id: string; userId: string; orgId: string },
-): Promise<void> {
-  const hasAccess = await canAccessCompose(userId, userEmail, compose);
-  if (!hasAccess) {
-    throw forbidden("You do not have permission to access this agent");
-  }
-}
-
 /**
  * Validate template vars availability and image access for new runs.
  *
@@ -674,16 +660,14 @@ async function buildAndDispatchRun(opts: {
  *
  * Pipeline:
  * 1. Load compose version content + compose metadata
- * 2. Permission check (canAccessCompose)
- * 3. Validate template vars and image access
- * 4. Validate mutual exclusivity (checkpointId vs sessionId)
- * 5. Acquire per-user advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
- * 6. Register callbacks (if any)
- * 7. Generate sandbox token
- * 8. Build execution context
- * 9. Dispatch to executor
+ * 2. Validate template vars and image access
+ * 3. Validate mutual exclusivity (checkpointId vs sessionId)
+ * 4. Acquire per-user advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
+ * 5. Register callbacks (if any)
+ * 6. Generate sandbox token
+ * 7. Build execution context
+ * 8. Dispatch to executor
  *
- * @throws ForbiddenError - user cannot access compose
  * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
  * @throws NotFoundError - compose version not found
  * @throws Error - dispatch failure (run already marked as "failed")
@@ -694,12 +678,11 @@ export async function createRun(
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Steps 1-2: Load compose and fetch user email in parallel, then authorize
-  const [{ composeContent, compose }, userEmail] = await Promise.all([
-    loadCompose(agentComposeVersionId, params.composeId),
-    getUserEmail(userId),
-  ]);
-  await authorizeCompose(userId, userEmail, compose);
+  // Step 1: Load compose
+  const { composeContent } = await loadCompose(
+    agentComposeVersionId,
+    params.composeId,
+  );
   const authorizeTime = Date.now();
 
   // Step 3: Validate template vars and image access (for new runs only)
@@ -842,13 +825,11 @@ export async function executeQueuedRun(
 
   log.debug(`Executing queued run ${runId} for user ${userId}`);
 
-  // Steps 2-3: Load compose and fetch user email in parallel, then authorize
-  const [{ composeContent, compose: queuedCompose }, userEmail] =
-    await Promise.all([
-      loadCompose(agentComposeVersionId, params.composeId),
-      getUserEmail(userId),
-    ]);
-  await authorizeCompose(userId, userEmail, queuedCompose);
+  // Step 2: Load compose
+  const { composeContent } = await loadCompose(
+    agentComposeVersionId,
+    params.composeId,
+  );
   const authorizeTime = Date.now();
 
   // Step 4: Validate template vars and image access (for new runs only)

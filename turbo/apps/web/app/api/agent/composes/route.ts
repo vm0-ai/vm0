@@ -27,7 +27,7 @@ import {
 } from "../../../../src/lib/org/resolve-org";
 import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
 import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
-import { canAccessCompose } from "../../../../src/lib/agent/permission-service";
+import { canAccessCompose } from "../../../../src/lib/agent/compose-access";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {

@@ -424,53 +424,6 @@ describe("agent detail page", () => {
     });
   });
 
-  it("should not show Chat button for shared (non-owner) agents", async () => {
-    server.use(
-      http.get("/api/agent/composes", ({ request }) => {
-        const url = new URL(request.url);
-        const queryName = url.searchParams.get("name");
-        if (queryName !== "shared-agent") {
-          return new HttpResponse(null, { status: 404 });
-        }
-        return HttpResponse.json({
-          id: "compose_2",
-          name: "shared-agent",
-          headVersionId: "version_1",
-          content: {
-            version: "1",
-            agents: {
-              "shared-agent": {
-                description: "A shared agent",
-                framework: "claude-code",
-              },
-            },
-          },
-          createdAt: "2024-01-01T00:00:00Z",
-          updatedAt: "2024-01-01T00:00:00Z",
-        });
-      }),
-      http.get("/api/agent/composes/:id/instructions", () => {
-        return HttpResponse.json({
-          content: "# Shared",
-          filename: "instructions.md",
-        });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: `/agents/${encodeURIComponent("other-org/shared-agent")}`,
-    });
-
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "shared-agent" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole("button", { name: "Chat" })).toBeNull();
-  });
-
   it("should propagate inline run error from polling", async () => {
     mockAgentDetailAPI();
 
@@ -775,54 +728,5 @@ describe("agent detail page", () => {
     await vi.waitFor(() => {
       expect(screen.getByText("No previous sessions")).toBeInTheDocument();
     });
-  });
-
-  it("should show read-only pre for shared (non-owner) agents", async () => {
-    // Shared agent path has org/name format
-    server.use(
-      http.get("/api/agent/composes", ({ request }) => {
-        const url = new URL(request.url);
-        const queryName = url.searchParams.get("name");
-        if (queryName !== "shared-agent") {
-          return new HttpResponse(null, { status: 404 });
-        }
-        return HttpResponse.json({
-          id: "compose_2",
-          name: "shared-agent",
-          headVersionId: "version_1",
-          content: {
-            version: "1",
-            agents: {
-              "shared-agent": {
-                description: "A shared agent",
-                framework: "claude-code",
-              },
-            },
-          },
-          createdAt: "2024-01-01T00:00:00Z",
-          updatedAt: "2024-01-01T00:00:00Z",
-        });
-      }),
-      http.get("/api/agent/composes/:id/instructions", () => {
-        return HttpResponse.json({
-          content: "# Shared Content",
-          filename: "instructions.md",
-        });
-      }),
-    );
-
-    await setupPage({
-      context,
-      path: `/agents/${encodeURIComponent("other-org/shared-agent")}`,
-    });
-
-    await vi.waitFor(() => {
-      expect(screen.getByText("Agent instructions")).toBeInTheDocument();
-    });
-
-    // Switch to markdown mode — should be read-only (pre, not textarea)
-    fireEvent.click(screen.getByRole("tab", { name: "Markdown" }));
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getByText("# Shared Content")).toBeInTheDocument();
   });
 });

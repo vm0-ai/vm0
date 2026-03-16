@@ -5,7 +5,6 @@ export interface AgentDetail {
   content: AgentComposeYaml | null;
   createdAt: string;
   updatedAt: string;
-  isOwner: boolean;
 }
 
 interface AgentComposeYaml {

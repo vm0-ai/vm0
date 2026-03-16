@@ -7,8 +7,6 @@ import { createTelegramClient, sendMessage } from "../client";
 import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
 import { getPlatformUrl } from "../../url";
-import { getUserEmail } from "../../auth/get-user-email";
-import { removePermission } from "../../agent/permission-service";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -129,12 +127,6 @@ export async function handleDisconnectCommand(
   if (!userLink) {
     await sendMessage(client, chatId, "You are not connected.", replyOptions);
     return;
-  }
-
-  // Revoke agent permission
-  const email = await getUserEmail(userLink.vm0UserId);
-  if (email) {
-    await removePermission(installation.defaultComposeId, "email", email);
   }
 
   // Delete user link

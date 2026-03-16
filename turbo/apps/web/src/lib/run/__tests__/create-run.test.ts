@@ -20,7 +20,6 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import { addPermission } from "../../agent/permission-service";
 import { reloadEnv } from "../../../env";
 import {
   createRun,
@@ -229,41 +228,6 @@ describe("createRun()", () => {
         prompt: "Org 2 run",
       });
       expect(result.status).toBe("pending");
-    });
-  });
-
-  describe("Permission Check", () => {
-    it("should allow owner to access their own compose", async () => {
-      // Default test compose is owned by the test user
-      const result = await createRun(baseParams());
-      expect(result.runId).toBeDefined();
-    });
-
-    it("should deny access for non-owner without permission", async () => {
-      // Create a second user
-      const otherUser = await context.setupUser({ prefix: "other-user" });
-
-      await expect(
-        createRun(
-          baseParams({
-            userId: otherUser.userId,
-          }),
-        ),
-      ).rejects.toSatisfy(isForbidden);
-    });
-
-    it("should allow access for non-owner with public permission", async () => {
-      const otherUser = await context.setupUser({ prefix: "perm-user" });
-
-      // Grant public access directly via service (avoids API route auth check)
-      await addPermission(composeId, "public", user.userId);
-
-      const result = await createRun(
-        baseParams({
-          userId: otherUser.userId,
-        }),
-      );
-      expect(result.runId).toBeDefined();
     });
   });
 

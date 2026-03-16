@@ -18,24 +18,15 @@ export const {
   setRowsPerPage$: setAgentLogsRowsPerPage$,
 } = createCursorPagination({
   buildFetchParams: (limit, cursor, get) => {
-    const rawName = get(agentName$);
-    if (!rawName) {
+    const name = get(agentName$);
+    if (!name) {
       return null;
     }
-
-    // Split qualified name (e.g., "e7h4n/agent0") into name and org
-    const slashIndex = rawName.indexOf("/");
-    const isOwner = slashIndex === -1;
-    const name = isOwner ? rawName : rawName.slice(slashIndex + 1);
-    const org = isOwner ? undefined : rawName.slice(0, slashIndex);
 
     const params = new URLSearchParams({
       limit: String(limit),
       name,
     });
-    if (org) {
-      params.set("org", org);
-    }
     if (cursor) {
       params.set("cursor", cursor);
     }

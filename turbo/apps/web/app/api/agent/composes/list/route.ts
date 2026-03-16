@@ -6,11 +6,9 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
-import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 import { eq, desc } from "drizzle-orm";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
-import { getEmailSharedAgents } from "../../../../../src/lib/agent/permission-service";
 
 function extractMetadata(content: unknown): {
   displayName: string | null;
@@ -123,45 +121,17 @@ const router = tsr.router(composesListContract, {
       .where(eq(agentComposes.orgId, orgId))
       .orderBy(desc(agentComposes.updatedAt));
 
-    // When using default org (no ?org= param), also include email-shared agents
-    let sharedComposes: {
-      id: string;
-      name: string;
-      headVersionId: string | null;
-      updatedAt: Date;
-      orgSlug: string;
-    }[] = [];
-
-    if (!query.org) {
-      const userEmail = await getUserEmail(userId);
-      const shared = await getEmailSharedAgents(userId, userEmail);
-      sharedComposes = shared;
-    }
-
-    // Combine: own agents first, then shared agents with org/name format
-    const allComposes = [
-      ...ownComposes.map((c) => {
-        const meta = extractMetadata(c.headContent);
-        return {
-          id: c.id,
-          name: c.name,
-          displayName: meta.displayName,
-          description: meta.description,
-          headVersionId: c.headVersionId,
-          updatedAt: c.updatedAt.toISOString(),
-          isOwner: true,
-        };
-      }),
-      ...sharedComposes.map((c) => ({
+    const allComposes = ownComposes.map((c) => {
+      const meta = extractMetadata(c.headContent);
+      return {
         id: c.id,
-        name: `${c.orgSlug}/${c.name}`,
-        displayName: null as string | null,
-        description: null as string | null,
+        name: c.name,
+        displayName: meta.displayName,
+        description: meta.description,
         headVersionId: c.headVersionId,
         updatedAt: c.updatedAt.toISOString(),
-        isOwner: false,
-      })),
-    ];
+      };
+    });
 
     return {
       status: 200 as const,

@@ -23,8 +23,6 @@ import {
 } from "../../../../src/lib/slack/blocks";
 import { getPlatformUrl } from "../../../../src/lib/url";
 import { logger } from "../../../../src/lib/logger";
-import { removePermission } from "../../../../src/lib/agent/permission-service";
-import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 
 const log = logger("slack:commands");
 
@@ -172,12 +170,6 @@ async function handleDisconnect(
       response_type: "ephemeral",
       blocks: buildErrorMessage("You are not connected."),
     });
-  }
-
-  // Revoke agent permission
-  const email = await getUserEmail(userLink.vm0UserId);
-  if (email) {
-    await removePermission(installation.defaultComposeId, "email", email);
   }
 
   // Delete user link

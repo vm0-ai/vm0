@@ -16,8 +16,6 @@ import {
 import { slackInstallations } from "../../../../../src/db/schema/slack-installation";
 import { slackUserLinks } from "../../../../../src/db/schema/slack-user-link";
 import { ensureOrgAndArtifact } from "../../../../../src/lib/slack/handlers/shared";
-import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
-import { addPermission } from "../../../../../src/lib/agent/permission-service";
 import { getPlatformUrl } from "../../../../../src/lib/url";
 
 interface OAuthState {
@@ -210,8 +208,6 @@ export async function GET(request: Request) {
           state.vm0UserId,
           resolvedSlackUserId,
           oauthResult.teamId,
-          effective.defaultComposeId,
-          effective.adminSlackUserId,
           effective.encryptedBotToken,
           SECRETS_ENCRYPTION_KEY,
         );
@@ -241,8 +237,6 @@ async function createUserLink(
   vm0UserId: string,
   slackUserId: string,
   workspaceId: string,
-  defaultComposeId: string,
-  adminSlackUserId: string,
   encryptedBotToken: string,
   secretsEncryptionKey: string,
 ): Promise<void> {
@@ -271,17 +265,6 @@ async function createUserLink(
     slackWorkspaceId: workspaceId,
     vm0UserId,
   });
-
-  // Auto-share workspace agent
-  const email = await getUserEmail(vm0UserId);
-  if (email && defaultComposeId) {
-    await addPermission(
-      defaultComposeId,
-      "email",
-      adminSlackUserId,
-      email,
-    ).catch(() => {});
-  }
 
   // Refresh App Home
   const [installation] = await db

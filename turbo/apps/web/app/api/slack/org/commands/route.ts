@@ -25,8 +25,6 @@ import {
 } from "../../../../../src/lib/slack-org/handlers/shared";
 import { getPlatformUrl } from "../../../../../src/lib/url";
 import { logger } from "../../../../../src/lib/logger";
-import { removePermission } from "../../../../../src/lib/agent/permission-service";
-import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
 
 const log = logger("slack-org:commands");
 
@@ -129,20 +127,8 @@ async function handleDisconnect(
     userId: connection.vm0UserId,
   });
 
-  // Best-effort: revoke permission and refresh App Home (non-blocking to avoid Slack timeout)
+  // Best-effort: refresh App Home (non-blocking to avoid Slack timeout)
   void (async () => {
-    if (installation.orgId) {
-      const composeId = await resolveDefaultComposeId(installation.orgId);
-      if (composeId) {
-        const email = await getUserEmail(connection.vm0UserId);
-        if (email) {
-          await removePermission(composeId, "email", email).catch((e) =>
-            log.warn("Failed to revoke agent permission", { error: e }),
-          );
-        }
-      }
-    }
-
     const { SECRETS_ENCRYPTION_KEY } = env();
     const botToken = decryptSecretValue(
       installation.encryptedBotToken,

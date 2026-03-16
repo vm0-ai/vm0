@@ -60,32 +60,17 @@ const fetchZeroJobDetail$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const slashIndex = name.indexOf("/");
-    const isOwner = slashIndex === -1;
-    const agentName = isOwner ? name : name.slice(slashIndex + 1);
-    const org = isOwner ? undefined : name.slice(0, slashIndex);
-
-    const params = new URLSearchParams({ name: agentName });
-    if (org) {
-      params.set("org", org);
-    }
+    const params = new URLSearchParams({ name });
 
     const response = await fetchFn(`/api/agent/composes?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch agent: ${response.statusText}`);
     }
 
-    const data = (await response.json()) as {
-      id: string;
-      name: string;
-      headVersionId: string | null;
-      content: AgentDetail["content"];
-      createdAt: string;
-      updatedAt: string;
-    };
+    const data = (await response.json()) as AgentDetail;
 
     set(detailState$, {
-      detail: { ...data, isOwner },
+      detail: data,
       loading: false,
       error: null,
     });

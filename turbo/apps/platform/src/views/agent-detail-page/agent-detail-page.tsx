@@ -8,7 +8,6 @@ import {
   agentInstructions$,
   agentInstructionsLoading$,
   agentName$,
-  isOwner$,
 } from "../../signals/agent-detail/agent-detail.ts";
 import {
   activeRunId$,
@@ -43,7 +42,6 @@ export function AgentDetailPage() {
   const detail = useGet(agentDetail$);
   const loading = useGet(agentDetailLoading$);
   const error = useGet(agentDetailError$);
-  const isOwner = useGet(isOwner$);
   const instructions = useGet(agentInstructions$);
   const instructionsLoading = useGet(agentInstructionsLoading$);
   const activeRunId = useGet(activeRunId$);
@@ -67,7 +65,7 @@ export function AgentDetailPage() {
           </div>
         ) : detail ? (
           <>
-            <AgentHeader detail={detail} isOwner={isOwner} />
+            <AgentHeader detail={detail} />
             {rightPanel !== "none" ? (
               <div className="flex md:flex-row gap-4 flex-1 min-h-0">
                 {/* Mobile: hide instructions, show only active panel */}
@@ -75,7 +73,6 @@ export function AgentDetailPage() {
                   <AgentInstructions
                     instructions={instructions}
                     loading={instructionsLoading}
-                    isOwner={isOwner}
                   />
                 </div>
                 <div className="flex-1 md:w-1/2 min-h-0">
@@ -91,7 +88,6 @@ export function AgentDetailPage() {
                 <AgentInstructions
                   instructions={instructions}
                   loading={instructionsLoading}
-                  isOwner={isOwner}
                 />
               </div>
             )}

@@ -84,7 +84,7 @@ import {
   PUT as setSecretRoute,
 } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
-import { POST as addPermissionRoute } from "../../app/api/agent/composes/[id]/permissions/route";
+import { agentPermissions } from "../db/schema/agent-permission";
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
@@ -103,7 +103,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../db/schema/agent-compose";
-import { agentPermissions } from "../db/schema/agent-permission";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId, uniqueNumericId } from "./test-helpers";
 
@@ -1550,33 +1549,25 @@ export async function insertStalePendingRun(
  * @param granteeType - The permission type ('public' or 'email')
  * @param granteeEmail - The email address (required if granteeType is 'email')
  */
+/**
+ * @deprecated ACL permission system removed. This writes to the DB for
+ * backwards-compat with existing tests but has no effect on access checks.
+ * Tests relying on ACL-based access should be updated to use org membership.
+ */
 export async function createTestPermission(
   composeId: string,
   granteeType: "public" | "email",
   granteeEmail?: string,
 ): Promise<void> {
-  const body: { granteeType: string; granteeEmail?: string } = { granteeType };
-  if (granteeType === "email" && granteeEmail) {
-    body.granteeEmail = granteeEmail;
-  }
-
-  const request = createTestRequest(
-    `http://localhost:3000/api/agent/composes/${composeId}/permissions`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  const response = await addPermissionRoute(request, {
-    params: Promise.resolve({ id: composeId }),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create permission: ${error.error?.message || response.status}`,
-    );
-  }
+  await globalThis.services.db
+    .insert(agentPermissions)
+    .values({
+      agentComposeId: composeId,
+      granteeType,
+      granteeEmail: granteeType === "email" ? (granteeEmail ?? null) : null,
+      grantedBy: "test-setup",
+    })
+    .onConflictDoNothing();
 }
 
 /**
@@ -2369,51 +2360,6 @@ export async function findTestSlackOrgConnections(
         eq(slackOrgConnections.slackWorkspaceId, workspaceId),
       ),
     );
-}
-
-/**
- * Find agent permissions for a compose and email.
- *
- * Direct DB read is required because no API endpoint lists permissions
- * filtered by compose + grantee email.
- */
-export async function findTestAgentPermissions(
-  composeId: string,
-  granteeEmail: string,
-) {
-  return globalThis.services.db
-    .select()
-    .from(agentPermissions)
-    .where(
-      and(
-        eq(agentPermissions.agentComposeId, composeId),
-        eq(agentPermissions.granteeType, "email"),
-        eq(agentPermissions.granteeEmail, granteeEmail),
-      ),
-    );
-}
-
-/**
- * Insert an agent permission directly in the database.
- *
- * Direct DB insert is required because the permissions API route uses the
- * current user as grantedBy. Tests that simulate permissions granted by
- * external flows (e.g., CLI share) need to set arbitrary grantedBy values.
- */
-export async function insertTestAgentPermission(
-  composeId: string,
-  granteeEmail: string,
-  grantedBy: string,
-) {
-  await globalThis.services.db
-    .insert(agentPermissions)
-    .values({
-      agentComposeId: composeId,
-      granteeType: "email",
-      granteeEmail,
-      grantedBy,
-    })
-    .onConflictDoNothing();
 }
 
 /**

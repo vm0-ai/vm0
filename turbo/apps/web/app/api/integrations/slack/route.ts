@@ -28,10 +28,7 @@ import {
   refreshAppHome,
 } from "../../../../src/lib/slack";
 import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
-import { removePermission } from "../../../../src/lib/agent/permission-service";
-import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { syncWorkspaceAgentPermissions } from "../../../../src/lib/slack/permission-sync";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:slack");
@@ -207,20 +204,12 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Get workspace installation for permission revocation and App Home refresh
+  // Get workspace installation for App Home refresh
   const [installation] = await db
     .select()
     .from(slackInstallations)
     .where(eq(slackInstallations.slackWorkspaceId, userLink.slackWorkspaceId))
     .limit(1);
-
-  // Revoke agent permission
-  if (installation) {
-    const email = await getUserEmail(userId);
-    if (email) {
-      await removePermission(installation.defaultComposeId, "email", email);
-    }
-  }
 
   // Delete user link
   await db.delete(slackUserLinks).where(eq(slackUserLinks.id, userLink.id));
@@ -361,21 +350,11 @@ export async function PATCH(request: Request) {
 
   const oldComposeId = installation.defaultComposeId;
 
-  // Update installation + sync permissions atomically
-  await db.transaction(async (tx) => {
-    await tx
-      .update(slackInstallations)
-      .set({ defaultComposeId: compose.id, updatedAt: new Date() })
-      .where(eq(slackInstallations.id, installation.id));
-
-    await syncWorkspaceAgentPermissions(
-      oldComposeId,
-      compose.id,
-      installation.slackWorkspaceId,
-      installation.adminSlackUserId,
-      tx,
-    );
-  });
+  // Update workspace default agent
+  await db
+    .update(slackInstallations)
+    .set({ defaultComposeId: compose.id, updatedAt: new Date() })
+    .where(eq(slackInstallations.id, installation.id));
 
   return NextResponse.json({ ok: true });
 }

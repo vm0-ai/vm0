@@ -15,7 +15,7 @@ import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
 import { resolveOrgOrNull } from "../../org/resolve-org";
-import { canAccessCompose } from "../../agent/permission-service";
+import { canAccessCompose } from "../../agent/compose-access";
 import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";
 

@@ -14,7 +14,7 @@ import { storages } from "../../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
-import { canAccessCompose } from "../../../../../src/lib/agent/permission-service";
+import { canAccessCompose } from "../../../../../src/lib/agent/compose-access";
 import {
   listS3Objects,
   deleteS3Objects,

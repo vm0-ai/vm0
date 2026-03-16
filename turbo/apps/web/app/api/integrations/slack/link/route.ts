@@ -15,12 +15,9 @@ import {
   ensureOrgAndArtifact,
   getWorkspaceAgent,
 } from "../../../../../src/lib/slack/handlers/shared";
-import { getUserEmail } from "../../../../../src/lib/auth/get-user-email";
-import { addPermission } from "../../../../../src/lib/agent/permission-service";
 import { resolveOrgOrNull } from "../../../../../src/lib/org/resolve-org";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
-import { syncWorkspaceAgentPermissions } from "../../../../../src/lib/slack/permission-sync";
 
 const log = logger("api:slack:link");
 
@@ -235,21 +232,11 @@ export async function POST(request: Request) {
   ) {
     const oldComposeId = installation.defaultComposeId;
 
-    // Update installation + sync permissions atomically
-    await globalThis.services.db.transaction(async (tx) => {
-      await tx
-        .update(slackInstallations)
-        .set({ defaultComposeId: agentId, updatedAt: new Date() })
-        .where(eq(slackInstallations.id, installation.id));
-
-      await syncWorkspaceAgentPermissions(
-        oldComposeId,
-        agentId,
-        workspaceId,
-        installation.adminSlackUserId,
-        tx,
-      );
-    });
+    // Update workspace default agent
+    await globalThis.services.db
+      .update(slackInstallations)
+      .set({ defaultComposeId: agentId, updatedAt: new Date() })
+      .where(eq(slackInstallations.id, installation.id));
   }
 
   if (existingLink) {
@@ -290,19 +277,6 @@ export async function POST(request: Request) {
       vm0UserId: userId,
     })
     .returning({ id: slackUserLinks.id });
-
-  // Auto-share selected agent with the new user
-  const email = await getUserEmail(userId);
-  if (email && effectiveAgentId) {
-    await addPermission(
-      effectiveAgentId,
-      "email",
-      installation.adminSlackUserId,
-      email,
-    ).catch((error) => {
-      log.warn("Failed to auto-share workspace agent", { error });
-    });
-  }
 
   // Send success message to the Slack channel
   if (channelId) {
