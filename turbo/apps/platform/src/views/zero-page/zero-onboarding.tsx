@@ -306,7 +306,7 @@ export function ZeroOnboarding({
         await completeOnboarding(controller.signal);
         // Navigate to chat and send intro message
         setActiveId("chat");
-        sendIntro("Who are you and what can you do?");
+        await sendIntro("Who are you and what can you do?");
       })(),
       Reason.DomCallback,
     );
