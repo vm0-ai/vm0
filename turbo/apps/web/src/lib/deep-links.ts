@@ -21,7 +21,7 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
   {
     keywords: ["model provider", "provider not configured"],
     label: "Configure model providers",
-    category: "provider" as KeywordCategory,
+    category: "provider",
     emoji: "🔑",
   },
   {
@@ -40,7 +40,7 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
       "tool not found",
     ],
     label: "Configure connectors",
-    category: "connector" as KeywordCategory,
+    category: "connector",
     emoji: "🔌",
   },
 ]);
