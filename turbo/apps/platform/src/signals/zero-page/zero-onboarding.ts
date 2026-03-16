@@ -348,12 +348,15 @@ export const completeZeroOnboarding$ = command(
       // Reload status and mark done
       set(internalReload$, (x) => x + 1);
       set(internalStep$, "done");
+
+      return job.result.composeId;
     } catch (error) {
       throwIfAbort(error);
       const message =
         error instanceof Error ? error.message : "Failed to complete setup";
       L.error("Failed to complete onboarding:", error);
       set(internalOnboardingError$, message);
+      return undefined;
     } finally {
       set(internalSaving$, false);
     }
