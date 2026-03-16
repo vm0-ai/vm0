@@ -205,7 +205,22 @@ export function SlackSettingsPage() {
   const closeConfirm = useSet(closeSlackDisconnectDialog$);
 
   const qualifiedAgentName = data?.agent?.name;
-  const agentOptions = agents;
+
+  // Ensure the current workspace agent appears in the dropdown even if
+  // it isn't in the user's own agents list.
+  const agentOptions = (() => {
+    if (!qualifiedAgentName) {
+      return agents;
+    }
+    const hasCurrentAgent = agents.some((a) => a.name === qualifiedAgentName);
+    if (hasCurrentAgent) {
+      return agents;
+    }
+    return [
+      { name: qualifiedAgentName, headVersionId: null, updatedAt: "" },
+      ...agents,
+    ];
+  })();
 
   const handleDisconnect = () => {
     detach(
