@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.66.1](https://github.com/vm0-ai/vm0/compare/core-v8.66.0...core-v8.66.1) (2026-03-16)
+
+
+### Refactoring
+
+* **services:** unify secret template syntax to ${{ }} ([#4862](https://github.com/vm0-ai/vm0/issues/4862)) ([607e8e9](https://github.com/vm0-ai/vm0/commit/607e8e9be8eb83b60895898686ca94f711f6debb)), closes [#4806](https://github.com/vm0-ai/vm0/issues/4806)
+
 ## [8.66.0](https://github.com/vm0-ai/vm0/compare/core-v8.65.1...core-v8.66.0) (2026-03-15)
 
 

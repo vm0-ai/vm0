@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.26.1...runner-rs-v0.26.2) (2026-03-16)
+
+
+### Refactoring
+
+* **services:** unify secret template syntax to ${{ }} ([#4862](https://github.com/vm0-ai/vm0/issues/4862)) ([607e8e9](https://github.com/vm0-ai/vm0/commit/607e8e9be8eb83b60895898686ca94f711f6debb)), closes [#4806](https://github.com/vm0-ai/vm0/issues/4806)
+
 ## [0.26.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.26.0...runner-rs-v0.26.1) (2026-03-15)
 
 ## [0.26.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.25.0...runner-rs-v0.26.0) (2026-03-15)

@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.111.4](https://github.com/vm0-ai/vm0/compare/web-v12.111.3...web-v12.111.4) (2026-03-16)
+
+
+### Refactoring
+
+* **services:** unify secret template syntax to ${{ }} ([#4862](https://github.com/vm0-ai/vm0/issues/4862)) ([607e8e9](https://github.com/vm0-ai/vm0/commit/607e8e9be8eb83b60895898686ca94f711f6debb)), closes [#4806](https://github.com/vm0-ai/vm0/issues/4806)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.66.1
+
 ## [12.111.3](https://github.com/vm0-ai/vm0/compare/web-v12.111.2...web-v12.111.3) (2026-03-16)
 
 
