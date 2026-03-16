@@ -72,6 +72,8 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } as Record<string, string>,
     models: [
+      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-opus-4.6",
       "anthropic/claude-sonnet-4.5",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-haiku-4.5",
