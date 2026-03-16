@@ -10,7 +10,6 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import {
-  Button,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -36,7 +35,7 @@ import {
   deleteZeroSchedule$,
   toggleZeroScheduleEnabled$,
 } from "../../signals/zero-page/zero-schedule.ts";
-import { updatePathname$, navigateInReact$ } from "../../signals/route.ts";
+import { Link, SimpleLink } from "../router/link.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroInstructions$,
@@ -189,8 +188,6 @@ export function ZeroMeetPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onAvatarClick,
 }: ZeroMeetPageProps) {
-  const navigate = useSet(updatePathname$);
-  const navigateRoute = useSet(navigateInReact$);
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const resolvedAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -236,16 +233,14 @@ export function ZeroMeetPage({
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-        <button
-          type="button"
-          onClick={() =>
-            navigateRoute("/zero/:tab", { pathParams: { tab: "team" } })
-          }
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+        <Link
+          pathname="/zero/:tab"
+          options={{ pathParams: { tab: "team" } }}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
         >
           <IconUsers size={14} stroke={1.5} className="shrink-0" />
           Team
-        </button>
+        </Link>
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
           {resolvedAgentName}
@@ -327,15 +322,13 @@ export function ZeroMeetPage({
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors"
-                    onClick={() => navigate("/zero/chat")}
+                  <SimpleLink
+                    href="/zero/chat"
+                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium no-underline text-inherit hover:bg-accent"
                   >
                     <IconMessageCircle size={14} stroke={1.5} />
                     Chat with {resolvedAgentName}
-                  </Button>
+                  </SimpleLink>
                 </TooltipTrigger>
                 <TooltipContent
                   side="bottom"

@@ -39,7 +39,7 @@ import {
   formatDuration,
 } from "../../signals/zero-page/zero-activity.ts";
 import { zeroTabSub$ } from "../../signals/zero-page/zero-nav.ts";
-import { updatePathname$ } from "../../signals/route.ts";
+import { SimpleLink } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
 
 const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
@@ -56,25 +56,18 @@ const ROW_GRID =
 
 function ActivityRow({
   entry,
-  onSelect,
+  href,
   agentName = "Zero",
 }: {
   entry: LogEntry;
-  onSelect: (id: string) => void;
+  href: string;
   agentName?: string;
 }) {
   const time = formatLogTime(entry.createdAt);
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onSelect(entry.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          onSelect(entry.id);
-        }
-      }}
-      className="py-3 -mx-4 px-4 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0"
+    <SimpleLink
+      href={href}
+      className="block py-3 -mx-4 px-4 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
     >
       <div className={cn(ROW_GRID)}>
         <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
@@ -100,20 +93,15 @@ function ActivityRow({
           )}
         </div>
         <div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(entry.id);
-            }}
-            className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
-            aria-label="View details"
+          <span
+            className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors inline-flex"
+            aria-hidden="true"
           >
             <IconChevronRight size={14} stroke={1.5} />
-          </button>
+          </span>
         </div>
       </div>
-    </div>
+    </SimpleLink>
   );
 }
 
@@ -122,7 +110,6 @@ export function ZeroActivityPage() {
   const hasPrev = useGet(zeroActivityHasPrev$);
   const currentPage = useGet(zeroActivityCurrentPage$);
   const rowsPerPage = useGet(zeroActivityLimit$);
-  const navigate = useSet(updatePathname$);
   const goToNext = useSet(goToNextZeroActivityPage$);
   const goToPrev = useSet(goToPrevZeroActivityPage$);
   const goForwardTwo = useSet(goForwardTwoZeroActivityPages$);
@@ -171,7 +158,7 @@ export function ZeroActivityPage() {
 
   // Detail view when sub-route is present
   if (sub) {
-    return <ZeroActivityDetailPage onBack={() => navigate("/zero/activity")} />;
+    return <ZeroActivityDetailPage />;
   }
 
   return (
@@ -265,7 +252,7 @@ export function ZeroActivityPage() {
                 <ActivityRow
                   key={entry.id}
                   entry={entry}
-                  onSelect={(id) => navigate(`/zero/activity/${id}`)}
+                  href={`/zero/activity/${entry.id}`}
                   agentName={
                     nameToDisplay.get(entry.agentName) ?? entry.agentName
                   }

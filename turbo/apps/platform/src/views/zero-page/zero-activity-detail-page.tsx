@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
 import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import { SimpleLink } from "../router/link.tsx";
 import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
 import { StatusBadge } from "../logs-page/status-badge.tsx";
 import {
@@ -48,22 +49,25 @@ function isVisibleMessage(
   return (message.toolOperations?.length ?? 0) > 0;
 }
 
-interface ZeroActivityDetailPageProps {
-  onBack: () => void;
+const ACTIVITY_HREF = "/zero/activity";
+
+function ActivityBreadcrumbLink() {
+  return (
+    <SimpleLink
+      href={ACTIVITY_HREF}
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+    >
+      <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+      Activity
+    </SimpleLink>
+  );
 }
 
-function ActivityNotFound({ onBack }: { onBack: () => void }) {
+function ActivityNotFound() {
   return (
     <div className="h-full flex flex-col min-h-0">
       <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
-        >
-          <IconChartLine size={14} stroke={1.5} className="shrink-0" />
-          Activity
-        </button>
+        <ActivityBreadcrumbLink />
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
           Log
@@ -78,22 +82,18 @@ function ActivityNotFound({ onBack }: { onBack: () => void }) {
           This log doesn&apos;t exist or you don&apos;t have permission to view
           it in the current organization.
         </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="zero-btn-morandi mt-2"
-          onClick={onBack}
+        <SimpleLink
+          href={ACTIVITY_HREF}
+          className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
         >
           Back to activity
-        </Button>
+        </SimpleLink>
       </div>
     </div>
   );
 }
 
-export function ZeroActivityDetailPage({
-  onBack,
-}: ZeroActivityDetailPageProps) {
+export function ZeroActivityDetailPage() {
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   const orgAgents = useGet(zeroActivityOrgAgents$);
@@ -114,9 +114,9 @@ export function ZeroActivityDetailPage({
   const eventsReady = eventsLoadable.state === "hasData";
   if (!detail || !eventsReady) {
     if (detailLoadable.state === "hasError") {
-      return <ActivityNotFound onBack={onBack} />;
+      return <ActivityNotFound />;
     }
-    return <ActivitySkeleton onBack={onBack} />;
+    return <ActivitySkeleton />;
   }
 
   const events: AgentEvent[] = eventsLoadable.data;
@@ -140,14 +140,7 @@ export function ZeroActivityDetailPage({
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <IconChartLine size={14} stroke={1.5} className="shrink-0" />
-            Activity
-          </button>
+          <ActivityBreadcrumbLink />
           <span className="text-muted-foreground/40 select-none">/</span>
           <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
             {agentName}
@@ -273,19 +266,12 @@ export function ZeroActivityDetailPage({
   );
 }
 
-function ActivitySkeleton({ onBack }: { onBack: () => void }) {
+function ActivitySkeleton() {
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <IconChartLine size={14} stroke={1.5} className="shrink-0" />
-            Activity
-          </button>
+          <ActivityBreadcrumbLink />
           <span className="text-muted-foreground/40 select-none">/</span>
           <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
         </nav>

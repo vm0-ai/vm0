@@ -51,6 +51,7 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
+import { Link, SimpleLink } from "../router/link.tsx";
 
 /** Max pinned sub-agents (default agent counts as 1, total slots = 5). */
 const MAX_PINNED = 4;
@@ -482,10 +483,16 @@ function RecentChatSection({
             </p>
           ) : (
             filteredSessions.map((session) => (
-              <button
+              <SimpleLink
                 key={session.id}
-                type="button"
-                onClick={() => onRecentSelect?.(session.id)}
+                href={`/zero/chat/${session.id}`}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onRecentSelect?.(session.id);
+                }}
                 className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
                   selectedRecentId === session.id
                     ? "bg-sidebar-active text-sidebar-primary"
@@ -495,7 +502,7 @@ function RecentChatSection({
                 <span className="truncate min-w-0 flex-1">
                   {session.preview ?? "New chat"}
                 </span>
-              </button>
+              </SimpleLink>
             ))
           )}
         </div>
@@ -786,9 +793,16 @@ export function ZeroSidebar({
               {allNavItems.map(({ id, label, icon: Icon }) => (
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => {
+                    <Link
+                      pathname={id === "chat" ? "/zero" : "/zero/:tab"}
+                      options={
+                        id === "chat" ? undefined : { pathParams: { tab: id } }
+                      }
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                          return;
+                        }
+                        e.preventDefault();
                         if (id === "chat") {
                           onSelect("chat");
                           onNewChat?.(null);
@@ -803,7 +817,7 @@ export function ZeroSidebar({
                       }`}
                     >
                       <Icon size={16} className="shrink-0" />
-                    </button>
+                    </Link>
                   </TooltipTrigger>
                   <TooltipContent side="right">
                     <p className="text-xs">{label}</p>
@@ -856,10 +870,17 @@ export function ZeroSidebar({
             </div>
             <div className="flex flex-col gap-1">
               {manageNav.map(({ id, label, icon: Icon }) => (
-                <button
+                <Link
                   key={id}
-                  type="button"
-                  onClick={() => onSelect(id)}
+                  pathname="/zero/:tab"
+                  options={{ pathParams: { tab: id } }}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                      return;
+                    }
+                    e.preventDefault();
+                    onSelect(id);
+                  }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     activeId === id
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
@@ -868,7 +889,7 @@ export function ZeroSidebar({
                 >
                   <Icon size={16} className="shrink-0" />
                   <span className="truncate">{label}</span>
-                </button>
+                </Link>
               ))}
             </div>
           </div>
@@ -956,9 +977,15 @@ export function ZeroSidebar({
               </div>
             )}
             <div className="flex flex-col gap-1 mt-1">
-              <button
-                type="button"
-                onClick={() => onSelect("chat")}
+              <Link
+                pathname="/zero"
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onSelect("chat");
+                }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   activeId === "chat" && !selectedRecentId
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
@@ -967,7 +994,7 @@ export function ZeroSidebar({
               >
                 <IconEdit size={16} className="shrink-0" />
                 <span className="truncate">New chat</span>
-              </button>
+              </Link>
             </div>
           </div>
 
@@ -985,10 +1012,17 @@ export function ZeroSidebar({
         <div className="p-2">
           <div className="flex flex-col gap-1">
             {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
-              <button
+              <Link
                 key={id}
-                type="button"
-                onClick={() => onSelect(id)}
+                pathname="/zero/:tab"
+                options={{ pathParams: { tab: id } }}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onSelect(id);
+                }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   activeId === id
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
@@ -1007,7 +1041,7 @@ export function ZeroSidebar({
                   <Icon size={16} className="shrink-0" />
                 )}
                 <span className="truncate">{label}</span>
-              </button>
+              </Link>
             ))}
             {/* Account dropdown */}
             <AccountDropdown

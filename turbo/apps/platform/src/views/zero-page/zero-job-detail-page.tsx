@@ -56,6 +56,7 @@ import {
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/agent-detail/types.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
+import { Link } from "../router/link.tsx";
 import { setZeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   startNewZeroSession$,
@@ -72,23 +73,17 @@ interface ZeroJobDetailPageProps {
   agentName: string;
 }
 
-function useNavigateBack() {
-  const navigate = useSet(navigateInReact$);
-  return () => navigate("/zero/:tab", { pathParams: { tab: "team" } });
-}
-
 function Breadcrumb({ currentName }: { currentName?: string }) {
-  const navigateBack = useNavigateBack();
   return (
     <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-      <button
-        type="button"
-        onClick={navigateBack}
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+      <Link
+        pathname="/zero/:tab"
+        options={{ pathParams: { tab: "team" } }}
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
         Team
-      </button>
+      </Link>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
         {currentName ?? "Agent"}
@@ -121,7 +116,6 @@ function DetailError({
   error: string;
   agentName: string;
 }) {
-  const navigate = useSet(navigateInReact$);
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <Breadcrumb />
@@ -130,18 +124,13 @@ function DetailError({
           <Card className="zero-card">
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi"
-                onClick={() =>
-                  navigate("/zero/team/:name", {
-                    pathParams: { name: agentName },
-                  })
-                }
+              <Link
+                pathname="/zero/team/:name"
+                options={{ pathParams: { name: agentName } }}
+                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
                 Retry
-              </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
