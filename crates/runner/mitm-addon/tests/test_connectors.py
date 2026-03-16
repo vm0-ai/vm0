@@ -101,6 +101,9 @@ class TestMatchFirewallRequest:
         result = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(result, FirewallBlock)
         assert result.base == "https://api.github.com"
+        assert result.firewall_ref == "github"
+        assert result.method == "GET"
+        assert result.path == "/repos"
 
     def test_permission_match_allows(self):
         fw_configs = _wrap_firewall([{

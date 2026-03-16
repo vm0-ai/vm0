@@ -171,6 +171,9 @@ class FirewallAllow(NamedTuple):
 class FirewallBlock(NamedTuple):
     """Base URL matched but no permission granted — return 403."""
     base: str
+    firewall_ref: str
+    method: str
+    path: str
 
 
 def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> FirewallAllow | FirewallBlock | None:
@@ -188,6 +191,9 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
     # permission rule allows the request, we block it (fail-closed). Only the
     # first matched base is recorded — subsequent base matches don't overwrite.
     blocked_base = None
+    blocked_ref = ""
+
+    upper_method = method.upper()
 
     for fw_entry in vm_firewall:
         fw_name = fw_entry.get("name", "")
@@ -203,6 +209,7 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
             # Base URL matched
             if blocked_base is None:
                 blocked_base = base
+                blocked_ref = fw_ref
 
             permissions = api_entry.get("permissions")
             if not permissions:
@@ -212,7 +219,6 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
             # Extract relative path, strip query/fragment
             rel_path = rest.split("?")[0].split("#")[0] or "/"
 
-            upper_method = method.upper()
             for perm in permissions:
                 perm_name = perm.get("name", "")
                 for rule_str in perm.get("rules", []):
@@ -233,7 +239,10 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
                         })
 
     if blocked_base is not None:
-        return FirewallBlock(blocked_base)
+        # Extract relative path for the error message
+        rest = url[len(blocked_base):]
+        rel_path = rest.split("?")[0].split("#")[0] or "/"
+        return FirewallBlock(blocked_base, blocked_ref, upper_method, rel_path)
     return None
 
 
@@ -426,14 +435,23 @@ def request(flow: http.HTTPFlow) -> None:
         original_url = get_original_url(flow)
         result = match_firewall_request(original_url, flow.request.method, vm_firewall)
         if isinstance(result, FirewallBlock):
-            ctx.log.warn(f"[{run_id}] Firewall {result.base}: no matching permission for {flow.request.method} {flow.request.path}")
+            ctx.log.warn(f"[{run_id}] Firewall {result.firewall_ref}: no matching permission for {result.method} {result.path}")
             flow.metadata["firewall_action"] = "DENY"
             flow.metadata["firewall_rule"] = f"firewall:{result.base}"
             flow.metadata["original_url"] = original_url
+            error_body = json.dumps({
+                "error": "firewall_permission_denied",
+                "message": "Request blocked: no matching permission rule",
+                "method": result.method,
+                "path": result.path,
+                "firewall": result.firewall_ref,
+                "base": result.base,
+                "hint": f"Add a permission rule for '{result.method} {result.path}' to the {result.firewall_ref} firewall in vm0.yaml",
+            })
             flow.response = http.Response.make(
                 403,
-                b"No matching firewall permission",
-                {"Content-Type": "text/plain"},
+                error_body.encode(),
+                {"Content-Type": "application/json"},
             )
             return
         if isinstance(result, FirewallAllow):
