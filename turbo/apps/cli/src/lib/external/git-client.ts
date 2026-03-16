@@ -11,14 +11,21 @@ import {
 const execFileAsync = promisify(execFile);
 
 /**
- * Validate that a value intended as a git positional argument does not
- * look like a command-line option. This prevents second-order command
- * injection via flags such as `--upload-pack`.
+ * Sanitize a value intended as a git positional argument to prevent
+ * second-order command injection via flags like `--upload-pack`.
+ * Only allows safe characters (alphanumeric, dash, underscore, dot, slash).
+ * Returns the value if safe; throws otherwise.
  */
-function assertNotOption(value: string, label: string): void {
+function sanitizeGitArg(value: string, label: string): string {
+  if (!/^[a-zA-Z0-9._/\-@]+$/.test(value)) {
+    throw new Error(
+      `Invalid ${label}: contains disallowed characters. Only alphanumeric, dash, underscore, dot, slash, and @ are permitted.`,
+    );
+  }
   if (value.startsWith("-")) {
     throw new Error(`Invalid ${label}: must not start with a dash`);
   }
+  return value;
 }
 
 /**
@@ -42,9 +49,10 @@ export async function downloadGitHubSkill(
   parsed: ParsedGitHubTreeUrl,
   destDir: string,
 ): Promise<string> {
-  assertNotOption(parsed.owner, "repository owner");
-  assertNotOption(parsed.repo, "repository name");
-  const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
+  const owner = sanitizeGitArg(parsed.owner, "repository owner");
+  const repo = sanitizeGitArg(parsed.repo, "repository name");
+  const branch = sanitizeGitArg(parsed.branch, "branch name");
+  const repoUrl = `https://github.com/${owner}/${repo}.git`;
   const skillDir = path.join(destDir, parsed.skillName);
 
   // Create a temporary directory for sparse checkout
@@ -68,15 +76,10 @@ export async function downloadGitHubSkill(
     await fs.writeFile(sparseFile, sparsePattern + "\n");
 
     // Fetch only the required branch
-    assertNotOption(parsed.branch, "branch name");
-    await execFileAsync(
-      "git",
-      ["fetch", "--depth", "1", "origin", parsed.branch],
-      {
-        cwd: tempDir,
-      },
-    );
-    await execFileAsync("git", ["checkout", parsed.branch], { cwd: tempDir });
+    await execFileAsync("git", ["fetch", "--depth", "1", "origin", branch], {
+      cwd: tempDir,
+    });
+    await execFileAsync("git", ["checkout", branch], { cwd: tempDir });
 
     // Move the skill directory to destination
     await fs.mkdir(path.dirname(skillDir), { recursive: true });
@@ -110,9 +113,9 @@ export async function downloadGitHubSkill(
  * @returns Default branch name
  */
 async function getDefaultBranch(owner: string, repo: string): Promise<string> {
-  assertNotOption(owner, "repository owner");
-  assertNotOption(repo, "repository name");
-  const repoUrl = `https://github.com/${owner}/${repo}.git`;
+  const safeOwner = sanitizeGitArg(owner, "repository owner");
+  const safeRepo = sanitizeGitArg(repo, "repository name");
+  const repoUrl = `https://github.com/${safeOwner}/${safeRepo}.git`;
   try {
     // git ls-remote --symref outputs:
     // ref: refs/heads/main    HEAD
@@ -174,9 +177,9 @@ export async function downloadGitHubDirectory(
     );
   }
 
-  assertNotOption(parsed.owner, "repository owner");
-  assertNotOption(parsed.repo, "repository name");
-  const repoUrl = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
+  const safeOwner = sanitizeGitArg(parsed.owner, "repository owner");
+  const safeRepo = sanitizeGitArg(parsed.repo, "repository name");
+  const repoUrl = `https://github.com/${safeOwner}/${safeRepo}.git`;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-github-"));
 
   try {
@@ -190,8 +193,10 @@ export async function downloadGitHubDirectory(
     }
 
     // Resolve branch if not specified
-    const branch =
-      parsed.branch ?? (await getDefaultBranch(parsed.owner, parsed.repo));
+    const branch = sanitizeGitArg(
+      parsed.branch ?? (await getDefaultBranch(safeOwner, safeRepo)),
+      "branch name",
+    );
 
     // Initialize sparse checkout
     await execFileAsync("git", ["init"], { cwd: tempDir });
@@ -210,7 +215,6 @@ export async function downloadGitHubDirectory(
     await fs.writeFile(sparseFile, sparsePattern + "\n");
 
     // Fetch only the required branch with better error handling
-    assertNotOption(branch, "branch name");
     try {
       await execFileAsync("git", ["fetch", "--depth", "1", "origin", branch], {
         cwd: tempDir,
