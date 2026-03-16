@@ -177,8 +177,8 @@ describe("createRun()", () => {
       expect(run3.status).toBe("pending");
     });
 
-    it("should allow unlimited runs when CONCURRENT_RUN_LIMIT is 0", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+    it("should allow unlimited runs when CONCURRENT_RUN_LIMIT_CAP is 0", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
       const run1 = await createRun(baseParams({ prompt: "Run 1" }));
@@ -303,7 +303,7 @@ describe("createRun()", () => {
 
     it("should succeed when memory already exists (idempotent)", async () => {
       // Allow concurrent runs for this test
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
       const memoryName = uniqueId("existing-mem");
@@ -327,7 +327,7 @@ describe("createRun()", () => {
 
     it("should restore memoryName from session in continue flow", async () => {
       // Allow concurrent runs for this test
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
       // Step 1: Create a run and checkpoint with memorySnapshot

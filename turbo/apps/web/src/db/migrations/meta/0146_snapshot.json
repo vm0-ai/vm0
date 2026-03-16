@@ -1,6 +1,6 @@
 {
-  "id": "28e141e8-af89-4378-a061-4ace776bee7c",
-  "prevId": "50cfabf8-1f44-434e-87c5-dd5a1ade1621",
+  "id": "b5bb333c-add6-43bf-a57a-2440fde5092c",
+  "prevId": "28e141e8-af89-4378-a061-4ace776bee7c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2970,6 +2970,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "send_mode": {
+          "name": "send_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'enter'"
         }
       },
       "indexes": {},

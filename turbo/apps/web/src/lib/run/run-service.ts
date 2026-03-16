@@ -55,6 +55,20 @@ function getConcurrencyLimitForTier(tier: OrgTier): number {
 }
 
 /**
+ * Get the effective concurrency limit for an org tier.
+ * Tier-based limit is the baseline; env var acts as a global cap.
+ * Returns 0 for unlimited.
+ */
+export function getEffectiveConcurrencyLimit(orgTier: OrgTier): number {
+  const tierLimit = getConcurrencyLimitForTier(orgTier);
+  const envCap = env().CONCURRENT_RUN_LIMIT_CAP;
+  if (envCap === 0) return 0;
+  if (envCap !== undefined && !isNaN(envCap))
+    return Math.min(tierLimit, envCap);
+  return tierLimit;
+}
+
+/**
  * Check if org has reached concurrent run limit
  *
  * @param orgId Clerk org ID to check
@@ -67,15 +81,7 @@ async function checkRunConcurrencyLimit(
   orgTier: OrgTier = "free",
   db?: Database,
 ): Promise<void> {
-  // Use env var override if set, otherwise use tier-based limit
-  // Note: 0 means no limit, so we need explicit undefined check
-  const envLimit = env().CONCURRENT_RUN_LIMIT;
-  const effectiveLimit =
-    envLimit === 0
-      ? 0
-      : envLimit !== undefined && !isNaN(envLimit)
-        ? envLimit
-        : getConcurrencyLimitForTier(orgTier);
+  const effectiveLimit = getEffectiveConcurrencyLimit(orgTier);
 
   // Skip check if limit is 0 (no limit)
   if (effectiveLimit === 0) {
@@ -403,8 +409,7 @@ async function authorizeCompose(
   userId: string,
   compose: { id: string; userId: string; orgId: string },
 ): Promise<void> {
-  // _userEmail parameter in canAccessCompose is unused (kept for API compatibility)
-  const hasAccess = await canAccessCompose(userId, "", compose);
+  const hasAccess = await canAccessCompose(userId, compose);
   if (!hasAccess) {
     throw forbidden("You do not have permission to access this agent");
   }

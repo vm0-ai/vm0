@@ -21,7 +21,6 @@ import {
   storageVersions,
 } from "../../../../../../src/db/schema/storage";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../../../src/lib/agent/compose-access";
 import {
   downloadManifest,
@@ -81,8 +80,7 @@ export async function GET(
   }
 
   // Check access (owner or org member)
-  const userEmail = await getUserEmail(userId);
-  const hasAccess = await canAccessCompose(userId, userEmail, result);
+  const hasAccess = await canAccessCompose(userId, result);
   if (!hasAccess) {
     return NextResponse.json(
       { error: { message: "Agent compose not found", code: "NOT_FOUND" } },

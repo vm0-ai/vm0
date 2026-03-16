@@ -541,6 +541,7 @@ async function createTestRunDirect(
     status?: string;
     prompt?: string;
     continuedFromSessionId?: string;
+    createdAt?: Date;
   },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
@@ -552,6 +553,7 @@ async function createTestRunDirect(
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
+      ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
     })
     .returning({ id: agentRuns.id });
   return run!;
@@ -623,6 +625,7 @@ export async function createTestRunInDb(
   options?: {
     status?: string;
     prompt?: string;
+    createdAt?: Date;
   },
 ): Promise<{ runId: string }> {
   // Look up orgId from compose
@@ -640,6 +643,7 @@ export async function createTestRunInDb(
   const run = await createTestRunDirect(userId, versionId, compose.orgId, {
     status: options?.status ?? "pending",
     prompt: options?.prompt ?? "test prompt",
+    createdAt: options?.createdAt,
   });
   return { runId: run.id };
 }
@@ -2786,6 +2790,37 @@ export async function expireQueueEntry(runId: string) {
     .update(agentRunQueue)
     .set({ expiresAt: new Date(Date.now() - 60_000) })
     .where(eq(agentRunQueue.runId, runId));
+}
+
+/**
+ * Insert a queue entry for a run that is in "queued" status.
+ * Looks up the run's userId and orgId from the agent_runs table.
+ *
+ * @param runId - The run ID to enqueue
+ * @param options - Optional overrides for createdAt and expiresAt
+ */
+export async function insertTestQueueEntry(
+  runId: string,
+  options?: {
+    createdAt?: Date;
+    expiresAt?: Date;
+  },
+) {
+  const [run] = await globalThis.services.db
+    .select({ userId: agentRuns.userId, orgId: agentRuns.orgId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    throw new Error(`Run ${runId} not found`);
+  }
+  await globalThis.services.db.insert(agentRunQueue).values({
+    runId,
+    userId: run.userId,
+    orgId: run.orgId,
+    createdAt: options?.createdAt,
+    expiresAt: options?.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
+  });
 }
 
 // ============================================================================

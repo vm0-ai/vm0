@@ -5,7 +5,11 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "../agent-detail/polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { navigateToZeroSession$, zeroChatAgentId$ } from "./zero-nav.ts";
+import {
+  navigateToZeroSession$,
+  zeroChatAgentId$,
+  zeroInChat$,
+} from "./zero-nav.ts";
 import type { SessionListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
@@ -39,6 +43,36 @@ async function extractResultFromEvents(
     }
   }
   return result;
+}
+
+/** Fetch queue position for a run. Returns 0 if not queued. */
+async function fetchQueuePosition(
+  fetchFn: typeof fetch,
+  runId: string,
+): Promise<number> {
+  const resp = await fetchFn(
+    `/api/platform/queue-position?runId=${encodeURIComponent(runId)}`,
+  );
+  if (!resp.ok) {
+    return 0;
+  }
+  const data = (await resp.json()) as { position: number };
+  return data.position;
+}
+
+function updateQueuePosition(
+  status: string,
+  fetchFn: typeof fetch,
+  runId: string,
+  setPosition: (pos: number) => void,
+) {
+  if (status === "queued" || status === "pending") {
+    fetchQueuePosition(fetchFn, runId)
+      .then((pos) => setPosition(pos))
+      .catch(() => {});
+  } else {
+    setPosition(0);
+  }
 }
 
 /** Start an agent run and return the runId, or null on failure. */
@@ -112,6 +146,15 @@ const internalRunEvents$ = state<Computed<Promise<PageResult>>[]>([]);
 
 const internalSending$ = state(false);
 export const zeroChatSending$ = computed((get) => get(internalSending$));
+
+/** Current run status (queued, pending, running, etc.) */
+export const zeroChatRunStatus$ = computed((get) => get(internalRunStatus$));
+
+/** Queue position for the active run (0 = not queued). */
+const internalQueuePosition$ = state(0);
+export const zeroChatQueuePosition$ = computed((get) =>
+  get(internalQueuePosition$),
+);
 
 /** Latest event summaries for the active run (for display while thinking). */
 export const zeroChatRunSummaries$ = computed(async (get) => {
@@ -396,6 +439,7 @@ export const switchZeroSession$ = command(
     set(internalRunEvents$, []);
     set(internalRunStatus$, null);
     set(internalRunError$, null);
+    set(internalQueuePosition$, 0);
     set(internalSending$, false);
     set(internalSessionError$, null);
     set(internalSessionSwitching$, true);
@@ -454,6 +498,56 @@ export const startNewZeroSession$ = command(({ set }) => {
 // Commands: send message
 // ---------------------------------------------------------------------------
 
+function prepareMessages(
+  prompt: string,
+  get: (s: typeof internalAttachments$) => ZeroChatAttachment[],
+  set: (
+    s: typeof internalMessages$ | typeof internalAttachments$,
+    u:
+      | ZeroChatMessage[]
+      | ((prev: ZeroChatMessage[]) => ZeroChatMessage[])
+      | ZeroChatAttachment[],
+  ) => void,
+): { fullPrompt: string } {
+  const attachments = (
+    get(internalAttachments$) as ZeroChatAttachment[]
+  ).filter((a) => !a.uploading);
+  let fullPrompt = prompt.trim();
+  if (attachments.length > 0) {
+    const lines = attachments.map(
+      (a) =>
+        `[Attached file: ${a.filename}](${a.url})\nDownload with: curl -sL -o "${a.filename}" "${a.url}"`,
+    );
+    fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
+  }
+
+  const userMessage: ZeroChatMessage = {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: prompt.trim(),
+    attachments:
+      attachments.length > 0
+        ? attachments.map((a) => ({
+            filename: a.filename,
+            contentType: a.contentType,
+            size: a.size,
+            url: a.url,
+          }))
+        : undefined,
+  };
+  set(internalMessages$, (prev: ZeroChatMessage[]) => [...prev, userMessage]);
+  set(internalAttachments$, []);
+
+  const placeholder: ZeroChatMessage = {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: "",
+  };
+  set(internalMessages$, (prev: ZeroChatMessage[]) => [...prev, placeholder]);
+
+  return { fullPrompt };
+}
+
 export const sendZeroChatMessage$ = command(
   async (
     { get, set },
@@ -471,43 +565,9 @@ export const sendZeroChatMessage$ = command(
     set(internalRunEvents$, []);
     set(internalRunStatus$, null);
     set(internalRunError$, null);
+    set(internalQueuePosition$, 0);
 
-    // Build full prompt with attachments
-    const attachments = get(internalAttachments$).filter((a) => !a.uploading);
-    let fullPrompt = prompt.trim();
-    if (attachments.length > 0) {
-      const attachmentLines = attachments.map(
-        (a) =>
-          `[Attached file: ${a.filename}](${a.url})\nDownload with: curl -sL -o "${a.filename}" "${a.url}"`,
-      );
-      fullPrompt = `${fullPrompt}\n\n${attachmentLines.join("\n")}`;
-    }
-
-    // Add user message (show original prompt + attachment names in UI)
-    const userMessage: ZeroChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: prompt.trim(),
-      attachments:
-        attachments.length > 0
-          ? attachments.map((a) => ({
-              filename: a.filename,
-              contentType: a.contentType,
-              size: a.size,
-              url: a.url,
-            }))
-          : undefined,
-    };
-    set(internalMessages$, (prev) => [...prev, userMessage]);
-    set(internalAttachments$, []);
-
-    // Add placeholder assistant message
-    const assistantPlaceholder: ZeroChatMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "",
-    };
-    set(internalMessages$, (prev) => [...prev, assistantPlaceholder]);
+    const { fullPrompt } = prepareMessages(prompt, get, set);
 
     try {
       const fetchFn = get(fetch$);
@@ -569,6 +629,9 @@ export const sendZeroChatMessage$ = command(
           },
           setStatus: (s) => {
             set(internalRunStatus$, s);
+            updateQueuePosition(s, get(fetch$), runId, (pos) =>
+              set(internalQueuePosition$, pos),
+            );
           },
           setError: (e) => {
             set(internalRunError$, e);
@@ -640,8 +703,8 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       if (data.result?.agentSessionId) {
         const prevSessionId = get(internalSessionId$);
         set(internalSessionId$, data.result.agentSessionId);
-        // Update URL when a new session is created
-        if (!prevSessionId) {
+        // Update URL only if user is still on the chat page
+        if (!prevSessionId && get(zeroInChat$)) {
           set(navigateToZeroSession$, data.result.agentSessionId);
         }
       }

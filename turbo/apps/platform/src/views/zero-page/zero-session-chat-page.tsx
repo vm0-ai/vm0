@@ -44,6 +44,8 @@ import {
   removeZeroAttachment$,
   type ZeroChatMessage,
   zeroChatRunSummaries$,
+  zeroChatRunStatus$,
+  zeroChatQueuePosition$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
@@ -514,6 +516,13 @@ function RunActivityLine() {
   const summaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
   const latest = summaries.length > 0 ? summaries[summaries.length - 1] : null;
+  const runStatus = useGet(zeroChatRunStatus$);
+  const queuePosition = useGet(zeroChatQueuePosition$);
+  const isQueued = runStatus === "queued" || runStatus === "pending";
+
+  const label = isQueued
+    ? queueLabel(queuePosition)
+    : (latest ?? "Thinking...");
 
   return (
     <div className="flex items-center gap-2 min-w-0">
@@ -523,14 +532,21 @@ function RunActivityLine() {
       />
       <div className="min-w-0 flex-1 overflow-hidden">
         <p
-          key={latest ?? "thinking"}
+          key={label}
           className="text-muted-foreground truncate animate-in fade-in slide-in-from-bottom-1 duration-300"
         >
-          {latest ?? "Thinking..."}
+          {label}
         </p>
       </div>
     </div>
   );
+}
+
+function queueLabel(position: number): string {
+  if (position <= 1) {
+    return "In queue, waiting to start...";
+  }
+  return `In queue, ${position - 1} task${position - 1 === 1 ? "" : "s"} ahead...`;
 }
 
 interface AssistantMessageProps {

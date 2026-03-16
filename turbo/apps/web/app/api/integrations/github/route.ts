@@ -325,7 +325,7 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Parse org/agentName format (shared agents use "orgSlug/agentName")
+  // Parse org/agentName format (org member agents use "orgSlug/agentName")
   const slashIndex = body.agentName.indexOf("/");
   const agentName =
     slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);

@@ -134,7 +134,7 @@ describe("slack settings page", () => {
       http.get("/api/integrations/slack", () => {
         return HttpResponse.json({
           workspace: { id: "T123", name: "Test Workspace" },
-          agent: { id: "other_compose", name: "shared-agent" },
+          agent: { id: "other_compose", name: "workspace-agent" },
           isAdmin: true,
           environment: {
             requiredSecrets: [],
@@ -160,7 +160,7 @@ describe("slack settings page", () => {
     await setupPage({ context, path: "/settings/slack" });
 
     // The workspace default agent should be visible in the select
-    expect(screen.getByText("shared-agent")).toBeInTheDocument();
+    expect(screen.getByText("workspace-agent")).toBeInTheDocument();
   });
 
   it("closes uninstall dialog on cancel", async () => {

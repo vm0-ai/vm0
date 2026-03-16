@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.114.2](https://github.com/vm0-ai/vm0/compare/web-v12.114.1...web-v12.114.2) (2026-03-16)
+
+
+### Refactoring
+
+* drop agent_permissions table and clean up ACL remnants ([#4945](https://github.com/vm0-ai/vm0/issues/4945)) ([6b38b53](https://github.com/vm0-ai/vm0/commit/6b38b53ffc1619e7285f6020e64f6487481ca540))
+* rename concurrent run limit env var to cap semantics ([#4947](https://github.com/vm0-ai/vm0/issues/4947)) ([5012f62](https://github.com/vm0-ai/vm0/commit/5012f624a5c9b1c44e63526f6e37ea67e2d67667))
+
 ## [12.114.1](https://github.com/vm0-ai/vm0/compare/web-v12.114.0...web-v12.114.1) (2026-03-16)
 
 

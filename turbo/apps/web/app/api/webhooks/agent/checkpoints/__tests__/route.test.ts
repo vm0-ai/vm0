@@ -334,7 +334,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       };
 
       // Allow multiple concurrent runs and re-enable Clerk auth for API route calls
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
       mockClerk({ userId: user.userId });
       const { runId: runId1 } = await createTestRun(testComposeId, "Run 1");
@@ -417,7 +417,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       const originalSessionId = data1.agentSessionId;
 
       // Create a continue run with continuedFromSessionId
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "0");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
       mockClerk({ userId: user.userId });
       const { runId: continueRunId } = await createTestRun(

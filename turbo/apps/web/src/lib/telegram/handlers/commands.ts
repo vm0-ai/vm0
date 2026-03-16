@@ -90,7 +90,7 @@ export async function handleConnectCommand(
 /**
  * Handle /disconnect command
  *
- * Removes the user link and revokes agent permission.
+ * Removes the user link and disconnects the Telegram integration.
  */
 export async function handleDisconnectCommand(
   update: TelegramHandlerUpdate,

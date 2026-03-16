@@ -45,7 +45,7 @@ Ensure the following are set in `turbo/apps/web/.env.local`:
 | Variable | Purpose | Required |
 |----------|---------|----------|
 | `USE_MOCK_CLAUDE` | Enable mock Claude for testing (set to `true`) | Yes for E2E |
-| `CONCURRENT_RUN_LIMIT` | Set to `0` to disable run limits during testing | Yes for E2E |
+| `CONCURRENT_RUN_LIMIT_CAP` | Set to `0` to disable run limits during testing | Yes for E2E |
 | `SECRETS_ENCRYPTION_KEY` | Encryption key for secrets | Yes |
 | `CLERK_SECRET_KEY` | Clerk authentication | Yes |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk authentication | Yes |
@@ -63,7 +63,7 @@ scripts/sync-env.sh
 ```bash
 # Add to turbo/apps/web/.env.local
 echo "USE_MOCK_CLAUDE=true" >> turbo/apps/web/.env.local
-echo "CONCURRENT_RUN_LIMIT=0" >> turbo/apps/web/.env.local
+echo "CONCURRENT_RUN_LIMIT_CAP=0" >> turbo/apps/web/.env.local
 ```
 
 ---
@@ -253,11 +253,11 @@ cd turbo && pnpm vitest run
 
 ### Problem: "Concurrent agent run limit" Error
 
-**Cause**: `CONCURRENT_RUN_LIMIT` not set or not 0
+**Cause**: `CONCURRENT_RUN_LIMIT_CAP` not set or not 0
 
 **Solution**:
 ```bash
-echo "CONCURRENT_RUN_LIMIT=0" >> turbo/apps/web/.env.local
+echo "CONCURRENT_RUN_LIMIT_CAP=0" >> turbo/apps/web/.env.local
 # Then restart dev server
 ```
 

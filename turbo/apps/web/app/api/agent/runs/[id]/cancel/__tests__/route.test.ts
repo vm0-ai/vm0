@@ -55,7 +55,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
   describe("Cancel Queued Run", () => {
     it("should cancel a queued run and remove queue entry", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Create a running run (claims the slot)
@@ -86,7 +86,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
     });
 
     it("should drain queue after cancelling a running run", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Create a running run (claims the slot)

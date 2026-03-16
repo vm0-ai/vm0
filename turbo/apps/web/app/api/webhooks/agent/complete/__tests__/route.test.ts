@@ -796,7 +796,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
 
     it("should drain queued run after completion", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT", "1");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Use a separate user to avoid concurrency interference

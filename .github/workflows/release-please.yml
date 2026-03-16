@@ -213,7 +213,7 @@ jobs:
             OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
             RUNNER_DEFAULT_GROUP=vm0/production
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
-            CONCURRENT_RUN_LIMIT=1
+            CONCURRENT_RUN_LIMIT_CAP=10
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
             SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}

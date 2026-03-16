@@ -175,8 +175,12 @@ function initEnv() {
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
       SENTRY_ORG: z.string().min(1).optional(),
       SENTRY_PROJECT: z.string().min(1).optional(),
-      // Run concurrency (0 = no limit, undefined = default of 1)
-      CONCURRENT_RUN_LIMIT: z.coerce.number().int().nonnegative().optional(),
+      // Run concurrency cap (0 = no limit, undefined = tier-based only)
+      CONCURRENT_RUN_LIMIT_CAP: z.coerce
+        .number()
+        .int()
+        .nonnegative()
+        .optional(),
       // Realtime pub/sub
       ABLY_API_KEY: z.string().min(1).optional(),
       // Vercel cron job authentication
@@ -320,7 +324,7 @@ function initEnv() {
       SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
       SENTRY_ORG: process.env.SENTRY_ORG,
       SENTRY_PROJECT: process.env.SENTRY_PROJECT,
-      CONCURRENT_RUN_LIMIT: process.env.CONCURRENT_RUN_LIMIT,
+      CONCURRENT_RUN_LIMIT_CAP: process.env.CONCURRENT_RUN_LIMIT_CAP,
       ABLY_API_KEY: process.env.ABLY_API_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
       USE_MOCK_CLAUDE: process.env.USE_MOCK_CLAUDE,
