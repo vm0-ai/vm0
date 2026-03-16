@@ -8,6 +8,7 @@ import { setupZeroPage$ } from "./zero-page/zero-page.ts";
 import { setupZeroJobDetailRoute$ } from "./zero-page/zero-job-detail-route.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
+import { setupQueuePage$ } from "./queue-page/queue-page.ts";
 
 const ROUTE_CONFIG = [
   {
@@ -41,6 +42,10 @@ const ROUTE_CONFIG = [
   {
     path: "/",
     setup: setupAuthPageWrapper(setupZeroPage$),
+  },
+  {
+    path: "/queue",
+    setup: setupAuthPageWrapper(setupQueuePage$),
   },
 ] as const;
 
