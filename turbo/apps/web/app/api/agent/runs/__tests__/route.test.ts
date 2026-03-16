@@ -16,9 +16,9 @@ import {
   createTestRunInDb,
   getTestRun,
   completeTestRun,
-  createTestPermission,
   insertStalePendingRun,
   insertOrgCacheEntry,
+  insertOrgMembersCacheEntry,
   getOrgCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
@@ -329,34 +329,20 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   });
 
   describe("Shared Agent Access", () => {
-    it("should allow running a public shared agent", async () => {
-      // User A creates an agent and makes it public
+    it("should allow running an org-shared agent", async () => {
+      // User A creates an agent
       const ownerUser = user;
-      await createTestPermission(testComposeId, "public");
 
-      // Switch to User B
-      await context.setupUser({ prefix: "other" });
+      // Switch to User B who is an org member
+      const otherUser = await context.setupUser({ prefix: "other" });
+      await insertOrgMembersCacheEntry({
+        orgId: ownerUser.orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
 
-      // User B should be able to run the public agent
-      const data = await createTestRun(testComposeId, "Run public agent");
-
-      expect(data.status).toBe("pending");
-
-      // Switch back to owner for cleanup
-      mockClerk({ userId: ownerUser.userId });
-    });
-
-    it("should allow running an email-shared agent", async () => {
-      // User A creates an agent and shares with specific email
-      const ownerUser = user;
-      const sharedEmail = "test@example.com"; // Default mock email
-      await createTestPermission(testComposeId, "email", sharedEmail);
-
-      // Switch to User B (who has the shared email via mock)
-      await context.setupUser({ prefix: "other" });
-
-      // User B should be able to run the shared agent
-      const data = await createTestRun(testComposeId, "Run email-shared agent");
+      // User B should be able to run the org-shared agent
+      const data = await createTestRun(testComposeId, "Run org-shared agent");
 
       expect(data.status).toBe("pending");
 
@@ -368,7 +354,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // User A creates an agent (private by default)
       const ownerUser = user;
 
-      // Switch to User B
+      // Switch to User B (not an org member)
       await context.setupUser({ prefix: "other" });
 
       // User B should NOT be able to run the private agent
@@ -397,47 +383,23 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       mockClerk({ userId: ownerUser.userId });
     });
 
-    it("should resolve model provider from Runtime Org for shared agent", async () => {
-      // User A (owner) creates an agent without explicit API key
-      const ownerUser = user;
-      const { composeId: sharedComposeId } = await createTestCompose(
-        uniqueId("shared-mp"),
-        { noEnvironmentBlock: true },
-      );
-      await createTestPermission(sharedComposeId, "public");
-      // Owner has a model provider, but runner should use their own
-      await createTestModelProvider("anthropic-api-key", "owner-key");
-
-      // Switch to User B (runner) and configure their own model provider
-      await context.setupUser({ prefix: "runner-mp" });
-      await createTestModelProvider("anthropic-api-key", "runner-key");
-
-      // User B runs the shared agent — should succeed using runner's model provider
-      const data = await createTestRun(
-        sharedComposeId,
-        "Run with runner model provider",
-      );
-      expect(data.status).toBe("pending");
-
-      // Switch back to owner for cleanup
-      mockClerk({ userId: ownerUser.userId });
-    });
-
-    it("should fail shared agent run when runner has no model provider", async () => {
-      // User A (owner) creates an agent without explicit API key
+    it("should fail shared agent run when org has no model provider", async () => {
+      // User A (owner) creates an agent in a new org without any model provider
       const ownerUser = user;
       const { composeId: sharedComposeId } = await createTestCompose(
         uniqueId("shared-no-mp"),
         { noEnvironmentBlock: true },
       );
-      await createTestPermission(sharedComposeId, "public");
-      // Owner has a model provider configured
-      await createTestModelProvider("anthropic-api-key", "owner-key");
 
-      // Switch to User B (runner) — no model provider configured
-      await context.setupUser({ prefix: "runner-no-mp" });
+      // Switch to User B (runner) who is an org member
+      const runnerUser = await context.setupUser({ prefix: "runner-no-mp" });
+      await insertOrgMembersCacheEntry({
+        orgId: ownerUser.orgId,
+        userId: runnerUser.userId,
+        cachedAt: new Date(),
+      });
 
-      // User B runs the shared agent — should fail because runner has no model provider
+      // User B runs the shared agent — should fail because no model provider in org
       const data = await createTestRun(
         sharedComposeId,
         "Run without model provider",
@@ -451,16 +413,11 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       mockClerk({ userId: ownerUser.userId });
     });
 
-    it("should deny running agent when email does not match", async () => {
-      // User A creates an agent and shares with different email
+    it("should deny running agent when user is not an org member", async () => {
+      // User A creates an agent
       const ownerUser = user;
-      await createTestPermission(
-        testComposeId,
-        "email",
-        "different@example.com",
-      );
 
-      // Switch to User B (who has test@example.com, NOT the shared email)
+      // Switch to User B (not an org member)
       await context.setupUser({ prefix: "other" });
 
       // User B should NOT be able to run the agent
@@ -471,7 +428,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             agentComposeId: testComposeId,
-            prompt: "Try to run with wrong email",
+            prompt: "Try to run without org membership",
           }),
         },
       );

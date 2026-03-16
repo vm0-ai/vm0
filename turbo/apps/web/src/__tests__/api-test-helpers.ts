@@ -84,7 +84,7 @@ import {
   PUT as setSecretRoute,
 } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
-import { agentPermissions } from "../db/schema/agent-permission";
+
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
@@ -1549,27 +1549,6 @@ export async function insertStalePendingRun(
  * @param granteeType - The permission type ('public' or 'email')
  * @param granteeEmail - The email address (required if granteeType is 'email')
  */
-/**
- * @deprecated ACL permission system removed. This writes to the DB for
- * backwards-compat with existing tests but has no effect on access checks.
- * Tests relying on ACL-based access should be updated to use org membership.
- */
-export async function createTestPermission(
-  composeId: string,
-  granteeType: "public" | "email",
-  granteeEmail?: string,
-): Promise<void> {
-  await globalThis.services.db
-    .insert(agentPermissions)
-    .values({
-      agentComposeId: composeId,
-      granteeType,
-      granteeEmail: granteeType === "email" ? (granteeEmail ?? null) : null,
-      grantedBy: "test-setup",
-    })
-    .onConflictDoNothing();
-}
-
 /**
  * Create a test connector via API routes.
  *

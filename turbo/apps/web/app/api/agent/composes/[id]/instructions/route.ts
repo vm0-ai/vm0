@@ -78,7 +78,7 @@ export async function GET(
     );
   }
 
-  // Check access (owner or shared via email/public)
+  // Check access (owner or org member)
   const userEmail = await getUserEmail(userId);
   const hasAccess = await canAccessCompose(userId, userEmail, result);
   if (!hasAccess) {

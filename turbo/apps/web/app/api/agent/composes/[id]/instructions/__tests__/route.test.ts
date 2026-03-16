@@ -5,16 +5,13 @@ import {
   createTestRequest,
   createTestCompose,
   createTestVolume,
-  createTestPermission,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
-import {
-  mockClerk,
-  MOCK_USER_EMAIL,
-} from "../../../../../../../src/__tests__/clerk-mock";
+import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { getInstructionsStorageName } from "@vm0/core";
 import { createSingleFileTar } from "../../../../../../../src/lib/tar";
 
@@ -149,21 +146,25 @@ describe("GET /api/agent/composes/:id/instructions", () => {
 
   it("should allow shared users to read instructions", async () => {
     // Owner creates agent with instructions
-    await context.setupUser({ prefix: "owner" });
+    const owner = await context.setupUser({ prefix: "owner" });
     const agentName = "shared-instructions-agent";
 
     const { composeId } = await createTestCompose(agentName, {
       overrides: { instructions: "AGENTS.md" },
     });
 
-    // Share with original user
-    await createTestPermission(composeId, "email", MOCK_USER_EMAIL);
+    // Grant org membership to the original user
+    await insertOrgMembersCacheEntry({
+      orgId: owner.orgId,
+      userId: user.userId,
+      cachedAt: new Date(),
+    });
 
     // Create storage volume
     const storageName = getInstructionsStorageName(agentName);
     await createTestVolume(storageName);
 
-    // Switch to the shared user
+    // Switch to the org member user
     mockClerk({ userId: user.userId });
 
     context.mocks.s3.downloadManifest.mockResolvedValueOnce({

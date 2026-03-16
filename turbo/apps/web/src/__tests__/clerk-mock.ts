@@ -23,9 +23,6 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
  * ```
  */
 
-/** The email address returned by the Clerk mock for all test users */
-export const MOCK_USER_EMAIL = "test@example.com";
-
 const mockAuth = vi.mocked(auth);
 const mockClerkClient = vi.mocked(clerkClient);
 
