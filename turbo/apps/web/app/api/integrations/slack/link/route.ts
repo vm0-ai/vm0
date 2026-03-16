@@ -230,8 +230,6 @@ export async function POST(request: Request) {
     agentId !== installation.defaultComposeId &&
     slackUserId === installation.adminSlackUserId
   ) {
-    const oldComposeId = installation.defaultComposeId;
-
     // Update workspace default agent
     await globalThis.services.db
       .update(slackInstallations)

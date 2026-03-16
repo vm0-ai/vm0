@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WebClient } from "@slack/web-api";
 import { GET, DELETE, PATCH } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import {
-  mockClerk,
-  MOCK_USER_EMAIL,
-} from "../../../../../src/__tests__/clerk-mock";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   givenLinkedSlackUser,
   givenUserHasAgent,
@@ -13,12 +10,9 @@ import {
 import {
   createTestCompose,
   createTestOrg,
-  findTestAgentPermissions,
   findTestComposeWithOrg,
-  insertTestAgentPermission,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { uniqueId } from "../../../../../src/__tests__/test-helpers";
-import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
 
@@ -264,98 +258,6 @@ describe("/api/integrations/slack", () => {
       expect(getData.agent.name).toBe(compose.name);
     });
 
-    it("grants permissions on new agent and revokes old agent permissions", async () => {
-      const { userLink, installation } = await givenLinkedSlackUser({
-        isAdmin: true,
-      });
-
-      // Create new agent WITHOUT updating the installation's defaultComposeId
-      mockClerk({ userId: userLink.vm0UserId });
-      const { composeId: newComposeId } = await createTestCompose("new-agent");
-
-      // Verify initial state: user has permission on old (default) agent
-      const oldPermissions = await findTestAgentPermissions(
-        installation.defaultComposeId,
-        MOCK_USER_EMAIL,
-      );
-      expect(oldPermissions).toHaveLength(1);
-
-      // Switch agent via PATCH
-      const request = new Request(
-        "http://localhost:3000/api/integrations/slack",
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentName: "new-agent" }),
-        },
-      );
-      const response = await PATCH(request);
-      expect(response.status).toBe(200);
-
-      // Verify: permission on new agent exists
-      const newPermissions = await findTestAgentPermissions(
-        newComposeId,
-        MOCK_USER_EMAIL,
-      );
-      expect(newPermissions).toHaveLength(1);
-
-      // Verify: permission on old agent is revoked
-      const revokedPermissions = await findTestAgentPermissions(
-        installation.defaultComposeId,
-        MOCK_USER_EMAIL,
-      );
-      expect(revokedPermissions).toHaveLength(0);
-    });
-
-    it("skips revocation when old agent is VM0_DEFAULT_AGENT", async () => {
-      const { userLink, installation } = await givenLinkedSlackUser({
-        isAdmin: true,
-      });
-
-      mockClerk({ userId: userLink.vm0UserId });
-
-      // Find the org slug and name used for the default agent
-      const defaultCompose = await findTestComposeWithOrg(
-        installation.defaultComposeId,
-      );
-
-      // Set VM0_DEFAULT_AGENT to match the current default agent
-      vi.stubEnv(
-        "VM0_DEFAULT_AGENT",
-        `${defaultCompose!.orgSlug}/${defaultCompose!.composeName}`,
-      );
-      reloadEnv();
-
-      // Create new agent WITHOUT updating installation's defaultComposeId
-      const { composeId: newComposeId } =
-        await createTestCompose("replacement-agent");
-
-      const request = new Request(
-        "http://localhost:3000/api/integrations/slack",
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentName: "replacement-agent" }),
-        },
-      );
-      const response = await PATCH(request);
-      expect(response.status).toBe(200);
-
-      // Verify: permission on new agent exists
-      const newPermissions = await findTestAgentPermissions(
-        newComposeId,
-        MOCK_USER_EMAIL,
-      );
-      expect(newPermissions).toHaveLength(1);
-
-      // Verify: permission on old (default) agent is NOT revoked
-      const oldPermissions = await findTestAgentPermissions(
-        installation.defaultComposeId,
-        MOCK_USER_EMAIL,
-      );
-      expect(oldPermissions).toHaveLength(1);
-    });
-
     it("updates the default agent with org-qualified name (org/agentName)", async () => {
       const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
 
@@ -417,44 +319,6 @@ describe("/api/integrations/slack", () => {
 
       expect(response.status).toBe(400);
       expect(data.error.code).toBe("BAD_REQUEST");
-    });
-
-    it("handles duplicate permissions gracefully", async () => {
-      const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
-
-      // Create new agent WITHOUT updating installation's defaultComposeId
-      mockClerk({ userId: userLink.vm0UserId });
-      const { composeId: newComposeId } =
-        await createTestCompose("shared-agent");
-
-      // Pre-grant permission (simulates CLI share)
-      await insertTestAgentPermission(
-        newComposeId,
-        MOCK_USER_EMAIL,
-        "cli-user",
-      );
-
-      // Switch to agent that already has permission — should not error
-      const request = new Request(
-        "http://localhost:3000/api/integrations/slack",
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentName: "shared-agent" }),
-        },
-      );
-      const response = await PATCH(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.ok).toBe(true);
-
-      // Permission should still exist (not duplicated)
-      const permissions = await findTestAgentPermissions(
-        newComposeId,
-        MOCK_USER_EMAIL,
-      );
-      expect(permissions).toHaveLength(1);
     });
   });
 });

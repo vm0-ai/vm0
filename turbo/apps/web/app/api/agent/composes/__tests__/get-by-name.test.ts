@@ -4,7 +4,7 @@ import {
   createTestRequest,
   createTestCompose,
   getOrgCacheEntry,
-  insertTestAgentPermission,
+  insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -151,13 +151,14 @@ describe("GET /api/agent/composes?name=<name>", () => {
     // Get the owner's org slug
     const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
 
-    // Grant email permission to the recipient
-    const recipientEmail = "recipient@example.com";
-    await insertTestAgentPermission(composeId, recipientEmail, user.userId);
-
-    // Switch to recipient user
+    // Switch to recipient user who is a member of the owner's org
     const recipient = await context.setupUser({ prefix: "recipient" });
-    mockClerk({ userId: recipient.userId, email: recipientEmail });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: recipient.userId,
+      cachedAt: new Date(),
+    });
+    mockClerk({ userId: recipient.userId });
 
     // Access the agent via cross-org lookup
     const getRequest = createTestRequest(
@@ -218,7 +219,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return shared agent via cross-org lookup with ?org=", async () => {
+  it("should return shared agent via cross-org lookup with ?org= using orgId", async () => {
     const agentName = `test-shared-org-${Date.now()}`;
 
     // Create compose as owner
@@ -228,13 +229,14 @@ describe("GET /api/agent/composes?name=<name>", () => {
     const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
     const ownerOrgId = ownerOrg.orgId;
 
-    // Grant email permission to the recipient
-    const recipientEmail = "recipient-org@example.com";
-    await insertTestAgentPermission(composeId, recipientEmail, user.userId);
-
-    // Switch to recipient user
+    // Switch to recipient user who is a member of the owner's org
     const recipient = await context.setupUser({ prefix: "recipient-org" });
-    mockClerk({ userId: recipient.userId, email: recipientEmail });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: recipient.userId,
+      cachedAt: new Date(),
+    });
+    mockClerk({ userId: recipient.userId });
 
     // Access the agent via cross-org lookup using ?org=
     const getRequest = createTestRequest(

@@ -124,7 +124,7 @@ describe("zero-job-detail signals", () => {
       const loading = context.store.get(zeroJobDetailLoading$);
       const error = context.store.get(zeroJobDetailError$);
 
-      expect(detail).toStrictEqual({ ...agentResponse, isOwner: true });
+      expect(detail).toStrictEqual(agentResponse);
       expect(loading).toBeFalsy();
       expect(error).toBeNull();
 

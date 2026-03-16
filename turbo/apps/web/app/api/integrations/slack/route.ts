@@ -348,8 +348,6 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const oldComposeId = installation.defaultComposeId;
-
   // Update workspace default agent
   await db
     .update(slackInstallations)
