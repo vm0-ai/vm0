@@ -163,7 +163,11 @@ async function resolveCheckpointResume(
   }
 
   const [versionWithCompose] = await globalThis.services.db
-    .select({ composeName: agentComposes.name })
+    .select({
+      composeName: agentComposes.name,
+      composeOrgId: agentComposes.orgId,
+      composeId: agentComposes.id,
+    })
     .from(agentComposeVersions)
     .leftJoin(
       agentComposes,
@@ -175,6 +179,8 @@ async function resolveCheckpointResume(
   return {
     agentComposeVersionId,
     agentComposeName: versionWithCompose?.composeName || undefined,
+    composeId: versionWithCompose?.composeId || undefined,
+    composeOrgId: versionWithCompose?.composeOrgId || undefined,
   };
 }
 

@@ -56,14 +56,6 @@ const router = tsr.router(sessionsByIdContract, {
       };
     }
 
-    // Extract secret names from HEAD compose content
-    let secretNames: string[] | null = null;
-    const [compose] = await globalThis.services.db
-      .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, session.agentComposeId))
-      .limit(1);
-
     // Verify session belongs to the caller's active organization
     const hasOrgAccess = await verifyComposeOrgAccess(
       session.agentComposeId,
@@ -78,6 +70,14 @@ const router = tsr.router(sessionsByIdContract, {
         },
       };
     }
+
+    // Extract secret names from HEAD compose content
+    let secretNames: string[] | null = null;
+    const [compose] = await globalThis.services.db
+      .select()
+      .from(agentComposes)
+      .where(eq(agentComposes.id, session.agentComposeId))
+      .limit(1);
 
     if (compose?.headVersionId) {
       const [version] = await globalThis.services.db
