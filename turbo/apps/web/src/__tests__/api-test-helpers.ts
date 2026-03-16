@@ -512,6 +512,28 @@ async function createTestComposeVersion(
  * Use this when you need a run without going through the API route
  * (e.g., for webhook tests where Clerk auth is disabled).
  */
+/**
+ * Create a run with no compose version (simulates deleted compose).
+ * Useful for testing that endpoints handle orphan runs gracefully.
+ */
+export async function createOrphanTestRun(
+  userId: string,
+  orgId: string,
+  options?: { status?: string; prompt?: string },
+): Promise<{ runId: string }> {
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      orgId,
+      agentComposeVersionId: null,
+      status: options?.status ?? "completed",
+      prompt: options?.prompt ?? "orphan run prompt",
+    })
+    .returning({ id: agentRuns.id });
+  return { runId: run!.id };
+}
+
 async function createTestRunDirect(
   userId: string,
   versionId: string,
