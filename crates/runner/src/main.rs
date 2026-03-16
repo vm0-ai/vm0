@@ -12,6 +12,7 @@ mod prefetch;
 mod process;
 mod provider;
 mod proxy;
+mod resource_budget;
 mod retry;
 mod status;
 mod telemetry;

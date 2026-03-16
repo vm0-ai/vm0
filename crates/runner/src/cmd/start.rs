@@ -5,7 +5,6 @@ use std::time::Duration;
 use clap::Args;
 use sandbox::SandboxFactory;
 use sandbox_fc::FirecrackerFactory;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -18,6 +17,7 @@ use crate::lock;
 use crate::paths::{HomePaths, RunnerPaths};
 use crate::provider::{ApiProvider, JobProvider, LocalProvider};
 use crate::proxy;
+use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
 
@@ -164,31 +164,37 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         memory_mb,
         concurrency_factor,
     } = sandbox;
-    let max_concurrent = if max_concurrent == 0 {
-        let host_cpus = crate::host::cpu_count()?;
-        let host_memory_mb = crate::host::memory_mb()?;
-        let computed = crate::host::compute_max_concurrent(
-            host_cpus,
-            host_memory_mb,
-            vcpu,
-            memory_mb,
-            concurrency_factor,
-        );
-        info!(
-            host_cpus,
-            host_memory_mb,
-            vcpu,
-            memory_mb,
-            concurrency_factor,
-            computed,
-            "auto-detected max_concurrent"
-        );
-        computed
+    let host_cpus = crate::host::cpu_count()?;
+    let host_memory_mb = crate::host::memory_mb()?;
+    let budget = Arc::new(ResourceBudget::new(
+        host_cpus as u32,
+        host_memory_mb as u32,
+        concurrency_factor,
+        max_concurrent,
+    ));
+    info!(
+        host_cpus,
+        host_memory_mb,
+        vcpu,
+        memory_mb,
+        concurrency_factor,
+        max_concurrent,
+        effective_vcpu = budget.effective_vcpu(),
+        effective_memory_mb = budget.effective_memory_mb(),
+        "resource budget initialized"
+    );
+    // Factory concurrency hint for pool sizing (overlay + netns pre-warming).
+    let resource_limit = std::cmp::min(
+        budget.effective_vcpu() as usize / vcpu as usize,
+        budget.effective_memory_mb() as usize / memory_mb as usize,
+    )
+    .max(1);
+    fc_config.concurrency = if max_concurrent > 0 {
+        std::cmp::min(resource_limit, max_concurrent)
     } else {
-        max_concurrent
+        resource_limit
     };
-    fc_config.concurrency = max_concurrent;
-    let mut status = StatusTracker::new(paths.status(), max_concurrent);
+    let mut status = StatusTracker::new(paths.status(), fc_config.concurrency);
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
 
@@ -223,7 +229,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         name,
         group: group_name,
         fc_config,
-        max_concurrent,
+        budget,
         status,
         mitm,
         mitm_crash_rx,
@@ -239,7 +245,7 @@ struct RunConfig {
     name: String,
     group: String,
     fc_config: sandbox_fc::FirecrackerConfig,
-    max_concurrent: usize,
+    budget: Arc<ResourceBudget>,
     status: Arc<StatusTracker>,
     mitm: proxy::MitmProxy,
     mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
@@ -255,7 +261,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         name,
         group,
         fc_config,
-        max_concurrent,
+        budget,
         status,
         mut mitm,
         mut mitm_crash_rx,
@@ -264,18 +270,22 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         exec_config,
     } = config;
 
+    let vcpu = exec_config.vcpu;
+    let memory_mb = exec_config.memory_mb;
+
     let mut factory = FirecrackerFactory::new(fc_config).await?;
     factory.startup().await?;
     let factory = Arc::new(factory);
 
-    let semaphore = Arc::new(Semaphore::new(max_concurrent));
     let mut jobs = JoinSet::new();
 
     status.write_initial().await;
     info!(
         name = %name,
         group = %group,
-        max_concurrent,
+        effective_vcpu = budget.effective_vcpu(),
+        effective_memory_mb = budget.effective_memory_mb(),
+        max_concurrent = budget.max_concurrent(),
         "runner started"
     );
 
@@ -334,8 +344,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         // Spawn background restart task when timer fires
         maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
-        // If all permits are taken, wait for a job to finish or mode change
-        if semaphore.available_permits() == 0 {
+        // If budget is exhausted, wait for a job to finish or mode change
+        if !budget.can_afford(vcpu, memory_mb) {
             tokio::select! {
                 _ = mode_rx.changed() => {}
                 result = jobs.join_next() => {
@@ -360,29 +370,22 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // discover() has no server-side side effects — safe to cancel.
             discovered = provider.discover() => {
                 let Some(run_id) = discovered else { break }; // provider shutdown
+                // Reserve resources before claiming so we don't waste a job
+                // that another runner could handle.
+                if !budget.try_reserve(vcpu, memory_mb) {
+                    continue;
+                }
                 // claim() runs in the branch handler — non-interruptible,
                 // so a successful claim is always paired with complete().
                 let Some(context) = provider.claim(run_id).await else {
-                    continue; // already claimed by another runner
+                    budget.release(vcpu, memory_mb); // rollback on 409
+                    continue;
                 };
-                info!(run_id = %run_id, "job claimed, acquiring permit");
-                // Acquire permit in the main loop *before* spawning. Permits are
-                // only acquired here and released by completing tasks, so since
-                // we checked available_permits() > 0 above, this succeeds
-                // immediately.
-                let permit = match Arc::clone(&semaphore).acquire_owned().await {
-                    Ok(p) => p,
-                    Err(_) => {
-                        error!(run_id = %run_id, "semaphore closed unexpectedly");
-                        provider.complete(run_id, 1, Some("runner internal error: semaphore closed")).await;
-                        break;
-                    }
-                };
-                info!(run_id = %run_id, "spawning executor");
+                info!(run_id = %run_id, "job claimed, spawning executor");
                 status.add_run(run_id).await;
                 spawn_job(
                     context, &provider, &factory, &exec_config,
-                    permit, &mut jobs, &status,
+                    &budget, &mut jobs, &status,
                 );
             }
             // Mitmproxy crash detection
@@ -451,28 +454,31 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
 /// Spawn a job executor task.
 ///
-/// The provider has already claimed the job and the caller has acquired
-/// a semaphore permit — this function spawns the executor and reports
-/// completion via the provider when done.
+/// The provider has already claimed the job and the caller has reserved
+/// resources in the budget — this function spawns the executor, reports
+/// completion via the provider, and releases the budget when done.
 fn spawn_job(
     context: crate::types::ExecutionContext,
     provider: &Arc<dyn JobProvider>,
     factory: &Arc<FirecrackerFactory>,
     exec_config: &Arc<ExecutorConfig>,
-    permit: OwnedSemaphorePermit,
+    budget: &Arc<ResourceBudget>,
     jobs: &mut JoinSet<()>,
     status: &Arc<StatusTracker>,
 ) {
     let run_id = context.run_id;
+    let vcpu = exec_config.vcpu;
+    let memory_mb = exec_config.memory_mb;
 
     let provider = Arc::clone(provider);
     let factory = Arc::clone(factory);
     let exec_config = Arc::clone(exec_config);
+    let budget = Arc::clone(budget);
     let status = Arc::clone(status);
 
     jobs.spawn(async move {
         // Inner spawn isolates panics: if execute_job panics, the outer task
-        // still reports completion and cleans up status/permit.
+        // still reports completion and releases budget.
         let inner = tokio::spawn(async move {
             executor::execute_job(factory.as_ref(), context, &exec_config).await
         });
@@ -488,7 +494,7 @@ fn spawn_job(
         // Structural guarantee: claim (in provider) is always paired with complete.
         provider.complete(run_id, exit_code, err.as_deref()).await;
         status.remove_run(run_id).await;
-        drop(permit);
+        budget.release(vcpu, memory_mb);
     });
 }
 
