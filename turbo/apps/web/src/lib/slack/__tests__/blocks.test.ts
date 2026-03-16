@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import type { SectionBlock } from "@slack/web-api";
+import type { SectionBlock, ActionsBlock } from "@slack/web-api";
 import {
+  buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
@@ -62,14 +63,14 @@ describe("buildHelpMessage", () => {
       (b) =>
         b.type === "section" &&
         "text" in b &&
-        b.text?.text?.includes("/vm0 settings"),
+        b.text?.text?.includes("/zero settings"),
     );
     expect(commandsBlock).toBeDefined();
 
     // Check for usage section
     const usageBlock = blocks.find(
       (b) =>
-        b.type === "section" && "text" in b && b.text?.text?.includes("@VM0"),
+        b.type === "section" && "text" in b && b.text?.text?.includes("@Zero"),
     );
     expect(usageBlock).toBeDefined();
   });
@@ -81,14 +82,14 @@ describe("buildHelpMessage", () => {
       (b) =>
         b.type === "section" &&
         "text" in b &&
-        b.text?.text?.includes("/vm0 connect"),
+        b.text?.text?.includes("/zero connect"),
     );
     expect(commandsBlock).toBeDefined();
 
     const text = (commandsBlock as SectionBlock).text?.text ?? "";
-    expect(text).toContain("Connect to VM0");
-    expect(text).toContain("Disconnect from VM0");
-    expect(text).toContain("/vm0 settings");
+    expect(text).toContain("Connect to Zero");
+    expect(text).toContain("Disconnect from Zero");
+    expect(text).toContain("/zero settings");
   });
 });
 
@@ -237,5 +238,109 @@ describe("detectDeepLinks", () => {
     );
     expect(links).toHaveLength(1);
     expect(links[0]?.url).toBe(`${platformUrl}/settings`);
+  });
+});
+
+describe("buildAppHomeView", () => {
+  it("should show not-installed state with button when isInstalled is false", () => {
+    const view = buildAppHomeView({ isLinked: false, isInstalled: false });
+
+    expect(view.type).toBe("home");
+    const blockTexts = view.blocks
+      .filter((b): b is SectionBlock => b.type === "section" && "text" in b)
+      .map((b) => b.text?.text ?? "");
+    const allText = blockTexts.join(" ");
+    expect(allText).toContain("not installed");
+    expect(allText).toContain("workspace admin");
+
+    // Should have an actions block with a button
+    const actionsBlock = view.blocks.find(
+      (b): b is ActionsBlock => b.type === "actions",
+    );
+    expect(actionsBlock).toBeDefined();
+    const button = actionsBlock!.elements[0];
+    expect(button).toMatchObject({
+      type: "button",
+      text: { type: "plain_text", text: "Open Zero Settings" },
+      style: "primary",
+    });
+    expect("url" in button && button.url).toContain("/zero/works");
+  });
+
+  it("should show not-connected state when isLinked is false and isInstalled is not false", () => {
+    const view = buildAppHomeView({ isLinked: false });
+
+    const blockTexts = view.blocks
+      .filter((b): b is SectionBlock => b.type === "section" && "text" in b)
+      .map((b) => b.text?.text ?? "");
+    expect(blockTexts.join(" ")).toContain("Account not connected");
+  });
+
+  it("should show connect button when loginUrl is provided", () => {
+    const view = buildAppHomeView({
+      isLinked: false,
+      loginUrl: "https://example.com/connect",
+    });
+
+    const actionsBlock = view.blocks.find(
+      (b): b is ActionsBlock => b.type === "actions",
+    );
+    expect(actionsBlock).toBeDefined();
+    const button = actionsBlock!.elements[0];
+    expect(button).toMatchObject({
+      type: "button",
+      text: { type: "plain_text", text: "Connect" },
+    });
+    expect("url" in button && button.url).toBe("https://example.com/connect");
+  });
+
+  it("should show connected state with user info", () => {
+    const view = buildAppHomeView({
+      isLinked: true,
+      userEmail: "user@test.com",
+      vm0UserId: "user-123",
+    });
+
+    const blockTexts = view.blocks
+      .filter((b): b is SectionBlock => b.type === "section" && "text" in b)
+      .map((b) => b.text?.text ?? "");
+    const allText = blockTexts.join(" ");
+    expect(allText).toContain("Connected to Zero");
+    expect(allText).toContain("user@test.com");
+  });
+
+  it("should show agent name when provided", () => {
+    const view = buildAppHomeView({
+      isLinked: true,
+      agentName: "MyAgent",
+      vm0UserId: "user-123",
+    });
+
+    const blockTexts = view.blocks
+      .filter((b): b is SectionBlock => b.type === "section" && "text" in b)
+      .map((b) => b.text?.text ?? "");
+    expect(blockTexts.join(" ")).toContain("MyAgent");
+  });
+
+  it("should not include agent/commands sections for not-installed state", () => {
+    const view = buildAppHomeView({ isLinked: false, isInstalled: false });
+
+    const blockTexts = view.blocks
+      .filter((b): b is SectionBlock => b.type === "section" && "text" in b)
+      .map((b) => b.text?.text ?? "");
+    const allText = blockTexts.join(" ");
+    expect(allText).not.toContain("/zero connect");
+    expect(allText).not.toContain("Workspace Agent");
+  });
+
+  it("should not include agent/commands sections for not-connected state", () => {
+    const view = buildAppHomeView({ isLinked: false });
+
+    const blockTexts = view.blocks
+      .filter((b): b is SectionBlock => b.type === "section" && "text" in b)
+      .map((b) => b.text?.text ?? "");
+    const allText = blockTexts.join(" ");
+    expect(allText).not.toContain("/zero connect");
+    expect(allText).not.toContain("Workspace Agent");
   });
 });

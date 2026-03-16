@@ -120,6 +120,7 @@ describe("/api/slack/org/oauth/callback", () => {
   it("should reject org member who is not an admin", async () => {
     const userId = uniqueId("member");
     const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
 
     // User is a member of this org but with "member" role, not "admin"
     mockClerk({
@@ -128,7 +129,7 @@ describe("/api/slack/org/oauth/callback", () => {
     });
     await createTestOrg(orgId);
 
-    mockOAuthSuccess();
+    mockOAuthSuccess({ teamId: workspaceId });
 
     const state = JSON.stringify({ orgId, vm0UserId: userId });
     const request = createTestRequest(
@@ -146,11 +147,12 @@ describe("/api/slack/org/oauth/callback", () => {
   it("should throw when user is not an org member", async () => {
     const userId = uniqueId("outsider");
     const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
 
     // User is not a member of this org (no clerkOrgs match)
     mockClerk({ userId });
 
-    mockOAuthSuccess();
+    mockOAuthSuccess({ teamId: workspaceId });
 
     const state = JSON.stringify({ orgId, vm0UserId: userId });
     const request = createTestRequest(
