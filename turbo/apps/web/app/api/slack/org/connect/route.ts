@@ -56,13 +56,23 @@ function notifyConnectSuccess(
       ? `Your workspace agent is *${agentName}*.`
       : `No workspace agent configured yet.`;
 
-    const target = channelId || slackUserId;
-    await postMessage(client, target, "You're connected!", {
-      threadTs: threadTs ?? undefined,
-      blocks: buildSuccessMessage(
-        `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
-      ),
-    });
+    const blocks = buildSuccessMessage(
+      `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+    );
+
+    if (channelId) {
+      // In a channel: use ephemeral so only this user sees it
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: slackUserId,
+        text: "You're connected!",
+        blocks,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      });
+    } else {
+      // No channel context: DM the user (DMs are already private)
+      await postMessage(client, slackUserId, "You're connected!", { blocks });
+    }
 
     await refreshOrgAppHome(client, installation, slackUserId).catch((e) =>
       log.warn("Failed to refresh App Home after connect", { error: e }),
