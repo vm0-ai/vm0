@@ -61,7 +61,12 @@ gh run list --workflow turbo.yml --branch main --limit 10 \
      ```bash
      gh run view <RUN_ID> --json jobs --jq '[.jobs[] | select(.conclusion == "failure") | .name]'
      ```
-  2. Post to Slack `#flaky-test` channel with the failed run details (run URL, failed job names) using the Slack MCP tool (`slack_send_message` to `#flaky-test`).
+  2. Post to Slack `#flaky-test` channel using the Slack MCP tool (`slack_send_message` to `#flaky-test`). Use Slack mrkdwn link syntax `<url|display text>` for all URLs so they render as clickable links. Example message format:
+     ```
+     🔴 main CI failure
+     Failed jobs: lint, test
+     Run: <https://github.com/vm0-ai/vm0/actions/runs/12345|#12345>
+     ```
   3. Report the failure in the dashboard output.
 
 ### Step 3: Check Open Issues per Lane
