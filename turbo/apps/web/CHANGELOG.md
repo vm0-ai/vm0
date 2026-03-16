@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.116.2](https://github.com/vm0-ai/vm0/compare/web-v12.116.1...web-v12.116.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* **auth:** pass capabilities to sandbox token in runner claim route ([#4994](https://github.com/vm0-ai/vm0/issues/4994)) ([bc44f98](https://github.com/vm0-ai/vm0/commit/bc44f9877340b3401ae6f99a555350c6808751e2)), closes [#4981](https://github.com/vm0-ai/vm0/issues/4981)
+* normalize deprecated capability names to unified storage prefix ([#4996](https://github.com/vm0-ai/vm0/issues/4996)) ([c13cffa](https://github.com/vm0-ai/vm0/commit/c13cffa1d050dd1fe189ab5b20d05ae8663b7907))
+* **test:** restore e2b mock in compose webhook complete test ([#4987](https://github.com/vm0-ai/vm0/issues/4987)) ([727ed18](https://github.com/vm0-ai/vm0/commit/727ed18dc424d1118d0ce9ce5c239baca8021635))
+
+
+### Refactoring
+
+* **auth:** remove unused storage type parameter from capability check ([#4998](https://github.com/vm0-ai/vm0/issues/4998)) ([5f38dcb](https://github.com/vm0-ai/vm0/commit/5f38dcbb822b6031330899099b7c846cca8cb460))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.71.2
+
 ## [12.116.1](https://github.com/vm0-ai/vm0/compare/web-v12.116.0...web-v12.116.1) (2026-03-16)
 
 
