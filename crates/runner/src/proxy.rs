@@ -10,6 +10,8 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::lock;
+use crate::types::Firewall;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +27,7 @@ struct VmEntry {
     sandbox_token: String,
     registered_at: i64,
     network_log_path: String,
-    firewalls: Option<Vec<crate::types::Firewall>>,
+    firewalls: Option<Vec<Firewall>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
 }
@@ -36,7 +38,7 @@ pub struct VmRegistration<'a> {
     pub run_id: &'a str,
     pub sandbox_token: &'a str,
     pub network_log_path: &'a std::path::Path,
-    pub firewalls: Option<&'a [crate::types::Firewall]>,
+    pub firewalls: Option<&'a [Firewall]>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
 }
@@ -395,7 +397,7 @@ impl ProxyRegistryHandle {
         source_ip: &str,
         registration: &VmRegistration<'_>,
     ) -> RunnerResult<()> {
-        let _guard = crate::lock::acquire(self.lock_path.clone()).await?;
+        let _guard = lock::acquire(self.lock_path.clone()).await?;
 
         let mut registry = read_registry(&self.registry_path).await?;
         let now = chrono::Utc::now().timestamp_millis();
@@ -436,7 +438,7 @@ impl ProxyRegistryHandle {
 
     /// Unregister a VM from the proxy registry.
     pub async fn unregister_vm(&self, source_ip: &str) -> RunnerResult<()> {
-        let _guard = crate::lock::acquire(self.lock_path.clone()).await?;
+        let _guard = lock::acquire(self.lock_path.clone()).await?;
 
         let mut registry = read_registry(&self.registry_path).await?;
         registry.vms.remove(source_ip);
@@ -460,6 +462,7 @@ fn send_sigterm(child: &tokio::process::Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{FirewallApi, FirewallAuth, FirewallPermission};
 
     #[test]
     fn find_port_returns_nonzero() {
@@ -643,19 +646,19 @@ mod tests {
             lock_path,
         };
 
-        let firewall_entries = vec![crate::types::Firewall {
+        let firewall_entries = vec![Firewall {
             name: "gmail".to_string(),
             ref_key: "gmail".to_string(),
-            apis: vec![crate::types::FirewallApi {
+            apis: vec![FirewallApi {
                 id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".to_string(),
-                auth: crate::types::FirewallAuth {
+                auth: FirewallAuth {
                     headers: std::collections::HashMap::from([(
                         "Authorization".to_string(),
                         "Bearer ${{ secrets.GMAIL_TOKEN }}".to_string(),
                     )]),
                 },
-                permissions: Some(vec![crate::types::FirewallPermission {
+                permissions: Some(vec![FirewallPermission {
                     name: "mail-read".to_string(),
                     description: None,
                     rules: vec![

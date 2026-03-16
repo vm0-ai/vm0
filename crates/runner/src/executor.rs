@@ -14,12 +14,13 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::network_logs;
 use crate::paths::{LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, ResumeSession, StorageManifest};
 
 /// Configuration for a single execution.
 pub struct ExecutorConfig {
@@ -143,7 +144,7 @@ async fn execute_inner(
         if let Err(e) = config.registry.unregister_vm(&source_ip).await {
             warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
         }
-        crate::network_logs::upload_network_logs(
+        network_logs::upload_network_logs(
             &config.http,
             context.run_id,
             &context.sandbox_token,
@@ -407,11 +408,11 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
 async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    manifest: &crate::types::StorageManifest,
+    manifest: &StorageManifest,
     log_file: &str,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
-        .map_err(|e| crate::error::RunnerError::Internal(format!("manifest json: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
     sandbox
         .write_file(guest::STORAGE_MANIFEST, &manifest_json)
         .await?;
@@ -432,7 +433,7 @@ async fn download_storages(
         .await?;
 
     if result.exit_code != 0 {
-        return Err(crate::error::RunnerError::Internal(format!(
+        return Err(RunnerError::Internal(format!(
             "storage download failed (exit code {})",
             result.exit_code
         )));
@@ -446,7 +447,7 @@ async fn download_storages(
 async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &crate::types::ResumeSession,
+    session: &ResumeSession,
 ) -> RunnerResult<()> {
     if !(context.cli_agent_type.is_empty() || context.cli_agent_type == "claude-code") {
         return Ok(());
@@ -460,7 +461,7 @@ async fn restore_session(
 
     // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
     if !is_valid_session_id(&session.session_id) {
-        return Err(crate::error::RunnerError::Internal(format!(
+        return Err(RunnerError::Internal(format!(
             "invalid session_id: {}",
             session.session_id
         )));
@@ -641,7 +642,10 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+    use crate::types::{
+        ArtifactEntry, Firewall, FirewallApi, FirewallAuth, ResumeSession, StorageEntry,
+        StorageManifest,
+    };
     use uuid::Uuid;
 
     fn minimal_context() -> ExecutionContext {
@@ -887,13 +891,13 @@ mod tests {
     #[test]
     fn build_env_json_firewall_enable_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewalls = Some(vec![crate::types::Firewall {
+        ctx.experimental_firewalls = Some(vec![Firewall {
             name: "gmail".into(),
             ref_key: "gmail".into(),
-            apis: vec![crate::types::FirewallApi {
+            apis: vec![FirewallApi {
                 id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
-                auth: crate::types::FirewallAuth {
+                auth: FirewallAuth {
                     headers: std::collections::HashMap::from([(
                         "Authorization".into(),
                         "Bearer ${{ secrets.GMAIL_TOKEN }}".into(),

@@ -13,13 +13,18 @@ use crate::config;
 use crate::deps;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
+use crate::host;
+use crate::http::HttpClient;
 use crate::lock;
-use crate::paths::{HomePaths, RunnerPaths};
+use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
+use crate::prefetch;
+use crate::profile;
 use crate::provider::{ApiProvider, JobProvider, LocalProvider};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
+use crate::types::ExecutionContext;
 
 /// Initial backoff before retrying mitmproxy after a crash.
 const MITM_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
@@ -102,16 +107,16 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     let mut _resource_locks = Vec::new();
     for profile in runner_config.profiles.values() {
         let lock = lock::acquire_shared(home.rootfs_lock(&profile.rootfs_hash)).await?;
-        crate::paths::touch_mtime(&home.rootfs_dir().join(&profile.rootfs_hash));
+        touch_mtime(&home.rootfs_dir().join(&profile.rootfs_hash));
         _resource_locks.push(lock);
         if let Some(hash) = &profile.snapshot_hash {
             let lock = lock::acquire_shared(home.snapshot_lock(hash)).await?;
-            crate::paths::touch_mtime(&home.snapshots_dir().join(hash));
+            touch_mtime(&home.snapshots_dir().join(hash));
             _resource_locks.push(lock);
         }
     }
 
-    let log_paths = crate::paths::LogPaths::new(home.logs_dir());
+    let log_paths = LogPaths::new(home.logs_dir());
     tokio::fs::create_dir_all(log_paths.dir())
         .await
         .map_err(|e| {
@@ -125,18 +130,18 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     for profile in runner_config.profiles.values() {
         if let Some(hash) = &profile.snapshot_hash {
             let path = home.snapshots_dir().join(hash).join("memory.bin");
-            tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path));
+            tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path));
         }
     }
 
     // Use the default profile for vcpu/memory (used for budget and pool sizing).
     let default_profile = runner_config
         .profiles
-        .get(crate::profile::DEFAULT_PROFILE)
+        .get(profile::DEFAULT_PROFILE)
         .ok_or_else(|| {
             RunnerError::Config(format!(
                 "profile '{}' not found in config",
-                crate::profile::DEFAULT_PROFILE
+                profile::DEFAULT_PROFILE
             ))
         })?;
     let vcpu = default_profile.vcpu;
@@ -163,8 +168,8 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         max_concurrent,
         concurrency_factor,
     } = runner_config.sandbox;
-    let host_cpus = crate::host::cpu_count()?;
-    let host_memory_mb = crate::host::memory_mb()?;
+    let host_cpus = host::cpu_count()?;
+    let host_memory_mb = host::memory_mb()?;
     let budget = Arc::new(ResourceBudget::new(
         host_cpus as u32,
         host_memory_mb as u32,
@@ -208,7 +213,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     // Create provider — handles discovery + claim + complete
     let cancel = CancellationToken::new();
-    let http = crate::http::HttpClient::new(server.url.clone())?;
+    let http = HttpClient::new(server.url.clone())?;
     let name = runner_config.name;
     let group = runner_config.group;
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
@@ -467,7 +472,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 /// resources in the budget — this function spawns the executor, reports
 /// completion via the provider, and releases the budget when done.
 fn spawn_job(
-    context: crate::types::ExecutionContext,
+    context: ExecutionContext,
     provider: &Arc<dyn JobProvider>,
     factory: &Arc<FirecrackerFactory>,
     exec_config: &Arc<ExecutorConfig>,

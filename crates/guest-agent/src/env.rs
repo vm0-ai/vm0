@@ -2,6 +2,8 @@
 
 use std::sync::LazyLock;
 
+use crate::constants;
+
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
@@ -34,12 +36,12 @@ static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
             Err(_) => {
                 eprintln!(
                     "[WARN] VM0_STUCK_TOOL_TIMEOUT_SECS={v:?} is not a valid u64, using default {}s",
-                    crate::constants::STUCK_TOOL_TIMEOUT_SECS
+                    constants::STUCK_TOOL_TIMEOUT_SECS
                 );
-                crate::constants::STUCK_TOOL_TIMEOUT_SECS
+                constants::STUCK_TOOL_TIMEOUT_SECS
             }
         },
-        Err(_) => crate::constants::STUCK_TOOL_TIMEOUT_SECS,
+        Err(_) => constants::STUCK_TOOL_TIMEOUT_SECS,
     }
 });
 

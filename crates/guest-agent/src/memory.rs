@@ -6,6 +6,8 @@
 use guest_common::log_info;
 use std::path::Path;
 
+use crate::env;
+
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Compute Claude Code's project directory name from a working directory path.
@@ -27,7 +29,7 @@ fn encode_project_name(working_dir: &str) -> String {
 /// - Memory mount path doesn't exist on disk
 /// - Symlink target already exists
 pub fn setup_auto_memory_symlink() -> bool {
-    let memory_mount = crate::env::memory_mount_path();
+    let memory_mount = env::memory_mount_path();
     if memory_mount.is_empty() {
         return false;
     }
@@ -38,7 +40,7 @@ pub fn setup_auto_memory_symlink() -> bool {
     }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    let project_name = encode_project_name(crate::env::working_dir());
+    let project_name = encode_project_name(env::working_dir());
     let auto_memory_dir = Path::new(&home)
         .join(".claude")
         .join("projects")
