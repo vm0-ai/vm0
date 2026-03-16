@@ -39,6 +39,41 @@ export const VALID_CAPABILITIES = [
 ] as const;
 
 /**
+ * Alias map for deprecated capability names.
+ * PR #4959 merged volume/artifact/memory into unified storage capabilities.
+ * Old compose versions in the database may still contain these values.
+ */
+const CAPABILITY_ALIASES: Record<string, (typeof VALID_CAPABILITIES)[number]> =
+  {
+    "volume:read": "storage:read",
+    "volume:write": "storage:write",
+    "artifact:read": "storage:read",
+    "artifact:write": "storage:write",
+    "memory:read": "storage:read",
+    "memory:write": "storage:write",
+  };
+
+/**
+ * Normalize capability strings by resolving deprecated aliases.
+ * Unknown capabilities are silently dropped.
+ * Deduplicates results (multiple old caps may map to the same new cap).
+ */
+export function normalizeCapabilities(
+  capabilities: readonly string[],
+): (typeof VALID_CAPABILITIES)[number][] {
+  const result = new Set<(typeof VALID_CAPABILITIES)[number]>();
+  for (const cap of capabilities) {
+    const alias = CAPABILITY_ALIASES[cap];
+    if (alias) {
+      result.add(alias);
+    } else if ((VALID_CAPABILITIES as readonly string[]).includes(cap)) {
+      result.add(cap as (typeof VALID_CAPABILITIES)[number]);
+    }
+  }
+  return [...result];
+}
+
+/**
  * Agent name validation schema
  * - Must be 3-64 characters
  * - Letters, numbers, and hyphens only

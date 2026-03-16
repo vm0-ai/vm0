@@ -11,6 +11,7 @@ import {
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
   VALID_CAPABILITIES,
+  normalizeCapabilities,
   type ExperimentalFirewall,
   type ConnectorType,
   type ModelProviderType,
@@ -812,7 +813,7 @@ function buildExperimentalCapabilities(
   const capabilities = firstAgent?.experimental_capabilities;
   if (!capabilities || capabilities.length === 0) return undefined;
 
-  return [...capabilities];
+  return normalizeCapabilities(capabilities);
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   agentDefinitionSchema,
   agentComposeApiContentSchema,
   VALID_CAPABILITIES,
+  normalizeCapabilities,
 } from "../composes";
 
 const baseAgent = {
@@ -108,5 +109,58 @@ describe("experimental_capabilities in agentComposeApiContentSchema", () => {
       }),
     );
     expect(result.success).toBe(false);
+  });
+});
+
+describe("normalizeCapabilities", () => {
+  it("passes through current capabilities unchanged", () => {
+    expect(normalizeCapabilities(["storage:read", "agent:write"])).toEqual(
+      expect.arrayContaining(["storage:read", "agent:write"]),
+    );
+  });
+
+  it("normalizes volume:read to storage:read", () => {
+    expect(normalizeCapabilities(["volume:read"])).toEqual(["storage:read"]);
+  });
+
+  it("normalizes volume:write to storage:write", () => {
+    expect(normalizeCapabilities(["volume:write"])).toEqual(["storage:write"]);
+  });
+
+  it("normalizes artifact:read to storage:read", () => {
+    expect(normalizeCapabilities(["artifact:read"])).toEqual(["storage:read"]);
+  });
+
+  it("normalizes memory:write to storage:write", () => {
+    expect(normalizeCapabilities(["memory:write"])).toEqual(["storage:write"]);
+  });
+
+  it("deduplicates when multiple old caps map to same new cap", () => {
+    const result = normalizeCapabilities([
+      "volume:read",
+      "artifact:read",
+      "memory:read",
+    ]);
+    expect(result).toEqual(["storage:read"]);
+  });
+
+  it("handles mixed old and new capabilities", () => {
+    const result = normalizeCapabilities([
+      "volume:read",
+      "agent:write",
+      "storage:write",
+    ]);
+    expect(result).toHaveLength(3);
+    expect(result).toContain("storage:read");
+    expect(result).toContain("agent:write");
+    expect(result).toContain("storage:write");
+  });
+
+  it("drops unknown capabilities", () => {
+    expect(normalizeCapabilities(["unknown:cap"])).toEqual([]);
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(normalizeCapabilities([])).toEqual([]);
   });
 });
