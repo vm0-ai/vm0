@@ -47,7 +47,7 @@ const router = tsr.router(storagesListContract, {
         .select({ orgId: agentRuns.orgId })
         .from(agentRuns)
         .where(
-          and(eq(agentRuns.id, authCtx.runId!), eq(agentRuns.userId, userId)),
+          and(eq(agentRuns.id, authCtx.runId), eq(agentRuns.userId, userId)),
         )
         .limit(1);
       if (!run) {

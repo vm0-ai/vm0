@@ -21,8 +21,11 @@ export function hasCapability(
 /**
  * Check if auth context is from a sandbox token.
  * Sandbox auth contexts have a runId field.
+ * Type guard narrows authCtx so callers can access runId without non-null assertion.
  */
-export function isSandboxAuth(authCtx: AuthContext): boolean {
+export function isSandboxAuth(
+  authCtx: AuthContext,
+): authCtx is AuthContext & { runId: string } {
   return authCtx.runId !== undefined;
 }
 
