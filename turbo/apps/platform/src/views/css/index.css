@@ -16,7 +16,7 @@
     "JetBrains Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
 
   /* Sidebar colors - using tokens for dark mode support */
-  --color-sidebar: hsl(var(--gray-50));
+  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-foreground: hsl(var(--gray-950));
   --color-sidebar-border: hsl(var(--gray-200));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
@@ -76,18 +76,6 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* Monochrome SVG icons (fill="currentColor" rendered as <img>): invert in dark mode */
-:where([data-theme="dark"]) .zero-app .zero-icon-mono {
-  filter: invert(1);
-}
-
-/* Switch track: ensure visibility against card background in dark mode */
-:where([data-theme="dark"])
-  .zero-app
-  button[role="switch"][data-state="unchecked"] {
-  background-color: hsl(var(--gray-400));
-}
-
 /* Form inputs: match card border, preserve focus ring */
 .zero-app .zero-form-border {
   border: 0.7px solid hsl(var(--gray-400));
@@ -120,18 +108,6 @@
 .zero-app .zero-tabs [role="tab"].bg-background {
   background-color: hsl(var(--card));
   color: hsl(var(--foreground));
-  box-shadow:
-    0 1px 2px hsl(220 12% 20% / 0.06),
-    0 1px 3px hsl(220 12% 20% / 0.08);
-}
-:where([data-theme="dark"]) .zero-app .zero-tabs {
-  background-color: hsl(var(--gray-200));
-}
-:where([data-theme="dark"]) .zero-app .zero-tabs [role="tab"].bg-background {
-  background-color: hsl(var(--gray-400));
-  box-shadow:
-    0 1px 3px hsl(0 0% 0% / 0.3),
-    0 2px 6px hsl(0 0% 0% / 0.2);
 }
 
 /* View toggle (list/gallery): track like zero-tabs, selected segment like white card */
@@ -146,14 +122,11 @@
 
 /* Zero left nav */
 .zero-nav {
-  --color-sidebar: hsl(var(--gray-50));
+  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-accent: hsl(var(--muted));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
   --color-divider: hsl(var(--divider));
-}
-:where([data-theme="dark"]) .zero-nav {
-  --color-sidebar-primary: #ffffff;
 }
 
 /* Morandi outline buttons */
