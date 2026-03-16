@@ -2,6 +2,7 @@ import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { transitionRunStatus } from "./run-status";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { orgCache } from "../../db/schema/org-cache";
 import { env } from "../../env";
 import { logger } from "../logger";
 import { isConcurrentRunLimit } from "../errors";
@@ -12,6 +13,7 @@ import {
 import { PENDING_RUN_TTL_MS, checkRunConcurrencyLimit } from "./run-service";
 import { resolveOrg } from "../org/resolve-org";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
+import type { OrgTier } from "@vm0/core";
 
 const log = logger("service:run-queue");
 
@@ -198,8 +200,17 @@ async function dequeueNextAtomic(
       // Serialize all queue operations for this org
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
+      // Look up org tier from cache (simple DB read, no external API call).
+      // Falls back to "free" (most conservative limit) if cache is empty.
+      const [cached] = await tx
+        .select({ tier: orgCache.tier })
+        .from(orgCache)
+        .where(eq(orgCache.orgId, orgId))
+        .limit(1);
+      const orgTier = parseOrgTier(cached?.tier);
+
       // Check concurrency FIRST — don't dequeue if no slot available
-      await checkRunConcurrencyLimit(orgId, "free", tx);
+      await checkRunConcurrencyLimit(orgId, orgTier, tx);
 
       // Fetch all queue entries for this org (ordered FIFO).
       // Typically 0-2 entries; iterating in-transaction to skip
@@ -332,6 +343,14 @@ export async function drainStaleQueues(
   }
 
   return drained;
+}
+
+const VALID_ORG_TIERS = new Set<string>(["free", "pro", "max"]);
+
+/** Parse a raw tier string into OrgTier, defaulting to "free". */
+function parseOrgTier(raw: string | undefined): OrgTier {
+  if (raw && VALID_ORG_TIERS.has(raw)) return raw as OrgTier;
+  return "free";
 }
 
 async function markQueuedRunFailed(
