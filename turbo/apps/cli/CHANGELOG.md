@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.59.6](https://github.com/vm0-ai/vm0/compare/cli-v9.59.5...cli-v9.59.6) (2026-03-16)
+
+
+### Refactoring
+
+* rename service to firewall across entire codebase ([#4877](https://github.com/vm0-ai/vm0/issues/4877)) ([#4895](https://github.com/vm0-ai/vm0/issues/4895)) ([d40192b](https://github.com/vm0-ai/vm0/commit/d40192b6df5672d525dd39b9215a167ba42a3722))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.68.0
+
 ## [9.59.5](https://github.com/vm0-ai/vm0/compare/cli-v9.59.4...cli-v9.59.5) (2026-03-16)
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.113.0](https://github.com/vm0-ai/vm0/compare/web-v12.112.0...web-v12.113.0) (2026-03-16)
+
+
+### Features
+
+* add model provider tracking and org-scoped logs/schedules ([#4909](https://github.com/vm0-ai/vm0/issues/4909)) ([dc0de67](https://github.com/vm0-ai/vm0/commit/dc0de673b2e78eec803a3051148f1947dc292945))
+* **auth:** add opt-in capability parameter to auth context ([#4903](https://github.com/vm0-ai/vm0/issues/4903)) ([58383e2](https://github.com/vm0-ai/vm0/commit/58383e289eda65ec52a066f454ab76044964d6cf))
+* **auth:** encode capabilities in sandbox jwt token payload ([#4884](https://github.com/vm0-ai/vm0/issues/4884)) ([93395d7](https://github.com/vm0-ai/vm0/commit/93395d7fcc541b67930d8863e549058a54fb2ab3))
+* flow experimental_capabilities through execution context pipeline ([#4883](https://github.com/vm0-ai/vm0/issues/4883)) ([beeee92](https://github.com/vm0-ai/vm0/commit/beeee92b8c41bb8f46a232b4a248e4ecb3136111))
+* revoke oauth token on disconnect and force re-consent ([#4906](https://github.com/vm0-ai/vm0/issues/4906)) ([86db8ac](https://github.com/vm0-ai/vm0/commit/86db8ac489659b7dfeead441550c9a1463c6e33c)), closes [#4891](https://github.com/vm0-ai/vm0/issues/4891)
+* sync skills cache on web server startup ([#4901](https://github.com/vm0-ai/vm0/issues/4901)) ([8144eaa](https://github.com/vm0-ai/vm0/commit/8144eaa164be8d3096e384bd7836cee8b62680e8))
+
+
+### Refactoring
+
+* rename middleware to proxy for next.js 16 compatibility ([#4897](https://github.com/vm0-ai/vm0/issues/4897)) ([2f37390](https://github.com/vm0-ai/vm0/commit/2f373909fdc7657864a914a6a867762484521d56))
+* rename service to firewall across entire codebase ([#4877](https://github.com/vm0-ai/vm0/issues/4877)) ([#4895](https://github.com/vm0-ai/vm0/issues/4895)) ([d40192b](https://github.com/vm0-ai/vm0/commit/d40192b6df5672d525dd39b9215a167ba42a3722))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.68.0
+
 ## [12.112.0](https://github.com/vm0-ai/vm0/compare/web-v12.111.4...web-v12.112.0) (2026-03-16)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.112.0](https://github.com/vm0-ai/vm0/compare/platform-v0.111.0...platform-v0.112.0) (2026-03-16)
+
+
+### Features
+
+* add model provider tracking and org-scoped logs/schedules ([#4909](https://github.com/vm0-ai/vm0/issues/4909)) ([dc0de67](https://github.com/vm0-ai/vm0/commit/dc0de673b2e78eec803a3051148f1947dc292945))
+* **platform:** unify border styling and refine ui consistency across zero app ([#4863](https://github.com/vm0-ai/vm0/issues/4863)) ([f232a8b](https://github.com/vm0-ai/vm0/commit/f232a8bad9e20f1ebb02217d7db325f8476e39ab))
+
+
+### Refactoring
+
+* improve zero onboarding post-completion navigation ([#4908](https://github.com/vm0-ai/vm0/issues/4908)) ([c3d95b8](https://github.com/vm0-ai/vm0/commit/c3d95b884fcece0a3a73d8128469e6f81a7cc650))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.68.0
+
 ## [0.111.0](https://github.com/vm0-ai/vm0/compare/platform-v0.110.1...platform-v0.111.0) (2026-03-16)
 
 
