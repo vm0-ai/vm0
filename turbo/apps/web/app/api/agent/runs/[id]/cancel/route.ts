@@ -20,7 +20,9 @@ const router = tsr.router(runsCancelContract, {
   cancel: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
+    const userId = await getUserId(headers.authorization, {
+      requiredCapability: "agent-run:write",
+    });
     if (!userId) {
       return {
         status: 401 as const,

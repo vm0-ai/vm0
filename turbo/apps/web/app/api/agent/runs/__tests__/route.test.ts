@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { POST } from "../route";
+import { GET, POST } from "../route";
 import { POST as createComposeRoute } from "../../composes/route";
 import { PUT as putSecret } from "../../../secrets/route";
 import { PUT as setVariableRoute } from "../../../variables/route";
@@ -13,6 +13,7 @@ import {
   createTestMultiAuthModelProvider,
   createTestConnector,
   createTestRun,
+  createTestRunInDb,
   getTestRun,
   completeTestRun,
   createTestPermission,
@@ -20,6 +21,7 @@ import {
   insertOrgCacheEntry,
   getOrgCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   testContext,
   uniqueId,
@@ -1463,6 +1465,92 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       expect(data.status).toBe("pending");
+    });
+  });
+
+  describe("Sandbox Token Capability Enforcement", () => {
+    it("should accept sandbox token with agent-run:read for list", async () => {
+      mockClerk({ userId: null });
+
+      // Create a run via DB so it exists for listing
+      const { runId } = await createTestRunInDb(user.userId, testComposeId);
+      const token = await generateSandboxToken(user.userId, runId, [
+        "agent-run:read",
+      ]);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs?limit=10",
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject sandbox token without agent-run:read for list", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-1", [
+        "volume:read",
+      ]);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs?limit=10",
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
+    });
+
+    it("should accept sandbox token with agent-run:write for create", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-1", [
+        "agent-run:write",
+      ]);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "sandbox test",
+          }),
+        },
+      );
+      const response = await POST(request);
+
+      // Should pass auth (not 401) — downstream may fail for other reasons
+      expect(response.status).not.toBe(401);
+    });
+
+    it("should reject sandbox token without agent-run:write for create", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-1", [
+        "agent-run:read",
+      ]);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "sandbox test",
+          }),
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
     });
   });
 });

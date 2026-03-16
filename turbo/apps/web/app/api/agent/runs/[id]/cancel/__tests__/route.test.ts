@@ -11,6 +11,7 @@ import {
   findTestRunCallbacks,
   setTestRunStatus,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 import {
   testContext,
   uniqueId,
@@ -246,6 +247,45 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       // Run should still be completed (not overwritten to cancelled)
       const record = await findTestRunRecord(run.runId);
       expect(record!.status).toBe("completed");
+    });
+  });
+
+  describe("Sandbox Token Capability Enforcement", () => {
+    it("should accept sandbox token with agent-run:write", async () => {
+      const run = await createTestRun(testComposeId, "Run to cancel");
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, run.runId, [
+        "agent-run:write",
+      ]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${run.runId}/cancel`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject sandbox token without agent-run:write", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-1", [
+        "agent-run:read",
+      ]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${randomUUID()}/cancel`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(401);
     });
   });
 });

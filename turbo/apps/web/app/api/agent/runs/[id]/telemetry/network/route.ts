@@ -37,7 +37,9 @@ const router = tsr.router(runNetworkLogsContract, {
   getNetworkLogs: async ({ params, query, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
+    const userId = await getUserId(headers.authorization, {
+      requiredCapability: "agent-run:read",
+    });
     if (!userId) {
       return {
         status: 401 as const,

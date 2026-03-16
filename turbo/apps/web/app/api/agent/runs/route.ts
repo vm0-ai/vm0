@@ -274,7 +274,9 @@ const router = tsr.router(runsMainContract, {
   list: async ({ query, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: "agent-run:read",
+    });
     if (!authCtx) {
       return {
         status: 401 as const,
@@ -389,7 +391,9 @@ const router = tsr.router(runsMainContract, {
   create: async ({ body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: "agent-run:write",
+    });
     if (!authCtx) {
       return {
         status: 401 as const,

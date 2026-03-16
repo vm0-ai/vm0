@@ -7,6 +7,7 @@ import {
   createTestRun,
   completeTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import {
   testContext,
   uniqueId,
@@ -120,6 +121,39 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       // Should return 404 to avoid leaking existence of other user's run
       expect(response.status).toBe(404);
       expect(data.error.message).toContain("not found");
+    });
+  });
+
+  describe("Sandbox Token Capability Enforcement", () => {
+    it("should accept sandbox token with agent-run:read", async () => {
+      const run = await createTestRun(testComposeId, "Test prompt");
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, run.runId, [
+        "agent-run:read",
+      ]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${run.runId}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject sandbox token without agent-run:read", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-1", [
+        "volume:read",
+      ]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${randomUUID()}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
     });
   });
 });
