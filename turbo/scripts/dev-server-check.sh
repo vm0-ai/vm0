@@ -1,0 +1,33 @@
+#!/bin/bash
+# Dev server health check: verify SSL certs and port accessibility
+
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$PROJECT_ROOT" ]; then
+  echo "Error: Not in a git repository" >&2
+  exit 1
+fi
+
+CERT_DIR="$PROJECT_ROOT/.certs"
+
+# --- Certificate check (silent, auto-regenerate if missing) ---
+if [ ! -f "$CERT_DIR/www.vm7.ai.pem" ] || \
+   [ ! -f "$CERT_DIR/platform.vm7.ai.pem" ] || \
+   [ ! -f "$CERT_DIR/docs.vm7.ai.pem" ] || \
+   [ ! -f "$CERT_DIR/vm7.ai.pem" ]; then
+  bash "$PROJECT_ROOT/scripts/generate-certs.sh" >&2
+fi
+
+# --- Port check ---
+check_port() {
+  local label="$1"
+  local url="$2"
+  if curl -k -s --connect-timeout 3 --resolve "$(echo "$url" | sed 's|https://||;s|/.*||'):127.0.0.1" "$url" > /dev/null 2>&1; then
+    echo "$label | running"
+  else
+    echo "$label | not started"
+  fi
+}
+
+check_port "Web:      https://www.vm7.ai:8443"      "https://www.vm7.ai:8443/"
+check_port "Platform: https://platform.vm7.ai:8443"  "https://platform.vm7.ai:8443/"
+check_port "Docs:     https://docs.vm7.ai:8443"      "https://docs.vm7.ai:8443/"

@@ -66,13 +66,7 @@ command: {ALIAS}
 description: Alias for {SKILL_NAME} {ARGUMENTS}
 ---
 
-```typescript
-await Skill({
-  skill: "{SKILL_NAME}",
-  args: "{ARGUMENTS}"
-});
-```
-
+invoke skill /{SKILL_NAME} {ARGUMENTS}
 ```
 
 ### Step 3: Verify Creation
@@ -147,23 +141,18 @@ description: Alias for skill-name operation
 ---
 ```
 
-### TypeScript Block
+### Invoke Directive
 
-Must be a valid TypeScript code block with:
-- Three backticks with `typescript` language tag
-- Proper await Skill() call syntax
-- Both skill and args parameters as strings
-- Proper closing backticks
+The body must contain a single `invoke skill` directive:
+
+```
+invoke skill /{SKILL_NAME} {ARGUMENTS}
+```
 
 Example:
-````markdown
-```typescript
-await Skill({
-  skill: "tech-debt",
-  args: "research"
-});
+```markdown
+invoke skill /tech-debt research
 ```
-````
 
 ### Error Handling
 
@@ -191,12 +180,7 @@ command: tech-debt-research
 description: Alias for tech-debt research
 ---
 
-```typescript
-await Skill({
-  skill: "tech-debt",
-  args: "research"
-});
-```
+invoke skill /tech-debt research
 ```
 
 ### Example 2: Tech Debt Issue
@@ -211,12 +195,7 @@ command: tech-debt-issue
 description: Alias for tech-debt issue
 ---
 
-```typescript
-await Skill({
-  skill: "tech-debt",
-  args: "issue"
-});
-```
+invoke skill /tech-debt issue
 ```
 
 ### Example 3: PR Check Fix
@@ -231,12 +210,7 @@ command: pr-check-fix
 description: Alias for pr-check fix
 ---
 
-```typescript
-await Skill({
-  skill: "pr-check",
-  args: "fix"
-});
-```
+invoke skill /pr-check fix
 ```
 
 ## Guidelines

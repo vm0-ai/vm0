@@ -258,7 +258,7 @@ In this project, headed mode is the default (see noVNC Setup above). Additional 
 
 ```bash
 agent-browser highlight @e1          # Highlight element
-agent-browser record start demo.webm # Record session
+agent-browser record restart demo.webm # Record session (restart avoids "stop first" error)
 agent-browser profiler start         # Start Chrome DevTools profiling
 agent-browser profiler stop trace.json # Stop and save profile (path optional)
 ```

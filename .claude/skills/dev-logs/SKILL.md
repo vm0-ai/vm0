@@ -3,52 +3,40 @@ name: dev-logs
 description: View development server logs with optional filtering
 ---
 
-View development server output logs with optional filtering. Logs are persisted to `/tmp/dev-server.log` via `tee` in the `pnpm dev` script.
+View development server output by reading the background task output via TaskOutput.
 
 ## Arguments Format
 
 Your args are: `$ARGUMENTS`
 
-- _(empty)_ - Show recent logs (last 50 lines)
-- `[pattern]` - Show only logs matching the regex pattern
+- _(empty)_ - Show recent output from the dev server
+- `[pattern]` - Show only lines matching the regex pattern
 
 ## Examples
 
-- `/dev-logs` - Show last 50 lines
+- `/dev-logs` - Show recent dev server output
 - `/dev-logs error` - Show only error messages
-- `/dev-logs "web|workspace"` - Show logs from web or workspace packages
 - `/dev-logs "compiled|ready"` - Show compilation status
 
 ## Workflow
 
-### Step 1: Check Log File Exists
+### Step 1: Check Dev Server is Running
 
 ```bash
-if [ ! -f /tmp/dev-server.log ]; then
-  echo "No dev server log found at /tmp/dev-server.log"
-  echo "Please run /dev-start first."
-  exit 1
-fi
+curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1 && echo "✅ Dev server is running" || echo "❌ Dev server is not running. Please run /dev-start first."
 ```
 
-### Step 2: Read Logs
+### Step 2: Read Background Task Output
 
-**If no filter pattern provided** — show last 50 lines:
-```bash
-tail -50 /tmp/dev-server.log
-```
+Use TaskOutput to read the dev server's background task output. The task_id comes from the `run_in_background` Bash call that started the server.
 
-**If filter pattern provided** — grep matching lines:
-```bash
-grep -E "<pattern>" /tmp/dev-server.log | tail -50
-```
+If no task_id is available (e.g., server was started in a previous conversation), inform the user that logs are only available within the same session that started the server.
 
-### Step 3: Display Logs
+### Step 3: Display Output
 
-Show the output in readable format. If the log file is empty, mention that no logs have been recorded yet.
+Show the output in readable format. If a filter pattern was provided, grep the output for matching lines.
 
 ## Notes
 
-- Logs are written to `/tmp/dev-server.log` by `pnpm dev` (via `tee`)
-- Filter parameter uses regex patterns
-- Log file persists across dev server restarts (overwritten on each start)
+- Dev server logs are only accessible via TaskOutput within the same session
+- For persistent logs, check individual service outputs or use the Turbo TUI

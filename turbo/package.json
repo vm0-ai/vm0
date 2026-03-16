@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --ui=stream 2>&1 | tee /tmp/dev-server.log",
+    "dev": "turbo run dev",
     "dev:auth": "bash ../scripts/dev-auth.sh",
     "lint": "turbo run lint --concurrency=2",
     "format": "prettier --write --ignore-unknown .",
@@ -17,6 +17,7 @@
     "generate-certs": "bash ../scripts/generate-certs.sh",
     "check-certs": "node packages/proxy/scripts/check-certs.js",
     "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
+    "dev:status": "bash scripts/dev-server-check.sh",
     "runner": "bash ../scripts/dev-runner.sh deploy",
     "runner:remove": "bash ../scripts/dev-runner.sh remove"
   },

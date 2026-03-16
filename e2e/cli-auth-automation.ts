@@ -148,7 +148,10 @@ export async function automateCliAuth(apiHost?: string) {
     // Enter email address
     const emailInput = page.locator('input[name="identifier"]');
     await emailInput.waitFor({ state: "visible", timeout: 10000 });
-    await emailInput.fill("e2e+clerk_test@vm0.ai");
+    const os = require("os");
+    const testEmail = `${os.hostname()}+clerk_test@vm0.ai`;
+    await emailInput.fill(testEmail);
+    console.log(`📧 Using test email: ${testEmail}`);
     console.log("📧 Entered email address");
 
     // Click Continue button

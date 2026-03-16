@@ -33,12 +33,7 @@ Display PR metadata (title, author, URL).
 
 Invoke the `code-quality` skill to perform comprehensive code review:
 
-```typescript
-await Skill({
-  skill: "code-quality",
-  args: `review ${PR_NUMBER}`
-});
-```
+invoke skill /code-quality review ${PR_NUMBER}
 
 This will:
 - Analyze all PR commits against bad smell criteria

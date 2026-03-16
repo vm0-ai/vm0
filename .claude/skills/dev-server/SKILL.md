@@ -1,7 +1,7 @@
 ---
 name: dev-server
 description: Development server lifecycle management for the vm0 project
-context: fork
+context: main
 ---
 
 You are a development server specialist for the vm0 project. Your role is to manage the development server lifecycle, ensuring smooth operation in background mode.
@@ -24,108 +24,49 @@ Parse the args above to determine which operation to perform:
 
 # Operation: start
 
-Start the Turbo development server in background with stream UI mode.
+Start the Turbo development server in background mode.
 
 **Note**: The web app now automatically starts a Cloudflare tunnel during dev startup. This means `VM0_API_URL` is set automatically and webhooks will work out of the box. The web app takes ~15 seconds longer to start than other packages due to tunnel setup.
 
 ## Workflow
 
-### Step 1: Check if Dev Server is Already Running
+### Step 1: Pre-flight Check
 
-First, check if dev server is already accessible by testing the port:
-
-```bash
-# Test if dev server port is open
-if nc -z -w 3 localhost 3000 2>/dev/null || curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1; then
-  echo "✅ Dev server is already running at https://www.vm7.ai:8443"
-  echo ""
-  echo "To use with CLI, run /dev-auth to authenticate"
-  exit 0
-fi
-```
-
-If not accessible, proceed to stop any orphaned processes:
+Run the dev server status check. This verifies SSL certificates (regenerating if missing) and checks port accessibility:
 
 ```bash
-# Check and stop existing dev server processes
-if pgrep -f "turbo.*dev" > /dev/null; then
-  echo "⚠️ Found existing dev server process, stopping it..."
-  pkill -9 -f "turbo.*dev"
-  sleep 2
-  echo "✅ Stopped existing dev server"
-else
-  echo "✅ No existing dev server process found"
-fi
-```
-
-### Step 2: Generate SSL Certificates if Needed
-
-Ensure SSL certificates exist before starting the server:
-
-```bash
-# Get project root dynamically
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-CERT_DIR="$PROJECT_ROOT/.certs"
-
-# Check if all required certificates exist
-if [ ! -f "$CERT_DIR/www.vm7.ai.pem" ] || \
-   [ ! -f "$CERT_DIR/docs.vm7.ai.pem" ] || \
-   [ ! -f "$CERT_DIR/vm7.ai.pem" ]; then
-  echo "📜 Generating SSL certificates..."
-  bash "$PROJECT_ROOT/scripts/generate-certs.sh"
-else
-  echo "✅ SSL certificates already exist"
-fi
+cd "$PROJECT_ROOT/turbo" && pnpm dev:status
 ```
 
-### Step 3: Start Dev Server in Background
+If all three services show `running`, the dev server is already up — display the output and stop. Otherwise, proceed to start the server.
 
-Start the server with non-interactive output using Bash tool with `run_in_background: true` parameter.
+### Step 2: Start Dev Server in Background
+
+Start the server using Bash tool with `run_in_background: true` parameter.
 
 **If `--tunnel-hostname=<fqdn>` was provided in args**, pass it as `TUNNEL_HOSTNAME` env var:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && TUNNEL_HOSTNAME=<fqdn> pnpm dev --ui=stream
+cd "$PROJECT_ROOT/turbo" && TUNNEL_HOSTNAME=<fqdn> pnpm dev
 ```
 
 **Otherwise** (default):
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && pnpm dev --ui=stream
+cd "$PROJECT_ROOT/turbo" && pnpm dev
 ```
 
-This will return a shell_id (task_id) for monitoring.
+This will return a task_id for monitoring.
 
-### Step 4: Persist Shell ID
+### Step 3: Display Results
 
-Save the shell_id to a file for later use:
-
-```bash
-echo "<shell_id>" > /tmp/dev-server-shell-id
-```
-
-Also save the output file path:
-
-```bash
-echo "/tmp/claude/-workspaces-vm01/tasks/<shell_id>.output" > /tmp/dev-server-output-file
-```
-
-### Step 5: Wait for Startup and Confirm
-
-Wait a few seconds, then read the dev server logs. Look for the **Caddy proxy** output lines to determine the correct URLs. Ignore any tunnel URLs (e.g., `tunnel-*.vm7.ai`). The correct URLs are the ones reported by the Caddy proxy:
-
-- **Web**: `https://www.vm7.ai:8443`
-- **Docs**: `https://docs.vm7.ai:8443`
-- **Platform**: `https://platform.vm7.ai:8443`
-
-These `vm7.ai` domains are mapped to `127.0.0.1` locally.
-
-Display the shell ID and URLs:
+Once the server is confirmed running, display the URLs:
 
 ```
-✅ Dev server started in background (shell_id: <id>)
+✅ Dev server started in background
 
 - Web:      https://www.vm7.ai:8443
 - Platform: https://platform.vm7.ai:8443
@@ -139,9 +80,9 @@ Next steps:
 
 ## Notes
 
-- The `--ui=stream` flag ensures non-interactive output suitable for background monitoring
-- This operation uses context fork for isolation - the main conversation won't be polluted by server startup logs
-- Tool access is restricted to: Bash, KillShell, TaskOutput only
+- Use TaskOutput with the task_id from `run_in_background` to check server output
+- This operation runs in main context so the background task persists throughout the conversation
+- **NEVER use `nohup` to start the server** (e.g., `nohup pnpm dev > /tmp/dev-server.log 2>&1 &`). Always use the Bash tool's `run_in_background: true` parameter instead.
 
 ---
 
@@ -151,51 +92,25 @@ Stop the background development server gracefully.
 
 ## Workflow
 
-### Step 1: Find the Dev Server Shell ID
+### Step 1: Stop the Server
 
-Read the saved shell_id from persistent storage:
-
-```bash
-if [ -f /tmp/dev-server-shell-id ]; then
-  SHELL_ID=$(cat /tmp/dev-server-shell-id)
-  echo "Found shell_id: $SHELL_ID"
-else
-  echo "No shell_id file found"
-fi
-```
-
-### Step 2: Stop the Server
-
-**If shell_id was found**, use KillShell tool:
-
-```javascript
-KillShell({ shell_id: "<shell-id>" })
-```
-
-**If shell_id not found**, try force kill:
+Kill the dev server processes:
 
 ```bash
-pkill -9 -f "turbo.*dev"
+pkill -f "turbo.*dev" 2>/dev/null
+pkill -f "pnpm.*dev" 2>/dev/null
 ```
 
-### Step 3: Clean Up Persistent Files
+### Step 2: Verify Stopped
 
-Remove the shell_id files:
+Check if processes are gone and Caddy is no longer responding:
 
 ```bash
-rm -f /tmp/dev-server-shell-id
-rm -f /tmp/dev-server-output-file
+pgrep -f "turbo.*dev" || echo "✅ No turbo dev processes found"
+curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1 && echo "⚠️ Server still responding" || echo "✅ Server is down"
 ```
 
-### Step 4: Verify Stopped
-
-Check if process still exists:
-
-```bash
-pgrep -f "turbo.*dev"
-```
-
-### Step 5: Show Results
+### Step 3: Show Results
 
 **If stopped successfully**:
 ```
@@ -224,9 +139,7 @@ Use `/dev-start` to start one
 
 Delegate to the `dev-logs` skill. Extract the optional filter pattern from args (e.g. `logs error` → pattern is `error`) and invoke:
 
-```typescript
-await Skill({ skill: "dev-logs", args: "<pattern>" });
-```
+invoke skill /dev-logs <pattern>
 
 ---
 
@@ -243,11 +156,10 @@ Authenticate with local development server and get CLI token.
 
 ### Step 1: Check Dev Server Running
 
-First, check if dev server is accessible by testing the port:
+Check if dev server is accessible via the Caddy reverse proxy:
 
 ```bash
-# Test if dev server port is open
-if nc -z -w 3 localhost 3000 2>/dev/null || curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1; then
+if curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1; then
   echo "✅ Dev server is accessible at https://www.vm7.ai:8443"
 else
   echo "❌ Dev server is not accessible"
@@ -255,27 +167,6 @@ else
   exit 1
 fi
 ```
-
-Optionally, if you want to check logs from background server, read shell_id:
-
-```bash
-if [ -f /tmp/dev-server-shell-id ]; then
-  SHELL_ID=$(cat /tmp/dev-server-shell-id)
-  echo "Found background server with shell_id: $SHELL_ID"
-fi
-```
-
-If shell_id exists, you can use TaskOutput to check logs:
-
-```javascript
-TaskOutput({
-  task_id: "<shell-id>",
-  block: false,
-  timeout: 5000
-})
-```
-
-But the key indicator is **HTTP endpoint accessibility**, not just the shell_id.
 
 ### Step 2: Check Required Environment Variables
 
@@ -312,34 +203,8 @@ echo "✅ All required environment variables are present"
 
 ### Step 3: Build and Install CLI Globally
 
-Check dev server logs to see if CLI build was successful.
+Build and install the CLI globally:
 
-First, get the shell_id:
-```bash
-SHELL_ID=$(cat /tmp/dev-server-shell-id)
-```
-
-Then use TaskOutput to check CLI build status:
-```javascript
-TaskOutput({
-  task_id: "<shell-id>",
-  block: false,
-  timeout: 5000
-})
-```
-
-Look for these indicators:
-- "@vm0/cli:dev:" messages
-- "Build success" or "ESM Build success" in CLI logs
-- No build errors or failures
-
-**If CLI build succeeded in dev mode**:
-```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo/apps/cli" && pnpm link --global
-```
-
-**If CLI build failed or not found in logs**:
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT/turbo/apps/cli" && pnpm build && pnpm link --global
@@ -349,13 +214,13 @@ cd "$PROJECT_ROOT/turbo/apps/cli" && pnpm build && pnpm link --global
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT" && npx tsx e2e/cli-auth-automation.ts http://localhost:3000
+cd "$PROJECT_ROOT" && npx tsx e2e/cli-auth-automation.ts $(printenv VM0_API_URL)
 ```
 
 This script:
-- Spawns `vm0 auth login` with `VM0_API_URL=http://localhost:3000`
+- Spawns `vm0 auth login` with the current `VM0_API_URL`
 - Launches Playwright browser in headless mode
-- Logs in via Clerk using `e2e+clerk_test@vm0.ai`
+- Logs in via Clerk using `$(hostname)+clerk_test@vm0.ai`
 - Automatically enters the CLI device code
 - Clicks "Authorize Device" button
 - Saves token to `~/.vm0/config.json`
@@ -422,34 +287,20 @@ Use Bash tool with `run_in_background: true`:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && pnpm dev --ui=stream
+cd "$PROJECT_ROOT/turbo" && pnpm dev
 ```
 
-This will return a shell_id for monitoring. The web app will automatically start a Cloudflare tunnel.
+This will return a task_id for monitoring. The web app will automatically start a Cloudflare tunnel.
 
-### Step 4: Persist Shell ID
+### Step 4: Wait for Tunnel URL
 
-Save the shell_id to a file for later use:
-
-```bash
-echo "<shell_id>" > /tmp/dev-server-shell-id
-```
-
-### Step 5: Wait for Tunnel URL
-
-Monitor background shell output using TaskOutput until you see:
+Use TaskOutput with the task_id from Step 3 to monitor the background task output. Look for:
 - `[tunnel] Tunnel URL:` followed by the URL
 - `Ready in` (Next.js ready message)
 
-```javascript
-TaskOutput({
-  task_id: "<shell-id>",
-  block: false,
-  timeout: 60000
-})
-```
+Poll TaskOutput every few seconds until the tunnel URL appears (up to ~60 seconds). Extract the tunnel URL (format: `https://*.trycloudflare.com`).
 
-Extract the tunnel URL from output (format: `https://*.trycloudflare.com`).
+If the tunnel URL does not appear within ~60 seconds, report the failure and let the user investigate.
 
 ### Step 6: Export VM0_API_URL
 
@@ -490,7 +341,7 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT/e2e" && \
 CLERK_PUBLISHABLE_KEY=<publishable-key> \
 CLERK_SECRET_KEY=<secret-key> \
-npx tsx cli-auth-automation.ts http://localhost:3000
+npx tsx cli-auth-automation.ts $(printenv VM0_API_URL)
 ```
 
 ### Step 11: Verify Authentication

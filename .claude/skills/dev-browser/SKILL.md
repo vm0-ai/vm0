@@ -28,6 +28,20 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT" && VNC_URL=$(scripts/start-vnc.sh) && echo "$VNC_URL"
 ```
 
+After VNC starts, verify Chrome is reachable via CDP:
+
+```bash
+curl -sf http://localhost:9222/json/version > /dev/null || { echo "❌ CDP not ready"; exit 1; }
+```
+
+If CDP is not ready, Playwright Chromium may not be installed. Install it and re-run the VNC script:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT/e2e" && pnpm exec playwright install chromium
+cd "$PROJECT_ROOT" && scripts/start-vnc.sh
+```
+
 Tell the user the noVNC URL so they can watch:
 
 > The browser is running in headed mode with noVNC. Open this URL to view and interact:
@@ -43,7 +57,7 @@ TASK_NAME="connect-atlassian"  # example - derive from the user's request
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 mkdir -p "$PROJECT_ROOT/tmp"
-agent-browser record start "$PROJECT_ROOT/tmp/${TASK_NAME}-${TIMESTAMP}.webm"
+agent-browser record restart "$PROJECT_ROOT/tmp/${TASK_NAME}-${TIMESTAMP}.webm"
 ```
 
 ## URL Rules
@@ -66,8 +80,10 @@ agent-browser record start "$PROJECT_ROOT/tmp/${TASK_NAME}-${TIMESTAMP}.webm"
 
 ```bash
 agent-browser open "https://www.vm7.ai:8443"
-agent-browser wait --load networkidle
+agent-browser snapshot -i
 ```
+
+**Do NOT use `agent-browser wait --load networkidle`** — it frequently times out on local HTTPS pages even when the page is fully usable. Instead, go straight to `snapshot -i` after `open` to verify the page state.
 
 ### Taking Snapshots and Interacting
 
@@ -140,6 +156,6 @@ Video:
 
 - **Do NOT use `agent-browser close`** — that kills the shared Chrome and breaks the user's noVNC view
 - **Always re-snapshot** after clicking links/buttons that cause navigation or DOM changes
-- **Wait for pages to load** — use `agent-browser wait --load networkidle` after navigation
+- **Verify page state with snapshot** — use `agent-browser snapshot -i` after navigation instead of `wait --load networkidle` (which frequently times out)
 - **Scroll within modals** — use `agent-browser scroll down 500 --selector "<modal-selector>"` for content inside modals, not plain `scroll down`
 - **Handle modals/dialogs** — check snapshot output for unexpected modals and close them before proceeding

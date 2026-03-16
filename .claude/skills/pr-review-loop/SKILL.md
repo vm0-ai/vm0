@@ -118,12 +118,7 @@ Read the ACTION output from the driver script and execute the corresponding acti
 
 1. Run the `code-quality` skill (analysis only, do NOT post a comment):
 
-```typescript
-await Skill({
-  skill: "code-quality",
-  args: `review ${PR_NUMBER}`
-});
-```
+invoke skill /code-quality review ${PR_NUMBER}
 
 2. Perform testing coverage and convention review (same checks as `/pr-review`):
    - Identify changed source files from PR diff
