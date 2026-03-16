@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.67.0](https://github.com/vm0-ai/vm0/compare/core-v8.66.1...core-v8.67.0) (2026-03-16)
+
+
+### Features
+
+* add experimental_capabilities to compose schema and types ([#4876](https://github.com/vm0-ai/vm0/issues/4876)) ([09d8080](https://github.com/vm0-ai/vm0/commit/09d8080a9d155eb24816272d9824289c0c15f290))
+
 ## [8.66.1](https://github.com/vm0-ai/vm0/compare/core-v8.66.0...core-v8.66.1) (2026-03-16)
 
 

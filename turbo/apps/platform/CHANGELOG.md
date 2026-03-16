@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.111.0](https://github.com/vm0-ai/vm0/compare/platform-v0.110.1...platform-v0.111.0) (2026-03-16)
+
+
+### Features
+
+* enable multi-account switching in production ([#4868](https://github.com/vm0-ai/vm0/issues/4868)) ([4ee375d](https://github.com/vm0-ai/vm0/commit/4ee375d3f6f5ac66385154a6bf1cc2c2ea8d234c))
+* **slack:** add platform ui for org-aware slack integration ([#4715](https://github.com/vm0-ai/vm0/issues/4715)) ([deb9179](https://github.com/vm0-ai/vm0/commit/deb9179480bd318d4b91e8b7a87354ffbaa89564))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.67.0
+
 ## [0.110.1](https://github.com/vm0-ai/vm0/compare/platform-v0.110.0...platform-v0.110.1) (2026-03-16)
 
 

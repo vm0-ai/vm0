@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.112.0](https://github.com/vm0-ai/vm0/compare/web-v12.111.4...web-v12.112.0) (2026-03-16)
+
+
+### Features
+
+* add experimental_capabilities to compose schema and types ([#4876](https://github.com/vm0-ai/vm0/issues/4876)) ([09d8080](https://github.com/vm0-ai/vm0/commit/09d8080a9d155eb24816272d9824289c0c15f290))
+* **slack:** add platform ui for org-aware slack integration ([#4715](https://github.com/vm0-ai/vm0/issues/4715)) ([deb9179](https://github.com/vm0-ai/vm0/commit/deb9179480bd318d4b91e8b7a87354ffbaa89564))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.67.0
+
 ## [12.111.4](https://github.com/vm0-ai/vm0/compare/web-v12.111.3...web-v12.111.4) (2026-03-16)
 
 

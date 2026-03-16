@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.59.5](https://github.com/vm0-ai/vm0/compare/cli-v9.59.4...cli-v9.59.5) (2026-03-16)
+
+
+### Bug Fixes
+
+* use array-form child process api to prevent command injection in git-client ([#4866](https://github.com/vm0-ai/vm0/issues/4866)) ([ec8a6ac](https://github.com/vm0-ai/vm0/commit/ec8a6ac9f20b3bb169fd7c6eb45d6e501d415d6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.67.0
+
 ## [9.59.4](https://github.com/vm0-ai/vm0/compare/cli-v9.59.3...cli-v9.59.4) (2026-03-16)
 
 
