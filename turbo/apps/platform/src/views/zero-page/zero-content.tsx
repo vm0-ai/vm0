@@ -19,7 +19,7 @@ interface ZeroContentProps {
     message: string,
     options?: { modelProvider?: string },
   ) => void;
-  onNavigateToActivity?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
   onNavigateToSchedule?: () => void;
   onNavigateToTeam?: () => void;
   onNavigateToChat?: () => void;
@@ -31,7 +31,10 @@ interface ZeroContentProps {
   chatAgentName?: string;
   /** Override avatar for the chat page when a sub-agent is selected. */
   chatAvatarSrc?: string;
+  /** Cycle avatar — only used by meet (team detail) page. */
   onAvatarClick?: () => void;
+  /** Navigate to agent profile — clicking chat header avatar. */
+  onChatAvatarClick?: () => void;
 }
 
 function getSectionTitles(
@@ -64,6 +67,7 @@ export function ZeroContent({
   chatAgentName,
   chatAvatarSrc,
   onAvatarClick,
+  onChatAvatarClick,
 }: ZeroContentProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
@@ -74,10 +78,11 @@ export function ZeroContent({
         <ZeroSessionChatPage
           zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
           chatAgentName={chatAgentName}
-          onAvatarClick={onAvatarClick}
           onBack={onBackFromSession}
           onNavigateToTeam={onNavigateToTeam}
           onNavigateToSchedule={onNavigateToSchedule}
+          onNavigateToActivity={onNavigateToActivity}
+          onAvatarClick={onChatAvatarClick}
         />
       );
     }
@@ -90,7 +95,6 @@ export function ZeroContent({
         onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
         chatAgentName={chatAgentName}
-        onAvatarClick={onAvatarClick}
       />
     );
   }

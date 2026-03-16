@@ -13,7 +13,7 @@ import {
 import { navigateInReact$ } from "../../signals/route.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
-import { getAgentAvatar } from "./zero-sidebar.tsx";
+import { useAgentAvatar } from "./zero-sidebar.tsx";
 
 interface ZeroJobsPageProps {
   onNavigateToChat?: () => void;
@@ -170,58 +170,71 @@ export function ZeroJobsPage({
                 </span>
               </button>
 
-              {agents.map((agent) => {
-                const displayName = agent.displayName ?? agent.name;
-                return (
-                  <Card
-                    key={agent.name}
-                    role="button"
-                    tabIndex={0}
-                    className="zero-card cursor-pointer flex flex-col"
-                    onClick={() =>
-                      navigate("/zero/team/:name", {
-                        pathParams: { name: agent.name },
-                      })
-                    }
-                    onKeyDown={(e) =>
-                      e.key === "Enter" &&
-                      navigate("/zero/team/:name", {
-                        pathParams: { name: agent.name },
-                      })
-                    }
-                  >
-                    <CardContent className="p-5 flex flex-col flex-1 gap-3">
-                      <span className="self-start inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
-                        <IconUsers
-                          size={12}
-                          stroke={1.5}
-                          className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
-                        />
-                        Workspace
-                      </span>
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={getAgentAvatar(agent.name)}
-                          alt={displayName}
-                          className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-                        />
-                        <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                          {displayName}
-                        </h2>
-                      </div>
-                      {agent.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {agent.description}
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+              {agents.map((agent) => (
+                <AgentCard
+                  key={agent.name}
+                  agent={agent}
+                  onNavigate={() =>
+                    navigate("/zero/team/:name", {
+                      pathParams: { name: agent.name },
+                    })
+                  }
+                />
+              ))}
             </div>
           )}
         </div>
       </main>
     </div>
+  );
+}
+
+function AgentCard({
+  agent,
+  onNavigate,
+}: {
+  agent: {
+    name: string;
+    displayName?: string | null;
+    description?: string | null;
+  };
+  onNavigate: () => void;
+}) {
+  const avatarSrc = useAgentAvatar(agent.name);
+  const displayName = agent.displayName ?? agent.name;
+  return (
+    <Card
+      role="button"
+      tabIndex={0}
+      className="zero-card cursor-pointer flex flex-col"
+      onClick={onNavigate}
+      onKeyDown={(e) => e.key === "Enter" && onNavigate()}
+    >
+      <CardContent className="p-5 flex flex-col flex-1 gap-3">
+        <span className="self-start inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
+          <IconUsers
+            size={12}
+            stroke={1.5}
+            className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
+          />
+          Workspace
+        </span>
+        <div className="flex items-center gap-2.5">
+          <img
+            src={avatarSrc}
+            alt={displayName}
+            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+          />
+          <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
+            {displayName}
+          </h2>
+        </div>
+        {agent.description && (
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {agent.description}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

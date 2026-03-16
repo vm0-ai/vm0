@@ -1,6 +1,8 @@
 import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
+import { useGet } from "ccstate-react";
+import { theme$ } from "../../signals/theme.ts";
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -105,6 +107,15 @@ const rehypeRewriteHandler = (() => {
     "var",
     "video",
     "wbr",
+    // SVG elements (used by code-block copy button icons)
+    "svg",
+    "path",
+    "circle",
+    "rect",
+    "line",
+    "polyline",
+    "polygon",
+    "g",
   ]);
 
   return (...args: RewriteArgs) => {
@@ -145,6 +156,7 @@ const rehypeRewriteHandler = (() => {
 })();
 
 export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
+  const theme = useGet(theme$);
   return (
     <MarkdownPreview
       className={`!bg-transparent !text-foreground text-sm ${className ?? ""}`}
@@ -155,6 +167,7 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
         fontFamily: "var(--font-family-sans)",
         ...style,
       }}
+      wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
       {...rest}
     />

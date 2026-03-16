@@ -242,7 +242,7 @@ interface StreamedScenario {
 
 interface ChatScenarioBlockProps {
   scene: StreamedScenario;
-  onNavigateToActivity?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
   approveDone: boolean;
@@ -254,33 +254,25 @@ interface ChatScenarioBlockProps {
   connectorConnected: boolean;
   setConnectorConnected: (v: boolean) => void;
   zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
   agentName?: string;
 }
 
 function HelloFromZeroBlock({
   zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
   agentName = "Zero",
 }: {
   zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
   agentName?: string;
 }) {
   const avatarButton = (
-    <button
-      type="button"
-      onClick={onAvatarClick}
-      className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label="Switch Zero avatar"
-    >
+    <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
         src={zeroAvatarSrc}
         alt=""
         role="presentation"
         className="h-9 w-9 rounded-full object-cover object-top"
       />
-    </button>
+    </div>
   );
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -331,7 +323,6 @@ function ChatScenarioBlock({
   connectorConnected,
   setConnectorConnected,
   zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
   agentName = "Zero",
 }: ChatScenarioBlockProps) {
   return (
@@ -345,19 +336,14 @@ function ChatScenarioBlock({
         </div>
       </div>
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
-        <button
-          type="button"
-          onClick={onAvatarClick}
-          className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          aria-label="Switch Zero avatar"
-        >
+        <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
           <img
             src={zeroAvatarSrc}
             alt=""
             role="presentation"
             className="h-9 w-9 rounded-full object-cover object-top"
           />
-        </button>
+        </div>
         <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
           <ChatScenarioAssistantContent
             scene={scene}
@@ -473,7 +459,7 @@ function ChatScenarioAssistantContent({
             size="sm"
             variant="outline"
             className="zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border"
-            onClick={onNavigateToActivity}
+            onClick={() => onNavigateToActivity?.()}
           >
             <IconChartLine size={13} />
             View activity
@@ -980,7 +966,7 @@ function startConnectorFlow(
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
-  onNavigateToActivity?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
   onNavigateToSchedule?: () => void;
   onNavigateToTeam?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
@@ -991,7 +977,6 @@ interface ZeroChatPageProps {
   zeroAvatarSrc?: string;
   /** Override agent name when chatting with a sub-agent. */
   chatAgentName?: string;
-  onAvatarClick?: () => void;
 }
 
 export function ZeroChatPage({
@@ -1004,7 +989,6 @@ export function ZeroChatPage({
   onSendMessage,
   zeroAvatarSrc = "/zero-avatar.png",
   chatAgentName,
-  onAvatarClick,
 }: ZeroChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const defaultAgentName =
@@ -1231,19 +1215,14 @@ export function ZeroChatPage({
             >
               <IconArrowLeft size={20} stroke={1.5} />
             </Button>
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch Zero avatar"
-            >
+            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-8 w-8 rounded-full object-cover object-top"
               />
-            </button>
+            </div>
             <span className="font-semibold text-foreground">{agentName}</span>
           </div>
           <div className="flex items-center gap-0.5">
@@ -1277,7 +1256,6 @@ export function ZeroChatPage({
                 <HelloFromZeroBlock
                   key={scene.id}
                   zeroAvatarSrc={zeroAvatarSrc}
-                  onAvatarClick={onAvatarClick}
                   agentName={agentName}
                 />
               ) : (
@@ -1296,7 +1274,6 @@ export function ZeroChatPage({
                   connectorConnected={connectorConnected}
                   setConnectorConnected={setConnectorConnected}
                   zeroAvatarSrc={zeroAvatarSrc}
-                  onAvatarClick={onAvatarClick}
                   agentName={agentName}
                 />
               ),
@@ -1306,19 +1283,14 @@ export function ZeroChatPage({
                 ref={setSubAgentListEl}
                 className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
               >
-                <button
-                  type="button"
-                  onClick={onAvatarClick}
-                  className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  aria-label="Switch Zero avatar"
-                >
+                <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
                   <img
                     src={zeroAvatarSrc}
                     alt=""
                     role="presentation"
                     className="h-9 w-9 rounded-full object-cover object-top"
                   />
-                </button>
+                </div>
                 <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
                   <div className="px-4 pt-4 pb-2">
                     <p className="text-sm text-foreground leading-relaxed">
@@ -1479,19 +1451,14 @@ export function ZeroChatPage({
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch Zero avatar"
-            >
+            <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 overflow-hidden rounded-xl">
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
               />
-            </button>
+            </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
                 <TypewriterText text={tagline} />

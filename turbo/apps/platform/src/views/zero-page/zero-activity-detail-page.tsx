@@ -153,7 +153,7 @@ export function ZeroActivityDetailPage({
             {agentName}
           </span>
         </nav>
-        <div className="mx-auto w-full max-w-[900px] pt-4 pb-8 overflow-hidden">
+        <div className="mx-auto w-full max-w-[900px] pt-4 pb-8">
           {/* Compact header card */}
           <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2">
