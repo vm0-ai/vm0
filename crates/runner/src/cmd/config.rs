@@ -85,7 +85,7 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
         name: args.name,
         group: args.group,
         base_dir: runner_dir.clone(),
-        ca_dir: rootfs_paths.dir().to_path_buf(),
+        ca_dir: paths.ca_dir(),
         firecracker: FirecrackerConfig {
             binary: paths.firecracker_bin(FIRECRACKER_VERSION),
             kernel: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),
