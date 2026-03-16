@@ -185,8 +185,7 @@ describe("POST /api/compose/jobs", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.jobId).toBeDefined();
-      // Server-side compose completes synchronously when no skills need caching
-      expect(data.status).toBe("completed");
+      expect(data.status).toBe("pending");
       expect(data.source).toBe("platform");
       expect(data.githubUrl).toBeUndefined();
     });
@@ -212,13 +211,12 @@ describe("POST /api/compose/jobs", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.jobId).toBeDefined();
-      // Server-side compose completes synchronously when no skills need caching
-      expect(data.status).toBe("completed");
+      expect(data.status).toBe("pending");
       expect(data.source).toBe("platform");
     });
 
-    it("should create new platform job when previous completed synchronously", async () => {
-      // Create first platform job (completes synchronously via server-side compose)
+    it("should return existing platform job for idempotency", async () => {
+      // Create first platform job
       const request1 = createTestRequest(
         "http://localhost:3000/api/compose/jobs",
         {
@@ -234,9 +232,8 @@ describe("POST /api/compose/jobs", () => {
       const response1 = await POST(request1);
       expect(response1.status).toBe(201);
       const data1 = await response1.json();
-      expect(data1.status).toBe("completed");
 
-      // Second request creates a new job since previous one already completed
+      // Second request should return same job
       const request2 = createTestRequest(
         "http://localhost:3000/api/compose/jobs",
         {
@@ -255,28 +252,14 @@ describe("POST /api/compose/jobs", () => {
       );
 
       const response2 = await POST(request2);
-      expect(response2.status).toBe(201);
+      expect(response2.status).toBe(200);
       const data2 = await response2.json();
-      expect(data2.jobId).not.toBe(data1.jobId);
+      expect(data2.jobId).toBe(data1.jobId);
     });
 
-    it("should complete a platform content job via webhook when skills need caching", async () => {
+    it("should complete a platform content job via webhook", async () => {
       const user = await context.setupUser();
       const userCliToken = await createTestCliToken(user.userId);
-
-      // Use content with uncached skills to force sandbox path (bypass server-side compose)
-      const sandboxContent = {
-        version: "1",
-        agents: {
-          "my-agent": {
-            framework: "claude-code",
-            description: "A test agent",
-            skills: [
-              "https://github.com/vm0-ai/vm0-skills/tree/main/uncached-for-test",
-            ],
-          },
-        },
-      };
 
       // Create job
       const createRequest = createTestRequest(
@@ -287,7 +270,7 @@ describe("POST /api/compose/jobs", () => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${userCliToken}`,
           },
-          body: JSON.stringify({ content: sandboxContent }),
+          body: JSON.stringify({ content: testContent }),
         },
       );
 
