@@ -63,7 +63,8 @@ export function getEffectiveConcurrencyLimit(orgTier: OrgTier): number {
   const tierLimit = getConcurrencyLimitForTier(orgTier);
   const envCap = env().CONCURRENT_RUN_LIMIT_CAP;
   if (envCap === 0) return 0;
-  if (envCap !== undefined && !isNaN(envCap)) return Math.min(tierLimit, envCap);
+  if (envCap !== undefined && !isNaN(envCap))
+    return Math.min(tierLimit, envCap);
   return tierLimit;
 }
 
