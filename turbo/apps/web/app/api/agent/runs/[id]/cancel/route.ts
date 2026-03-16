@@ -14,7 +14,7 @@ import {
   dispatchTerminalSideEffects,
 } from "../../../../../../src/lib/run/run-status";
 import { drainOrgQueue } from "../../../../../../src/lib/run/run-queue-service";
-import { executeQueuedRun } from "../../../../../../src/lib/run/run-service";
+import { dispatchQueuedRun } from "../../../../../../src/lib/run/run-service";
 import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
@@ -98,7 +98,7 @@ const router = tsr.router(runsCancelContract, {
         "cancelled",
         "Run cancelled",
         shouldDrain
-          ? () => drainOrgQueue(run.orgId, executeQueuedRun)
+          ? () => drainOrgQueue(run.orgId, dispatchQueuedRun)
           : undefined,
       );
     });

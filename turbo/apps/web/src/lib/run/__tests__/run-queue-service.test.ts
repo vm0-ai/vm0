@@ -15,7 +15,7 @@ import {
 import { reloadEnv } from "../../../env";
 import {
   createRun,
-  executeQueuedRun,
+  dispatchQueuedRun,
   type CreateRunParams,
 } from "../run-service";
 import {
@@ -107,7 +107,7 @@ describe("run-queue-service", () => {
   describe("drainOrgQueue", () => {
     it("should be a no-op when queue is empty", async () => {
       // Should not throw
-      await drainOrgQueue(user.orgId, executeQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedRun);
     });
 
     it("should dequeue and execute the oldest entry", async () => {
@@ -123,7 +123,7 @@ describe("run-queue-service", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue by orgId
-      await drainOrgQueue(user.orgId, executeQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedRun);
 
       // Queued run should now be dispatched (pending)
       const run = await findTestRunRecord(queued.runId);
@@ -157,21 +157,66 @@ describe("run-queue-service", () => {
       // Alice's run completes
       await markRunningRunsAsCompleted(user.userId);
 
-      // Track which runs the executor was called with
-      const executedRunIds: string[] = [];
-      const mockExecutor = async (runId: string) => {
-        executedRunIds.push(runId);
+      // Track which runs the dispatcher was called with
+      const dispatchedRunIds: string[] = [];
+      const mockDispatcher = async (runId: string) => {
+        dispatchedRunIds.push(runId);
       };
 
       // Drain org queue — should dequeue Bob's run from Alice's org
-      await drainOrgQueue(user.orgId, mockExecutor);
+      await drainOrgQueue(user.orgId, mockDispatcher);
 
-      // Executor should have been called with Bob's run
-      expect(executedRunIds).toContain(bobRun.runId);
+      // Dispatcher should have been called with Bob's run
+      expect(dispatchedRunIds).toContain(bobRun.runId);
 
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(bobRun.runId);
       expect(queueEntry).toBeUndefined();
+    });
+
+    it("should not dequeue when concurrency limit is reached", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      // Create a running run and a queued run
+      await createRun(baseParams({ prompt: "Running" }));
+      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      expect(queued.status).toBe("queued");
+
+      // Drain without completing the running run — concurrency limit blocks dequeue
+      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+
+      // Queue entry should still exist (nothing was dequeued)
+      const queueEntry = await findTestQueueEntry(queued.runId);
+      expect(queueEntry).toBeDefined();
+
+      // Run should still be queued
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("queued");
+    });
+
+    it("should skip cancelled runs and try next entry", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
+      reloadEnv();
+
+      // Enqueue two runs
+      const run1 = await enqueueRun(baseParams({ prompt: "Run 1" }));
+      const run2 = await enqueueRun(baseParams({ prompt: "Run 2" }));
+
+      // Cancel the first run (simulates cancel handler race)
+      await setTestRunStatus(run1.runId, "cancelled");
+
+      // Track dispatched runs
+      const dispatchedRunIds: string[] = [];
+      const mockDispatcher = async (runId: string) => {
+        dispatchedRunIds.push(runId);
+      };
+
+      // Drain should skip run1 (cancelled) and dispatch run2
+      await drainOrgQueue(user.orgId, mockDispatcher);
+
+      expect(dispatchedRunIds).toContain(run2.runId);
+      expect(dispatchedRunIds).not.toContain(run1.runId);
     });
   });
 
@@ -255,7 +300,7 @@ describe("run-queue-service", () => {
       expect(run2.status).toBe("queued");
 
       // drainStaleQueues should NOT drain user2's queue (org has an active run)
-      await drainStaleQueues(executeQueuedRun);
+      await drainStaleQueues(dispatchQueuedRun);
 
       // Queue entry should still exist — org-level concurrency prevented drain
       const queueEntry = await findTestQueueEntry(run2.runId);
@@ -291,67 +336,11 @@ describe("run-queue-service", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // drainStaleQueues should drain user2's queue
-      const drained = await drainStaleQueues(executeQueuedRun);
+      const drained = await drainStaleQueues(dispatchQueuedRun);
       expect(drained).toBeGreaterThanOrEqual(1);
 
       // Queue entry should be consumed
       const queueEntry = await findTestQueueEntry(run2.runId);
-      expect(queueEntry).toBeUndefined();
-    });
-  });
-
-  describe("reEnqueueRun TTL preservation", () => {
-    it("should preserve original expiresAt on re-enqueue", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
-      expect(queued.status).toBe("queued");
-
-      // Record original expiresAt
-      const originalEntry = await findTestQueueEntry(queued.runId);
-      const originalExpiresAt = originalEntry!.expiresAt;
-
-      // Drain — concurrency limit still hit → re-enqueue
-      await drainOrgQueue(user.orgId, executeQueuedRun);
-
-      // Verify re-enqueued entry preserves original expiresAt
-      const reEnqueuedEntry = await findTestQueueEntry(queued.runId);
-      expect(reEnqueuedEntry).toBeDefined();
-      expect(reEnqueuedEntry!.expiresAt.getTime()).toBe(
-        originalExpiresAt.getTime(),
-      );
-    });
-
-    it("should expire re-enqueued run via cleanup", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // Drain any pre-existing expired entries from other test suites
-      await cleanupExpiredQueueEntries();
-
-      // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
-      expect(queued.status).toBe("queued");
-
-      // Drain — concurrency limit still hit → re-enqueue with preserved TTL
-      await drainOrgQueue(user.orgId, executeQueuedRun);
-
-      // Simulate TTL expiry on the re-enqueued entry
-      await expireQueueEntry(queued.runId);
-
-      // Cleanup should remove the expired entry and mark run as timeout
-      const cleaned = await cleanupExpiredQueueEntries();
-      expect(cleaned).toBe(1);
-
-      const run = await findTestRunRecord(queued.runId);
-      expect(run!.status).toBe("timeout");
-      expect(run!.error).toContain("expired");
-
-      const queueEntry = await findTestQueueEntry(queued.runId);
       expect(queueEntry).toBeUndefined();
     });
   });

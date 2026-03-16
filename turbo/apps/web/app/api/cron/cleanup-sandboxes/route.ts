@@ -19,7 +19,7 @@ import {
   drainStaleQueues,
   drainOrgQueue,
 } from "../../../../src/lib/run/run-queue-service";
-import { executeQueuedRun } from "../../../../src/lib/run/run-service";
+import { dispatchQueuedRun } from "../../../../src/lib/run/run-service";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";
 
@@ -191,7 +191,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     // as it serves as the fallback for missed webhook-triggered drains.
     const [expiredQueueCount, drainedCount] = await Promise.all([
       cleanupExpiredQueueEntries(),
-      drainStaleQueues(executeQueuedRun),
+      drainStaleQueues(dispatchQueuedRun),
     ]);
 
     if (expiredQueueCount > 0 || drainedCount > 0) {
@@ -236,7 +236,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             run.id,
             "timeout",
             timeoutReason,
-            () => drainOrgQueue(run.orgId, executeQueuedRun),
+            () => drainOrgQueue(run.orgId, dispatchQueuedRun),
           );
 
           const isDebug =
