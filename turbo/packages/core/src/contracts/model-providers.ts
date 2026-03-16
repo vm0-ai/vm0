@@ -265,7 +265,7 @@ export const MODEL_PROVIDER_TYPES = {
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
-export type ModelProviderFramework = "claude-code" | "codex";
+export type ModelProviderFramework = "claude-code";
 
 export const modelProviderTypeSchema = z.enum([
   "claude-code-oauth-token",
@@ -279,7 +279,7 @@ export const modelProviderTypeSchema = z.enum([
   "aws-bedrock",
 ]);
 
-export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
+export const modelProviderFrameworkSchema = z.enum(["claude-code"]);
 
 /**
  * Get framework for a model provider type

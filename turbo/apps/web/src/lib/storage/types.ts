@@ -68,7 +68,7 @@ export interface AgentVolumeConfig {
   agents?: Record<
     string,
     {
-      framework?: string; // Framework name (e.g., "claude-code", "codex") for mount path resolution
+      framework?: string; // Framework name (e.g., "claude-code") for mount path resolution
       volumes?: string[];
       working_dir?: string; // Optional when framework supports auto-config
       instructions?: string; // Path to instructions file (stored as agent-instructions@{name} volume)

@@ -754,7 +754,7 @@ agents:
             {
               error: {
                 message:
-                  'Unsupported framework: "unsupported-framework". Supported frameworks: claude-code, codex',
+                  'Unsupported framework: "unsupported-framework". Supported frameworks: claude-code',
                 code: "BAD_REQUEST",
               },
             },

@@ -24,10 +24,6 @@ const FRAMEWORK_DEFAULTS: Record<SupportedFramework, FrameworkDefaults> = {
     workingDir: "/home/user/workspace",
     image: "vm0/claude-code:latest",
   },
-  codex: {
-    workingDir: "/home/user/workspace",
-    image: "vm0/codex:latest",
-  },
 };
 
 /**

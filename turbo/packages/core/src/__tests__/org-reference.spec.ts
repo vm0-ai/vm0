@@ -5,7 +5,6 @@ import {
   resolveSystemImageToE2b,
   getLegacySystemTemplateWarning,
   SYSTEM_IMAGE_CLAUDE_CODE,
-  SYSTEM_IMAGE_CODEX,
   SYSTEM_IMAGES,
   SYSTEM_VALID_TAGS,
 } from "../org-reference";
@@ -26,11 +25,10 @@ describe("isLegacySystemTemplate", () => {
 describe("system image constants", () => {
   it("has correct system image names", () => {
     expect(SYSTEM_IMAGE_CLAUDE_CODE).toBe("claude-code");
-    expect(SYSTEM_IMAGE_CODEX).toBe("codex");
   });
 
   it("has correct system images array", () => {
-    expect(SYSTEM_IMAGES).toEqual(["claude-code", "codex"]);
+    expect(SYSTEM_IMAGES).toEqual(["claude-code"]);
   });
 
   it("has correct valid tags", () => {
@@ -75,27 +73,10 @@ describe("resolveSystemImageToE2b", () => {
     });
   });
 
-  describe("codex conversions", () => {
-    it("converts vm0/codex to vm0-codex", () => {
-      const result = resolveSystemImageToE2b("codex");
-      expect(result.e2bTemplate).toBe("vm0-codex");
-    });
-
-    it("converts vm0/codex:latest to vm0-codex", () => {
-      const result = resolveSystemImageToE2b("codex", "latest");
-      expect(result.e2bTemplate).toBe("vm0-codex");
-    });
-  });
-
   describe("legacy github aliases", () => {
     it("resolves claude-code-github to vm0-claude-code", () => {
       const result = resolveSystemImageToE2b("claude-code-github");
       expect(result.e2bTemplate).toBe("vm0-claude-code");
-    });
-
-    it("resolves codex-github to vm0-codex", () => {
-      const result = resolveSystemImageToE2b("codex-github");
-      expect(result.e2bTemplate).toBe("vm0-codex");
     });
 
     it("resolves claude-code-github:latest to vm0-claude-code", () => {
@@ -113,7 +94,7 @@ describe("resolveSystemImageToE2b", () => {
 
     it("error message lists available images", () => {
       expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
-        "vm0/claude-code, vm0/codex",
+        "vm0/claude-code",
       );
     });
 
@@ -146,14 +127,6 @@ describe("getLegacySystemTemplateWarning", () => {
     });
   });
 
-  describe("codex legacy formats", () => {
-    it("returns warning for vm0-codex", () => {
-      const warning = getLegacySystemTemplateWarning("vm0-codex");
-      expect(warning).toContain("deprecated");
-      expect(warning).toContain("vm0/codex");
-    });
-  });
-
   describe("other legacy formats", () => {
     it("returns warning for vm0-github-cli", () => {
       const warning = getLegacySystemTemplateWarning("vm0-github-cli");
@@ -169,7 +142,6 @@ describe("getLegacySystemTemplateWarning", () => {
 
   it("returns undefined for non-legacy formats", () => {
     expect(getLegacySystemTemplateWarning("vm0/claude-code")).toBeUndefined();
-    expect(getLegacySystemTemplateWarning("vm0/codex")).toBeUndefined();
     expect(getLegacySystemTemplateWarning("my-image")).toBeUndefined();
     expect(getLegacySystemTemplateWarning("myorg/image")).toBeUndefined();
   });

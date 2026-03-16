@@ -65,7 +65,7 @@ export async function uploadInstructions(
   const instructionsDir = path.join(tmpDir, "instructions");
   await fs.mkdir(instructionsDir);
 
-  // Write file with framework-specific name (CLAUDE.md for claude-code, AGENTS.md for codex)
+  // Write file with framework-specific name (e.g., CLAUDE.md for claude-code)
   const filename = getInstructionsFilename(framework);
   await fs.writeFile(path.join(instructionsDir, filename), content);
 

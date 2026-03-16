@@ -10,11 +10,7 @@
  * System image constants
  */
 export const SYSTEM_IMAGE_CLAUDE_CODE = "claude-code";
-export const SYSTEM_IMAGE_CODEX = "codex";
-export const SYSTEM_IMAGES = [
-  SYSTEM_IMAGE_CLAUDE_CODE,
-  SYSTEM_IMAGE_CODEX,
-] as const;
+export const SYSTEM_IMAGES = [SYSTEM_IMAGE_CLAUDE_CODE] as const;
 export const SYSTEM_VALID_TAGS = ["latest"] as const;
 
 export type SystemValidTag = (typeof SYSTEM_VALID_TAGS)[number];
@@ -29,7 +25,6 @@ type SystemImage = (typeof SYSTEM_IMAGES)[number];
 
 const IMAGE_ALIASES: Record<string, SystemImage> = {
   "claude-code-github": "claude-code",
-  "codex-github": "codex",
 };
 
 /**
@@ -47,10 +42,7 @@ export function isValidSystemTag(
  * Conversion rules:
  * - vm0/claude-code → vm0-claude-code
  * - vm0/claude-code:latest → vm0-claude-code
- * - vm0/codex → vm0-codex
- * - vm0/codex:latest → vm0-codex
  * - vm0/claude-code-github → vm0-claude-code (legacy alias)
- * - vm0/codex-github → vm0-codex (legacy alias)
  *
  * Note: :dev tag is no longer supported. Development and production use the
  * same template names but different E2B accounts (controlled by E2B_API_KEY).
@@ -105,9 +97,6 @@ export function getLegacySystemTemplateWarning(
   // Map legacy format to new format
   if (legacyFormat === "vm0-claude-code") {
     return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/claude-code" instead.`;
-  }
-  if (legacyFormat === "vm0-codex") {
-    return `Warning: "${legacyFormat}" format is deprecated. Use "vm0/codex" instead.`;
   }
   if (legacyFormat.startsWith("vm0-github-cli")) {
     return `Warning: "${legacyFormat}" is deprecated. GitHub CLI is now included in the base image.`;

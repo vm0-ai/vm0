@@ -20,17 +20,13 @@ import {
  *
  * Each framework expects instructions at a specific location:
  * - claude-code: ~/.claude/
- * - codex: ~/.codex/
  *
- * @param framework - The framework name (e.g., "claude-code", "codex")
+ * @param framework - The framework name (e.g., "claude-code")
  * @returns The mount path for instructions
  * @throws Error if framework is defined but not supported
  */
 function getInstructionsMountPath(framework?: string): string {
-  const validatedFramework = getValidatedFramework(framework);
-  if (validatedFramework === "codex") {
-    return "/home/user/.codex";
-  }
+  getValidatedFramework(framework);
   return "/home/user/.claude";
 }
 
@@ -39,17 +35,13 @@ function getInstructionsMountPath(framework?: string): string {
  *
  * Each framework expects skills at a specific location:
  * - claude-code: ~/.claude/skills/
- * - codex: ~/.codex/skills/
  *
- * @param framework - The framework name (e.g., "claude-code", "codex")
+ * @param framework - The framework name (e.g., "claude-code")
  * @returns The base path for skills
  * @throws Error if framework is defined but not supported
  */
 function getSkillsBasePath(framework?: string): string {
-  const validatedFramework = getValidatedFramework(framework);
-  if (validatedFramework === "codex") {
-    return "/home/user/.codex/skills";
-  }
+  getValidatedFramework(framework);
   return "/home/user/.claude/skills";
 }
 

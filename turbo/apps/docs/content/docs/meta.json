@@ -10,7 +10,6 @@
     "model-selection",
     "agent-skills",
     "reference",
-    "integrations",
-    "experimental"
+    "integrations"
   ]
 }

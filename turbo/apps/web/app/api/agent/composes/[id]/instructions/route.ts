@@ -140,8 +140,8 @@ export async function GET(
 
   // Derive the canonical filename from the agent's framework.
   // CLI uploads instructions with a framework-canonical name (e.g., CLAUDE.md
-  // for claude-code, AGENTS.md for codex). Use the same mapping to look up
-  // the file in the manifest, ensuring the read path matches the write path.
+  // for claude-code). Use the same mapping to look up the file in the manifest,
+  // ensuring the read path matches the write path.
   const canonicalFilename = getInstructionsFilename(agentDef?.framework);
   const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
   const instructionFile = manifest.files.find(
