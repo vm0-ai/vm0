@@ -999,7 +999,6 @@ jobs:
           path: turbo/apps/cli/dist
       - name: Link CLI globally
         run: cd turbo/apps/cli/dist && sudo npm link
-
       - name: Download E2E test tokens
         uses: actions/download-artifact@v4
         with:
@@ -1417,10 +1416,8 @@ jobs:
           path: turbo/apps/cli/dist
       - name: Link CLI globally
         run: cd turbo/apps/cli/dist && sudo npm link
-
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
-
       - name: Download E2E test tokens
         uses: actions/download-artifact@v4
         with:
@@ -1508,7 +1505,6 @@ jobs:
           path: turbo/apps/cli/dist
       - name: Link CLI globally
         run: cd turbo/apps/cli/dist && sudo npm link
-
       - name: Download E2E test tokens
         uses: actions/download-artifact@v4
         with:
