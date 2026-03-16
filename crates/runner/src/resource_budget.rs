@@ -87,17 +87,17 @@ impl ResourceBudget {
     /// Release resources after a job completes.
     pub fn release(&self, vcpu: u32, memory_mb: u32) {
         let mut state = self.lock();
-        debug_assert!(
+        assert!(
             state.running_vcpu >= vcpu,
             "release underflow: running_vcpu ({}) < vcpu ({vcpu})",
             state.running_vcpu,
         );
-        debug_assert!(
+        assert!(
             state.running_memory_mb >= memory_mb,
             "release underflow: running_memory_mb ({}) < memory_mb ({memory_mb})",
             state.running_memory_mb,
         );
-        debug_assert!(
+        assert!(
             state.running_count > 0,
             "release underflow: running_count is 0"
         );

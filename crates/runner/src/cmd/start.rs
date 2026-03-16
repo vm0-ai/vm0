@@ -184,6 +184,8 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         "resource budget initialized"
     );
     // Factory concurrency hint for pool sizing (overlay + netns pre-warming).
+    assert!(vcpu > 0, "sandbox.vcpu must be > 0");
+    assert!(memory_mb > 0, "sandbox.memory_mb must be > 0");
     let resource_limit = std::cmp::min(
         budget.effective_vcpu() as usize / vcpu as usize,
         budget.effective_memory_mb() as usize / memory_mb as usize,
