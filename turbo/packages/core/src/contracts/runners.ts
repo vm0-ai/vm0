@@ -146,6 +146,8 @@ export const storedExecutionContextSchema = z.object({
   memoryName: z.string().optional(),
   // Experimental services for proxy-side token replacement
   experimentalServices: experimentalServicesSchema.optional(),
+  // Experimental capabilities for agent permission enforcement
+  experimentalCapabilities: z.array(z.string()).optional(),
 });
 
 /**
@@ -184,6 +186,8 @@ export const executionContextSchema = z.object({
   memoryName: z.string().optional(),
   // Experimental services for proxy-side token replacement
   experimentalServices: experimentalServicesSchema.optional(),
+  // Experimental capabilities for agent permission enforcement
+  experimentalCapabilities: z.array(z.string()).optional(),
 });
 
 /**

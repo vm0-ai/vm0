@@ -80,6 +80,9 @@ export interface ExecutionContext {
   // Experimental services for proxy-side token replacement
   experimentalServices?: ExperimentalServices;
 
+  // Experimental capabilities for agent permission enforcement
+  experimentalCapabilities?: string[];
+
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;

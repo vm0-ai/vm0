@@ -227,6 +227,9 @@ function buildPreparedContext(
     // Experimental services for proxy-side token replacement
     experimentalServices: context.experimentalServices ?? null,
 
+    // Experimental capabilities
+    experimentalCapabilities: context.experimentalCapabilities ?? null,
+
     // Routing
     runnerGroup,
 

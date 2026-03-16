@@ -58,6 +58,7 @@ export async function executeRunnerJob(
     secretConnectorMap: context.secretConnectorMap,
     cliAgentType: context.cliAgentType,
     experimentalServices: context.experimentalServices ?? undefined,
+    experimentalCapabilities: context.experimentalCapabilities ?? undefined,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,
     userTimezone: context.userTimezone ?? undefined,

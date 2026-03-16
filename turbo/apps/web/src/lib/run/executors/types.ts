@@ -45,6 +45,9 @@ export interface PreparedContext {
   // Experimental services for proxy-side token replacement
   experimentalServices: ExperimentalServices | null;
 
+  // Experimental capabilities for agent permission enforcement
+  experimentalCapabilities: string[] | null;
+
   // Routing hint (runner group name)
   runnerGroup: string | null;
 
