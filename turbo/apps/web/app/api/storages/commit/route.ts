@@ -34,7 +34,7 @@ const router = tsr.router(storagesCommitContract, {
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 
-    const capability = storageCapability(storageType, "write");
+    const capability = storageCapability("write");
 
     // Authenticate user (sandbox tokens accepted if they have the required capability)
     const authCtx = await requireAuth(headers.authorization, {

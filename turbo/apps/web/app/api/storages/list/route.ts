@@ -27,7 +27,7 @@ const router = tsr.router(storagesListContract, {
     initServices();
 
     const { type: storageType } = query;
-    const capability = storageCapability(storageType, "read");
+    const capability = storageCapability("read");
 
     // Authenticate user (sandbox tokens accepted if they have the required capability)
     const authCtx = await requireAuth(headers.authorization, {

@@ -156,6 +156,22 @@ describe("sandbox-token", () => {
       expect(auth?.capabilities).toBeUndefined();
     });
 
+    it("should reject token with invalid capability value", async () => {
+      // Cast invalid capability through type system to simulate a malformed token
+      const invalidCaps = [
+        "storage:read",
+        "volume:read",
+      ] as unknown as readonly ("storage:read" | "storage:write")[];
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        invalidCaps,
+      );
+      const auth = verifySandboxToken(token);
+
+      expect(auth).toBeNull();
+    });
+
     it("should roundtrip all valid capabilities", async () => {
       const capabilities = [
         "storage:read",

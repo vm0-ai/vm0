@@ -1,5 +1,5 @@
 import { createHmac, hkdfSync } from "crypto";
-import type { VALID_CAPABILITIES } from "@vm0/core";
+import { VALID_CAPABILITIES } from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../logger";
 
@@ -135,6 +135,20 @@ function verifyJwt(token: string): SandboxTokenPayload | null {
     // Validate required fields
     if (payload.scope !== "sandbox" || !payload.userId || !payload.runId) {
       return null;
+    }
+
+    // Validate capability values if present
+    if (payload.capabilities) {
+      if (!Array.isArray(payload.capabilities)) {
+        return null;
+      }
+      const validSet = new Set<string>(VALID_CAPABILITIES);
+      for (const cap of payload.capabilities) {
+        if (typeof cap !== "string" || !validSet.has(cap)) {
+          log.debug(`Invalid capability in token: ${String(cap)}`);
+          return null;
+        }
+      }
     }
 
     return payload;
