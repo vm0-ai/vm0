@@ -3,7 +3,6 @@
 //! Creates a symlink from Claude Code's expected auto-memory directory to the
 //! vm0 memory volume mount path, enabling native auto-memory read/write.
 
-use crate::env;
 use guest_common::log_info;
 use std::path::Path;
 
@@ -24,16 +23,11 @@ fn encode_project_name(working_dir: &str) -> String {
 /// Returns `true` if the symlink was created, `false` if skipped.
 ///
 /// No-op when:
-/// - Agent type is not claude-code
 /// - No memory volume configured (mount path empty)
 /// - Memory mount path doesn't exist on disk
 /// - Symlink target already exists
 pub fn setup_auto_memory_symlink() -> bool {
-    if env::cli_agent_type() != "claude-code" {
-        return false;
-    }
-
-    let memory_mount = env::memory_mount_path();
+    let memory_mount = crate::env::memory_mount_path();
     if memory_mount.is_empty() {
         return false;
     }
@@ -44,7 +38,7 @@ pub fn setup_auto_memory_symlink() -> bool {
     }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    let project_name = encode_project_name(env::working_dir());
+    let project_name = encode_project_name(crate::env::working_dir());
     let auto_memory_dir = Path::new(&home)
         .join(".claude")
         .join("projects")
