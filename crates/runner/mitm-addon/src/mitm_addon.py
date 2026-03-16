@@ -176,7 +176,7 @@ class FirewallBlock(NamedTuple):
     path: str
 
 
-def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> FirewallAllow | FirewallBlock | None:
+def match_firewall_request(url: str, method: str, vm_firewalls: list | None) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions.
 
     Returns:
@@ -184,7 +184,7 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
       FirewallBlock — base URL matched but no permission granted
       None — no base URL match (not a firewall request)
     """
-    if not vm_firewall:
+    if not vm_firewalls:
         return None
 
     # Track the first base URL that matched. If we find a base match but no
@@ -195,7 +195,7 @@ def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> F
 
     upper_method = method.upper()
 
-    for fw_entry in vm_firewall:
+    for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
         fw_ref = fw_entry.get("ref", "")
         for api_entry in fw_entry.get("apis", []):
@@ -442,10 +442,10 @@ def request(flow: http.HTTPFlow) -> None:
 
     # --- Step 2: Firewall match with permission check ---
     # Match base URL, then check permission rules before injecting auth headers.
-    vm_firewall = vm_info.get("firewall")
-    if vm_firewall:
+    vm_firewalls = vm_info.get("firewalls")
+    if vm_firewalls:
         original_url = get_original_url(flow)
-        result = match_firewall_request(original_url, flow.request.method, vm_firewall)
+        result = match_firewall_request(original_url, flow.request.method, vm_firewalls)
         if isinstance(result, FirewallBlock):
             ctx.log.warn(f"[{run_id}] Firewall {result.firewall_ref}: no matching permission for {result.method} {result.path}")
             flow.metadata["firewall_action"] = "DENY"

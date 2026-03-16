@@ -147,7 +147,7 @@ const agentDefinitionSchema = z.object({
    * CLI input: map format { slack: { permissions: [...] | "all" } }
    * — expanded by CLI to full ExpandedFirewallConfig[] before API call.
    */
-  experimental_firewall: z
+  experimental_firewalls: z
     .record(
       z.string(),
       z.object({
@@ -190,7 +190,7 @@ const agentDefinitionSchema = z.object({
 });
 
 /**
- * Agent compose YAML content schema (CLI input — experimental_firewall is map format)
+ * Agent compose YAML content schema (CLI input — experimental_firewalls is map format)
  */
 const agentComposeContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
@@ -219,14 +219,14 @@ const expandedFirewallConfigSchema = z.object({
 
 /**
  * Agent compose content schema for API requests.
- * Same as agentComposeContentSchema but experimental_firewall is pre-expanded by CLI.
+ * Same as agentComposeContentSchema but experimental_firewalls is pre-expanded by CLI.
  */
 const agentComposeApiContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
   agents: z.record(
     z.string(),
     agentDefinitionSchema.extend({
-      experimental_firewall: z.array(expandedFirewallConfigSchema).optional(),
+      experimental_firewalls: z.array(expandedFirewallConfigSchema).optional(),
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),

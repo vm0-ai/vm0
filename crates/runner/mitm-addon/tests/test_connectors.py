@@ -24,7 +24,7 @@ def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, pat
     return flow
 
 
-def _wrap_firewall(apis, name="test", ref="test"):
+def _wrap_firewalls(apis, name="test", ref="test"):
     """Wrap a list of API entries into a firewall entry list."""
     return [{"name": name, "ref": ref, "apis": apis}]
 
@@ -95,7 +95,7 @@ class TestMatchFirewallRequest:
 
     def test_no_permissions_blocks(self):
         """Missing permissions field → block (fail-closed)."""
-        fw_configs = _wrap_firewall([
+        fw_configs = _wrap_firewalls([
             {"base": "https://api.github.com", "auth": {"headers": {}}},
         ], name="github", ref="github")
         result = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
@@ -106,7 +106,7 @@ class TestMatchFirewallRequest:
         assert result.path == "/repos"
 
     def test_permission_match_allows(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
@@ -119,7 +119,7 @@ class TestMatchFirewallRequest:
         assert result.match_info["rule"] == "GET /repos/{owner}/{repo}"
 
     def test_any_method_matches(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
@@ -129,7 +129,7 @@ class TestMatchFirewallRequest:
         assert result.match_info["permission"] == "full-access"
 
     def test_method_case_insensitive(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["post /repos"]}],
@@ -138,7 +138,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
 
     def test_wrong_method_blocks(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "read-only", "rules": ["GET /repos/{owner}/{repo}"]}],
@@ -147,7 +147,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallBlock)
 
     def test_wrong_path_blocks(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
@@ -156,7 +156,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallBlock)
 
     def test_no_base_match_returns_none(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["GET /{path+}"]}],
@@ -172,7 +172,7 @@ class TestMatchFirewallRequest:
 
     def test_exact_base_no_path(self):
         """URL equals base exactly (rest='') → rel_path='/' → matches root rule."""
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "root", "rules": ["GET /"]}],
@@ -183,7 +183,7 @@ class TestMatchFirewallRequest:
 
     def test_trailing_slash_on_url(self):
         """URL trailing slash doesn't affect matching (split filters empty segments)."""
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
@@ -193,7 +193,7 @@ class TestMatchFirewallRequest:
 
     def test_trailing_slash_on_base_config(self):
         """Base URL with trailing slash still matches (rstrip strips it)."""
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com/",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
@@ -203,7 +203,7 @@ class TestMatchFirewallRequest:
 
     def test_port_boundary_rejected(self):
         """Port in URL (rest starts with ':') is not a valid path boundary."""
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
@@ -212,7 +212,7 @@ class TestMatchFirewallRequest:
         assert result is None
 
     def test_evil_domain_not_matched(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
@@ -221,7 +221,7 @@ class TestMatchFirewallRequest:
         assert result is None
 
     def test_multiple_permissions_first_match_wins(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://slack.com/api",
             "auth": {"headers": {}},
             "permissions": [
@@ -235,7 +235,7 @@ class TestMatchFirewallRequest:
 
     def test_malformed_rules_skipped(self):
         """Rules without 'METHOD /path' format are silently skipped, not crash or false-allow."""
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "bad", "rules": ["GET", "", "INVALID", "  ", "GET /repos"]}],
@@ -249,7 +249,7 @@ class TestMatchFirewallRequest:
 
     def test_path_case_sensitive(self):
         """URL paths are case-sensitive — /REPOS must not match /repos."""
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["GET /repos/{owner}"]}],
@@ -279,7 +279,7 @@ class TestMatchFirewallRequest:
         assert sl.match_info["name"] == "slack"
 
     def test_query_string_stripped_for_matching(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
@@ -288,7 +288,7 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
 
     def test_fragment_stripped_for_matching(self):
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [{"name": "p", "rules": ["GET /repos"]}],
@@ -298,7 +298,7 @@ class TestMatchFirewallRequest:
 
     def test_empty_permissions_list_blocks(self):
         """If permissions is present but empty, no rules can match → block."""
-        fw_configs = _wrap_firewall([{
+        fw_configs = _wrap_firewalls([{
             "base": "https://api.github.com",
             "auth": {"headers": {}},
             "permissions": [],
@@ -308,7 +308,7 @@ class TestMatchFirewallRequest:
 
     def test_different_bases_same_permission_name(self):
         """Same permission name across different api_entries — each matches its own base."""
-        fw_configs = _wrap_firewall([
+        fw_configs = _wrap_firewalls([
             {
                 "base": "https://slack.com/api",
                 "auth": {"headers": {"Authorization": "Bearer api-token"}},
@@ -334,7 +334,7 @@ class TestMatchFirewallRequest:
 
     def test_same_base_different_permissions(self):
         """Same base URL with different permissions/auth — second api_entry can match."""
-        fw_configs = _wrap_firewall([
+        fw_configs = _wrap_firewalls([
             {
                 "base": "https://slack.com/api",
                 "auth": {"headers": {"Authorization": "Bearer bot"}},

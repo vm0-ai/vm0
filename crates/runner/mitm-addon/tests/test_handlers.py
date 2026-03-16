@@ -119,7 +119,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -164,7 +164,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -215,7 +215,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -264,7 +264,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",

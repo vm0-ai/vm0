@@ -109,11 +109,11 @@ async fn execute_inner(
 
     // Register VM in proxy registry when firewall rules are present
     let source_ip = sandbox.source_ip().to_string();
-    let has_firewall = context
-        .experimental_firewall
+    let has_firewalls = context
+        .experimental_firewalls
         .as_ref()
         .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
-    let proxy_registered = has_firewall;
+    let proxy_registered = has_firewalls;
     let network_log_path = config.log_paths.network_log(context.run_id);
 
     if proxy_registered {
@@ -122,7 +122,7 @@ async fn execute_inner(
             run_id: &run_id_str,
             sandbox_token: &context.sandbox_token,
             network_log_path: &network_log_path,
-            firewall: context.experimental_firewall.as_deref(),
+            firewalls: context.experimental_firewalls.as_deref(),
             encrypted_secrets: context.encrypted_secrets.as_deref(),
             secret_connector_map: context.secret_connector_map.as_ref(),
         };
@@ -563,7 +563,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // MITM is always enabled when firewall rules are configured.
     // The certificate is pre-baked into the rootfs at build time.
     let proxy_active = context
-        .experimental_firewall
+        .experimental_firewalls
         .as_ref()
         .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
     if proxy_active {
@@ -666,7 +666,7 @@ mod tests {
             agent_name: None,
             agent_org_slug: None,
             memory_name: None,
-            experimental_firewall: None,
+            experimental_firewalls: None,
             experimental_capabilities: None,
         }
     }
@@ -887,7 +887,7 @@ mod tests {
     #[test]
     fn build_env_json_firewall_enable_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewall = Some(vec![crate::types::Firewall {
+        ctx.experimental_firewalls = Some(vec![crate::types::Firewall {
             name: "gmail".into(),
             ref_key: "gmail".into(),
             apis: vec![crate::types::FirewallApi {
@@ -909,7 +909,7 @@ mod tests {
     #[test]
     fn build_env_json_empty_firewall_no_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewall = Some(vec![]);
+        ctx.experimental_firewalls = Some(vec![]);
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }
@@ -971,14 +971,14 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_deserializes_with_firewall() {
+    fn execution_context_deserializes_with_firewalls() {
         let json = serde_json::json!({
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
-            "experimentalFirewall": [{
+            "experimentalFirewalls": [{
                 "name": "github",
                 "ref": "github",
                 "apis": [{
@@ -1001,7 +1001,7 @@ mod tests {
             }]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        let svcs = ctx.experimental_firewall.unwrap();
+        let svcs = ctx.experimental_firewalls.unwrap();
         assert_eq!(svcs.len(), 1);
         assert_eq!(svcs[0].name, "github");
         assert_eq!(svcs[0].ref_key, "github");
@@ -1015,7 +1015,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_deserializes_without_firewall() {
+    fn execution_context_deserializes_without_firewalls() {
         let json = serde_json::json!({
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
@@ -1024,7 +1024,7 @@ mod tests {
             "cliAgentType": "claude-code"
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert!(ctx.experimental_firewall.is_none());
+        assert!(ctx.experimental_firewalls.is_none());
     }
 
     #[test]
