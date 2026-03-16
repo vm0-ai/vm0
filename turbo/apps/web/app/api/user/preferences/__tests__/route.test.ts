@@ -665,4 +665,95 @@ describe("PUT /api/user/preferences", () => {
       }),
     );
   });
+
+  it("should update sendMode to cmd-enter", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sendMode: "cmd-enter" }),
+      },
+    );
+    const response = await PUT(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.sendMode).toBe("cmd-enter");
+  });
+
+  it("should return default sendMode for new user", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.sendMode).toBe("enter");
+  });
+
+  it("should persist sendMode across GET after PUT", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    // Update sendMode
+    const putRequest = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sendMode: "cmd-enter" }),
+      },
+    );
+    await PUT(putRequest);
+
+    // Clear JWT claims so it falls back to cache
+    vi.mocked(auth).mockResolvedValue({
+      userId: user.userId,
+      orgId: user.orgId,
+      sessionClaims: {},
+    } as Awaited<ReturnType<typeof auth>>);
+
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+    );
+    const response = await GET(getRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.sendMode).toBe("cmd-enter");
+  });
+
+  it("should dual-write sendMode to Clerk membership metadata", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/user/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sendMode: "cmd-enter" }),
+      },
+    );
+    const response = await PUT(request);
+    expect(response.status).toBe(200);
+
+    const client = await vi.mocked(clerkClient)();
+    expect(
+      client.organizations.updateOrganizationMembershipMetadata,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: user.userId,
+        publicMetadata: { send_mode: "cmd-enter" },
+      }),
+    );
+  });
 });

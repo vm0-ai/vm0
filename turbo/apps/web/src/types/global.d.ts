@@ -30,5 +30,6 @@ declare global {
     membership_notify_email?: boolean;
     membership_notify_slack?: boolean;
     membership_pinned_agent_ids?: string[];
+    membership_send_mode?: string;
   }
 }

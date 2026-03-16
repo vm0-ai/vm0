@@ -72,6 +72,7 @@ const router = tsr.router(userPreferencesContract, {
           notifyEmail: prefs.notifyEmail,
           notifySlack: prefs.notifySlack,
           pinnedAgentIds: prefs.pinnedAgentIds,
+          sendMode: prefs.sendMode,
         },
       };
     } catch (error) {

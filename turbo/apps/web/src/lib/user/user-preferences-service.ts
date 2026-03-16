@@ -247,9 +247,7 @@ export async function getUserPreferences(
       notifyEmail: sessionClaims.membership_notify_email ?? false,
       notifySlack: sessionClaims.membership_notify_slack ?? true,
       pinnedAgentIds,
-      sendMode: parseSendMode(
-        (sessionClaims as Record<string, unknown>).membership_send_mode,
-      ),
+      sendMode: parseSendMode(sessionClaims.membership_send_mode),
     };
   }
 

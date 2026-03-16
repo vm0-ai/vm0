@@ -21,6 +21,7 @@ import { sendMode$ } from "../../signals/send-mode.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { SendMode } from "@vm0/core";
 import { updateNotificationPreference$ } from "../../signals/settings-page/notification-settings.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 function AppearanceSettings() {
   const THEME_OPTIONS = [
@@ -104,7 +105,10 @@ function SendModeSettings() {
       (async () => {
         await updatePref({ sendMode: value });
         setSaving(null);
-      })().catch(() => setSaving(null)),
+      })().catch(() => {
+        setSaving(null);
+        toast.error("Failed to save send mode preference");
+      }),
       Reason.DomCallback,
     );
   };
