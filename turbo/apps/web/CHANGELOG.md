@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.118.0](https://github.com/vm0-ai/vm0/compare/web-v12.117.0...web-v12.118.0) (2026-03-16)
+
+
+### Features
+
+* improve zero page with markdown theming, avatar overrides, and navigation ([#5065](https://github.com/vm0-ai/vm0/issues/5065)) ([5ca5a04](https://github.com/vm0-ai/vm0/commit/5ca5a0441b1019516b7a64baa8ca695863581686))
+
 ## [12.117.0](https://github.com/vm0-ai/vm0/compare/web-v12.116.3...web-v12.117.0) (2026-03-16)
 
 

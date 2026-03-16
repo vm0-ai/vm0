@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.116.0](https://github.com/vm0-ai/vm0/compare/platform-v0.115.0...platform-v0.116.0) (2026-03-16)
+
+
+### Features
+
+* improve zero page with markdown theming, avatar overrides, and navigation ([#5065](https://github.com/vm0-ai/vm0/issues/5065)) ([5ca5a04](https://github.com/vm0-ai/vm0/commit/5ca5a0441b1019516b7a64baa8ca695863581686))
+
 ## [0.115.0](https://github.com/vm0-ai/vm0/compare/platform-v0.114.3...platform-v0.115.0) (2026-03-16)
 
 
