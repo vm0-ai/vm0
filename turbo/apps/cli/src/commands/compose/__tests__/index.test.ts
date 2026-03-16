@@ -10,20 +10,21 @@ import * as os from "os";
 import * as yaml from "yaml";
 import chalk from "chalk";
 
-// Configurable handler called when exec encounters a "git checkout" command.
+// Configurable handler called when execFile encounters a "git checkout" command.
 // Tests set this to populate the working directory with expected files.
 let onGitCheckout: ((cwd: string) => void) | undefined;
 
-// Mock child_process — the true external boundary for both spawn and exec.
-// spawn is used by silentUpgradeAfterCommand; exec is used by git-client for git operations.
+// Mock child_process — the true external boundary for both spawn and execFile.
+// spawn is used by silentUpgradeAfterCommand; execFile is used by git-client for git operations.
 vi.mock("child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("child_process")>();
   return {
     ...original,
     spawn: vi.fn(),
-    exec: vi.fn(
+    execFile: vi.fn(
       (
-        cmd: string,
+        file: string,
+        args: string[],
         optionsOrCallback: unknown,
         maybeCallback?: unknown,
       ): { pid: number } => {
@@ -42,6 +43,7 @@ vi.mock("child_process", async (importOriginal) => {
             ? (optionsOrCallback as { cwd?: string })
             : undefined;
         const cwd = options?.cwd;
+        const cmd = [file, ...args].join(" ");
 
         // git init: create .git/info/ so sparse-checkout file writes succeed
         if (cmd.startsWith("git init") && cwd) {
@@ -69,9 +71,9 @@ vi.mock("child_process", async (importOriginal) => {
   };
 });
 
-import { spawn, exec } from "child_process";
+import { spawn, execFile } from "child_process";
 const mockSpawn = vi.mocked(spawn);
-const mockExec = vi.mocked(exec);
+const mockExecFile = vi.mocked(execFile);
 
 /**
  * Helper to create a mock skill directory with SKILL.md frontmatter.
@@ -2221,8 +2223,9 @@ agents:
       ]);
 
       // Verify git operations targeted the correct repository
-      expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining("owner/repo.git"),
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining([expect.stringContaining("owner/repo.git")]),
         expect.anything(),
         expect.anything(),
       );
@@ -2270,8 +2273,9 @@ agents:
       ]);
 
       // Verify git operations targeted the correct repository
-      expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining("owner/repo.git"),
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining([expect.stringContaining("owner/repo.git")]),
         expect.anything(),
         expect.anything(),
       );
@@ -2316,8 +2320,9 @@ agents:
       ]);
 
       // Verify git operations targeted the correct repository
-      expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining("owner/repo.git"),
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining([expect.stringContaining("owner/repo.git")]),
         expect.anything(),
         expect.anything(),
       );
@@ -2366,8 +2371,9 @@ agents:
       ]);
 
       // Verify git operations targeted the correct repository
-      expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining("owner/repo.git"),
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "git",
+        expect.arrayContaining([expect.stringContaining("owner/repo.git")]),
         expect.anything(),
         expect.anything(),
       );

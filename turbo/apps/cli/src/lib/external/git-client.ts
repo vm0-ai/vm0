@@ -1,14 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
   parseGitHubUrl as parseGitHubUrlCore,
   type ParsedGitHubTreeUrl,
 } from "@vm0/core";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Result of downloading a GitHub directory
@@ -39,9 +39,13 @@ export async function downloadGitHubSkill(
 
   try {
     // Initialize sparse checkout
-    await execAsync(`git init`, { cwd: tempDir });
-    await execAsync(`git remote add origin "${repoUrl}"`, { cwd: tempDir });
-    await execAsync(`git config core.sparseCheckout true`, { cwd: tempDir });
+    await execFileAsync("git", ["init"], { cwd: tempDir });
+    await execFileAsync("git", ["remote", "add", "origin", repoUrl], {
+      cwd: tempDir,
+    });
+    await execFileAsync("git", ["config", "core.sparseCheckout", "true"], {
+      cwd: tempDir,
+    });
 
     // Configure sparse checkout to only fetch the skill path
     // For root: use "/*" to get all root-level files
@@ -51,10 +55,14 @@ export async function downloadGitHubSkill(
     await fs.writeFile(sparseFile, sparsePattern + "\n");
 
     // Fetch only the required branch
-    await execAsync(`git fetch --depth 1 origin "${parsed.branch}"`, {
-      cwd: tempDir,
-    });
-    await execAsync(`git checkout "${parsed.branch}"`, { cwd: tempDir });
+    await execFileAsync(
+      "git",
+      ["fetch", "--depth", "1", "origin", parsed.branch],
+      {
+        cwd: tempDir,
+      },
+    );
+    await execFileAsync("git", ["checkout", parsed.branch], { cwd: tempDir });
 
     // Move the skill directory to destination
     await fs.mkdir(path.dirname(skillDir), { recursive: true });
@@ -93,9 +101,12 @@ async function getDefaultBranch(owner: string, repo: string): Promise<string> {
     // git ls-remote --symref outputs:
     // ref: refs/heads/main    HEAD
     // a1b2c3d...              HEAD
-    const { stdout } = await execAsync(
-      `git ls-remote --symref "${repoUrl}" HEAD`,
-    );
+    const { stdout } = await execFileAsync("git", [
+      "ls-remote",
+      "--symref",
+      repoUrl,
+      "HEAD",
+    ]);
 
     // Extract branch name from "ref: refs/heads/main" line
     const match = stdout.match(/ref: refs\/heads\/([^\s]+)/);
@@ -153,7 +164,7 @@ export async function downloadGitHubDirectory(
   try {
     // Check git is available
     try {
-      await execAsync("git --version");
+      await execFileAsync("git", ["--version"]);
     } catch {
       throw new Error(
         "git command not found. Please install git to use GitHub URLs.",
@@ -165,9 +176,13 @@ export async function downloadGitHubDirectory(
       parsed.branch ?? (await getDefaultBranch(parsed.owner, parsed.repo));
 
     // Initialize sparse checkout
-    await execAsync(`git init`, { cwd: tempDir });
-    await execAsync(`git remote add origin "${repoUrl}"`, { cwd: tempDir });
-    await execAsync(`git config core.sparseCheckout true`, { cwd: tempDir });
+    await execFileAsync("git", ["init"], { cwd: tempDir });
+    await execFileAsync("git", ["remote", "add", "origin", repoUrl], {
+      cwd: tempDir,
+    });
+    await execFileAsync("git", ["config", "core.sparseCheckout", "true"], {
+      cwd: tempDir,
+    });
 
     // Configure sparse checkout pattern
     // For root: use "/*" to get all root-level files
@@ -178,7 +193,7 @@ export async function downloadGitHubDirectory(
 
     // Fetch only the required branch with better error handling
     try {
-      await execAsync(`git fetch --depth 1 origin "${branch}"`, {
+      await execFileAsync("git", ["fetch", "--depth", "1", "origin", branch], {
         cwd: tempDir,
       });
     } catch (error) {
@@ -195,7 +210,7 @@ export async function downloadGitHubDirectory(
       throw error;
     }
 
-    await execAsync(`git checkout "${branch}"`, { cwd: tempDir });
+    await execFileAsync("git", ["checkout", branch], { cwd: tempDir });
 
     // Return directory path
     // For root: return tempDir directly
