@@ -16,7 +16,6 @@ import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
 import { resolveOrgOrNull } from "../../org/resolve-org";
 import { canAccessCompose } from "../../agent/compose-access";
-import { getUserEmail } from "../../auth/get-user-email";
 import { logger } from "../../logger";
 
 const log = logger("email:inbound-trigger");
@@ -169,8 +168,7 @@ export async function handleInboundEmailTrigger(
   }
 
   // 4. Check permission
-  const userEmail = await getUserEmail(userId);
-  const hasAccess = await canAccessCompose(userId, userEmail, {
+  const hasAccess = await canAccessCompose(userId, {
     id: compose.composeId,
     userId: compose.userId,
     orgId: compose.orgId,

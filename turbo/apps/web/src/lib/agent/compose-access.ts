@@ -17,7 +17,6 @@ const CACHE_TTL_MS = 60_000; // 1 minute
  */
 export async function canAccessCompose(
   userId: string,
-  _userEmail: string,
   compose: { id: string; userId: string; orgId: string },
 ): Promise<boolean> {
   // 1. Owner always has access

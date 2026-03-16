@@ -261,7 +261,7 @@ describe("/api/integrations/slack", () => {
     it("updates the default agent with org-qualified name (org/agentName)", async () => {
       const { userLink } = await givenLinkedSlackUser({ isAdmin: true });
 
-      // Create a compose in a different org (simulating a shared agent)
+      // Create a compose in a different org (simulating an org member agent)
       const otherUserId = uniqueId("other-user");
       mockClerk({ userId: otherUserId });
       await createTestOrg(uniqueId("other-org"));

@@ -328,8 +328,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
   });
 
-  describe("Shared Agent Access", () => {
-    it("should allow running an org-shared agent", async () => {
+  describe("Org Member Agent Access", () => {
+    it("should allow running an org member agent", async () => {
       // User A creates an agent
       const ownerUser = user;
 
@@ -341,8 +341,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         cachedAt: new Date(),
       });
 
-      // User B should be able to run the org-shared agent
-      const data = await createTestRun(testComposeId, "Run org-shared agent");
+      // User B should be able to run the org member agent
+      const data = await createTestRun(testComposeId, "Run org member agent");
 
       expect(data.status).toBe("pending");
 
@@ -383,7 +383,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       mockClerk({ userId: ownerUser.userId });
     });
 
-    it("should fail shared agent run when org has no model provider", async () => {
+    it("should fail org member agent run when org has no model provider", async () => {
       // User A (owner) creates an agent in a new org without any model provider
       const ownerUser = user;
       const { composeId: sharedComposeId } = await createTestCompose(
@@ -399,7 +399,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         cachedAt: new Date(),
       });
 
-      // User B runs the shared agent — should fail because no model provider in org
+      // User B runs the org member agent — should fail because no model provider in org
       const data = await createTestRun(
         sharedComposeId,
         "Run without model provider",

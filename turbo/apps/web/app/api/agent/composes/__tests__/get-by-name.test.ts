@@ -142,7 +142,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Not authenticated");
   });
 
-  it("should return shared agent via cross-org lookup with ?org=", async () => {
+  it("should return org member agent via cross-org lookup with ?org=", async () => {
     const agentName = `test-shared-agent-${Date.now()}`;
 
     // Create compose as owner
@@ -174,7 +174,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return 404 for non-shared agent via cross-org lookup", async () => {
+  it("should return 404 for non-member agent via cross-org lookup", async () => {
     const agentName = `test-not-shared-${Date.now()}`;
 
     // Create compose as owner (no permission granted)
@@ -219,7 +219,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return shared agent via cross-org lookup with ?org= using orgId", async () => {
+  it("should return org member agent via cross-org lookup with ?org= using orgId", async () => {
     const agentName = `test-shared-org-${Date.now()}`;
 
     // Create compose as owner
@@ -252,7 +252,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return 404 for non-shared agent via cross-org lookup with ?org=", async () => {
+  it("should return 404 for non-member agent via cross-org lookup with ?org=", async () => {
     const agentName = `test-not-shared-org-${Date.now()}`;
 
     // Create compose as owner (no permission granted)

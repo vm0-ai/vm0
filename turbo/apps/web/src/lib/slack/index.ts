@@ -27,7 +27,7 @@ export function getSlackRedirectBaseUrl(requestUrl?: string): string {
   );
 }
 
-// Re-export shared agent compose resolver
+// Re-export org-accessible agent compose resolver
 export { resolveDefaultAgentComposeId } from "../agent-compose/resolve-default";
 
 // Slack API client

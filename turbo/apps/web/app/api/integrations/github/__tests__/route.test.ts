@@ -435,7 +435,7 @@ describe("/api/integrations/github", () => {
       const { composeId } = await createTestCompose("gh-agent");
       await insertTestGitHubInstallationWithAdmin(composeId, userId);
 
-      // Create a compose in a different org (simulating a shared agent)
+      // Create a compose in a different org (simulating an org member agent)
       const otherUserId = uniqueId("other-user");
       mockClerk({ userId: otherUserId });
       await createTestOrg(uniqueId("other-org"));

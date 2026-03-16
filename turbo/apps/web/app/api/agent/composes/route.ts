@@ -26,7 +26,6 @@ import {
   getOrgDataOrNull,
 } from "../../../../src/lib/org/resolve-org";
 import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
-import { getUserEmail } from "../../../../src/lib/auth/get-user-email";
 import { canAccessCompose } from "../../../../src/lib/agent/compose-access";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
@@ -47,7 +46,7 @@ const router = tsr.router(composesMainContract, {
     }
     const { userId } = authCtx;
 
-    // Resolve org: for cross-org lookups (shared agents), skip membership
+    // Resolve org: for cross-org lookups (org member agents), skip membership
     // check and rely on canAccessCompose for authorization instead.
     // isCrossOrgLookup is true when an explicit org param is provided,
     // which requires canAccessCompose authorization below.
@@ -110,8 +109,7 @@ const router = tsr.router(composesMainContract, {
 
     // Check permission to access this compose (for cross-org lookups)
     if (isCrossOrgLookup) {
-      const userEmail = await getUserEmail(userId);
-      const hasAccess = await canAccessCompose(userId, userEmail, result);
+      const hasAccess = await canAccessCompose(userId, result);
       if (!hasAccess) {
         return {
           status: 404 as const,

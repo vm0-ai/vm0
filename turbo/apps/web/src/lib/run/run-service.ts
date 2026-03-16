@@ -403,8 +403,7 @@ async function authorizeCompose(
   userId: string,
   compose: { id: string; userId: string; orgId: string },
 ): Promise<void> {
-  // _userEmail parameter in canAccessCompose is unused (kept for API compatibility)
-  const hasAccess = await canAccessCompose(userId, "", compose);
+  const hasAccess = await canAccessCompose(userId, compose);
   if (!hasAccess) {
     throw forbidden("You do not have permission to access this agent");
   }
