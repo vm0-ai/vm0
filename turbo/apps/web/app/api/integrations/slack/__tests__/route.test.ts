@@ -266,7 +266,7 @@ describe("/api/integrations/slack", () => {
       mockClerk({ userId: otherUserId });
       await createTestOrg(uniqueId("other-org"));
       const { composeId: otherComposeId } =
-        await createTestCompose("shared-agent");
+        await createTestCompose("other-org-agent");
 
       // Switch back to admin user
       mockClerk({ userId: userLink.vm0UserId });

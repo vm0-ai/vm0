@@ -440,7 +440,7 @@ describe("/api/integrations/github", () => {
       mockClerk({ userId: otherUserId });
       await createTestOrg(uniqueId("other-org"));
       const { composeId: otherComposeId } =
-        await createTestCompose("shared-agent");
+        await createTestCompose("other-org-agent");
 
       // Switch back to original user
       mockClerk({ userId });
