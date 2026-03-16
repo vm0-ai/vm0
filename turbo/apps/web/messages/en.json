@@ -268,10 +268,6 @@
       "claudeCode": {
         "name": "Claude Code",
         "definition": "Anthropic's official command-line tool for building and deploying AI agents. Claude Code provides a developer-friendly interface for creating agents, managing skills, and integrating with the Claude API. It streamlines the agent development workflow with features like live reloading, debugging tools, and deployment automation."
-      },
-      "codex": {
-        "name": "Codex",
-        "definition": "A command-line tool for agent development and deployment. Codex provides developers with utilities for building, testing, and managing agents through the terminal. It offers features like code generation, scaffolding, and integration with AI models to streamline the agent development workflow."
       }
     }
   },

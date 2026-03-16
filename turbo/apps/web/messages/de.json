@@ -268,10 +268,6 @@
       "claudeCode": {
         "name": "Claude Code",
         "definition": "Anthropics offizielles Befehlszeilenwerkzeug zum Erstellen und Bereitstellen von KI-Agenten. Claude Code bietet eine entwicklerfreundliche Schnittstelle zum Erstellen von Agenten, Verwalten von Skills und zur Integration mit der Claude API. Es rationalisiert den Agenten-Entwicklungsworkflow mit Funktionen wie Live-Reloading, Debugging-Tools und Deployment-Automatisierung."
-      },
-      "codex": {
-        "name": "Codex",
-        "definition": "Ein Befehlszeilenwerkzeug für Agentenentwicklung und -bereitstellung. Codex bietet Entwicklern Dienstprogramme zum Erstellen, Testen und Verwalten von Agenten über das Terminal. Es bietet Funktionen wie Code-Generierung, Scaffolding und Integration mit KI-Modellen, um den Agenten-Entwicklungsworkflow zu optimieren."
       }
     }
   },

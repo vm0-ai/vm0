@@ -66,7 +66,7 @@ Each agent key must be a valid agent name: 3-64 characters, starting and ending 
 | Field                    | Type   | Required | Default        | Description                                                                                       |
 | ------------------------ | ------ | -------- | -------------- | ------------------------------------------------------------------------------------------------- |
 | `description`            | string | No       | -              | Optional description for the agent                                                                |
-| `framework`              | string | No       | `claude-code`  | Agent framework: `claude-code` or `codex` ([experimental](/docs/experimental/codex)). See [Model Selection](/docs/model-selection) |
+| `framework`              | string | No       | `claude-code`  | Agent framework: `claude-code`. See [Model Selection](/docs/model-selection) |
 | `instructions`           | string | No       | -              | Path to instruction file (e.g., `AGENTS.md`). See [Instructions](/docs/core-concept/instructions) |
 | `skills`                 | array  | No       | `[]`           | List of skill references. Supports bare names (e.g., `"slack"`) which resolve to `https://github.com/vm0-ai/vm0-skills/tree/main/slack`, or full GitHub URLs. See [Skills](/docs/core-concept/skills) |
 | `volumes`                | array  | No       | `[]`           | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |

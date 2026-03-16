@@ -184,7 +184,6 @@ export function LogDetailContent() {
       )}
 
       <AgentEventsCard
-        framework={detail.framework}
         prompt={detail.prompt}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}

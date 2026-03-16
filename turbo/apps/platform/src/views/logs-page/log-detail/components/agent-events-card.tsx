@@ -21,13 +21,11 @@ import {
 } from "../utils.ts";
 
 export function AgentEventsCard({
-  framework,
   prompt,
   searchTerm,
   setSearchTerm,
   className,
 }: {
-  framework: string | null;
   prompt: string;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -42,8 +40,6 @@ export function AgentEventsCard({
   const setCurrentMatchIdx = useSet(currentMatchIndex$);
   const totalMatches = useGet(totalMatchCount$);
   const setTotalMatches = useSet(totalMatchCount$);
-
-  const isCodex = framework === "codex";
 
   const scrollToMatchByIndex = (matchIndex: number) => {
     const container = document.getElementById(EVENTS_CONTAINER_ID);
@@ -162,9 +158,7 @@ export function AgentEventsCard({
                 hasSearchTerm={searchTerm.trim().length > 0}
               />
             </div>
-            {!isCodex && (
-              <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
-            )}
+            <ViewModeToggle mode={viewMode} setMode={handleViewModeChange} />
           </div>
         </div>
 
@@ -176,7 +170,7 @@ export function AgentEventsCard({
             <div className="py-8 text-center text-muted-foreground">
               No events available
             </div>
-          ) : !isCodex && viewMode === "formatted" ? (
+          ) : viewMode === "formatted" ? (
             <>
               <FormattedEventsView
                 events={events}
