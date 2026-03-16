@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.28.2...runner-rs-v0.29.0) (2026-03-16)
+
+
+### Features
+
+* **runner:** add profile definitions and multi-profile build pipeline ([#4952](https://github.com/vm0-ai/vm0/issues/4952)) ([0263ddd](https://github.com/vm0-ai/vm0/commit/0263ddd26ff25bf3c3e82ca66242b5bfa73e2466)), closes [#4941](https://github.com/vm0-ai/vm0/issues/4941)
+
 ## [0.28.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.28.1...runner-rs-v0.28.2) (2026-03-16)
 
 

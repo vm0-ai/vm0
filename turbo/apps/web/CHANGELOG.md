@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.116.3](https://github.com/vm0-ai/vm0/compare/web-v12.116.2...web-v12.116.3) (2026-03-16)
+
+
+### Bug Fixes
+
+* model provider auto-default, onboarding, profile save, and slack install flow ([#4967](https://github.com/vm0-ai/vm0/issues/4967)) ([5d6c132](https://github.com/vm0-ai/vm0/commit/5d6c1327f8f4f41fa44bf5753030db67867d0a75))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.71.3
+
 ## [12.116.2](https://github.com/vm0-ai/vm0/compare/web-v12.116.1...web-v12.116.2) (2026-03-16)
 
 
