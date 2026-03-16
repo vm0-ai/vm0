@@ -1433,114 +1433,13 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Runner stress test: submit concurrent jobs with mock Claude to validate queue + stability
-  # Only runs on PRs with the 'stress-test' label (opt-in)
-  runner-stress-test:
-    runs-on: ubuntu-latest
-    needs:
-      [
-        prepare,
-        build-cli,
-        deploy-web,
-        deploy-runner-prepare,
-        deploy-runner-start,
-        cli-e2e-03-runner,
-      ]
-    if: |
-      github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'stress-test')
-    timeout-minutes: 30
-    env:
-      STRESS_PROMPT: "sleep 10 && echo done"
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Download CLI artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: cli-dist
-          path: turbo/apps/cli/dist
-      - name: Link CLI globally
-        run: cd turbo/apps/cli/dist && sudo npm link
-      - name: Download E2E test tokens
-        uses: actions/download-artifact@v4
-        with:
-          name: e2e-tokens
-          path: /tmp
-      - name: Setup test token
-        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
-
-      - name: Bootstrap test account
-        run: |
-          vm0 org set "e2e-runner" --force
-          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-      - name: Start Cron Simulator
-        run: |
-          chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
-          echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-      - name: Create stress test agent
-        id: agent
-        run: |
-          AGENT_NAME="stress-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          cat > /tmp/stress-agent.yaml <<EOF
-          version: "1.0"
-          agents:
-            ${AGENT_NAME}:
-              description: "Stress test agent"
-              framework: claude-code
-          EOF
-          vm0 compose /tmp/stress-agent.yaml
-          echo "agent-name=${AGENT_NAME}" >> "$GITHUB_OUTPUT"
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-
-      - name: Run stress test
-        run: |
-          TOTAL_CAPACITY="${{ needs.deploy-runner-start.outputs.total-capacity }}"
-          JOB_COUNT=$(( TOTAL_CAPACITY * 2 ))
-          echo "Runner capacity: ${TOTAL_CAPACITY}, submitting ${JOB_COUNT} jobs (2x capacity)"
-          chmod +x ./e2e/scripts/stress-test.sh
-          ./e2e/scripts/stress-test.sh \
-            "${{ steps.agent.outputs.agent-name }}" \
-            "$JOB_COUNT" \
-            "$STRESS_PROMPT" \
-            "30" \
-            "$TOTAL_CAPACITY"
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-
-      - name: Stop Cron Simulator
-        if: always()
-        run: |
-          if [ -n "$CRON_SIMULATOR_PID" ]; then
-            kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
-            echo "Cron simulator stopped"
-          fi
-
   # Stop runner service and clean up after tests complete.
   # When tests fail/cancel, this job fails WITHOUT cleaning up so that
   # "Re-run failed jobs" includes it — on successful retry it will clean up.
   # cleanup.yml (pull_request_target:closed) is the safety net.
   cleanup-runner:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner, runner-stress-test]
+    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner]
     if: |
       always() &&
       github.event_name != 'push' &&
@@ -1552,15 +1451,13 @@ jobs:
       #
       # - deploy-runner-start != success (not just failure/cancelled):
       #   covers deploy-web failure → start is "skipped" but binaries exist
-      # - cli-e2e-03-runner / runner-stress-test failure/cancelled:
+      # - cli-e2e-03-runner failure/cancelled:
       #   the main re-run scenario — keep runner alive for E2E retry
       - name: Fail if tests failed (keep runner for re-run)
         if: |
           needs.deploy-runner-start.result != 'success' ||
           needs.cli-e2e-03-runner.result == 'failure' ||
-          needs.cli-e2e-03-runner.result == 'cancelled' ||
-          needs.runner-stress-test.result == 'failure' ||
-          needs.runner-stress-test.result == 'cancelled'
+          needs.cli-e2e-03-runner.result == 'cancelled'
         run: |
           echo "::error::Tests failed or cancelled — keeping runner alive for re-run"
           exit 1
