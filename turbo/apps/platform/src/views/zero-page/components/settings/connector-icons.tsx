@@ -203,16 +203,16 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   zeptomail: zeptomailIcon,
 });
 
-const MONOCHROME_ICONS: Readonly<Record<string, true>> = Object.freeze({
-  agentmail: true,
-  "bright-data": true,
-  dify: true,
-  github: true,
-  hume: true,
-  notion: true,
-  openai: true,
-  x: true,
-});
+const MONOCHROME_ICONS: ReadonlySet<ConnectorType> = new Set([
+  "agentmail",
+  "bright-data",
+  "dify",
+  "github",
+  "hume",
+  "notion",
+  "openai",
+  "x",
+]);
 
 export function ConnectorIcon({
   type,
@@ -228,7 +228,7 @@ export function ConnectorIcon({
       width={size}
       height={size}
       alt=""
-      className={cn("shrink-0", type in MONOCHROME_ICONS && "zero-icon-mono")}
+      className={cn("shrink-0", MONOCHROME_ICONS.has(type) && "zero-icon-mono")}
     />
   );
 }

@@ -44,7 +44,7 @@ function AppearanceSettings() {
         Choose how the interface looks.
       </p>
       <div
-        className="flex items-center gap-4 p-4 rounded-xl"
+        className="flex items-center gap-4 bg-card p-4 rounded-xl"
         style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       >
         <div className="shrink-0">
