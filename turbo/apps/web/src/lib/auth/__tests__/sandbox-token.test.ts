@@ -123,6 +123,59 @@ describe("sandbox-token", () => {
     });
   });
 
+  describe("capabilities", () => {
+    it("should include capabilities in verified token", async () => {
+      const capabilities = ["volume:read", "artifact:write"];
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        capabilities,
+      );
+      const auth = verifySandboxToken(token);
+
+      expect(auth).not.toBeNull();
+      expect(auth?.userId).toBe("user-123");
+      expect(auth?.runId).toBe("run-456");
+      expect(auth?.capabilities).toEqual(["volume:read", "artifact:write"]);
+    });
+
+    it("should work without capabilities (backward compat)", async () => {
+      const token = await generateSandboxToken("user-123", "run-456");
+      const auth = verifySandboxToken(token);
+
+      expect(auth).not.toBeNull();
+      expect(auth?.userId).toBe("user-123");
+      expect(auth?.capabilities).toBeUndefined();
+    });
+
+    it("should treat empty capabilities array as undefined", async () => {
+      const token = await generateSandboxToken("user-123", "run-456", []);
+      const auth = verifySandboxToken(token);
+
+      expect(auth).not.toBeNull();
+      expect(auth?.capabilities).toBeUndefined();
+    });
+
+    it("should roundtrip all valid capabilities", async () => {
+      const capabilities = [
+        "volume:read",
+        "volume:write",
+        "artifact:read",
+        "artifact:write",
+        "memory:read",
+        "memory:write",
+      ];
+      const token = await generateSandboxToken(
+        "user-123",
+        "run-456",
+        capabilities,
+      );
+      const auth = verifySandboxToken(token);
+
+      expect(auth?.capabilities).toEqual(capabilities);
+    });
+  });
+
   describe("roundtrip", () => {
     it("should correctly roundtrip userId and runId", async () => {
       const testCases = [

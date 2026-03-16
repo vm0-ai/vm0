@@ -541,12 +541,16 @@ async function buildAndDispatchRun(opts: {
   const { userId, agentComposeVersionId, prompt } = params;
 
   try {
+    // Extract capabilities from compose content for sandbox token
+    const capabilities = Object.values(composeContent.agents)[0]
+      ?.experimental_capabilities;
+
     // Register callbacks and generate sandbox token in parallel (independent operations)
     const [, sandboxToken] = await Promise.all([
       params.callbacks && params.callbacks.length > 0
         ? registerCallbacks(runId, params.callbacks)
         : null,
-      generateSandboxToken(userId, runId),
+      generateSandboxToken(userId, runId, capabilities),
     ]);
     const tokenTime = Date.now();
 

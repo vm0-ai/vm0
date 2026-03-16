@@ -11,6 +11,7 @@ interface SandboxTokenPayload {
   userId: string;
   runId: string;
   scope: "sandbox";
+  capabilities?: string[];
   iat: number;
   exp: number;
 }
@@ -32,6 +33,7 @@ interface ComposeJobTokenPayload {
 export interface SandboxAuth {
   userId: string;
   runId: string;
+  capabilities?: string[];
 }
 
 /**
@@ -150,6 +152,7 @@ function verifyJwt(token: string): SandboxTokenPayload | null {
 export async function generateSandboxToken(
   userId: string,
   runId: string,
+  capabilities?: string[],
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiresIn = 2 * 60 * 60; // 2 hours in seconds
@@ -158,6 +161,7 @@ export async function generateSandboxToken(
     userId,
     runId,
     scope: "sandbox",
+    ...(capabilities && capabilities.length > 0 ? { capabilities } : {}),
     iat: now,
     exp: now + expiresIn,
   };
@@ -182,6 +186,7 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
   return {
     userId: payload.userId,
     runId: payload.runId,
+    ...(payload.capabilities ? { capabilities: payload.capabilities } : {}),
   };
 }
 
