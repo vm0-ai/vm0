@@ -36,7 +36,7 @@ export const composeJobSourceSchema = z.enum(["github", "platform", "slack"]);
  */
 export const createComposeJobRequestSchema = z.union([
   z.object({
-    githubUrl: z.string().url().startsWith("https://github.com/"),
+    githubUrl: z.url().check(z.startsWith("https://github.com/")),
     overwrite: z.boolean().optional().default(false),
   }),
   z.object({

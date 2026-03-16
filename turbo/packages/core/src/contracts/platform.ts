@@ -140,7 +140,7 @@ export const platformLogsByIdContract = c.router({
  * Artifact download URL response schema
  */
 const artifactDownloadResponseSchema = z.object({
-  url: z.string().url(),
+  url: z.url(),
   expiresAt: z.string(),
 });
 
