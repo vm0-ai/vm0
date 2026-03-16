@@ -1030,6 +1030,13 @@
       "when": 1773648606281,
       "tag": "0146_clever_princess_powerful",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1773650787446,
+      "tag": "0147_drop_old_slack_tables",
+      "breakpoints": true
     }
   ]
 }

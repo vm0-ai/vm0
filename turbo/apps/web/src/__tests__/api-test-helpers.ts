@@ -2233,29 +2233,6 @@ export async function findTestSlackOrgConnections(
 }
 
 /**
- * Insert an agent permission directly in the database.
- *
- * Direct DB insert is required because the permissions API route uses the
- * current user as grantedBy. Tests that simulate permissions granted by
- * external flows (e.g., CLI share) need to set arbitrary grantedBy values.
- */
-export async function insertTestAgentPermission(
-  composeId: string,
-  granteeEmail: string,
-  grantedBy: string,
-) {
-  await globalThis.services.db
-    .insert(agentPermissions)
-    .values({
-      agentComposeId: composeId,
-      granteeType: "email",
-      granteeEmail,
-      grantedBy,
-    })
-    .onConflictDoNothing();
-}
-
-/**
  * Find a compose record with its org details.
  *
  * Direct DB read is required because the compose API does not expose
