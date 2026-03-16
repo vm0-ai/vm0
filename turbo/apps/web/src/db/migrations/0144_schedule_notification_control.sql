@@ -1,0 +1,2 @@
+ALTER TABLE "agent_schedules" ADD COLUMN IF NOT EXISTS "notify_email" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "agent_schedules" ADD COLUMN IF NOT EXISTS "notify_slack" boolean DEFAULT true NOT NULL;
