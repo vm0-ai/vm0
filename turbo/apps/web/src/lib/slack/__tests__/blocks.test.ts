@@ -135,16 +135,16 @@ describe("detectDeepLinks", () => {
     });
   });
 
-  it("should detect secrets/variables keywords", () => {
+  it("should detect secrets/variables keywords as connector links", () => {
     const links = detectDeepLinks(
       "Error: missing variable DATABASE_URL",
       platformUrl,
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
-      emoji: "🔒",
-      label: "Manage secrets & variables",
-      url: `${platformUrl}/settings?tab=secrets-and-variables`,
+      emoji: "🔌",
+      label: "Configure connectors",
+      url: `${platformUrl}/settings?tab=connectors`,
     });
   });
 
@@ -177,7 +177,7 @@ describe("detectDeepLinks", () => {
   it("should match case-insensitively", () => {
     const links = detectDeepLinks("API_KEY is not configured", platformUrl);
     expect(links).toHaveLength(1);
-    expect(links[0]?.label).toBe("Manage secrets & variables");
+    expect(links[0]?.label).toBe("Configure connectors");
   });
 
   it("should deduplicate by path", () => {
@@ -186,9 +186,7 @@ describe("detectDeepLinks", () => {
       platformUrl,
     );
     expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(
-      `${platformUrl}/settings?tab=secrets-and-variables`,
-    );
+    expect(links[0]?.url).toBe(`${platformUrl}/settings?tab=connectors`);
   });
 
   it("should return multiple links for different destinations", () => {
@@ -196,10 +194,9 @@ describe("detectDeepLinks", () => {
       "The model provider is missing. Also SLACK_BOT_TOKEN is not set and the MCP server is down.",
       platformUrl,
     );
-    expect(links).toHaveLength(4);
+    expect(links).toHaveLength(3);
     const urls = links.map((l) => l.url);
     expect(urls).toContain(`${platformUrl}/settings`);
-    expect(urls).toContain(`${platformUrl}/settings?tab=secrets-and-variables`);
     expect(urls).toContain(`${platformUrl}/settings/slack`);
     expect(urls).toContain(`${platformUrl}/settings?tab=connectors`);
   });
@@ -212,8 +209,8 @@ describe("detectDeepLinks", () => {
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
-      emoji: "🔒",
-      label: "Manage secrets & variables",
+      emoji: "🔌",
+      label: "Configure connectors",
       url: `${platformUrl}/agents/my-agent/connections`,
     });
   });

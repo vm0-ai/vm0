@@ -498,18 +498,7 @@ export function buildAgentResponseMessage(
   logsUrl?: string,
   deepLinks?: DeepLink[],
 ): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `:robot_face: *${agentName}*`,
-        },
-      ],
-    },
-    ...buildMarkdownMessage(content),
-  ];
+  const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
   // Add deep links if any keywords matched
   if (deepLinks && deepLinks.length > 0) {

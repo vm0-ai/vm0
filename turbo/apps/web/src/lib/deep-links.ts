@@ -34,11 +34,15 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
       "api_key",
       "apikey",
       "not set",
+      "connector",
+      "mcp server",
+      "tool not available",
+      "tool not found",
     ],
-    label: "Manage secrets & variables",
-    path: "/settings?tab=secrets-and-variables",
+    label: "Configure connectors",
+    path: "/settings?tab=connectors",
     agentPath: "/agents/:name/connections",
-    emoji: "🔒",
+    emoji: "🔌",
   },
   {
     keywords: [
@@ -50,18 +54,6 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
     label: "Slack settings",
     path: "/settings/slack",
     emoji: "⚙️",
-  },
-  {
-    keywords: [
-      "connector",
-      "mcp server",
-      "tool not available",
-      "tool not found",
-    ],
-    label: "Configure connectors",
-    path: "/settings?tab=connectors",
-    agentPath: "/agents/:name/connections",
-    emoji: "🔌",
   },
 ]);
 
