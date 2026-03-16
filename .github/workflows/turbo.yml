@@ -1519,6 +1519,8 @@ jobs:
   # dependencies fail, and GitHub treats "skipped" as passing — defeating the purpose.
   ci-gate:
     runs-on: ubuntu-latest
+    # Note: cleanup-runner is intentionally excluded — it's a post-test
+    # side-effect job, not a quality gate.
     needs:
       - prepare
       - file-size-check
@@ -1559,7 +1561,11 @@ jobs:
             elif [ "$allow_skip" = "true" ] && [ "$result" = "skipped" ]; then
               echo "⏭️ $job: $result (allowed)"
             else
-              echo "::error::$job: expected ${allow_skip:+success or skipped}${allow_skip:-success}, got $result"
+              if [ "$allow_skip" = "true" ]; then
+                echo "::error::$job: expected success or skipped, got $result"
+              else
+                echo "::error::$job: expected success, got $result"
+              fi
               FAILED=1
             fi
           }
