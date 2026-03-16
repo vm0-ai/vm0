@@ -739,6 +739,8 @@ describe("createRun()", () => {
         ANTHROPIC_AUTH_TOKEN: "test-gateway-key",
         ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
         ANTHROPIC_API_KEY: "",
+        ANTHROPIC_MODEL: "moonshotai/kimi-k2.5",
+        ANTHROPIC_CUSTOM_HEADERS: "x-ai-gateway-providers-only: moonshot",
       });
     });
   });
