@@ -176,7 +176,7 @@ Edit these files (use existing connectors like `twenty`, `qiita`, `zeptomail` as
 
 - **SERVICE_CONFIGS** — Add service configuration if the API uses header-based auth:
   - Bearer auth: `api("https://api.example.com", bearerAuth("XXX_TOKEN"))`
-  - Custom header: `api("https://api.example.com", { headers: { "x-api-key": "${secrets.XXX_TOKEN}" } })`
+  - Custom header: `api("https://api.example.com", { headers: { "x-api-key": "${{ secrets.XXX_TOKEN }}" } })`
   - **Skip** if auth is query-param-based or requires base64 encoding (Basic auth)
 
 #### 4b. `turbo/apps/web/src/lib/connector/providers/<name>-handler.ts` (new file)

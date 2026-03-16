@@ -968,7 +968,7 @@ mod tests {
                 auth: crate::types::ServiceApiAuth {
                     headers: std::collections::HashMap::from([(
                         "Authorization".into(),
-                        "Bearer ${secrets.GMAIL_TOKEN}".into(),
+                        "Bearer ${{ secrets.GMAIL_TOKEN }}".into(),
                     )]),
                 },
                 permissions: None,
@@ -1001,7 +1001,7 @@ mod tests {
                     "base": "https://api.github.com",
                     "auth": {
                         "headers": {
-                            "Authorization": "Bearer ${secrets.GITHUB_TOKEN}"
+                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
                         }
                     },
                     "permissions": [

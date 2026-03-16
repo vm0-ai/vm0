@@ -791,7 +791,7 @@ mod tests {
                 auth: crate::types::ServiceApiAuth {
                     headers: std::collections::HashMap::from([(
                         "Authorization".to_string(),
-                        "Bearer ${secrets.GMAIL_TOKEN}".to_string(),
+                        "Bearer ${{ secrets.GMAIL_TOKEN }}".to_string(),
                     )]),
                 },
                 permissions: Some(vec![crate::types::ServiceApiPermission {

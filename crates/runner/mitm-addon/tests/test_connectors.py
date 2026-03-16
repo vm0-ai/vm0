@@ -362,7 +362,7 @@ class TestGetServiceHeaders:
         mock_headers = {"Authorization": "Bearer fresh-token"}
         mock_result = {"headers": mock_headers}
         encrypted = "iv:tag:data"
-        auth_templates = {"Authorization": "Bearer ${secrets.TOKEN}"}
+        auth_templates = {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
 
         with patch.object(mitm_addon, "fetch_service_headers", return_value=mock_result) as mock_fetch:
             headers = mitm_addon.get_service_headers("run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz")
@@ -449,7 +449,7 @@ class TestHandleServiceRequest:
 
     def test_success_injects_headers_and_audit_metadata(self):
         flow = _make_http_flow()
-        api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}}}
+        api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}}
         vm_info = {
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
@@ -555,7 +555,7 @@ class TestFetchServiceHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", ""),
         ):
-            result = mitm_addon.fetch_service_headers("iv:tag:data", {"Authorization": "Bearer ${secrets.TOKEN}"}, "tok-xyz")
+            result = mitm_addon.fetch_service_headers("iv:tag:data", {"Authorization": "Bearer ${{ secrets.TOKEN }}"}, "tok-xyz")
 
         assert result == {"headers": {"Authorization": "Bearer tok"}}
 
@@ -565,7 +565,7 @@ class TestFetchServiceHeaders:
         assert call_args[0][0] == "https://api.vm0.ai/api/webhooks/agent/services/auth"
         body = json.loads(call_args[1]["data"])
         assert body["encryptedSecrets"] == "iv:tag:data"
-        assert body["authHeaders"] == {"Authorization": "Bearer ${secrets.TOKEN}"}
+        assert body["authHeaders"] == {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
         assert "runId" not in body
         assert "base" not in body
         assert call_args[1]["headers"]["Authorization"] == "Bearer tok-xyz"

@@ -9,7 +9,7 @@ describe("getServiceConfig", () => {
     expect(config).toBeDefined();
     expect(config!.apis[0]!.base).toBe("https://api.github.com");
     expect(config!.apis[0]!.auth.headers.Authorization).toBe(
-      "Bearer ${secrets.GITHUB_TOKEN}",
+      "Bearer ${{ secrets.GITHUB_TOKEN }}",
     );
     expect(config!.placeholders).toEqual({
       GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000",

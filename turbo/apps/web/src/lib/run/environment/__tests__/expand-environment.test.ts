@@ -26,7 +26,9 @@ const githubService: ExpandedServiceConfig = {
   apis: [
     {
       base: "https://api.github.com",
-      auth: { headers: { Authorization: "Bearer ${secrets.GITHUB_TOKEN}" } },
+      auth: {
+        headers: { Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}" },
+      },
     },
   ],
   placeholders: { GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000" },
@@ -38,7 +40,7 @@ const slackService: ExpandedServiceConfig = {
   apis: [
     {
       base: "https://slack.com/api",
-      auth: { headers: { Authorization: "Bearer ${secrets.SLACK_TOKEN}" } },
+      auth: { headers: { Authorization: "Bearer ${{ secrets.SLACK_TOKEN }}" } },
     },
   ],
   placeholders: { SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder" },
@@ -50,7 +52,9 @@ const airtableService: ExpandedServiceConfig = {
   apis: [
     {
       base: "https://api.airtable.com",
-      auth: { headers: { Authorization: "Bearer ${secrets.AIRTABLE_TOKEN}" } },
+      auth: {
+        headers: { Authorization: "Bearer ${{ secrets.AIRTABLE_TOKEN }}" },
+      },
     },
   ],
 };

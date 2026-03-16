@@ -53,7 +53,7 @@ function processSecretValues(
 /**
  * Build service placeholder map keyed by canonical secret name.
  * Reads pre-expanded service configs and extracts secret names from auth templates
- * (`${secrets.XXX}`), then maps each to a placeholder value (custom or auto-generated).
+ * (`${{ secrets.XXX }}`), then maps each to a placeholder value (custom or auto-generated).
  */
 function buildServicePlaceholders(
   expandedServices: ExpandedServiceConfig[],

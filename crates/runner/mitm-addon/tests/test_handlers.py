@@ -140,7 +140,7 @@ class TestRequestHandler:
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
                                 "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
                             },
                         ]},
@@ -189,7 +189,7 @@ class TestRequestHandler:
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
                                 "permissions": [
                                     {"name": "read-repos", "rules": ["GET /repos/{owner}/{repo}"]},
                                 ],
@@ -237,7 +237,7 @@ class TestRequestHandler:
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
                                 "permissions": [
                                     {"name": "read-repos", "rules": ["GET /repos/{owner}/{repo}"]},
                                 ],
@@ -333,7 +333,7 @@ class TestRequestHandler:
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${secrets.GITHUB_TOKEN}"}},
+                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
                                 "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
                             },
                         ]},

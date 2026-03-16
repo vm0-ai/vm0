@@ -104,7 +104,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
         makeRequest(
           {
             encryptedSecrets: "not-valid-encrypted-data",
-            authHeaders: { Authorization: "Bearer ${secrets.TOKEN}" },
+            authHeaders: { Authorization: "Bearer ${{ secrets.TOKEN }}" },
           },
           testToken,
         ),
@@ -124,7 +124,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.GITHUB_TOKEN}",
+              Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",
             },
           },
           testToken,
@@ -150,8 +150,8 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              "X-Api-Key": "${secrets.API_KEY}",
-              "X-Api-Secret": "${secrets.API_SECRET}",
+              "X-Api-Key": "${{ secrets.API_KEY }}",
+              "X-Api-Secret": "${{ secrets.API_SECRET }}",
             },
           },
           testToken,
@@ -174,7 +174,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.UNKNOWN_KEY}",
+              Authorization: "Bearer ${{ secrets.UNKNOWN_KEY }}",
             },
           },
           testToken,
@@ -273,7 +273,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.NOTION_ACCESS_TOKEN}",
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
             },
             secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
           },
@@ -316,7 +316,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.NOTION_ACCESS_TOKEN}",
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
             },
             secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
           },
@@ -346,7 +346,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.NOTION_ACCESS_TOKEN}",
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
             },
             secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
           },
@@ -377,7 +377,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.NOTION_ACCESS_TOKEN}",
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
             },
             secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
           },
@@ -401,7 +401,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.GITHUB_TOKEN}",
+              Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",
             },
           },
           testToken,
@@ -438,7 +438,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.NOTION_ACCESS_TOKEN}",
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
             },
             secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
           },
@@ -480,7 +480,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
           {
             encryptedSecrets: encrypted,
             authHeaders: {
-              Authorization: "Bearer ${secrets.NOTION_ACCESS_TOKEN}",
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
             },
             secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
           },

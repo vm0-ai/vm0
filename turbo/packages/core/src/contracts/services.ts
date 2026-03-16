@@ -7,7 +7,7 @@ import type { ConnectorType } from "./connectors";
  * are constructed. Used by the proxy to intercept requests matching a
  * connector's base URLs and replace placeholder tokens with real credentials.
  *
- * `${secrets.XXX}` in header values is replaced by the proxy with the real secret value.
+ * `${{ secrets.XXX }}` in header values is replaced by the proxy with the real secret value.
  *
  * NOTE: Currently hardcoded in SERVICE_CONFIGS below.
  * Will be migrated to GitHub-hosted connector.yaml definitions in Phase 2.
@@ -35,7 +35,7 @@ export interface ServiceConfig {
   description?: string;
   apis: ServiceApi[];
   /**
-   * Custom placeholder values keyed by secret name (matching `${secrets.XXX}` in auth templates).
+   * Custom placeholder values keyed by secret name (matching `${{ secrets.XXX }}` in auth templates).
    * Falls back to auto-generated `VM0_PLACEHOLDER_{secretName}`.
    * Only needed when the service requires a specific credential format (e.g., GitHub's `gho_` prefix).
    */
@@ -43,13 +43,15 @@ export interface ServiceConfig {
 }
 
 /**
- * Regex pattern matching `${secrets.XXX}` references in auth header templates.
+ * Regex pattern matching `${{ secrets.XXX }}` references in auth header templates.
+ * Tolerates optional whitespace inside braces: `${{ secrets.X }}` and `${{secrets.X}}`.
  */
-const AUTH_SECRET_PATTERN = /\$\{secrets\.([^}]+)\}/g;
+const AUTH_SECRET_PATTERN =
+  /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
  * Extract all secret names referenced in service API auth header templates.
- * E.g., `Bearer ${secrets.GITHUB_TOKEN}` → `["GITHUB_TOKEN"]`
+ * E.g., `Bearer ${{ secrets.GITHUB_TOKEN }}` → `["GITHUB_TOKEN"]`
  */
 export function extractSecretNamesFromApis(
   apis: ServiceConfig["apis"],
@@ -67,7 +69,7 @@ export function extractSecretNamesFromApis(
 
 /** Helper to build standard Bearer auth header with a secret reference. */
 function bearerAuth(secretName: string) {
-  return { headers: { Authorization: `Bearer \${secrets.${secretName}}` } };
+  return { headers: { Authorization: `Bearer \${{ secrets.${secretName} }}` } };
 }
 
 /** Default catch-all permission for services without granular permissions. */
@@ -243,7 +245,7 @@ const SERVICE_CONFIGS: Partial<
     apis: [
       api("https://api.notion.com/v1", {
         headers: {
-          Authorization: "Bearer ${secrets.NOTION_TOKEN}",
+          Authorization: "Bearer ${{ secrets.NOTION_TOKEN }}",
           "Notion-Version": "2022-06-28",
         },
       }),
@@ -295,14 +297,14 @@ const SERVICE_CONFIGS: Partial<
   hume: {
     apis: [
       api("https://api.hume.ai", {
-        headers: { "X-Hume-Api-Key": "${secrets.HUME_TOKEN}" },
+        headers: { "X-Hume-Api-Key": "${{ secrets.HUME_TOKEN }}" },
       }),
     ],
   },
   heygen: {
     apis: [
       api("https://api.heygen.com", {
-        headers: { "x-api-key": "${secrets.HEYGEN_TOKEN}" },
+        headers: { "x-api-key": "${{ secrets.HEYGEN_TOKEN }}" },
       }),
     ],
   },
@@ -347,12 +349,12 @@ const SERVICE_CONFIGS: Partial<
     apis: [
       api("https://api.jotform.com", {
         headers: {
-          APIKEY: "${secrets.JOTFORM_TOKEN}",
+          APIKEY: "${{ secrets.JOTFORM_TOKEN }}",
         },
       }),
       api("https://eu-api.jotform.com", {
         headers: {
-          APIKEY: "${secrets.JOTFORM_TOKEN}",
+          APIKEY: "${{ secrets.JOTFORM_TOKEN }}",
         },
       }),
     ],
@@ -364,22 +366,22 @@ const SERVICE_CONFIGS: Partial<
     apis: [
       api("https://eu1.make.com/api/v2", {
         headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+          Authorization: "Token ${{ secrets.MAKE_TOKEN }}",
         },
       }),
       api("https://eu2.make.com/api/v2", {
         headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+          Authorization: "Token ${{ secrets.MAKE_TOKEN }}",
         },
       }),
       api("https://us1.make.com/api/v2", {
         headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+          Authorization: "Token ${{ secrets.MAKE_TOKEN }}",
         },
       }),
       api("https://us2.make.com/api/v2", {
         headers: {
-          Authorization: "Token ${secrets.MAKE_TOKEN}",
+          Authorization: "Token ${{ secrets.MAKE_TOKEN }}",
         },
       }),
     ],
@@ -388,7 +390,7 @@ const SERVICE_CONFIGS: Partial<
     apis: [
       api("https://api.metabase.com", {
         headers: {
-          "x-api-key": "${secrets.METABASE_TOKEN}",
+          "x-api-key": "${{ secrets.METABASE_TOKEN }}",
         },
       }),
     ],
@@ -484,7 +486,7 @@ const SERVICE_CONFIGS: Partial<
   similarweb: {
     apis: [
       api("https://api.similarweb.com", {
-        headers: { "api-key": "${secrets.SIMILARWEB_API_KEY}" },
+        headers: { "api-key": "${{ secrets.SIMILARWEB_API_KEY }}" },
       }),
     ],
   },
@@ -514,14 +516,14 @@ const SERVICE_CONFIGS: Partial<
   pdf4me: {
     apis: [
       api("https://api.pdf4me.com", {
-        headers: { Authorization: "${secrets.PDF4ME_TOKEN}" },
+        headers: { Authorization: "${{ secrets.PDF4ME_TOKEN }}" },
       }),
     ],
   },
   pdfco: {
     apis: [
       api("https://api.pdf.co/v1", {
-        headers: { "x-api-key": "${secrets.PDFCO_TOKEN}" },
+        headers: { "x-api-key": "${{ secrets.PDFCO_TOKEN }}" },
       }),
     ],
   },
@@ -534,7 +536,7 @@ const SERVICE_CONFIGS: Partial<
   browserbase: {
     apis: [
       api("https://api.browserbase.com/v1", {
-        headers: { "X-BB-API-Key": "${secrets.BROWSERBASE_TOKEN}" },
+        headers: { "X-BB-API-Key": "${{ secrets.BROWSERBASE_TOKEN }}" },
       }),
     ],
   },
@@ -546,7 +548,7 @@ const SERVICE_CONFIGS: Partial<
   explorium: {
     apis: [
       api("https://api.explorium.ai", {
-        headers: { api_key: "${secrets.EXPLORIUM_TOKEN}" },
+        headers: { api_key: "${{ secrets.EXPLORIUM_TOKEN }}" },
       }),
     ],
   },
@@ -556,21 +558,21 @@ const SERVICE_CONFIGS: Partial<
   scrapeninja: {
     apis: [
       api("https://scrapeninja.p.rapidapi.com", {
-        headers: { "X-RapidAPI-Key": "${secrets.SCRAPENINJA_TOKEN}" },
+        headers: { "X-RapidAPI-Key": "${{ secrets.SCRAPENINJA_TOKEN }}" },
       }),
     ],
   },
   elevenlabs: {
     apis: [
       api("https://api.elevenlabs.io", {
-        headers: { "xi-api-key": "${secrets.ELEVENLABS_TOKEN}" },
+        headers: { "xi-api-key": "${{ secrets.ELEVENLABS_TOKEN }}" },
       }),
     ],
   },
   devto: {
     apis: [
       api("https://dev.to/api", {
-        headers: { "api-key": "${secrets.DEVTO_TOKEN}" },
+        headers: { "api-key": "${{ secrets.DEVTO_TOKEN }}" },
       }),
     ],
   },
@@ -586,7 +588,7 @@ const SERVICE_CONFIGS: Partial<
   qdrant: {
     apis: [
       api("https://cloud.qdrant.io", {
-        headers: { "api-key": "${secrets.QDRANT_TOKEN}" },
+        headers: { "api-key": "${{ secrets.QDRANT_TOKEN }}" },
       }),
     ],
   },
@@ -602,7 +604,7 @@ const SERVICE_CONFIGS: Partial<
     apis: [
       api("https://api.zeptomail.com/v1.1", {
         headers: {
-          Authorization: "Zoho-enczapikey ${secrets.ZEPTOMAIL_TOKEN}",
+          Authorization: "Zoho-enczapikey ${{ secrets.ZEPTOMAIL_TOKEN }}",
         },
       }),
     ],
@@ -613,14 +615,14 @@ const SERVICE_CONFIGS: Partial<
   shortio: {
     apis: [
       api("https://api.short.io", {
-        headers: { Authorization: "${secrets.SHORTIO_TOKEN}" },
+        headers: { Authorization: "${{ secrets.SHORTIO_TOKEN }}" },
       }),
     ],
   },
   supadata: {
     apis: [
       api("https://api.supadata.ai/v1", {
-        headers: { "x-api-key": "${secrets.SUPADATA_TOKEN}" },
+        headers: { "x-api-key": "${{ secrets.SUPADATA_TOKEN }}" },
       }),
     ],
   },
@@ -630,7 +632,7 @@ const SERVICE_CONFIGS: Partial<
   tldv: {
     apis: [
       api("https://pasta.tldv.io", {
-        headers: { "x-api-key": "${secrets.TLDV_TOKEN}" },
+        headers: { "x-api-key": "${{ secrets.TLDV_TOKEN }}" },
       }),
     ],
   },
