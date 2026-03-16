@@ -507,11 +507,6 @@ async function createTestComposeVersion(
 }
 
 /**
- * Create a run record directly in the database.
- * Use this when you need a run without going through the API route
- * (e.g., for webhook tests where Clerk auth is disabled).
- */
-/**
  * Create a run with no compose version (simulates deleted compose).
  * Useful for testing that endpoints handle orphan runs gracefully.
  */
@@ -533,6 +528,11 @@ export async function createOrphanTestRun(
   return { runId: run!.id };
 }
 
+/**
+ * Create a run record directly in the database.
+ * Use this when you need a run without going through the API route
+ * (e.g., for webhook tests where Clerk auth is disabled).
+ */
 async function createTestRunDirect(
   userId: string,
   versionId: string,

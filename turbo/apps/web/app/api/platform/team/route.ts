@@ -14,6 +14,7 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
+import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 
 function extractMetadata(content: unknown): {
   displayName: string | null;
@@ -93,11 +94,14 @@ export async function GET() {
   try {
     const orgData = await getOrgData(orgId);
     resolvedOrgId = orgData.orgId;
-  } catch {
-    return NextResponse.json(
-      { error: { message: "Organization not found", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
+  } catch (error) {
+    if (isNotFound(error) || isForbidden(error)) {
+      return NextResponse.json(
+        { error: { message: "Organization not found", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    }
+    throw error;
   }
 
   const composes = await globalThis.services.db
