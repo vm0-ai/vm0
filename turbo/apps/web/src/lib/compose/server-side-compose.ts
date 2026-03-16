@@ -217,7 +217,7 @@ export async function serverSideCompose(params: {
 
   // 4. Expand firewall configs (mutates in-place, so deep-clone first)
   const contentCopy = structuredClone(content);
-  expandFirewallConfigs(contentCopy);
+  await expandFirewallConfigs(contentCopy);
 
   // 5. Build resolved content with server-determined image and working_dir
   const agentsCopy = contentCopy.agents as Record<

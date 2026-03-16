@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { firewallPermissionSchema } from "./firewalls";
 
 const c = initContract();
 
@@ -40,17 +41,6 @@ export const VALID_CAPABILITIES = [
   "schedule:read",
   "schedule:write",
 ] as const;
-
-/**
- * Firewall permission schema for proxy-side token replacement.
- * Defined here (not in runners.ts) to avoid circular dependency:
- * composes.ts exports VALID_CAPABILITIES used by runners.ts.
- */
-export const firewallPermissionSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  rules: z.array(z.string()),
-});
 
 /**
  * Agent name validation schema
