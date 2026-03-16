@@ -59,7 +59,7 @@ export function NotificationSettings() {
               width={28}
               height={28}
               alt=""
-              className="opacity-50"
+              className="opacity-50 zero-icon-mono"
             />
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
