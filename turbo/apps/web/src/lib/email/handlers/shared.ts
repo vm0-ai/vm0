@@ -5,6 +5,7 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { getOrgBySlug } from "../../org/org-cache-service";
 import { env } from "../../../env";
 import { getPlatformUrl } from "../../url";
+import { getApiUrl } from "../../callback/dispatcher";
 import { enqueueEmail } from "../outbox-service";
 
 // ============================================================================
@@ -427,7 +428,7 @@ export function verifyUnsubscribeToken(token: string): string | null {
  */
 export function buildUnsubscribeUrl(userId: string): string {
   const token = generateUnsubscribeToken(userId);
-  return `${getPlatformUrl()}/api/email/unsubscribe?token=${token}`;
+  return `${getApiUrl()}/api/email/unsubscribe?token=${token}`;
 }
 
 /**
