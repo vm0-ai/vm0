@@ -542,8 +542,10 @@ async function buildAndDispatchRun(opts: {
 
   try {
     // Extract capabilities from compose content for sandbox token
-    const capabilities = Object.values(composeContent.agents)[0]
-      ?.experimental_capabilities;
+    const agents = composeContent.agents;
+    const capabilities = agents
+      ? Object.values(agents)[0]?.experimental_capabilities
+      : undefined;
 
     // Register callbacks and generate sandbox token in parallel (independent operations)
     const [, sandboxToken] = await Promise.all([
