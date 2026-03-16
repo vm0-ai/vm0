@@ -5,6 +5,7 @@ import {
   createTestCompose,
   createTestPermission,
   createTestSecret,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -15,6 +16,7 @@ import {
   mockClerk,
   MOCK_USER_EMAIL,
 } from "../../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -151,5 +153,54 @@ describe("GET /api/agent/schedules/missing-secrets", () => {
     );
     expect(agent).toBeDefined();
     expect(agent.missingSecrets).toContain("SHARED_KEY");
+  });
+});
+
+describe("GET /api/agent/schedules/missing-secrets - Sandbox Token Auth", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+  });
+
+  it("should accept sandbox token with schedule:read capability", async () => {
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "schedule:read",
+    ]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules/missing-secrets",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject sandbox token without schedule:read capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "volume:read",
+    ]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules/missing-secrets",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
   });
 });

@@ -5,9 +5,14 @@ import {
   createTestCompose,
   createTestSchedule,
   getTestScheduleRuns,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -120,5 +125,65 @@ describe("GET /api/agent/schedules/:name/runs", () => {
 
     expect(response.status).toBe(400);
     expect(data.error.message).toContain("composeId");
+  });
+});
+
+describe("GET /api/agent/schedules/:name/runs - Sandbox Token Auth", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(
+      `sandbox-runs-agent-${Date.now()}`,
+    );
+    testComposeId = composeId;
+  });
+
+  it("should accept sandbox token with schedule:read capability", async () => {
+    await createTestSchedule(testComposeId, "sandbox-runs-test", {
+      cronExpression: "0 9 * * *",
+      prompt: "Test",
+    });
+
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "schedule:read",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/sandbox-runs-test/runs?composeId=${testComposeId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject sandbox token without schedule:read capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "volume:read",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/any-schedule/runs?composeId=${testComposeId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
   });
 });

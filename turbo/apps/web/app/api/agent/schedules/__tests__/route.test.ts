@@ -8,6 +8,7 @@ import {
   listTestSchedules,
   createTestSecret,
   createTestVariable,
+  insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -15,6 +16,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -971,5 +973,137 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
 
     expect(response.status).toBe(400);
     expect(data.error.code).toBe("BAD_REQUEST");
+  });
+});
+
+describe("POST /api/agent/schedules - Sandbox Token Auth", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(
+      `sandbox-deploy-agent-${Date.now()}`,
+    );
+    testComposeId = composeId;
+
+    // Populate membership cache so resolveOrg works without Clerk session
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+
+    // Clear Clerk session so sandbox token path is exercised
+    mockClerk({ userId: null });
+  });
+
+  it("should accept sandbox token with schedule:write capability", async () => {
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "schedule:write",
+    ]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "sandbox-schedule",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Sandbox deploy test",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+  });
+
+  it("should reject sandbox token without schedule:write capability", async () => {
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "volume:read",
+    ]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "sandbox-schedule",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Should be rejected",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("GET /api/agent/schedules - Sandbox Token Auth", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    // Populate membership cache so resolveOrg works without Clerk session
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+
+    // Clear Clerk session so sandbox token path is exercised
+    mockClerk({ userId: null });
+  });
+
+  it("should accept sandbox token with schedule:read capability", async () => {
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "schedule:read",
+    ]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject sandbox token without schedule:read capability", async () => {
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "volume:read",
+    ]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
   });
 });

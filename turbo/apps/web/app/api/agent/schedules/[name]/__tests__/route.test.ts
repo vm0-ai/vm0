@@ -6,12 +6,14 @@ import {
   createTestSchedule,
   getTestSchedule,
   deleteTestSchedule,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -231,5 +233,127 @@ describe("DELETE /api/agent/schedules/:name - Delete Schedule", () => {
     );
     const response = await GET(request);
     expect(response.status).toBe(404);
+  });
+});
+
+describe("GET /api/agent/schedules/:name - Sandbox Token Auth", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(
+      `sandbox-get-agent-${Date.now()}`,
+    );
+    testComposeId = composeId;
+  });
+
+  it("should accept sandbox token with schedule:read capability", async () => {
+    await createTestSchedule(testComposeId, "sandbox-get-test", {
+      cronExpression: "0 9 * * *",
+      prompt: "Test",
+    });
+
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "schedule:read",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/sandbox-get-test?composeId=${testComposeId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject sandbox token without schedule:read capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "volume:read",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/any-schedule?composeId=${testComposeId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("DELETE /api/agent/schedules/:name - Sandbox Token Auth", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(
+      `sandbox-del-agent-${Date.now()}`,
+    );
+    testComposeId = composeId;
+  });
+
+  it("should accept sandbox token with schedule:write capability", async () => {
+    await createTestSchedule(testComposeId, "sandbox-delete-test", {
+      cronExpression: "0 9 * * *",
+      prompt: "Test",
+    });
+
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "schedule:write",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/sandbox-delete-test?composeId=${testComposeId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await DELETE(request);
+
+    expect(response.status).toBe(204);
+  });
+
+  it("should reject sandbox token without schedule:write capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "volume:read",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/any-schedule?composeId=${testComposeId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const response = await DELETE(request);
+
+    expect(response.status).toBe(401);
   });
 });

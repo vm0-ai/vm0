@@ -21,7 +21,9 @@ const router = tsr.router(schedulesMainContract, {
   deploy: async ({ body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: "schedule:write",
+    });
     if (!authCtx) {
       return {
         status: 401 as const,
@@ -86,7 +88,9 @@ const router = tsr.router(schedulesMainContract, {
   list: async ({ headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: "schedule:read",
+    });
     if (!authCtx) {
       return {
         status: 401 as const,

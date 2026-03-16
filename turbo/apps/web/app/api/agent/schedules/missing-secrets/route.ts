@@ -31,7 +31,9 @@ export async function GET(request: Request) {
   initServices();
 
   const authHeader = request.headers.get("authorization");
-  const userId = await getUserId(authHeader ?? undefined);
+  const userId = await getUserId(authHeader ?? undefined, {
+    requiredCapability: "schedule:read",
+  });
 
   if (!userId) {
     return NextResponse.json(

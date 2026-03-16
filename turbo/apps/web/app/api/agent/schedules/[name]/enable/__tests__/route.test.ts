@@ -8,9 +8,14 @@ import {
   enableTestSchedule,
   getTestSchedule,
   updateTestScheduleState,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -228,5 +233,79 @@ describe("POST /api/agent/schedules/:name/enable", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+});
+
+describe("POST /api/agent/schedules/:name/enable - Sandbox Token Auth", () => {
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(
+      `sandbox-enable-agent-${Date.now()}`,
+    );
+    testComposeId = composeId;
+  });
+
+  it("should accept sandbox token with schedule:write capability", async () => {
+    await createTestSchedule(testComposeId, "sandbox-enable-test", {
+      cronExpression: "0 9 * * *",
+      prompt: "Test",
+    });
+
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+    });
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "schedule:write",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/sandbox-enable-test/enable`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ composeId: testComposeId }),
+      },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ name: "sandbox-enable-test" }),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("should reject sandbox token without schedule:write capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken(user.userId, "run-123", [
+      "volume:read",
+    ]);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/schedules/any-schedule/enable`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ composeId: testComposeId }),
+      },
+    );
+
+    const response = await POST(request, {
+      params: Promise.resolve({ name: "any-schedule" }),
+    });
+
+    expect(response.status).toBe(401);
   });
 });

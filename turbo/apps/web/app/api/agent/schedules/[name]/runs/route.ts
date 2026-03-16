@@ -17,7 +17,9 @@ const router = tsr.router(scheduleRunsContract, {
   listRuns: async ({ params, query, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
+    const authCtx = await getAuthContext(headers.authorization, {
+      requiredCapability: "schedule:read",
+    });
     if (!authCtx) {
       return {
         status: 401 as const,

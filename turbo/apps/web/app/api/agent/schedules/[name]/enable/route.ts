@@ -21,6 +21,7 @@ export async function POST(
 
   const authCtx = await getAuthContext(
     request.headers.get("Authorization") ?? undefined,
+    { requiredCapability: "schedule:write" },
   );
   if (!authCtx) {
     return NextResponse.json(
