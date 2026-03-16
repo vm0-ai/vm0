@@ -57,7 +57,7 @@ describe("model-provider list command", () => {
               {
                 id: "3",
                 type: "openai-api-key",
-                framework: "codex",
+                framework: "claude-code",
                 selectedModel: "gpt-4",
                 isDefault: false,
                 createdAt: "2025-01-01T00:00:00Z",
@@ -75,7 +75,6 @@ describe("model-provider list command", () => {
       expect(logCalls).toContain("Model Providers");
       // Check framework grouping
       expect(logCalls).toContain("claude-code");
-      expect(logCalls).toContain("codex");
       // Check provider types
       expect(logCalls).toContain("anthropic-api-key");
       expect(logCalls).toContain("aws-bedrock");

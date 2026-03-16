@@ -11,7 +11,6 @@ import { parseTime } from "../../lib/utils/time-parser";
 import { formatBytes } from "../../lib/utils/file-utils";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
-import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
 import { paginate } from "../../lib/utils/paginate";
 import { searchCommand } from "./search";
 import { withErrorHandler } from "../../lib/command";
@@ -114,24 +113,12 @@ function createLogRenderer(verbose: boolean): EventRenderer {
 /**
  * Render an agent event with timestamp for historical log viewing
  */
-function renderAgentEvent(
-  event: RunEvent,
-  provider: string,
-  renderer: EventRenderer,
-): void {
+function renderAgentEvent(event: RunEvent, renderer: EventRenderer): void {
   const eventData = event.eventData as Record<string, unknown>;
-
-  if (provider === "codex") {
-    // Use Codex renderer for Codex provider
-    CodexEventRenderer.render(eventData);
-  } else {
-    // Use Claude Code renderer (default)
-    const parsed = ClaudeEventParser.parse(eventData);
-    if (parsed) {
-      // Set timestamp from event
-      parsed.timestamp = new Date(event.createdAt);
-      renderer.render(parsed);
-    }
+  const parsed = ClaudeEventParser.parse(eventData);
+  if (parsed) {
+    parsed.timestamp = new Date(event.createdAt);
+    renderer.render(parsed);
   }
 }
 
@@ -290,8 +277,6 @@ async function showAgentEvents(
     return;
   }
 
-  const framework = firstResponse.framework;
-
   // Use pagination to collect all needed events
   let allEvents: RunEvent[];
 
@@ -348,7 +333,7 @@ async function showAgentEvents(
   const renderer = createLogRenderer(true);
 
   for (const event of events) {
-    renderAgentEvent(event, framework, renderer);
+    renderAgentEvent(event, renderer);
   }
 
   console.log(chalk.dim(`View on platform: ${platformUrl}`));
