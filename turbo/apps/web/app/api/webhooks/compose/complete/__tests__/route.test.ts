@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
 import { POST as createComposeJob } from "../../../../compose/jobs/route";
 import { GET as getComposeJob } from "../../../../compose/jobs/[jobId]/route";
@@ -6,30 +6,13 @@ import {
   createTestRequest,
   createTestComposeJobToken,
   createTestCliToken,
-  createTestSlackComposeRequest,
-  findTestSlackComposeRequest,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { givenLinkedSlackUser } from "../../../../../../src/__tests__/slack/api-helpers";
-import { triggerComposeJob } from "../../../../../../src/lib/compose/trigger-compose-job";
-import { Sandbox } from "@e2b/code-interpreter";
 import { randomUUID } from "crypto";
-import { WebClient } from "@slack/web-api";
-
-vi.mock("@e2b/code-interpreter", () => ({
-  Sandbox: {
-    create: vi.fn().mockResolvedValue({
-      sandboxId: "mock-sandbox-id",
-      files: { write: vi.fn().mockResolvedValue(undefined) },
-      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
-    }),
-    connect: vi.fn(),
-  },
-}));
 
 const context = testContext();
 
@@ -462,168 +445,6 @@ describe("POST /api/webhooks/compose/complete", () => {
       const job = await getTestComposeJobViaApi(testJobId, user.userId);
 
       expect(job.error).toBe("Original error");
-    });
-  });
-
-  describe("Slack Notification", () => {
-    it("should send Slack notification on success for Slack-initiated job", async () => {
-      // Set up a linked Slack user
-      const { userLink, installation } = await givenLinkedSlackUser();
-
-      // Create a compose job for this user
-      const cliToken = await createTestCliToken(userLink.vm0UserId);
-
-      const createRequest = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${cliToken}`,
-          },
-          body: JSON.stringify({
-            githubUrl: "https://github.com/owner/slack-test-repo",
-          }),
-        },
-      );
-      const createResponse = await createComposeJob(createRequest);
-      const createData = await createResponse.json();
-      const jobId = createData.jobId;
-
-      mockClerk({ userId: null });
-
-      // Insert slack_compose_requests record (simulating what the Slack handler does)
-      await createTestSlackComposeRequest({
-        composeJobId: jobId,
-        slackWorkspaceId: installation.slackWorkspaceId,
-        slackUserId: userLink.slackUserId,
-        slackChannelId: "C-test-channel",
-      });
-
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.chat.postEphemeral.mockClear();
-
-      // Complete the job via webhook
-      const token = await createTestComposeJobToken(userLink.vm0UserId, jobId);
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/compose/complete",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            jobId,
-            success: true,
-            result: {
-              composeId: "test-compose-id",
-              composeName: "my-agent",
-              versionId: "test-version-id",
-              warnings: [],
-            },
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Verify Slack notification was sent
-      expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channel: "C-test-channel",
-          user: userLink.slackUserId,
-        }),
-      );
-
-      // Verify slack_compose_requests record was cleaned up
-      const remaining = await findTestSlackComposeRequest(jobId);
-      expect(remaining).toBeUndefined();
-    });
-
-    it("should NOT send Slack notification for non-Slack jobs", async () => {
-      // This test uses the default testJobId which has no slack_compose_requests record
-      const result = {
-        composeId: "test-compose-id",
-        composeName: "test-compose",
-        versionId: "test-version-id",
-        warnings: [],
-      };
-
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.chat.postEphemeral.mockClear();
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/webhooks/compose/complete",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            jobId: testJobId,
-            success: true,
-            result,
-          }),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Verify Slack notification was NOT sent
-      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
-    });
-
-    it("should send Slack failure notification when sandbox creation fails", async () => {
-      // Set up a linked Slack user
-      const { userLink, installation } = await givenLinkedSlackUser();
-
-      // Use a deferred promise so we can control when Sandbox.create rejects.
-      // This ensures the slack_compose_requests record is inserted before the
-      // failure handler runs.
-      let rejectSandbox!: (err: Error) => void;
-      const sandboxPromise = new Promise<never>((_resolve, reject) => {
-        rejectSandbox = reject;
-      });
-      const mockCreate = vi.mocked(Sandbox.create);
-      mockCreate.mockReturnValueOnce(sandboxPromise);
-
-      const mockClient = vi.mocked(new WebClient(), true);
-      mockClient.chat.postEphemeral.mockClear();
-
-      // Trigger compose job (sandbox creation is pending)
-      const result = await triggerComposeJob({
-        userId: userLink.vm0UserId,
-        orgSlug: "test-org",
-        source: "github",
-        githubUrl: "https://github.com/owner/failing-repo",
-      });
-
-      // Insert slack_compose_requests record (simulating what Slack handler does)
-      await createTestSlackComposeRequest({
-        composeJobId: result.jobId,
-        slackWorkspaceId: installation.slackWorkspaceId,
-        slackUserId: userLink.slackUserId,
-        slackChannelId: "C-test-channel",
-      });
-
-      // Now reject the sandbox creation — this triggers the failure handler
-      rejectSandbox(new Error("E2B API unavailable"));
-
-      // Wait for the fire-and-forget catch handler to complete
-      await vi.waitFor(
-        () => {
-          expect(mockClient.chat.postEphemeral).toHaveBeenCalled();
-        },
-        { timeout: 5000 },
-      );
-
-      // Verify slack_compose_requests record was cleaned up
-      const remaining = await findTestSlackComposeRequest(result.jobId);
-      expect(remaining).toBeUndefined();
     });
   });
 

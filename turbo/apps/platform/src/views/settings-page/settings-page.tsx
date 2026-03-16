@@ -19,7 +19,6 @@ import { DeleteSecretDialog } from "./delete-secret-dialog.tsx";
 import { VariableDialog } from "./variable-dialog.tsx";
 import { DeleteVariableDialog } from "./delete-variable-dialog.tsx";
 import {
-  SlackIntegrationCard,
   GitHubIntegrationCard,
   TelegramIntegrationCard,
 } from "../integrations-page/integrations-page.tsx";
@@ -83,7 +82,6 @@ export function SettingsPage() {
 
         {tab === "integrations" && (
           <div className="flex flex-col gap-4">
-            <SlackIntegrationCard />
             {featureSwitches?.[FeatureSwitchKey.GitHubIntegration] && (
               <GitHubIntegrationCard />
             )}

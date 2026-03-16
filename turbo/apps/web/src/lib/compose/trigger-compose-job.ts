@@ -8,7 +8,6 @@ import { Sandbox } from "@e2b/code-interpreter";
 import { env } from "../../env";
 import { e2bConfig } from "../e2b/config";
 import { logger } from "../logger";
-import { notifySlackComposeComplete } from "../slack/handlers/compose-notification";
 
 const log = logger("compose:trigger");
 
@@ -331,14 +330,6 @@ async function spawnComposeJobSandbox(
       } catch (dbError) {
         log.error(`Failed to update job ${jobId} status to failed:`, dbError);
       }
-
-      await notifySlackComposeComplete(jobId, null, truncatedError).catch(
-        (notifyError) => {
-          log.warn("Failed to send Slack failure notification", {
-            notifyError,
-          });
-        },
-      );
     });
 
   log.debug(`Compose script started for job ${jobId}`);
@@ -499,14 +490,6 @@ export async function triggerComposeJob(
     } catch (dbError) {
       log.error(`Failed to update job ${jobId} status to failed:`, dbError);
     }
-
-    await notifySlackComposeComplete(jobId, null, errorMessage).catch(
-      (notifyError) => {
-        log.warn("Failed to send Slack failure notification", {
-          notifyError,
-        });
-      },
-    );
   });
 
   return {

@@ -25,14 +25,11 @@ import { exportJobs } from "../db/schema/export-job";
 import { storages, storageVersions } from "../db/schema/storage";
 import { skills } from "../db/schema/skill";
 import { usageDaily } from "../db/schema/usage-daily";
-import { slackComposeRequests } from "../db/schema/slack-compose-request";
-import { slackInstallations } from "../db/schema/slack-installation";
 import { slackOrgInstallations } from "../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../db/schema/slack-org-connection";
 import { githubInstallations } from "../db/schema/github-installation";
 import { githubUserLinks } from "../db/schema/github-user-link";
 import { githubIssueSessions } from "../db/schema/github-issue-session";
-import { slackThreadSessions } from "../db/schema/slack-thread-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentRunQueue } from "../db/schema/agent-run-queue";
@@ -1977,56 +1974,6 @@ export async function findUsageDaily(
 }
 
 /**
- * Insert a slack_compose_requests record for test setup.
- */
-export async function createTestSlackComposeRequest(options: {
-  composeJobId: string;
-  slackWorkspaceId: string;
-  slackUserId: string;
-  slackChannelId: string;
-}) {
-  const [row] = await globalThis.services.db
-    .insert(slackComposeRequests)
-    .values(options)
-    .returning();
-  return row!;
-}
-
-/**
- * Find slack_compose_requests by composeJobId for verification.
- */
-/**
- * Find artifact storage for an org, including its HEAD version details.
- */
-export async function findTestArtifactStorage(orgId: string) {
-  const [storage] = await globalThis.services.db
-    .select()
-    .from(storages)
-    .where(
-      and(
-        eq(storages.orgId, orgId),
-        eq(storages.name, "artifact"),
-        eq(storages.type, "artifact"),
-      ),
-    )
-    .limit(1);
-
-  if (!storage) return null;
-
-  const version = storage.headVersionId
-    ? (
-        await globalThis.services.db
-          .select()
-          .from(storageVersions)
-          .where(eq(storageVersions.id, storage.headVersionId))
-          .limit(1)
-      )[0]
-    : null;
-
-  return { storage, version: version ?? null };
-}
-
-/**
  * Find a storage volume by clerk org and name.
  * Volumes use the sentinel VOLUME_ORG_USER_ID for org-level sharing.
  * Returns the storage id and name, or undefined if not found.
@@ -2083,15 +2030,6 @@ export async function findTestStorage(
   return result;
 }
 
-export async function findTestSlackComposeRequest(composeJobId: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(slackComposeRequests)
-    .where(eq(slackComposeRequests.composeJobId, composeJobId))
-    .limit(1);
-  return row;
-}
-
 /**
  * Link an existing run to a schedule by setting its scheduleId.
  */
@@ -2103,48 +2041,6 @@ export async function linkRunToSchedule(
     .update(agentRuns)
     .set({ scheduleId })
     .where(eq(agentRuns.id, runId));
-}
-
-/**
- * Create a thread session for testing (e.g., notification-created sessions with null bindingId).
- */
-export async function createTestThreadSession(params: {
-  userLinkId: string;
-  channelId: string;
-  threadTs: string;
-  agentSessionId: string;
-  lastProcessedMessageTs?: string;
-}): Promise<{ id: string }> {
-  const [row] = await globalThis.services.db
-    .insert(slackThreadSessions)
-    .values({
-      slackUserLinkId: params.userLinkId,
-      slackChannelId: params.channelId,
-      slackThreadTs: params.threadTs,
-      agentSessionId: params.agentSessionId,
-      lastProcessedMessageTs: params.lastProcessedMessageTs ?? params.threadTs,
-    })
-    .returning({ id: slackThreadSessions.id });
-  return row!;
-}
-
-export async function findTestThreadSession(channelId: string): Promise<{
-  id: string;
-  slackChannelId: string;
-  slackUserLinkId: string;
-  agentSessionId: string | null;
-} | null> {
-  const [row] = await globalThis.services.db
-    .select({
-      id: slackThreadSessions.id,
-      slackChannelId: slackThreadSessions.slackChannelId,
-      slackUserLinkId: slackThreadSessions.slackUserLinkId,
-      agentSessionId: slackThreadSessions.agentSessionId,
-    })
-    .from(slackThreadSessions)
-    .where(eq(slackThreadSessions.slackChannelId, channelId))
-    .limit(1);
-  return row ?? null;
 }
 
 // ============================================================================
@@ -2296,15 +2192,6 @@ export async function findTestQueueEntry(runId: string) {
   return row;
 }
 
-export async function findTestSlackInstallation(workspaceId: string) {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(slackInstallations)
-    .where(eq(slackInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-  return row;
-}
-
 export async function findTestSlackOrgInstallation(workspaceId: string) {
   const [row] = await globalThis.services.db
     .select()
@@ -2343,6 +2230,29 @@ export async function findTestSlackOrgConnections(
         eq(slackOrgConnections.slackWorkspaceId, workspaceId),
       ),
     );
+}
+
+/**
+ * Insert an agent permission directly in the database.
+ *
+ * Direct DB insert is required because the permissions API route uses the
+ * current user as grantedBy. Tests that simulate permissions granted by
+ * external flows (e.g., CLI share) need to set arbitrary grantedBy values.
+ */
+export async function insertTestAgentPermission(
+  composeId: string,
+  granteeEmail: string,
+  grantedBy: string,
+) {
+  await globalThis.services.db
+    .insert(agentPermissions)
+    .values({
+      agentComposeId: composeId,
+      granteeType: "email",
+      granteeEmail,
+      grantedBy,
+    })
+    .onConflictDoNothing();
 }
 
 /**

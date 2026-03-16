@@ -16,11 +16,6 @@ import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as agentScheduleSchema from "./schema/agent-schedule";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
-import * as slackInstallationSchema from "./schema/slack-installation";
-import * as slackUserLinkSchema from "./schema/slack-user-link";
-
-import * as slackThreadSessionSchema from "./schema/slack-thread-session";
-import * as slackComposeRequestSchema from "./schema/slack-compose-request";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
@@ -34,7 +29,6 @@ import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
 import * as telegramThreadSessionSchema from "./schema/telegram-thread-session";
 import * as telegramMessageSchema from "./schema/telegram-message";
-import * as slackPendingQuestionSchema from "./schema/slack-pending-question";
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
 import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
 import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
@@ -65,12 +59,6 @@ export const schema = {
   ...agentScheduleSchema,
   ...secretSchema,
   ...modelProviderSchema,
-  ...slackInstallationSchema,
-  ...slackUserLinkSchema,
-
-  ...slackThreadSessionSchema,
-  ...slackComposeRequestSchema,
-  ...slackPendingQuestionSchema,
   ...slackOrgInstallationSchema,
   ...slackOrgConnectionSchema,
   ...slackOrgThreadSessionSchema,

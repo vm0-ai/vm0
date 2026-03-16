@@ -9,8 +9,6 @@ import { composeJobs } from "../../../../../src/db/schema/compose-job";
 import { eq } from "drizzle-orm";
 import { verifyComposeJobToken } from "../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../src/lib/logger";
-import { notifySlackComposeComplete } from "../../../../../src/lib/slack/handlers/compose-notification";
-
 const log = logger("webhook:compose-complete");
 
 const router = tsr.router(webhookComposeCompleteContract, {
@@ -112,17 +110,6 @@ const router = tsr.router(webhookComposeCompleteContract, {
       .update(composeJobs)
       .set(updateData)
       .where(eq(composeJobs.id, jobId));
-
-    // Notify Slack if this was a Slack-initiated compose job
-    await notifySlackComposeComplete(
-      jobId,
-      result ?? null,
-      error ?? null,
-    ).catch((err) => {
-      log.warn("Failed to send Slack compose notification (non-critical)", {
-        err,
-      });
-    });
 
     return {
       status: 200 as const,

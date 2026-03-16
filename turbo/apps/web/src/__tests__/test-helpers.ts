@@ -51,13 +51,9 @@ import { initServices } from "../lib/init-services";
 import { insertOrgCacheEntry } from "./api-test-helpers";
 import * as s3Client from "../lib/s3/s3-client";
 import * as axiomClient from "../lib/axiom/client";
-import { slackInstallations } from "../db/schema/slack-installation";
-import { slackUserLinks } from "../db/schema/slack-user-link";
 import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";
 import { userCache } from "../db/schema/user-cache";
-import { encryptSecretValue } from "../lib/crypto/secrets-encryption";
-import { env } from "../env";
 
 /**
  * S3 client mock structure
@@ -162,43 +158,12 @@ interface SetupUserOptions {
   prefix?: string;
 }
 
-interface SlackInstallationOptions {
-  /** Whether to also create a user link (default: false) */
-  withUserLink?: boolean;
-  /** Slack workspace ID (default: "T123") */
-  workspaceId?: string;
-  /** Slack user ID for user link (default: "U123") */
-  slackUserId?: string;
-  /** VM0 user ID for the admin user who installs (default: auto-generated) */
-  vm0UserId?: string;
-  /** Compose ID to use as defaultComposeId (default: auto-created) */
-  composeId?: string;
-}
-
-interface SlackInstallationResult {
-  installation: {
-    id: string;
-    slackWorkspaceId: string;
-    botUserId: string;
-    defaultComposeId: string;
-  };
-  userLink: {
-    id: string;
-    slackUserId: string;
-    slackWorkspaceId: string;
-    vm0UserId: string;
-  };
-}
-
 interface TestContext {
   readonly signal: AbortSignal;
   readonly mocks: MockHelpers;
   readonly user: Promise<UserContext>;
   setupMocks(): MockHelpers;
   setupUser(options?: SetupUserOptions): Promise<UserContext>;
-  createSlackInstallation(
-    options?: SlackInstallationOptions,
-  ): Promise<SlackInstallationResult>;
   createAgentCompose(
     vm0UserId: string,
     options?: { name?: string },
@@ -484,108 +449,6 @@ export function testContext(): TestContext {
   }
 
   /**
-   * Creates a Slack installation for testing slash commands and events.
-   * Optionally creates a user link as well.
-   */
-  async function createSlackInstallation(
-    options: SlackInstallationOptions = {},
-  ): Promise<SlackInstallationResult> {
-    // Generate unique workspace ID per test to avoid constraint violations
-    const suffix = uniqueSuffix();
-    const {
-      withUserLink = false,
-      workspaceId = `T${suffix}`,
-      slackUserId = `U${suffix}`,
-      vm0UserId: optVm0UserId,
-    } = options;
-
-    initServices();
-
-    const { SECRETS_ENCRYPTION_KEY } = env();
-
-    // Create a compose for the default workspace agent
-    const adminUserId = optVm0UserId ?? uniqueId("test-admin");
-    let composeId = options.composeId;
-    if (!composeId) {
-      const orgSlug = uniqueId("org");
-      const orgId = uniqueId("org");
-
-      // Pre-populate org cache for getOrgData()
-      await insertOrgCacheEntry({ orgId, slug: orgSlug });
-
-      const [compose] = await globalThis.services.db
-        .insert(agentComposes)
-        .values({
-          userId: adminUserId,
-          orgId,
-          name: uniqueId("default-agent"),
-        })
-        .returning();
-
-      if (!compose) {
-        throw new Error("Failed to create compose for installation");
-      }
-      composeId = compose.id;
-    }
-
-    // Create installation
-    const encryptedBotToken = encryptSecretValue(
-      "xoxb-test-bot-token",
-      SECRETS_ENCRYPTION_KEY,
-    );
-
-    const [installation] = await globalThis.services.db
-      .insert(slackInstallations)
-      .values({
-        slackWorkspaceId: workspaceId,
-        slackWorkspaceName: "Test Workspace",
-        encryptedBotToken,
-        botUserId: "B123",
-        defaultComposeId: composeId,
-        adminSlackUserId: slackUserId,
-      })
-      .returning();
-
-    if (!installation) {
-      throw new Error("Failed to create Slack installation");
-    }
-
-    let userLink = {
-      id: "",
-      slackUserId: "",
-      slackWorkspaceId: "",
-      vm0UserId: "",
-    };
-
-    if (withUserLink) {
-      const linkVm0UserId = optVm0UserId ?? uniqueId("test-user");
-
-      const [createdLink] = await globalThis.services.db
-        .insert(slackUserLinks)
-        .values({
-          slackUserId,
-          slackWorkspaceId: workspaceId,
-          vm0UserId: linkVm0UserId,
-        })
-        .returning();
-
-      if (createdLink) {
-        userLink = createdLink;
-      }
-    }
-
-    return {
-      installation: {
-        id: installation.id,
-        slackWorkspaceId: installation.slackWorkspaceId,
-        botUserId: installation.botUserId,
-        defaultComposeId: composeId,
-      },
-      userLink,
-    };
-  }
-
-  /**
    * Creates an agent compose for a user (without a binding).
    * Useful for testing link command which requires composes but no existing bindings.
    */
@@ -678,7 +541,6 @@ export function testContext(): TestContext {
       return createMocks();
     },
     setupUser,
-    createSlackInstallation,
     createAgentCompose,
     createConnector,
   };

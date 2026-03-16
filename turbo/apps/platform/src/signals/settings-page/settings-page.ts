@@ -5,7 +5,6 @@ import { updatePage$ } from "../react-router";
 import { SettingsPage } from "../../views/settings-page/settings-page";
 import { initSettingsTabs$ } from "./settings-tabs.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { fetchSlackIntegration$ } from "../integrations-page/slack-integration.ts";
 import { fetchGitHubIntegration$ } from "../integrations-page/github-integration.ts";
 import { fetchTelegramIntegration$ } from "../integrations-page/telegram-integration.ts";
 
@@ -17,7 +16,6 @@ export const setupSettingsPage$ = command(async ({ set, get }) => {
   set(updatePage$, createElement(SettingsPage));
   const features = await get(featureSwitch$);
   await Promise.all([
-    set(fetchSlackIntegration$),
     features?.[FeatureSwitchKey.GitHubIntegration]
       ? set(fetchGitHubIntegration$)
       : Promise.resolve(),

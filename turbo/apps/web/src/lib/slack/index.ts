@@ -27,27 +27,5 @@ export function getSlackRedirectBaseUrl(requestUrl?: string): string {
   );
 }
 
-// Re-export org-accessible agent compose resolver
-export { resolveDefaultAgentComposeId } from "../agent-compose/resolve-default";
-
 // Slack API client
-export {
-  createSlackClient,
-  postMessage,
-  updateMessage,
-  setThreadStatus,
-  exchangeOAuthCode,
-} from "./client";
-
-// Block Kit builders
-export {
-  buildErrorMessage,
-  buildAgentResponseMessage,
-  buildAskUserQuestionBlocks,
-  buildAskUserAnsweredBlocks,
-  detectDeepLinks,
-} from "./blocks";
-export type { AskUserQuestion } from "./blocks";
-
-// Handlers
-export { refreshAppHome } from "./handlers/app-home-opened";
+export { createSlackClient, exchangeOAuthCode } from "./client";

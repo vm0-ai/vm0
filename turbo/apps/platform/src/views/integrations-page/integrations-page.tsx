@@ -2,11 +2,6 @@ import { useGet } from "ccstate-react";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import {
-  slackIntegrationLoading$,
-  slackIntegrationNotLinked$,
-  slackInstallUrl$,
-} from "../../signals/integrations-page/slack-integration.ts";
-import {
   githubIntegrationLoading$,
   githubIntegrationNotLinked$,
   githubInstallUrl$,
@@ -30,45 +25,6 @@ function IntegrationCardSkeleton() {
         <Skeleton className="h-3 w-48" />
       </div>
       <Skeleton className="h-8 w-16 shrink-0" />
-    </div>
-  );
-}
-
-export function SlackIntegrationCard() {
-  const loading = useGet(slackIntegrationLoading$);
-  const notLinked = useGet(slackIntegrationNotLinked$);
-  const installUrl = useGet(slackInstallUrl$);
-
-  if (loading) {
-    return <IntegrationCardSkeleton />;
-  }
-
-  return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/50">
-      <div className="shrink-0">
-        <img src="/slack-icon.svg" alt="Slack" className="h-7 w-7" />
-      </div>
-      <div className="flex flex-1 flex-col gap-1 min-w-0">
-        <div className="text-sm font-medium text-foreground">VM0 in Slack</div>
-        <div className="text-sm text-muted-foreground">
-          Use your VM0 agent in Slack
-        </div>
-      </div>
-      <div className="shrink-0">
-        {notLinked ? (
-          installUrl ? (
-            <Button variant="outline" size="sm" asChild>
-              <a href={installUrl} target="_blank" rel="noopener noreferrer">
-                Install
-              </a>
-            </Button>
-          ) : null
-        ) : (
-          <Button variant="outline" size="sm" asChild>
-            <Link pathname="/settings/slack">Settings</Link>
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
