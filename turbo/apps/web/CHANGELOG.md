@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.114.1](https://github.com/vm0-ai/vm0/compare/web-v12.114.0...web-v12.114.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* activity detail auth alignment and platform team endpoint ([#4933](https://github.com/vm0-ai/vm0/issues/4933)) ([fbfdb1d](https://github.com/vm0-ai/vm0/commit/fbfdb1dff690271bdfb6927d4deca852439cf624))
+* enforce sandbox capabilities on compose sub-routes ([#4934](https://github.com/vm0-ai/vm0/issues/4934)) ([8625747](https://github.com/vm0-ai/vm0/commit/86257472fcd06b12fcd9807878ca498f429ce4f2))
+
+
+### Refactoring
+
+* remove server-side acl permission system and shared agent ui ([#4881](https://github.com/vm0-ai/vm0/issues/4881)) ([123c1cf](https://github.com/vm0-ai/vm0/commit/123c1cf5dd28cb7e9b5980ad1dfc97d052b4ce8f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.69.1
+
 ## [12.114.0](https://github.com/vm0-ai/vm0/compare/web-v12.113.0...web-v12.114.0) (2026-03-16)
 
 

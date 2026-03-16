@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.69.1](https://github.com/vm0-ai/vm0/compare/core-v8.69.0...core-v8.69.1) (2026-03-16)
+
+
+### Refactoring
+
+* remove server-side acl permission system and shared agent ui ([#4881](https://github.com/vm0-ai/vm0/issues/4881)) ([123c1cf](https://github.com/vm0-ai/vm0/commit/123c1cf5dd28cb7e9b5980ad1dfc97d052b4ce8f))
+
 ## [8.69.0](https://github.com/vm0-ai/vm0/compare/core-v8.68.0...core-v8.69.0) (2026-03-16)
 
 

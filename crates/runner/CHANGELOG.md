@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.27.0...runner-rs-v0.28.0) (2026-03-16)
+
+
+### Features
+
+* **runner:** replace semaphore with resource-budget concurrency control ([#4928](https://github.com/vm0-ai/vm0/issues/4928)) ([48f674f](https://github.com/vm0-ai/vm0/commit/48f674fad4a567d9d8158b0e3fde65535366a71b))
+
 ## [0.27.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.26.2...runner-rs-v0.27.0) (2026-03-16)
 
 
