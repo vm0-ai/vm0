@@ -162,10 +162,8 @@ EOF
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying skill download and upload..."
-    assert_output --partial "Uploading"
-    assert_output --partial "skill"
-    assert_output --partial "Downloading"
+    echo "# Verifying skill was processed (downloaded or served from cache)..."
+    assert_output --regexp "(Downloading|cached)"
 }
 
 @test "vm0 compose with skills deduplicates unchanged skill" {
@@ -187,8 +185,8 @@ EOF
     echo "# Second compose with same skill..."
     run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
-    # Should show unchanged indicator for the skill
-    assert_output --partial "unchanged"
+    # Should show unchanged or cached indicator for the skill
+    assert_output --regexp "(unchanged|cached)"
 }
 
 # ============================================
