@@ -18,9 +18,26 @@ import {
   IconSearch,
   IconX,
   IconEdit,
+  IconGripVertical,
   IconChevronDown,
   IconLayoutSidebarLeftCollapse,
 } from "@tabler/icons-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { SessionListItem } from "@vm0/core";
 import {
   DropdownMenu,
@@ -504,6 +521,54 @@ function RecentChatSection({
   );
 }
 
+function SortablePinnedAgent({
+  agent,
+  onUnpin,
+}: {
+  agent: SubagentInfo;
+  onUnpin: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: agent.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
+    >
+      <button
+        type="button"
+        className="shrink-0 w-5 flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground transition-colors touch-none"
+        {...attributes}
+        {...listeners}
+      >
+        <IconGripVertical size={14} />
+      </button>
+      <img
+        src={getAgentAvatar(agent.name)}
+        alt={agent.displayName ?? agent.name}
+        className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+      />
+      <span className="text-sm text-foreground flex-1 truncate">
+        {agent.displayName ?? agent.name}
+      </span>
+      <button
+        type="button"
+        className="text-muted-foreground/50 hover:text-destructive transition-colors p-1"
+        onClick={onUnpin}
+        aria-label={`Unpin ${agent.displayName ?? agent.name}`}
+      >
+        <IconPlus size={14} className="rotate-45" />
+      </button>
+    </div>
+  );
+}
+
 function ManagePinnedAgentsDialog({
   open,
   onOpenChange,
@@ -529,21 +594,26 @@ function ManagePinnedAgentsDialog({
 
   const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
 
-  const moveUp = (idx: number) => {
-    if (idx <= 0) {
-      return;
-    }
-    const next = [...pinnedIds];
-    [next[idx - 1], next[idx]] = [next[idx]!, next[idx - 1]!];
-    onPinnedIdsChange(next);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
-  const moveDown = (idx: number) => {
-    if (idx >= pinnedIds.length - 1) {
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+    const oldIndex = pinnedIds.indexOf(String(active.id));
+    const newIndex = pinnedIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) {
       return;
     }
     const next = [...pinnedIds];
-    [next[idx], next[idx + 1]] = [next[idx + 1]!, next[idx]!];
+    next.splice(oldIndex, 1);
+    next.splice(newIndex, 0, pinnedIds[oldIndex]!);
     onPinnedIdsChange(next);
   };
 
@@ -597,55 +667,26 @@ function ManagePinnedAgentsDialog({
             <span className="text-xs font-medium text-muted-foreground px-1">
               Pinned
             </span>
-            <div className="flex flex-col mt-1">
-              {orderedPinned.map((agent, idx) => (
-                <div
-                  key={agent.id}
-                  className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
-                >
-                  <div className="flex flex-col shrink-0 w-5 items-center gap-0.5">
-                    <button
-                      type="button"
-                      className={cn(
-                        "text-muted-foreground/40 hover:text-foreground transition-colors",
-                        idx === 0 && "invisible",
-                      )}
-                      onClick={() => moveUp(idx)}
-                      aria-label="Move up"
-                    >
-                      <IconChevronDown size={14} className="rotate-180" />
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "text-muted-foreground/40 hover:text-foreground transition-colors",
-                        idx === orderedPinned.length - 1 && "invisible",
-                      )}
-                      onClick={() => moveDown(idx)}
-                      aria-label="Move down"
-                    >
-                      <IconChevronDown size={14} />
-                    </button>
-                  </div>
-                  <img
-                    src={getAgentAvatar(agent.name)}
-                    alt={agent.displayName ?? agent.name}
-                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                  />
-                  <span className="text-sm text-foreground flex-1 truncate">
-                    {agent.displayName ?? agent.name}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-muted-foreground/50 hover:text-destructive transition-colors p-1"
-                    onClick={() => togglePin(agent.id)}
-                    aria-label={`Unpin ${agent.displayName ?? agent.name}`}
-                  >
-                    <IconPlus size={14} className="rotate-45" />
-                  </button>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={orderedPinned.map((a) => a.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="flex flex-col mt-1">
+                  {orderedPinned.map((agent) => (
+                    <SortablePinnedAgent
+                      key={agent.id}
+                      agent={agent}
+                      onUnpin={() => togglePin(agent.id)}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
           </div>
         )}
 
