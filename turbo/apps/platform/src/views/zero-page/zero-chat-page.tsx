@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { ReactNode, KeyboardEvent, ChangeEvent } from "react";
+import type { KeyboardEvent, ChangeEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { onRef, detach, Reason } from "../../signals/utils.ts";
@@ -13,7 +13,6 @@ import {
   IconSend,
   IconPaperclip,
   IconPlug,
-  IconSparkles,
   IconUser,
   IconUsers,
   IconCheck,
@@ -731,7 +730,7 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 items-center rounded-lg h-9 px-1.5 hover:bg-muted/60 transition-colors"
+                className="inline-flex shrink-0 items-center rounded-lg h-9 px-1.5 hover:bg-accent transition-colors"
               >
                 <span className="flex items-center -space-x-2">
                   <span
@@ -767,7 +766,7 @@ function ConnectorsPopoverButton({
             {COMPOSER_CONNECTORS.map((skill) => (
               <div
                 key={skill.type}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
               >
                 <span
                   className={cn(
@@ -808,7 +807,7 @@ function ConnectorsPopoverButton({
         <div className="border-t border-border/50 p-2 flex flex-col">
           <button
             type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted/50 transition-colors"
+            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-accent transition-colors"
             onClick={() => onOpenAddDialog()}
           >
             <IconPlus
@@ -821,7 +820,7 @@ function ConnectorsPopoverButton({
           {onManageConnectors && (
             <button
               type="button"
-              className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted/50 transition-colors"
+              className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-accent transition-colors"
               onClick={onManageConnectors}
             >
               <IconPlug
@@ -984,19 +983,6 @@ export function ZeroChatPage({
       setInput("");
     }
     onSendMessage?.(text);
-  };
-
-  const LUCKY_PROMPTS = [
-    "What can you help me with today?",
-    "Suggest something useful I might have missed",
-    "Summarize my last few days in one sentence",
-    "What’s one quick win I could do right now?",
-  ];
-
-  const handleFeelingLucky = () => {
-    const prompt =
-      LUCKY_PROMPTS[Math.floor(Math.random() * LUCKY_PROMPTS.length)];
-    handleSend(prompt);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1245,7 +1231,7 @@ export function ZeroChatPage({
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <button
                         type="button"
-                        className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200"
+                        className="p-2 rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                         aria-label="Attach"
                         onClick={handleFileSelect}
                       >
@@ -1268,7 +1254,7 @@ export function ZeroChatPage({
                           )
                         }
                       >
-                        <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-muted transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
+                        <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-accent transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
                           <SelectValue placeholder="Model" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1357,7 +1343,7 @@ export function ZeroChatPage({
                   <div className="flex items-center gap-1 text-muted-foreground">
                     <button
                       type="button"
-                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200"
+                      className="p-2 rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                       aria-label="Attach"
                       onClick={handleFileSelect}
                     >
@@ -1380,7 +1366,7 @@ export function ZeroChatPage({
                         )
                       }
                     >
-                      <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-muted transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
+                      <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-accent transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
                         <SelectValue placeholder="Model" />
                       </SelectTrigger>
                       <SelectContent>

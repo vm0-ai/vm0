@@ -185,7 +185,7 @@ function ZeroProviderList() {
           <button
             type="button"
             onClick={() => setAddDialogOpen(true)}
-            className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-border/80 transition-colors hover:border-border hover:bg-muted/30 group"
+            className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group"
           >
             <div className="flex h-14 items-center gap-2.5 px-5">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center">
@@ -199,7 +199,7 @@ function ZeroProviderList() {
                 Add provider
               </span>
             </div>
-            <div className="flex h-11 items-center border-t border-dashed border-border/80 px-5 group-hover:border-border">
+            <div className="flex h-11 items-center border-t border-dashed border-[hsl(var(--gray-400))] px-5 group-hover:border-[hsl(var(--gray-400))]">
               <span className="text-xs text-muted-foreground/70">
                 Browse supported providers
               </span>

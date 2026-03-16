@@ -296,7 +296,9 @@
     --muted: var(--gray-100); /* gray-100 */
     --muted-foreground: var(--gray-800); /* gray-800 */
 
-    --accent: var(--gray-100); /* gray-100 - matches navigation hover */
+    --accent: var(
+      --gray-300
+    ); /* gray-300 - visible hover against popover/card */
     --accent-foreground: var(--gray-950); /* gray-950 */
 
     --destructive: 0 84% 60%; /* red/600 */
