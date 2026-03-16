@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.111.3](https://github.com/vm0-ai/vm0/compare/web-v12.111.2...web-v12.111.3) (2026-03-16)
+
+
+### Bug Fixes
+
+* point email unsubscribe link to web app instead of platform ([#4859](https://github.com/vm0-ai/vm0/issues/4859)) ([32e8ac2](https://github.com/vm0-ai/vm0/commit/32e8ac229ac111a7549d62abf0601e9a3666853e)), closes [#4858](https://github.com/vm0-ai/vm0/issues/4858)
+
 ## [12.111.2](https://github.com/vm0-ai/vm0/compare/web-v12.111.1...web-v12.111.2) (2026-03-16)
 
 
