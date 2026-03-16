@@ -42,7 +42,7 @@ export const VALID_CAPABILITIES = [
 ] as const;
 
 /**
- * Service permission schema for proxy-side token replacement.
+ * Firewall permission schema for proxy-side token replacement.
  * Defined here (not in runners.ts) to avoid circular dependency:
  * composes.ts exports VALID_CAPABILITIES used by runners.ts.
  */
