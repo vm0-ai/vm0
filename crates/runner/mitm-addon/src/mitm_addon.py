@@ -308,10 +308,16 @@ def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict,
         flow.metadata["firewall_action"] = "DENY"
         flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
+        error_body = json.dumps({
+            "error": "firewall_auth_unavailable",
+            "message": "Firewall auth secrets not configured",
+            "firewall": match_info.get("ref", ""),
+            "base": firewall_base,
+        })
         flow.response = http.Response.make(
             502,
-            b"Firewall auth unavailable",
-            {"Content-Type": "text/plain"},
+            error_body.encode(),
+            {"Content-Type": "application/json"},
         )
         return
 
@@ -322,10 +328,16 @@ def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict,
         flow.metadata["firewall_action"] = "DENY"
         flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
+        error_body = json.dumps({
+            "error": "firewall_auth_failed",
+            "message": f"Failed to resolve firewall auth headers: {e}",
+            "firewall": match_info.get("ref", ""),
+            "base": firewall_base,
+        })
         flow.response = http.Response.make(
             502,
-            b"Firewall header fetch failed",
-            {"Content-Type": "text/plain"},
+            error_body.encode(),
+            {"Content-Type": "application/json"},
         )
         return
 
