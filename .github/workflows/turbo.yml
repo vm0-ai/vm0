@@ -1513,3 +1513,82 @@ jobs:
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
 
+  # CI Gate: single required check for merge queue
+  # Aggregates all job results — must ALWAYS run to report explicit success/failure.
+  # Using !failure() or !cancelled() would cause the gate to be skipped when
+  # dependencies fail, and GitHub treats "skipped" as passing — defeating the purpose.
+  ci-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - file-size-check
+      - lint-eslint
+      - lint-types
+      - lint-format
+      - lint-knip
+      - test-web
+      - test-migrate
+      - test-cli
+      - test-platform
+      - test-other
+      - deploy-web
+      - deploy-docs
+      - deploy-platform
+      - build-cli
+      - build-e2b-template
+      - e2e-auth
+      - cli-e2e-01-serial
+      - deploy-runner-prepare
+      - deploy-runner-start
+      - cli-e2e-03-runner
+    # Always run so the gate reports an explicit result (not "skipped").
+    # Skip on release-please commits — GitHub treats "skipped" as passing.
+    if: >-
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release'))
+    steps:
+      - name: Validate CI results
+        run: |
+          echo "::group::CI Gate Results"
+          FAILED=0
+
+          check_result() {
+            local job="$1" result="$2" allow_skip="$3"
+            if [ "$result" = "success" ]; then
+              echo "✅ $job: $result"
+            elif [ "$allow_skip" = "true" ] && [ "$result" = "skipped" ]; then
+              echo "⏭️ $job: $result (allowed)"
+            else
+              echo "::error::$job: expected ${allow_skip:+success or skipped}${allow_skip:-success}, got $result"
+              FAILED=1
+            fi
+          }
+
+          # Must-succeed: only 'success' is acceptable
+          check_result "prepare" "${{ needs.prepare.result }}" ""
+          check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
+          check_result "lint-eslint" "${{ needs.lint-eslint.result }}" ""
+          check_result "lint-types" "${{ needs.lint-types.result }}" ""
+          check_result "lint-format" "${{ needs.lint-format.result }}" ""
+          check_result "lint-knip" "${{ needs.lint-knip.result }}" ""
+          check_result "test-web" "${{ needs.test-web.result }}" ""
+          check_result "test-cli" "${{ needs.test-cli.result }}" ""
+          check_result "test-platform" "${{ needs.test-platform.result }}" ""
+          check_result "test-other" "${{ needs.test-other.result }}" ""
+
+          # May-skip: 'success' or 'skipped' are both acceptable
+          check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
+          check_result "deploy-web" "${{ needs.deploy-web.result }}" "true"
+          check_result "deploy-docs" "${{ needs.deploy-docs.result }}" "true"
+          check_result "deploy-platform" "${{ needs.deploy-platform.result }}" "true"
+          check_result "build-cli" "${{ needs.build-cli.result }}" "true"
+          check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
+          check_result "e2e-auth" "${{ needs.e2e-auth.result }}" "true"
+          check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
+          check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "true"
+          check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "true"
+          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "true"
+
+          echo "::endgroup::"
+          exit $FAILED
+
