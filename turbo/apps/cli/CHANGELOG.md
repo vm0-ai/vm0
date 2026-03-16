@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.60.0](https://github.com/vm0-ai/vm0/compare/cli-v9.59.6...cli-v9.60.0) (2026-03-16)
+
+
+### Features
+
+* add per-schedule notification control ([#4885](https://github.com/vm0-ai/vm0/issues/4885)) ([904cdfb](https://github.com/vm0-ai/vm0/commit/904cdfb0fd6f8ce241420b288cc43860ba1c55f0))
+
+
+### Refactoring
+
+* remove cli sharing commands and docs references ([#4878](https://github.com/vm0-ai/vm0/issues/4878)) ([6171c65](https://github.com/vm0-ai/vm0/commit/6171c650c49761c6ded657fc04ecf070e9dd56b1)), closes [#4874](https://github.com/vm0-ai/vm0/issues/4874)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.69.0
+
 ## [9.59.6](https://github.com/vm0-ai/vm0/compare/cli-v9.59.5...cli-v9.59.6) (2026-03-16)
 
 

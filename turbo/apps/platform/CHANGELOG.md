@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.113.0](https://github.com/vm0-ai/vm0/compare/platform-v0.112.0...platform-v0.113.0) (2026-03-16)
+
+
+### Features
+
+* add per-schedule notification control ([#4885](https://github.com/vm0-ai/vm0/issues/4885)) ([904cdfb](https://github.com/vm0-ai/vm0/commit/904cdfb0fd6f8ce241420b288cc43860ba1c55f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.69.0
+
 ## [0.112.0](https://github.com/vm0-ai/vm0/compare/platform-v0.111.0...platform-v0.112.0) (2026-03-16)
 
 

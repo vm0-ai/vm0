@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.18.1](https://github.com/vm0-ai/vm0/compare/docs-v2.18.0...docs-v2.18.1) (2026-03-16)
+
+
+### Refactoring
+
+* remove cli sharing commands and docs references ([#4878](https://github.com/vm0-ai/vm0/issues/4878)) ([6171c65](https://github.com/vm0-ai/vm0/commit/6171c650c49761c6ded657fc04ecf070e9dd56b1)), closes [#4874](https://github.com/vm0-ai/vm0/issues/4874)
+
 ## [2.18.0](https://github.com/vm0-ai/vm0/compare/docs-v2.17.1...docs-v2.18.0) (2026-03-16)
 
 

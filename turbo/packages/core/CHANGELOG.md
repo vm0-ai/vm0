@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.69.0](https://github.com/vm0-ai/vm0/compare/core-v8.68.0...core-v8.69.0) (2026-03-16)
+
+
+### Features
+
+* add per-schedule notification control ([#4885](https://github.com/vm0-ai/vm0/issues/4885)) ([904cdfb](https://github.com/vm0-ai/vm0/commit/904cdfb0fd6f8ce241420b288cc43860ba1c55f0))
+
 ## [8.68.0](https://github.com/vm0-ai/vm0/compare/core-v8.67.0...core-v8.68.0) (2026-03-16)
 
 
