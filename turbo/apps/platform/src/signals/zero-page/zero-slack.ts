@@ -96,4 +96,18 @@ export const uninstallSlackOrg$ = command(async ({ get, set }) => {
 
 export const initSlackOrg$ = command(async ({ set }) => {
   await set(fetchSlackOrg$);
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("installed") === "1") {
+    toast.success("Slack installed successfully");
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+  if (params.get("connected") === "1") {
+    toast.success("Slack connected successfully");
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+  if (params.get("error")) {
+    toast.error(params.get("error")!);
+    window.history.replaceState({}, "", window.location.pathname);
+  }
 });

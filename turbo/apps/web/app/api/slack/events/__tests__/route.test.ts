@@ -719,14 +719,14 @@ describe("POST /api/slack/events", () => {
             b.type === "section" && !!b.text,
         )
         .map((b) => b.text.text);
-      expect(texts.some((t) => t.includes("Connected to VM0"))).toBe(true);
+      expect(texts.some((t) => t.includes("Connected to Zero"))).toBe(true);
       expect(texts.some((t) => t.includes("my-helper"))).toBe(true);
 
       // Disconnect button should be present
       const disconnectBlock = view.blocks.find(
         (b) =>
           b.type === "section" &&
-          b.text?.text.includes("Disconnect VM0 Account"),
+          b.text?.text.includes("Disconnect Zero Account"),
       );
       expect(disconnectBlock).toBeDefined();
     });
@@ -768,7 +768,7 @@ describe("POST /api/slack/events", () => {
             b.type === "section" && !!b.text,
         )
         .map((b) => b.text.text);
-      expect(texts.some((t) => t.includes("Connected to VM0"))).toBe(true);
+      expect(texts.some((t) => t.includes("Connected to Zero"))).toBe(true);
       // Workspace always has a default agent — verify the agent name is shown
       expect(texts.some((t) => t.includes("default-agent"))).toBe(true);
     });

@@ -258,7 +258,7 @@ describe("buildAppHomeView", () => {
       (b): b is ActionsBlock => b.type === "actions",
     );
     expect(actionsBlock).toBeDefined();
-    const button = actionsBlock!.elements[0];
+    const button = actionsBlock!.elements[0]!;
     expect(button).toMatchObject({
       type: "button",
       text: { type: "plain_text", text: "Open Zero Settings" },
@@ -286,7 +286,7 @@ describe("buildAppHomeView", () => {
       (b): b is ActionsBlock => b.type === "actions",
     );
     expect(actionsBlock).toBeDefined();
-    const button = actionsBlock!.elements[0];
+    const button = actionsBlock!.elements[0]!;
     expect(button).toMatchObject({
       type: "button",
       text: { type: "plain_text", text: "Connect" },
