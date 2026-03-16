@@ -54,6 +54,7 @@ describe("GET /api/agent/runs/queue", () => {
       }),
     );
     expect(data.queue).toEqual([]);
+    expect(data.total).toBe(0);
   });
 
   it("counts active runs (running + fresh pending)", async () => {
@@ -111,7 +112,7 @@ describe("GET /api/agent/runs/queue", () => {
     );
   });
 
-  it("includes runId only for requesting user's own runs", async () => {
+  it("masks agentName and userEmail for other users' runs", async () => {
     const otherUserId = uniqueId("other-user");
 
     // Both users' runs use the same compose (same org)
@@ -123,14 +124,10 @@ describe("GET /api/agent/runs/queue", () => {
       status: "queued",
     });
 
-    // Insert user cache entries
+    // Insert user cache entry only for requesting user
     await insertUserCacheEntry({
       userId: user.userId,
       email: "alice@example.com",
-    });
-    await insertUserCacheEntry({
-      userId: otherUserId,
-      email: "bob@example.com",
     });
 
     const request = createTestRequest(
@@ -141,23 +138,27 @@ describe("GET /api/agent/runs/queue", () => {
 
     expect(response.status).toBe(200);
     expect(data.queue).toHaveLength(2);
+    expect(data.total).toBe(2);
 
     const ownEntry = data.queue.find(
-      (e: { isOwner: boolean }) => e.isOwner === true,
+      (e: { runId: string | null }) => e.runId !== null,
     );
     const otherEntry = data.queue.find(
-      (e: { isOwner: boolean }) => e.isOwner === false,
+      (e: { runId: string | null }) => e.runId === null,
     );
 
-    // Own run should include runId
+    // Own run should include real data and runId
     expect(ownEntry).toBeDefined();
     expect(ownEntry.runId).toBeTruthy();
-    expect(ownEntry.isOwner).toBe(true);
+    expect(ownEntry.userEmail).toBe("alice@example.com");
+    expect(ownEntry.agentName).toBeTruthy();
+    expect(ownEntry.agentName).not.toBe("-");
 
-    // Other user's run should NOT include runId
+    // Other user's run should have masked fields
     expect(otherEntry).toBeDefined();
     expect(otherEntry.runId).toBeNull();
-    expect(otherEntry.isOwner).toBe(false);
+    expect(otherEntry.agentName).toBe("-");
+    expect(otherEntry.userEmail).toBe("-");
   });
 
   it("never exposes prompt in response", async () => {
@@ -204,10 +205,10 @@ describe("GET /api/agent/runs/queue", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    // Should only see runs from user's org
+    // Should only see runs from user's org (all own entries have runId)
     expect(data.queue.length).toBeGreaterThanOrEqual(1);
     for (const entry of data.queue) {
-      expect(entry.isOwner).toBe(true);
+      expect(entry.runId).toBeTruthy();
     }
   });
 

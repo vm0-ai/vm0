@@ -46,7 +46,7 @@ export const queueCommand = new Command()
 
       // Rows
       for (const entry of queue) {
-        const marker = entry.isOwner ? chalk.cyan("  ← you") : "";
+        const marker = entry.runId !== null ? chalk.cyan("  ← you") : "";
         const row = [
           String(entry.position).padEnd(posWidth),
           entry.agentName.padEnd(agentWidth),

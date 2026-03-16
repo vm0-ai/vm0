@@ -79,25 +79,21 @@ const router = tsr.router(runsQueueContract, {
       )
       .orderBy(asc(agentRuns.createdAt));
 
-    // Resolve user emails in parallel
-    const uniqueUserIds = [...new Set(queuedRuns.map((r) => r.runUserId))];
-    const userMap = new Map<string, string>();
-    await Promise.all(
-      uniqueUserIds.map(async (uid) => {
-        const user = await getCachedUser(uid);
-        userMap.set(uid, user.email);
-      }),
-    );
+    // Only resolve email for the requesting user (skip others for privacy + perf)
+    const hasOwnRuns = queuedRuns.some((r) => r.runUserId === userId);
+    const ownEmail = hasOwnRuns ? (await getCachedUser(userId)).email : null;
 
-    // Build response with privacy filtering
-    const queue = queuedRuns.map((run, index) => ({
-      position: index + 1,
-      agentName: run.agentName ?? "unknown",
-      userEmail: userMap.get(run.runUserId) ?? "unknown",
-      createdAt: run.createdAt.toISOString(),
-      isOwner: run.runUserId === userId,
-      runId: run.runUserId === userId ? run.id : null,
-    }));
+    // Build response with privacy masking
+    const queue = queuedRuns.map((run, index) => {
+      const isOwner = run.runUserId === userId;
+      return {
+        position: index + 1,
+        agentName: isOwner ? (run.agentName ?? "unknown") : "-",
+        userEmail: isOwner ? (ownEmail ?? "unknown") : "-",
+        createdAt: run.createdAt.toISOString(),
+        runId: isOwner ? run.id : null,
+      };
+    });
 
     return {
       status: 200 as const,
@@ -109,6 +105,7 @@ const router = tsr.router(runsQueueContract, {
           available: limit === 0 ? -1 : Math.max(0, limit - active),
         },
         queue,
+        total: queue.length,
       },
     };
   },
