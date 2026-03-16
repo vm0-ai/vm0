@@ -23,19 +23,22 @@ Visit [OpenRouter Settings](https://openrouter.ai/settings/keys) to create and o
 |-------|-------------|
 | `anthropic/claude-sonnet-4.6` | Latest balanced performance |
 | `anthropic/claude-opus-4.6` | Latest highest capability |
-| `anthropic/claude-sonnet-4.5` | Balanced performance |
+| `anthropic/claude-sonnet-4.5` | Balanced performance (recommended) |
 | `anthropic/claude-opus-4.5` | Highest capability |
 | `anthropic/claude-haiku-4.5` | Fastest response |
-| auto | Automatic model selection (default) |
+
+<Callout type="info">
+If no model is specified during setup, Claude Code uses its built-in default model. This is shown as the "auto" option in the CLI setup wizard.
+</Callout>
 
 ## Non-Interactive Setup
 
 ```bash
-# With default model (auto)
-vm0 model-provider setup --type openrouter-api-key --secret "sk-or-xxx"
-
-# With specific model
+# With recommended model
 vm0 model-provider setup --type openrouter-api-key --secret "sk-or-xxx" --model "anthropic/claude-sonnet-4.5"
+
+# Without model (Claude Code uses its built-in default)
+vm0 model-provider setup --type openrouter-api-key --secret "sk-or-xxx"
 ```
 
 ## Run
