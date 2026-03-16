@@ -26,7 +26,6 @@ static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| {
     }
 });
 static API_START_TIME: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_START_TIME"));
-static OPENAI_MODEL: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_MODEL"));
 static WORKING_DIR: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_WORKING_DIR"));
 static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECRET_VALUES"));
 static USE_MOCK_CLAUDE: LazyLock<bool> = LazyLock::new(|| {
@@ -98,9 +97,6 @@ pub fn cli_agent_type() -> &'static str {
 }
 pub fn api_start_time() -> &'static str {
     &API_START_TIME
-}
-pub fn openai_model() -> &'static str {
-    &OPENAI_MODEL
 }
 pub fn working_dir() -> &'static str {
     &WORKING_DIR

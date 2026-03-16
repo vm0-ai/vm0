@@ -107,12 +107,6 @@ for dest in "${dests[@]}"; do
 done
 
 # Check CLIs
-if [[ -f "${MOUNT_DIR}/usr/local/bin/codex" ]]; then
-  echo "  codex CLI: found"
-else
-  errors+=("codex CLI not found at /usr/local/bin/codex")
-fi
-
 if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
   echo "  gh CLI: found"
 else
