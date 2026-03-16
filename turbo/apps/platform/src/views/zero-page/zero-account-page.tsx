@@ -16,11 +16,10 @@ import {
   setTheme$,
   type ThemePreference,
 } from "../../signals/theme.ts";
-import {
-  sendMode$,
-  setSendMode$,
-  type SendMode,
-} from "../../signals/send-mode.ts";
+import { sendMode$ } from "../../signals/send-mode.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import type { SendMode } from "@vm0/core";
+import { updateNotificationPreference$ } from "../../signals/settings-page/notification-settings.ts";
 
 function AppearanceSettings() {
   const THEME_OPTIONS = [
@@ -90,8 +89,10 @@ function SendModeSettings() {
     { value: "enter" as SendMode, label: "Enter" },
     { value: "cmd-enter" as SendMode, label: "⌘ Enter" },
   ] as const;
-  const current = useGet(sendMode$);
-  const setMode = useSet(setSendMode$);
+  const prefsLoadable = useLoadable(sendMode$);
+  const current: SendMode =
+    prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
+  const updatePref = useSet(updateNotificationPreference$);
 
   return (
     <div className="flex flex-col gap-3">
@@ -126,7 +127,9 @@ function SendModeSettings() {
             <button
               key={value}
               type="button"
-              onClick={() => setMode(value)}
+              onClick={() =>
+                detach(updatePref({ sendMode: value }), Reason.DomCallback)
+              }
               style={{ borderWidth: "0.7px" }}
               className={cn(
                 "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
