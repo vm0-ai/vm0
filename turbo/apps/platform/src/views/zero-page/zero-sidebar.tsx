@@ -222,7 +222,13 @@ function AccountDropdown({
   };
 
   const handleSwitchSession = (sessionId: string) => {
-    detach(clerk?.setActive({ session: sessionId }), Reason.DomCallback);
+    detach(
+      clerk?.setActive({
+        session: sessionId,
+        beforeEmit: () => window.location.reload(),
+      }),
+      Reason.DomCallback,
+    );
   };
 
   const handleAddAccount = () => {
@@ -305,53 +311,41 @@ function AccountDropdown({
           </>
         )}
 
-        {/* Switch account sub-menu or Add account (dev only) */}
-        {import.meta.env.DEV && (
-          <>
-            {hasOthers ? (
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5">
-                  <IconSwitchHorizontal size={18} stroke={1.5} />
-                  <span className="flex-1">Switch account</span>
-                  <IconChevronRight
-                    size={14}
-                    stroke={1.5}
-                    className="text-muted-foreground"
+        {/* Switch account sub-menu or Add account */}
+        {hasOthers ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5">
+              <IconSwitchHorizontal size={18} stroke={1.5} />
+              <span className="flex-1">Switch account</span>
+              <IconChevronRight
+                size={14}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[220px]">
+              {others.map((account) => (
+                <DropdownMenuItem
+                  key={account.sessionId}
+                  onClick={() => handleSwitchSession(account.sessionId)}
+                  className="gap-3 px-3 py-2.5"
+                >
+                  <AccountAvatar
+                    imageUrl={account.imageUrl}
+                    name={account.name}
+                    initial={account.initial}
                   />
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-[220px]">
-                  {others.map((account) => (
-                    <DropdownMenuItem
-                      key={account.sessionId}
-                      onClick={() => handleSwitchSession(account.sessionId)}
-                      className="gap-3 px-3 py-2.5"
-                    >
-                      <AccountAvatar
-                        imageUrl={account.imageUrl}
-                        name={account.name}
-                        initial={account.initial}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground truncate">
-                          {account.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {account.email}
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleAddAccount}
-                    className="gap-3 px-3 py-2.5"
-                  >
-                    <IconPlus size={18} stroke={1.5} />
-                    <span>Add account</span>
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            ) : (
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate">
+                      {account.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {account.email}
+                    </div>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleAddAccount}
                 className="gap-3 px-3 py-2.5"
@@ -359,10 +353,18 @@ function AccountDropdown({
                 <IconPlus size={18} stroke={1.5} />
                 <span>Add account</span>
               </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-          </>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : (
+          <DropdownMenuItem
+            onClick={handleAddAccount}
+            className="gap-3 px-3 py-2.5"
+          >
+            <IconPlus size={18} stroke={1.5} />
+            <span>Add account</span>
+          </DropdownMenuItem>
         )}
+        <DropdownMenuSeparator />
 
         {/* Actions */}
         <DropdownMenuItem
