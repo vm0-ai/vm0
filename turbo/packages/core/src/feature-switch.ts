@@ -213,6 +213,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Zero]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
 };
 
