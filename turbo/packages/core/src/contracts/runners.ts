@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { VALID_CAPABILITIES } from "./composes";
+import { servicePermissionSchema, VALID_CAPABILITIES } from "./composes";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -56,12 +56,6 @@ export const runnersPollContract = c.router({
 /**
  * Service API entry for proxy-side token replacement
  */
-export const servicePermissionSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  rules: z.array(z.string()),
-});
-
 export const serviceApiEntrySchema = z.object({
   base: z.string(),
   auth: z.object({
