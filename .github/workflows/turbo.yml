@@ -229,6 +229,8 @@ jobs:
 
   lint-types:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
@@ -240,6 +242,8 @@ jobs:
 
   lint-format:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
@@ -251,6 +255,8 @@ jobs:
 
   lint-knip:
     runs-on: ubuntu-latest
+    # Skip for release-please commits (only version bumps and changelogs)
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
