@@ -2788,6 +2788,37 @@ export async function expireQueueEntry(runId: string) {
     .where(eq(agentRunQueue.runId, runId));
 }
 
+/**
+ * Insert a queue entry for a run that is in "queued" status.
+ * Looks up the run's userId and orgId from the agent_runs table.
+ *
+ * @param runId - The run ID to enqueue
+ * @param options - Optional overrides for createdAt and expiresAt
+ */
+export async function insertTestQueueEntry(
+  runId: string,
+  options?: {
+    createdAt?: Date;
+    expiresAt?: Date;
+  },
+) {
+  const [run] = await globalThis.services.db
+    .select({ userId: agentRuns.userId, orgId: agentRuns.orgId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    throw new Error(`Run ${runId} not found`);
+  }
+  await globalThis.services.db.insert(agentRunQueue).values({
+    runId,
+    userId: run.userId,
+    orgId: run.orgId,
+    createdAt: options?.createdAt,
+    expiresAt: options?.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
+  });
+}
+
 // ============================================================================
 // Direct DB Helpers for Schema-Level Tests
 // ============================================================================
