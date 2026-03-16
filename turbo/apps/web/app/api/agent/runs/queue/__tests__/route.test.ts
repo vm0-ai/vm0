@@ -76,16 +76,17 @@ describe("GET /api/agent/runs/queue", () => {
   });
 
   it("returns queued runs in FIFO order with correct positions", async () => {
-    // Create queued runs with specific order
+    // Create queued runs with explicit timestamps to ensure deterministic ordering
+    const now = Date.now();
     await createTestRunInDb(user.userId, testComposeId, {
       status: "queued",
       prompt: "first queued",
+      createdAt: new Date(now - 1000),
     });
-    // Small delay to ensure ordering
-    await new Promise((r) => setTimeout(r, 10));
     await createTestRunInDb(user.userId, testComposeId, {
       status: "queued",
       prompt: "second queued",
+      createdAt: new Date(now),
     });
 
     // Insert user cache so email resolution works without Clerk API

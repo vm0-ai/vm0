@@ -106,7 +106,7 @@ const router = tsr.router(runsQueueContract, {
           tier: orgTier,
           limit,
           active,
-          available: limit === 0 ? 0 : Math.max(0, limit - active),
+          available: limit === 0 ? -1 : Math.max(0, limit - active),
         },
         queue,
       },

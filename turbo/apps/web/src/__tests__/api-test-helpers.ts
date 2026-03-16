@@ -541,6 +541,7 @@ async function createTestRunDirect(
     status?: string;
     prompt?: string;
     continuedFromSessionId?: string;
+    createdAt?: Date;
   },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
@@ -552,6 +553,7 @@ async function createTestRunDirect(
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
+      ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
     })
     .returning({ id: agentRuns.id });
   return run!;
@@ -623,6 +625,7 @@ export async function createTestRunInDb(
   options?: {
     status?: string;
     prompt?: string;
+    createdAt?: Date;
   },
 ): Promise<{ runId: string }> {
   // Look up orgId from compose
@@ -640,6 +643,7 @@ export async function createTestRunInDb(
   const run = await createTestRunDirect(userId, versionId, compose.orgId, {
     status: options?.status ?? "pending",
     prompt: options?.prompt ?? "test prompt",
+    createdAt: options?.createdAt,
   });
   return { runId: run.id };
 }
