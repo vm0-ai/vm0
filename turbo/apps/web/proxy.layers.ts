@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import createIntlMiddleware from "next-intl/middleware";
-import { handleCors } from "./middleware.cors";
+import { handleCors } from "./proxy.cors";
 import { locales, defaultLocale } from "./i18n";
 
 // ---------------------------------------------------------------------------
@@ -72,22 +72,22 @@ const intlMiddleware = createIntlMiddleware({
 });
 
 // ---------------------------------------------------------------------------
-// Middleware layer types
+// Proxy layer types
 // ---------------------------------------------------------------------------
 
-type MiddlewareContext = {
+type ProxyContext = {
   request: NextRequest;
   routeKind: RouteKind;
 };
 
 /**
- * A middleware layer function.
+ * A proxy layer function.
  *
  * Returning a `NextResponse` short-circuits the chain. Returning `null`
  * passes control to the next layer (onion model).
  */
-type MiddlewareLayer = (
-  ctx: MiddlewareContext,
+type ProxyLayer = (
+  ctx: ProxyContext,
 ) => Promise<NextResponse | null | undefined> | NextResponse | null | undefined;
 
 /**
@@ -96,10 +96,10 @@ type MiddlewareLayer = (
  */
 export async function runLayers(
   request: NextRequest,
-  layers: MiddlewareLayer[],
+  layers: ProxyLayer[],
 ): Promise<NextResponse> {
   const routeKind = classifyRoute(request.nextUrl.pathname);
-  const ctx: MiddlewareContext = { request, routeKind };
+  const ctx: ProxyContext = { request, routeKind };
 
   for (const layer of layers) {
     const response = await layer(ctx);
@@ -120,7 +120,7 @@ export async function runLayers(
  */
 const LOCALE_AUTH_RE = /^\/(\w{2})\/(sign-in|sign-up)(\/.*)?$/;
 
-export const authRedirectLayer: MiddlewareLayer = (ctx) => {
+export const authRedirectLayer: ProxyLayer = (ctx) => {
   const match = ctx.request.nextUrl.pathname.match(LOCALE_AUTH_RE);
   if (match && locales.includes(match[1] as (typeof locales)[number])) {
     const target = new URL(ctx.request.nextUrl);
@@ -137,7 +137,7 @@ export const authRedirectLayer: MiddlewareLayer = (ctx) => {
  */
 const LOCALE_LEGAL_RE = /^\/(\w{2})\/(privacy-policy|terms-of-use)(\/.*)?$/;
 
-export const legalRedirectLayer: MiddlewareLayer = (ctx) => {
+export const legalRedirectLayer: ProxyLayer = (ctx) => {
   const match = ctx.request.nextUrl.pathname.match(LOCALE_LEGAL_RE);
   if (match && locales.includes(match[1] as (typeof locales)[number])) {
     const target = new URL(ctx.request.nextUrl);
@@ -148,7 +148,7 @@ export const legalRedirectLayer: MiddlewareLayer = (ctx) => {
 };
 
 /** Handle CORS for API routes. Always short-circuits for "api" routes. */
-export const corsLayer: MiddlewareLayer = (ctx) => {
+export const corsLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind === "api") {
     return handleCors(ctx.request);
   }
@@ -160,7 +160,7 @@ export const corsLayer: MiddlewareLayer = (ctx) => {
  * but is not a supported locale (e.g. `/favicon.ico/blog`).
  * Returns 404 so crawlers and bots don't trigger i18n errors.
  */
-export const localeGuardLayer: MiddlewareLayer = (ctx) => {
+export const localeGuardLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind !== "page") return null;
 
   const firstSegment = ctx.request.nextUrl.pathname.split("/")[1];
@@ -175,7 +175,7 @@ export const localeGuardLayer: MiddlewareLayer = (ctx) => {
 };
 
 /** Apply i18n for page routes. */
-export const i18nLayer: MiddlewareLayer = (ctx) => {
+export const i18nLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind === "page") {
     return intlMiddleware(ctx.request);
   }

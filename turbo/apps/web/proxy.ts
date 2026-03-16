@@ -9,7 +9,7 @@ import {
   i18nLayer,
   isProtectedSkipRoute,
   classifyRoute,
-} from "./middleware.layers";
+} from "./proxy.layers";
 
 // ---------------------------------------------------------------------------
 // Clerk-specific route config

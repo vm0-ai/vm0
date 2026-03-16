@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { handleCors } from "../middleware.cors";
+import { handleCors } from "../proxy.cors";
 import { reloadEnv } from "../src/env";
 
 function getHandleCors(vercelEnv?: string) {

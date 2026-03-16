@@ -7,7 +7,7 @@ vi.mock("next-intl/middleware", () => ({
   default: () => () => NextResponse.next(),
 }));
 
-import { localeGuardLayer, runLayers } from "../middleware.layers";
+import { localeGuardLayer, runLayers } from "../proxy.layers";
 
 /**
  * Helper to run the localeGuardLayer through the real runLayers pipeline.
