@@ -18,7 +18,7 @@ const bodySchema = z.object({
   secretConnectorMap: z.record(z.string(), z.string()).optional(),
 });
 
-const log = logger("webhook:service-auth");
+const log = logger("webhook:firewall-auth");
 
 /** Matches ${{ secrets.KEY_NAME }} template placeholders in auth header values. */
 const SECRET_TEMPLATE_RE = /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
@@ -135,10 +135,10 @@ function resolveTemplates(
 }
 
 /**
- * POST /api/webhooks/agent/services/auth
+ * POST /api/webhooks/agent/firewall/auth
  *
- * Decrypter/template resolver for service auth headers.
- * Called by the mitmproxy addon when it intercepts a service-matched request.
+ * Decrypter/template resolver for firewall auth headers.
+ * Called by the mitmproxy addon when it intercepts a firewall-matched request.
  *
  * When secretConnectorMap is provided, expired OAuth tokens are refreshed
  * on demand and an expiresAt timestamp is returned for addon-side TTL caching.

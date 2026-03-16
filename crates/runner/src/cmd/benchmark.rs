@@ -174,7 +174,7 @@ async fn run_sandbox(
         run_id: &run_id,
         sandbox_token: "",
         network_log_path: &network_log_path,
-        services: None,
+        firewall: None,
         encrypted_secrets: None,
         secret_connector_map: None,
     };

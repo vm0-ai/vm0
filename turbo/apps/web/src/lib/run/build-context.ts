@@ -11,7 +11,7 @@ import {
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
   VALID_CAPABILITIES,
-  type ExperimentalServices,
+  type ExperimentalFirewall,
   type ConnectorType,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -772,28 +772,28 @@ interface BuildContextResult {
 }
 
 /**
- * Build ExperimentalServices manifest from agent compose's expanded experimental_services.
- * Returns null if no services are declared.
+ * Build ExperimentalFirewall manifest from agent compose's expanded experimental_firewall.
+ * Returns null if no firewall configs are declared.
  *
- * Reads pre-expanded ExpandedServiceConfig objects (resolved at compose time)
- * and maps them to a flat service entry array: [{ name, ref, apis }].
+ * Reads pre-expanded ExpandedFirewallConfig objects (resolved at compose time)
+ * and maps them to a flat firewall entry array: [{ name, ref, apis }].
  *
  * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */
-function buildExperimentalServices(
+function buildExperimentalFirewall(
   agentCompose: unknown,
-): ExperimentalServices | null {
+): ExperimentalFirewall | null {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) return null;
 
   const firstAgent = Object.values(compose.agents)[0];
-  const services = firstAgent?.experimental_services;
-  if (!services || services.length === 0) return null;
+  const firewallConfigs = firstAgent?.experimental_firewall;
+  if (!firewallConfigs || firewallConfigs.length === 0) return null;
 
-  return services.map((svc) => ({
-    name: svc.name,
-    ref: svc.ref,
-    apis: svc.apis.map((api) => ({
+  return firewallConfigs.map((fw) => ({
+    name: fw.name,
+    ref: fw.ref,
+    apis: fw.apis.map((api) => ({
       base: api.base,
       auth: api.auth,
       ...(api.permissions ? { permissions: api.permissions } : {}),
@@ -924,9 +924,9 @@ export async function buildExecutionContext(
   const { secrets, environment, secretConnectorMap } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
-  // Build experimental services manifest (base + auth entries for the runner)
-  const experimentalServices =
-    buildExperimentalServices(agentCompose) ?? undefined;
+  // Build experimental firewall manifest (base + auth entries for the runner)
+  const experimentalFirewall =
+    buildExperimentalFirewall(agentCompose) ?? undefined;
 
   // Build experimental capabilities list from compose
   const experimentalCapabilities = buildExperimentalCapabilities(agentCompose);
@@ -950,7 +950,7 @@ export async function buildExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      experimentalServices,
+      experimentalFirewall,
       experimentalCapabilities,
       resumeSession,
       resumeArtifact,

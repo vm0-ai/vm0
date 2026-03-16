@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { CONNECTOR_TYPES } from "../connectors";
 import type { ConnectorType } from "../connectors";
-import { getServiceConfig } from "../services";
+import { getFirewallConfig } from "../firewall";
 
-describe("getServiceConfig", () => {
+describe("getFirewallConfig", () => {
   it("returns proxy config for known connector types", () => {
-    const config = getServiceConfig("github");
+    const config = getFirewallConfig("github");
     expect(config).toBeDefined();
     expect(config!.apis[0]!.base).toBe("https://api.github.com");
     expect(config!.apis[0]!.auth.headers.Authorization).toBe(
@@ -16,8 +16,8 @@ describe("getServiceConfig", () => {
     });
   });
 
-  it("returns config with multiple services for slack", () => {
-    const config = getServiceConfig("slack");
+  it("returns config with multiple apis for slack", () => {
+    const config = getFirewallConfig("slack");
     expect(config).toBeDefined();
     expect(config!.apis.map((s) => s.base)).toEqual([
       "https://slack.com/api",
@@ -29,34 +29,34 @@ describe("getServiceConfig", () => {
   });
 
   it("returns config with custom headers for notion", () => {
-    const config = getServiceConfig("notion");
+    const config = getFirewallConfig("notion");
     expect(config).toBeDefined();
     expect(config!.apis[0]!.auth.headers["Notion-Version"]).toBe("2022-06-28");
   });
 
   it("returns undefined for computer connector (no proxy support)", () => {
-    const config = getServiceConfig("computer");
+    const config = getFirewallConfig("computer");
     expect(config).toBeUndefined();
   });
 
-  it("all proxy configs have valid services and auth headers", () => {
+  it("all proxy configs have valid apis and auth headers", () => {
     const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
     for (const type of allTypes) {
-      const config = getServiceConfig(type);
+      const config = getFirewallConfig(type);
       if (!config) continue;
 
       expect(
         config.apis.length,
-        `${type} should have at least one service`,
+        `${type} should have at least one api`,
       ).toBeGreaterThan(0);
-      for (const svc of config.apis) {
-        expect(svc.base, `${type} service base should be https URL`).toMatch(
+      for (const api of config.apis) {
+        expect(api.base, `${type} api base should be https URL`).toMatch(
           /^https:\/\//,
         );
         expect(
-          Object.keys(svc.auth.headers).length,
-          `${type} service should have at least one auth header`,
+          Object.keys(api.auth.headers).length,
+          `${type} api should have at least one auth header`,
         ).toBeGreaterThan(0);
       }
     }

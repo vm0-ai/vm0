@@ -59,11 +59,11 @@ class TestLoadRegistry:
             mitm_addon.load_registry()  # initial load (has run-abc-123)
 
             # Simulate cached headers for run-abc-123
-            mitm_addon._service_header_cache[("run-abc-123", "api-0")] = {
+            mitm_addon._firewall_header_cache[("run-abc-123", "api-0")] = {
                 "headers": {"Authorization": "Bearer tok"},
             }
             # Also cache for run-other (will appear in new registry)
-            mitm_addon._service_header_cache[("run-other", "api-0")] = {
+            mitm_addon._firewall_header_cache[("run-other", "api-0")] = {
                 "headers": {"Authorization": "Bearer other"},
             }
 
@@ -74,9 +74,9 @@ class TestLoadRegistry:
             mitm_addon.load_registry()  # reload triggers eviction
 
         # run-abc-123 cache should be evicted (no longer in registry)
-        assert ("run-abc-123", "api-0") not in mitm_addon._service_header_cache
+        assert ("run-abc-123", "api-0") not in mitm_addon._firewall_header_cache
         # run-other cache should remain (still in registry)
-        assert ("run-other", "api-0") in mitm_addon._service_header_cache
+        assert ("run-other", "api-0") in mitm_addon._firewall_header_cache
 
 
 class TestGetVmInfo:

@@ -5,7 +5,7 @@ mitmproxy addon for VM0 runner-level network proxy.
 This addon runs on the runner HOST (not inside VMs) and:
 1. Intercepts all HTTPS requests from VMs
 2. Looks up the source VM's runId from the proxy registry
-3. Injects auth headers for configured services (proxy-side token replacement)
+3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
 """
 import os
@@ -55,8 +55,8 @@ _registry_cache_key = (0, 0)
 # Track request start times for latency calculation
 _request_start_times = {}
 
-# Cache for service auth headers: (run_id, api_id) -> {"headers": dict}
-_service_header_cache = {}
+# Cache for firewall auth headers: (run_id, api_id) -> {"headers": dict}
+_firewall_header_cache = {}
 
 
 def load_registry() -> dict:
@@ -74,9 +74,9 @@ def load_registry() -> dict:
 
         # Evict cache entries for runs no longer in the registry
         active_run_ids = {vm.get("runId") for vm in new_registry.values()}
-        stale = [k for k in _service_header_cache if k[0] not in active_run_ids]
+        stale = [k for k in _firewall_header_cache if k[0] not in active_run_ids]
         for k in stale:
-            _service_header_cache.pop(k, None)
+            _firewall_header_cache.pop(k, None)
 
         _registry_cache = new_registry
         _registry_cache_key = key
@@ -123,7 +123,7 @@ def get_original_url(flow: http.HTTPFlow) -> str:
 
 
 # ============================================================================
-# Service Header Resolution
+# Firewall Header Resolution
 # ============================================================================
 
 def match_path(path: str, pattern: str) -> dict | None:
@@ -162,26 +162,26 @@ def match_path(path: str, pattern: str) -> dict | None:
     return params
 
 
-class ServiceAllow(NamedTuple):
+class FirewallAllow(NamedTuple):
     """Permission matched — inject auth headers."""
     api_entry: dict
     match_info: dict
 
 
-class ServiceBlock(NamedTuple):
+class FirewallBlock(NamedTuple):
     """Base URL matched but no permission granted — return 403."""
     base: str
 
 
-def match_service_request(url: str, method: str, vm_services: list | None) -> ServiceAllow | ServiceBlock | None:
-    """Match request against service permissions.
+def match_firewall_request(url: str, method: str, vm_firewall: list | None) -> FirewallAllow | FirewallBlock | None:
+    """Match request against firewall permissions.
 
     Returns:
-      ServiceAllow — permission matched, inject headers
-      ServiceBlock — base URL matched but no permission granted
-      None — no base URL match (not a service request)
+      FirewallAllow — permission matched, inject headers
+      FirewallBlock — base URL matched but no permission granted
+      None — no base URL match (not a firewall request)
     """
-    if not vm_services:
+    if not vm_firewall:
         return None
 
     # Track the first base URL that matched. If we find a base match but no
@@ -189,10 +189,10 @@ def match_service_request(url: str, method: str, vm_services: list | None) -> Se
     # first matched base is recorded — subsequent base matches don't overwrite.
     blocked_base = None
 
-    for service in vm_services:
-        svc_name = service.get("name", "")
-        svc_ref = service.get("ref", "")
-        for api_entry in service.get("apis", []):
+    for fw_entry in vm_firewall:
+        fw_name = fw_entry.get("name", "")
+        fw_ref = fw_entry.get("ref", "")
+        for api_entry in fw_entry.get("apis", []):
             base = api_entry.get("base", "").rstrip("/")
             if not base or not url.startswith(base):
                 continue
@@ -224,20 +224,20 @@ def match_service_request(url: str, method: str, vm_services: list | None) -> Se
                         continue
                     params = match_path(rel_path, rule_pattern)
                     if params is not None:
-                        return ServiceAllow(api_entry, {
-                            "service": svc_name,
-                            "ref": svc_ref,
+                        return FirewallAllow(api_entry, {
+                            "name": fw_name,
+                            "ref": fw_ref,
                             "permission": perm_name,
                             "params": params,
                             "rule": rule_str,
                         })
 
     if blocked_base is not None:
-        return ServiceBlock(blocked_base)
+        return FirewallBlock(blocked_base)
     return None
 
 
-def fetch_service_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
+def fetch_firewall_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
                           secret_connector_map: dict | None = None) -> dict:
     """Resolve auth headers via server-side decryption.
 
@@ -245,7 +245,7 @@ def fetch_service_headers(encrypted_secrets: str, auth_headers: dict, sandbox_to
     expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
     """
     api_url = get_api_url()
-    url = f"{api_url}/api/webhooks/agent/services/auth"
+    url = f"{api_url}/api/webhooks/agent/firewall/auth"
     body: dict = {"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}
     if secret_connector_map:
         body["secretConnectorMap"] = secret_connector_map
@@ -260,9 +260,9 @@ def fetch_service_headers(encrypted_secrets: str, auth_headers: dict, sandbox_to
     return json.loads(resp.read())
 
 
-def get_service_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict,
+def get_firewall_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict,
                         sandbox_token: str, secret_connector_map: dict | None = None) -> dict:
-    """Get service auth headers with TTL-based caching.
+    """Get firewall auth headers with TTL-based caching.
 
     Cache is evicted when:
     - The run is removed from the registry (see load_registry)
@@ -270,24 +270,24 @@ def get_service_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_h
     - The expiresAt timestamp from the auth endpoint has passed
     """
     cache_key = (run_id, api_id)
-    cached = _service_header_cache.get(cache_key)
+    cached = _firewall_header_cache.get(cache_key)
     if cached:
         expires_at = cached.get("expiresAt")
         if expires_at is None or time.time() < expires_at:
             return cached["headers"]
         # Token expired — evict and re-fetch
 
-    result = fetch_service_headers(encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
+    result = fetch_firewall_headers(encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
     headers = result["headers"]
-    _service_header_cache[cache_key] = {"headers": headers, "expiresAt": result.get("expiresAt")}
+    _firewall_header_cache[cache_key] = {"headers": headers, "expiresAt": result.get("expiresAt")}
     return headers
 
 
-def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict) -> None:
-    """Handle a service-matched request: fetch resolved headers, inject into request."""
+def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict) -> None:
+    """Handle a firewall-matched request: fetch resolved headers, inject into request."""
     client_ip = flow.client_conn.peername[0]
-    service_base = api_entry["base"]
-    api_id = api_entry.get("id", service_base)  # fallback to base for backward compat
+    firewall_base = api_entry["base"]
+    api_id = api_entry.get("id", firewall_base)  # fallback to base for backward compat
     run_id = vm_info.get("runId", "")
     sandbox_token = vm_info.get("sandboxToken", "")
     encrypted_secrets = vm_info.get("encryptedSecrets")
@@ -295,27 +295,27 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, 
     secret_connector_map = vm_info.get("secretConnectorMap")
 
     if not encrypted_secrets:
-        ctx.log.error(f"[{run_id}] No encryptedSecrets for service {service_base}")
+        ctx.log.error(f"[{run_id}] No encryptedSecrets for firewall rule {firewall_base}")
         flow.metadata["firewall_action"] = "DENY"
-        flow.metadata["firewall_rule"] = f"service:{service_base}"
+        flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
         flow.response = http.Response.make(
             502,
-            b"Service auth unavailable",
+            b"Firewall auth unavailable",
             {"Content-Type": "text/plain"},
         )
         return
 
     try:
-        headers = get_service_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
+        headers = get_firewall_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
     except Exception as e:
-        ctx.log.error(f"[{run_id}] Service {service_base} header fetch failed: {e}")
+        ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
         flow.metadata["firewall_action"] = "DENY"
-        flow.metadata["firewall_rule"] = f"service:{service_base}"
+        flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
         flow.response = http.Response.make(
             502,
-            b"Service header fetch failed",
+            b"Firewall header fetch failed",
             {"Content-Type": "text/plain"},
         )
         return
@@ -326,20 +326,20 @@ def handle_service_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, 
 
     # Store metadata for logging and auditing
     flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["firewall_rule"] = f"service:{service_base}"
-    flow.metadata["service_base"] = service_base
-    flow.metadata["service_api_id"] = api_id
-    flow.metadata["service_name"] = match_info.get("service", "")
-    flow.metadata["service_ref"] = match_info.get("ref", "")
-    flow.metadata["service_permission"] = match_info.get("permission", "")
-    flow.metadata["service_rule"] = match_info.get("rule", "")
-    flow.metadata["service_params"] = match_info.get("params", {})
+    flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
+    flow.metadata["firewall_base"] = firewall_base
+    flow.metadata["firewall_api_id"] = api_id
+    flow.metadata["firewall_name"] = match_info.get("name", "")
+    flow.metadata["firewall_ref"] = match_info.get("ref", "")
+    flow.metadata["firewall_permission"] = match_info.get("permission", "")
+    flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
+    flow.metadata["firewall_params"] = match_info.get("params", {})
     flow.metadata["original_url"] = get_original_url(flow)
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
-    ctx.log.info(f"[{run_id}] Service {service_base}: {flow.request.pretty_host}")
+    ctx.log.info(f"[{run_id}] Firewall {firewall_base}: {flow.request.pretty_host}")
 
 
 # ============================================================================
@@ -372,11 +372,11 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
 def request(flow: http.HTTPFlow) -> None:
     """
-    Intercept request: inject service auth headers for configured services.
+    Intercept request: inject firewall auth headers for configured firewall rules.
 
     Order:
     1. VM0 API auto-allow (agent must always reach the platform)
-    2. Service match (inject auth headers for allowed requests)
+    2. Firewall match (inject auth headers for allowed requests)
     """
     # Track request start time
     _request_start_times[flow.id] = time.time()
@@ -419,28 +419,28 @@ def request(flow: http.HTTPFlow) -> None:
             flow.metadata["original_url"] = get_original_url(flow)
             return
 
-    # --- Step 2: Service match with permission check ---
+    # --- Step 2: Firewall match with permission check ---
     # Match base URL, then check permission rules before injecting auth headers.
-    vm_services = vm_info.get("services")
-    if vm_services:
+    vm_firewall = vm_info.get("firewall")
+    if vm_firewall:
         original_url = get_original_url(flow)
-        result = match_service_request(original_url, flow.request.method, vm_services)
-        if isinstance(result, ServiceBlock):
-            ctx.log.warn(f"[{run_id}] Service {result.base}: no matching permission for {flow.request.method} {flow.request.path}")
+        result = match_firewall_request(original_url, flow.request.method, vm_firewall)
+        if isinstance(result, FirewallBlock):
+            ctx.log.warn(f"[{run_id}] Firewall {result.base}: no matching permission for {flow.request.method} {flow.request.path}")
             flow.metadata["firewall_action"] = "DENY"
-            flow.metadata["firewall_rule"] = f"service:{result.base}"
+            flow.metadata["firewall_rule"] = f"firewall:{result.base}"
             flow.metadata["original_url"] = original_url
             flow.response = http.Response.make(
                 403,
-                b"No matching service permission",
+                b"No matching firewall permission",
                 {"Content-Type": "text/plain"},
             )
             return
-        if isinstance(result, ServiceAllow):
-            handle_service_request(flow, result.api_entry, vm_info, result.match_info)
+        if isinstance(result, FirewallAllow):
+            handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
             return
 
-    # No service match — pass through directly
+    # No firewall match — pass through directly
     flow.metadata["firewall_action"] = "ALLOW"
     flow.metadata["original_url"] = get_original_url(flow)
     ctx.log.info(f"[{run_id}] ALLOW: {hostname}")
@@ -509,14 +509,14 @@ def response(flow: http.HTTPFlow) -> None:
             "response_size": response_size,
         }
 
-        # Add service match info if this was a service request
-        svc_base = flow.metadata.get("service_base")
+        # Add firewall match info if this was a firewall request
+        svc_base = flow.metadata.get("firewall_base")
         if svc_base:
-            log_entry["service_base"] = svc_base
-            log_entry["service_name"] = flow.metadata.get("service_name", "")
-            log_entry["service_ref"] = flow.metadata.get("service_ref", "")
-            log_entry["service_permission"] = flow.metadata.get("service_permission", "")
-            log_entry["service_rule"] = flow.metadata.get("service_rule", "")
+            log_entry["firewall_base"] = svc_base
+            log_entry["firewall_name"] = flow.metadata.get("firewall_name", "")
+            log_entry["firewall_ref"] = flow.metadata.get("firewall_ref", "")
+            log_entry["firewall_permission"] = flow.metadata.get("firewall_permission", "")
+            log_entry["firewall_rule_match"] = flow.metadata.get("firewall_rule_match", "")
 
         # Add response headers useful for debugging gzip/encoding issues
         if flow.response:
@@ -527,14 +527,14 @@ def response(flow: http.HTTPFlow) -> None:
 
         log_network_entry({"networkLogPath": network_log_path}, log_entry)
 
-    # Invalidate service header cache on 401 so next request gets fresh headers
+    # Invalidate firewall header cache on 401 so next request gets fresh headers
     if flow.response and flow.response.status_code == 401 and firewall_rule:
-        if firewall_rule.startswith("service:"):
-            api_id = flow.metadata.get("service_api_id", "")
+        if firewall_rule.startswith("firewall:"):
+            api_id = flow.metadata.get("firewall_api_id", "")
             if api_id:
                 cache_key = (run_id, api_id)
-                if _service_header_cache.pop(cache_key, None):
-                    ctx.log.info(f"[{run_id}] Service {api_id}: 401 - cleared header cache")
+                if _firewall_header_cache.pop(cache_key, None):
+                    ctx.log.info(f"[{run_id}] Firewall {api_id}: 401 - cleared header cache")
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:

@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { ExperimentalServices, VALID_CAPABILITIES } from "@vm0/core";
+import type { ExperimentalFirewall, VALID_CAPABILITIES } from "@vm0/core";
 
 /**
  * Run status values
@@ -77,8 +77,8 @@ export interface ExecutionContext {
   // Injected as TZ environment variable in sandbox if not already set in environment
   userTimezone?: string;
 
-  // Experimental services for proxy-side token replacement
-  experimentalServices?: ExperimentalServices;
+  // Experimental firewall for proxy-side token replacement
+  experimentalFirewall?: ExperimentalFirewall;
 
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities?: (typeof VALID_CAPABILITIES)[number][];

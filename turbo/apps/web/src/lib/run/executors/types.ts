@@ -1,7 +1,7 @@
 import type { StorageManifest } from "../../storage/types";
 import type { ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import type { ExperimentalServices, VALID_CAPABILITIES } from "@vm0/core";
+import type { ExperimentalFirewall, VALID_CAPABILITIES } from "@vm0/core";
 
 /**
  * Prepared execution context for executors
@@ -42,8 +42,8 @@ export interface PreparedContext {
   // Memory storage name
   memoryName: string | null;
 
-  // Experimental services for proxy-side token replacement
-  experimentalServices: ExperimentalServices | null;
+  // Experimental firewall for proxy-side token replacement
+  experimentalFirewall: ExperimentalFirewall | null;
 
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: (typeof VALID_CAPABILITIES)[number][] | null;

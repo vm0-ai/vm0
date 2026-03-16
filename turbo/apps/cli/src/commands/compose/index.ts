@@ -8,8 +8,8 @@ import {
   getLegacySystemTemplateWarning,
   extractAndGroupVariables,
   resolveSkillRef,
-  expandServiceConfigs,
-  type ServiceSelection,
+  expandFirewallConfigs,
+  type FirewallSelection,
 } from "@vm0/core";
 import {
   getComposeByName,
@@ -74,7 +74,7 @@ interface AgentConfig {
   skills?: string[];
   environment?: Record<string, string>;
   metadata?: { displayName?: string; sound?: string };
-  experimental_services?: Record<string, ServiceSelection>;
+  experimental_firewall?: Record<string, FirewallSelection>;
 }
 
 interface LoadedConfig {
@@ -512,8 +512,8 @@ async function finalizeCompose(
   // Merge skill variables into environment
   mergeSkillVariables(agent, variables);
 
-  // Expand experimental_services from names to full configs before sending to API
-  expandServiceConfigs(config);
+  // Expand experimental_firewall from names to full configs before sending to API
+  expandFirewallConfigs(config);
 
   // Call API
   if (!options.json) {

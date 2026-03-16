@@ -224,8 +224,8 @@ function buildPreparedContext(
     // Memory storage name
     memoryName: context.memoryName || null,
 
-    // Experimental services for proxy-side token replacement
-    experimentalServices: context.experimentalServices ?? null,
+    // Experimental firewall for proxy-side token replacement
+    experimentalFirewall: context.experimentalFirewall ?? null,
 
     // Experimental capabilities
     experimentalCapabilities: context.experimentalCapabilities ?? null,

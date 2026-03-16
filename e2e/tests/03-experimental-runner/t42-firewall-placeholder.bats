@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-# Test experimental_services placeholder env var injection and permission-based matching
+# Test experimental_firewall placeholder env var injection and permission-based matching
 #
-# Verifies that when experimental_services is declared:
+# Verifies that when experimental_firewall is declared:
 # 1. Placeholder env vars replace secret values in the sandbox (with custom formats)
 # 2. Proxy replaces placeholder tokens and enforces permission-based access control
 
@@ -32,8 +32,8 @@ setup() {
 
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export AGENT_NAME="e2e-service-${UNIQUE_ID}"
-    export ARTIFACT_NAME="e2e-service-artifact-${UNIQUE_ID}"
+    export AGENT_NAME="e2e-firewall-${UNIQUE_ID}"
+    export ARTIFACT_NAME="e2e-firewall-artifact-${UNIQUE_ID}"
 }
 
 teardown() {
@@ -81,17 +81,17 @@ setup_test_connector() {
     fi
 }
 
-@test "service: placeholder env vars" {
+@test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   ${AGENT_NAME}-multi:
-    description: "Multi-service placeholder test"
+    description: "Multi-firewall placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_services:
+    experimental_firewall:
       github:
         permissions: all
       slack:
@@ -106,7 +106,7 @@ EOF
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    # Verify env vars from both services are set to placeholder values.
+    # Verify env vars from both firewall configs are set to placeholder values.
     run $CLI_COMMAND run "${AGENT_NAME}-multi" \
         --artifact-name "$ARTIFACT_NAME-multi" \
         "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
@@ -119,7 +119,7 @@ EOF
     assert_output --partial "SLACK_TOKEN=xoxb-0000-0000-vm0placeholder"
 }
 
-@test "service: permission-based request matching" {
+@test "firewall: permission-based request matching" {
     # Connectors are set up in setup_file() to avoid parallel write races.
     # Only grant repo-read — search endpoints should be blocked.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
@@ -130,7 +130,7 @@ agents:
     description: "Permission-based request matching test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_services:
+    experimental_firewall:
       github:
         permissions:
           - repo-read

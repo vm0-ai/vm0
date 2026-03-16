@@ -2,7 +2,7 @@
  * Agent compose types matching agent.yaml format
  */
 
-import type { ExpandedServiceConfig, VALID_CAPABILITIES } from "@vm0/core";
+import type { ExpandedFirewallConfig, VALID_CAPABILITIES } from "@vm0/core";
 
 /**
  * Volume configuration for static dependencies
@@ -45,11 +45,11 @@ interface AgentDefinition {
     group: string;
   };
   /**
-   * Expanded service configs for proxy-side token replacement.
-   * Resolved from service names at compose time, stored as full objects.
+   * Expanded firewall configs for proxy-side token replacement.
+   * Resolved from firewall names at compose time, stored as full objects.
    * Input format (CLI): string[] — expanded server-side before storage.
    */
-  experimental_services?: ExpandedServiceConfig[];
+  experimental_firewall?: ExpandedFirewallConfig[];
   /**
    * Capabilities that the agent is allowed to use.
    * Validated at compose time against VALID_CAPABILITIES.

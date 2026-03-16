@@ -292,12 +292,12 @@ export {
   type ArtifactEntry,
   type StorageManifest,
   type ResumeSession,
-  serviceApiEntrySchema,
-  serviceEntrySchema,
-  experimentalServicesSchema,
-  type ServiceApiEntry,
-  type ServiceEntry,
-  type ExperimentalServices,
+  firewallApiSchema,
+  firewallSchema,
+  experimentalFirewallSchema,
+  type FirewallApi,
+  type Firewall,
+  type ExperimentalFirewall,
 } from "./runners";
 
 export {
@@ -427,20 +427,20 @@ export {
 } from "./connectors";
 
 export {
-  getServiceConfig,
+  getFirewallConfig,
   extractSecretNamesFromApis,
-  type ServiceConfig,
-  type ExpandedServiceConfig,
-} from "./services";
+  type FirewallConfig,
+  type ExpandedFirewallConfig,
+} from "./firewall";
 
 export {
-  expandServiceConfigs,
-  resolveServiceConfig,
+  expandFirewallConfigs,
+  resolveFirewallConfig,
   collectAndValidatePermissions,
   validateRule,
   validateBaseUrl,
-  type ServiceSelection,
-} from "./service-expander";
+  type FirewallSelection,
+} from "./firewall-expander";
 
 export {
   userPreferencesContract,

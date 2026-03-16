@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { servicePermissionSchema, VALID_CAPABILITIES } from "./composes";
+import { firewallPermissionSchema, VALID_CAPABILITIES } from "./composes";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -54,30 +54,30 @@ export const runnersPollContract = c.router({
 });
 
 /**
- * Service API entry for proxy-side token replacement
+ * Firewall API entry for proxy-side token replacement
  */
-export const serviceApiEntrySchema = z.object({
+export const firewallApiSchema = z.object({
   base: z.string(),
   auth: z.object({
     headers: z.record(z.string(), z.string()),
   }),
-  permissions: z.array(servicePermissionSchema).optional(),
+  permissions: z.array(firewallPermissionSchema).optional(),
 });
 
 /**
- * A single service with its name, ref, and API entries.
+ * A single firewall with its name, ref, and API entries.
  */
-export const serviceEntrySchema = z.object({
+export const firewallSchema = z.object({
   name: z.string(),
   ref: z.string(),
-  apis: z.array(serviceApiEntrySchema),
+  apis: z.array(firewallApiSchema),
 });
 
 /**
- * Experimental services configuration for proxy-side token replacement.
- * Flat array of service entries: [{ name, ref, apis }]
+ * Experimental firewall configuration for proxy-side token replacement.
+ * Flat array of firewall entries: [{ name, ref, apis }]
  */
-export const experimentalServicesSchema = z.array(serviceEntrySchema);
+export const experimentalFirewallSchema = z.array(firewallSchema);
 
 /**
  * Storage entry in manifest
@@ -139,8 +139,8 @@ export const storedExecutionContextSchema = z.object({
   agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
-  // Experimental services for proxy-side token replacement
-  experimentalServices: experimentalServicesSchema.optional(),
+  // Experimental firewall for proxy-side token replacement
+  experimentalFirewall: experimentalFirewallSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });
@@ -179,8 +179,8 @@ export const executionContextSchema = z.object({
   agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
-  // Experimental services for proxy-side token replacement
-  experimentalServices: experimentalServicesSchema.optional(),
+  // Experimental firewall for proxy-side token replacement
+  experimentalFirewall: experimentalFirewallSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });
@@ -223,6 +223,6 @@ export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
-export type ServiceApiEntry = z.infer<typeof serviceApiEntrySchema>;
-export type ServiceEntry = z.infer<typeof serviceEntrySchema>;
-export type ExperimentalServices = z.infer<typeof experimentalServicesSchema>;
+export type FirewallApi = z.infer<typeof firewallApiSchema>;
+export type Firewall = z.infer<typeof firewallSchema>;
+export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;

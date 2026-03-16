@@ -46,7 +46,7 @@ export const VALID_CAPABILITIES = [
  * Defined here (not in runners.ts) to avoid circular dependency:
  * composes.ts exports VALID_CAPABILITIES used by runners.ts.
  */
-export const servicePermissionSchema = z.object({
+export const firewallPermissionSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   rules: z.array(z.string()),
@@ -122,11 +122,11 @@ const agentDefinitionSchema = z.object({
     })
     .optional(),
   /**
-   * External services for proxy-side token replacement.
+   * External firewall rules for proxy-side token replacement.
    * CLI input: map format { slack: { permissions: [...] | "all" } }
-   * — expanded by CLI to full ExpandedServiceConfig[] before API call.
+   * — expanded by CLI to full ExpandedFirewallConfig[] before API call.
    */
-  experimental_services: z
+  experimental_firewall: z
     .record(
       z.string(),
       z.object({
@@ -169,7 +169,7 @@ const agentDefinitionSchema = z.object({
 });
 
 /**
- * Agent compose YAML content schema (CLI input — experimental_services is map format)
+ * Agent compose YAML content schema (CLI input — experimental_firewall is map format)
  */
 const agentComposeContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
@@ -178,9 +178,9 @@ const agentComposeContentSchema = z.object({
 });
 
 /**
- * Expanded service config schema (after CLI expansion)
+ * Expanded firewall config schema (after CLI expansion)
  */
-const expandedServiceConfigSchema = z.object({
+const expandedFirewallConfigSchema = z.object({
   name: z.string(),
   ref: z.string(),
   description: z.string().optional(),
@@ -190,7 +190,7 @@ const expandedServiceConfigSchema = z.object({
       auth: z.object({
         headers: z.record(z.string(), z.string()),
       }),
-      permissions: z.array(servicePermissionSchema).optional(),
+      permissions: z.array(firewallPermissionSchema).optional(),
     }),
   ),
   placeholders: z.record(z.string(), z.string()).optional(),
@@ -198,14 +198,14 @@ const expandedServiceConfigSchema = z.object({
 
 /**
  * Agent compose content schema for API requests.
- * Same as agentComposeContentSchema but experimental_services is pre-expanded by CLI.
+ * Same as agentComposeContentSchema but experimental_firewall is pre-expanded by CLI.
  */
 const agentComposeApiContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
   agents: z.record(
     z.string(),
     agentDefinitionSchema.extend({
-      experimental_services: z.array(expandedServiceConfigSchema).optional(),
+      experimental_firewall: z.array(expandedFirewallConfigSchema).optional(),
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),

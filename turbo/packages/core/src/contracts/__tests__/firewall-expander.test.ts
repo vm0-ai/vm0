@@ -1,35 +1,35 @@
 import { describe, it, expect } from "vitest";
 import { connectorTypeSchema } from "../connectors";
-import type { ExpandedServiceConfig } from "../services";
-import { getServiceConfig } from "../services";
+import type { ExpandedFirewallConfig } from "../firewall";
+import { getFirewallConfig } from "../firewall";
 import {
-  expandServiceConfigs,
+  expandFirewallConfigs,
   validateRule,
   validateBaseUrl,
-} from "../service-expander";
+} from "../firewall-expander";
 
-describe("expandServiceConfigs", () => {
+describe("expandFirewallConfigs", () => {
   function makeConfig(
-    services: Record<string, { permissions: string[] | "all" }>,
+    configs: Record<string, { permissions: string[] | "all" }>,
   ) {
     return {
       version: "1.0",
       agents: {
         myagent: {
           framework: "claude-code",
-          experimental_services: services,
+          experimental_firewall: configs,
         },
       },
     };
   }
 
   function getExpanded(config: ReturnType<typeof makeConfig>) {
-    expandServiceConfigs(config);
+    expandFirewallConfigs(config);
     return config.agents.myagent
-      .experimental_services as unknown as ExpandedServiceConfig[];
+      .experimental_firewall as unknown as ExpandedFirewallConfig[];
   }
 
-  it("should expand service with permissions: all", () => {
+  it("should expand firewall with permissions: all", () => {
     const config = makeConfig({ github: { permissions: "all" } });
     const expanded = getExpanded(config);
 
@@ -46,7 +46,7 @@ describe("expandServiceConfigs", () => {
     expect(permNames).toContain("search");
   });
 
-  it("should expand service with specific permissions", () => {
+  it("should expand firewall with specific permissions", () => {
     const config = makeConfig({
       github: { permissions: ["issues-read", "issues-write"] },
     });
@@ -59,7 +59,7 @@ describe("expandServiceConfigs", () => {
     expect(permNames).toContain("issues-write");
   });
 
-  it("should include placeholders when service has them", () => {
+  it("should include placeholders when config has them", () => {
     const config = makeConfig({ github: { permissions: "all" } });
     const expanded = getExpanded(config);
 
@@ -68,7 +68,7 @@ describe("expandServiceConfigs", () => {
     });
   });
 
-  it("should expand multiple services", () => {
+  it("should expand multiple firewall configs", () => {
     const config = makeConfig({
       github: { permissions: "all" },
       slack: { permissions: "all" },
@@ -95,42 +95,42 @@ describe("expandServiceConfigs", () => {
     }
   });
 
-  it("should skip services with no agents", () => {
+  it("should skip configs with no agents", () => {
     const config = { version: "1.0" };
-    expandServiceConfigs(config);
+    expandFirewallConfigs(config);
     // No error thrown
   });
 
-  it("should skip already expanded services (array format)", () => {
+  it("should skip already expanded configs (array format)", () => {
     const config = {
       version: "1.0",
       agents: {
         myagent: {
           framework: "claude-code",
-          experimental_services: [
+          experimental_firewall: [
             { name: "github", ref: "github", apis: [], placeholders: {} },
           ],
         },
       },
     };
-    expandServiceConfigs(config);
+    expandFirewallConfigs(config);
     // Should not modify already-expanded array
-    expect(Array.isArray(config.agents.myagent.experimental_services)).toBe(
+    expect(Array.isArray(config.agents.myagent.experimental_firewall)).toBe(
       true,
     );
   });
 
-  it("should not include description when service has none", () => {
+  it("should not include description when config has none", () => {
     const config = makeConfig({ github: { permissions: "all" } });
     const expanded = getExpanded(config);
 
     expect(expanded[0]!.description).toBeUndefined();
   });
 
-  it("should throw for unknown service ref", () => {
-    const config = makeConfig({ "not-a-service": { permissions: "all" } });
-    expect(() => expandServiceConfigs(config)).toThrow(
-      'Cannot resolve service ref "not-a-service"',
+  it("should throw for unknown firewall ref", () => {
+    const config = makeConfig({ "not-a-firewall": { permissions: "all" } });
+    expect(() => expandFirewallConfigs(config)).toThrow(
+      'Cannot resolve firewall ref "not-a-firewall"',
     );
   });
 
@@ -138,17 +138,17 @@ describe("expandServiceConfigs", () => {
     const config = makeConfig({
       github: { permissions: ["does-not-exist"] },
     });
-    expect(() => expandServiceConfigs(config)).toThrow(
-      'Permission "does-not-exist" does not exist in service "github"',
+    expect(() => expandFirewallConfigs(config)).toThrow(
+      'Permission "does-not-exist" does not exist in firewall "github"',
     );
   });
 
-  it("should validate all built-in service configs pass rule validation", () => {
-    // Every built-in service with a service config should pass validation
+  it("should validate all built-in firewall configs pass rule validation", () => {
+    // Every built-in connector with a firewall config should pass validation
     for (const type of connectorTypeSchema.options) {
-      if (!getServiceConfig(type)) continue;
+      if (!getFirewallConfig(type)) continue;
       const config = makeConfig({ [type]: { permissions: "all" } });
-      expect(() => expandServiceConfigs(config)).not.toThrow();
+      expect(() => expandFirewallConfigs(config)).not.toThrow();
     }
   });
 });
@@ -156,22 +156,22 @@ describe("expandServiceConfigs", () => {
 describe("validateRule", () => {
   it("should accept valid rules", () => {
     expect(() =>
-      validateRule("GET /repos/{owner}/{repo}", "p", "svc"),
+      validateRule("GET /repos/{owner}/{repo}", "p", "fw"),
     ).not.toThrow();
     expect(() =>
-      validateRule("POST /chat.postMessage", "p", "svc"),
+      validateRule("POST /chat.postMessage", "p", "fw"),
     ).not.toThrow();
-    expect(() => validateRule("ANY /{path+}", "p", "svc")).not.toThrow();
+    expect(() => validateRule("ANY /{path+}", "p", "fw")).not.toThrow();
     expect(() =>
-      validateRule("DELETE /repos/{owner}/{repo}", "p", "svc"),
-    ).not.toThrow();
-    expect(() =>
-      validateRule("PUT /repos/{owner}/{repo}/contents/{path+}", "p", "svc"),
+      validateRule("DELETE /repos/{owner}/{repo}", "p", "fw"),
     ).not.toThrow();
     expect(() =>
-      validateRule("PATCH /repos/{owner}/{repo}/pulls/{number}", "p", "svc"),
+      validateRule("PUT /repos/{owner}/{repo}/contents/{path+}", "p", "fw"),
     ).not.toThrow();
-    expect(() => validateRule("GET /", "p", "svc")).not.toThrow();
+    expect(() =>
+      validateRule("PATCH /repos/{owner}/{repo}/pulls/{number}", "p", "fw"),
+    ).not.toThrow();
+    expect(() => validateRule("GET /", "p", "fw")).not.toThrow();
   });
 
   it("should reject missing path", () => {
@@ -224,24 +224,24 @@ describe("validateRule", () => {
 
   it("should accept {param+} in last segment", () => {
     expect(() =>
-      validateRule("GET /repos/{owner}/{path+}", "p", "svc"),
+      validateRule("GET /repos/{owner}/{path+}", "p", "fw"),
     ).not.toThrow();
   });
 
   it("should reject duplicate parameter names", () => {
-    expect(() =>
-      validateRule("GET /repos/{owner}/{owner}", "p", "svc"),
-    ).toThrow('duplicate parameter name "{owner}"');
+    expect(() => validateRule("GET /repos/{owner}/{owner}", "p", "fw")).toThrow(
+      'duplicate parameter name "{owner}"',
+    );
   });
 
   it("should reject empty parameter name", () => {
-    expect(() => validateRule("GET /repos/{}", "p", "svc")).toThrow(
+    expect(() => validateRule("GET /repos/{}", "p", "fw")).toThrow(
       "empty parameter name",
     );
   });
 
   it("should reject empty greedy parameter name", () => {
-    expect(() => validateRule("GET /repos/{+}", "p", "svc")).toThrow(
+    expect(() => validateRule("GET /repos/{+}", "p", "fw")).toThrow(
       "empty parameter name",
     );
   });
@@ -261,20 +261,18 @@ describe("validateBaseUrl", () => {
   });
 
   it("should reject invalid URLs", () => {
-    expect(() => validateBaseUrl("not-a-url", "svc")).toThrow(
-      "not a valid URL",
-    );
+    expect(() => validateBaseUrl("not-a-url", "fw")).toThrow("not a valid URL");
   });
 
   it("should reject URLs with query string", () => {
     expect(() =>
-      validateBaseUrl("https://api.example.com?key=val", "svc"),
+      validateBaseUrl("https://api.example.com?key=val", "fw"),
     ).toThrow("must not contain query string");
   });
 
   it("should reject URLs with fragment", () => {
     expect(() =>
-      validateBaseUrl("https://api.example.com#section", "svc"),
+      validateBaseUrl("https://api.example.com#section", "fw"),
     ).toThrow("must not contain fragment");
   });
 });

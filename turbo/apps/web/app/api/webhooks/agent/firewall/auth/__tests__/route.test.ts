@@ -21,7 +21,7 @@ const context = testContext();
 
 function makeRequest(body: Record<string, unknown>, token?: string): Request {
   return createTestRequest(
-    "http://localhost:3000/api/webhooks/agent/services/auth",
+    "http://localhost:3000/api/webhooks/agent/firewall/auth",
     {
       method: "POST",
       headers: {
@@ -42,7 +42,7 @@ function encryptTestSecrets(secrets: Record<string, string>): string {
   return encrypted;
 }
 
-describe("POST /api/webhooks/agent/services/auth", () => {
+describe("POST /api/webhooks/agent/firewall/auth", () => {
   let user: UserContext;
   let testRunId: string;
   let testToken: string;
@@ -52,7 +52,7 @@ describe("POST /api/webhooks/agent/services/auth", () => {
     user = await context.setupUser();
 
     const { composeId } = await createTestCompose(
-      `agent-service-auth-${Date.now()}`,
+      `agent-firewall-auth-${Date.now()}`,
     );
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;

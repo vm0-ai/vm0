@@ -1,7 +1,7 @@
 import type { ConnectorType } from "./connectors";
 
 /**
- * Proxy-side service configuration for token replacement.
+ * Proxy-side firewall configuration for token replacement.
  *
  * Defines which base URLs each connector covers and how auth headers
  * are constructed. Used by the proxy to intercept requests matching a
@@ -9,35 +9,35 @@ import type { ConnectorType } from "./connectors";
  *
  * `${{ secrets.XXX }}` in header values is replaced by the proxy with the real secret value.
  *
- * NOTE: Currently hardcoded in SERVICE_CONFIGS below.
+ * NOTE: Currently hardcoded in FIREWALL_CONFIGS below.
  * Will be migrated to GitHub-hosted connector.yaml definitions in Phase 2.
  */
 /**
  * A named permission group with matching rules for request authorization.
  * Rules use the format `METHOD /path` where path is relative to the api entry's base URL.
  */
-interface ServicePermission {
+interface FirewallPermission {
   name: string;
   description?: string;
   rules: string[];
 }
 
-interface ServiceApi {
+interface FirewallApi {
   base: string;
   auth: {
     headers: Record<string, string>;
   };
-  permissions?: ServicePermission[];
+  permissions?: FirewallPermission[];
 }
 
-export interface ServiceConfig {
+export interface FirewallConfig {
   name: string;
   description?: string;
-  apis: ServiceApi[];
+  apis: FirewallApi[];
   /**
    * Custom placeholder values keyed by secret name (matching `${{ secrets.XXX }}` in auth templates).
    * Falls back to auto-generated `VM0_PLACEHOLDER_{secretName}`.
-   * Only needed when the service requires a specific credential format (e.g., GitHub's `gho_` prefix).
+   * Only needed when the connector requires a specific credential format (e.g., GitHub's `gho_` prefix).
    */
   placeholders?: Record<string, string>;
 }
@@ -50,11 +50,11 @@ const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
- * Extract all secret names referenced in service API auth header templates.
+ * Extract all secret names referenced in firewall rule auth header templates.
  * E.g., `Bearer ${{ secrets.GITHUB_TOKEN }}` → `["GITHUB_TOKEN"]`
  */
 export function extractSecretNamesFromApis(
-  apis: ServiceConfig["apis"],
+  apis: FirewallConfig["apis"],
 ): string[] {
   const names = new Set<string>();
   for (const entry of apis) {
@@ -72,19 +72,19 @@ function bearerAuth(secretName: string) {
   return { headers: { Authorization: `Bearer \${{ secrets.${secretName} }}` } };
 }
 
-/** Default catch-all permission for services without granular permissions. */
-const FULL_ACCESS_PERMISSION: ServicePermission = {
+/** Default catch-all permission for firewall configs without granular permissions. */
+const FULL_ACCESS_PERMISSION: FirewallPermission = {
   name: "full-access",
   rules: ["ANY /{path+}"],
 };
 
 /** Shorthand: single-base API entry with bearer auth. */
-function api(base: string, auth: ServiceApi["auth"]): ServiceApi {
+function api(base: string, auth: FirewallApi["auth"]): FirewallApi {
   return { base, auth, permissions: [FULL_ACCESS_PERMISSION] };
 }
 
-const SERVICE_CONFIGS: Partial<
-  Record<ConnectorType, Omit<ServiceConfig, "name">>
+const FIREWALL_CONFIGS: Partial<
+  Record<ConnectorType, Omit<FirewallConfig, "name">>
 > = {
   ahrefs: {
     apis: [api("https://api.ahrefs.com", bearerAuth("AHREFS_TOKEN"))],
@@ -653,29 +653,29 @@ const SERVICE_CONFIGS: Partial<
 };
 
 /**
- * Expanded service config stored in compose content.
- * Resolved from service name + ServiceConfig at compose time, then frozen.
+ * Expanded firewall config stored in compose content.
+ * Resolved from firewall name + FirewallConfig at compose time, then frozen.
  *
- * - `name`: service config name (e.g., "slack")
- * - `ref`: key used in vm0.yaml to reference this service (= name in Phase 3)
- * - `description`: optional description from the service config
+ * - `name`: firewall config name (e.g., "slack")
+ * - `ref`: key used in vm0.yaml to reference this firewall config (= name in Phase 3)
+ * - `description`: optional description from the firewall config
  */
-export interface ExpandedServiceConfig {
+export interface ExpandedFirewallConfig {
   name: string;
   ref: string;
   description?: string;
-  apis: ServiceApi[];
+  apis: FirewallApi[];
   placeholders?: Record<string, string>;
 }
 
 /**
- * Get service config for a connector type (base URLs + auth headers).
- * Returns undefined if the connector has no service config (e.g., computer connector).
+ * Get firewall config for a connector type (base URLs + auth headers).
+ * Returns undefined if the connector has no firewall config (e.g., computer connector).
  */
-export function getServiceConfig(
+export function getFirewallConfig(
   type: ConnectorType,
-): ServiceConfig | undefined {
-  const config = SERVICE_CONFIGS[type];
+): FirewallConfig | undefined {
+  const config = FIREWALL_CONFIGS[type];
   if (!config) return undefined;
   return { ...config, name: type };
 }

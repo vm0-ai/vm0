@@ -107,13 +107,13 @@ async fn execute_inner(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    // Register VM in proxy registry when services are present
+    // Register VM in proxy registry when firewall rules are present
     let source_ip = sandbox.source_ip().to_string();
-    let has_services = context
-        .experimental_services
+    let has_firewall = context
+        .experimental_firewall
         .as_ref()
-        .is_some_and(|s| s.iter().any(|svc| !svc.apis.is_empty()));
-    let proxy_registered = has_services;
+        .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
+    let proxy_registered = has_firewall;
     let network_log_path = config.log_paths.network_log(context.run_id);
 
     if proxy_registered {
@@ -122,7 +122,7 @@ async fn execute_inner(
             run_id: &run_id_str,
             sandbox_token: &context.sandbox_token,
             network_log_path: &network_log_path,
-            services: context.experimental_services.as_deref(),
+            firewall: context.experimental_firewall.as_deref(),
             encrypted_secrets: context.encrypted_secrets.as_deref(),
             secret_connector_map: context.secret_connector_map.as_ref(),
         };
@@ -560,12 +560,12 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     }
 
     // Tell Node.js to trust the proxy CA when MITM proxy is active.
-    // MITM is always enabled when services are configured.
+    // MITM is always enabled when firewall rules are configured.
     // The certificate is pre-baked into the rootfs at build time.
     let proxy_active = context
-        .experimental_services
+        .experimental_firewall
         .as_ref()
-        .is_some_and(|s| s.iter().any(|svc| !svc.apis.is_empty()));
+        .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
     if proxy_active {
         env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
@@ -653,7 +653,7 @@ mod tests {
             agent_name: None,
             agent_org_slug: None,
             memory_name: None,
-            experimental_services: None,
+            experimental_firewall: None,
         }
     }
 
@@ -871,15 +871,15 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_services_enable_ca_certs() {
+    fn build_env_json_firewall_enable_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_services = Some(vec![crate::types::ServiceEntry {
+        ctx.experimental_firewall = Some(vec![crate::types::Firewall {
             name: "gmail".into(),
             ref_key: "gmail".into(),
-            apis: vec![crate::types::ServiceApiEntry {
+            apis: vec![crate::types::FirewallApi {
                 id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
-                auth: crate::types::ServiceApiAuth {
+                auth: crate::types::FirewallAuth {
                     headers: std::collections::HashMap::from([(
                         "Authorization".into(),
                         "Bearer ${{ secrets.GMAIL_TOKEN }}".into(),
@@ -893,22 +893,22 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_empty_services_no_ca_certs() {
+    fn build_env_json_empty_firewall_no_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_services = Some(vec![]);
+        ctx.experimental_firewall = Some(vec![]);
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }
 
     #[test]
-    fn execution_context_deserializes_with_services() {
+    fn execution_context_deserializes_with_firewall() {
         let json = serde_json::json!({
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
-            "experimentalServices": [{
+            "experimentalFirewall": [{
                 "name": "github",
                 "ref": "github",
                 "apis": [{
@@ -931,7 +931,7 @@ mod tests {
             }]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        let svcs = ctx.experimental_services.unwrap();
+        let svcs = ctx.experimental_firewall.unwrap();
         assert_eq!(svcs.len(), 1);
         assert_eq!(svcs[0].name, "github");
         assert_eq!(svcs[0].ref_key, "github");
@@ -945,7 +945,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_deserializes_without_services() {
+    fn execution_context_deserializes_without_firewall() {
         let json = serde_json::json!({
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
@@ -954,7 +954,7 @@ mod tests {
             "cliAgentType": "claude-code"
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert!(ctx.experimental_services.is_none());
+        assert!(ctx.experimental_firewall.is_none());
     }
 
     #[test]

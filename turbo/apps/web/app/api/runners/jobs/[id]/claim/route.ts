@@ -166,7 +166,7 @@ const router = tsr.router(runnersJobClaimContract, {
 
     // Decrypt secrets map and extract values for runner log masking.
     // Only include secret values that actually appear in the environment —
-    // secrets replaced with service placeholders should not be exposed via VM0_SECRET_VALUES.
+    // secrets replaced with firewall placeholders should not be exposed via VM0_SECRET_VALUES.
     const secretsMap = decryptSecretsMap(
       storedContext.encryptedSecrets,
       globalThis.services.env.SECRETS_ENCRYPTION_KEY,
@@ -197,7 +197,7 @@ const router = tsr.router(runnersJobClaimContract, {
         secretValues, // Decrypted secret values for log masking
         encryptedSecrets: storedContext.encryptedSecrets, // Encrypted blob for auth resolution
         cliAgentType: storedContext.cliAgentType,
-        experimentalServices: storedContext.experimentalServices,
+        experimentalFirewall: storedContext.experimentalFirewall,
         experimentalCapabilities: storedContext.experimentalCapabilities,
         debugNoMockClaude: storedContext.debugNoMockClaude,
         apiStartTime: storedContext.apiStartTime,

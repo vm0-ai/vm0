@@ -3,7 +3,7 @@ import {
   resolveSkillRef,
   AGENT_NAME_REGEX,
   isSupportedFramework,
-  expandServiceConfigs,
+  expandFirewallConfigs,
   type SkillFrontmatter,
   type SupportedFramework,
 } from "@vm0/core";
@@ -165,7 +165,7 @@ async function upsertComposeRecord(params: {
  * Attempt server-side compose for platform mode.
  *
  * Bypasses the E2B sandbox by resolving skills from the database cache,
- * merging skill variables, expanding service configs, uploading instructions,
+ * merging skill variables, expanding firewall configs, uploading instructions,
  * and creating the compose record — all server-side.
  *
  * @returns Compose result if successful, or `null` if the server-side path
@@ -215,9 +215,9 @@ export async function serverSideCompose(params: {
   };
   mergeSkillVariables(environment, cachedSkills);
 
-  // 4. Expand service configs (mutates in-place, so deep-clone first)
+  // 4. Expand firewall configs (mutates in-place, so deep-clone first)
   const contentCopy = structuredClone(content);
-  expandServiceConfigs(contentCopy);
+  expandFirewallConfigs(contentCopy);
 
   // 5. Build resolved content with server-determined image and working_dir
   const agentsCopy = contentCopy.agents as Record<

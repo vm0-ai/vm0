@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { expandEnvironmentFromCompose } from "../expand-environment";
-import type { ExpandedServiceConfig } from "@vm0/core";
+import type { ExpandedFirewallConfig } from "@vm0/core";
 
 function makeCompose(
   environment: Record<string, string>,
-  services?: ExpandedServiceConfig[],
+  firewallConfigs?: ExpandedFirewallConfig[],
 ) {
   return {
     version: "1.0",
@@ -14,13 +14,13 @@ function makeCompose(
         framework: "claude-code" as const,
         working_dir: "/home/user",
         environment,
-        ...(services ? { experimental_services: services } : {}),
+        ...(firewallConfigs ? { experimental_firewall: firewallConfigs } : {}),
       },
     },
   };
 }
 
-const githubService: ExpandedServiceConfig = {
+const githubService: ExpandedFirewallConfig = {
   name: "github",
   ref: "github",
   apis: [
@@ -34,7 +34,7 @@ const githubService: ExpandedServiceConfig = {
   placeholders: { GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000" },
 };
 
-const slackService: ExpandedServiceConfig = {
+const slackService: ExpandedFirewallConfig = {
   name: "slack",
   ref: "slack",
   apis: [
@@ -46,7 +46,7 @@ const slackService: ExpandedServiceConfig = {
   placeholders: { SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder" },
 };
 
-const airtableService: ExpandedServiceConfig = {
+const airtableService: ExpandedFirewallConfig = {
   name: "airtable",
   ref: "airtable",
   apis: [
@@ -59,8 +59,8 @@ const airtableService: ExpandedServiceConfig = {
   ],
 };
 
-describe("expandEnvironmentFromCompose — service env vars", () => {
-  it("replaces secret values with service placeholders", () => {
+describe("expandEnvironmentFromCompose — firewall env vars", () => {
+  it("replaces secret values with firewall placeholders", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
@@ -83,7 +83,7 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
     expect(environment!.MY_GH).toBe("gho_vm0placeholder0000000000000000000000");
   });
 
-  it("does not inject placeholders when service is not declared", () => {
+  it("does not inject placeholders when firewall is not declared", () => {
     const compose = makeCompose({
       GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
     });
@@ -99,7 +99,7 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
     expect(environment!.GH_TOKEN).toBe("user-provided");
   });
 
-  it("handles multiple services with different placeholders", () => {
+  it("handles multiple firewall configs with different placeholders", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
@@ -122,7 +122,7 @@ describe("expandEnvironmentFromCompose — service env vars", () => {
     expect(environment!.SLACK_TOKEN).toBe("xoxb-0000-0000-vm0placeholder");
   });
 
-  it("service placeholder takes precedence over passed secrets", () => {
+  it("firewall placeholder takes precedence over passed secrets", () => {
     const compose = makeCompose(
       {
         GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
@@ -199,7 +199,7 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
     expect(environment!.API_KEY).toBe("compose-value");
   });
 
-  it("additional secret templates go through service placeholder logic", () => {
+  it("additional secret templates go through firewall placeholder logic", () => {
     const compose = makeCompose(
       {
         MY_VAR: "hello",
@@ -217,7 +217,7 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
 
     expect(environment).toBeDefined();
     expect(environment!.MY_VAR).toBe("hello");
-    // Service placeholder should replace the real value
+    // Firewall placeholder should replace the real value
     expect(environment!.GH_TOKEN).toBe(
       "gho_vm0placeholder0000000000000000000000",
     );

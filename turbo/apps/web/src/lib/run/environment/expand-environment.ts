@@ -3,7 +3,7 @@ import {
   extractAndGroupVariables,
   extractSecretNamesFromApis,
 } from "@vm0/core";
-import type { ExpandedServiceConfig } from "@vm0/core";
+import type { ExpandedFirewallConfig } from "@vm0/core";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -18,13 +18,13 @@ interface ExpandedEnvironmentResult {
 }
 
 /**
- * Process secret values: validate and resolve from passed secrets or service placeholders.
+ * Process secret values: validate and resolve from passed secrets or firewall placeholders.
  */
 function processSecretValues(
   secretNames: string[],
   passedSecrets: Record<string, string> | undefined,
   checkEnv: boolean | undefined,
-  servicePlaceholders?: Record<string, string>,
+  firewallPlaceholders?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (secretNames.length === 0) return undefined;
 
@@ -41,8 +41,8 @@ function processSecretValues(
 
   const secrets: Record<string, string> = {};
   for (const name of secretNames) {
-    if (servicePlaceholders?.[name]) {
-      secrets[name] = servicePlaceholders[name];
+    if (firewallPlaceholders?.[name]) {
+      secrets[name] = firewallPlaceholders[name];
     } else {
       secrets[name] = passedSecrets![name]!;
     }
@@ -51,22 +51,22 @@ function processSecretValues(
 }
 
 /**
- * Build service placeholder map keyed by canonical secret name.
- * Reads pre-expanded service configs and extracts secret names from auth templates
+ * Build firewall placeholder map keyed by canonical secret name.
+ * Reads pre-expanded firewall configs and extracts secret names from auth templates
  * (`${{ secrets.XXX }}`), then maps each to a placeholder value (custom or auto-generated).
  */
-function buildServicePlaceholders(
-  expandedServices: ExpandedServiceConfig[],
+function buildFirewallPlaceholders(
+  expandedFirewallConfigs: ExpandedFirewallConfig[],
 ): Record<string, string> | undefined {
-  if (expandedServices.length === 0) return undefined;
+  if (expandedFirewallConfigs.length === 0) return undefined;
 
   const placeholders: Record<string, string> = {};
 
-  for (const service of expandedServices) {
-    const secretNames = extractSecretNamesFromApis(service.apis);
+  for (const fw of expandedFirewallConfigs) {
+    const secretNames = extractSecretNamesFromApis(fw.apis);
     for (const secretName of secretNames) {
       placeholders[secretName] =
-        service.placeholders?.[secretName] ?? `VM0_PLACEHOLDER_${secretName}`;
+        fw.placeholders?.[secretName] ?? `VM0_PLACEHOLDER_${secretName}`;
     }
   }
   return Object.keys(placeholders).length > 0 ? placeholders : undefined;
@@ -76,8 +76,8 @@ function buildServicePlaceholders(
  * Extract and expand environment variables from agent compose config
  * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  *
- * When experimental_services is declared:
- * - Service secret values are replaced with placeholders (proxy resolves real secrets at runtime)
+ * When experimental_firewall is declared:
+ * - Firewall secret values are replaced with placeholders (proxy resolves real secrets at runtime)
  *
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
@@ -85,7 +85,7 @@ function buildServicePlaceholders(
  * @param checkEnv When true, validates that all required secrets/vars are provided
  * @param additionalEnvironment Extra env entries (e.g. model provider) to merge before expansion.
  *   Compose-declared entries take precedence. Secret-derived values should use
- *   $\{{ secrets.X }} templates so servicePlaceholders logic applies.
+ *   $\{{ secrets.X }} templates so firewallPlaceholders logic applies.
  * @returns Expanded environment variables
  */
 export function expandEnvironmentFromCompose(
@@ -124,8 +124,8 @@ export function expandEnvironmentFromCompose(
     );
   }
 
-  const servicePlaceholders = buildServicePlaceholders(
-    firstAgent?.experimental_services ?? [],
+  const firewallPlaceholders = buildFirewallPlaceholders(
+    firstAgent?.experimental_firewall ?? [],
   );
 
   // Process secrets if needed
@@ -134,7 +134,7 @@ export function expandEnvironmentFromCompose(
     secretNames,
     passedSecrets,
     checkEnv,
-    servicePlaceholders,
+    firewallPlaceholders,
   );
 
   // Build sources for expansion

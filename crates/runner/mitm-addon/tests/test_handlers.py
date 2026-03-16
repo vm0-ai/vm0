@@ -111,15 +111,15 @@ class TestRequestHandler:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
-    def test_service_match_calls_handler(self, tmp_path):
-        """When URL matches a service, handle_service_request is called."""
+    def test_firewall_match_calls_handler(self, tmp_path):
+        """When URL matches a firewall rule, handle_firewall_request is called."""
         registry = {
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "services": [
+                    "firewall": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -143,7 +143,7 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
         ):
             mitm_addon.request(flow)
 
@@ -152,19 +152,19 @@ class TestRequestHandler:
         assert call_args[0][0] is flow
         assert call_args[0][1]["base"] == "https://api.github.com"
         match_info = call_args[0][3]
-        assert match_info["service"] == "github"
+        assert match_info["name"] == "github"
         assert match_info["ref"] == "github"
         assert match_info["permission"] == "full-access"
 
-    def test_service_permission_blocks_unmatched(self, tmp_path):
-        """Service with permissions but no matching rule returns 403."""
+    def test_firewall_permission_blocks_unmatched(self, tmp_path):
+        """Firewall with permissions but no matching rule returns 403."""
         registry = {
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "services": [
+                    "firewall": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -190,7 +190,7 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
         ):
             mitm_addon.request(flow)
 
@@ -198,17 +198,17 @@ class TestRequestHandler:
         assert flow.response is not None
         assert flow.response.status_code == 403
         assert flow.metadata["firewall_action"] == "DENY"
-        assert flow.metadata["firewall_rule"] == "service:https://api.github.com"
+        assert flow.metadata["firewall_rule"] == "firewall:https://api.github.com"
 
-    def test_service_permission_allows_matched(self, tmp_path):
-        """Service with permissions and matching rule calls handler with match_info."""
+    def test_firewall_permission_allows_matched(self, tmp_path):
+        """Firewall with permissions and matching rule calls handler with match_info."""
         registry = {
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "services": [
+                    "firewall": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -234,7 +234,7 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
         ):
             mitm_addon.request(flow)
 
@@ -243,21 +243,21 @@ class TestRequestHandler:
         assert call_args[0][0] is flow
         assert call_args[0][1]["base"] == "https://api.github.com"
         match_info = call_args[0][3]
-        assert match_info["service"] == "github"
+        assert match_info["name"] == "github"
         assert match_info["ref"] == "github"
         assert match_info["permission"] == "read-repos"
         assert match_info["rule"] == "GET /repos/{owner}/{repo}"
         assert match_info["params"] == {"owner": "octocat", "repo": "hello"}
 
-    def test_service_no_base_match_passes_through(self, tmp_path):
-        """URL not matching any service base → pass-through (not block)."""
+    def test_firewall_no_base_match_passes_through(self, tmp_path):
+        """URL not matching any firewall base → pass-through (not block)."""
         registry = {
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "services": [
+                    "firewall": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -273,7 +273,7 @@ class TestRequestHandler:
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        # Request to example.com — not a service, passes through
+        # Request to example.com — not a firewall match, passes through
         flow = _make_http_flow(
             client_ip="10.200.0.5", host="api.example.com", path="/data"
         )
@@ -282,11 +282,11 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_service_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
         ):
             mitm_addon.request(flow)
 
-        # No service match → pass-through, not blocked
+        # No firewall match → pass-through, not blocked
         mock_handler.assert_not_called()
         assert flow.response is None
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -362,26 +362,26 @@ class TestResponseHandler:
         assert entry["resp_content_encoding"] == "gzip"
         assert entry["resp_transfer_encoding"] == "chunked"
 
-    def test_401_service_cache_invalidation(self):
-        """401 response with service firewall_rule pops the cache entry."""
+    def test_401_firewall_cache_invalidation(self):
+        """401 response with firewall firewall_rule pops the cache entry."""
         flow = _make_http_flow(host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-1"
         flow.metadata["vm_client_ip"] = "10.200.0.5"
 
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_rule"] = "service:https://api.github.com"
-        flow.metadata["service_base"] = "https://api.github.com"
-        flow.metadata["service_api_id"] = "run-conn-1:0"
+        flow.metadata["firewall_rule"] = "firewall:https://api.github.com"
+        flow.metadata["firewall_base"] = "https://api.github.com"
+        flow.metadata["firewall_api_id"] = "run-conn-1:0"
         flow.metadata["original_url"] = "https://api.github.com/repos"
 
         flow.response = MagicMock()
         flow.response.status_code = 401
         flow.response.headers = {}
 
-        # Pre-populate service header cache keyed by api_id
+        # Pre-populate firewall header cache keyed by api_id
         cache_key = ("run-conn-1", "run-conn-1:0")
-        mitm_addon._service_header_cache[cache_key] = {
+        mitm_addon._firewall_header_cache[cache_key] = {
             "headers": {"Authorization": "Bearer old-token"},
         }
 
@@ -389,7 +389,7 @@ class TestResponseHandler:
             mitm_addon.response(flow)
 
         # Cache entry should have been removed
-        assert cache_key not in mitm_addon._service_header_cache
+        assert cache_key not in mitm_addon._firewall_header_cache
 
     def test_error_status_logs_warning(self, tmp_path):
         """Response with status >= 400 calls ctx.log.warn."""
