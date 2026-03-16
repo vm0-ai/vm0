@@ -59,10 +59,10 @@ describe("GET /api/auth/me", () => {
       expect(body.userId).toBe(user.userId);
     });
 
-    it("sandbox token with volume:write returns user info", async () => {
+    it("sandbox token with storage:write returns user info", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-456", [
-        "volume:write",
+        "storage:write",
       ]);
 
       const response = await GET(

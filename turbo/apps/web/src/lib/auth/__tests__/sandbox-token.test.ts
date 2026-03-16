@@ -125,7 +125,7 @@ describe("sandbox-token", () => {
 
   describe("capabilities", () => {
     it("should include capabilities in verified token", async () => {
-      const capabilities = ["volume:read", "artifact:write"] as const;
+      const capabilities = ["storage:read", "storage:write"] as const;
       const token = await generateSandboxToken(
         "user-123",
         "run-456",
@@ -136,7 +136,7 @@ describe("sandbox-token", () => {
       expect(auth).not.toBeNull();
       expect(auth?.userId).toBe("user-123");
       expect(auth?.runId).toBe("run-456");
-      expect(auth?.capabilities).toEqual(["volume:read", "artifact:write"]);
+      expect(auth?.capabilities).toEqual(["storage:read", "storage:write"]);
     });
 
     it("should work without capabilities (backward compat)", async () => {
@@ -158,12 +158,12 @@ describe("sandbox-token", () => {
 
     it("should roundtrip all valid capabilities", async () => {
       const capabilities = [
-        "volume:read",
-        "volume:write",
-        "artifact:read",
-        "artifact:write",
-        "memory:read",
-        "memory:write",
+        "storage:read",
+        "storage:write",
+        "agent:read",
+        "agent:write",
+        "agent-run:read",
+        "agent-run:write",
       ] as const;
       const token = await generateSandboxToken(
         "user-123",

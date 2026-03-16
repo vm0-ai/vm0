@@ -27,12 +27,8 @@ export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
  * Format: {resource}:{action}
  */
 export const VALID_CAPABILITIES = [
-  "volume:read",
-  "volume:write",
-  "artifact:read",
-  "artifact:write",
-  "memory:read",
-  "memory:write",
+  "storage:read",
+  "storage:write",
   "agent:read",
   "agent:write",
   "agent-run:read",

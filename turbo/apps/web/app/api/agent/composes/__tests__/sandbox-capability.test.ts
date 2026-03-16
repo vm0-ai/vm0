@@ -64,7 +64,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -188,7 +188,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
     it("sandbox token without agent:read gets 401", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:write",
+        "storage:write",
       ]);
 
       const request = createTestRequest(
@@ -233,7 +233,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -322,7 +322,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -368,7 +368,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(

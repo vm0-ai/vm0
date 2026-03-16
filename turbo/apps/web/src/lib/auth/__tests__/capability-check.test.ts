@@ -9,14 +9,14 @@ import {
 describe("capability-check", () => {
   describe("hasCapability", () => {
     it("should return true for CLI auth (no capabilities)", () => {
-      expect(hasCapability({ userId: "user-1" }, "volume:read")).toBe(true);
+      expect(hasCapability({ userId: "user-1" }, "storage:read")).toBe(true);
     });
 
     it("should return true for sandbox auth with matching capability", () => {
       expect(
         hasCapability(
-          { userId: "user-1", runId: "run-1", capabilities: ["volume:read"] },
-          "volume:read",
+          { userId: "user-1", runId: "run-1", capabilities: ["storage:read"] },
+          "storage:read",
         ),
       ).toBe(true);
     });
@@ -24,8 +24,8 @@ describe("capability-check", () => {
     it("should return false for sandbox auth without matching capability", () => {
       expect(
         hasCapability(
-          { userId: "user-1", runId: "run-1", capabilities: ["volume:read"] },
-          "artifact:write",
+          { userId: "user-1", runId: "run-1", capabilities: ["storage:read"] },
+          "storage:write",
         ),
       ).toBe(false);
     });
@@ -34,7 +34,7 @@ describe("capability-check", () => {
       expect(
         hasCapability(
           { userId: "user-1", runId: "run-1", capabilities: [] },
-          "volume:read",
+          "storage:read",
         ),
       ).toBe(false);
     });
@@ -51,22 +51,22 @@ describe("capability-check", () => {
   });
 
   describe("storageCapability", () => {
-    it("should map storage type and action to capability string", () => {
-      expect(storageCapability("volume", "read")).toBe("volume:read");
-      expect(storageCapability("volume", "write")).toBe("volume:write");
-      expect(storageCapability("artifact", "read")).toBe("artifact:read");
-      expect(storageCapability("artifact", "write")).toBe("artifact:write");
-      expect(storageCapability("memory", "read")).toBe("memory:read");
-      expect(storageCapability("memory", "write")).toBe("memory:write");
+    it("should map all storage types to unified storage capability", () => {
+      expect(storageCapability("volume", "read")).toBe("storage:read");
+      expect(storageCapability("volume", "write")).toBe("storage:write");
+      expect(storageCapability("artifact", "read")).toBe("storage:read");
+      expect(storageCapability("artifact", "write")).toBe("storage:write");
+      expect(storageCapability("memory", "read")).toBe("storage:read");
+      expect(storageCapability("memory", "write")).toBe("storage:write");
     });
   });
 
   describe("missingCapabilityError", () => {
     it("should return 403 error body with capability name", () => {
-      const error = missingCapabilityError("volume:read");
+      const error = missingCapabilityError("storage:read");
 
       expect(error.error.message).toBe(
-        "Missing required capability: volume:read",
+        "Missing required capability: storage:read",
       );
       expect(error.error.code).toBe("FORBIDDEN");
     });
