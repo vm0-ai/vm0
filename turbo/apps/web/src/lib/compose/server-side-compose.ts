@@ -237,8 +237,8 @@ export async function serverSideCompose(params: {
     },
   } as AgentComposeYaml;
 
-  // 6. Upload instructions if provided
-  if (instructions) {
+  // 6. Upload instructions if provided (even empty string triggers metadata injection)
+  if (instructions !== undefined) {
     const metadata = agent.metadata as
       | { displayName?: string; sound?: string }
       | undefined;

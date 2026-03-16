@@ -274,8 +274,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const onboardingReady = onboardingLoadable.state === "hasData";
   const needsOnboarding =
     onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
-  const ONBOARDING_ENABLED = false;
-  const showOnboarding = ONBOARDING_ENABLED && isLoggedIn && needsOnboarding;
+  const showOnboarding = isLoggedIn && needsOnboarding;
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentDisplayNameLoadable.state === "hasData";
   const agentDisplayName = agentNameReady
