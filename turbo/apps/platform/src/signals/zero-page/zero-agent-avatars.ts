@@ -1,8 +1,16 @@
 import { command, computed } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { throwIfAbort } from "../utils.ts";
 
 const STORAGE_KEY = "zero.agentAvatarOverrides";
 const { get$: stored$, set$: persist$ } = localStorageSignals(STORAGE_KEY);
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).every((v) => typeof v === "string");
+}
 
 /**
  * Agent avatar overrides stored as JSON: `{ [agentName]: avatarSrc }`.
@@ -14,20 +22,19 @@ const overrides$ = computed((get): Record<string, string> => {
     return {};
   }
   try {
-    return JSON.parse(raw) as Record<string, string>;
-  } catch {
+    const parsed: unknown = JSON.parse(raw);
+    return isStringRecord(parsed) ? parsed : {};
+  } catch (error) {
+    throwIfAbort(error);
     return {};
   }
 });
 
 /**
- * Read the avatar override for a given agent.
- * Returns `null` when no override exists (caller should fall back to default).
+ * All agent avatar overrides. Callers can read a specific agent's override
+ * by indexing into the result with the agent name.
  */
-export const agentAvatarOverride$ = (name: string) =>
-  computed((get): string | null => {
-    return get(overrides$)[name] ?? null;
-  });
+export const agentAvatarOverrides$ = overrides$;
 
 /**
  * Set the avatar for an agent, persisted in localStorage.

@@ -51,7 +51,7 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
-import { agentAvatarOverride$ } from "../../signals/zero-page/zero-agent-avatars.ts";
+import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatars.ts";
 
 /** Max pinned sub-agents (default agent counts as 1, total slots = 5). */
 const MAX_PINNED = 4;
@@ -75,9 +75,8 @@ function getAgentAvatar(name: string): string {
  * Reactive hook that returns the agent avatar, respecting any user override.
  */
 export function useAgentAvatar(name: string): string {
-  const override$ = agentAvatarOverride$(name);
-  const override = useGet(override$);
-  return override ?? getAgentAvatar(name);
+  const overrides = useGet(agentAvatarOverrides$);
+  return overrides[name] ?? getAgentAvatar(name);
 }
 
 /** Reactive avatar image that respects user overrides. */
