@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { WebClient } from "@slack/web-api";
 import { GET, DELETE } from "../route";
 import {
   testContext,
@@ -10,6 +11,7 @@ import {
   createTestSlackOrgInstallation,
   createTestSlackOrgConnection,
   findTestSlackOrgConnection,
+  findTestSlackOrgInstallation,
 } from "../../../../../../src/__tests__/api-test-helpers";
 
 const context = testContext();
@@ -186,6 +188,101 @@ describe("/api/integrations/slack/org", () => {
         workspaceId,
       );
       expect(connection).toBeUndefined();
+    });
+  });
+
+  describe("DELETE ?action=uninstall", () => {
+    it("returns 403 when non-admin tries to uninstall", async () => {
+      await givenOrgSlackSetup({ isAdmin: false });
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack/org?action=uninstall",
+        { method: "DELETE" },
+      );
+      const response = await DELETE(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("returns 404 when no installation exists", async () => {
+      const user = await context.setupUser();
+      const org = await createTestOrg(uniqueId("org"));
+      mockClerk({
+        userId: user.userId,
+        orgId: org.id,
+        orgRole: "org:admin",
+      });
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack/org?action=uninstall",
+        { method: "DELETE" },
+      );
+      const response = await DELETE(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("deletes installation and all connections", async () => {
+      const { workspaceId, slackUserId } = await givenOrgSlackSetup({
+        isAdmin: true,
+      });
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack/org?action=uninstall",
+        { method: "DELETE" },
+      );
+      const response = await DELETE(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.ok).toBe(true);
+
+      // Verify installation was deleted
+      const installation = await findTestSlackOrgInstallation(workspaceId);
+      expect(installation).toBeUndefined();
+
+      // Verify connection was deleted
+      const connection = await findTestSlackOrgConnection(
+        slackUserId,
+        workspaceId,
+      );
+      expect(connection).toBeUndefined();
+    });
+
+    it("publishes uninstalled App Home for connected users before deleting", async () => {
+      const { workspaceId } = await givenOrgSlackSetup({ isAdmin: true });
+
+      const mockClient = vi.mocked(new WebClient(), true);
+      mockClient.views.publish.mockClear();
+
+      const request = new Request(
+        "http://localhost:3000/api/integrations/slack/org?action=uninstall",
+        { method: "DELETE" },
+      );
+      const response = await DELETE(request);
+      expect(response.status).toBe(200);
+
+      // Verify App Home was published (views.publish called)
+      expect(mockClient.views.publish).toHaveBeenCalled();
+
+      // Verify the view shows "not installed" state
+      const publishCall = mockClient.views.publish.mock.calls[0]?.[0] as
+        | Record<string, unknown>
+        | undefined;
+      expect(publishCall).toBeDefined();
+      const view = publishCall!.view as {
+        blocks: Array<{ text?: { text?: string } }>;
+      };
+      const blockTexts = view.blocks.map((b) => b.text?.text ?? "").join(" ");
+      expect(blockTexts).toContain("not installed");
+
+      // Verify installation was deleted after publishing
+      const installation = await findTestSlackOrgInstallation(workspaceId);
+      expect(installation).toBeUndefined();
     });
   });
 });

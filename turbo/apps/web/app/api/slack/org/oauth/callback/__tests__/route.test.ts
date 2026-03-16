@@ -87,10 +87,10 @@ describe("/api/slack/org/oauth/callback", () => {
     );
     const response = await GET(request);
 
-    // Should redirect to /zero/works
+    // Should redirect to /zero/works?installed=1
     expect(response.status).toBe(307);
     expect(response.headers.get("Location")).toBe(
-      "http://localhost:3001/zero/works",
+      "http://localhost:3001/zero/works?installed=1",
     );
 
     // Verify installation was created with org_id
@@ -265,6 +265,132 @@ describe("/api/slack/org/oauth/callback", () => {
     expect(location).toContain("error=");
   });
 
+  it("should reject install when workspace is already bound to a different org", async () => {
+    const orgAAdmin = uniqueId("admin-a");
+    const orgA = uniqueId("org-a");
+    const orgBAdmin = uniqueId("admin-b");
+    const orgB = uniqueId("org-b");
+    const workspaceId = uniqueId("ws");
+
+    // First: Org A installs successfully
+    mockClerk({
+      userId: orgAAdmin,
+      clerkOrgs: [{ id: orgA, slug: orgA, name: orgA }],
+    });
+    await createTestOrg(orgA);
+
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-admin-a",
+    });
+
+    const stateA = JSON.stringify({ orgId: orgA, vm0UserId: orgAAdmin });
+    const requestA = createTestRequest(
+      `http://localhost:3000/api/slack/org/oauth/callback?code=code-a&state=${encodeURIComponent(stateA)}`,
+    );
+    const responseA = await GET(requestA);
+    expect(responseA.status).toBe(307);
+    expect(responseA.headers.get("Location")).toContain(
+      "/zero/works?installed=1",
+    );
+
+    // Second: Org B tries to install the same workspace
+    mockClerk({
+      userId: orgBAdmin,
+      clerkOrgs: [{ id: orgB, slug: orgB, name: orgB }],
+    });
+    await createTestOrg(orgB);
+
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      accessToken: "xoxb-org-b-token",
+      authedUserId: "U-admin-b",
+    });
+
+    const stateB = JSON.stringify({ orgId: orgB, vm0UserId: orgBAdmin });
+    const requestB = createTestRequest(
+      `http://localhost:3000/api/slack/org/oauth/callback?code=code-b&state=${encodeURIComponent(stateB)}`,
+    );
+    const responseB = await GET(requestB);
+
+    // Should redirect to /zero/works with error
+    expect(responseB.status).toBe(307);
+    const location = responseB.headers.get("Location")!;
+    expect(location).toContain("/zero/works?error=");
+    expect(decodeURIComponent(location)).toContain(
+      "already installed by another organization",
+    );
+
+    // Verify org A's installation is untouched
+    const installation = await findTestSlackOrgInstallation(workspaceId);
+    expect(installation!.orgId).toBe(orgA);
+
+    // Verify bot token was NOT overwritten
+    const decrypted = decryptSecretValue(
+      installation!.encryptedBotToken,
+      env().SECRETS_ENCRYPTION_KEY,
+    );
+    expect(decrypted).toBe("xoxb-test-token");
+
+    // Verify no connection was created for org B
+    const connectionB = await findTestSlackOrgConnection(
+      "U-admin-b",
+      workspaceId,
+    );
+    expect(connectionB).toBeUndefined();
+  });
+
+  it("should allow re-install by same org (no rejection)", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    // First install
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      accessToken: "xoxb-original",
+      authedUserId: "U-admin",
+    });
+
+    const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const firstRequest = createTestRequest(
+      `http://localhost:3000/api/slack/org/oauth/callback?code=first&state=${encodeURIComponent(state)}`,
+    );
+    await GET(firstRequest);
+
+    // Same org re-installs
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      accessToken: "xoxb-refreshed",
+      authedUserId: "U-admin",
+    });
+
+    const secondRequest = createTestRequest(
+      `http://localhost:3000/api/slack/org/oauth/callback?code=second&state=${encodeURIComponent(state)}`,
+    );
+    const response = await GET(secondRequest);
+
+    // Should succeed
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toContain(
+      "/zero/works?installed=1",
+    );
+
+    // Bot token should be updated
+    const installation = await findTestSlackOrgInstallation(workspaceId);
+    const decrypted = decryptSecretValue(
+      installation!.encryptedBotToken,
+      env().SECRETS_ENCRYPTION_KEY,
+    );
+    expect(decrypted).toBe("xoxb-refreshed");
+  });
+
   it("should create connection idempotently on duplicate platform flow", async () => {
     const adminUserId = uniqueId("admin");
     const orgId = uniqueId("org");
@@ -301,7 +427,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("Location")).toBe(
-      "http://localhost:3001/zero/works",
+      "http://localhost:3001/zero/works?installed=1",
     );
 
     // Should still have exactly one connection (onConflictDoNothing)

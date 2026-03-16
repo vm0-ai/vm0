@@ -98,14 +98,7 @@ export function ZeroWorksPage() {
               <img src="/slack-icon.svg" alt="" className="h-7 w-7" />
             </div>
             <div className="flex flex-1 flex-col gap-1 min-w-0">
-              <div className="text-sm font-medium text-foreground">
-                Slack
-                {isConnected && slackData?.workspaceName && (
-                  <span className="ml-1 font-normal text-muted-foreground">
-                    ({slackData.workspaceName})
-                  </span>
-                )}
-              </div>
+              <div className="text-sm font-medium text-foreground">Slack</div>
               <div className="text-sm text-muted-foreground">
                 {!isInstalled && !isAdmin
                   ? "Ask your admin to install the Slack integration"
