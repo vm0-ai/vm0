@@ -120,7 +120,6 @@ export interface SubagentInfo {
 
 export type ZeroNavId =
   | "chat"
-  | "meet"
   | "schedule"
   | "team"
   | "activity"

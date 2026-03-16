@@ -5,7 +5,7 @@ import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
  * Raw default agent name from onboarding status (lowercase identifier, e.g. "zero").
  * Returns null if no default agent is set.
  */
-const defaultAgentName$ = computed(async (get) => {
+export const defaultAgentName$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   return status.defaultAgentName;
 });

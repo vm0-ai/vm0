@@ -13,7 +13,10 @@ import { ZeroContent } from "./zero-content.tsx";
 import { ZeroOnboarding } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
 import { zeroNeedsOnboarding$ } from "../../signals/zero-page/zero-onboarding.ts";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  agentDisplayName$,
+  defaultAgentName$,
+} from "../../signals/zero-page/zero-agent-name.ts";
 import { resetDefaultAgent$ } from "../../signals/zero-page/zero-dev-tools.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -27,11 +30,7 @@ import {
   navigateToZeroSession$,
   navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
-import {
-  updateSearchParams$,
-  updatePathname$,
-  navigateInReact$,
-} from "../../signals/route.ts";
+import { updatePathname$, navigateInReact$ } from "../../signals/route.ts";
 import {
   zeroSessionList$,
   zeroSessionListLoading$,
@@ -263,6 +262,11 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const agentDisplayName = agentNameReady
     ? agentDisplayNameLoadable.data
     : "Zero";
+  const defaultAgentNameLoadable = useLastLoadable(defaultAgentName$);
+  const defaultRawName =
+    defaultAgentNameLoadable.state === "hasData"
+      ? defaultAgentNameLoadable.data
+      : null;
   const subagentsLoadable = useLastLoadable(zeroSubagents$);
   const subagents: SubagentInfo[] =
     subagentsLoadable.state === "hasData"
@@ -358,7 +362,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const updateSearchParams = useSet(updateSearchParams$);
   const navigate = useSet(updatePathname$);
   const navigateInReact = useSet(navigateInReact$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
@@ -411,33 +414,26 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
               }
             }}
             onNavigateToSchedule={() => {
-              if (selectedSubagent) {
+              const agentName = selectedSubagent?.name ?? defaultRawName;
+              if (agentName) {
                 navigateInReact("/zero/team/:name", {
-                  pathParams: { name: selectedSubagent.name },
+                  pathParams: { name: agentName },
                   searchParams: new URLSearchParams({ tab: "schedule" }),
                 });
-              } else {
-                setActiveId("schedule");
               }
             }}
             onNavigateToTeam={() => setActiveId("team")}
             onNavigateToChat={() => setActiveId("chat")}
             onNavigateToMeet={(tab) => {
-              if (selectedSubagent) {
+              const agentName = selectedSubagent?.name ?? defaultRawName;
+              if (agentName) {
                 const searchParams = tab
                   ? new URLSearchParams({ tab })
                   : undefined;
                 navigateInReact("/zero/team/:name", {
-                  pathParams: { name: selectedSubagent.name },
+                  pathParams: { name: agentName },
                   searchParams,
                 });
-              } else {
-                setActiveId("meet");
-                if (tab) {
-                  const next = new URLSearchParams();
-                  next.set("tab", tab);
-                  updateSearchParams(next);
-                }
               }
             }}
             onBackFromSession={handleBackFromSession}

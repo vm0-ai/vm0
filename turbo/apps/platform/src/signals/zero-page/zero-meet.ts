@@ -30,13 +30,13 @@ const instructionsState$ = state<InstructionsState>({
   error: null,
 });
 
-export const zeroInstructions$ = computed(
+const zeroInstructions$ = computed(
   (get) => get(instructionsState$).instructions,
 );
-export const zeroInstructionsLoading$ = computed(
+const zeroInstructionsLoading$ = computed(
   (get) => get(instructionsState$).loading,
 );
-export const zeroFetchError$ = computed((get) => get(instructionsState$).error);
+const zeroFetchError$ = computed((get) => get(instructionsState$).error);
 
 // ---------------------------------------------------------------------------
 // Default agent compose
@@ -93,7 +93,7 @@ const zeroCompose$ = computed(async (get) => {
 // Fetch instructions
 // ---------------------------------------------------------------------------
 
-export const fetchZeroInstructions$ = command(async ({ get, set }) => {
+const fetchZeroInstructions$ = command(async ({ get, set }) => {
   const status = await get(zeroOnboardingStatus$);
   const composeId = status.defaultAgentComposeId;
   if (!composeId) {
@@ -133,20 +133,20 @@ export const fetchZeroInstructions$ = command(async ({ get, set }) => {
 
 const editedContent$ = state<string | null>(null);
 
-export const zeroEditedContent$ = computed((get) => get(editedContent$));
+const zeroEditedContent$ = computed((get) => get(editedContent$));
 
-export const zeroInstructionsDirty$ = computed((get) => {
+const zeroInstructionsDirty$ = computed((get) => {
   const edited = get(editedContent$);
   const instructions = get(instructionsState$).instructions;
   const savedBody = stripMetadataFrontmatter(instructions?.content ?? "");
   return edited !== null && edited !== savedBody;
 });
 
-export const setZeroEditedContent$ = command(({ set }, value: string) => {
+const setZeroEditedContent$ = command(({ set }, value: string) => {
   set(editedContent$, value);
 });
 
-export const discardZeroEdit$ = command(({ set }) => {
+const discardZeroEdit$ = command(({ set }) => {
   set(editedContent$, null);
 });
 
@@ -155,12 +155,12 @@ export const discardZeroEdit$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 
 const building$ = state(false);
-export const zeroBuildingInstructions$ = computed((get) => get(building$));
+const zeroBuildingInstructions$ = computed((get) => get(building$));
 
 const internalBuildError$ = state<string | null>(null);
-export const zeroBuildError$ = computed((get) => get(internalBuildError$));
+const zeroBuildError$ = computed((get) => get(internalBuildError$));
 
-export const buildZeroInstructions$ = command(async ({ get, set }) => {
+const buildZeroInstructions$ = command(async ({ get, set }) => {
   const compose = await get(zeroCompose$);
   const edited = get(editedContent$);
   if (!compose?.content || edited === null) {
@@ -243,7 +243,7 @@ export const buildZeroInstructions$ = command(async ({ get, set }) => {
 // ---------------------------------------------------------------------------
 
 const internalSaving$ = state(false);
-export const zeroSettingsSaving$ = computed((get) => get(internalSaving$));
+const zeroSettingsSaving$ = computed((get) => get(internalSaving$));
 
 // ---------------------------------------------------------------------------
 // Skills list: derived from compose content, synced via compose jobs
@@ -276,7 +276,7 @@ export const zeroAddedSkills$ = computed(async (get) => {
 });
 
 /** Whether local skills differ from the saved compose skills. */
-export const zeroSkillsDirty$ = computed(async (get) => {
+const zeroSkillsDirty$ = computed(async (get) => {
   const local = get(internalAddedSkills$);
   if (local === null) {
     return false;
@@ -299,7 +299,7 @@ export const addZeroSkill$ = command(async ({ get, set }, name: string) => {
 });
 
 /** Remove a skill (local only, no compose job). */
-export const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
+const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
   if (get(internalAddedSkills$) === null) {
     set(internalAddedSkills$, await get(seededSkills$));
   }
@@ -307,7 +307,7 @@ export const removeZeroSkill$ = command(async ({ get, set }, name: string) => {
 });
 
 /** Discard local skill changes and revert to saved compose skills. */
-export const discardZeroSkills$ = command(({ set }) => {
+const discardZeroSkills$ = command(({ set }) => {
   set(internalAddedSkills$, null);
 });
 
@@ -468,7 +468,7 @@ interface ZeroSettingsUpdate {
   sound?: string;
 }
 
-export const zeroUpdateSettings$ = command(
+const zeroUpdateSettings$ = command(
   async ({ get, set }, update: ZeroSettingsUpdate) => {
     const compose = await get(zeroCompose$);
     if (!compose?.content) {

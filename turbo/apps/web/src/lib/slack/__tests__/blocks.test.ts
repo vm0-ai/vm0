@@ -135,20 +135,21 @@ describe("detectDeepLinks", () => {
     });
   });
 
-  it("should detect secrets/variables keywords as connector links", () => {
+  it("should route connector links to team page with agent name", () => {
     const links = detectDeepLinks(
       "Error: missing variable DATABASE_URL",
       platformUrl,
+      "my-agent",
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/zero/meet`,
+      url: `${platformUrl}/zero/team/my-agent?tab=connectors`,
     });
   });
 
-  it("should detect connector keywords", () => {
+  it("should route connector links to generic team page without agent name", () => {
     const links = detectDeepLinks(
       "The MCP server connection failed",
       platformUrl,
@@ -157,12 +158,16 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/zero/meet`,
+      url: `${platformUrl}/zero/team`,
     });
   });
 
   it("should match case-insensitively", () => {
-    const links = detectDeepLinks("API_KEY is not configured", platformUrl);
+    const links = detectDeepLinks(
+      "API_KEY is not configured",
+      platformUrl,
+      "test-agent",
+    );
     expect(links).toHaveLength(1);
     expect(links[0]?.label).toBe("Configure connectors");
   });
@@ -171,20 +176,36 @@ describe("detectDeepLinks", () => {
     const links = detectDeepLinks(
       "The api key is missing and the secret is not configured and the apikey is invalid",
       platformUrl,
+      "my-agent",
     );
     expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(`${platformUrl}/zero/meet`);
+    expect(links[0]?.url).toBe(
+      `${platformUrl}/zero/team/my-agent?tab=connectors`,
+    );
   });
 
   it("should return multiple links for different destinations", () => {
     const links = detectDeepLinks(
       "The model provider is missing. Also the api key is not set and the MCP server is down.",
       platformUrl,
+      "my-agent",
     );
     expect(links).toHaveLength(2);
     const urls = links.map((l) => l.url);
     expect(urls).toContain(`${platformUrl}/zero/settings`);
-    expect(urls).toContain(`${platformUrl}/zero/meet`);
+    expect(urls).toContain(`${platformUrl}/zero/team/my-agent?tab=connectors`);
+  });
+
+  it("should encode special characters in agent name", () => {
+    const links = detectDeepLinks(
+      "connector not found",
+      platformUrl,
+      "agent with spaces",
+    );
+    expect(links).toHaveLength(1);
+    expect(links[0]?.url).toBe(
+      `${platformUrl}/zero/team/agent%20with%20spaces?tab=connectors`,
+    );
   });
 });
 

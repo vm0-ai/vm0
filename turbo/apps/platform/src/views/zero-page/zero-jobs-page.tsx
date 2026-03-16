@@ -6,7 +6,10 @@ import {
   agentsLoading$,
   agentsError$,
 } from "../../signals/zero-page/zero-agents.ts";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  agentDisplayName$,
+  defaultAgentName$,
+} from "../../signals/zero-page/zero-agent-name.ts";
 import { Link } from "../router/link.tsx";
 import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
@@ -15,22 +18,35 @@ interface ZeroJobsPageProps {
   onNavigateToChat?: () => void;
   selectedAgentName?: string | null;
   zeroAvatarSrc?: string;
+  onCycleZeroAvatar?: () => void;
 }
 
 export function ZeroJobsPage({
   onNavigateToChat,
   selectedAgentName,
   zeroAvatarSrc = "/zero-avatar.png",
+  onCycleZeroAvatar,
 }: ZeroJobsPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const rawNameLoadable = useLoadable(defaultAgentName$);
+  const rawAgentName =
+    rawNameLoadable.state === "hasData" ? rawNameLoadable.data : null;
   const agents = useLastResolved(zeroSubagents$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
 
+  const isDefaultAgent = selectedAgentName === rawAgentName;
+
   if (selectedAgentName) {
-    return <ZeroJobDetailPage agentName={selectedAgentName} />;
+    return (
+      <ZeroJobDetailPage
+        agentName={selectedAgentName}
+        zeroAvatarSrc={isDefaultAgent ? zeroAvatarSrc : undefined}
+        onCycleAvatar={isDefaultAgent ? onCycleZeroAvatar : undefined}
+      />
+    );
   }
 
   return (
@@ -50,12 +66,43 @@ export function ZeroJobsPage({
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6">
           {/* Zero — full width */}
-          <Link
-            pathname="/zero/:tab"
-            options={{ pathParams: { tab: "meet" } }}
-            className="block no-underline text-inherit"
-          >
-            <Card className="zero-card cursor-pointer hover:bg-muted/30 transition-colors">
+          {rawAgentName ? (
+            <Link
+              pathname="/zero/team/:name"
+              options={{ pathParams: { name: rawAgentName } }}
+              className="block no-underline text-inherit"
+            >
+              <Card className="zero-card cursor-pointer hover:bg-muted/30 transition-colors">
+                <CardContent className="p-5 flex items-center gap-4">
+                  <img
+                    src={zeroAvatarSrc}
+                    alt={agentName}
+                    className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
+                        {agentName}
+                      </h2>
+                      <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
+                        <IconCrown
+                          size={12}
+                          stroke={1.8}
+                          className="shrink-0 text-amber-500 dark:text-amber-400"
+                        />
+                        Lead
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Your primary AI assistant that manages your team and
+                      orchestrates workflows.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ) : (
+            <Card className="zero-card">
               <CardContent className="p-5 flex items-center gap-4">
                 <img
                   src={zeroAvatarSrc}
@@ -83,7 +130,7 @@ export function ZeroJobsPage({
                 </div>
               </CardContent>
             </Card>
-          </Link>
+          )}
 
           {/* Sub-agents grid */}
           {loading && (!agents || agents.length === 0) && (

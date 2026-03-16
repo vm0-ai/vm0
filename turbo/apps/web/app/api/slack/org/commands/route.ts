@@ -178,13 +178,18 @@ async function handleSettings(
 ): Promise<NextResponse> {
   const platformUrl = getPlatformUrl();
   let agentLabel = "Agent";
+  let agentName: string | undefined;
   if (installation.orgId) {
     const composeId = await resolveDefaultComposeId(installation.orgId);
     if (composeId) {
       const agent = await getWorkspaceAgent(composeId);
       agentLabel = agent?.displayName ?? agent?.name ?? agentLabel;
+      agentName = agent?.name;
     }
   }
+  const settingsPath = agentName
+    ? `/zero/team/${encodeURIComponent(agentName)}?tab=connectors`
+    : "/zero/team";
   return ephemeral([
     {
       type: "section",
@@ -199,7 +204,7 @@ async function handleSettings(
         {
           type: "button",
           text: { type: "plain_text", text: `Configure ${agentLabel}` },
-          url: `${platformUrl}/zero/meet`,
+          url: `${platformUrl}${settingsPath}`,
           action_id: "open_platform_settings",
         },
       ],
