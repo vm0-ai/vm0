@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.18.0](https://github.com/vm0-ai/vm0/compare/docs-v2.17.1...docs-v2.18.0) (2026-03-16)
+
+
+### Features
+
+* add model provider tracking and org-scoped logs/schedules ([#4909](https://github.com/vm0-ai/vm0/issues/4909)) ([dc0de67](https://github.com/vm0-ai/vm0/commit/dc0de673b2e78eec803a3051148f1947dc292945))
+
+
+### Refactoring
+
+* improve zero onboarding post-completion navigation ([#4908](https://github.com/vm0-ai/vm0/issues/4908)) ([c3d95b8](https://github.com/vm0-ai/vm0/commit/c3d95b884fcece0a3a73d8128469e6f81a7cc650))
+
 ## [2.17.1](https://github.com/vm0-ai/vm0/compare/docs-v2.17.0...docs-v2.17.1) (2026-03-13)
 
 

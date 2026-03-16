@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.26.2...runner-rs-v0.27.0) (2026-03-16)
+
+
+### Features
+
+* conditionally inject cli env vars in sandbox when capabilities present ([#4902](https://github.com/vm0-ai/vm0/issues/4902)) ([4b89998](https://github.com/vm0-ai/vm0/commit/4b899988768c0edc9781fb1ffefedec90de044e5)), closes [#4899](https://github.com/vm0-ai/vm0/issues/4899)
+
+
+### Refactoring
+
+* rename service to firewall across entire codebase ([#4877](https://github.com/vm0-ai/vm0/issues/4877)) ([#4895](https://github.com/vm0-ai/vm0/issues/4895)) ([d40192b](https://github.com/vm0-ai/vm0/commit/d40192b6df5672d525dd39b9215a167ba42a3722))
+
 ## [0.26.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.26.1...runner-rs-v0.26.2) (2026-03-16)
 
 

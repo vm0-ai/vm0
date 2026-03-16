@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.68.0](https://github.com/vm0-ai/vm0/compare/core-v8.67.0...core-v8.68.0) (2026-03-16)
+
+
+### Features
+
+* flow experimental_capabilities through execution context pipeline ([#4883](https://github.com/vm0-ai/vm0/issues/4883)) ([beeee92](https://github.com/vm0-ai/vm0/commit/beeee92b8c41bb8f46a232b4a248e4ecb3136111))
+
+
+### Bug Fixes
+
+* rename missed service comment to firewall in composes.ts ([#4907](https://github.com/vm0-ai/vm0/issues/4907)) ([d30e3fd](https://github.com/vm0-ai/vm0/commit/d30e3fd0893a26af2ecbb810e571052155e6cf16))
+
+
+### Refactoring
+
+* improve zero onboarding post-completion navigation ([#4908](https://github.com/vm0-ai/vm0/issues/4908)) ([c3d95b8](https://github.com/vm0-ai/vm0/commit/c3d95b884fcece0a3a73d8128469e6f81a7cc650))
+* rename service to firewall across entire codebase ([#4877](https://github.com/vm0-ai/vm0/issues/4877)) ([#4895](https://github.com/vm0-ai/vm0/issues/4895)) ([d40192b](https://github.com/vm0-ai/vm0/commit/d40192b6df5672d525dd39b9215a167ba42a3722))
+
 ## [8.67.0](https://github.com/vm0-ai/vm0/compare/core-v8.66.1...core-v8.67.0) (2026-03-16)
 
 
