@@ -159,6 +159,7 @@ impl JobProvider for LocalProvider {
             agent_org_slug: None,
             memory_name: None,
             experimental_firewall: None,
+            experimental_capabilities: None,
         })
     }
 

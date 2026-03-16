@@ -68,8 +68,7 @@ pub struct ExecutionContext {
     #[allow(dead_code)]
     #[serde(default)]
     pub agent_name: Option<String>,
-    // Not yet used by runner — org slug for agent
-    #[allow(dead_code)]
+    // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
     #[serde(default)]
     pub agent_org_slug: Option<String>,
     // Not yet used by runner — memory storage name for first-run init
@@ -78,6 +77,8 @@ pub struct ExecutionContext {
     pub memory_name: Option<String>,
     #[serde(default)]
     pub experimental_firewall: Option<Vec<Firewall>>,
+    #[serde(default)]
+    pub experimental_capabilities: Option<Vec<String>>,
 }
 
 /// A single firewall config with its name, ref key, and API entries.

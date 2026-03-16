@@ -570,6 +570,19 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
     }
 
+    // When capabilities are declared, inject CLI-compatible env vars
+    // so vm0 CLI can authenticate inside the sandbox.
+    if context
+        .experimental_capabilities
+        .as_ref()
+        .is_some_and(|caps| !caps.is_empty())
+    {
+        env.insert("VM0_TOKEN".into(), context.sandbox_token.clone());
+        if let Some(slug) = &context.agent_org_slug {
+            env.insert("VM0_ACTIVE_ORG".into(), slug.clone());
+        }
+    }
+
     // Artifact config
     if let Some(manifest) = &context.storage_manifest
         && let Some(artifact) = &manifest.artifact
@@ -654,6 +667,7 @@ mod tests {
             agent_org_slug: None,
             memory_name: None,
             experimental_firewall: None,
+            experimental_capabilities: None,
         }
     }
 
@@ -898,6 +912,62 @@ mod tests {
         ctx.experimental_firewall = Some(vec![]);
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+    }
+
+    #[test]
+    fn build_env_json_capabilities_inject_cli_vars() {
+        let mut ctx = minimal_context();
+        ctx.experimental_capabilities = Some(vec!["volume:read".into()]);
+        ctx.agent_org_slug = Some("my-org".into());
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
+        assert_eq!(env.get("VM0_ACTIVE_ORG").unwrap(), "my-org");
+    }
+
+    #[test]
+    fn build_env_json_no_capabilities_no_cli_vars() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_TOKEN"));
+        assert!(!env.contains_key("VM0_ACTIVE_ORG"));
+    }
+
+    #[test]
+    fn build_env_json_empty_capabilities_no_cli_vars() {
+        let mut ctx = minimal_context();
+        ctx.experimental_capabilities = Some(vec![]);
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_TOKEN"));
+        assert!(!env.contains_key("VM0_ACTIVE_ORG"));
+    }
+
+    #[test]
+    fn build_env_json_capabilities_cli_vars_override_user_env() {
+        let mut ctx = minimal_context();
+        ctx.experimental_capabilities = Some(vec!["volume:read".into()]);
+        ctx.agent_org_slug = Some("my-org".into());
+        ctx.environment = Some(HashMap::from([
+            ("VM0_TOKEN".into(), "tampered".into()),
+            ("VM0_ACTIVE_ORG".into(), "evil-org".into()),
+        ]));
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
+        assert_eq!(env.get("VM0_ACTIVE_ORG").unwrap(), "my-org");
+    }
+
+    #[test]
+    fn execution_context_deserializes_with_capabilities() {
+        let json = serde_json::json!({
+            "runId": "00000000-0000-0000-0000-000000000001",
+            "prompt": "test",
+            "sandboxToken": "tok",
+            "workingDir": "/workspace",
+            "cliAgentType": "claude-code",
+            "experimentalCapabilities": ["volume:read", "artifact:write"]
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let caps = ctx.experimental_capabilities.unwrap();
+        assert_eq!(caps, vec!["volume:read", "artifact:write"]);
     }
 
     #[test]
