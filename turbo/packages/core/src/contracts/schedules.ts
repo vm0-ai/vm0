@@ -185,6 +185,7 @@ export const schedulesMainContract = c.router({
       201: deployScheduleResponseSchema, // Created
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Deploy schedule (create or update)",
@@ -201,6 +202,7 @@ export const schedulesMainContract = c.router({
     responses: {
       200: scheduleListResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "List all schedules",
   },
@@ -228,6 +230,7 @@ export const schedulesByNameContract = c.router({
     responses: {
       200: scheduleResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get schedule by name",
@@ -250,6 +253,7 @@ export const schedulesByNameContract = c.router({
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Delete schedule",
@@ -277,6 +281,7 @@ export const schedulesEnableContract = c.router({
     responses: {
       200: scheduleResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Enable schedule",
@@ -299,6 +304,7 @@ export const schedulesEnableContract = c.router({
     responses: {
       200: scheduleResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Disable schedule",
@@ -328,6 +334,7 @@ export const scheduleRunsContract = c.router({
     responses: {
       200: scheduleRunsResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "List recent runs for a schedule",
