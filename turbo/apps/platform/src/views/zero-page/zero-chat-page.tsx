@@ -165,7 +165,7 @@ function getTagline(
     `Another day, another win, ${userName}.`,
     `Hey ${userName}, ready to build?`,
     `${userName} has entered the chat.`,
-    `Missed you, ${userName}.`,
+    `Good to see you, ${userName}.`,
     `${userName}! I saved your seat.`,
     `${userName}, let's make today count.`,
     `Coffee's ready, ${userName}. Let's go.`,
@@ -173,7 +173,7 @@ function getTagline(
     `What's cooking, ${userName}?`,
     `${userName}. New day, new ideas.`,
     `Ah, ${userName}. Right on time.`,
-    `${userName}, tell me everything.`,
+    `${userName}, what are we working on?`,
     `The usual, ${userName}?`,
   ];
   return taglines[index % taglines.length];
@@ -771,12 +771,13 @@ function ConnectorTriggerIcons({
       {connected.map((c) => (
         <span
           key={c.type}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-background border border-border/60"
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-background"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
         >
           {c.iconUrl ? (
-            <img src={c.iconUrl} alt="" className="h-3.5 w-3.5" />
+            <img src={c.iconUrl} alt="" className="h-4 w-4" />
           ) : (
-            <ConnectorIcon type={c.type as ConnectorType} size={14} />
+            <ConnectorIcon type={c.type as ConnectorType} size={16} />
           )}
         </span>
       ))}
@@ -854,7 +855,7 @@ function ConnectorsPopoverButton({
                 ) : (
                   <button
                     type="button"
-                    className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
                       onConnect(item.type);
@@ -867,7 +868,12 @@ function ConnectorsPopoverButton({
             ))}
           </div>
         </div>
-        <div className="border-t border-border/50 p-2 flex flex-col">
+        <div
+          className={cn(
+            "p-2 flex flex-col",
+            connectors.length > 0 && "border-t border-border/50",
+          )}
+        >
           <button
             type="button"
             className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-accent transition-colors"

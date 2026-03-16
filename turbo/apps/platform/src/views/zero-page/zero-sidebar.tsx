@@ -57,6 +57,7 @@ import {
   DialogHeader,
   DialogTitle,
   cn,
+  Button,
 } from "@vm0/ui";
 import slackIcon from "../settings-page/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
@@ -435,11 +436,14 @@ function RecentChatSection({
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
       {searchOpen ? (
-        <div className="shrink-0 flex items-center gap-2 h-8 rounded-lg p-2 bg-sidebar-accent/50">
+        <div
+          className="shrink-0 flex items-center gap-2 h-8 rounded-lg px-2.5 bg-sidebar-accent/60"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
           <IconSearch
-            size={13}
+            size={14}
             stroke={1.5}
-            className="shrink-0 text-sidebar-foreground/70"
+            className="shrink-0 text-sidebar-foreground/50"
           />
           <input
             type="text"
@@ -447,7 +451,7 @@ function RecentChatSection({
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search chats..."
             autoFocus
-            className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
           />
           <button
             type="button"
@@ -455,7 +459,7 @@ function RecentChatSection({
               setSearchOpen(false);
               setSearchTerm("");
             }}
-            className="shrink-0 text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+            className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             aria-label="Close search"
           >
             <IconX size={13} stroke={1.5} />
@@ -494,8 +498,8 @@ function RecentChatSection({
           ) : filteredSessions.length === 0 ? (
             <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
               {searchTerm.trim()
-                ? "No matching chats"
-                : "Your chats will appear here"}
+                ? "No chats match your search"
+                : "Start a conversation and it'll show up here"}
             </p>
           ) : (
             filteredSessions.map((session) => (
@@ -539,11 +543,11 @@ function SortablePinnedAgent({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
+      className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
     >
       <button
         type="button"
-        className="shrink-0 w-5 flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground transition-colors touch-none"
+        className="shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors touch-none"
         {...attributes}
         {...listeners}
       >
@@ -559,11 +563,11 @@ function SortablePinnedAgent({
       </span>
       <button
         type="button"
-        className="text-muted-foreground/50 hover:text-destructive transition-colors p-1"
+        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors p-1"
         onClick={onUnpin}
         aria-label={`Unpin ${agent.displayName ?? agent.name}`}
       >
-        <IconPlus size={14} className="rotate-45" />
+        <IconX size={14} />
       </button>
     </div>
   );
@@ -645,10 +649,8 @@ function ManagePinnedAgentsDialog({
           </p>
         </DialogHeader>
 
-        <div className="px-5 pb-2">
-          {/* Zero — always pinned */}
-          <div className="flex items-center gap-3 px-1 py-2.5 rounded-lg">
-            <div className="w-5 shrink-0" />
+        <div className="px-5 pb-1">
+          <div className="flex items-center gap-2 px-1 py-2.5 rounded-lg">
             <img
               src={zeroAvatarSrc}
               alt={displayName}
@@ -657,13 +659,14 @@ function ManagePinnedAgentsDialog({
             <span className="text-sm font-medium text-foreground flex-1 truncate">
               {displayName}
             </span>
-            <span className="text-xs text-muted-foreground mr-1">Main</span>
+            <span className="text-[11px] text-muted-foreground/60 mr-0.5">
+              Lead
+            </span>
           </div>
         </div>
 
         {orderedPinned.length > 0 && (
-          <div className="px-5 pb-2">
-            <div className="border-t border-border/60 mb-2" />
+          <div className="px-5 pb-1">
             <span className="text-xs font-medium text-muted-foreground px-1">
               Pinned
             </span>
@@ -692,7 +695,6 @@ function ManagePinnedAgentsDialog({
 
         {unpinned.length > 0 && (
           <div className="px-5 pb-5">
-            <div className="border-t border-border/60 mb-2" />
             <span className="text-xs font-medium text-muted-foreground px-1">
               Available agents
             </span>
@@ -700,9 +702,8 @@ function ManagePinnedAgentsDialog({
               {unpinned.map((agent) => (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors"
                 >
-                  <div className="w-5 shrink-0" />
                   <img
                     src={getAgentAvatar(agent.name)}
                     alt={agent.displayName ?? agent.name}
@@ -714,10 +715,10 @@ function ManagePinnedAgentsDialog({
                   <button
                     type="button"
                     className={cn(
-                      "transition-colors p-1 text-xs font-medium",
+                      "transition-colors px-2 py-0.5 rounded-md text-xs font-medium",
                       pinnedIds.length >= MAX_PINNED
                         ? "text-muted-foreground/30 cursor-not-allowed"
-                        : "text-primary hover:text-primary/80",
+                        : "text-primary hover:text-primary/80 hover:bg-primary/10",
                     )}
                     onClick={() => togglePin(agent.id)}
                     disabled={pinnedIds.length >= MAX_PINNED}
@@ -732,12 +733,21 @@ function ManagePinnedAgentsDialog({
 
         {subagents.length === 0 && (
           <div className="px-5 pb-5">
-            <div className="border-t border-border/60 mb-2" />
             <p className="text-xs text-muted-foreground px-1 py-2">
               No sub-agents available yet.
             </p>
           </div>
         )}
+
+        <div className="px-5 pb-5 pt-2">
+          <Button
+            className="w-full"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -1,9 +1,5 @@
 import { useGet, useLastResolved, useSet, useLoadable } from "ccstate-react";
-import {
-  IconSparkles,
-  IconMessageCircle,
-  IconUsers,
-} from "@tabler/icons-react";
+import { IconCrown, IconMessageCircle, IconUsers } from "@tabler/icons-react";
 import { Button, Card, CardContent } from "@vm0/ui";
 import {
   zeroSubagents$,
@@ -78,13 +74,13 @@ export function ZeroJobsPage({
                   <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
                     {agentName}
                   </h2>
-                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
-                    <IconSparkles
+                  <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
+                    <IconCrown
                       size={12}
-                      stroke={1.5}
-                      className="h-3 w-3 shrink-0 text-violet-600 dark:text-violet-400"
+                      stroke={1.8}
+                      className="shrink-0 text-amber-500 dark:text-amber-400"
                     />
-                    Main
+                    Lead
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground mt-0.5">
@@ -140,10 +136,11 @@ export function ZeroJobsPage({
                 />
                 <div className="text-center">
                   <p className="text-sm font-medium text-foreground">
-                    No teammates yet
+                    Just {agentName} for now
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Start a chat with {agentName} to create one.
+                    Ask {agentName} to create a teammate and they&apos;ll show
+                    up here.
                   </p>
                 </div>
               </CardContent>
