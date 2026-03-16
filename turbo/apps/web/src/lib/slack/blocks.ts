@@ -11,8 +11,6 @@ import type {
 import { getPlatformUrl } from "../url";
 import type { DeepLink } from "../deep-links";
 
-const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/integrations/slack";
-
 /**
  * Build the App Home tab view
  *
@@ -190,16 +188,6 @@ export function buildAppHomeView(options: {
     },
   });
 
-  blocks.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: `:book: <${SLACK_DOCS_URL}|View full documentation>`,
-      },
-    ],
-  });
-
   blocks.push({ type: "divider" });
 
   blocks.push({
@@ -372,15 +360,6 @@ export function buildHelpMessage(options?: {
         type: "mrkdwn",
         text: "*Usage*\n\u2022 `@Zero <message>` - Send a message to your agent",
       },
-    },
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `:book: <${SLACK_DOCS_URL}|View full documentation>`,
-        },
-      ],
     },
   ];
 }
