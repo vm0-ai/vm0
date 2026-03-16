@@ -1,4 +1,4 @@
-import { Component, type KeyboardEvent, type ChangeEvent } from "react";
+import { Component, type ChangeEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { onRef, detach, Reason } from "../../signals/utils.ts";
@@ -65,6 +65,7 @@ import {
 } from "../../signals/zero-page/zero-meet.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useModelSelection } from "./zero-model-preference.ts";
+import { useSendKeyHandler } from "./zero-send-key.ts";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -1167,15 +1168,7 @@ export function ZeroChatPage({
     onSendMessage?.(text, buildModelOpts(selectedModel));
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) {
-      return;
-    }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const handleKeyDown = useSendKeyHandler(handleSend);
 
   const handleFileSelect = () => {
     fileInputEl?.click();
