@@ -46,6 +46,8 @@ export interface ScheduleResponse {
   artifactVersion: string | null;
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
+  notifyEmail: boolean;
+  notifySlack: boolean;
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
@@ -78,6 +80,8 @@ interface DeployScheduleRequest {
   timezone: string;
   prompt: string;
   enabled?: boolean;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
   // vars and secrets removed - now managed via platform tables
   artifactName?: string;
   artifactVersion?: string;
@@ -187,6 +191,8 @@ function toResponse(
     artifactVersion: schedule.artifactVersion,
     volumeVersions: schedule.volumeVersions,
     enabled: schedule.enabled,
+    notifyEmail: schedule.notifyEmail,
+    notifySlack: schedule.notifySlack,
     nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
     retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
@@ -359,6 +365,93 @@ function validateAtTimeNotPast(request: DeployScheduleRequest): void {
 }
 
 /**
+ * Update an existing schedule row.
+ */
+async function updateExistingSchedule(
+  existingId: string,
+  request: DeployScheduleRequest,
+  triggerType: "cron" | "once" | "loop",
+  nextRunAt: Date | null,
+): Promise<typeof agentSchedules.$inferSelect> {
+  const [updated] = await globalThis.services.db
+    .update(agentSchedules)
+    .set({
+      triggerType,
+      cronExpression: request.cronExpression ?? null,
+      atTime: request.atTime ? new Date(request.atTime) : null,
+      intervalSeconds: request.intervalSeconds ?? null,
+      timezone: request.timezone,
+      prompt: request.prompt,
+      vars: null,
+      encryptedSecrets: null,
+      artifactName: request.artifactName ?? null,
+      artifactVersion: request.artifactVersion ?? null,
+      volumeVersions: request.volumeVersions ?? null,
+      ...(request.notifyEmail !== undefined && {
+        notifyEmail: request.notifyEmail,
+      }),
+      ...(request.notifySlack !== undefined && {
+        notifySlack: request.notifySlack,
+      }),
+      nextRunAt,
+      consecutiveFailures: 0,
+      updatedAt: new Date(),
+    })
+    .where(eq(agentSchedules.id, existingId))
+    .returning();
+
+  if (!updated) {
+    throw new Error(`Failed to update schedule ${request.name}`);
+  }
+  return updated;
+}
+
+/**
+ * Insert a new schedule row.
+ */
+async function insertNewSchedule(
+  userId: string,
+  orgId: string,
+  request: DeployScheduleRequest,
+  triggerType: "cron" | "once" | "loop",
+  nextRunAt: Date | null,
+): Promise<typeof agentSchedules.$inferSelect> {
+  const now = new Date();
+  const [created] = await globalThis.services.db
+    .insert(agentSchedules)
+    .values({
+      composeId: request.composeId,
+      userId,
+      orgId,
+      name: request.name,
+      triggerType,
+      cronExpression: request.cronExpression ?? null,
+      atTime: request.atTime ? new Date(request.atTime) : null,
+      intervalSeconds: request.intervalSeconds ?? null,
+      timezone: request.timezone,
+      prompt: request.prompt,
+      vars: null,
+      encryptedSecrets: null,
+      artifactName: request.artifactName ?? null,
+      artifactVersion: request.artifactVersion ?? null,
+      volumeVersions: request.volumeVersions ?? null,
+      enabled: request.enabled ?? false,
+      notifyEmail: request.notifyEmail ?? true,
+      notifySlack: request.notifySlack ?? true,
+      nextRunAt,
+      consecutiveFailures: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
+
+  if (!created) {
+    throw new Error(`Failed to create schedule ${request.name}`);
+  }
+  return created;
+}
+
+/**
  * Deploy (create or update) a schedule
  * Idempotent: creates if doesn't exist, updates if exists
  */
@@ -402,80 +495,32 @@ export async function deploySchedule(
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 
-  const now = new Date();
-
   if (existing) {
-    // Update existing schedule
-    const [updated] = await globalThis.services.db
-      .update(agentSchedules)
-      .set({
-        triggerType,
-        cronExpression: request.cronExpression ?? null,
-        atTime: request.atTime ? new Date(request.atTime) : null,
-        intervalSeconds: request.intervalSeconds ?? null,
-        timezone: request.timezone,
-        prompt: request.prompt,
-        vars: null, // Vars now come from platform tables
-        encryptedSecrets: null, // Secrets now come from platform tables
-        artifactName: request.artifactName ?? null,
-        artifactVersion: request.artifactVersion ?? null,
-        volumeVersions: request.volumeVersions ?? null,
-        nextRunAt,
-        consecutiveFailures: 0,
-        updatedAt: now,
-      })
-      .where(eq(agentSchedules.id, existing.id))
-      .returning();
-
-    if (!updated) {
-      throw new Error(`Failed to update schedule ${request.name}`);
-    }
-
+    const updated = await updateExistingSchedule(
+      existing.id,
+      request,
+      triggerType,
+      nextRunAt,
+    );
     log.debug(`Updated schedule ${request.name} (${existing.id})`);
-
     return {
       schedule: toResponse(updated, compose.name, orgSlug),
       created: false,
     };
-  } else {
-    // Create new schedule
-    const [created] = await globalThis.services.db
-      .insert(agentSchedules)
-      .values({
-        composeId: request.composeId,
-        userId,
-        orgId,
-        name: request.name,
-        triggerType,
-        cronExpression: request.cronExpression ?? null,
-        atTime: request.atTime ? new Date(request.atTime) : null,
-        intervalSeconds: request.intervalSeconds ?? null,
-        timezone: request.timezone,
-        prompt: request.prompt,
-        vars: null, // Vars now come from platform tables
-        encryptedSecrets: null, // Secrets now come from platform tables
-        artifactName: request.artifactName ?? null,
-        artifactVersion: request.artifactVersion ?? null,
-        volumeVersions: request.volumeVersions ?? null,
-        enabled: request.enabled ?? false,
-        nextRunAt,
-        consecutiveFailures: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    if (!created) {
-      throw new Error(`Failed to create schedule ${request.name}`);
-    }
-
-    log.debug(`Created schedule ${request.name} (${created.id})`);
-
-    return {
-      schedule: toResponse(created, compose.name, orgSlug),
-      created: true,
-    };
   }
+
+  const created = await insertNewSchedule(
+    userId,
+    orgId,
+    request,
+    triggerType,
+    nextRunAt,
+  );
+  log.debug(`Created schedule ${request.name} (${created.id})`);
+  return {
+    schedule: toResponse(created, compose.name, orgSlug),
+    created: true,
+  };
 }
 
 /**
@@ -873,8 +918,12 @@ async function executeSchedule(
 
   const prefs = await getUserPreferences(orgData.orgId, schedule.userId);
 
-  // Email schedule notification callback (only if Resend is configured AND user opted in)
-  if (globalThis.services.env.RESEND_API_KEY && prefs.notifyEmail) {
+  // Email schedule notification callback (only if Resend is configured AND user + schedule opted in)
+  if (
+    globalThis.services.env.RESEND_API_KEY &&
+    prefs.notifyEmail &&
+    schedule.notifyEmail
+  ) {
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
       secret: generateCallbackSecret(),
@@ -882,8 +931,8 @@ async function executeSchedule(
     });
   }
 
-  // Slack schedule DM notification callback (only if user opted in)
-  if (prefs.notifySlack) {
+  // Slack schedule DM notification callback (only if user + schedule opted in)
+  if (prefs.notifySlack && schedule.notifySlack) {
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,
       secret: generateCallbackSecret(),

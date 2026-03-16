@@ -74,6 +74,9 @@ const deployScheduleRequestSchema = z
     composeId: z.string().uuid("Invalid compose ID"),
     // Enable schedule immediately upon creation
     enabled: z.boolean().optional(),
+    // Per-schedule notification control (AND'd with user global preferences)
+    notifyEmail: z.boolean().optional(),
+    notifySlack: z.boolean().optional(),
   })
   .refine(
     (data) => {
@@ -113,6 +116,8 @@ const scheduleResponseSchema = z.object({
   artifactVersion: z.string().nullable(),
   volumeVersions: z.record(z.string(), z.string()).nullable(),
   enabled: z.boolean(),
+  notifyEmail: z.boolean(),
+  notifySlack: z.boolean(),
   nextRunAt: z.string().nullable(),
   lastRunAt: z.string().nullable(),
   retryStartedAt: z.string().nullable(),

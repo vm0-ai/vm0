@@ -8,6 +8,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
+import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -41,6 +42,10 @@ import {
   deleteScheduleFromDialog$,
   scheduleDialogTimezone$,
   setScheduleDialogTimezone$,
+  scheduleDialogNotifyEmail$,
+  setScheduleDialogNotifyEmail$,
+  scheduleDialogNotifySlack$,
+  setScheduleDialogNotifySlack$,
 } from "../../signals/agent-detail/schedule.ts";
 import {
   getTodayDateLocal,
@@ -96,6 +101,10 @@ export function ScheduleDialog() {
   const deleteSchedule = useSet(deleteScheduleFromDialog$);
   const timezone = useGet(scheduleDialogTimezone$);
   const setTimezone = useSet(setScheduleDialogTimezone$);
+  const notifyEmail = useGet(scheduleDialogNotifyEmail$);
+  const setNotifyEmail = useSet(setScheduleDialogNotifyEmail$);
+  const notifySlack = useGet(scheduleDialogNotifySlack$);
+  const setNotifySlack = useSet(setScheduleDialogNotifySlack$);
 
   const dayOfMonthOptions = Array.from({ length: 31 }, (_, i) => ({
     value: String(i + 1),
@@ -276,6 +285,20 @@ export function ScheduleDialog() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <label className="text-sm font-medium text-foreground px-1">
+              Notifications
+            </label>
+            <div className="flex items-center justify-between px-1">
+              <span className="text-sm text-foreground">Email</span>
+              <Switch checked={notifyEmail} onCheckedChange={setNotifyEmail} />
+            </div>
+            <div className="flex items-center justify-between px-1">
+              <span className="text-sm text-foreground">Slack</span>
+              <Switch checked={notifySlack} onCheckedChange={setNotifySlack} />
+            </div>
           </div>
         </div>
 

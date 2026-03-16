@@ -599,6 +599,225 @@ describe("GET /api/agent/schedules - List Schedules", () => {
   });
 });
 
+describe("POST /api/agent/schedules - Notification Control", () => {
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+
+    const { composeId } = await createTestCompose(`notify-agent-${Date.now()}`);
+    testComposeId = composeId;
+  });
+
+  it("should default notifyEmail and notifySlack to true when not specified", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "default-notify",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test defaults",
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.schedule.notifyEmail).toBe(true);
+    expect(data.schedule.notifySlack).toBe(true);
+  });
+
+  it("should create schedule with notifyEmail disabled", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "no-email",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "No email",
+          notifyEmail: false,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.schedule.notifyEmail).toBe(false);
+    expect(data.schedule.notifySlack).toBe(true);
+  });
+
+  it("should create schedule with notifySlack disabled", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "no-slack",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "No slack",
+          notifySlack: false,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.schedule.notifyEmail).toBe(true);
+    expect(data.schedule.notifySlack).toBe(false);
+  });
+
+  it("should create schedule with both notifications disabled", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "silent",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Silent schedule",
+          notifyEmail: false,
+          notifySlack: false,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.schedule.notifyEmail).toBe(false);
+    expect(data.schedule.notifySlack).toBe(false);
+  });
+
+  it("should update notification settings on existing schedule", async () => {
+    // Create schedule with notifications enabled
+    await createTestSchedule(testComposeId, "update-notify", {
+      cronExpression: "0 9 * * *",
+      prompt: "Initial",
+    });
+
+    // Update to disable notifications
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "update-notify",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Updated",
+          notifyEmail: false,
+          notifySlack: false,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.schedule.notifyEmail).toBe(false);
+    expect(data.schedule.notifySlack).toBe(false);
+  });
+
+  it("should preserve notification settings when not specified in update", async () => {
+    // Create schedule with notifications disabled
+    const createReq = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "preserve-notify",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Initial",
+          notifyEmail: false,
+          notifySlack: false,
+        }),
+      },
+    );
+    await POST(createReq);
+
+    // Update without specifying notification fields
+    const updateReq = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId: testComposeId,
+          name: "preserve-notify",
+          cronExpression: "0 10 * * *",
+          timezone: "UTC",
+          prompt: "Updated prompt only",
+        }),
+      },
+    );
+
+    const response = await POST(updateReq);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.schedule.notifyEmail).toBe(false);
+    expect(data.schedule.notifySlack).toBe(false);
+  });
+
+  it("should return notification fields in list response", async () => {
+    const { composeId } = await createTestCompose(
+      `notify-list-agent-${Date.now()}`,
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/schedules",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          composeId,
+          name: "notify-list-test",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+          notifyEmail: false,
+        }),
+      },
+    );
+    await POST(request);
+
+    const schedules = await listTestSchedules();
+    const schedule = schedules.find((s) => s.name === "notify-list-test");
+
+    expect(schedule).toBeDefined();
+    expect(schedule!.notifyEmail).toBe(false);
+    expect(schedule!.notifySlack).toBe(true);
+  });
+});
+
 describe("POST /api/agent/schedules - Platform Configuration Validation", () => {
   beforeEach(async () => {
     context.setupMocks();

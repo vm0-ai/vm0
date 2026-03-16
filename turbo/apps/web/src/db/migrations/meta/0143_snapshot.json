@@ -1,5 +1,5 @@
 {
-  "id": "0b321303-4c2d-4ca1-a112-32c893a79397",
+  "id": "07d063ee-996d-4417-8993-86a09bd9a969",
   "prevId": "0578fd16-1730-4829-afc1-b5d3b03ea5eb",
   "version": "7",
   "dialect": "postgresql",
@@ -669,12 +669,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "model_provider": {
-          "name": "model_provider",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -932,6 +926,20 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "notify_email": {
+          "name": "notify_email",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "notify_slack": {
+          "name": "notify_slack",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "enabled": {
           "name": "enabled",

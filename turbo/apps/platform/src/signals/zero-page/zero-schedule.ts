@@ -31,6 +31,8 @@ interface ScheduleResponse {
   timezone: string;
   prompt: string;
   enabled: boolean;
+  notifyEmail: boolean;
+  notifySlack: boolean;
   nextRunAt: string | null;
   lastRunAt: string | null;
   createdAt: string;
@@ -121,6 +123,8 @@ interface ZeroScheduleEntry {
   time: string;
   prompt: string;
   enabled: boolean;
+  notifyEmail: boolean;
+  notifySlack: boolean;
   /** Original schedule name for API operations */
   name: string;
   /** Raw interval in seconds for loop schedules */
@@ -137,6 +141,8 @@ export const zeroScheduleEntries$ = computed((get) => {
         time: scheduleToTimeString(s),
         prompt: s.prompt,
         enabled: s.enabled,
+        notifyEmail: s.notifyEmail,
+        notifySlack: s.notifySlack,
         name: s.name,
         intervalSeconds: s.intervalSeconds,
       }),
@@ -196,6 +202,8 @@ export interface ZeroScheduleSaveParams {
   dayOfMonth?: string;
   /** Schedule name when editing an existing schedule */
   editName?: string;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
 }
 
 export const saveZeroSchedule$ = command(
@@ -215,6 +223,12 @@ export const saveZeroSchedule$ = command(
       timezone: params.timezone,
       prompt: params.prompt.trim(),
       enabled: true,
+      ...(params.notifyEmail !== undefined && {
+        notifyEmail: params.notifyEmail,
+      }),
+      ...(params.notifySlack !== undefined && {
+        notifySlack: params.notifySlack,
+      }),
     };
 
     let body: ScheduleBody;
@@ -357,6 +371,8 @@ export interface OrgScheduleEntry {
   time: string;
   prompt: string;
   enabled: boolean;
+  notifyEmail: boolean;
+  notifySlack: boolean;
   name: string;
   intervalSeconds: number | null;
   composeId: string;
@@ -381,6 +397,8 @@ export const allOrgScheduleEntries$ = computed((get) => {
         time: scheduleToTimeString(s),
         prompt: s.prompt,
         enabled: s.enabled,
+        notifyEmail: s.notifyEmail,
+        notifySlack: s.notifySlack,
         name: s.name,
         intervalSeconds: s.intervalSeconds,
         composeId: s.composeId,
@@ -424,6 +442,12 @@ export const saveOrgSchedule$ = command(
       timezone: params.timezone,
       prompt: params.prompt.trim(),
       enabled: true,
+      ...(params.notifyEmail !== undefined && {
+        notifyEmail: params.notifyEmail,
+      }),
+      ...(params.notifySlack !== undefined && {
+        notifySlack: params.notifySlack,
+      }),
     };
 
     let body: ScheduleBody;

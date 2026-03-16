@@ -51,6 +51,8 @@ const router = tsr.router(schedulesMainContract, {
         timezone: body.timezone,
         prompt: body.prompt,
         enabled: body.enabled,
+        notifyEmail: body.notifyEmail,
+        notifySlack: body.notifySlack,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
         volumeVersions: body.volumeVersions,

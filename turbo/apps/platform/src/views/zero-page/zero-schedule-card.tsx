@@ -87,6 +87,8 @@ export interface ScheduleEntry {
   /** Schedule name used for API operations (edit/delete). */
   name?: string;
   enabled?: boolean;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds?: number | null;
 }

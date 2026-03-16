@@ -139,6 +139,8 @@ interface SetupOptions {
   prompt?: string;
   artifactName: string;
   enable?: boolean;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
 }
 
 interface ExistingScheduleDefaults {
@@ -549,6 +551,8 @@ async function buildAndDeploy(params: {
   timezone: string;
   prompt: string;
   artifactName: string;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -578,6 +582,12 @@ async function buildAndDeploy(params: {
     timezone: params.timezone,
     prompt: params.prompt,
     artifactName: params.artifactName,
+    ...(params.notifyEmail !== undefined && {
+      notifyEmail: params.notifyEmail,
+    }),
+    ...(params.notifySlack !== undefined && {
+      notifySlack: params.notifySlack,
+    }),
   });
 
   return deployResult;
@@ -716,6 +726,10 @@ export const setupCommand = new Command()
   .option("-p, --prompt <text>", "Prompt to run")
   .option("--artifact-name <name>", "Artifact name", "artifact")
   .option("-e, --enable", "Enable schedule immediately after creation")
+  .option("--notify-email", "Enable email notifications (default: true)")
+  .option("--no-notify-email", "Disable email notifications")
+  .option("--notify-slack", "Enable Slack notifications (default: true)")
+  .option("--no-notify-slack", "Disable Slack notifications")
   .action(
     withErrorHandler(async (agentName: string, options: SetupOptions) => {
       // 1. Resolve agent to composeId and get content
@@ -795,6 +809,8 @@ export const setupCommand = new Command()
         timezone,
         prompt: promptText_,
         artifactName: options.artifactName,
+        notifyEmail: options.notifyEmail,
+        notifySlack: options.notifySlack,
       });
 
       // 8. Display deployment result

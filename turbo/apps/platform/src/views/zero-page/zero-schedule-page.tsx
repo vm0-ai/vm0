@@ -23,6 +23,7 @@ import {
   cn,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Popover,
   PopoverContent,
@@ -78,6 +79,8 @@ function buildCombinedSchedule(
     time: e.time,
     prompt: e.prompt,
     enabled: e.enabled,
+    notifyEmail: e.notifyEmail,
+    notifySlack: e.notifySlack,
     name: e.name,
     intervalSeconds: e.intervalSeconds,
     agentLabel:
@@ -520,6 +523,12 @@ function ScheduleEditDialogInner({
   const loopMinutes$ = useCCState(parsed.loopMinutes);
   const loopMinutes = useGet(loopMinutes$);
   const setLoopMinutes = useSet(loopMinutes$);
+  const notifyEmail$ = useCCState(entry.notifyEmail);
+  const notifyEmail = useGet(notifyEmail$);
+  const setNotifyEmail = useSet(notifyEmail$);
+  const notifySlack$ = useCCState(entry.notifySlack);
+  const notifySlack = useGet(notifySlack$);
+  const setNotifySlack = useSet(notifySlack$);
 
   const handleSave = () => {
     if (!prompt.trim()) {
@@ -535,6 +544,8 @@ function ScheduleEditDialogInner({
       intervalSeconds: loopMinutes * 60,
       editName: entry.name,
       composeId: entry.composeId,
+      notifyEmail,
+      notifySlack,
     });
   };
 
@@ -574,6 +585,19 @@ function ScheduleEditDialogInner({
           timezone={timezone}
           setTimezone={setTimezone}
         />
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">
+            Notifications
+          </label>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-foreground">Email</span>
+            <Switch checked={notifyEmail} onCheckedChange={setNotifyEmail} />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-foreground">Slack</span>
+            <Switch checked={notifySlack} onCheckedChange={setNotifySlack} />
+          </div>
+        </div>
       </div>
       <DialogFooter>
         <Button

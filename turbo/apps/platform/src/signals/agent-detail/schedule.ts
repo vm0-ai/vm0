@@ -39,6 +39,8 @@ interface ScheduleResponse {
   artifactVersion: string | null;
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
+  notifyEmail: boolean;
+  notifySlack: boolean;
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
@@ -347,6 +349,28 @@ export const setScheduleDialogTimezone$ = command(({ set }, value: string) => {
   set(internalDialogTimezone$, value);
 });
 
+const internalDialogNotifyEmail$ = state(true);
+export const scheduleDialogNotifyEmail$ = computed((get) =>
+  get(internalDialogNotifyEmail$),
+);
+
+export const setScheduleDialogNotifyEmail$ = command(
+  ({ set }, value: boolean) => {
+    set(internalDialogNotifyEmail$, value);
+  },
+);
+
+const internalDialogNotifySlack$ = state(true);
+export const scheduleDialogNotifySlack$ = computed((get) =>
+  get(internalDialogNotifySlack$),
+);
+
+export const setScheduleDialogNotifySlack$ = command(
+  ({ set }, value: boolean) => {
+    set(internalDialogNotifySlack$, value);
+  },
+);
+
 const internalDialogSaving$ = state(false);
 export const scheduleDialogSaving$ = computed((get) =>
   get(internalDialogSaving$),
@@ -369,6 +393,8 @@ export const openScheduleDialog$ = command(({ get, set }) => {
 
   set(internalDialogPrompt$, schedule.prompt);
   set(internalDialogTimezone$, schedule.timezone || getBrowserTimezone());
+  set(internalDialogNotifyEmail$, schedule.notifyEmail);
+  set(internalDialogNotifySlack$, schedule.notifySlack);
   set(internalDialogSaveError$, null);
 
   if (schedule.triggerType === "loop" && schedule.intervalSeconds !== null) {
@@ -439,12 +465,17 @@ export const submitScheduleDialog$ = command(async ({ get, set }) => {
     const existingSchedule = get(internalAgentSchedule$);
     const scheduleName = existingSchedule?.name ?? "default";
 
+    const notifyEmail = get(internalDialogNotifyEmail$);
+    const notifySlack = get(internalDialogNotifySlack$);
+
     // Build request body based on trigger type
     const base = {
       composeId: detail.id,
       name: scheduleName,
       timezone,
       prompt: prompt.trim(),
+      notifyEmail,
+      notifySlack,
     };
 
     let body: ScheduleBody;

@@ -62,6 +62,10 @@ export const agentSchedules = pgTable(
     artifactVersion: varchar("artifact_version", { length: 64 }),
     volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
 
+    // Per-schedule notification control (AND'd with user global preferences)
+    notifyEmail: boolean("notify_email").default(true).notNull(),
+    notifySlack: boolean("notify_slack").default(true).notNull(),
+
     // State
     enabled: boolean("enabled").default(true).notNull(),
     nextRunAt: timestamp("next_run_at"),
