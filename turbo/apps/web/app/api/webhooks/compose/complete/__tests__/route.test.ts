@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import { POST as createComposeJob } from "../../../../compose/jobs/route";
 import { GET as getComposeJob } from "../../../../compose/jobs/[jobId]/route";
@@ -13,6 +13,17 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+
+vi.mock("@e2b/code-interpreter", () => ({
+  Sandbox: {
+    create: vi.fn().mockResolvedValue({
+      sandboxId: "mock-sandbox-id",
+      files: { write: vi.fn().mockResolvedValue(undefined) },
+      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
+    }),
+    connect: vi.fn(),
+  },
+}));
 
 const context = testContext();
 
