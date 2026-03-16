@@ -11,6 +11,7 @@ import {
   markRunningRunsAsCompleted,
   expireQueueEntry,
   setTestRunStatus,
+  insertOrgCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import {
@@ -217,6 +218,63 @@ describe("run-queue-service", () => {
 
       expect(dispatchedRunIds).toContain(run2.runId);
       expect(dispatchedRunIds).not.toContain(run1.runId);
+    });
+
+    it("should try next entry when dispatch fails", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
+      reloadEnv();
+
+      // Enqueue two runs
+      const run1 = await enqueueRun(baseParams({ prompt: "Will fail" }));
+      await enqueueRun(baseParams({ prompt: "Will succeed" }));
+
+      // Dispatcher fails on first call, succeeds on second
+      let callCount = 0;
+      const mockDispatcher = async () => {
+        callCount++;
+        if (callCount === 1) throw new Error("Sandbox creation failed");
+      };
+
+      await drainOrgQueue(user.orgId, mockDispatcher);
+
+      // First run should be marked failed
+      const r1 = await findTestRunRecord(run1.runId);
+      expect(r1!.status).toBe("failed");
+      expect(r1!.error).toContain("Sandbox creation failed");
+
+      // Second run should have been dispatched (status set to pending by dequeue)
+      expect(callCount).toBe(2);
+    });
+
+    it("should use org tier from cache for concurrency limit", async () => {
+      // Set env cap high so tier limit is the binding constraint
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "10");
+      reloadEnv();
+
+      // Update org_cache to "pro" tier (limit=2 vs free limit=1)
+      await insertOrgCacheEntry({
+        orgId: user.orgId,
+        slug: `org-${user.orgId}`,
+        tier: "pro",
+      });
+
+      // Create 1 running run — fills free limit but not pro limit
+      await createRun(baseParams({ prompt: "Running" }));
+      const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
+
+      // With pro tier (limit=2), drain should succeed despite 1 active run
+      const dispatchedRunIds: string[] = [];
+      const mockDispatcher = async (runId: string) => {
+        dispatchedRunIds.push(runId);
+      };
+
+      await drainOrgQueue(user.orgId, mockDispatcher);
+
+      expect(dispatchedRunIds).toContain(queued.runId);
+
+      // Queue entry should be consumed
+      const queueEntry = await findTestQueueEntry(queued.runId);
+      expect(queueEntry).toBeUndefined();
     });
   });
 
