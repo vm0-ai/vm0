@@ -917,7 +917,7 @@ mod tests {
     #[test]
     fn build_env_json_capabilities_inject_cli_vars() {
         let mut ctx = minimal_context();
-        ctx.experimental_capabilities = Some(vec!["storage:read".into()]);
+        ctx.experimental_capabilities = Some(vec!["artifact:read".into()]);
         ctx.agent_org_slug = Some("my-org".into());
         let env = build_env_json(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
@@ -944,7 +944,7 @@ mod tests {
     #[test]
     fn build_env_json_capabilities_cli_vars_override_user_env() {
         let mut ctx = minimal_context();
-        ctx.experimental_capabilities = Some(vec!["storage:read".into()]);
+        ctx.experimental_capabilities = Some(vec!["artifact:read".into()]);
         ctx.agent_org_slug = Some("my-org".into());
         ctx.environment = Some(HashMap::from([
             ("VM0_TOKEN".into(), "tampered".into()),
@@ -963,11 +963,11 @@ mod tests {
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
-            "experimentalCapabilities": ["storage:read", "storage:write"]
+            "experimentalCapabilities": ["artifact:read", "artifact:write"]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let caps = ctx.experimental_capabilities.unwrap();
-        assert_eq!(caps, vec!["storage:read", "storage:write"]);
+        assert_eq!(caps, vec!["artifact:read", "artifact:write"]);
     }
 
     #[test]

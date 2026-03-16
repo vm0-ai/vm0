@@ -287,7 +287,7 @@ describe("POST /api/agent/schedules/:name/enable - Sandbox Token Auth", () => {
   it("should reject sandbox token without schedule:write capability", async () => {
     mockClerk({ userId: null });
     const token = await generateSandboxToken(user.userId, "run-123", [
-      "storage:read",
+      "artifact:read",
     ]);
 
     const request = createTestRequest(

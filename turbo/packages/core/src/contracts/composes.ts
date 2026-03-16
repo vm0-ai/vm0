@@ -26,12 +26,17 @@ export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
 /**
  * Valid capability strings for experimental_capabilities.
  * Format: {resource}:{action}
+ *
+ * Aligned with the resource model (docs/resource-model.md):
+ * - agent:*    → Agent Org static resources (compose + volumes)
+ * - artifact:* → Runtime Org dynamic resources (artifacts + memories)
+ * - agent-run:*, schedule:* → operational capabilities
  */
 export const VALID_CAPABILITIES = [
-  "storage:read",
-  "storage:write",
   "agent:read",
   "agent:write",
+  "artifact:read",
+  "artifact:write",
   "agent-run:read",
   "agent-run:write",
   "schedule:read",
@@ -40,17 +45,16 @@ export const VALID_CAPABILITIES = [
 
 /**
  * Alias map for deprecated capability names.
- * PR #4959 merged volume/artifact/memory into unified storage capabilities.
- * Old compose versions in the database may still contain these values.
+ * Maps old storage:* and granular volume:/memory: names to the new model.
  */
 const CAPABILITY_ALIASES: Record<string, (typeof VALID_CAPABILITIES)[number]> =
   {
-    "volume:read": "storage:read",
-    "volume:write": "storage:write",
-    "artifact:read": "storage:read",
-    "artifact:write": "storage:write",
-    "memory:read": "storage:read",
-    "memory:write": "storage:write",
+    "storage:read": "artifact:read",
+    "storage:write": "artifact:write",
+    "volume:read": "agent:read",
+    "volume:write": "agent:write",
+    "memory:read": "artifact:read",
+    "memory:write": "artifact:write",
   };
 
 /**

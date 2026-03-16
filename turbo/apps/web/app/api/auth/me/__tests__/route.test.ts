@@ -62,7 +62,7 @@ describe("GET /api/auth/me", () => {
     it("sandbox token with storage:write returns user info", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-456", [
-        "storage:write",
+        "artifact:write",
       ]);
 
       const response = await GET(

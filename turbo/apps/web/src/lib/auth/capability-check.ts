@@ -15,10 +15,20 @@ export function isSandboxAuth(
 }
 
 /**
- * Map storage action to unified capability string.
+ * Map storage type + action to the correct capability.
+ *
+ * Aligned with the resource model:
+ * - volume → agent:* (Agent Org static resource)
+ * - artifact, memory → artifact:* (Runtime Org dynamic resource)
  */
-export function storageCapability(action: "read" | "write"): Capability {
-  return `storage:${action}` as Capability;
+export function storageCapability(
+  action: "read" | "write",
+  storageType?: "volume" | "artifact" | "memory",
+): Capability {
+  if (storageType === "volume") {
+    return `agent:${action}` as Capability;
+  }
+  return `artifact:${action}` as Capability;
 }
 
 /**
