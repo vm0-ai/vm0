@@ -127,9 +127,6 @@ const router = tsr.router(runnersJobClaimContract, {
 
     log.debug(`Job ${runId} claimed`);
 
-    // Generate sandbox token for the runner to use when calling webhooks
-    const sandboxToken = await generateSandboxToken(run.userId, run.id);
-
     // Load stored execution context from the job queue
     const storedContext =
       claimedJob.executionContext as StoredExecutionContext | null;
@@ -141,6 +138,13 @@ const router = tsr.router(runnersJobClaimContract, {
         "Job missing execution context",
       );
     }
+
+    // Generate sandbox token with capabilities from stored context
+    const sandboxToken = await generateSandboxToken(
+      run.userId,
+      run.id,
+      storedContext.experimentalCapabilities,
+    );
 
     // Record api_to_claim metric
     if (storedContext.apiStartTime) {

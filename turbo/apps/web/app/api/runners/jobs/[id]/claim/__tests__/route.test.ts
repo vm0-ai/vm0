@@ -13,6 +13,7 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { encryptSecretsMap } from "../../../../../../../src/lib/crypto/secrets-encryption";
+import { verifySandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -307,6 +308,80 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const data = await response.json();
       expect(data.agentName).toBeUndefined();
       expect(data.agentOrgSlug).toBeUndefined();
+    });
+  });
+
+  describe("Claim flow - capabilities in sandbox token", () => {
+    it("should include capabilities in returned sandbox token", async () => {
+      const { composeId, versionId } = await createTestCompose("test-caps");
+      const composeInfo = await findTestComposeWithOrg(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+        {
+          experimentalCapabilities: ["storage:read", "storage:write"],
+        },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      const sandboxAuth = verifySandboxToken(data.sandboxToken);
+      expect(sandboxAuth).not.toBeNull();
+      expect(sandboxAuth!.capabilities).toEqual([
+        "storage:read",
+        "storage:write",
+      ]);
+    });
+
+    it("should generate token without capabilities when not in stored context", async () => {
+      const { composeId, versionId } = await createTestCompose("test-no-caps");
+      const composeInfo = await findTestComposeWithOrg(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      const sandboxAuth = verifySandboxToken(data.sandboxToken);
+      expect(sandboxAuth).not.toBeNull();
+      expect(sandboxAuth!.capabilities).toBeUndefined();
     });
   });
 
