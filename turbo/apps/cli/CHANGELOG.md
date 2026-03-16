@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.61.0](https://github.com/vm0-ai/vm0/compare/cli-v9.60.1...cli-v9.61.0) (2026-03-16)
+
+
+### Features
+
+* add org run queue visibility api and cli command ([#4946](https://github.com/vm0-ai/vm0/issues/4946)) ([18f877a](https://github.com/vm0-ai/vm0/commit/18f877a1a5987b2653d2ea363e255cc6239d1912))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.70.0
+
 ## [9.60.1](https://github.com/vm0-ai/vm0/compare/cli-v9.60.0...cli-v9.60.1) (2026-03-16)
 
 

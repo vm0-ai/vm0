@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.115.0](https://github.com/vm0-ai/vm0/compare/web-v12.114.2...web-v12.115.0) (2026-03-16)
+
+
+### Features
+
+* add org run queue visibility api and cli command ([#4946](https://github.com/vm0-ai/vm0/issues/4946)) ([18f877a](https://github.com/vm0-ai/vm0/commit/18f877a1a5987b2653d2ea363e255cc6239d1912))
+
+
+### Bug Fixes
+
+* use last-loadable pattern, filter orphan connectors, and flex run result schema ([#4943](https://github.com/vm0-ai/vm0/issues/4943)) ([f5c6234](https://github.com/vm0-ai/vm0/commit/f5c623434401b0265912b325ebb44afc25d92027))
+
+
+### Refactoring
+
+* remove leftover "shared agent" terminology from tests and comments ([#4950](https://github.com/vm0-ai/vm0/issues/4950)) ([f9a01ff](https://github.com/vm0-ai/vm0/commit/f9a01ffcfda2dc5edec86733e7a3db4ca5a070a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.70.0
+
 ## [12.114.2](https://github.com/vm0-ai/vm0/compare/web-v12.114.1...web-v12.114.2) (2026-03-16)
 
 

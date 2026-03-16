@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.113.2](https://github.com/vm0-ai/vm0/compare/platform-v0.113.1...platform-v0.113.2) (2026-03-16)
+
+
+### Bug Fixes
+
+* hide credit and invite buttons from chat page ([#4954](https://github.com/vm0-ai/vm0/issues/4954)) ([459eeb7](https://github.com/vm0-ai/vm0/commit/459eeb789bd648120e584768faa21a6a377384d9))
+* use last-loadable pattern, filter orphan connectors, and flex run result schema ([#4943](https://github.com/vm0-ai/vm0/issues/4943)) ([f5c6234](https://github.com/vm0-ai/vm0/commit/f5c623434401b0265912b325ebb44afc25d92027))
+
+
+### Refactoring
+
+* remove leftover "shared agent" terminology from tests and comments ([#4950](https://github.com/vm0-ai/vm0/issues/4950)) ([f9a01ff](https://github.com/vm0-ai/vm0/commit/f9a01ffcfda2dc5edec86733e7a3db4ca5a070a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.70.0
+
 ## [0.113.1](https://github.com/vm0-ai/vm0/compare/platform-v0.113.0...platform-v0.113.1) (2026-03-16)
 
 
