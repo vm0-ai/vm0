@@ -1,6 +1,6 @@
 {
-  "id": "0b321303-4c2d-4ca1-a112-32c893a79397",
-  "prevId": "0578fd16-1730-4829-afc1-b5d3b03ea5eb",
+  "id": "50cfabf8-1f44-434e-87c5-dd5a1ade1621",
+  "prevId": "0b321303-4c2d-4ca1-a112-32c893a79397",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -932,6 +932,20 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "notify_email": {
+          "name": "notify_email",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "notify_slack": {
+          "name": "notify_slack",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "enabled": {
           "name": "enabled",
