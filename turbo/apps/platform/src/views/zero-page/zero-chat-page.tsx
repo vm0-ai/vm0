@@ -42,7 +42,7 @@ import {
 import { ZERO_TEAM_JOBS } from "./zero-mock-data";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
-import { MODEL_PROVIDER_TYPES, type ConnectorType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
 import {
   AddConnectionDialog,
@@ -63,8 +63,8 @@ import {
   addZeroSkill$,
   saveZeroSkills$,
 } from "../../signals/zero-page/zero-meet.ts";
-import { modelProviders$ } from "../../signals/external/model-providers.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { useModelSelection } from "./zero-model-preference.ts";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -976,21 +976,6 @@ function startConnectorFlow(
   }
 }
 
-function readModelPreference(key: string): string {
-  if (typeof window === "undefined") {
-    return "default";
-  }
-  return localStorage.getItem(key) ?? "default";
-}
-
-function writeModelPreference(key: string, value: string) {
-  if (value === "default") {
-    localStorage.removeItem(key);
-  } else {
-    localStorage.setItem(key, value);
-  }
-}
-
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
@@ -1057,23 +1042,9 @@ export function ZeroChatPage({
     buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
   );
 
-  // Model provider signals
-  const modelProvidersLoadable = useLastLoadable(modelProviders$);
-  const configuredProviders =
-    modelProvidersLoadable.state === "hasData"
-      ? modelProvidersLoadable.data.modelProviders
-      : [];
-  const modelOptions = [
-    { value: "default", label: "Default" },
-    ...configuredProviders.map((p) => ({
-      value: p.type,
-      label: MODEL_PROVIDER_TYPES[p.type].label,
-    })),
-  ];
-  const modelStorageKey = `zero.modelProvider.${agentName}`;
-  const selectedModel$ = useCCState(readModelPreference(modelStorageKey));
-  const selectedModel = useGet(selectedModel$);
-  const setSelectedModel = useSet(selectedModel$);
+  // Model provider selector (shared logic)
+  const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
+    useModelSelection(agentName);
   const input$ = useCCState("");
   const input = useGet(input$);
   const setInput = useSet(input$);
@@ -1112,16 +1083,6 @@ export function ZeroChatPage({
   const taglineIndex$ = useCCState(Math.floor(Math.random() * 18));
   const taglineIndex = useGet(taglineIndex$);
   const tagline = userName ? getTagline(agentName, userName, taglineIndex) : "";
-  const prevAgentName$ = useCCState(agentName);
-  const prevAgentName = useGet(prevAgentName$);
-  const setPrevAgentName = useSet(prevAgentName$);
-  if (agentName !== prevAgentName) {
-    queueMicrotask(() => {
-      setPrevAgentName(agentName);
-      setSelectedModel(readModelPreference(`zero.modelProvider.${agentName}`));
-    });
-  }
-
   // Stream tick — schedules the next streamed message after a delay
   const streamTimeoutId$ = useCCState<number | null>(null);
   const scheduleStreamTick$ = useCommand(({ get, set }) => {
@@ -1202,7 +1163,7 @@ export function ZeroChatPage({
     if (!messageOverride) {
       setInput("");
     }
-    writeModelPreference(modelStorageKey, selectedModel);
+    persistSelection();
     onSendMessage?.(text, buildModelOpts(selectedModel));
   };
 

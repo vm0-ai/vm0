@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { MODEL_PROVIDER_TYPES } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -46,26 +45,11 @@ import {
   type ZeroChatMessage,
   zeroChatRunSummaries$,
 } from "../../signals/zero-page/zero-chat.ts";
-import { modelProviders$ } from "../../signals/external/model-providers.ts";
+import { useModelSelection } from "./zero-model-preference.ts";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
-
-function readModelPreference(key: string): string {
-  if (typeof window === "undefined") {
-    return "default";
-  }
-  return localStorage.getItem(key) ?? "default";
-}
-
-function writeModelPreference(key: string, value: string) {
-  if (value === "default") {
-    localStorage.removeItem(key);
-  } else {
-    localStorage.setItem(key, value);
-  }
-}
 
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
@@ -103,34 +87,9 @@ export function ZeroSessionChatPage({
   const fileInputEl = useGet(fileInputEl$);
   const setFileInputEl = useSet(fileInputEl$);
 
-  // Model provider selector
-  const modelStorageKey = `zero.modelProvider.${agentName}`;
-  const modelProvidersLoadable = useLastLoadable(modelProviders$);
-  const configuredProviders =
-    modelProvidersLoadable.state === "hasData"
-      ? modelProvidersLoadable.data.modelProviders
-      : [];
-  const modelOptions = [
-    { value: "default", label: "Default" },
-    ...configuredProviders.map((p) => ({
-      value: p.type,
-      label: MODEL_PROVIDER_TYPES[p.type].label,
-    })),
-  ];
-  const selectedModel$ = useCCState(readModelPreference(modelStorageKey));
-  const selectedModel = useGet(selectedModel$);
-  const setSelectedModel = useSet(selectedModel$);
-
-  // Reset model selection when agent changes
-  const prevAgentName$ = useCCState(agentName);
-  const prevAgentName = useGet(prevAgentName$);
-  const setPrevAgentName = useSet(prevAgentName$);
-  if (agentName !== prevAgentName) {
-    queueMicrotask(() => {
-      setPrevAgentName(agentName);
-      setSelectedModel(readModelPreference(`zero.modelProvider.${agentName}`));
-    });
-  }
+  // Model provider selector (shared logic)
+  const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
+    useModelSelection(agentName);
 
   const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
   const messagesEndEl = useGet(messagesEndEl$);
@@ -149,7 +108,7 @@ export function ZeroSessionChatPage({
       return;
     }
     clearInput();
-    writeModelPreference(modelStorageKey, selectedModel);
+    persistSelection();
     const opts =
       selectedModel !== "default"
         ? { modelProvider: selectedModel }

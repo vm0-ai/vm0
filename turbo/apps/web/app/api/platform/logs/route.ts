@@ -86,7 +86,7 @@ async function getTotalCount(
 ): Promise<number> {
   const conditions: SQL[] = [
     eq(agentRuns.userId, userId),
-    eq(agentComposes.orgId, orgId),
+    eq(agentRuns.orgId, orgId),
   ];
   conditions.push(...buildAgentFilterConditions(query));
   if (query.status) {
@@ -96,11 +96,11 @@ async function getTotalCount(
   const [result] = await globalThis.services.db
     .select({ count: count() })
     .from(agentRuns)
-    .innerJoin(
+    .leftJoin(
       agentComposeVersions,
       eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
     )
-    .innerJoin(
+    .leftJoin(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
@@ -154,10 +154,11 @@ const router = tsr.router(platformLogsListContract, {
       throw error;
     }
 
-    // Build conditions — always filter by userId + orgId
+    // Build conditions — always filter by userId + orgId (using agentRuns.orgId
+    // so that runs whose compose version was deleted are still visible)
     const conditions: SQL[] = [
       eq(agentRuns.userId, userId),
-      eq(agentComposes.orgId, orgId),
+      eq(agentRuns.orgId, orgId),
     ];
 
     if (query.cursor) {
@@ -187,11 +188,11 @@ const router = tsr.router(platformLogsListContract, {
         composeContent: agentComposeVersions.content,
       })
       .from(agentRuns)
-      .innerJoin(
+      .leftJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
-      .innerJoin(
+      .leftJoin(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
