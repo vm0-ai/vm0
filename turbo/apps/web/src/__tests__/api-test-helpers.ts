@@ -2476,7 +2476,11 @@ export async function createTestRunnerJob(
  */
 export async function updateTestScheduleState(
   scheduleId: string,
-  state: { consecutiveFailures?: number; enabled?: boolean },
+  state: {
+    consecutiveFailures?: number;
+    enabled?: boolean;
+    nextRunAt?: Date | null;
+  },
 ): Promise<void> {
   await globalThis.services.db
     .update(agentSchedules)
@@ -2980,6 +2984,8 @@ export async function insertOrgMembersCacheEntry(entry: {
   orgId: string;
   userId: string;
   role?: string;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
@@ -2989,12 +2995,20 @@ export async function insertOrgMembersCacheEntry(entry: {
       orgId: entry.orgId,
       userId: entry.userId,
       role: entry.role ?? "member",
+      notifyEmail: entry.notifyEmail ?? false,
+      notifySlack: entry.notifySlack ?? true,
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
       target: [orgMembersCache.orgId, orgMembersCache.userId],
       set: {
         role: entry.role ?? "member",
+        ...(entry.notifyEmail !== undefined && {
+          notifyEmail: entry.notifyEmail,
+        }),
+        ...(entry.notifySlack !== undefined && {
+          notifySlack: entry.notifySlack,
+        }),
         cachedAt: entry.cachedAt ?? new Date(),
       },
     });
