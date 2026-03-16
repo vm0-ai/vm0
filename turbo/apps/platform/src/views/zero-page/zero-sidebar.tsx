@@ -189,12 +189,10 @@ function useAccountSessions() {
 }
 
 function AccountDropdown({
-  activeId,
   onAccountAction,
   onResetAgent,
   collapsed = false,
 }: {
-  activeId: ZeroNavId;
   onAccountAction?: (action: ZeroAccountAction) => void;
   onResetAgent?: () => void;
   collapsed?: boolean;
@@ -818,7 +816,6 @@ export function ZeroSidebar({
           {/* Account avatar */}
           <div className="p-2 flex justify-center">
             <AccountDropdown
-              activeId={activeId}
               onAccountAction={onAccountAction}
               onResetAgent={onResetAgent}
               collapsed
@@ -1014,7 +1011,6 @@ export function ZeroSidebar({
             ))}
             {/* Account dropdown */}
             <AccountDropdown
-              activeId={activeId}
               onAccountAction={onAccountAction}
               onResetAgent={onResetAgent}
             />
