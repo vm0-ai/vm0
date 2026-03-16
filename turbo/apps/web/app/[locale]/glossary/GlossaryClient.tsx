@@ -117,11 +117,6 @@ const termConfigs: TermConfig[] = [
     category: "Development",
     relatedTerms: ["cli", "agent", "cliAgent"],
   },
-  {
-    key: "codex",
-    category: "Development",
-    relatedTerms: ["cli", "agent", "claudeCode"],
-  },
 ];
 
 export default function GlossaryClient() {

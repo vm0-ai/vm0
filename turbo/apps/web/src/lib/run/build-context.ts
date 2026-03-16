@@ -191,10 +191,7 @@ async function resolveModelProviderSecrets(
   let secrets: Record<string, string> | undefined;
 
   // Skip if explicit model provider config exists or framework doesn't use model providers
-  if (
-    hasExplicitModelProviderConfig ||
-    (framework !== "claude-code" && framework !== "codex")
-  ) {
+  if (hasExplicitModelProviderConfig || framework !== "claude-code") {
     return { secrets, injectedEnvironment: undefined };
   }
 

@@ -147,6 +147,10 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     }
 
     let paths = HomePaths::new()?;
+
+    // Ensure CA exists — rootfs build embeds the CA cert into the image.
+    crate::ca::ensure(&paths).await?;
+
     let rootfs_paths = RootfsPaths::new(&paths, &hash);
     let output_dir = rootfs_paths.dir();
 
@@ -194,6 +198,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let guest_download_str = guest_download.to_string_lossy();
     let guest_init_str = guest_init.to_string_lossy();
     let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
+    let ca_dir_str = paths.ca_dir().to_string_lossy().to_string();
 
     let status = tokio::process::Command::new("bash")
         .arg(&script_path)
@@ -202,6 +207,8 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             &output_dir_str,
             "--work-dir",
             &work_dir_str,
+            "--ca-dir",
+            &ca_dir_str,
             "--guest-agent",
             &guest_agent_str,
             "--guest-download",

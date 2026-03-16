@@ -60,10 +60,10 @@ describe("GET /api/agent/sessions", () => {
     expect(session.updatedAt).toBeDefined();
   });
 
-  it("should return empty list when no sessions have messages", async () => {
+  it("should return sessions even when no chat messages have been persisted yet", async () => {
     // Create a run and complete it (creates session but without chat messages)
     const { runId } = await createTestRun(testComposeId, "Test prompt");
-    await completeTestRun(user.userId, runId);
+    const { agentSessionId } = await completeTestRun(user.userId, runId);
 
     const request = createTestRequest(
       `http://localhost:3000/api/agent/sessions?agentComposeId=${testComposeId}`,
@@ -73,7 +73,11 @@ describe("GET /api/agent/sessions", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.sessions).toEqual([]);
+    expect(data.sessions.length).toBe(1);
+    const session = data.sessions[0];
+    expect(session.id).toBe(agentSessionId);
+    expect(session.messageCount).toBe(0);
+    expect(session.preview).toBeNull();
   });
 
   it("should return 401 when not authenticated", async () => {

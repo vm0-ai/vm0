@@ -22,7 +22,10 @@ import {
   createRun,
   type RunDispatchError,
 } from "../../../../src/lib/run";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import { logger } from "../../../../src/lib/logger";
 import {
   isForbidden,
@@ -274,17 +277,10 @@ const router = tsr.router(runsMainContract, {
   list: async ({ query, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "agent-run:read",
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     // Parse and validate status values
@@ -391,17 +387,10 @@ const router = tsr.router(runsMainContract, {
   create: async ({ body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "agent-run:write",
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     // Validate mutually exclusive shortcuts

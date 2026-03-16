@@ -131,33 +131,20 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔑",
       label: "Configure model providers",
-      url: `${platformUrl}/settings`,
+      url: `${platformUrl}/zero/settings`,
     });
   });
 
-  it("should detect secrets/variables keywords", () => {
+  it("should detect secrets/variables keywords as connector links", () => {
     const links = detectDeepLinks(
       "Error: missing variable DATABASE_URL",
       platformUrl,
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
-      emoji: "🔒",
-      label: "Manage secrets & variables",
-      url: `${platformUrl}/settings?tab=secrets-and-variables`,
-    });
-  });
-
-  it("should detect Slack token keywords", () => {
-    const links = detectDeepLinks(
-      "Slack not connected to workspace",
-      platformUrl,
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]).toEqual({
-      emoji: "⚙️",
-      label: "Slack settings",
-      url: `${platformUrl}/settings/slack`,
+      emoji: "🔌",
+      label: "Configure connectors",
+      url: `${platformUrl}/zero/meet`,
     });
   });
 
@@ -170,14 +157,14 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/settings?tab=connectors`,
+      url: `${platformUrl}/zero/meet`,
     });
   });
 
   it("should match case-insensitively", () => {
     const links = detectDeepLinks("API_KEY is not configured", platformUrl);
     expect(links).toHaveLength(1);
-    expect(links[0]?.label).toBe("Manage secrets & variables");
+    expect(links[0]?.label).toBe("Configure connectors");
   });
 
   it("should deduplicate by path", () => {
@@ -186,58 +173,18 @@ describe("detectDeepLinks", () => {
       platformUrl,
     );
     expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(
-      `${platformUrl}/settings?tab=secrets-and-variables`,
-    );
+    expect(links[0]?.url).toBe(`${platformUrl}/zero/meet`);
   });
 
   it("should return multiple links for different destinations", () => {
     const links = detectDeepLinks(
-      "The model provider is missing. Also SLACK_BOT_TOKEN is not set and the MCP server is down.",
+      "The model provider is missing. Also the api key is not set and the MCP server is down.",
       platformUrl,
     );
-    expect(links).toHaveLength(4);
+    expect(links).toHaveLength(2);
     const urls = links.map((l) => l.url);
-    expect(urls).toContain(`${platformUrl}/settings`);
-    expect(urls).toContain(`${platformUrl}/settings?tab=secrets-and-variables`);
-    expect(urls).toContain(`${platformUrl}/settings/slack`);
-    expect(urls).toContain(`${platformUrl}/settings?tab=connectors`);
-  });
-
-  it("should use agent-specific paths when agentName is provided", () => {
-    const links = detectDeepLinks(
-      "Error: missing variable DATABASE_URL",
-      platformUrl,
-      "my-agent",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]).toEqual({
-      emoji: "🔒",
-      label: "Manage secrets & variables",
-      url: `${platformUrl}/agents/my-agent/connections`,
-    });
-  });
-
-  it("should encode agentName in agent-specific paths", () => {
-    const links = detectDeepLinks(
-      "The MCP server is not available",
-      platformUrl,
-      "agent with spaces",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(
-      `${platformUrl}/agents/agent%20with%20spaces/connections`,
-    );
-  });
-
-  it("should not use agent paths for categories without agentPath", () => {
-    const links = detectDeepLinks(
-      "The model provider is not configured",
-      platformUrl,
-      "my-agent",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(`${platformUrl}/settings`);
+    expect(urls).toContain(`${platformUrl}/zero/settings`);
+    expect(urls).toContain(`${platformUrl}/zero/meet`);
   });
 });
 

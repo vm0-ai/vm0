@@ -3,8 +3,10 @@ import {
   runsMainContract,
   runEventsContract,
   runsCancelContract,
+  runsQueueContract,
   type RunsListResponse,
   type CancelRunResponse,
+  type QueueResponse,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type { CreateRunResponse, GetEventsResponse } from "../core/types";
@@ -99,6 +101,22 @@ export async function listRuns(params?: {
   }
 
   handleError(result, "Failed to list runs");
+}
+
+/**
+ * Get org run queue status
+ */
+export async function getRunQueue(): Promise<QueueResponse> {
+  const config = await getClientConfig();
+  const client = initClient(runsQueueContract, config);
+
+  const result = await client.getQueue({});
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to get run queue");
 }
 
 /**

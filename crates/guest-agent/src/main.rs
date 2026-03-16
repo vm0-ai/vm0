@@ -101,7 +101,7 @@ async fn run() -> i32 {
     exit_code
 }
 
-/// Main execution logic: working dir, codex setup, CLI, checkpoint.
+/// Main execution logic: working dir, CLI, checkpoint.
 async fn execute(
     masker: &masker::SecretMasker,
     start: Instant,
@@ -110,13 +110,8 @@ async fn execute(
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
     // time the CLI spawns and makes its first HTTPS request.
-    let dns_target = if env::cli_agent_type() == "codex" {
-        "api.openai.com:443"
-    } else {
-        "api.anthropic.com:443"
-    };
     tokio::spawn(async move {
-        let _ = tokio::net::lookup_host(dns_target).await;
+        let _ = tokio::net::lookup_host("api.anthropic.com:443").await;
     });
 
     // Working directory setup
@@ -137,13 +132,6 @@ async fn execute(
     record_sandbox_op("memory_symlink_setup", mem_start.elapsed(), true, None);
     if mem_linked {
         log_info!(LOG_TAG, "Auto-memory symlink created");
-    }
-
-    // Codex setup (sandbox op recorded inside setup_codex)
-    if env::cli_agent_type() == "codex"
-        && let Err(e) = cli::setup_codex()
-    {
-        log_error!(LOG_TAG, "Codex setup failed: {e}");
     }
 
     let init_elapsed = start.elapsed();
@@ -204,7 +192,7 @@ async fn execute(
 
     // Checkpoint on success (skip when no API — local/test mode)
     if cli_exit_code == 0 && exit_code == 0 && env::has_api() {
-        log_info!(LOG_TAG, "{} completed successfully", env::cli_agent_type());
+        log_info!(LOG_TAG, "claude-code completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
@@ -229,13 +217,9 @@ async fn execute(
             }
         }
     } else if cli_exit_code == 0 && exit_code == 0 {
-        log_info!(LOG_TAG, "{} completed successfully", env::cli_agent_type());
+        log_info!(LOG_TAG, "claude-code completed successfully");
     } else if cli_exit_code != 0 {
-        log_info!(
-            LOG_TAG,
-            "{} failed with exit code {cli_exit_code}",
-            env::cli_agent_type()
-        );
+        log_info!(LOG_TAG, "claude-code failed with exit code {cli_exit_code}");
     }
 
     exit_code

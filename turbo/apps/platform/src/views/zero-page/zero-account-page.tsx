@@ -5,6 +5,8 @@ import {
   IconMoon,
   IconDeviceDesktop,
   IconPalette,
+  IconKeyboard,
+  IconLoader2,
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { cn } from "@vm0/ui";
@@ -15,6 +17,11 @@ import {
   setTheme$,
   type ThemePreference,
 } from "../../signals/theme.ts";
+import { sendMode$ } from "../../signals/send-mode.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import type { SendMode } from "@vm0/core";
+import { updateNotificationPreference$ } from "../../signals/settings-page/notification-settings.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 function AppearanceSettings() {
   const THEME_OPTIONS = [
@@ -79,6 +86,89 @@ function AppearanceSettings() {
   );
 }
 
+function SendModeSettings() {
+  const SEND_OPTIONS = [
+    { value: "enter" as SendMode, label: "Enter" },
+    { value: "cmd-enter" as SendMode, label: "⌘ Enter" },
+  ] as const;
+  const prefsLoadable = useLoadable(sendMode$);
+  const current: SendMode =
+    prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
+  const updatePref = useSet(updateNotificationPreference$);
+  const saving$ = useCCState<SendMode | null>(null);
+  const saving = useGet(saving$);
+  const setSaving = useSet(saving$);
+
+  const handleChange = (value: SendMode) => {
+    setSaving(value);
+    detach(
+      (async () => {
+        await updatePref({ sendMode: value });
+        setSaving(null);
+      })().catch(() => {
+        setSaving(null);
+        toast.error("Failed to save send mode preference");
+      }),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Choose how to send messages in chat.
+      </p>
+      <div
+        className="flex items-center gap-4 bg-card p-4 rounded-xl"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      >
+        <div className="shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center">
+            <IconKeyboard
+              size={28}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </div>
+        </div>
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">
+            Send message with
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {current === "enter"
+              ? "Press Enter to send, Shift+Enter for new line"
+              : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {SEND_OPTIONS.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              disabled={saving !== null}
+              onClick={() => handleChange(value)}
+              style={{ borderWidth: "0.7px" }}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                (saving === value ? true : saving === null && current === value)
+                  ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                  : "zero-chip text-muted-foreground hover:text-foreground",
+                saving !== null && "opacity-60 cursor-not-allowed",
+              )}
+            >
+              {saving === value && (
+                <IconLoader2 size={14} className="animate-spin" />
+              )}
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ZeroPreferencesPage() {
   const tab$ = useCCState("appearance");
   const tab = useGet(tab$);
@@ -122,7 +212,12 @@ export function ZeroPreferencesPage() {
             </TabsList>
 
             <div className="mt-4">
-              {tab === "appearance" && <AppearanceSettings />}
+              {tab === "appearance" && (
+                <div className="flex flex-col gap-6">
+                  <AppearanceSettings />
+                  <SendModeSettings />
+                </div>
+              )}
               {tab === "notifications" && <NotificationSettings />}
               {tab === "timezone" && <TimezoneSettings />}
             </div>

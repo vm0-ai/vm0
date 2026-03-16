@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { firewallPermissionSchema, VALID_CAPABILITIES } from "./composes";
+import { VALID_CAPABILITIES } from "./composes";
+import { experimentalFirewallSchema } from "./firewalls";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -52,32 +53,6 @@ export const runnersPollContract = c.router({
     summary: "Poll for pending jobs (long-polling with 30s timeout)",
   },
 });
-
-/**
- * Firewall API entry for proxy-side token replacement
- */
-export const firewallApiSchema = z.object({
-  base: z.string(),
-  auth: z.object({
-    headers: z.record(z.string(), z.string()),
-  }),
-  permissions: z.array(firewallPermissionSchema).optional(),
-});
-
-/**
- * A single firewall with its name, ref, and API entries.
- */
-export const firewallSchema = z.object({
-  name: z.string(),
-  ref: z.string(),
-  apis: z.array(firewallApiSchema),
-});
-
-/**
- * Experimental firewall configuration for proxy-side token replacement.
- * Flat array of firewall entries: [{ name, ref, apis }]
- */
-export const experimentalFirewallSchema = z.array(firewallSchema);
 
 /**
  * Storage entry in manifest
@@ -223,6 +198,3 @@ export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
-export type FirewallApi = z.infer<typeof firewallApiSchema>;
-export type Firewall = z.infer<typeof firewallSchema>;
-export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;

@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ChangeEvent, MouseEvent } from "react";
+import type { ChangeEvent, MouseEvent } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
@@ -44,8 +44,11 @@ import {
   removeZeroAttachment$,
   type ZeroChatMessage,
   zeroChatRunSummaries$,
+  zeroChatRunStatus$,
+  zeroChatQueuePosition$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { useModelSelection } from "./zero-model-preference.ts";
+import { useSendKeyHandler } from "./zero-send-key.ts";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
@@ -116,15 +119,7 @@ export function ZeroSessionChatPage({
     detach(send(trimmed, opts), Reason.DomCallback);
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) {
-      return;
-    }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const handleKeyDown = useSendKeyHandler(handleSend);
 
   const handleFileSelect = () => {
     fileInputEl?.click();
@@ -521,6 +516,13 @@ function RunActivityLine() {
   const summaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
   const latest = summaries.length > 0 ? summaries[summaries.length - 1] : null;
+  const runStatus = useGet(zeroChatRunStatus$);
+  const queuePosition = useGet(zeroChatQueuePosition$);
+  const isQueued = runStatus === "queued" || runStatus === "pending";
+
+  const label = isQueued
+    ? queueLabel(queuePosition)
+    : (latest ?? "Thinking...");
 
   return (
     <div className="flex items-center gap-2 min-w-0">
@@ -530,14 +532,21 @@ function RunActivityLine() {
       />
       <div className="min-w-0 flex-1 overflow-hidden">
         <p
-          key={latest ?? "thinking"}
+          key={label}
           className="text-muted-foreground truncate animate-in fade-in slide-in-from-bottom-1 duration-300"
         >
-          {latest ?? "Thinking..."}
+          {label}
         </p>
       </div>
     </div>
   );
+}
+
+function queueLabel(position: number): string {
+  if (position <= 1) {
+    return "In queue, waiting to start...";
+  }
+  return `In queue, ${position - 1} task${position - 1 === 1 ? "" : "s"} ahead...`;
 }
 
 interface AssistantMessageProps {

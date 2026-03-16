@@ -12,7 +12,10 @@ import {
 } from "../../../../../src/db/schema/agent-compose";
 import { storages } from "../../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
 import { canAccessCompose } from "../../../../../src/lib/agent/compose-access";
 import {
   listS3Objects,
@@ -24,17 +27,11 @@ const router = tsr.router(composesByIdContract, {
   getById: async ({ params, headers }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization, {
+    const authResult = await requireAuth(headers.authorization, {
       requiredCapability: "agent:read",
     });
-    if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
 
     // JOIN compose + version in a single query
     const [result] = await globalThis.services.db
@@ -93,17 +90,11 @@ const router = tsr.router(composesByIdContract, {
     initServices();
 
     // 1. Authenticate
-    const userId = await getUserId(headers.authorization, {
+    const authResult = await requireAuth(headers.authorization, {
       requiredCapability: "agent:write",
     });
-    if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
 
     // 2. Verify ownership (only owner can delete)
     const [compose] = await globalThis.services.db

@@ -1,6 +1,4 @@
 //! Checkpoint creation — reads session history and calls checkpoint API.
-//!
-//! For Codex, searches for the session file in date-organized directories.
 
 use crate::artifact;
 use crate::constants;
@@ -64,37 +62,7 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
         .trim()
         .to_string();
 
-    // Handle Codex session search marker: CODEX_SEARCH:{dir}:{id}
-    let session_history_path = if let Some(rest) = raw_path.strip_prefix("CODEX_SEARCH:") {
-        let Some((sessions_dir, codex_session_id)) = rest.split_once(':') else {
-            record_sandbox_op(
-                "session_history_read",
-                start.elapsed(),
-                false,
-                Some("Invalid Codex search marker"),
-            );
-            return Err(AgentError::Checkpoint(format!(
-                "Invalid Codex search marker: {raw_path}"
-            )));
-        };
-        log_info!(LOG_TAG, "Searching for Codex session in {sessions_dir}");
-        match find_codex_session_file(sessions_dir, codex_session_id) {
-            Some(path) => path,
-            None => {
-                record_sandbox_op(
-                    "session_history_read",
-                    start.elapsed(),
-                    false,
-                    Some("Codex session file not found"),
-                );
-                return Err(AgentError::Checkpoint(format!(
-                    "Could not find Codex session file for {codex_session_id}"
-                )));
-            }
-        }
-    } else {
-        raw_path
-    };
+    let session_history_path = raw_path;
 
     // Read session history
     if !Path::new(&session_history_path).exists() {
@@ -234,7 +202,7 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
     // Build and send checkpoint payload
     let mut payload = json!({
         "runId": env::run_id(),
-        "cliAgentType": env::cli_agent_type(),
+        "cliAgentType": "claude-code",
         "cliAgentSessionId": session_id,
         "cliAgentSessionHistory": session_history,
     });
@@ -288,128 +256,5 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
         Err(AgentError::Checkpoint(
             "Invalid checkpoint API response".into(),
         ))
-    }
-}
-
-/// Find Codex session file by searching recursively for JSONL files.
-fn find_codex_session_file(sessions_dir: &str, session_id: &str) -> Option<String> {
-    let files = find_jsonl_files(sessions_dir);
-    log_info!(
-        LOG_TAG,
-        "Searching for Codex session {session_id} in {} files",
-        files.len()
-    );
-
-    // Try matching session ID in filename
-    let normalized_id = session_id.replace('-', "");
-    for f in &files {
-        let filename = Path::new(f)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-        if filename.contains(session_id) || filename.replace('-', "").contains(&normalized_id) {
-            log_info!(LOG_TAG, "Found Codex session file: {f}");
-            return Some(f.clone());
-        }
-    }
-
-    // Fallback: most recent file
-    if let Some(most_recent) = files.into_iter().max_by_key(|f| {
-        std::fs::metadata(f)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-    }) {
-        log_info!(
-            LOG_TAG,
-            "Session ID not found in filenames, using most recent: {most_recent}"
-        );
-        return Some(most_recent);
-    }
-
-    None
-}
-
-/// Recursively find all `.jsonl` files in a directory.
-fn find_jsonl_files(dir: &str) -> Vec<String> {
-    let mut files = Vec::new();
-    walk_jsonl(dir, &mut files);
-    files
-}
-
-fn walk_jsonl(dir: &str, out: &mut Vec<String>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir()
-            && let Some(s) = path.to_str()
-        {
-            walk_jsonl(s, out);
-        } else if path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|ext| ext == "jsonl")
-            && let Some(s) = path.to_str()
-        {
-            out.push(s.to_string());
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn find_codex_session_by_id_in_filename() {
-        let dir = tempfile::tempdir().unwrap();
-        let sub = dir.path().join("2026-02-10");
-        fs::create_dir_all(&sub).unwrap();
-        fs::write(sub.join("abc123.jsonl"), "{}").unwrap();
-        fs::write(sub.join("other.jsonl"), "{}").unwrap();
-
-        let result = find_codex_session_file(dir.path().to_str().unwrap(), "abc123");
-        assert_eq!(
-            result.as_deref(),
-            Some(sub.join("abc123.jsonl").to_str().unwrap())
-        );
-    }
-
-    #[test]
-    fn find_codex_session_falls_back_to_most_recent() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("old.jsonl"), "{}").unwrap();
-        // Ensure different mtime
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        fs::write(dir.path().join("new.jsonl"), "{}").unwrap();
-
-        let result = find_codex_session_file(dir.path().to_str().unwrap(), "nonexistent");
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("new.jsonl"));
-    }
-
-    #[test]
-    fn find_codex_session_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let result = find_codex_session_file(dir.path().to_str().unwrap(), "any");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn find_jsonl_files_recursive() {
-        let dir = tempfile::tempdir().unwrap();
-        let sub = dir.path().join("a").join("b");
-        fs::create_dir_all(&sub).unwrap();
-        fs::write(dir.path().join("root.jsonl"), "{}").unwrap();
-        fs::write(sub.join("nested.jsonl"), "{}").unwrap();
-        fs::write(dir.path().join("skip.txt"), "").unwrap();
-
-        let files = find_jsonl_files(dir.path().to_str().unwrap());
-        assert_eq!(files.len(), 2);
-        assert!(files.iter().any(|f| f.contains("root.jsonl")));
-        assert!(files.iter().any(|f| f.contains("nested.jsonl")));
     }
 }

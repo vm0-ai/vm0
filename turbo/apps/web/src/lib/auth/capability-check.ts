@@ -30,14 +30,14 @@ export function isSandboxAuth(
 }
 
 /**
- * Map storage type + action to capability string.
- * e.g., ("volume", "read") → "volume:read"
+ * Map storage action to unified capability string.
+ * All storage types (volume, artifact, memory) use "storage:read" / "storage:write".
  */
 export function storageCapability(
-  storageType: "volume" | "artifact" | "memory",
+  _storageType: "volume" | "artifact" | "memory",
   action: "read" | "write",
 ): Capability {
-  return `${storageType}:${action}` as Capability;
+  return `storage:${action}` as Capability;
 }
 
 /**

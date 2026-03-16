@@ -1,12 +1,11 @@
-//! CLI command building and execution for Claude Code / Codex.
+//! CLI command building and execution for Claude Code.
 
 use crate::env;
 use crate::error::AgentError;
 use crate::events;
 use crate::masker::SecretMasker;
 use crate::paths;
-use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info, log_warn};
+use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -15,20 +14,9 @@ use tokio::io::AsyncWriteExt;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// Build the CLI command + args based on `CLI_AGENT_TYPE`.
+/// Build the CLI command + args.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
-    let use_mock = env::use_mock_claude();
-
-    if env::cli_agent_type() == "codex" {
-        if use_mock {
-            return Err(AgentError::Execution(
-                "Mock mode not supported for Codex".into(),
-            ));
-        }
-        Ok(build_codex_command())
-    } else {
-        Ok(build_claude_command(use_mock))
-    }
+    Ok(build_claude_command(env::use_mock_claude()))
 }
 
 fn build_claude_command(use_mock: bool) -> Vec<String> {
@@ -63,91 +51,6 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
     cmd
 }
 
-fn build_codex_command() -> Vec<String> {
-    let mut args = vec![
-        "exec".to_string(),
-        "--json".to_string(),
-        "--dangerously-bypass-approvals-and-sandbox".to_string(),
-        "--skip-git-repo-check".to_string(),
-        "-C".to_string(),
-        env::working_dir().to_string(),
-    ];
-
-    let model = env::openai_model();
-    if !model.is_empty() {
-        args.push("-m".to_string());
-        args.push(model.to_string());
-    }
-
-    let resume = env::resume_session_id();
-    if !resume.is_empty() {
-        log_info!(LOG_TAG, "Resuming session: {resume}");
-        args.push("resume".to_string());
-        args.push(resume.to_string());
-        args.push(env::prompt().to_string());
-    } else {
-        log_info!(LOG_TAG, "Starting new session");
-        args.push(env::prompt().to_string());
-    }
-
-    let mut cmd = vec!["codex".to_string()];
-    cmd.append(&mut args);
-    cmd
-}
-
-/// Set up Codex: create home dir, login with API key.
-pub fn setup_codex() -> Result<(), AgentError> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    let codex_home = format!("{home}/.codex");
-    std::fs::create_dir_all(&codex_home)?;
-    log_info!(LOG_TAG, "Codex home directory: {codex_home}");
-
-    let login_start = std::time::Instant::now();
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    if api_key.is_empty() {
-        let msg = "OPENAI_API_KEY not set";
-        log_error!(LOG_TAG, "{msg}");
-        record_sandbox_op("codex_login", login_start.elapsed(), false, Some(msg));
-        return Err(AgentError::Execution(msg.into()));
-    }
-    let output = std::process::Command::new("codex")
-        .args(["login", "--with-api-key"])
-        .env("CODEX_HOME", &codex_home)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                let _ = stdin.write_all(api_key.as_bytes());
-            }
-            child.wait_with_output()
-        });
-
-    // Login failure is non-fatal: OPENAI_API_KEY is already in the environment
-    // and `codex exec` will use it directly. Some Codex versions may not support
-    // the `login` subcommand. We log + record the failure but continue.
-    let success = match &output {
-        Ok(o) if o.status.success() => {
-            log_info!(LOG_TAG, "Codex authenticated with API key");
-            true
-        }
-        Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            log_error!(LOG_TAG, "Codex login failed: {stderr}");
-            false
-        }
-        Err(e) => {
-            log_error!(LOG_TAG, "Codex login failed: {e}");
-            false
-        }
-    };
-    record_sandbox_op("codex_login", login_start.elapsed(), success, None);
-
-    Ok(())
-}
-
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
 ///
 /// Returns `(exit_code, stderr_lines)`.
@@ -155,7 +58,7 @@ pub async fn execute_cli(
     masker: &SecretMasker,
     mut heartbeat_handle: tokio::task::JoinHandle<Result<(), AgentError>>,
 ) -> Result<(i32, Vec<String>), AgentError> {
-    log_info!(LOG_TAG, "Starting {} execution...", env::cli_agent_type());
+    log_info!(LOG_TAG, "Starting claude-code execution...");
 
     let cmd = build_cli_command()?;
     let (bin, args) = cmd
@@ -169,23 +72,17 @@ pub async fn execute_cli(
         .stderr(Stdio::piped())
         .process_group(0);
 
-    if env::cli_agent_type() == "codex" {
-        // Pass CODEX_HOME via Command::env instead of global set_var
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-        cmd.env("CODEX_HOME", format!("{home}/.codex"));
-    } else {
-        // Suppress Claude CLI features that are unnecessary or harmful in a
-        // sandbox: startup network calls (statsig, Datadog, Segment, GCS
-        // update check, GitHub) add ~2s latency, telemetry has no receiver,
-        // and the CLI version is baked into the rootfs image.
-        cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
-        cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
-        cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
-        cmd.env("DISABLE_AUTOUPDATER", "1");
-        cmd.env("DISABLE_ERROR_REPORTING", "1");
-        cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
-        cmd.env("DISABLE_TELEMETRY", "1");
-    }
+    // Suppress Claude CLI features that are unnecessary or harmful in a
+    // sandbox: startup network calls (statsig, Datadog, Segment, GCS
+    // update check, GitHub) add ~2s latency, telemetry has no receiver,
+    // and the CLI version is baked into the rootfs image.
+    cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+    cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
+    cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
+    cmd.env("DISABLE_AUTOUPDATER", "1");
+    cmd.env("DISABLE_ERROR_REPORTING", "1");
+    cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
+    cmd.env("DISABLE_TELEMETRY", "1");
 
     let mut child = cmd.spawn()?;
 

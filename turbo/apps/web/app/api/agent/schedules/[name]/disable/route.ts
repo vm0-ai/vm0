@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../../src/lib/auth/require-auth";
 import { disableSchedule } from "../../../../../../src/lib/schedule";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
@@ -19,15 +22,12 @@ export async function POST(
 ) {
   initServices();
 
-  const authCtx = await getAuthContext(
+  const authCtx = await requireAuth(
     request.headers.get("Authorization") ?? undefined,
     { requiredCapability: "schedule:write" },
   );
-  if (!authCtx) {
-    return NextResponse.json(
-      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-      { status: 401 },
-    );
+  if (isAuthError(authCtx)) {
+    return NextResponse.json(authCtx.body, { status: authCtx.status });
   }
   const { userId } = authCtx;
 

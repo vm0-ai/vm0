@@ -1,5 +1,5 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconSearch,
   IconLoader2,
@@ -94,8 +94,8 @@ function ActivityNotFound({ onBack }: { onBack: () => void }) {
 export function ZeroActivityDetailPage({
   onBack,
 }: ZeroActivityDetailPageProps) {
-  const detailLoadable = useLoadable(zeroActivityDetail$);
-  const eventsLoadable = useLoadable(zeroActivityEvents$);
+  const detailLoadable = useLastLoadable(zeroActivityDetail$);
+  const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   const orgAgents = useGet(zeroActivityOrgAgents$);
 
   // Resolve agent display name from the detail's agentName

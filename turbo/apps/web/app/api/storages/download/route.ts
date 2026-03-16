@@ -8,7 +8,10 @@ import { initServices } from "../../../../src/lib/init-services";
 import { storages, storageVersions } from "../../../../src/db/schema/storage";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import {
   storageCapability,
   isSandboxAuth,
@@ -30,17 +33,10 @@ const router = tsr.router(storagesDownloadContract, {
     const capability = storageCapability(storageType, "read");
 
     // Authenticate user (sandbox tokens accepted if they have the required capability)
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: capability,
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     // Resolve org: sandbox tokens use the run's org; CLI/session use resolveOrg

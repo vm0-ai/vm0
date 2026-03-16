@@ -25,7 +25,6 @@ import {
 import {
   saveThreadSession,
   buildLogsUrl,
-  getWorkspaceAgent,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
 import { getPlatformUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
@@ -293,26 +292,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Resolve session before posting interactive card
   const resolvedSessionId = await saveOrgThreadSession(payload, runId, status);
 
-  // Resolve display name for user-visible blocks
-  const agentInfo = await getWorkspaceAgent(payload.composeId);
-  const agentLabel = agentInfo?.displayName ?? payload.agentName;
-
   // Post text response
   if (responseText) {
     const logsUrl = buildLogsUrl(runId);
-    const deepLinks = detectDeepLinks(
-      responseText,
-      getPlatformUrl(),
-      payload.agentName,
-    );
+    const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(
-        responseText,
-        agentLabel,
-        logsUrl,
-        deepLinks,
-      ),
+      blocks: buildAgentResponseMessage(responseText, logsUrl, deepLinks),
     });
   }
 

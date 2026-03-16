@@ -245,7 +245,7 @@ describe("POST /api/compose/jobs", () => {
           body: JSON.stringify({
             content: {
               version: "1",
-              agents: { other: { framework: "codex" } },
+              agents: { other: { framework: "claude-code" } },
             },
           }),
         },

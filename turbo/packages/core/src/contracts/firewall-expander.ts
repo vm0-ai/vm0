@@ -1,9 +1,5 @@
-import { connectorTypeSchema } from "./connectors";
-import {
-  getFirewallConfig,
-  type FirewallConfig,
-  type ExpandedFirewallConfig,
-} from "./firewall";
+import { type FirewallConfig, type ExpandedFirewallConfig } from "./firewalls";
+import { fetchFirewallConfig, type FetchFn } from "../firewall-loader";
 
 export interface FirewallSelection {
   permissions: string[] | "all";
@@ -96,25 +92,6 @@ export function validateBaseUrl(base: string, serviceName: string): void {
 }
 
 /**
- * Resolve a single firewall ref to its config and validate it exists.
- */
-export function resolveFirewallConfig(ref: string): FirewallConfig {
-  const parsed = connectorTypeSchema.safeParse(ref);
-  if (!parsed.success) {
-    throw new Error(
-      `Cannot resolve firewall ref "${ref}": no built-in firewall config with this name`,
-    );
-  }
-  const serviceConfig = getFirewallConfig(parsed.data);
-  if (!serviceConfig) {
-    throw new Error(
-      `Firewall ref "${ref}" resolved to "${parsed.data}" but it does not support proxy-side token replacement`,
-    );
-  }
-  return serviceConfig;
-}
-
-/**
  * Collect available permission names from a firewall config.
  * Validates uniqueness and that "all" is not used as a permission name.
  */
@@ -182,10 +159,15 @@ export function collectAndValidatePermissions(
  * transforms the field from one to the other. Already-expanded arrays are
  * skipped via the Array.isArray guard.
  *
- * TODO: Support resolving firewall configs from GitHub URLs (like skills).
- * Currently only resolves from built-in FIREWALL_CONFIGS via connectorTypeSchema.
+ * Supports GitHub-hosted YAML configs (by bare name or full GitHub URL).
+ *
+ * @param config - Compose config object to mutate
+ * @param fetchFn - Optional fetch function for HTTP requests (injectable for tests)
  */
-export function expandFirewallConfigs(config: unknown): void {
+export async function expandFirewallConfigs(
+  config: unknown,
+  fetchFn?: FetchFn,
+): Promise<void> {
   const compose = config as {
     agents?: Record<
       string,
@@ -206,8 +188,15 @@ export function expandFirewallConfigs(config: unknown): void {
 
     const expanded: ExpandedFirewallConfig[] = [];
 
-    for (const [ref, selection] of Object.entries(configs)) {
-      const serviceConfig = resolveFirewallConfig(ref);
+    // Resolve all firewall configs in parallel
+    const entries = Object.entries(configs);
+    const resolvedConfigs = await Promise.all(
+      entries.map(([ref]) => fetchFirewallConfig(ref, fetchFn)),
+    );
+
+    for (let i = 0; i < entries.length; i++) {
+      const [ref, selection] = entries[i]!;
+      const serviceConfig = resolvedConfigs[i]!;
       const availablePermissions = collectAndValidatePermissions(
         ref,
         serviceConfig,

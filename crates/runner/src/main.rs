@@ -1,3 +1,4 @@
+mod ca;
 mod cmd;
 mod config;
 mod deps;

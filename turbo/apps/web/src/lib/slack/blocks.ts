@@ -11,8 +11,6 @@ import type {
 import { getPlatformUrl } from "../url";
 import type { DeepLink } from "../deep-links";
 
-const SLACK_DOCS_URL = "https://docs.vm0.ai/docs/integrations/slack";
-
 /**
  * Build the App Home tab view
  *
@@ -190,16 +188,6 @@ export function buildAppHomeView(options: {
     },
   });
 
-  blocks.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: `:book: <${SLACK_DOCS_URL}|View full documentation>`,
-      },
-    ],
-  });
-
   blocks.push({ type: "divider" });
 
   blocks.push({
@@ -373,15 +361,6 @@ export function buildHelpMessage(options?: {
         text: "*Usage*\n\u2022 `@Zero <message>` - Send a message to your agent",
       },
     },
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `:book: <${SLACK_DOCS_URL}|View full documentation>`,
-        },
-      ],
-    },
   ];
 }
 
@@ -484,32 +463,19 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 export { detectDeepLinks } from "../deep-links";
 
 /**
- * Build an agent response message with agent name context and optional logs link
+ * Build an agent response message with optional logs link
  *
  * @param content - The agent's response content
- * @param agentName - The name of the agent that responded
  * @param logsUrl - Optional URL to the run logs
  * @param deepLinks - Optional deep links to append for configuration help
- * @returns Block Kit blocks with agent context header
+ * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
-  agentName: string,
   logsUrl?: string,
   deepLinks?: DeepLink[],
 ): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [
-    {
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `:robot_face: *${agentName}*`,
-        },
-      ],
-    },
-    ...buildMarkdownMessage(content),
-  ];
+  const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
   // Add deep links if any keywords matched
   if (deepLinks && deepLinks.length > 0) {

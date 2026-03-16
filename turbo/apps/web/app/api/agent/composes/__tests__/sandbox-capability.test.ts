@@ -58,13 +58,13 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(data.name).toBe(agentName);
     });
 
-    it("sandbox token without agent:read gets 401", async () => {
+    it("sandbox token without agent:read gets 403", async () => {
       const agentName = `test-sandbox-noread-${Date.now()}`;
       await createTestCompose(agentName);
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -75,7 +75,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await GET(request);
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 
@@ -121,7 +121,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(data.name).toBe(agentName);
     });
 
-    it("sandbox token with agent:read but not agent:write gets 401", async () => {
+    it("sandbox token with agent:read but not agent:write gets 403", async () => {
       const agentName = `test-sandbox-nocreate-${Date.now()}`;
 
       mockClerk({ userId: null });
@@ -149,7 +149,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await POST(request);
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 
@@ -185,10 +185,10 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(Array.isArray(data.composes)).toBe(true);
     });
 
-    it("sandbox token without agent:read gets 401", async () => {
+    it("sandbox token without agent:read gets 403", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:write",
+        "storage:write",
       ]);
 
       const request = createTestRequest(
@@ -199,7 +199,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await listGET(request);
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 
@@ -227,13 +227,13 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(data.name).toBe(agentName);
     });
 
-    it("sandbox token without agent:read gets 401", async () => {
+    it("sandbox token without agent:read gets 403", async () => {
       const agentName = `test-sandbox-nogetid-${Date.now()}`;
       const { composeId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -244,7 +244,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await getByIdGET(request);
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 
@@ -270,7 +270,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(response.status).toBe(204);
     });
 
-    it("sandbox token without agent:write gets 401", async () => {
+    it("sandbox token without agent:write gets 403", async () => {
       const agentName = `test-sandbox-nodelete-${Date.now()}`;
       const { composeId } = await createTestCompose(agentName);
 
@@ -288,7 +288,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await deleteDELETE(request);
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 
@@ -316,13 +316,13 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(data.versionId).toBe(versionId);
     });
 
-    it("sandbox token without agent:read gets 401", async () => {
+    it("sandbox token without agent:read gets 403", async () => {
       const agentName = `test-sandbox-noversions-${Date.now()}`;
       const { composeId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -333,7 +333,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await versionsGET(request);
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 
@@ -362,13 +362,13 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(response.status).toBe(200);
     });
 
-    it("sandbox token without agent:read gets 401", async () => {
+    it("sandbox token without agent:read gets 403", async () => {
       const agentName = `test-sandbox-noinstructions-${Date.now()}`;
       const { composeId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -381,7 +381,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const response = await instructionsGET(request, {
         params: Promise.resolve({ id: composeId }),
       });
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 });

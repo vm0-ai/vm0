@@ -285,7 +285,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       );
       const response = await POST(request);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 });

@@ -22,6 +22,7 @@ export const orgMembersCache = pgTable(
     notifyEmail: boolean("notify_email").notNull().default(false),
     notifySlack: boolean("notify_slack").notNull().default(true),
     pinnedAgentIds: jsonb("pinned_agent_ids").$type<string[]>().default([]),
+    sendMode: text("send_mode").notNull().default("enter"),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
   },
   (table) => [primaryKey({ columns: [table.orgId, table.userId] })],

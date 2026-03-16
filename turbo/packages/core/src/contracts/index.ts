@@ -103,6 +103,14 @@ export {
   type NetworkLogsResponse,
   type SearchResult,
   type LogsSearchResponse,
+  runsQueueContract,
+  queueEntrySchema,
+  concurrencyInfoSchema,
+  queueResponseSchema,
+  type RunsQueueContract,
+  type QueueEntry,
+  type ConcurrencyInfo,
+  type QueueResponse,
 } from "./runs";
 export {
   storagesContract,
@@ -292,12 +300,6 @@ export {
   type ArtifactEntry,
   type StorageManifest,
   type ResumeSession,
-  firewallApiSchema,
-  firewallSchema,
-  experimentalFirewallSchema,
-  type FirewallApi,
-  type Firewall,
-  type ExperimentalFirewall,
 } from "./runners";
 
 export {
@@ -427,15 +429,21 @@ export {
 } from "./connectors";
 
 export {
-  getFirewallConfig,
   extractSecretNamesFromApis,
+  firewallPermissionSchema,
+  firewallApiSchema,
+  firewallSchema,
+  experimentalFirewallSchema,
+  firewallConfigSchema,
   type FirewallConfig,
   type ExpandedFirewallConfig,
-} from "./firewall";
+  type FirewallApi,
+  type Firewall,
+  type ExperimentalFirewall,
+} from "./firewalls";
 
 export {
   expandFirewallConfigs,
-  resolveFirewallConfig,
   collectAndValidatePermissions,
   validateRule,
   validateBaseUrl,
@@ -449,6 +457,8 @@ export {
   type UserPreferencesContract,
   type UserPreferencesResponse,
   type UpdateUserPreferencesRequest,
+  sendModeSchema,
+  type SendMode,
 } from "./user-preferences";
 export {
   orgListContract,

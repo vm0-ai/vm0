@@ -12,6 +12,7 @@ let mockPreferences: UserPreferencesResponse = {
   notifyEmail: false,
   notifySlack: false,
   pinnedAgentIds: [],
+  sendMode: "enter",
 };
 
 export function resetMockUserPreferences(): void {
@@ -20,6 +21,7 @@ export function resetMockUserPreferences(): void {
     notifyEmail: false,
     notifySlack: false,
     pinnedAgentIds: [],
+    sendMode: "enter",
   };
 }
 
@@ -44,6 +46,9 @@ export const apiUserPreferencesHandlers = [
     }
     if (body.pinnedAgentIds !== undefined) {
       mockPreferences.pinnedAgentIds = body.pinnedAgentIds;
+    }
+    if (body.sendMode !== undefined) {
+      mockPreferences.sendMode = body.sendMode;
     }
 
     return HttpResponse.json(mockPreferences);

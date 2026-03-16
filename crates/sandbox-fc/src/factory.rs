@@ -27,11 +27,8 @@ use crate::sandbox::FirecrackerSandbox;
 ///   "Invalid API key" but still loads the complete module graph. The claude
 ///   binary is a Bun-compiled executable (not Node.js), so
 ///   `NODE_COMPILE_CACHE` has no effect.
-/// - `codex --help`: lightweight pre-warm for Codex (no `--print` equivalent).
-///   Also tolerated because codex may not be installed.
 pub const PREWARM_SCRIPT: &str = "\
-    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true) && \
-    (codex --help >/dev/null 2>&1 || true)";
+    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true)";
 
 /// Balloon device configuration (invariant across all sandboxes).
 #[derive(serde::Serialize)]

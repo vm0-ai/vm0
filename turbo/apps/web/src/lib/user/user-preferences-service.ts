@@ -20,16 +20,23 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+type SendMode = "enter" | "cmd-enter";
+
 interface UserPreferences {
   timezone: string | null;
   notifyEmail: boolean;
   notifySlack: boolean;
   pinnedAgentIds: string[];
+  sendMode: SendMode;
 }
 
 /**
  * Validate timezone using Intl.DateTimeFormat
  */
+function parseSendMode(value: unknown): SendMode {
+  return value === "cmd-enter" ? "cmd-enter" : "enter";
+}
+
 function isValidTimezone(timezone: string): boolean {
   try {
     Intl.DateTimeFormat(undefined, { timeZone: timezone });
@@ -63,6 +70,7 @@ async function getCachedMemberPreferences(
       notifyEmail: cached.notifyEmail,
       notifySlack: cached.notifySlack,
       pinnedAgentIds: toStringArray(cached.pinnedAgentIds),
+      sendMode: parseSendMode(cached.sendMode),
     };
   }
 
@@ -87,6 +95,7 @@ async function getCachedMemberPreferences(
     notifySlack:
       typeof meta?.notify_slack === "boolean" ? meta.notify_slack : true,
     pinnedAgentIds: toStringArray(meta?.pinned_agent_ids),
+    sendMode: parseSendMode(meta?.send_mode),
   };
 
   // 3. Upsert cache
@@ -100,6 +109,7 @@ async function getCachedMemberPreferences(
       notifyEmail: prefs.notifyEmail,
       notifySlack: prefs.notifySlack,
       pinnedAgentIds: prefs.pinnedAgentIds,
+      sendMode: prefs.sendMode,
       cachedAt: now,
     })
     .onConflictDoUpdate({
@@ -109,6 +119,7 @@ async function getCachedMemberPreferences(
         notifyEmail: prefs.notifyEmail,
         notifySlack: prefs.notifySlack,
         pinnedAgentIds: prefs.pinnedAgentIds,
+        sendMode: prefs.sendMode,
         cachedAt: now,
       },
     });
@@ -138,6 +149,7 @@ async function upsertMemberCache(
       notifyEmail: prefs.notifyEmail ?? false,
       notifySlack: prefs.notifySlack ?? true,
       pinnedAgentIds: prefs.pinnedAgentIds ?? [],
+      sendMode: prefs.sendMode ?? "enter",
       cachedAt: now,
     })
     .onConflictDoUpdate({
@@ -153,6 +165,7 @@ async function upsertMemberCache(
         ...(prefs.pinnedAgentIds !== undefined && {
           pinnedAgentIds: prefs.pinnedAgentIds,
         }),
+        ...(prefs.sendMode !== undefined && { sendMode: prefs.sendMode }),
         cachedAt: now,
       },
     });
@@ -166,6 +179,7 @@ function buildClerkMetadata(prefs: {
   notifyEmail?: boolean;
   notifySlack?: boolean;
   pinnedAgentIds?: string[];
+  sendMode?: SendMode;
 }): Record<string, unknown> {
   return {
     ...(prefs.timezone !== undefined && { timezone: prefs.timezone }),
@@ -178,6 +192,7 @@ function buildClerkMetadata(prefs: {
     ...(prefs.pinnedAgentIds !== undefined && {
       pinned_agent_ids: prefs.pinnedAgentIds,
     }),
+    ...(prefs.sendMode !== undefined && { send_mode: prefs.sendMode }),
   };
 }
 
@@ -232,6 +247,7 @@ export async function getUserPreferences(
       notifyEmail: sessionClaims.membership_notify_email ?? false,
       notifySlack: sessionClaims.membership_notify_slack ?? true,
       pinnedAgentIds,
+      sendMode: parseSendMode(sessionClaims.membership_send_mode),
     };
   }
 
@@ -250,6 +266,7 @@ export async function updateUserPreferences(
     notifyEmail?: boolean;
     notifySlack?: boolean;
     pinnedAgentIds?: string[];
+    sendMode?: SendMode;
   },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
@@ -275,6 +292,7 @@ export async function updateUserPreferences(
       prefs.pinnedAgentIds !== undefined
         ? prefs.pinnedAgentIds
         : existing.pinnedAgentIds,
+    sendMode: prefs.sendMode !== undefined ? prefs.sendMode : existing.sendMode,
   };
 
   // Write to Clerk membership metadata

@@ -61,10 +61,61 @@ gh run list --workflow turbo.yml --branch main --limit 10 \
      ```bash
      gh run view <RUN_ID> --json jobs --jq '[.jobs[] | select(.conclusion == "failure") | .name]'
      ```
-  2. Post to Slack `#flaky-test` channel with the failed run details (run URL, failed job names) using the Slack MCP tool (`slack_send_message` to `#flaky-test`).
+  2. Post to Slack `#flaky-test` channel using the Slack MCP tool (`slack_send_message` to `#flaky-test`). Use Slack mrkdwn link syntax `<url|display text>` for all URLs so they render as clickable links. Example message format:
+     ```
+     🔴 main CI failure
+     Failed jobs: lint, test
+     Run: <https://github.com/vm0-ai/vm0/actions/runs/12345|#12345>
+     ```
   3. Report the failure in the dashboard output.
 
-### Step 3: Check Open Issues per Lane
+### Step 3: Check Release Status
+
+Query release-related information to show pending and in-progress releases.
+
+#### Step 3a: Check Open Release PR
+
+Find the open release PR created by release-please bot and extract its changelog:
+
+```bash
+# Find release-please PR
+gh pr list --repo vm0-ai/vm0 --author "app/release-please" --state open \
+  --json number,title,body --limit 1 \
+  --jq '.[0] | {number, title, body}'
+```
+
+If a release PR exists, parse the PR body to extract change titles. The release-please PR body contains changelog entries in markdown format (typically `* <title>` or `- <title>` lines under section headers):
+
+```bash
+# Extract change titles from PR body (lines starting with * that contain commit titles)
+gh pr view <PR_NUMBER> --repo vm0-ai/vm0 --json body \
+  --jq '.body' | grep -E '^\* ' | sed 's/^\* /- /'
+```
+
+#### Step 3b: Check In-Progress Release Deployment
+
+Check if the `release-please.yml` workflow has an in-progress run, and if so, extract the changes being deployed:
+
+```bash
+# Check for in-progress release-please workflow run
+RELEASE_RUN=$(gh run list --repo vm0-ai/vm0 --workflow release-please.yml --status in_progress --limit 1 \
+  --json databaseId,headSha --jq '.[0] | {id: .databaseId, sha: .headSha} // empty')
+```
+
+If an in-progress run exists, get the release commit's changes. The release commit created by release-please aggregates multiple changes. Extract the change titles from the commit message or the associated release PR body:
+
+```bash
+# Get the commit message which contains the changelog
+gh api repos/vm0-ai/vm0/git/commits/<HEAD_SHA> --jq '.message' | grep -E '^\* ' | sed 's/^\* /- /'
+```
+
+#### Step 3c: Output
+
+- If an open release PR exists, show its number and list of change titles
+- If a release-please workflow is in-progress, show the changes being deployed
+- If neither exists, skip this section entirely (do not show "Release Status" header)
+
+### Step 4: Check Open Issues per Lane
 
 For each lane `vm01` through `vm0N`:
 
@@ -84,7 +135,7 @@ gh issue list --repo vm0-ai/vm0 --label "$LANE" --author "$ME" --state open \
 
 Deduplicate by issue number. Mark items with `pending` label as `[Pending]`.
 
-### Step 4: Check Open PRs per Lane
+### Step 5: Check Open PRs per Lane
 
 For each lane `vm01` through `vm0N`:
 
@@ -96,51 +147,20 @@ gh pr list --repo vm0-ai/vm0 --label "$LANE" --author "$ME" --state open \
 
 Mark items with `pending` label as `[Pending]`.
 
-### Step 5: List Recently Merged PRs with Release Status
+### Step 6: List Recently Merged PRs
 
-#### Step 5a: Get Release Reference Points
-
-Fetch the latest GitHub Release tag and its commit SHA, and check for in-progress release-please runs:
-
-```bash
-# Latest release tag and commit
-LATEST_TAG=$(gh release list --repo vm0-ai/vm0 --limit 1 --json tagName --jq '.[0].tagName')
-RELEASE_SHA=$(gh api repos/vm0-ai/vm0/releases/tags/$LATEST_TAG --jq '.target_commitish')
-
-# In-progress release-please workflow
-RUNNING_SHA=$(gh run list --repo vm0-ai/vm0 --workflow release-please.yml --status in_progress --limit 1 --json headSha --jq '.[0].headSha // empty')
-```
-
-#### Step 5b: Query Merged PRs
-
-Query the last 20 merged PRs across all lanes, including merge commit SHA:
+Query the last 20 merged PRs across all lanes:
 
 ```bash
 for i in $(seq 1 $MAX_WORKERS); do
   LANE=$(printf "vm%02d" $i)
   gh pr list --repo vm0-ai/vm0 --label "$LANE" --state merged \
-    --json number,title,mergedAt,labels,mergeCommit --limit 20 \
-    --jq ".[] | {number, title, mergedAt, lane: \"$LANE\", mergeCommitSha: .mergeCommit.oid}"
+    --json number,title,mergedAt,labels --limit 20 \
+    --jq ".[] | {number, title, mergedAt, lane: \"$LANE\"}"
 done
 ```
 
 Combine results, sort by `mergedAt` descending, take the top 20.
-
-#### Step 5c: Annotate Each PR with Release Status
-
-For each merged PR, classify its release status using the merge commit SHA:
-
-```bash
-git merge-base --is-ancestor <mergeCommitSha> $RELEASE_SHA && echo "✅" || ([ -n "$RUNNING_SHA" ] && echo "🚀" || echo "⏳")
-```
-
-| Marker | Meaning | Condition |
-|--------|---------|-----------|
-| ✅ | Released | PR merge commit is an ancestor of the latest release commit |
-| 🚀 | Releasing | Not yet released, but release-please workflow is in progress |
-| ⏳ | Pending release | Not yet released, no release-please run in progress |
-
-Prepend the marker to each PR line in the output.
 
 ---
 
@@ -149,8 +169,7 @@ Prepend the marker to each PR line in the output.
 - Titles should be translated to Chinese
 - Items with `pending` label get a `[Pending]` marker
 - Empty lanes show `-- idle`
-- Merged PRs shown as a list, each line: `Marker Time #ID Lane — Title`
-- Release status markers: ✅ (released), 🚀 (releasing), ⏳ (pending release)
+- Merged PRs shown as a list, each line: `Time #ID Lane — Title`
 
 ### Output Example
 
@@ -159,6 +178,17 @@ Prepend the marker to each PR line in the output.
 CI 流水线
 
 全部通过，无失败。
+
+Release 状态
+
+📦 Open Release PR (#4950):
+- feat: add user authentication system
+- fix: resolve database connection timeout
+- refactor: remove deprecated auth middleware
+
+🚀 正在上线 (release-please in progress):
+- feat: add user authentication system
+- fix: resolve database connection timeout
 
 通道状态
 
@@ -178,8 +208,8 @@ vm04
 ---
 近期完成 (最近 20 个已合并 PR，按时间倒序)
 
-- ✅ 3/13 08:35 #4728 vm03 — 升级平台 vite 从 v6 到 v7
-- 🚀 3/13 08:01 #4719 vm01 — 通过 tsx/tsup 升级去重 esbuild 版本
+- 3/13 08:35 #4728 vm03 — 升级平台 vite 从 v6 到 v7
+- 3/13 08:01 #4719 vm01 — 通过 tsx/tsup 升级去重 esbuild 版本
 ---
 ```
 

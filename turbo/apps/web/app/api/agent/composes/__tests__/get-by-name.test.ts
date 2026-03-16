@@ -143,7 +143,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
   });
 
   it("should return org member agent via cross-org lookup with ?org=", async () => {
-    const agentName = `test-shared-agent-${Date.now()}`;
+    const agentName = `test-org-member-agent-${Date.now()}`;
 
     // Create compose as owner
     const { composeId } = await createTestCompose(agentName);

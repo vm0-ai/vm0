@@ -55,6 +55,20 @@ function getConcurrencyLimitForTier(tier: OrgTier): number {
 }
 
 /**
+ * Get the effective concurrency limit for an org tier.
+ * Tier-based limit is the baseline; env var acts as a global cap.
+ * Returns 0 for unlimited.
+ */
+export function getEffectiveConcurrencyLimit(orgTier: OrgTier): number {
+  const tierLimit = getConcurrencyLimitForTier(orgTier);
+  const envCap = env().CONCURRENT_RUN_LIMIT_CAP;
+  if (envCap === 0) return 0;
+  if (envCap !== undefined && !isNaN(envCap))
+    return Math.min(tierLimit, envCap);
+  return tierLimit;
+}
+
+/**
  * Check if org has reached concurrent run limit
  *
  * @param orgId Clerk org ID to check
@@ -67,16 +81,7 @@ async function checkRunConcurrencyLimit(
   orgTier: OrgTier = "free",
   db?: Database,
 ): Promise<void> {
-  // Tier-based limit is the baseline; env var acts as a global cap.
-  // 0 means no limit (unlimited).
-  const tierLimit = getConcurrencyLimitForTier(orgTier);
-  const envCap = env().CONCURRENT_RUN_LIMIT_CAP;
-  const effectiveLimit =
-    envCap === 0
-      ? 0
-      : envCap !== undefined && !isNaN(envCap)
-        ? Math.min(tierLimit, envCap)
-        : tierLimit;
+  const effectiveLimit = getEffectiveConcurrencyLimit(orgTier);
 
   // Skip check if limit is 0 (no limit)
   if (effectiveLimit === 0) {

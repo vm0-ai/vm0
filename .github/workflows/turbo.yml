@@ -426,7 +426,6 @@ jobs:
           SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
           SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
           SLACK_REDIRECT_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
-          SLACK_DEFAULT_AGENT: ${{ vars.SLACK_DEFAULT_AGENT }}
           SENTRY_DSN_WEB: ${{ secrets.SENTRY_DSN_WEB }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
@@ -620,7 +619,6 @@ jobs:
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
-            SLACK_DEFAULT_AGENT=${{ vars.SLACK_DEFAULT_AGENT }}
             SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}

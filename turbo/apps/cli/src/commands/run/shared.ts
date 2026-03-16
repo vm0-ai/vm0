@@ -4,7 +4,6 @@ import { config as dotenvConfig } from "dotenv";
 import { getEvents } from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
-import { CodexEventRenderer } from "../../lib/events/codex-event-renderer";
 import { extractAndGroupVariables } from "@vm0/core";
 /**
  * Collector for --secrets and --vars flags
@@ -231,15 +230,9 @@ export async function pollEvents(
     for (const event of response.events) {
       const eventData = event.eventData as Record<string, unknown>;
 
-      if (response.framework === "codex") {
-        // Use Codex renderer for Codex framework
-        CodexEventRenderer.render(eventData);
-      } else {
-        // Use Claude Code renderer (default)
-        const parsed = parseEvent(eventData);
-        if (parsed) {
-          renderer.render(parsed);
-        }
+      const parsed = parseEvent(eventData);
+      if (parsed) {
+        renderer.render(parsed);
       }
     }
 

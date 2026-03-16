@@ -144,7 +144,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
     it("should reject sandbox token without agent-run:read", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(

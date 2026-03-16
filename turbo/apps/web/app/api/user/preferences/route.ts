@@ -38,6 +38,7 @@ const router = tsr.router(userPreferencesContract, {
         notifyEmail: prefs.notifyEmail,
         notifySlack: prefs.notifySlack,
         pinnedAgentIds: prefs.pinnedAgentIds,
+        sendMode: prefs.sendMode,
       },
     };
   },
@@ -61,6 +62,7 @@ const router = tsr.router(userPreferencesContract, {
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,
         pinnedAgentIds: body.pinnedAgentIds,
+        sendMode: body.sendMode,
       });
 
       return {
@@ -70,6 +72,7 @@ const router = tsr.router(userPreferencesContract, {
           notifyEmail: prefs.notifyEmail,
           notifySlack: prefs.notifySlack,
           pinnedAgentIds: prefs.pinnedAgentIds,
+          sendMode: prefs.sendMode,
         },
       };
     } catch (error) {

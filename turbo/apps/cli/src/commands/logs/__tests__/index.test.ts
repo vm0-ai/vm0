@@ -609,38 +609,6 @@ describe("logs command", () => {
     });
   });
 
-  describe("codex framework events", () => {
-    it("should use CodexEventRenderer for codex provider", async () => {
-      server.use(
-        http.get(
-          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
-          () => {
-            return HttpResponse.json({
-              events: [
-                {
-                  sequenceNumber: 1,
-                  eventType: "message",
-                  createdAt: "2024-01-15T10:30:00Z",
-                  eventData: {
-                    type: "message",
-                    message: "Codex message",
-                  },
-                },
-              ],
-              framework: "codex",
-              hasMore: false,
-            });
-          },
-        ),
-      );
-
-      await logsCommand.parseAsync(["node", "cli", "run-123"]);
-
-      // Should not crash with codex events
-      expect(mockExit).not.toHaveBeenCalled();
-    });
-  });
-
   describe("system log", () => {
     it("should display system log with --system flag", async () => {
       server.use(

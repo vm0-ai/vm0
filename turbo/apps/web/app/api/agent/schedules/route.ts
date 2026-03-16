@@ -5,7 +5,10 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import { schedulesMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
 import { logger } from "../../../../src/lib/logger";
 import {
@@ -21,17 +24,10 @@ const router = tsr.router(schedulesMainContract, {
   deploy: async ({ body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "schedule:write",
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     log.debug(`Deploying schedule ${body.name} for compose ${body.composeId}`);
@@ -88,17 +84,10 @@ const router = tsr.router(schedulesMainContract, {
   list: async ({ headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "schedule:read",
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     // Resolve active org — scope schedules to the user's current org

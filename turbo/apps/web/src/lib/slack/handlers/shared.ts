@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { createSlackClient, fetchSlackUserInfo } from "../client";
 import {
   fetchThreadContext,
@@ -8,16 +8,12 @@ import {
   formatCurrentMessageFiles,
   type SlackFile,
 } from "../context";
-import { slackThreadSessions } from "../../../db/schema/slack-thread-session";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import { getPlatformUrl } from "../../url";
-import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../run";
-import { ensureStorageExists } from "../../storage/storage-service";
 import { logger } from "../../logger";
 
 const log = logger("slack:shared");
@@ -78,149 +74,6 @@ export async function fetchConversationContexts(
       : "";
 
   return { routingContext, executionContext };
-}
-
-interface ThreadSessionLookup {
-  existingSessionId: string | undefined;
-  lastProcessedMessageTs: string | undefined;
-}
-
-/**
- * Look up an existing thread session by channel + thread + user link.
- */
-export async function lookupThreadSession(
-  channelId: string,
-  threadTs: string,
-  userLinkId: string,
-): Promise<ThreadSessionLookup> {
-  const [session] = await globalThis.services.db
-    .select({
-      agentSessionId: slackThreadSessions.agentSessionId,
-      lastProcessedMessageTs: slackThreadSessions.lastProcessedMessageTs,
-    })
-    .from(slackThreadSessions)
-    .where(
-      and(
-        eq(slackThreadSessions.slackUserLinkId, userLinkId),
-        eq(slackThreadSessions.slackChannelId, channelId),
-        eq(slackThreadSessions.slackThreadTs, threadTs),
-      ),
-    )
-    .limit(1);
-
-  return {
-    existingSessionId: session?.agentSessionId,
-    lastProcessedMessageTs: session?.lastProcessedMessageTs ?? undefined,
-  };
-}
-
-/**
- * Create or update a thread session mapping after agent execution.
- */
-export async function saveThreadSession(opts: {
-  userLinkId: string;
-  channelId: string;
-  threadTs: string;
-  existingSessionId: string | undefined;
-  newSessionId: string | undefined;
-  messageTs: string;
-  runStatus: string;
-}): Promise<void> {
-  const {
-    userLinkId,
-    channelId,
-    threadTs,
-    existingSessionId,
-    newSessionId,
-    messageTs,
-    runStatus,
-  } = opts;
-
-  if (!existingSessionId && newSessionId) {
-    // New thread — create mapping
-    await globalThis.services.db
-      .insert(slackThreadSessions)
-      .values({
-        slackUserLinkId: userLinkId,
-        slackChannelId: channelId,
-        slackThreadTs: threadTs,
-        agentSessionId: newSessionId,
-        lastProcessedMessageTs: messageTs,
-      })
-      .onConflictDoNothing();
-  } else if (
-    existingSessionId &&
-    (runStatus === "completed" || runStatus === "timeout")
-  ) {
-    // Existing thread, successful run — update lastProcessedMessageTs
-    await globalThis.services.db
-      .update(slackThreadSessions)
-      .set({
-        lastProcessedMessageTs: messageTs,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(slackThreadSessions.slackUserLinkId, userLinkId),
-          eq(slackThreadSessions.slackChannelId, channelId),
-          eq(slackThreadSessions.slackThreadTs, threadTs),
-        ),
-      );
-  }
-  // Failed runs — do not update lastProcessedMessageTs (allows retry with same context)
-}
-
-/**
- * Build the login URL
- */
-export function buildLoginUrl(
-  workspaceId: string,
-  slackUserId: string,
-  channelId: string,
-): string {
-  const baseUrl = getPlatformUrl();
-  const params = new URLSearchParams({
-    w: workspaceId,
-    u: slackUserId,
-    c: channelId,
-  });
-  return `${baseUrl}/slack/connect?${params.toString()}`;
-}
-
-/**
- * Build the logs URL for a run, linking to the agent detail logs page.
- */
-export function buildLogsUrl(runId: string, agentName: string): string {
-  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs/${encodeURIComponent(runId)}`;
-}
-
-/**
- * Build the agent-level logs URL (no specific run).
- * Used as fallback when runId is unavailable (e.g. dispatch failure).
- */
-export function buildAgentLogsUrl(agentName: string): string {
-  return `${getPlatformUrl()}/agents/${encodeURIComponent(agentName)}/logs`;
-}
-
-/**
- * Ensure org and artifact storage exist for a user.
- * Safety net for all agent link paths (App Home button, slash command, submission).
- *
- * Follows the same prepare/commit pattern as `vm0 cook`:
- * 1. Find-or-create storage record
- * 2. If no HEAD version, create an empty initial version (upload manifest to S3 + commit)
- */
-export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
-  const org = await resolveOrgOrNull(vm0UserId);
-  if (!org) return;
-
-  await ensureStorageExists(
-    org.orgId,
-    vm0UserId,
-    "artifact",
-    org.slug,
-    "artifact",
-  );
 }
 
 /**

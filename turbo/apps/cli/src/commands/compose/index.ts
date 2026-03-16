@@ -513,7 +513,7 @@ async function finalizeCompose(
   mergeSkillVariables(agent, variables);
 
   // Expand experimental_firewall from names to full configs before sending to API
-  expandFirewallConfigs(config);
+  await expandFirewallConfigs(config);
 
   // Call API
   if (!options.json) {

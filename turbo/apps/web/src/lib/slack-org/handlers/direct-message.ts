@@ -113,7 +113,6 @@ export async function handleOrgDirectMessage(
     return;
   }
   const agentName = agent.name;
-  const agentLabel = agent.displayName ?? agent.name;
 
   // 4. Show thinking indicator
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
@@ -198,15 +197,10 @@ export async function handleOrgDirectMessage(
   } else if (status === "failed") {
     const errorText = response ?? "Sorry, an error occurred. Please try again.";
     const logsUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
-    const deepLinks = detectDeepLinks(errorText, getPlatformUrl(), agentName);
+    const deepLinks = detectDeepLinks(errorText, getPlatformUrl());
     await postMessage(client, context.channelId, errorText, {
       threadTs,
-      blocks: buildAgentResponseMessage(
-        errorText,
-        agentLabel,
-        logsUrl,
-        deepLinks,
-      ),
+      blocks: buildAgentResponseMessage(errorText, logsUrl, deepLinks),
     });
     await setThreadStatus(client, context.channelId, threadTs, "").catch(
       (err) => log.warn("Failed to clear thread status", { error: err }),

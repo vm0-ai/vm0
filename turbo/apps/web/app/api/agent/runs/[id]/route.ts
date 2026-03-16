@@ -51,9 +51,7 @@ const router = tsr.router(runsByIdContract, {
         prompt: run.prompt,
         vars: run.vars as Record<string, string> | undefined,
         sandboxId: run.sandboxId || undefined,
-        result: run.result as
-          | { output: string; executionTimeMs: number }
-          | undefined,
+        result: run.result as Record<string, unknown> | undefined,
         error: run.error || undefined,
         createdAt: run.createdAt.toISOString(),
         startedAt: run.startedAt?.toISOString(),

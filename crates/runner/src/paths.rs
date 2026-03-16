@@ -115,6 +115,10 @@ impl HomePaths {
         self.root.join("groups")
     }
 
+    pub fn ca_dir(&self) -> PathBuf {
+        self.root.join("ca")
+    }
+
     pub fn locks_dir(&self) -> PathBuf {
         self.root.join("locks")
     }
@@ -177,26 +181,9 @@ impl RootfsPaths {
         self.dir.join("rootfs.squashfs")
     }
 
-    pub fn ca_cert(&self) -> PathBuf {
-        self.dir.join("mitmproxy-ca-cert.pem")
-    }
-
-    pub fn ca_key(&self) -> PathBuf {
-        self.dir.join("mitmproxy-ca-key.pem")
-    }
-
-    pub fn ca_combined(&self) -> PathBuf {
-        self.dir.join("mitmproxy-ca.pem")
-    }
-
     /// All files that must exist for the build to be considered complete.
-    pub fn expected_files(&self) -> [PathBuf; 4] {
-        [
-            self.rootfs(),
-            self.ca_cert(),
-            self.ca_key(),
-            self.ca_combined(),
-        ]
+    pub fn expected_files(&self) -> [PathBuf; 1] {
+        [self.rootfs()]
     }
 }
 

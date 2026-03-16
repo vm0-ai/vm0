@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { firewallPermissionSchema } from "./firewalls";
 
 const c = initContract();
 
@@ -27,12 +28,8 @@ export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
  * Format: {resource}:{action}
  */
 export const VALID_CAPABILITIES = [
-  "volume:read",
-  "volume:write",
-  "artifact:read",
-  "artifact:write",
-  "memory:read",
-  "memory:write",
+  "storage:read",
+  "storage:write",
   "agent:read",
   "agent:write",
   "agent-run:read",
@@ -40,17 +37,6 @@ export const VALID_CAPABILITIES = [
   "schedule:read",
   "schedule:write",
 ] as const;
-
-/**
- * Firewall permission schema for proxy-side token replacement.
- * Defined here (not in runners.ts) to avoid circular dependency:
- * composes.ts exports VALID_CAPABILITIES used by runners.ts.
- */
-export const firewallPermissionSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  rules: z.array(z.string()),
-});
 
 /**
  * Agent name validation schema
@@ -256,6 +242,7 @@ export const composesMainContract = c.router({
       200: composeResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Get agent compose by name",
   },
@@ -279,6 +266,7 @@ export const composesMainContract = c.router({
       201: createComposeResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Create or update agent compose version",
   },
@@ -302,6 +290,7 @@ export const composesByIdContract = c.router({
     responses: {
       200: composeResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get agent compose by ID",
@@ -323,6 +312,7 @@ export const composesByIdContract = c.router({
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
@@ -353,6 +343,7 @@ export const composesVersionsContract = c.router({
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Resolve version specifier to full version ID",
@@ -393,6 +384,7 @@ export const composesListContract = c.router({
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "List all agent composes for an org",
   },

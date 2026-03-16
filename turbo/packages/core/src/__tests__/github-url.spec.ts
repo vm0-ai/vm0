@@ -4,6 +4,7 @@ import {
   parseGitHubUrl,
   getSkillNameFromPath,
   resolveSkillRef,
+  resolveFirewallRef,
 } from "../github-url";
 
 describe("parseGitHubTreeUrl", () => {
@@ -273,5 +274,70 @@ describe("resolveSkillRef", () => {
     expect(() =>
       resolveSkillRef("https://github.com/owner/repo/blob/main/file.ts"),
     ).toThrow("Invalid skill URL");
+  });
+});
+
+describe("resolveFirewallRef", () => {
+  it("expands bare name to default firewalls repo URL", () => {
+    expect(resolveFirewallRef("custom-api")).toBe(
+      "https://github.com/vm0-ai/vm0-firewalls/tree/main/custom-api",
+    );
+  });
+
+  it("trims whitespace from bare names", () => {
+    expect(resolveFirewallRef("  custom-api  ")).toBe(
+      "https://github.com/vm0-ai/vm0-firewalls/tree/main/custom-api",
+    );
+  });
+
+  it("returns full tree URL as-is", () => {
+    const url = "https://github.com/acme/firewalls/tree/main/my-firewall";
+    expect(resolveFirewallRef(url)).toBe(url);
+  });
+
+  it("normalizes plain repo URL to tree URL with default branch", () => {
+    expect(resolveFirewallRef("https://github.com/acme/firewalls")).toBe(
+      "https://github.com/acme/firewalls/tree/main",
+    );
+  });
+
+  it("throws on empty string", () => {
+    expect(() => resolveFirewallRef("")).toThrow(
+      "Firewall reference cannot be empty",
+    );
+  });
+
+  it("throws on non-GitHub URL", () => {
+    expect(() => resolveFirewallRef("https://example.com/foo")).toThrow(
+      "Invalid firewall URL",
+    );
+  });
+
+  it("throws on path traversal attempt", () => {
+    expect(() => resolveFirewallRef("../../etc/passwd")).toThrow(
+      "Invalid firewall URL",
+    );
+  });
+
+  it("throws on bare name with special characters", () => {
+    expect(() => resolveFirewallRef("..")).toThrow("Invalid firewall name");
+    expect(() => resolveFirewallRef("-bad")).toThrow("Invalid firewall name");
+    expect(() => resolveFirewallRef(".bad")).toThrow("Invalid firewall name");
+  });
+
+  it("throws on input with slashes that is not a valid GitHub URL", () => {
+    expect(() => resolveFirewallRef("a/b")).toThrow("Invalid firewall URL");
+  });
+
+  it("accepts bare names with dots and underscores", () => {
+    expect(resolveFirewallRef("my_api.v2")).toBe(
+      "https://github.com/vm0-ai/vm0-firewalls/tree/main/my_api.v2",
+    );
+  });
+
+  it("accepts single-char bare name", () => {
+    expect(resolveFirewallRef("x")).toBe(
+      "https://github.com/vm0-ai/vm0-firewalls/tree/main/x",
+    );
   });
 });

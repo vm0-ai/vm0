@@ -267,10 +267,6 @@
       "claudeCode": {
         "name": "Claude Code",
         "definition": "AnthropicのAI Agentを構築および展開するための公式コマンドラインツール。Claude CodeはAgentの作成、Skillsの管理、Claude APIとの統合のためのデベロッパーフレンドリーなインターフェースを提供します。ライブリロード、デバッグツール、展開自動化などの機能でagent開発ワークフローを簡素化します。"
-      },
-      "codex": {
-        "name": "Codex",
-        "definition": "Agent開発および展開のためのコマンドラインツール。Codexは開発者にターミナルを通じてAgent構築、テスト、管理用のユーティリティを提供します。コード生成、Scaffolding、AIモデルとの統合などの機能を提供し、agent開発ワークフローを簡素化します。"
       }
     }
   },

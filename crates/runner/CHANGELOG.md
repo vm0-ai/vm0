@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.28.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.28.1...runner-rs-v0.28.2) (2026-03-16)
+
+
+### Refactoring
+
+* **runner:** decouple ca generation from rootfs build ([#4968](https://github.com/vm0-ai/vm0/issues/4968)) ([0ef9a58](https://github.com/vm0-ai/vm0/commit/0ef9a5895005b46fa3ce209e1155a2b9703d2893)), closes [#4962](https://github.com/vm0-ai/vm0/issues/4962)
+
+## [0.28.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.28.0...runner-rs-v0.28.1) (2026-03-16)
+
+
+### Refactoring
+
+* merge volume/artifact/memory capabilities into storage:read and storage:write ([#4959](https://github.com/vm0-ai/vm0/issues/4959)) ([cc0c3b4](https://github.com/vm0-ai/vm0/commit/cc0c3b40c3c6a5a8a6167a46531fb1db16191341)), closes [#4956](https://github.com/vm0-ai/vm0/issues/4956)
+
 ## [0.28.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.27.0...runner-rs-v0.28.0) (2026-03-16)
 
 

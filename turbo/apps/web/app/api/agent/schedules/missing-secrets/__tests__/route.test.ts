@@ -150,7 +150,7 @@ describe("GET /api/agent/schedules/missing-secrets - Sandbox Token Auth", () => 
   it("should reject sandbox token without schedule:read capability", async () => {
     mockClerk({ userId: null });
     const token = await generateSandboxToken(user.userId, "run-123", [
-      "volume:read",
+      "storage:read",
     ]);
 
     const request = createTestRequest(
@@ -162,6 +162,6 @@ describe("GET /api/agent/schedules/missing-secrets - Sandbox Token Auth", () => 
 
     const response = await GET(request);
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });

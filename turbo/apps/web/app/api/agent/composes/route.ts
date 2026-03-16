@@ -18,7 +18,10 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import {
@@ -33,17 +36,10 @@ const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "agent:read",
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     // Resolve org: for cross-org lookups (org member agents), skip membership
@@ -139,17 +135,10 @@ const router = tsr.router(composesMainContract, {
   create: async ({ body, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "agent:write",
     });
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     const { content } = body;

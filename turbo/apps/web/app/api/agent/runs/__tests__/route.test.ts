@@ -750,20 +750,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should skip injection when compose has explicit OPENAI_API_KEY (codex)", async () => {
-      // Create compose with OPENAI_API_KEY for codex framework
-      const { composeId } = await createTestCompose(uniqueId("codex"), {
-        overrides: {
-          framework: "codex",
-          environment: { OPENAI_API_KEY: "explicit-openai-key" },
-        },
-      });
-
-      const data = await createTestRun(composeId, "Test codex with key");
-
-      expect(data.status).toBe("pending");
-    });
-
     it("should skip injection when compose has CLAUDE_CODE_USE_FOUNDRY", async () => {
       // Create compose with alternative auth method
       const { composeId } = await createTestCompose(uniqueId("foundry"), {
@@ -1447,7 +1433,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should reject sandbox token without agent-run:read for list", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
-        "volume:read",
+        "storage:read",
       ]);
 
       const request = createTestRequest(
@@ -1456,7 +1442,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const response = await GET(request);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
 
     it("should accept sandbox token with agent-run:write for create", async () => {
@@ -1481,8 +1467,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const response = await POST(request);
 
-      // Should pass auth (not 401) — downstream may fail for other reasons
-      expect(response.status).not.toBe(401);
+      // Should pass auth (not 403) — downstream may fail for other reasons
+      expect(response.status).not.toBe(403);
     });
 
     it("should reject sandbox token without agent-run:write for create", async () => {
@@ -1507,7 +1493,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const response = await POST(request);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 });

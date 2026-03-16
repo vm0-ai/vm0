@@ -22,6 +22,7 @@ export const authContract = c.router({
         email: z.string(),
       }),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
