@@ -31,7 +31,6 @@
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.12",
     "typescript": "^5.9.3"
   }
 }
