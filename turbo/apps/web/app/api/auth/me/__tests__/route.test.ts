@@ -76,7 +76,7 @@ describe("GET /api/auth/me", () => {
       expect(body.userId).toBe(user.userId);
     });
 
-    it("sandbox token with no capabilities gets 401", async () => {
+    it("sandbox token with no capabilities gets 403", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-789");
 
@@ -87,8 +87,8 @@ describe("GET /api/auth/me", () => {
       );
       const body = await response.json();
 
-      expect(response.status).toBe(401);
-      expect(body.error.code).toBe("UNAUTHORIZED");
+      expect(response.status).toBe(403);
+      expect(body.error.code).toBe("FORBIDDEN");
     });
   });
 });

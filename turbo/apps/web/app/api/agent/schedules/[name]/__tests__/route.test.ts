@@ -292,7 +292,7 @@ describe("GET /api/agent/schedules/:name - Sandbox Token Auth", () => {
 
     const response = await GET(request);
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });
 
@@ -354,6 +354,6 @@ describe("DELETE /api/agent/schedules/:name - Sandbox Token Auth", () => {
 
     const response = await DELETE(request);
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });

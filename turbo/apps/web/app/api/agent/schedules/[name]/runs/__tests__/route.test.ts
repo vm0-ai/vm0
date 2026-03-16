@@ -184,6 +184,6 @@ describe("GET /api/agent/schedules/:name/runs - Sandbox Token Auth", () => {
 
     const response = await GET(request);
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });

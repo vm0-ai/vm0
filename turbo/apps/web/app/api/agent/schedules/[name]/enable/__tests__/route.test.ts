@@ -306,6 +306,6 @@ describe("POST /api/agent/schedules/:name/enable - Sandbox Token Auth", () => {
       params: Promise.resolve({ name: "any-schedule" }),
     });
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });

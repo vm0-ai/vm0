@@ -1456,7 +1456,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const response = await GET(request);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
 
     it("should accept sandbox token with agent-run:write for create", async () => {
@@ -1481,8 +1481,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const response = await POST(request);
 
-      // Should pass auth (not 401) — downstream may fail for other reasons
-      expect(response.status).not.toBe(401);
+      // Should pass auth (not 403) — downstream may fail for other reasons
+      expect(response.status).not.toBe(403);
     });
 
     it("should reject sandbox token without agent-run:write for create", async () => {
@@ -1507,7 +1507,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const response = await POST(request);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
     });
   });
 });
