@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import type { KeyboardEvent, ChangeEvent } from "react";
+import { Component, type KeyboardEvent, type ChangeEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { onRef, detach, Reason } from "../../signals/utils.ts";
@@ -142,59 +141,87 @@ function getStreamedScenarios(agentName: string): readonly Readonly<{
 
 const STREAM_DELAY_MS = 1400;
 
-function getRandomTagline(agentName: string, userName?: string): string {
-  const name = userName ?? "friend";
+function getTagline(
+  agentName: string,
+  userName: string,
+  index: number,
+): string {
   const taglines = [
-    `Welcome back, ${name}.`,
-    `${name}, what's the move?`,
-    `Good to see you, ${name}.`,
-    `What's on your mind, ${name}?`,
-    `${name} + ${agentName}. Let's roll.`,
-    `Another day, another win, ${name}.`,
-    `Hey ${name}, ready to build?`,
-    `${name} has entered the chat.`,
-    `Missed you, ${name}.`,
-    `${name}! I saved your seat.`,
-    `${name}, let's make today count.`,
-    `Coffee's ready, ${name}. Let's go.`,
-    `${name}, I had a feeling you'd come.`,
-    `What's cooking, ${name}?`,
-    `${name}. New day, new ideas.`,
-    `Ah, ${name}. Right on time.`,
-    `${name}, tell me everything.`,
-    `The usual, ${name}?`,
+    `Welcome back, ${userName}.`,
+    `${userName}, what's the move?`,
+    `Good to see you, ${userName}.`,
+    `What's on your mind, ${userName}?`,
+    `${userName} + ${agentName}. Let's roll.`,
+    `Another day, another win, ${userName}.`,
+    `Hey ${userName}, ready to build?`,
+    `${userName} has entered the chat.`,
+    `Missed you, ${userName}.`,
+    `${userName}! I saved your seat.`,
+    `${userName}, let's make today count.`,
+    `Coffee's ready, ${userName}. Let's go.`,
+    `${userName}, I had a feeling you'd come.`,
+    `What's cooking, ${userName}?`,
+    `${userName}. New day, new ideas.`,
+    `Ah, ${userName}. Right on time.`,
+    `${userName}, tell me everything.`,
+    `The usual, ${userName}?`,
   ];
-  return taglines[Math.floor(Math.random() * taglines.length)];
+  return taglines[index % taglines.length];
 }
 
-function TypewriterText({
-  text,
-  speed = 40,
-}: {
-  text: string;
-  speed?: number;
-}) {
-  const [displayed, setDisplayed] = useState("");
+class TypewriterText extends Component<
+  { text: string; speed?: number },
+  { displayed: string }
+> {
+  private timer: number | undefined;
+  state = { displayed: "" };
 
-  useEffect(() => {
-    setDisplayed("");
+  componentDidMount() {
+    this.startTypewriter();
+  }
+
+  componentDidUpdate(prev: { text: string; speed?: number }) {
+    if (prev.text !== this.props.text || prev.speed !== this.props.speed) {
+      this.cleanup();
+      this.startTypewriter();
+    }
+  }
+
+  componentWillUnmount() {
+    this.cleanup();
+  }
+
+  private startTypewriter() {
+    this.setState({ displayed: "" });
     let i = 0;
-    const timer = setInterval(() => {
+    const { text, speed = 40 } = this.props;
+    this.timer = window.setInterval(() => {
       i++;
-      setDisplayed(text.slice(0, i));
-      if (i >= text.length) clearInterval(timer);
+      this.setState({ displayed: text.slice(0, i) });
+      if (i >= text.length) {
+        window.clearInterval(this.timer);
+      }
     }, speed);
-    return () => clearInterval(timer);
-  }, [text, speed]);
+  }
 
-  return (
-    <>
-      {displayed}
-      {displayed.length < text.length && (
-        <span className="inline-block w-[2px] h-[1em] bg-foreground/60 ml-0.5 align-middle animate-pulse" />
-      )}
-    </>
-  );
+  private cleanup() {
+    if (this.timer !== undefined) {
+      window.clearInterval(this.timer);
+    }
+  }
+
+  render() {
+    const { text } = this.props;
+    const { displayed } = this.state;
+    return (
+      <>
+        {displayed}
+        {displayed.length < text.length && (
+          <span className="inline-block w-[2px] h-[1em] bg-foreground/60 ml-0.5 align-middle animate-pulse" />
+        )}
+      </>
+    );
+  }
 }
 
 interface StreamedScenario {
@@ -915,13 +942,9 @@ export function ZeroChatPage({
   const setCommandAllowed = useSet(commandAllowed$);
   const showSubAgentList$ = useCCState(false);
   const showSubAgentList = useGet(showSubAgentList$);
-  const tagline$ = useCCState("");
-  const tagline = useGet(tagline$);
-  const setTagline = useSet(tagline$);
-
-  useEffect(() => {
-    if (userName) setTagline(getRandomTagline(agentName, userName));
-  }, [userName, agentName, setTagline]);
+  const taglineIndex$ = useCCState(Math.floor(Math.random() * 18));
+  const taglineIndex = useGet(taglineIndex$);
+  const tagline = userName ? getTagline(agentName, userName, taglineIndex) : "";
 
   // Stream tick — schedules the next streamed message after a delay
   const streamTimeoutId$ = useCCState<number | null>(null);

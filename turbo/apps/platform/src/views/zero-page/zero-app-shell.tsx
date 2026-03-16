@@ -213,6 +213,59 @@ function useUrlSessionSync(
   }
 }
 
+function GuestNavBar({ onAbout }: { onAbout: () => void }) {
+  return (
+    <nav
+      className="pointer-events-none absolute right-6 top-6 z-10"
+      aria-label="Site links"
+    >
+      <div className="zero-float-card pointer-events-auto flex items-center gap-4 rounded-xl border border-border bg-card/95 px-4 py-2.5 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={onAbout}
+          className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
+        >
+          About VM0
+        </button>
+        <a
+          href="https://vm0.ai/pricing"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
+        >
+          Pricing
+        </a>
+        <a href="/sign-in">
+          <Button size="sm" className="h-9 rounded-lg px-4 text-sm font-medium">
+            Sign in
+          </Button>
+        </a>
+      </div>
+    </nav>
+  );
+}
+
+function TopBarActions() {
+  return (
+    <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+      <button
+        type="button"
+        className="zero-btn-morandi flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors"
+      >
+        <IconCoins size={14} stroke={1.5} />
+        <span>500</span>
+      </button>
+      <button
+        type="button"
+        className="zero-btn-morandi flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors"
+      >
+        <IconUserPlus size={14} stroke={1.5} />
+        <span>Invite</span>
+      </button>
+    </div>
+  );
+}
+
 interface ZeroAppShellProps {
   initialJobAgent?: string | null;
 }
@@ -227,9 +280,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const onboardingReady = onboardingLoadable.state === "hasData";
   const needsOnboarding =
     onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
-  const ONBOARDING_ENABLED = true;
-  const showOnboarding =
-    ONBOARDING_ENABLED && isLoggedIn && onboardingReady && needsOnboarding;
+  const ONBOARDING_ENABLED = false;
+  const showOnboarding = ONBOARDING_ENABLED && isLoggedIn && needsOnboarding;
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentDisplayNameLoadable.state === "hasData";
   const agentDisplayName = agentNameReady
@@ -367,56 +419,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         onResetAgent={() => detach(resetDefaultAgent(), Reason.DomCallback)}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
-        {isLoggedIn && activeId === "chat" && !inSession && (
-          <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
-            <button
-              type="button"
-              className="zero-btn-morandi flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors"
-            >
-              <IconCoins size={14} stroke={1.5} />
-              <span>500</span>
-            </button>
-            <button
-              type="button"
-              className="zero-btn-morandi flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors"
-            >
-              <IconUserPlus size={14} stroke={1.5} />
-              <span>Invite</span>
-            </button>
-          </div>
-        )}
-        {!isLoggedIn && (
-          <nav
-            className="pointer-events-none absolute right-6 top-6 z-10"
-            aria-label="Site links"
-          >
-            <div className="zero-float-card pointer-events-auto flex items-center gap-4 rounded-xl border border-border bg-card/95 px-4 py-2.5 backdrop-blur-sm">
-              <button
-                type="button"
-                onClick={() => setShowAboutPage(true)}
-                className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
-              >
-                About VM0
-              </button>
-              <a
-                href="https://vm0.ai/pricing"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
-              >
-                Pricing
-              </a>
-              <a href="/sign-in">
-                <Button
-                  size="sm"
-                  className="h-9 rounded-lg px-4 text-sm font-medium"
-                >
-                  Sign in
-                </Button>
-              </a>
-            </div>
-          </nav>
-        )}
+        {isLoggedIn && activeId === "chat" && !inSession && <TopBarActions />}
+        {!isLoggedIn && <GuestNavBar onAbout={() => setShowAboutPage(true)} />}
         {showAboutPage ? (
           <ZeroAboutPage onBack={() => setShowAboutPage(false)} />
         ) : (
