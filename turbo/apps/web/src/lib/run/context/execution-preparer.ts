@@ -1,9 +1,5 @@
 import { eq } from "drizzle-orm";
-import type {
-  AgentComposeYaml,
-  ExperimentalFirewall,
-  FirewallRule,
-} from "../../../types/agent-compose";
+import type { AgentComposeYaml } from "../../../types/agent-compose";
 import type { ExecutionContext, RuntimeOrg } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
@@ -17,97 +13,10 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import type { ExperimentalFirewall as CoreExperimentalFirewall } from "@vm0/core";
 import { getOrgData } from "../../org/org-cache-service";
 import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");
-
-/**
- * Framework to auto-injected domain mappings
- * These domains are automatically allowed when firewall is enabled
- */
-const FRAMEWORK_AUTO_DOMAINS: Record<string, string[]> = {
-  "claude-code": ["*.anthropic.com"],
-  codex: ["*.openai.com"],
-};
-
-/**
- * Platform domains that are always auto-injected
- */
-const PLATFORM_AUTO_DOMAINS = ["*.vm0.ai"];
-
-/**
- * Storage domains that are always auto-injected
- * Required for downloading volumes/artifacts from cloud storage
- */
-const STORAGE_AUTO_DOMAINS = [
-  "*.cloudflarestorage.com", // Cloudflare R2
-];
-
-/**
- * Extract and process firewall configuration from agent compose
- * Auto-injects platform and provider domains
- */
-function processFirewallConfig(
-  agentCompose: unknown,
-): CoreExperimentalFirewall | null {
-  const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) return null;
-
-  const agents = Object.values(compose.agents);
-  const firstAgent = agents[0];
-  if (!firstAgent?.experimental_firewall) return null;
-
-  const firewallConfig =
-    firstAgent.experimental_firewall as ExperimentalFirewall;
-  if (!firewallConfig.enabled) return null;
-
-  // Build auto-injected rules
-  const autoRules: FirewallRule[] = [];
-
-  // 1. Add platform domains (highest priority)
-  for (const domain of PLATFORM_AUTO_DOMAINS) {
-    autoRules.push({ domain, action: "ALLOW" });
-  }
-
-  // 2. Add storage domains (required for volume/artifact downloads)
-  for (const domain of STORAGE_AUTO_DOMAINS) {
-    autoRules.push({ domain, action: "ALLOW" });
-  }
-
-  // 3. Add framework-specific domains
-  const framework = firstAgent.framework;
-  const frameworkDomains = FRAMEWORK_AUTO_DOMAINS[framework];
-  if (frameworkDomains) {
-    for (const domain of frameworkDomains) {
-      autoRules.push({ domain, action: "ALLOW" });
-    }
-  }
-
-  // 4. Add user-defined rules
-  const userRules = firewallConfig.rules || [];
-
-  // 5. Check if user has a final rule, if not add default DENY
-  const hasFinalRule = userRules.some((rule) => rule.final !== undefined);
-  const finalRule: FirewallRule = { final: "DENY" };
-
-  // Build complete rules array
-  const allRules: FirewallRule[] = [
-    ...autoRules,
-    ...userRules,
-    ...(hasFinalRule ? [] : [finalRule]),
-  ];
-
-  log.debug(
-    `Firewall config processed: ${autoRules.length} auto-injected, ${userRules.length} user rules, final=${hasFinalRule ? "user" : "default-deny"}`,
-  );
-
-  return {
-    enabled: true,
-    rules: allRules,
-  };
-}
 
 /**
  * Extract working directory from agent compose config
@@ -172,11 +81,8 @@ export async function prepareForExecution(
   const cliAgentType = extractCliAgentType(context.agentCompose);
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
 
-  // Process firewall configuration (validates and auto-injects rules)
-  const experimentalFirewall = processFirewallConfig(context.agentCompose);
-
   log.debug(
-    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, firewall=${experimentalFirewall ? "enabled" : "disabled"}`,
+    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}`,
   );
 
   // Resolve the Agent Org for volume resolution.
@@ -260,7 +166,6 @@ export async function prepareForExecution(
     cliAgentType,
     runnerGroup,
     storageManifest,
-    experimentalFirewall,
     agentOrgInfo.orgSlug,
   );
 
@@ -286,7 +191,6 @@ function buildPreparedContext(
   cliAgentType: string,
   runnerGroup: string | null,
   storageManifest: StorageManifest,
-  experimentalFirewall: CoreExperimentalFirewall | null,
   agentOrgSlug: string | null,
 ): PreparedContext {
   return {
@@ -319,9 +223,6 @@ function buildPreparedContext(
 
     // Memory storage name
     memoryName: context.memoryName || null,
-
-    // Experimental firewall configuration (processed with auto-injected rules)
-    experimentalFirewall,
 
     // Experimental services for proxy-side token replacement
     experimentalServices: context.experimentalServices ?? null,

@@ -18,7 +18,6 @@ export interface AgentDefinition {
   experimental_runner?: {
     group: string;
   };
-  experimental_firewall?: unknown;
   /** @deprecated Server-resolved field */
   image?: string;
   /** @deprecated Server-resolved field */

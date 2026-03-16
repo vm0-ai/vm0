@@ -22,10 +22,6 @@ interface AgentDefinition {
   environment?: Record<string, string>;
   metadata?: { displayName?: string; sound?: string; description?: string };
   experimental_runner?: { group: string };
-  experimental_firewall?: {
-    default: "allow" | "deny";
-    rules: { action: "allow" | "deny"; host: string }[];
-  };
 }
 
 interface VolumeConfig {

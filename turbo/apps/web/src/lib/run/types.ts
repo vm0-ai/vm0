@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { ExperimentalFirewall, ExperimentalServices } from "@vm0/core";
+import type { ExperimentalServices } from "@vm0/core";
 
 /**
  * Run status values
@@ -76,9 +76,6 @@ export interface ExecutionContext {
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   // Injected as TZ environment variable in sandbox if not already set in environment
   userTimezone?: string;
-
-  // Experimental firewall configuration for network egress control
-  experimentalFirewall?: ExperimentalFirewall;
 
   // Experimental services for proxy-side token replacement
   experimentalServices?: ExperimentalServices;

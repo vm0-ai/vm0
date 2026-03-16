@@ -5,30 +5,6 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
- * Firewall rule schema for network egress control
- *
- * Rules can be either:
- * - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
- * - Terminal rule: { final: "DENY" }
- */
-export const firewallRuleSchema = z.object({
-  domain: z.string().optional(),
-  ip: z.string().optional(),
-  /** Terminal rule - value is the action (ALLOW or DENY) */
-  final: z.enum(["ALLOW", "DENY"]).optional(),
-  /** Action for domain/ip rules */
-  action: z.enum(["ALLOW", "DENY"]).optional(),
-});
-
-/**
- * Experimental firewall configuration schema
- */
-export const experimentalFirewallSchema = z.object({
-  enabled: z.boolean(),
-  rules: z.array(firewallRuleSchema).optional(),
-});
-
-/**
  * Runner group format: org/name (e.g., "acme/production")
  */
 export const runnerGroupSchema = z
@@ -157,7 +133,6 @@ export const storedExecutionContextSchema = z.object({
   // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   cliAgentType: z.string(),
-  experimentalFirewall: experimentalFirewallSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics
@@ -197,7 +172,6 @@ export const executionContextSchema = z.object({
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   cliAgentType: z.string(),
   // Experimental firewall configuration
-  experimentalFirewall: experimentalFirewallSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics
@@ -251,8 +225,6 @@ export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
-export type FirewallRule = z.infer<typeof firewallRuleSchema>;
-export type ExperimentalFirewall = z.infer<typeof experimentalFirewallSchema>;
 export type ServiceApiEntry = z.infer<typeof serviceApiEntrySchema>;
 export type ServiceEntry = z.infer<typeof serviceEntrySchema>;
 export type ExperimentalServices = z.infer<typeof experimentalServicesSchema>;

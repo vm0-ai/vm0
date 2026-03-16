@@ -16,35 +16,6 @@ export interface VolumeConfig {
 }
 
 /**
- * Firewall rule for network egress control
- *
- * Rules can be either:
- * - Domain/IP rule: { domain: "*.example.com", action: "ALLOW" }
- * - Terminal rule: { final: "DENY" }
- */
-export interface FirewallRule {
-  /** Domain pattern (e.g., "github.com", "*.anthropic.com") */
-  domain?: string;
-  /** IP address or CIDR range (e.g., "1.2.3.4", "10.0.0.0/8") */
-  ip?: string;
-  /** Terminal rule - value is the action (ALLOW or DENY) */
-  final?: "ALLOW" | "DENY";
-  /** Action for domain/ip rules */
-  action?: "ALLOW" | "DENY";
-}
-
-/**
- * Experimental firewall configuration for network egress control
- * Requires experimental_runner to be configured
- */
-export interface ExperimentalFirewall {
-  /** Enable firewall filtering */
-  enabled: boolean;
-  /** Firewall rules (evaluated top to bottom, first-match-wins) */
-  rules?: FirewallRule[];
-}
-
-/**
  * Agent definition within the agents dictionary
  * The agent name is the key in the dictionary, not a field
  */
@@ -73,12 +44,6 @@ interface AgentDefinition {
   experimental_runner?: {
     group: string;
   };
-  /**
-   * Experimental firewall configuration for network egress control.
-   * Requires experimental_runner to be configured.
-   * When enabled, filters outbound traffic by domain/IP rules.
-   */
-  experimental_firewall?: ExperimentalFirewall;
   /**
    * Expanded service configs for proxy-side token replacement.
    * Resolved from service names at compose time, stored as full objects.
