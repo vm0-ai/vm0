@@ -16,7 +16,7 @@
     "JetBrains Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
 
   /* Sidebar colors - using tokens for dark mode support */
-  --color-sidebar: hsl(var(--gray-50));
+  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-foreground: hsl(var(--gray-950));
   --color-sidebar-border: hsl(var(--gray-200));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
@@ -72,18 +72,26 @@
 /* Pill/tag (e.g. status badge, "Super agent") */
 .zero-app .zero-pill {
   background-color: hsl(var(--gray-0));
-  border-color: hsl(var(--border) / 0.8);
+  border: 0.7px solid hsl(var(--gray-400));
   color: hsl(var(--muted-foreground));
+}
+
+/* Form inputs: match card border, preserve focus ring */
+.zero-app .zero-form-border {
+  border: 0.7px solid hsl(var(--gray-400));
+}
+.zero-app .zero-form-border:focus {
+  border-color: hsl(var(--primary));
 }
 
 /* Zero chip-style gray (tone options, skill tags, Add skill) */
 .zero-app .zero-chip {
   background-color: hsl(var(--gray-50));
-  border-color: hsl(var(--border));
+  border: 0.7px solid hsl(var(--gray-400));
 }
 .zero-app .zero-chip:hover {
   background-color: hsl(var(--gray-100));
-  border-color: hsl(var(--gray-200));
+  border-color: hsl(var(--gray-400));
 }
 
 /* Zero tabs (e.g. All agents / For you / For team) */
@@ -114,7 +122,7 @@
 
 /* Zero left nav */
 .zero-nav {
-  --color-sidebar: hsl(var(--gray-50));
+  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-accent: hsl(var(--muted));
   --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
@@ -124,12 +132,12 @@
 /* Morandi outline buttons */
 .zero-app .zero-btn-morandi {
   background-color: hsl(var(--gray-50));
-  border-color: hsl(var(--border));
+  border: 0.7px solid hsl(var(--gray-400));
   color: hsl(var(--foreground));
 }
 .zero-app .zero-btn-morandi:hover {
   background-color: hsl(var(--gray-100));
-  border-color: hsl(var(--gray-200));
+  border-color: hsl(var(--gray-400));
 }
 
 /* Morandi cards (e.g. suggested prompts) */
@@ -255,12 +263,12 @@
 /* Chat: outline buttons inside dialogue */
 .zero-app .zero-chat-btn {
   background-color: hsl(var(--gray-50));
-  border-color: hsl(var(--border));
+  border: 0.7px solid hsl(var(--gray-400));
   color: hsl(var(--foreground));
 }
 .zero-app .zero-chat-btn:hover {
   background-color: hsl(var(--gray-100));
-  border-color: hsl(var(--gray-200));
+  border-color: hsl(var(--gray-400));
 }
 
 /* Lighter icons and "Recent dialogue" label; other styles unchanged */

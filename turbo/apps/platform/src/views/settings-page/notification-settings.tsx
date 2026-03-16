@@ -46,14 +46,20 @@ export function NotificationSettings() {
         Choose how you get notified when scheduled agent runs complete or fail.
       </p>
       <div className="flex flex-col">
-        <div className="flex items-center gap-4 border-l border-r border-t border-border bg-card p-4 rounded-t-xl">
+        <div
+          className="flex items-center gap-4 bg-card p-4 rounded-t-xl"
+          style={{
+            border: "0.7px solid hsl(var(--gray-400))",
+            borderBottom: "none",
+          }}
+        >
           <div className="shrink-0">
             <img
               src={emailIcon}
               width={28}
               height={28}
               alt=""
-              className="text-foreground"
+              className="opacity-50"
             />
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
@@ -74,9 +80,18 @@ export function NotificationSettings() {
           />
         </div>
 
-        <div className="flex items-center gap-4 border border-border bg-card p-4 rounded-b-xl">
+        <div
+          className="flex items-center gap-4 bg-card p-4 rounded-b-xl"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
           <div className="shrink-0">
-            <img src={slackIcon} width={28} height={28} alt="" />
+            <img
+              src={slackIcon}
+              width={28}
+              height={28}
+              alt=""
+              className="opacity-50"
+            />
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             <div className="text-sm font-medium text-foreground">

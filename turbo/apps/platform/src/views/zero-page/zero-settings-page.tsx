@@ -117,7 +117,7 @@ function ZeroDefaultProvider() {
       <h2 className="text-base font-semibold tracking-tight text-foreground">
         Default model provider
       </h2>
-      <div className="flex flex-col rounded-[var(--zero-card-radius)] border border-[var(--zero-card-border)] bg-card shadow-[var(--zero-card-shadow)]">
+      <div className="zero-card cursor-pointer">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center px-5 py-4">
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             <span className="text-sm font-medium text-foreground">
@@ -135,7 +135,7 @@ function ZeroDefaultProvider() {
             </span>
           ) : (
             <Select value={currentDefault} onValueChange={handleChange}>
-              <SelectTrigger className="w-full sm:w-[260px] h-9 shrink-0 rounded-lg border-border/70">
+              <SelectTrigger className="zero-form-border w-full sm:w-[260px] h-9 shrink-0 rounded-lg">
                 <SelectValue placeholder="Select a default provider" />
               </SelectTrigger>
               <SelectContent>
@@ -230,7 +230,7 @@ function ZeroProviderList() {
                   openEdit(p);
                 }
               }}
-              className="flex flex-col rounded-[var(--zero-card-radius)] border border-[var(--zero-card-border)] bg-card shadow-[var(--zero-card-shadow)] cursor-pointer transition-colors hover:bg-muted/50"
+              className="zero-card cursor-pointer"
             >
               <div className="flex h-14 items-center gap-2.5 px-5">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center">

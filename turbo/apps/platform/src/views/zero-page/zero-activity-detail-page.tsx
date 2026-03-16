@@ -77,7 +77,12 @@ function ActivityNotFound({ onBack }: { onBack: () => void }) {
           This log doesn&apos;t exist or you don&apos;t have permission to view
           it in the current organization.
         </p>
-        <Button variant="outline" size="sm" className="mt-2" onClick={onBack}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi mt-2"
+          onClick={onBack}
+        >
           Back to activity
         </Button>
       </div>

@@ -493,8 +493,10 @@ function RecentChatSection({
               {recentSessionsError}
             </p>
           ) : filteredSessions.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-muted-foreground">
-              {searchTerm.trim() ? "No matching chats" : "No recent chats"}
+            <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+              {searchTerm.trim()
+                ? "No matching chats"
+                : "Your chats will appear here"}
             </p>
           ) : (
             filteredSessions.map((session) => (
@@ -1016,9 +1018,9 @@ export function ZeroSidebar({
                   <img
                     src={iconImg}
                     alt=""
-                    className="h-4 w-4 shrink-0"
-                    width={16}
-                    height={16}
+                    className="h-3.5 w-3.5 shrink-0"
+                    width={14}
+                    height={14}
                   />
                 ) : (
                   <Icon size={16} className="shrink-0" />

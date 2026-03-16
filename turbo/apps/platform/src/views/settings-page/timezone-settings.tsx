@@ -61,10 +61,17 @@ export function TimezoneSettings() {
       <p className="text-sm text-muted-foreground">
         Sets the TZ environment variable for your agent sandbox at runtime.
       </p>
-      <div className="flex items-center gap-4 border border-border bg-card p-4 rounded-xl">
+      <div
+        className="flex items-center gap-4 bg-card p-4 rounded-xl"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      >
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <IconClock size={28} stroke={1.5} className="text-foreground" />
+            <IconClock
+              size={28}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">

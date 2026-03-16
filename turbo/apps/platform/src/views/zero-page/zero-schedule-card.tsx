@@ -1140,6 +1140,7 @@ export function ZeroScheduleCard({
             <Button
               type="button"
               variant="outline"
+              className="zero-btn-morandi"
               onClick={() => setAddScheduleOpen(false)}
             >
               Cancel

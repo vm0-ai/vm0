@@ -129,7 +129,7 @@ export function ZeroSettingsTab({
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
                   placeholder="What should we call them?"
-                  className="h-9"
+                  className="h-9 zero-form-border"
                 />
               </div>
               <div className="flex flex-col gap-2">
@@ -145,7 +145,7 @@ export function ZeroSettingsTab({
                   onChange={(e) => setDesc(e.target.value)}
                   placeholder="What does this agent do?"
                   rows={3}
-                  className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+                  className="zero-form-border w-full rounded-lg bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
                 />
               </div>
               <div
@@ -166,6 +166,7 @@ export function ZeroSettingsTab({
                       key={opt}
                       type="button"
                       onClick={() => setTone(opt)}
+                      style={{ borderWidth: "0.7px" }}
                       className={cn(
                         "rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         tone === opt
@@ -178,7 +179,8 @@ export function ZeroSettingsTab({
                   ))}
                 </div>
                 <div
-                  className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
+                  className="rounded-lg bg-muted/30 px-3 py-2"
+                  style={{ border: "0.7px solid hsl(var(--gray-400))" }}
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -192,7 +194,10 @@ export function ZeroSettingsTab({
                       </div>
                     </div>
                     <div className="flex justify-start">
-                      <div className="zero-chat-bubble-assistant max-w-[85%] rounded-xl border px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200">
+                      <div
+                        className="zero-chat-bubble-assistant max-w-[85%] rounded-xl px-3 py-2 text-sm text-foreground leading-relaxed transition-colors duration-200"
+                        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+                      >
                         {TONE_SAMPLES[tone].zero}
                       </div>
                     </div>

@@ -179,7 +179,7 @@ export function ZeroActivityPage() {
                 value={agentFilter}
                 onValueChange={(v) => setFilter("agent", v)}
               >
-                <SelectTrigger className="h-9 w-auto gap-1.5 rounded-lg border-border bg-card px-3.5 text-sm font-medium text-muted-foreground shadow-[0_1px_3px_0_rgba(0,0,0,0.08)]">
+                <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
                   <IconUsers size={14} stroke={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
@@ -195,7 +195,7 @@ export function ZeroActivityPage() {
                 value={statusFilter}
                 onValueChange={(v) => setFilter("status", v)}
               >
-                <SelectTrigger className="h-9 w-auto gap-1.5 rounded-lg border-border bg-card px-3.5 text-sm font-medium text-muted-foreground shadow-[0_1px_3px_0_rgba(0,0,0,0.08)]">
+                <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
                   <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>

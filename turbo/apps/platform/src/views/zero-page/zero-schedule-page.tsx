@@ -571,7 +571,12 @@ function ScheduleEditDialogInner({
         />
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button
+          type="button"
+          variant="outline"
+          className="zero-btn-morandi"
+          onClick={onClose}
+        >
           Cancel
         </Button>
         <Button

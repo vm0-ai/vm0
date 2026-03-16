@@ -330,7 +330,7 @@ export function ZeroMeetPage({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 shrink-0 gap-2 rounded-lg border-border bg-card px-4 shadow-[0_1px_3px_0_rgba(0,0,0,0.08)] transition-colors hover:bg-muted/60"
+                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors"
                     onClick={() => navigate("/zero/chat")}
                   >
                     <IconMessageCircle size={14} stroke={1.5} />

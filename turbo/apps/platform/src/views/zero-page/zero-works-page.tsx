@@ -1,12 +1,11 @@
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
-  IconSearch,
   IconCircleCheck,
   IconDotsVertical,
   IconDownload,
 } from "@tabler/icons-react";
-import { Button, Input } from "@vm0/ui";
+import { Button } from "@vm0/ui";
 import {
   Popover,
   PopoverContent,
@@ -190,10 +189,6 @@ export function ZeroWorksPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const search$ = useCCState("");
-  const search = useGet(search$);
-  const setSearch = useSet(search$);
-
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
@@ -204,19 +199,6 @@ export function ZeroWorksPage() {
           <p className="mt-0.5 text-sm text-muted-foreground">
             Connect with {agentName} through these channels
           </p>
-          <div className="mt-4 relative">
-            <IconSearch
-              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              size={16}
-              stroke={1.5}
-            />
-            <Input
-              placeholder="Search tools..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="zero-search-input pl-9 h-9 rounded-lg border"
-            />
-          </div>
         </div>
       </header>
 

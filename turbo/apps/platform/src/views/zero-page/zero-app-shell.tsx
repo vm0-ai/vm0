@@ -8,6 +8,7 @@ import {
   type SubagentInfo,
 } from "./zero-sidebar.tsx";
 import { Button } from "@vm0/ui";
+import { IconUserPlus, IconCoins } from "@tabler/icons-react";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
 import { ZeroOnboarding } from "./zero-onboarding.tsx";
@@ -366,6 +367,24 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         onResetAgent={() => detach(resetDefaultAgent(), Reason.DomCallback)}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
+        {isLoggedIn && activeId === "chat" && !inSession && (
+          <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+            <button
+              type="button"
+              className="zero-btn-morandi flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors"
+            >
+              <IconCoins size={14} stroke={1.5} />
+              <span>500</span>
+            </button>
+            <button
+              type="button"
+              className="zero-btn-morandi flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors"
+            >
+              <IconUserPlus size={14} stroke={1.5} />
+              <span>Invite</span>
+            </button>
+          </div>
+        )}
         {!isLoggedIn && (
           <nav
             className="pointer-events-none absolute right-6 top-6 z-10"

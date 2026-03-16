@@ -1,8 +1,13 @@
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { IconSun, IconMoon, IconDeviceDesktop } from "@tabler/icons-react";
+import {
+  IconSun,
+  IconMoon,
+  IconDeviceDesktop,
+  IconPalette,
+} from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
-import { Card, CardContent, cn } from "@vm0/ui";
+import { cn } from "@vm0/ui";
 import { NotificationSettings } from "../settings-page/notification-settings.tsx";
 import { TimezoneSettings } from "../settings-page/timezone-settings.tsx";
 import {
@@ -27,34 +32,50 @@ function AppearanceSettings() {
   const setTheme = useSet(setTheme$);
 
   return (
-    <Card className="zero-card">
-      <CardContent className="py-5 flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-foreground">Theme</span>
-          <p className="text-sm text-muted-foreground">
-            Choose how the interface looks.
-          </p>
-          <div className="flex gap-2 mt-1">
-            {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setTheme(value)}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  currentPref === value
-                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
-                    : "zero-chip text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon size={16} stroke={1.5} />
-                {label}
-              </button>
-            ))}
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Choose how the interface looks.
+      </p>
+      <div
+        className="flex items-center gap-4 p-4 rounded-xl"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      >
+        <div className="shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center">
+            <IconPalette
+              size={28}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
           </div>
         </div>
-      </CardContent>
-    </Card>
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">Theme</div>
+          <div className="text-sm text-muted-foreground">
+            Your preferred color scheme
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTheme(value)}
+              style={{ borderWidth: "0.7px" }}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                currentPref === value
+                  ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                  : "zero-chip text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon size={15} stroke={1.5} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
