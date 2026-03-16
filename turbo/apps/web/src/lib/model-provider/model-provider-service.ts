@@ -289,8 +289,8 @@ export async function upsertModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if this is a new provider and no other default exists for the framework
-  if (wasCreated) {
+  // Assign default if no other default exists for the framework (on create or update)
+  if (!provider!.isDefault) {
     const isDefault = await assignDefaultIfFirst(
       orgId,
       provider!.id,
@@ -514,8 +514,8 @@ export async function upsertMultiAuthModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if this is a new provider and no other default exists for the framework
-  if (wasCreated) {
+  // Assign default if no other default exists for the framework (on create or update)
+  if (!provider!.isDefault) {
     const isDefault = await assignDefaultIfFirst(
       orgId,
       provider!.id,
