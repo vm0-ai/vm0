@@ -198,6 +198,13 @@ export const fetch$ = computed((get) => {
       }
     }
 
-    return await fetch(finalUrl, finalInit);
+    const response = await fetch(finalUrl, finalInit);
+
+    if (response.status === 401) {
+      const clerk = await get(clerk$);
+      await clerk.redirectToSignIn();
+    }
+
+    return response;
   };
 });
