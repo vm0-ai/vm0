@@ -9,7 +9,7 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
-import { resolveOrgOrNull } from "../../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,
   getDatasetName,
@@ -42,7 +42,7 @@ const router = tsr.router(runEventsContract, {
     const { since, limit } = query;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const org = await resolveOrgOrNull(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Verify run exists and belongs to user+org, join with compose version to get framework
     const [runWithCompose] = await globalThis.services.db
@@ -62,7 +62,7 @@ const router = tsr.router(runEventsContract, {
         and(
           eq(agentRuns.id, params.id),
           eq(agentRuns.userId, userId),
-          ...(org ? [eq(agentRuns.orgId, org.orgId)] : []),
+          eq(agentRuns.orgId, org.orgId),
         ),
       )
       .limit(1);
