@@ -5,6 +5,10 @@ description: Control sandbox API access permissions for agents
 
 Capabilities control what API endpoints an agent can access from within its sandbox. By default, sandboxed agents cannot call the VM0 API. Adding capabilities grants specific permissions following the principle of least privilege.
 
+<Callout type="warn">
+Capabilities are currently an experimental feature. The field name and available capabilities may change in future versions.
+</Callout>
+
 ## How Capabilities Work
 
 1. **Define in `vm0.yaml`** - List the capabilities your agent needs under `experimental_capabilities`
@@ -37,9 +41,11 @@ If a request lacks the required capability, the API returns a `403 Forbidden` re
 
 All capabilities follow the `{resource}:{action}` format where action is either `read` or `write`.
 
+[Artifacts](/docs/core-concept/artifact) and [memories](/docs/core-concept/memory) are both runtime dynamic resources, so they share the `artifact:*` capability. Similarly, agent composes and [volumes](/docs/core-concept/volume) are agent static resources sharing the `agent:*` capability.
+
 ## Configuration
 
-Add capabilities to your agent in `vm0.yaml`:
+Add capabilities to your agent in [`vm0.yaml`](/docs/reference/configuration/vm0-yaml):
 
 ```yaml
 version: "1.0"
@@ -111,5 +117,5 @@ Older capability names are automatically normalized to their current equivalents
 | `memory:write` | `artifact:write` |
 
 <Callout type="info">
-Deprecated aliases work at runtime but should not be used in `vm0.yaml`. Use the current capability names in your configuration.
+These aliases still work in `vm0.yaml` for backward compatibility, but new configurations should use the current names listed above.
 </Callout>
