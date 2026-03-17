@@ -14,7 +14,7 @@ const router = tsr.router(userPreferencesContract, {
   /**
    * GET /api/user/preferences - Get user preferences
    */
-  get: async ({ headers }) => {
+  get: async ({ headers }, { request }) => {
     initServices();
 
     const ctx = await getAuthContext(headers.authorization);
@@ -22,8 +22,9 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
+    const orgSlug = new URL(request.url).searchParams.get("org");
     const { sessionClaims } = await auth();
-    const { org } = await resolveOrg(ctx.userId);
+    const { org } = await resolveOrg(ctx.userId, orgSlug);
 
     const prefs = await getUserPreferences(
       org.orgId,
@@ -46,7 +47,7 @@ const router = tsr.router(userPreferencesContract, {
   /**
    * PUT /api/user/preferences - Update user preferences
    */
-  update: async ({ body, headers }) => {
+  update: async ({ body, headers }, { request }) => {
     initServices();
 
     const ctx = await getAuthContext(headers.authorization);
@@ -54,7 +55,8 @@ const router = tsr.router(userPreferencesContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const { org } = await resolveOrg(ctx.userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(ctx.userId, orgSlug);
 
     try {
       const prefs = await updateUserPreferences(org.orgId, ctx.userId, {

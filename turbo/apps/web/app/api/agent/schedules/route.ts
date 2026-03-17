@@ -93,7 +93,7 @@ const router = tsr.router(schedulesMainContract, {
     }
   },
 
-  list: async ({ headers }) => {
+  list: async ({ headers }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -103,12 +103,13 @@ const router = tsr.router(schedulesMainContract, {
     const { userId } = authCtx;
 
     // Resolve active org — scope schedules to the user's current org
+    const orgSlug = new URL(request.url).searchParams.get("org");
     let orgId: string;
     try {
-      const { org } = await resolveOrg(userId);
+      const { org } = await resolveOrg(userId, orgSlug);
       orgId = org.orgId;
     } catch (error) {
-      if (isNotFound(error) || isForbidden(error)) {
+      if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {
         return {
           status: 200 as const,
           body: { schedules: [] },
