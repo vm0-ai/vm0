@@ -7,6 +7,7 @@ import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initZeroActivity$ } from "./zero-activity.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { zeroChatAgentName$, setZeroChatAgent$ } from "./zero-nav.ts";
+import { updatePathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
 
 export const setupZeroPage$ = command(
@@ -28,6 +29,10 @@ export const setupZeroPage$ = command(
       const agent = subagents.find((a) => a.name === agentName);
       if (agent) {
         set(setZeroChatAgent$, { id: agent.id, name: agent.name });
+      } else {
+        // Unknown agent name — clear agent and redirect to /zero
+        set(setZeroChatAgent$, null);
+        set(updatePathname$, "/zero");
       }
     } else {
       set(setZeroChatAgent$, null);
