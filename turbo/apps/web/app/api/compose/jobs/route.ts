@@ -45,7 +45,7 @@ function formatJobResponse(job: {
 }
 
 const router = tsr.router(composeJobsMainContract, {
-  create: async ({ body, headers }) => {
+  create: async ({ body, headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -60,7 +60,8 @@ const router = tsr.router(composeJobsMainContract, {
     const { userId } = authCtx;
 
     // Resolve the caller's org
-    const { org } = await resolveOrg(userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(userId, orgSlug);
 
     // Dispatch based on input type: GitHub URL or platform content
     const isGitHubInput = "githubUrl" in body;

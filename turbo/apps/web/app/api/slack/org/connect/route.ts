@@ -58,7 +58,8 @@ export async function GET(request: Request) {
   }
 
   if (!installation.orgId) {
-    const { org, member } = await resolveOrg(userId);
+    const orgSlug = url.searchParams.get("org");
+    const { org, member } = await resolveOrg(userId, orgSlug);
 
     if (member.role !== "admin") {
       return NextResponse.redirect(

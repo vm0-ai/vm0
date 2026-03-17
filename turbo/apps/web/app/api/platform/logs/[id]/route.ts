@@ -106,7 +106,7 @@ function notFoundResponse() {
 }
 
 const router = tsr.router(platformLogsByIdContract, {
-  getById: async ({ params, headers }) => {
+  getById: async ({ params, headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -117,8 +117,9 @@ const router = tsr.router(platformLogsByIdContract, {
 
     // Resolve active org from JWT / CLI token / default
     let orgId: string;
+    const orgSlug = new URL(request.url).searchParams.get("org");
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId);
+      const { org: resolvedOrg } = await resolveOrg(userId, orgSlug);
       orgId = resolvedOrg.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error)) {

@@ -44,7 +44,8 @@ export async function GET(request: Request) {
   }
 
   const { userId } = authCtx;
-  const { org, member } = await resolveOrg(userId);
+  const orgSlugParam = new URL(request.url).searchParams.get("org");
+  const { org, member } = await resolveOrg(userId, orgSlugParam);
 
   // Find user's connection in any workspace bound to this org
   const [connection] = await globalThis.services.db
@@ -127,7 +128,8 @@ export async function POST(request: Request) {
   const { workspaceId, slackUserId, channelId, threadTs } = parseResult.data;
 
   // Resolve org and check membership
-  const { org, member } = await resolveOrg(userId);
+  const orgSlugParam = new URL(request.url).searchParams.get("org");
+  const { org, member } = await resolveOrg(userId, orgSlugParam);
 
   // Check installation exists
   const [installation] = await globalThis.services.db

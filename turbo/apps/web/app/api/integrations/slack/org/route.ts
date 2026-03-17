@@ -55,7 +55,8 @@ export async function GET(request: Request) {
   }
 
   const { userId } = authCtx;
-  const { org, member } = await resolveOrg(userId);
+  const orgSlugParam = new URL(request.url).searchParams.get("org");
+  const { org, member } = await resolveOrg(userId, orgSlugParam);
 
   const db = globalThis.services.db;
 
@@ -223,16 +224,20 @@ export async function DELETE(request: Request) {
 
   const url = new URL(request.url);
   const action = url.searchParams.get("action");
+  const orgSlug = url.searchParams.get("org");
 
   if (action === "uninstall") {
-    return handleUninstall(authCtx);
+    return handleUninstall(authCtx, orgSlug);
   }
-  return handleDisconnect(authCtx);
+  return handleDisconnect(authCtx, orgSlug);
 }
 
-async function handleUninstall(authCtx: { userId: string }) {
+async function handleUninstall(
+  authCtx: { userId: string },
+  orgSlug: string | null,
+) {
   const { userId } = authCtx;
-  const { org, member } = await resolveOrg(userId);
+  const { org, member } = await resolveOrg(userId, orgSlug);
 
   if (member.role !== "admin") {
     return NextResponse.json(
@@ -321,9 +326,12 @@ async function handleUninstall(authCtx: { userId: string }) {
   return NextResponse.json({ ok: true });
 }
 
-async function handleDisconnect(authCtx: { userId: string }) {
+async function handleDisconnect(
+  authCtx: { userId: string },
+  orgSlug: string | null,
+) {
   const { userId } = authCtx;
-  const { org } = await resolveOrg(userId);
+  const { org } = await resolveOrg(userId, orgSlug);
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 

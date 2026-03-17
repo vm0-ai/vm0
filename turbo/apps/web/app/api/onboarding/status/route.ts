@@ -14,7 +14,7 @@ import { agentComposeApiContentSchema } from "@vm0/core";
 import { auth } from "@clerk/nextjs/server";
 
 const router = tsr.router(onboardingStatusContract, {
-  getStatus: async ({ headers }) => {
+  getStatus: async ({ headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -39,8 +39,9 @@ const router = tsr.router(onboardingStatusContract, {
       sound?: string;
     } | null = null;
 
+    const orgSlug = new URL(request.url).searchParams.get("org");
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId);
+      const { org: resolvedOrg } = await resolveOrg(userId, orgSlug);
       hasOrg = true;
 
       // Check model provider
