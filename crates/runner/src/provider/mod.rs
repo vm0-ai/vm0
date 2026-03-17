@@ -30,12 +30,13 @@ pub trait JobProvider: Send + Sync {
     /// Wait for the next job candidate. Returns `None` on shutdown signal.
     ///
     /// Implementations handle discovery (push/poll) internally. The returned
-    /// `Uuid` is a candidate `run_id` ready to be claimed via
+    /// tuple contains the candidate `run_id` and the profile name (e.g.
+    /// `"vm0/default"`) for resource-budget pre-checking before
     /// [`claim()`](JobProvider::claim).
     ///
     /// This method has **no server-side side effects** and can be safely
     /// dropped (cancelled) at any `.await` point.
-    async fn discover(&self) -> Option<Uuid>;
+    async fn discover(&self) -> Option<(Uuid, String)>;
 
     /// Claim a discovered job. Returns `None` if the job was already claimed
     /// by another runner or an error occurred.

@@ -91,14 +91,14 @@ impl LocalProvider {
 
 #[async_trait::async_trait]
 impl JobProvider for LocalProvider {
-    async fn discover(&self) -> Option<Uuid> {
+    async fn discover(&self) -> Option<(Uuid, String)> {
         loop {
             if self.cancel.is_cancelled() {
                 return None;
             }
             if let Some(job_id) = self.find_unclaimed_job() {
                 info!(run_id = %job_id, "local: job discovered");
-                return Some(job_id);
+                return Some((job_id, crate::profile::DEFAULT_PROFILE.to_owned()));
             }
             tokio::select! {
                 () = self.cancel.cancelled() => return None,
@@ -228,8 +228,9 @@ mod tests {
         let job_id = Uuid::new_v4();
         write_job(dir.path(), job_id, "hello world");
 
-        let run_id = provider.discover().await.unwrap();
+        let (run_id, profile) = provider.discover().await.unwrap();
         assert_eq!(run_id, job_id);
+        assert_eq!(profile, crate::profile::DEFAULT_PROFILE);
 
         let ctx = provider.claim(run_id).await.unwrap();
         assert_eq!(ctx.run_id, run_id);
@@ -265,7 +266,7 @@ mod tests {
         write_job(dir.path(), job2, "available");
         std::fs::write(dir.path().join(format!("{job1}.claim")), b"").unwrap();
 
-        let run_id = provider.discover().await.unwrap();
+        let (run_id, _) = provider.discover().await.unwrap();
         assert_eq!(run_id, job2);
     }
 
@@ -279,13 +280,13 @@ mod tests {
         let job2 = Uuid::new_v4();
         write_job(dir.path(), job1, "job1");
 
-        let run_id1 = provider.discover().await.unwrap();
+        let (run_id1, _) = provider.discover().await.unwrap();
         let ctx1 = provider.claim(run_id1).await.unwrap();
         assert_eq!(ctx1.prompt, "job1");
 
         write_job(dir.path(), job2, "job2");
 
-        let run_id2 = provider.discover().await.unwrap();
+        let (run_id2, _) = provider.discover().await.unwrap();
         let ctx2 = provider.claim(run_id2).await.unwrap();
         assert_eq!(ctx2.prompt, "job2");
         assert_ne!(run_id1, run_id2);
@@ -313,8 +314,8 @@ mod tests {
         let job_id = Uuid::new_v4();
         write_job(dir.path(), job_id, "shared");
 
-        let id_a = provider_a.discover().await.unwrap();
-        let id_b = provider_b.discover().await.unwrap();
+        let (id_a, _) = provider_a.discover().await.unwrap();
+        let (id_b, _) = provider_b.discover().await.unwrap();
         assert_eq!(id_a, job_id);
         assert_eq!(id_b, job_id);
 

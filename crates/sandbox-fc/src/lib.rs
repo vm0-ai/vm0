@@ -15,6 +15,7 @@ mod snapshot;
 pub use api::{ApiClient, ApiError, BalloonStatistics};
 pub use config::{FirecrackerConfig, SnapshotConfig};
 pub use factory::{FirecrackerFactory, PREWARM_SCRIPT, config_hash};
+pub use network::{NetnsPool, NetnsPoolConfig};
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
 };

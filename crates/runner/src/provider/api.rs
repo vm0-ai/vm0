@@ -103,7 +103,7 @@ impl ApiProvider {
 
 #[async_trait::async_trait]
 impl JobProvider for ApiProvider {
-    async fn discover(&self) -> Option<Uuid> {
+    async fn discover(&self) -> Option<(Uuid, String)> {
         let mut state = self.discovery.lock().await;
         loop {
             // Check shutdown
@@ -140,8 +140,9 @@ impl JobProvider for ApiProvider {
                     match event {
                         Some(ably_subscriber::Event::Message(msg)) => {
                             if let Some(notif) = parse_job_notification(&msg) {
-                                info!(run_id = %notif.run_id, profile = ?notif.profile, "ably: job notification");
-                                return Some(notif.run_id);
+                                let profile = notif.profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                                info!(run_id = %notif.run_id, %profile, "ably: job notification");
+                                return Some((notif.run_id, profile));
                             }
                         }
                         Some(ably_subscriber::Event::Connected) => {
@@ -177,9 +178,10 @@ impl JobProvider for ApiProvider {
                     *poll_now = false;
                     match self.api.poll(&self.group).await {
                         Ok(Some(job)) => {
-                            info!(run_id = %job.run_id, "poll: job found");
+                            let profile = job.experimental_profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                            info!(run_id = %job.run_id, %profile, "poll: job found");
                             *poll_now = true;
-                            return Some(job.run_id);
+                            return Some((job.run_id, profile));
                         }
                         Ok(None) => {}
                         Err(e) => {
