@@ -6,8 +6,7 @@ import {
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { updateModelProviderModel } from "../../../../../../src/lib/model-provider/model-provider-service";
-import { ORG_SENTINEL_USER_ID } from "../../../../../../src/lib/org/org-sentinel";
+import { updateOrgModelProviderModel } from "../../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
 
@@ -44,9 +43,8 @@ const router = tsr.router(orgModelProvidersUpdateModelContract, {
     });
 
     try {
-      const provider = await updateModelProviderModel(
+      const provider = await updateOrgModelProviderModel(
         org.orgId,
-        ORG_SENTINEL_USER_ID,
         params.type,
         body.selectedModel,
       );

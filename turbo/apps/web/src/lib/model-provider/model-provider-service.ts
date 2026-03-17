@@ -937,6 +937,22 @@ export function setOrgModelProviderDefault(
 }
 
 /**
+ * Update model selection for an org-level provider
+ */
+export function updateOrgModelProviderModel(
+  orgId: string,
+  type: ModelProviderType,
+  selectedModel?: string,
+): Promise<ModelProviderInfo> {
+  return updateModelProviderModel(
+    orgId,
+    ORG_SENTINEL_USER_ID,
+    type,
+    selectedModel,
+  );
+}
+
+/**
  * Get the org-level default model provider for a framework
  */
 export function getOrgDefaultModelProvider(

@@ -267,6 +267,7 @@ describe("Org model-provider API", () => {
       const anthropic = listData.modelProviders.find(
         (p: { type: string }) => p.type === "anthropic-api-key",
       );
+      expect(anthropic).toBeDefined();
       expect(anthropic.isDefault).toBe(false);
     });
 
