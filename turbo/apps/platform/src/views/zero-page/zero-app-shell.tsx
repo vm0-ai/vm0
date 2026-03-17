@@ -216,21 +216,53 @@ function GuestNavBar({ onAbout }: { onAbout: () => void }) {
   );
 }
 
-interface ZeroAppShellProps {
-  initialJobAgent?: string | null;
+function useContentNavigation(resolvedAgentName: string | null) {
+  const navigate = useSet(updatePathname$);
+  const navigateInReact = useSet(navigateInReact$);
+
+  const handleNavigateToSchedule = () => {
+    if (resolvedAgentName) {
+      navigateInReact("/zero/team/:name", {
+        pathParams: { name: resolvedAgentName },
+        searchParams: new URLSearchParams({ tab: "schedule" }),
+      });
+    }
+  };
+
+  const handleNavigateToMeet = (tab?: string) => {
+    if (resolvedAgentName) {
+      const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
+      navigateInReact("/zero/team/:name", {
+        pathParams: { name: resolvedAgentName },
+        searchParams,
+      });
+    }
+  };
+
+  const handleChatAvatarClick = () => {
+    if (resolvedAgentName) {
+      navigateInReact("/zero/team/:name", {
+        pathParams: { name: resolvedAgentName },
+      });
+    }
+  };
+
+  return {
+    navigate,
+    handleNavigateToSchedule,
+    handleNavigateToMeet,
+    handleChatAvatarClick,
+  };
 }
 
-export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
+function useZeroLoadables() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
-  // useLastLoadable keeps the previous value during re-fetches (e.g. Clerk
-  // session touch), preventing the onboarding dialog from unmounting.
   const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
   const onboardingReady = onboardingLoadable.state === "hasData";
   const needsOnboarding =
     onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
-  const showOnboarding = isLoggedIn && needsOnboarding;
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentDisplayNameLoadable.state === "hasData";
   const agentDisplayName = agentNameReady
@@ -250,11 +282,36 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
           displayName: a.displayName,
         }))
       : [];
+  return {
+    isLoggedIn,
+    onboardingReady,
+    needsOnboarding,
+    showOnboarding: isLoggedIn && needsOnboarding,
+    agentNameReady,
+    agentDisplayName,
+    defaultRawName,
+    subagents,
+  };
+}
+
+interface ZeroAppShellProps {
+  initialJobAgent?: string | null;
+}
+
+export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
+  const {
+    isLoggedIn,
+    onboardingReady,
+    showOnboarding,
+    agentNameReady,
+    agentDisplayName,
+    defaultRawName,
+    subagents,
+  } = useZeroLoadables();
   const currentChatAgentId = useGet(zeroChatAgentId$);
   const setChatAgent = useSet(setZeroChatAgent$);
 
   const activeId = useGet(zeroActiveId$);
-  const setActiveId = useSet(setZeroActiveId$);
   const avatarIndex$ = useCCState(0);
   const avatarIndex = useGet(avatarIndex$);
   const setAvatarIndex = useSet(avatarIndex$);
@@ -293,20 +350,26 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   // Sync URL thread ID to chat signal (skip if signal already matches)
   useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
 
+  const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
+  const {
+    navigate,
+    handleNavigateToSchedule,
+    handleNavigateToMeet,
+    handleChatAvatarClick,
+  } = useContentNavigation(resolvedAgentName);
+
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
     set(navigateToZeroSession$, sessionId);
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
-  const navigate = useSet(updatePathname$);
 
   const handleNewChat = (agent: { id: string; name: string } | null) => {
     setChatAgent(agent);
     startNewSession();
-    if (agent) {
-      navigate(`/zero/talk/${encodeURIComponent(agent.name)}`);
-    } else {
-      setActiveId("chat");
-    }
+    const target = agent
+      ? `/zero/talk/${encodeURIComponent(agent.name)}`
+      : "/zero";
+    navigate(target);
   };
 
   const handleSendFromDemo$ = useCommand(
@@ -341,7 +404,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const navigateInReact = useSet(navigateInReact$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
 
   const sidebarCollapsed$ = useCCState(false);
@@ -386,39 +448,13 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
             selectedAgentName={initialJobAgent}
-            onNavigateToSchedule={() => {
-              const agentName = selectedSubagent?.name ?? defaultRawName;
-              if (agentName) {
-                navigateInReact("/zero/team/:name", {
-                  pathParams: { name: agentName },
-                  searchParams: new URLSearchParams({ tab: "schedule" }),
-                });
-              }
-            }}
-            onNavigateToMeet={(tab) => {
-              const agentName = selectedSubagent?.name ?? defaultRawName;
-              if (agentName) {
-                const searchParams = tab
-                  ? new URLSearchParams({ tab })
-                  : undefined;
-                navigateInReact("/zero/team/:name", {
-                  pathParams: { name: agentName },
-                  searchParams,
-                });
-              }
-            }}
+            onNavigateToSchedule={handleNavigateToSchedule}
+            onNavigateToMeet={handleNavigateToMeet}
             onBackFromSession={handleBackFromSession}
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}
-            onChatAvatarClick={() => {
-              const agentName = selectedSubagent?.name ?? defaultRawName;
-              if (agentName) {
-                navigateInReact("/zero/team/:name", {
-                  pathParams: { name: agentName },
-                });
-              }
-            }}
+            onChatAvatarClick={handleChatAvatarClick}
             onCycleZeroAvatar={cycleZeroAvatar}
           />
         )}
