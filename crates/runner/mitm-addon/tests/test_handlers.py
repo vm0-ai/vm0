@@ -119,7 +119,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -164,7 +164,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -199,6 +199,13 @@ class TestRequestHandler:
         assert flow.response.status_code == 403
         assert flow.metadata["firewall_action"] == "DENY"
         assert flow.metadata["firewall_rule"] == "firewall:https://api.github.com"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "firewall_permission_denied"
+        assert body["method"] == "GET"
+        assert body["path"] == "/orgs"
+        assert body["firewall"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "hint" in body
 
     def test_firewall_permission_allows_matched(self, tmp_path):
         """Firewall with permissions and matching rule calls handler with match_info."""
@@ -208,7 +215,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",
@@ -257,7 +264,7 @@ class TestRequestHandler:
                     "runId": "run-conn-1",
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
-                    "firewall": [
+                    "firewalls": [
                         {"name": "github", "ref": "github", "apis": [
                             {
                                 "base": "https://api.github.com",

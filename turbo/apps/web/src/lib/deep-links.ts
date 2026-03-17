@@ -2,10 +2,12 @@
 // Keyword detection for deep links (shared across Slack and Telegram)
 // ---------------------------------------------------------------------------
 
+type KeywordCategory = "provider" | "connector";
+
 interface KeywordLinkMapping {
   keywords: string[];
   label: string;
-  path: string;
+  category: KeywordCategory;
   emoji: string;
 }
 
@@ -19,7 +21,7 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
   {
     keywords: ["model provider", "provider not configured"],
     label: "Configure model providers",
-    path: "/zero/settings",
+    category: "provider",
     emoji: "🔑",
   },
   {
@@ -38,36 +40,52 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
       "tool not found",
     ],
     label: "Configure connectors",
-    path: "/zero/meet",
+    category: "connector",
     emoji: "🔌",
   },
 ]);
+
+function buildPath(category: KeywordCategory, agentName?: string): string {
+  if (category === "provider") {
+    return "/zero/settings";
+  }
+  // Connector links route to the agent's team page with connectors tab
+  if (agentName) {
+    return `/zero/team/${encodeURIComponent(agentName)}?tab=connectors`;
+  }
+  return "/zero/team";
+}
 
 /**
  * Detect deep links based on keywords in the response text.
  *
  * Scans the text for known configuration-related keywords and returns
  * matching platform deep links (deduplicated by destination path).
+ *
+ * When `agentName` is provided, connector links point to
+ * `/zero/team/{agentName}?tab=connectors` instead of the generic team page.
  */
 export function detectDeepLinks(
   responseText: string,
   platformUrl: string,
+  agentName?: string,
 ): DeepLink[] {
   const lowerText = responseText.toLowerCase();
   const seen = new Set<string>();
   const links: DeepLink[] = [];
 
   for (const mapping of KEYWORD_LINK_MAPPINGS) {
-    if (seen.has(mapping.path)) {
+    const path = buildPath(mapping.category, agentName);
+    if (seen.has(path)) {
       continue;
     }
     const matched = mapping.keywords.some((kw) => lowerText.includes(kw));
     if (matched) {
-      seen.add(mapping.path);
+      seen.add(path);
       links.push({
         emoji: mapping.emoji,
         label: mapping.label,
-        url: `${platformUrl}${mapping.path}`,
+        url: `${platformUrl}${path}`,
       });
     }
   }

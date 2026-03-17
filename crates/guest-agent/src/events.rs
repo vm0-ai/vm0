@@ -3,6 +3,7 @@
 //! Extracts session ID from the `system/init` event and persists it for
 //! checkpoint use.
 
+use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::http;
@@ -61,13 +62,7 @@ pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Opti
 
 /// POST a prepared event payload to the webhook endpoint.
 pub async fn post_event(payload: &Value) -> Result<(), AgentError> {
-    match http::post_json(
-        urls::events_url(),
-        payload,
-        crate::constants::HTTP_MAX_RETRIES,
-    )
-    .await
-    {
+    match http::post_json(urls::events_url(), payload, constants::HTTP_MAX_RETRIES).await {
         Ok(_) => Ok(()),
         Err(e) => {
             log_error!(LOG_TAG, "Failed to send event after retries");

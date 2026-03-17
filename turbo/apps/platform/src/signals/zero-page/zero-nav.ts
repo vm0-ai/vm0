@@ -13,7 +13,6 @@ const {
 function isValidTab(tab: string): tab is ZeroNavId {
   return (
     tab === "chat" ||
-    tab === "meet" ||
     tab === "schedule" ||
     tab === "team" ||
     tab === "activity" ||

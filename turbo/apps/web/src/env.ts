@@ -31,7 +31,7 @@ function initEnv() {
       DB_DRIVER: z.enum(["pg", "neon"]).default("neon"),
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
-      VM0_API_URL: z.string().url().optional(),
+      VM0_API_URL: z.url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
       VERCEL_URL: z.string().optional(),
       R2_ACCOUNT_ID: z.string().min(1),
@@ -39,11 +39,11 @@ function initEnv() {
       R2_SECRET_ACCESS_KEY: z.string().min(1),
       R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
       // S3-compatible storage overrides (MinIO, AWS S3, etc.)
-      S3_ENDPOINT: z.string().url().optional(),
+      S3_ENDPOINT: z.url().optional(),
       S3_REGION: z.string().min(1).optional(),
       S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional(),
       // Public S3 endpoint for presigned URLs (reachable from CLI / browsers)
-      S3_PUBLIC_ENDPOINT: z.string().url().optional(),
+      S3_PUBLIC_ENDPOINT: z.url().optional(),
       SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       RUNNER_DEFAULT_GROUP: z.string().min(1).optional(), // Default runner group for domain-based rollout (e.g. "vm0/production")
@@ -55,9 +55,9 @@ function initEnv() {
       SLACK_CLIENT_ID: z.string().min(1).optional(),
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
-      SLACK_REDIRECT_BASE_URL: z.string().url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
+      SLACK_REDIRECT_BASE_URL: z.url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
       VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new integrations (format: "org/name")
-      VM0_TUNNEL_URL: z.string().url().optional(), // Tunnel URL for local development webhooks
+      VM0_TUNNEL_URL: z.url().optional(), // Tunnel URL for local development webhooks
       // LLM API
       OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
       // Ahrefs OAuth (for connector)
@@ -171,7 +171,7 @@ function initEnv() {
       RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
       RESEND_FROM_DOMAIN: z.string().min(1).optional(),
       // Sentry (used by both server and client)
-      SENTRY_DSN_WEB: z.string().url().optional(),
+      SENTRY_DSN_WEB: z.url().optional(),
       SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
       SENTRY_ORG: z.string().min(1).optional(),
       SENTRY_PROJECT: z.string().min(1).optional(),
@@ -188,20 +188,20 @@ function initEnv() {
       // Dev/test flags
       USE_MOCK_CLAUDE: z.enum(["true", "false"]).optional(),
       VM0_DEBUG: z.string().optional(),
-      CLAUDE_CODE_VERSION_URL: z.string().url().optional(),
+      CLAUDE_CODE_VERSION_URL: z.url().optional(),
       // Vercel platform detection
       VERCEL: z.string().optional(),
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
-      NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+      NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
       // Blog/content config
-      NEXT_PUBLIC_BASE_URL: z.string().url().optional(),
+      NEXT_PUBLIC_BASE_URL: z.url().optional(),
       NEXT_PUBLIC_DATA_SOURCE: z.string().optional(),
-      NEXT_PUBLIC_STRAPI_URL: z.string().url().optional(),
+      NEXT_PUBLIC_STRAPI_URL: z.url().optional(),
       // Platform UI URL (for settings page links, Navbar, LandingPage)
-      NEXT_PUBLIC_PLATFORM_URL: z.string().url(),
+      NEXT_PUBLIC_PLATFORM_URL: z.url(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,

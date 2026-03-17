@@ -18,9 +18,25 @@ import {
   IconSearch,
   IconX,
   IconEdit,
-  IconChevronDown,
+  IconGripVertical,
   IconLayoutSidebarLeftCollapse,
 } from "@tabler/icons-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { SessionListItem } from "@vm0/core";
 import {
   DropdownMenu,
@@ -40,6 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
   cn,
+  Button,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
@@ -51,23 +68,47 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
+import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatars.ts";
+import { Link, SimpleLink } from "../router/link.tsx";
 
 /** Max pinned sub-agents (default agent counts as 1, total slots = 5). */
 const MAX_PINNED = 4;
 
-const AGENT_AVATARS = [
+export const AGENT_AVATARS = [
   "/avatars/avatar-1.png",
   "/avatars/avatar-2.png",
   "/avatars/avatar-3.png",
   "/avatars/avatar-4.png",
 ] as const;
 
-export function getAgentAvatar(name: string): string {
+function getAgentAvatar(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = (hash * 31 + name.charCodeAt(i)) | 0;
   }
   return AGENT_AVATARS[Math.abs(hash) % AGENT_AVATARS.length];
+}
+
+/**
+ * Reactive hook that returns the agent avatar, respecting any user override.
+ */
+export function useAgentAvatar(name: string): string {
+  const overrides = useGet(agentAvatarOverrides$);
+  return overrides[name] ?? getAgentAvatar(name);
+}
+
+/** Reactive avatar image that respects user overrides. */
+function AgentAvatarImg({
+  name,
+  alt,
+  className,
+}: {
+  name: string;
+  alt: string;
+  className: string;
+}) {
+  const src = useAgentAvatar(name);
+  return <img src={src} alt={alt} className={className} />;
 }
 
 export interface SubagentInfo {
@@ -78,7 +119,6 @@ export interface SubagentInfo {
 
 export type ZeroNavId =
   | "chat"
-  | "meet"
   | "schedule"
   | "team"
   | "activity"
@@ -418,11 +458,14 @@ function RecentChatSection({
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
       {searchOpen ? (
-        <div className="shrink-0 flex items-center gap-2 h-8 rounded-lg p-2 bg-sidebar-accent/50">
+        <div
+          className="shrink-0 flex items-center gap-2 h-8 rounded-lg px-2.5 bg-sidebar-accent/60"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
           <IconSearch
-            size={13}
+            size={14}
             stroke={1.5}
-            className="shrink-0 text-sidebar-foreground/70"
+            className="shrink-0 text-sidebar-foreground/50"
           />
           <input
             type="text"
@@ -430,7 +473,7 @@ function RecentChatSection({
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search chats..."
             autoFocus
-            className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
           />
           <button
             type="button"
@@ -438,7 +481,7 @@ function RecentChatSection({
               setSearchOpen(false);
               setSearchTerm("");
             }}
-            className="shrink-0 text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
+            className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             aria-label="Close search"
           >
             <IconX size={13} stroke={1.5} />
@@ -477,15 +520,21 @@ function RecentChatSection({
           ) : filteredSessions.length === 0 ? (
             <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
               {searchTerm.trim()
-                ? "No matching chats"
-                : "Your chats will appear here"}
+                ? "No chats match your search"
+                : "Start a conversation and it'll show up here"}
             </p>
           ) : (
             filteredSessions.map((session) => (
-              <button
+              <SimpleLink
                 key={session.id}
-                type="button"
-                onClick={() => onRecentSelect?.(session.id)}
+                href={`/zero/chat/${session.id}`}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onRecentSelect?.(session.id);
+                }}
                 className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
                   selectedRecentId === session.id
                     ? "bg-sidebar-active text-sidebar-primary"
@@ -495,11 +544,59 @@ function RecentChatSection({
                 <span className="truncate min-w-0 flex-1">
                   {session.preview ?? "New chat"}
                 </span>
-              </button>
+              </SimpleLink>
             ))
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SortablePinnedAgent({
+  agent,
+  onUnpin,
+}: {
+  agent: SubagentInfo;
+  onUnpin: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: agent.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
+    >
+      <button
+        type="button"
+        className="shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors touch-none"
+        {...attributes}
+        {...listeners}
+      >
+        <IconGripVertical size={14} />
+      </button>
+      <AgentAvatarImg
+        name={agent.name}
+        alt={agent.displayName ?? agent.name}
+        className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+      />
+      <span className="text-sm text-foreground flex-1 truncate">
+        {agent.displayName ?? agent.name}
+      </span>
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors p-1"
+        onClick={onUnpin}
+        aria-label={`Unpin ${agent.displayName ?? agent.name}`}
+      >
+        <IconX size={14} />
+      </button>
     </div>
   );
 }
@@ -529,21 +626,26 @@ function ManagePinnedAgentsDialog({
 
   const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
 
-  const moveUp = (idx: number) => {
-    if (idx <= 0) {
-      return;
-    }
-    const next = [...pinnedIds];
-    [next[idx - 1], next[idx]] = [next[idx]!, next[idx - 1]!];
-    onPinnedIdsChange(next);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
-  const moveDown = (idx: number) => {
-    if (idx >= pinnedIds.length - 1) {
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+    const oldIndex = pinnedIds.indexOf(String(active.id));
+    const newIndex = pinnedIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) {
       return;
     }
     const next = [...pinnedIds];
-    [next[idx], next[idx + 1]] = [next[idx + 1]!, next[idx]!];
+    next.splice(oldIndex, 1);
+    next.splice(newIndex, 0, pinnedIds[oldIndex]!);
     onPinnedIdsChange(next);
   };
 
@@ -575,10 +677,8 @@ function ManagePinnedAgentsDialog({
           </p>
         </DialogHeader>
 
-        <div className="px-5 pb-2">
-          {/* Zero — always pinned */}
-          <div className="flex items-center gap-3 px-1 py-2.5 rounded-lg">
-            <div className="w-5 shrink-0" />
+        <div className="px-5 pb-1">
+          <div className="flex items-center gap-2 px-1 py-2.5 rounded-lg">
             <img
               src={zeroAvatarSrc}
               alt={displayName}
@@ -587,71 +687,42 @@ function ManagePinnedAgentsDialog({
             <span className="text-sm font-medium text-foreground flex-1 truncate">
               {displayName}
             </span>
-            <span className="text-xs text-muted-foreground mr-1">Main</span>
+            <span className="text-[11px] text-muted-foreground/60 mr-0.5">
+              Lead
+            </span>
           </div>
         </div>
 
         {orderedPinned.length > 0 && (
-          <div className="px-5 pb-2">
-            <div className="border-t border-border/60 mb-2" />
+          <div className="px-5 pb-1">
             <span className="text-xs font-medium text-muted-foreground px-1">
               Pinned
             </span>
-            <div className="flex flex-col mt-1">
-              {orderedPinned.map((agent, idx) => (
-                <div
-                  key={agent.id}
-                  className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
-                >
-                  <div className="flex flex-col shrink-0 w-5 items-center gap-0.5">
-                    <button
-                      type="button"
-                      className={cn(
-                        "text-muted-foreground/40 hover:text-foreground transition-colors",
-                        idx === 0 && "invisible",
-                      )}
-                      onClick={() => moveUp(idx)}
-                      aria-label="Move up"
-                    >
-                      <IconChevronDown size={14} className="rotate-180" />
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "text-muted-foreground/40 hover:text-foreground transition-colors",
-                        idx === orderedPinned.length - 1 && "invisible",
-                      )}
-                      onClick={() => moveDown(idx)}
-                      aria-label="Move down"
-                    >
-                      <IconChevronDown size={14} />
-                    </button>
-                  </div>
-                  <img
-                    src={getAgentAvatar(agent.name)}
-                    alt={agent.displayName ?? agent.name}
-                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                  />
-                  <span className="text-sm text-foreground flex-1 truncate">
-                    {agent.displayName ?? agent.name}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-muted-foreground/50 hover:text-destructive transition-colors p-1"
-                    onClick={() => togglePin(agent.id)}
-                    aria-label={`Unpin ${agent.displayName ?? agent.name}`}
-                  >
-                    <IconPlus size={14} className="rotate-45" />
-                  </button>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={orderedPinned.map((a) => a.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="flex flex-col mt-1">
+                  {orderedPinned.map((agent) => (
+                    <SortablePinnedAgent
+                      key={agent.id}
+                      agent={agent}
+                      onUnpin={() => togglePin(agent.id)}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
           </div>
         )}
 
         {unpinned.length > 0 && (
           <div className="px-5 pb-5">
-            <div className="border-t border-border/60 mb-2" />
             <span className="text-xs font-medium text-muted-foreground px-1">
               Available agents
             </span>
@@ -659,11 +730,10 @@ function ManagePinnedAgentsDialog({
               {unpinned.map((agent) => (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors"
                 >
-                  <div className="w-5 shrink-0" />
-                  <img
-                    src={getAgentAvatar(agent.name)}
+                  <AgentAvatarImg
+                    name={agent.name}
                     alt={agent.displayName ?? agent.name}
                     className="h-8 w-8 shrink-0 rounded-lg object-cover object-top opacity-60"
                   />
@@ -673,10 +743,10 @@ function ManagePinnedAgentsDialog({
                   <button
                     type="button"
                     className={cn(
-                      "transition-colors p-1 text-xs font-medium",
+                      "transition-colors px-2 py-0.5 rounded-md text-xs font-medium",
                       pinnedIds.length >= MAX_PINNED
                         ? "text-muted-foreground/30 cursor-not-allowed"
-                        : "text-primary hover:text-primary/80",
+                        : "text-primary hover:text-primary/80 hover:bg-primary/10",
                     )}
                     onClick={() => togglePin(agent.id)}
                     disabled={pinnedIds.length >= MAX_PINNED}
@@ -691,12 +761,21 @@ function ManagePinnedAgentsDialog({
 
         {subagents.length === 0 && (
           <div className="px-5 pb-5">
-            <div className="border-t border-border/60 mb-2" />
             <p className="text-xs text-muted-foreground px-1 py-2">
               No sub-agents available yet.
             </p>
           </div>
         )}
+
+        <div className="px-5 pb-5 pt-2">
+          <Button
+            className="w-full"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -721,9 +800,6 @@ export function ZeroSidebar({
   onResetAgent,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
-  const chatExpanded$ = useCCState(true);
-  const chatExpanded = useGet(chatExpanded$);
-  const setChatExpanded = useSet(chatExpanded$);
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
@@ -786,9 +862,16 @@ export function ZeroSidebar({
               {allNavItems.map(({ id, label, icon: Icon }) => (
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => {
+                    <Link
+                      pathname={id === "chat" ? "/zero" : "/zero/:tab"}
+                      options={
+                        id === "chat" ? undefined : { pathParams: { tab: id } }
+                      }
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                          return;
+                        }
+                        e.preventDefault();
                         if (id === "chat") {
                           onSelect("chat");
                           onNewChat?.(null);
@@ -803,7 +886,7 @@ export function ZeroSidebar({
                       }`}
                     >
                       <Icon size={16} className="shrink-0" />
-                    </button>
+                    </Link>
                   </TooltipTrigger>
                   <TooltipContent side="right">
                     <p className="text-xs">{label}</p>
@@ -856,10 +939,17 @@ export function ZeroSidebar({
             </div>
             <div className="flex flex-col gap-1">
               {manageNav.map(({ id, label, icon: Icon }) => (
-                <button
+                <Link
                   key={id}
-                  type="button"
-                  onClick={() => onSelect(id)}
+                  pathname="/zero/:tab"
+                  options={{ pathParams: { tab: id } }}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                      return;
+                    }
+                    e.preventDefault();
+                    onSelect(id);
+                  }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     activeId === id
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
@@ -868,105 +958,66 @@ export function ZeroSidebar({
                 >
                   <Icon size={16} className="shrink-0" />
                   <span className="truncate">{label}</span>
-                </button>
+                </Link>
               ))}
             </div>
           </div>
 
           {/* Chat section */}
           <div className="shrink-0 mt-4">
-            <button
-              type="button"
-              className="flex h-7 w-full items-center gap-1 px-2 text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
-              onClick={() => setChatExpanded(!chatExpanded)}
-            >
-              <span className="text-[13px] font-medium truncate">
+            <div className="h-7 flex items-center pl-2">
+              <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
                 Talk to {talkToLabel}
               </span>
-              <IconChevronDown
-                size={14}
-                className={`shrink-0 transition-transform ${chatExpanded ? "" : "-rotate-90"}`}
-              />
-            </button>
-            {chatExpanded && (
-              <div className="flex items-center gap-1.5 px-2 pb-1 pt-1">
-                <TooltipProvider delayDuration={300}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
-                          currentChatAgentId === null
-                            ? "bg-foreground/10"
-                            : "hover:bg-foreground/5"
-                        }`}
-                        onClick={() => onNewChat?.(null)}
-                      >
-                        <img
-                          src={zeroAvatarSrc}
-                          alt={displayName}
-                          className="h-full w-full object-cover object-top"
-                        />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="text-xs">
-                      {displayName}
-                    </TooltipContent>
-                  </Tooltip>
-                  {pinnedAgents.map((agent) => (
-                    <Tooltip key={agent.id}>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
-                            currentChatAgentId === agent.id
-                              ? "bg-foreground/10"
-                              : "hover:bg-foreground/5"
-                          }`}
-                          onClick={() => onNewChat?.(agent.id)}
-                        >
-                          <img
-                            src={getAgentAvatar(agent.name)}
-                            alt={agent.displayName ?? agent.name}
-                            className="h-full w-full object-cover object-top"
-                          />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="text-xs">
-                        {agent.displayName ?? agent.name}
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-dashed border-sidebar-foreground/25 text-sidebar-foreground/30 hover:border-sidebar-foreground/40 hover:text-sidebar-foreground/60 transition-colors"
-                        aria-label="Manage pinned agents"
-                        onClick={() => setManagePinnedOpen(true)}
-                      >
-                        <IconPlus size={14} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="text-xs">
-                      Manage pinned agents
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            )}
-            <div className="flex flex-col gap-1 mt-1">
+            </div>
+            <div className="flex flex-col gap-0.5">
               <button
                 type="button"
-                onClick={() => onSelect("chat")}
-                className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                  activeId === "chat" && !selectedRecentId
+                className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                  activeId === "chat" && currentChatAgentId === null
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
+                onClick={() => onNewChat?.(null)}
               >
-                <IconEdit size={16} className="shrink-0" />
-                <span className="truncate">New chat</span>
+                <img
+                  src={zeroAvatarSrc}
+                  alt={displayName}
+                  className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                />
+                <span className="truncate">{displayName}</span>
+              </button>
+              {pinnedAgents.map((agent) => (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                    activeId === "chat" && currentChatAgentId === agent.id
+                      ? "bg-sidebar-active text-sidebar-primary font-medium"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                  onClick={() => onNewChat?.(agent.id)}
+                >
+                  <AgentAvatarImg
+                    name={agent.name}
+                    alt={agent.displayName ?? agent.name}
+                    className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                  />
+                  <span className="truncate">
+                    {agent.displayName ?? agent.name}
+                  </span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200"
+                aria-label="Manage pinned agents"
+                onClick={() => setManagePinnedOpen(true)}
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
+                  <IconPlus size={12} />
+                </span>
+                <span className="truncate">Pin agent</span>
               </button>
             </div>
           </div>
@@ -985,10 +1036,17 @@ export function ZeroSidebar({
         <div className="p-2">
           <div className="flex flex-col gap-1">
             {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
-              <button
+              <Link
                 key={id}
-                type="button"
-                onClick={() => onSelect(id)}
+                pathname="/zero/:tab"
+                options={{ pathParams: { tab: id } }}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onSelect(id);
+                }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   activeId === id
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
@@ -1007,7 +1065,7 @@ export function ZeroSidebar({
                   <Icon size={16} className="shrink-0" />
                 )}
                 <span className="truncate">{label}</span>
-              </button>
+              </Link>
             ))}
             {/* Account dropdown */}
             <AccountDropdown

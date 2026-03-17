@@ -40,6 +40,7 @@ interface ResolvedCompose {
   agentComposeVersionId: string;
   agentComposeName?: string;
   composeId?: string;
+  composeOrgId?: string;
 }
 
 type ErrorResponse = {
@@ -80,7 +81,11 @@ async function resolveNewRun(body: {
 }): Promise<ResolvedCompose | ErrorResponse> {
   if (body.agentComposeVersionId) {
     const [versionRow] = await globalThis.services.db
-      .select({ composeName: agentComposes.name })
+      .select({
+        composeName: agentComposes.name,
+        composeOrgId: agentComposes.orgId,
+        composeId: agentComposes.id,
+      })
       .from(agentComposeVersions)
       .leftJoin(
         agentComposes,
@@ -92,6 +97,8 @@ async function resolveNewRun(body: {
     return {
       agentComposeVersionId: body.agentComposeVersionId,
       agentComposeName: versionRow?.composeName || undefined,
+      composeId: versionRow?.composeId || undefined,
+      composeOrgId: versionRow?.composeOrgId || undefined,
     };
   }
 
@@ -100,6 +107,7 @@ async function resolveNewRun(body: {
     .select({
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, composeId))
@@ -130,6 +138,7 @@ async function resolveNewRun(body: {
     agentComposeVersionId: compose.headVersionId,
     agentComposeName: compose.name || undefined,
     composeId,
+    composeOrgId: compose.orgId,
   };
 }
 
@@ -154,7 +163,11 @@ async function resolveCheckpointResume(
   }
 
   const [versionWithCompose] = await globalThis.services.db
-    .select({ composeName: agentComposes.name })
+    .select({
+      composeName: agentComposes.name,
+      composeOrgId: agentComposes.orgId,
+      composeId: agentComposes.id,
+    })
     .from(agentComposeVersions)
     .leftJoin(
       agentComposes,
@@ -166,6 +179,8 @@ async function resolveCheckpointResume(
   return {
     agentComposeVersionId,
     agentComposeName: versionWithCompose?.composeName || undefined,
+    composeId: versionWithCompose?.composeId || undefined,
+    composeOrgId: versionWithCompose?.composeOrgId || undefined,
   };
 }
 
@@ -192,6 +207,7 @@ async function resolveSessionContinue(
     .select({
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, sessionData.agentComposeId))
@@ -225,6 +241,7 @@ async function resolveSessionContinue(
     agentComposeVersionId: compose.headVersionId,
     agentComposeName: compose.name || undefined,
     composeId: sessionData.agentComposeId,
+    composeOrgId: compose.orgId,
   };
 }
 
@@ -441,6 +458,16 @@ const router = tsr.router(runsMainContract, {
     // The actual variable fetching happens in build-context.ts.
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(userId, orgSlug);
+
+    // Cross-org session access check: session's compose must belong to the resolved org
+    if (resolved.composeOrgId && resolved.composeOrgId !== org.orgId) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Resource not found", code: "NOT_FOUND" },
+        },
+      };
+    }
 
     // Delegate run creation, validation, and dispatch to createRun()
     try {

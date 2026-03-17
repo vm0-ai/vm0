@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { delay } from "signal-timers";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -157,6 +158,80 @@ describe("zero-chat signals", () => {
       );
     });
 
+    it("should abort in-flight polling when switching sessions", async () => {
+      let pollCount = 0;
+      server.use(
+        http.post("*/api/agent/runs", () => {
+          return HttpResponse.json({ runId: "run-old" });
+        }),
+        http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/platform/logs/:runId", () => {
+          pollCount++;
+          // Return non-terminal status to keep polling alive
+          return HttpResponse.json({
+            id: "run-old",
+            status: "running",
+            error: null,
+            prompt: "test",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: null,
+          });
+        }),
+        http.get("*/api/agent/sessions/:id", () => {
+          return HttpResponse.json({
+            chatMessages: [
+              {
+                role: "user",
+                content: "New session msg",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+
+      // Start a send (it will enter the polling loop since status is "running")
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "Start polling")
+        .catch(() => {
+          // AbortError is expected — the polling loop throws when aborted
+        });
+
+      // Wait briefly for the polling loop to begin phase 2
+      await delay(50);
+
+      // Verify polling actually started before we abort it
+      expect(pollCount).toBeGreaterThan(0);
+
+      // Switching sessions should abort the polling controller
+      await context.store.set(switchZeroSession$, "new-session-id");
+
+      // The send should complete (polling aborted via signal)
+      await sendPromise;
+
+      // Record poll count after abort and wait to verify no more polls happen
+      const pollCountAfterAbort = pollCount;
+      await delay(200);
+
+      // No additional polls should have occurred after abort
+      expect(pollCount).toBe(pollCountAfterAbort);
+
+      // State should reflect the switched session
+      expect(context.store.get(zeroCurrentSessionId$)).toBe("new-session-id");
+      const messages = context.store.get(zeroChatMessages$);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.content).toBe("New session msg");
+    });
+
     it("should clear previous messages when switching", async () => {
       server.use(
         http.get("*/api/agent/sessions/:id", () => {
@@ -189,6 +264,67 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
       expect(context.store.get(zeroChatInput$)).toBe("");
+    });
+
+    it("should abort in-flight polling when starting a new session", async () => {
+      let pollCount = 0;
+      server.use(
+        http.post("*/api/agent/runs", () => {
+          return HttpResponse.json({ runId: "run-poll" });
+        }),
+        http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/platform/logs/:runId", () => {
+          pollCount++;
+          // Return non-terminal status to keep polling alive
+          return HttpResponse.json({
+            id: "run-poll",
+            status: "running",
+            error: null,
+            prompt: "test",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: null,
+          });
+        }),
+      );
+
+      await setup();
+
+      // Start a send (it will enter the polling loop since status is "running")
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "Start polling")
+        .catch(() => {
+          // AbortError is expected — the polling loop throws when aborted
+        });
+
+      // Wait briefly for the polling loop to begin phase 2
+      await delay(50);
+
+      // Verify polling actually started before we abort it
+      expect(pollCount).toBeGreaterThan(0);
+
+      // Starting a new session should abort the polling controller
+      context.store.set(startNewZeroSession$);
+
+      // The send should complete (polling aborted via signal)
+      await sendPromise;
+
+      // Record poll count after abort and wait to verify no more polls happen
+      const pollCountAfterAbort = pollCount;
+      await delay(200);
+
+      // No additional polls should have occurred after abort
+      expect(pollCount).toBe(pollCountAfterAbort);
+
+      // State should reflect the new session, not the old one
+      expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
+      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
     });
   });
 

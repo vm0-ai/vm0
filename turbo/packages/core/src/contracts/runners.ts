@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { VALID_CAPABILITIES } from "./composes";
-import { experimentalFirewallSchema } from "./firewalls";
+import { experimentalFirewallsSchema } from "./firewalls";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -20,11 +20,11 @@ export const runnerGroupSchema = z
  * Job schema for polling response
  */
 export const jobSchema = z.object({
-  runId: z.string().uuid(),
+  runId: z.uuid(),
   prompt: z.string(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  checkpointId: z.string().uuid().nullable(),
+  checkpointId: z.uuid().nullable(),
 });
 
 /**
@@ -115,7 +115,7 @@ export const storedExecutionContextSchema = z.object({
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement
-  experimentalFirewall: experimentalFirewallSchema.optional(),
+  experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });
@@ -126,11 +126,11 @@ export const storedExecutionContextSchema = z.object({
  * Keep in sync with Rust: crates/runner/src/types.rs → ExecutionContext
  */
 export const executionContextSchema = z.object({
-  runId: z.string().uuid(),
+  runId: z.uuid(),
   prompt: z.string(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
-  checkpointId: z.string().uuid().nullable(),
+  checkpointId: z.uuid().nullable(),
   sandboxToken: z.string(),
   // New fields for E2B parity:
   workingDir: z.string(),
@@ -155,7 +155,7 @@ export const executionContextSchema = z.object({
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement
-  experimentalFirewall: experimentalFirewallSchema.optional(),
+  experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
 });
@@ -171,7 +171,7 @@ export const runnersJobClaimContract = c.router({
     path: "/api/runners/jobs/:id/claim",
     headers: authHeadersSchema,
     pathParams: z.object({
-      id: z.string().uuid(),
+      id: z.uuid(),
     }),
     body: z.object({}),
     responses: {

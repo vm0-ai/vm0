@@ -72,7 +72,10 @@ export function Pagination({
           value={String(rowsPerPage)}
           onValueChange={handleRowsPerPageChange}
         >
-          <SelectTrigger className="w-[80px]">
+          <SelectTrigger
+            className="h-8 w-[72px]"
+            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -102,7 +105,8 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("size-7 bg-card", buttonClassName)}
+          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           onClick={onBackTwoPages}
           disabled={!canGoBackTwo}
         >
@@ -112,7 +116,8 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("size-7 bg-card", buttonClassName)}
+          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           onClick={onPrevPage}
           disabled={!hasPrev}
         >
@@ -122,7 +127,8 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("size-7 bg-card", buttonClassName)}
+          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           onClick={onNextPage}
           disabled={!hasNext || isLoading}
         >
@@ -132,7 +138,8 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("size-7 bg-card", buttonClassName)}
+          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           onClick={onForwardTwoPages}
           disabled={!hasNext || isLoading}
         >

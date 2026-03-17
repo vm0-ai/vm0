@@ -139,7 +139,7 @@ export const storageChangesSchema = z.object({
  */
 export const presignedUploadSchema = z.object({
   key: z.string(),
-  presignedUrl: z.string().url(),
+  presignedUrl: z.url(),
 });
 
 // ============================================================================
@@ -252,7 +252,7 @@ export const storagesDownloadContract = c.router({
       // Normal response with presigned URL
       200: z.union([
         z.object({
-          url: z.string().url(),
+          url: z.url(),
           versionId: z.string(),
           fileCount: z.number(),
           size: z.number(),

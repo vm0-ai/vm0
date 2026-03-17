@@ -112,11 +112,11 @@ export const watchOrgSwitch$ = command(
       if (newOrgId !== prevOrgId) {
         prevOrgId = newOrgId;
         persistOrgId(newOrgId);
-        // Full page reload is required because server-side data (agents, jobs,
-        // secrets, etc.) is scoped to the active organization. A lighter state
-        // refresh is not feasible since multiple signal trees depend on the
-        // org context established at bootstrap time.
-        location.reload();
+        // Navigate to the Zero homepage on org switch. A full page load is
+        // required because server-side data (agents, jobs, secrets, etc.) is
+        // scoped to the active organization, and multiple signal trees depend
+        // on the org context established at bootstrap time.
+        location.href = "/zero";
       }
     });
     signal.addEventListener("abort", unsubscribe);

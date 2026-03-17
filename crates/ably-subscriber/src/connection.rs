@@ -10,9 +10,10 @@ use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 
 use crate::Error;
+use crate::TokenRequest;
 use crate::protocol::{
-    AuthDetails, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg, error_code,
-    flags,
+    AuthDetails, ErrorInfo, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg,
+    error_code, flags,
 };
 use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture};
 
@@ -28,8 +29,8 @@ fn is_localhost(host: &str) -> bool {
     host.starts_with("127.0.0.1") || host.starts_with("localhost")
 }
 
-fn error_or_unknown(error: Option<crate::protocol::ErrorInfo>) -> crate::protocol::ErrorInfo {
-    error.unwrap_or_else(|| crate::protocol::ErrorInfo {
+fn error_or_unknown(error: Option<ErrorInfo>) -> ErrorInfo {
+    error.unwrap_or_else(|| ErrorInfo {
         code: error_code::FAILED,
         status_code: None,
         message: "no error details from server".to_string(),
@@ -62,7 +63,7 @@ pub(crate) fn rest_host(realtime_host: &str) -> String {
 /// Exchange a TokenRequest for a TokenDetails via Ably's REST API.
 pub(crate) async fn exchange_token(
     client: &reqeast::Client,
-    token_request: &crate::TokenRequest,
+    token_request: &TokenRequest,
     host: &str,
 ) -> Result<TokenDetails, Error> {
     let scheme = if is_localhost(host) { "http" } else { "https" };
@@ -469,7 +470,7 @@ enum LoopAction {
 /// An error is retriable when it has no status code, no error code, is a
 /// server error (5xx), or carries a well-known connection error code even
 /// at 4xx.
-fn is_retriable(err: &crate::protocol::ErrorInfo) -> bool {
+fn is_retriable(err: &ErrorInfo) -> bool {
     const CONNECTION_ERROR_CODES: &[i32] = &[
         80003, // DISCONNECTED
         80002, // SUSPENDED
@@ -858,6 +859,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ConnectionDetails;
 
     #[test]
     fn build_ws_url_basic() {
@@ -906,7 +908,7 @@ mod tests {
             connection_id: Some("conn-1".to_string()),
             connection_key: Some("conn-1!key".to_string()),
             connection_serial: Some(-1),
-            connection_details: Some(crate::protocol::ConnectionDetails {
+            connection_details: Some(ConnectionDetails {
                 connection_state_ttl: Some(60000),
                 max_idle_interval: Some(10000),
                 ..Default::default()
@@ -1012,7 +1014,7 @@ mod tests {
 
     #[test]
     fn is_retriable_no_status_code() {
-        let err = crate::protocol::ErrorInfo {
+        let err = ErrorInfo {
             code: 12345,
             status_code: None,
             message: String::new(),
@@ -1022,7 +1024,7 @@ mod tests {
 
     #[test]
     fn is_retriable_server_error() {
-        let err = crate::protocol::ErrorInfo {
+        let err = ErrorInfo {
             code: 50000,
             status_code: Some(500),
             message: String::new(),
@@ -1032,7 +1034,7 @@ mod tests {
 
     #[test]
     fn is_retriable_connection_error_code_with_4xx() {
-        let err = crate::protocol::ErrorInfo {
+        let err = ErrorInfo {
             code: 80003, // DISCONNECTED connection error
             status_code: Some(400),
             message: String::new(),
@@ -1042,7 +1044,7 @@ mod tests {
 
     #[test]
     fn is_retriable_auth_error_not_retriable() {
-        let err = crate::protocol::ErrorInfo {
+        let err = ErrorInfo {
             code: 40142, // token expired
             status_code: Some(401),
             message: String::new(),
@@ -1052,7 +1054,7 @@ mod tests {
 
     #[test]
     fn is_retriable_rate_limit_not_retriable() {
-        let err = crate::protocol::ErrorInfo {
+        let err = ErrorInfo {
             code: 42910,
             status_code: Some(429),
             message: String::new(),
@@ -1062,7 +1064,7 @@ mod tests {
 
     #[test]
     fn is_retriable_zero_code() {
-        let err = crate::protocol::ErrorInfo {
+        let err = ErrorInfo {
             code: 0,
             status_code: Some(400),
             message: String::new(),

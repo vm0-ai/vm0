@@ -4,12 +4,16 @@ use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
-use crate::api::ApiClient;
+use crate::api::{ApiClient, ApiError};
+use crate::command;
 use crate::config::SnapshotConfig;
+use crate::factory::InvariantConfig;
 use crate::network::{NetnsPool, NetnsPoolConfig};
 use crate::overlay::{Ext4Creator, OverlayCreator as _};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
+use crate::prerequisites;
 use crate::process;
+use crate::process::kill_process_group;
 
 /// Timeout for waiting for the Firecracker API socket after process spawn.
 const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -44,7 +48,7 @@ pub enum SnapshotError {
     #[error("firecracker process failed: {0}")]
     Process(String),
     #[error("api error: {0}")]
-    Api(#[from] crate::api::ApiError),
+    Api(#[from] ApiError),
     #[error("vsock connection failed: {0}")]
     Vsock(String),
     #[error("io error: {0}")]
@@ -71,7 +75,7 @@ pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
     // Check prerequisites (binary, kernel, rootfs, kvm, sudo, runtime dir, etc.).
-    crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
+    prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
         binary_path: &config.binary_path,
         kernel_path: &config.kernel_path,
         rootfs_path: &config.rootfs_path,
@@ -90,7 +94,7 @@ pub async fn create_snapshot(
     let work = output.work_dir();
     if work.exists() {
         let work_str = work.display().to_string();
-        crate::command::exec("rm", &["-rf", &work_str], crate::command::Privilege::Sudo)
+        command::exec("rm", &["-rf", &work_str], command::Privilege::Sudo)
             .await
             .map_err(|e| SnapshotError::Setup(format!("clean stale work dir: {e}")))?;
     }
@@ -218,7 +222,7 @@ async fn run_snapshot_workflow(
     // Guard: ensure process cleanup on any exit path.
     let result = run_with_firecracker(config, paths, sock_paths, output).await;
 
-    crate::process::kill_process_group(&child);
+    kill_process_group(&child);
     let _ = child.wait().await;
 
     result
@@ -239,7 +243,7 @@ async fn run_with_firecracker(
     info!("firecracker API ready");
 
     // 6. Configure VM via API (7 parallel PUT calls).
-    let inv = crate::factory::InvariantConfig::new();
+    let inv = InvariantConfig::new();
     let kernel_path = config.kernel_path.display().to_string();
     let rootfs_path = config.rootfs_path.display().to_string();
     let overlay_path = paths.overlay().display().to_string();

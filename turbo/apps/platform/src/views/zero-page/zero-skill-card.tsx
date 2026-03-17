@@ -75,7 +75,7 @@ export function ZeroSkillCard({
               <button
                 type="button"
                 onClick={onConnect}
-                className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
                 {connector.availableAuthMethods.length === 1 &&
                 connector.availableAuthMethods[0] === "api-token"

@@ -23,9 +23,9 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("chat");
     });
 
-    it("should resolve /zero/meet to 'meet'", () => {
+    it("should resolve unknown tab /zero/meet to default 'chat'", () => {
       mockLocation({ pathname: "/zero/meet", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("meet");
+      expect(context.store.get(zeroActiveId$)).toBe("chat");
     });
 
     it("should resolve /zero/schedule to 'schedule'", () => {
@@ -76,16 +76,6 @@ describe("zero-nav", () => {
 
       expect(pushStateMock).toHaveBeenCalledWith({}, "", "/zero");
       expect(context.store.get(zeroActiveId$)).toBe("chat");
-    });
-
-    it("should navigate to /zero/meet for 'meet'", () => {
-      const pushStateMock = createPushStateMock(context.signal);
-      mockLocation({ pathname: "/zero", search: "" }, context.signal);
-
-      context.store.set(setZeroActiveId$, "meet");
-
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/zero/meet");
-      expect(context.store.get(zeroActiveId$)).toBe("meet");
     });
 
     it("should navigate to /zero/schedule for 'schedule'", () => {

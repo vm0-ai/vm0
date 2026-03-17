@@ -76,7 +76,7 @@ function buildFirewallPlaceholders(
  * Extract and expand environment variables from agent compose config
  * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
  *
- * When experimental_firewall is declared:
+ * When experimental_firewalls is declared:
  * - Firewall secret values are replaced with placeholders (proxy resolves real secrets at runtime)
  *
  * @param agentCompose Agent compose configuration
@@ -125,7 +125,7 @@ export function expandEnvironmentFromCompose(
   }
 
   const firewallPlaceholders = buildFirewallPlaceholders(
-    firstAgent?.experimental_firewall ?? [],
+    firstAgent?.experimental_firewalls ?? [],
   );
 
   // Process secrets if needed

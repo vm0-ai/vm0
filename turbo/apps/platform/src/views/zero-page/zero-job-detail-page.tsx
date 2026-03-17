@@ -7,9 +7,9 @@ import {
   IconCalendar,
   IconMessageCircle,
   IconUsers,
+  IconMoodSad,
 } from "@tabler/icons-react";
 import {
-  Button,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -55,14 +55,10 @@ import {
   discardZeroJobSkills$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
-import { setZeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
-import {
-  startNewZeroSession$,
-  fetchZeroSessionList$,
-} from "../../signals/zero-page/zero-chat.ts";
+import { Link } from "../router/link.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { getAgentAvatar } from "./zero-sidebar.tsx";
+import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
+import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -70,25 +66,23 @@ import { getAgentAvatar } from "./zero-sidebar.tsx";
 
 interface ZeroJobDetailPageProps {
   agentName: string;
-}
-
-function useNavigateBack() {
-  const navigate = useSet(navigateInReact$);
-  return () => navigate("/zero/:tab", { pathParams: { tab: "team" } });
+  /** When set, this is the default agent — use this avatar instead of agent avatar. */
+  zeroAvatarSrc?: string;
+  /** Cycle the default agent's avatar. */
+  onCycleAvatar?: () => void;
 }
 
 function Breadcrumb({ currentName }: { currentName?: string }) {
-  const navigateBack = useNavigateBack();
   return (
     <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-      <button
-        type="button"
-        onClick={navigateBack}
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+      <Link
+        pathname="/zero/:tab"
+        options={{ pathParams: { tab: "team" } }}
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
-        Team
-      </button>
+        Zero&apos;s team
+      </Link>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
         {currentName ?? "Agent"}
@@ -114,6 +108,10 @@ function DetailSkeleton() {
   );
 }
 
+function isNotFoundError(error: string): boolean {
+  return /not found|404|no(t| )exist/i.test(error);
+}
+
 function DetailError({
   error,
   agentName,
@@ -121,7 +119,39 @@ function DetailError({
   error: string;
   agentName: string;
 }) {
-  const navigate = useSet(navigateInReact$);
+  if (isNotFoundError(error)) {
+    return (
+      <div className="flex flex-1 flex-col min-h-0">
+        <Breadcrumb />
+        <main className="flex-1 flex items-center justify-center px-4 sm:px-6 pb-16">
+          <div className="flex flex-col items-center text-center gap-4 max-w-sm">
+            <IconMoodSad
+              size={48}
+              stroke={1.2}
+              className="text-muted-foreground/40"
+            />
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-semibold text-foreground">
+                Agent not found
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                The agent &quot;{agentName}&quot; doesn&apos;t exist or you
+                don&apos;t have access to it.
+              </p>
+            </div>
+            <Link
+              pathname="/zero/:tab"
+              options={{ pathParams: { tab: "team" } }}
+              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+            >
+              Back to team
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <Breadcrumb />
@@ -130,18 +160,13 @@ function DetailError({
           <Card className="zero-card">
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi"
-                onClick={() =>
-                  navigate("/zero/team/:name", {
-                    pathParams: { name: agentName },
-                  })
-                }
+              <Link
+                pathname="/zero/team/:name"
+                options={{ pathParams: { name: agentName } }}
+                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
                 Retry
-              </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
@@ -296,11 +321,11 @@ function JobInstructionsTab() {
 // Main page
 // ---------------------------------------------------------------------------
 
-export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
-  const navigate = useSet(navigateInReact$);
-  const setChatAgentId = useSet(setZeroChatAgentId$);
-  const startNewSession = useSet(startNewZeroSession$);
-  const fetchSessionList = useSet(fetchZeroSessionList$);
+export function ZeroJobDetailPage({
+  agentName,
+  zeroAvatarSrc,
+  onCycleAvatar,
+}: ZeroJobDetailPageProps) {
   const detail = useGet(zeroJobDetail$);
   const loading = useGet(zeroJobDetailLoading$);
   const error = useGet(zeroJobDetailError$);
@@ -325,6 +350,20 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
     syncTabToUrl(tab);
   };
 
+  const agentAvatar = useAgentAvatar(agentName);
+  const setAgentAvatarCmd = useSet(setAgentAvatar$);
+  // Default agent uses the shared zero avatar; sub-agents use their own override.
+  const currentAvatar = zeroAvatarSrc ?? agentAvatar;
+  const cycleAvatar =
+    onCycleAvatar ??
+    (() => {
+      const idx = AGENT_AVATARS.indexOf(
+        agentAvatar as (typeof AGENT_AVATARS)[number],
+      );
+      const next = AGENT_AVATARS[(idx + 1) % AGENT_AVATARS.length];
+      setAgentAvatarCmd(agentName, next);
+    });
+
   if (loading && !detail) {
     return <DetailSkeleton />;
   }
@@ -338,14 +377,21 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
       <Breadcrumb currentName={displayName} />
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <div className="flex items-center gap-3 text-base">
-            <img
-              src={getAgentAvatar(agentName)}
-              alt={displayName}
-              className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-            />
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={cycleAvatar}
+              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Switch avatar"
+            >
+              <img
+                src={currentAvatar}
+                alt={displayName}
+                className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+              />
+            </button>
             <div className="min-w-0">
-              <h1 className="font-semibold tracking-tight text-foreground">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 {displayName}
               </h1>
               <p className="text-sm text-muted-foreground mt-1.5 leading-tight">
@@ -382,21 +428,14 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors"
-                    onClick={() => {
-                      const composeId = detail?.id ?? null;
-                      setChatAgentId(composeId);
-                      startNewSession();
-                      detach(fetchSessionList(), Reason.DomCallback);
-                      navigate("/zero/:tab", { pathParams: { tab: "chat" } });
-                    }}
+                  <Link
+                    pathname="/zero/:tab"
+                    options={{ pathParams: { tab: "chat" } }}
+                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
                   >
                     <IconMessageCircle size={14} stroke={1.5} />
                     Chat with {displayName}
-                  </Button>
+                  </Link>
                 </TooltipTrigger>
                 <TooltipContent
                   side="bottom"

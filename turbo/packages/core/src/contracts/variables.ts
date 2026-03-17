@@ -25,7 +25,7 @@ export const variableNameSchema = z
  * Variable response (includes value - key difference from secrets)
  */
 export const variableResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string(),
   value: z.string(),
   description: z.string().nullable(),

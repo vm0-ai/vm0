@@ -165,7 +165,7 @@ function getTagline(
     `Another day, another win, ${userName}.`,
     `Hey ${userName}, ready to build?`,
     `${userName} has entered the chat.`,
-    `Missed you, ${userName}.`,
+    `Good to see you, ${userName}.`,
     `${userName}! I saved your seat.`,
     `${userName}, let's make today count.`,
     `Coffee's ready, ${userName}. Let's go.`,
@@ -173,7 +173,7 @@ function getTagline(
     `What's cooking, ${userName}?`,
     `${userName}. New day, new ideas.`,
     `Ah, ${userName}. Right on time.`,
-    `${userName}, tell me everything.`,
+    `${userName}, what are we working on?`,
     `The usual, ${userName}?`,
   ];
   return taglines[index % taglines.length];
@@ -242,7 +242,7 @@ interface StreamedScenario {
 
 interface ChatScenarioBlockProps {
   scene: StreamedScenario;
-  onNavigateToActivity?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
   approveDone: boolean;
@@ -254,33 +254,25 @@ interface ChatScenarioBlockProps {
   connectorConnected: boolean;
   setConnectorConnected: (v: boolean) => void;
   zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
   agentName?: string;
 }
 
 function HelloFromZeroBlock({
   zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
   agentName = "Zero",
 }: {
   zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
   agentName?: string;
 }) {
   const avatarButton = (
-    <button
-      type="button"
-      onClick={onAvatarClick}
-      className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label="Switch Zero avatar"
-    >
+    <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
         src={zeroAvatarSrc}
         alt=""
         role="presentation"
         className="h-9 w-9 rounded-full object-cover object-top"
       />
-    </button>
+    </div>
   );
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -331,7 +323,6 @@ function ChatScenarioBlock({
   connectorConnected,
   setConnectorConnected,
   zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
   agentName = "Zero",
 }: ChatScenarioBlockProps) {
   return (
@@ -345,19 +336,14 @@ function ChatScenarioBlock({
         </div>
       </div>
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
-        <button
-          type="button"
-          onClick={onAvatarClick}
-          className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          aria-label="Switch Zero avatar"
-        >
+        <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
           <img
             src={zeroAvatarSrc}
             alt=""
             role="presentation"
             className="h-9 w-9 rounded-full object-cover object-top"
           />
-        </button>
+        </div>
         <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
           <ChatScenarioAssistantContent
             scene={scene}
@@ -473,7 +459,7 @@ function ChatScenarioAssistantContent({
             size="sm"
             variant="outline"
             className="zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border"
-            onClick={onNavigateToActivity}
+            onClick={() => onNavigateToActivity?.()}
           >
             <IconChartLine size={13} />
             View activity
@@ -771,12 +757,13 @@ function ConnectorTriggerIcons({
       {connected.map((c) => (
         <span
           key={c.type}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-background border border-border/60"
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-background"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
         >
           {c.iconUrl ? (
-            <img src={c.iconUrl} alt="" className="h-3.5 w-3.5" />
+            <img src={c.iconUrl} alt="" className="h-4 w-4" />
           ) : (
-            <ConnectorIcon type={c.type as ConnectorType} size={14} />
+            <ConnectorIcon type={c.type as ConnectorType} size={16} />
           )}
         </span>
       ))}
@@ -805,7 +792,7 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 items-center rounded-lg h-9 px-1.5 hover:bg-accent transition-colors"
+                className="inline-flex shrink-0 items-center justify-center rounded-lg h-9 min-w-9 px-1.5 hover:bg-accent transition-colors"
               >
                 <ConnectorTriggerIcons connectors={connectors} />
               </button>
@@ -817,57 +804,64 @@ function ConnectorsPopoverButton({
         </Tooltip>
       </TooltipProvider>
       <PopoverContent side="top" align="start" className="w-64 p-0 rounded-xl">
-        <div className="p-2">
-          <div className="flex flex-col">
-            {connectors.map((item) => (
-              <div
-                key={item.type}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
-              >
-                <span
-                  className={cn(
-                    "flex h-5 w-5 shrink-0 items-center justify-center",
-                    !item.connected && "opacity-40",
-                  )}
+        {connectors.length > 0 && (
+          <div className="p-2">
+            <div className="flex flex-col">
+              {connectors.map((item) => (
+                <div
+                  key={item.type}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
                 >
-                  {item.iconUrl ? (
-                    <img src={item.iconUrl} alt="" className="h-5 w-5" />
-                  ) : (
-                    <ConnectorIcon
-                      type={item.type as ConnectorType}
-                      size={20}
-                    />
-                  )}
-                </span>
-                <span
-                  className={cn(
-                    "text-sm flex-1",
-                    item.connected
-                      ? "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {item.label}
-                </span>
-                {item.connected ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                ) : (
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onConnect(item.type);
-                    }}
+                  <span
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center",
+                      !item.connected && "opacity-40",
+                    )}
                   >
-                    Connect
-                  </button>
-                )}
-              </div>
-            ))}
+                    {item.iconUrl ? (
+                      <img src={item.iconUrl} alt="" className="h-5 w-5" />
+                    ) : (
+                      <ConnectorIcon
+                        type={item.type as ConnectorType}
+                        size={20}
+                      />
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-sm flex-1",
+                      item.connected
+                        ? "text-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                  {item.connected ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onConnect(item.type);
+                      }}
+                    >
+                      Connect
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="border-t border-border/50 p-2 flex flex-col">
+        )}
+        <div
+          className={cn(
+            "p-2 flex flex-col",
+            connectors.length > 0 && "border-t border-border/50",
+          )}
+        >
           <button
             type="button"
             className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-accent transition-colors"
@@ -980,7 +974,7 @@ function startConnectorFlow(
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
-  onNavigateToActivity?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
   onNavigateToSchedule?: () => void;
   onNavigateToTeam?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
@@ -991,7 +985,6 @@ interface ZeroChatPageProps {
   zeroAvatarSrc?: string;
   /** Override agent name when chatting with a sub-agent. */
   chatAgentName?: string;
-  onAvatarClick?: () => void;
 }
 
 export function ZeroChatPage({
@@ -1004,7 +997,6 @@ export function ZeroChatPage({
   onSendMessage,
   zeroAvatarSrc = "/zero-avatar.png",
   chatAgentName,
-  onAvatarClick,
 }: ZeroChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const defaultAgentName =
@@ -1231,19 +1223,14 @@ export function ZeroChatPage({
             >
               <IconArrowLeft size={20} stroke={1.5} />
             </Button>
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch Zero avatar"
-            >
+            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-8 w-8 rounded-full object-cover object-top"
               />
-            </button>
+            </div>
             <span className="font-semibold text-foreground">{agentName}</span>
           </div>
           <div className="flex items-center gap-0.5">
@@ -1277,7 +1264,6 @@ export function ZeroChatPage({
                 <HelloFromZeroBlock
                   key={scene.id}
                   zeroAvatarSrc={zeroAvatarSrc}
-                  onAvatarClick={onAvatarClick}
                   agentName={agentName}
                 />
               ) : (
@@ -1296,7 +1282,6 @@ export function ZeroChatPage({
                   connectorConnected={connectorConnected}
                   setConnectorConnected={setConnectorConnected}
                   zeroAvatarSrc={zeroAvatarSrc}
-                  onAvatarClick={onAvatarClick}
                   agentName={agentName}
                 />
               ),
@@ -1306,19 +1291,14 @@ export function ZeroChatPage({
                 ref={setSubAgentListEl}
                 className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
               >
-                <button
-                  type="button"
-                  onClick={onAvatarClick}
-                  className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  aria-label="Switch Zero avatar"
-                >
+                <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
                   <img
                     src={zeroAvatarSrc}
                     alt=""
                     role="presentation"
                     className="h-9 w-9 rounded-full object-cover object-top"
                   />
-                </button>
+                </div>
                 <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
                   <div className="px-4 pt-4 pb-2">
                     <p className="text-sm text-foreground leading-relaxed">
@@ -1411,7 +1391,7 @@ export function ZeroChatPage({
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <button
                         type="button"
-                        className="p-2 rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                        className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                         aria-label="Attach"
                         onClick={handleFileSelect}
                       >
@@ -1479,19 +1459,14 @@ export function ZeroChatPage({
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch Zero avatar"
-            >
+            <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 overflow-hidden rounded-xl">
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
               />
-            </button>
+            </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
                 <TypewriterText text={tagline} />
@@ -1521,7 +1496,7 @@ export function ZeroChatPage({
                   <div className="flex items-center gap-1 text-muted-foreground">
                     <button
                       type="button"
-                      className="p-2 rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                      className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                       aria-label="Attach"
                       onClick={handleFileSelect}
                     >
@@ -1579,7 +1554,7 @@ export function ZeroChatPage({
                 <button
                   key={title}
                   type="button"
-                  className="zero-card cursor-pointer p-4 text-left flex gap-3 items-center relative group"
+                  className="zero-card cursor-pointer p-4 text-left flex flex-col sm:flex-row gap-3 items-start sm:items-center relative group"
                   onClick={() => setInput(prompt)}
                 >
                   <IconArrowUpRight

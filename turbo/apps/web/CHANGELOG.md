@@ -1,5 +1,54 @@
 # Changelog
 
+## [12.118.1](https://github.com/vm0-ai/vm0/compare/web-v12.118.0...web-v12.118.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* prevent cross-org session access via org validation ([#5069](https://github.com/vm0-ai/vm0/issues/5069)) ([bfd8d49](https://github.com/vm0-ai/vm0/commit/bfd8d492faedb8e00e9ab07fef661f820051757d))
+
+
+### Refactoring
+
+* **core:** replace deprecated z.string().url() with z.url() ([#5077](https://github.com/vm0-ai/vm0/issues/5077)) ([a093545](https://github.com/vm0-ai/vm0/commit/a0935459d145e06d71ad91abce9e70d7e2d4210f))
+* replace deprecated z.string().uuid() with z.uuid() ([#5076](https://github.com/vm0-ai/vm0/issues/5076)) ([a11783d](https://github.com/vm0-ai/vm0/commit/a11783dc38e5c5226a7110a0bf64e519971249f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.1
+
+## [12.118.0](https://github.com/vm0-ai/vm0/compare/web-v12.117.0...web-v12.118.0) (2026-03-16)
+
+
+### Features
+
+* improve zero page with markdown theming, avatar overrides, and navigation ([#5065](https://github.com/vm0-ai/vm0/issues/5065)) ([5ca5a04](https://github.com/vm0-ai/vm0/commit/5ca5a0441b1019516b7a64baa8ca695863581686))
+
+## [12.117.0](https://github.com/vm0-ai/vm0/compare/web-v12.116.3...web-v12.117.0) (2026-03-16)
+
+
+### Features
+
+* add vercel ai gateway as staff-only model provider ([#5032](https://github.com/vm0-ai/vm0/issues/5032)) ([53b5845](https://github.com/vm0-ai/vm0/commit/53b5845a8903721ea0d6dbafcd2815641552f254)), closes [#5029](https://github.com/vm0-ai/vm0/issues/5029)
+* constrain vercel ai gateway to moonshot provider with kimi-k2.5 model ([#5049](https://github.com/vm0-ai/vm0/issues/5049)) ([6ac1739](https://github.com/vm0-ai/vm0/commit/6ac1739e5d07ca86675a8b577b5f139a70ba6a07)), closes [#5048](https://github.com/vm0-ai/vm0/issues/5048)
+
+
+### Refactoring
+
+* align experimental_capabilities with resource model ([#5063](https://github.com/vm0-ai/vm0/issues/5063)) ([9d025ce](https://github.com/vm0-ai/vm0/commit/9d025ce6e43570242af0604181adb3047fe81370))
+* merge run queue dequeue and execute into single advisory lock transaction ([#5035](https://github.com/vm0-ai/vm0/issues/5035)) ([716db53](https://github.com/vm0-ai/vm0/commit/716db53b225599a2f018ae3d7f96a2e69a78adb9))
+* rename firewall array fields to plural form ([#5034](https://github.com/vm0-ai/vm0/issues/5034)) ([79bd167](https://github.com/vm0-ai/vm0/commit/79bd1675288e6a5a92acb6ef9c199099b9dd11bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.0
+
 ## [12.116.3](https://github.com/vm0-ai/vm0/compare/web-v12.116.2...web-v12.116.3) (2026-03-16)
 
 

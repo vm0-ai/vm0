@@ -56,8 +56,8 @@ export function NotificationSettings() {
           <div className="shrink-0">
             <img
               src={emailIcon}
-              width={28}
-              height={28}
+              width={22}
+              height={22}
               alt=""
               className="opacity-50 zero-icon-mono"
             />
@@ -85,13 +85,7 @@ export function NotificationSettings() {
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
         >
           <div className="shrink-0">
-            <img
-              src={slackIcon}
-              width={28}
-              height={28}
-              alt=""
-              className="opacity-50"
-            />
+            <img src={slackIcon} width={22} height={22} alt="" className="" />
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             <div className="text-sm font-medium text-foreground">

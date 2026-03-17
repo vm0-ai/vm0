@@ -12,9 +12,10 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { verifyComposeOrgAccess } from "../../../../../src/lib/org/verify-compose-org-access";
 
 const router = tsr.router(sessionsByIdContract, {
-  getById: async ({ params, headers }) => {
+  getById: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -51,6 +52,21 @@ const router = tsr.router(sessionsByIdContract, {
             message: "You do not have permission to access this session",
             code: "FORBIDDEN",
           },
+        },
+      };
+    }
+
+    // Verify session belongs to the caller's active organization
+    const hasOrgAccess = await verifyComposeOrgAccess(
+      session.agentComposeId,
+      userId,
+      request.url,
+    );
+    if (!hasOrgAccess) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Session not found", code: "NOT_FOUND" },
         },
       };
     }

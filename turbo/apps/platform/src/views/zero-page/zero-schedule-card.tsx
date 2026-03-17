@@ -678,10 +678,10 @@ export function ZeroScheduleCard({
                 />
                 <div className="text-center">
                   <p className="text-sm font-medium text-foreground">
-                    No entries yet
+                    No runs scheduled
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Add a time and prompt above to get started.
+                    Pick a time and tell your agent what to do.
                   </p>
                 </div>
               </div>

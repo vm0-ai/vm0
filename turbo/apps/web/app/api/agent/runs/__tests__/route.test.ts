@@ -373,11 +373,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // Returns 403 Forbidden for unauthorized access
-      expect(response.status).toBe(403);
-      expect(data.error.message).toMatch(
-        /access denied|not authorized|permission/i,
-      );
+      // Returns 404 to avoid leaking resource existence (cross-org check)
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -436,11 +434,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // Returns 403 Forbidden for unauthorized access
-      expect(response.status).toBe(403);
-      expect(data.error.message).toMatch(
-        /access denied|not authorized|permission/i,
-      );
+      // Returns 404 to avoid leaking resource existence (cross-org check)
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -1013,6 +1009,73 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.error.code).toBe("NOT_FOUND");
     });
 
+    it("should return 404 when continuing session from a different org", async () => {
+      // Create compose and run under user's default org (org A)
+      const { runId } = await createTestRun(testComposeId, "Session run");
+      const { agentSessionId } = await completeTestRun(user.userId, runId);
+
+      // Switch to org B — different org for the same user
+      const otherOrgId = uniqueId("org-other");
+      const otherOrgSlug = uniqueId("org-other");
+      await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrgId,
+        orgSlug: otherOrgSlug,
+        clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: agentSessionId,
+            prompt: "Cross-org continue",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return 404 when creating new run against compose from a different org", async () => {
+      // testComposeId belongs to user's default org (org A)
+      // Switch to org B
+      const otherOrgId = uniqueId("org-other");
+      const otherOrgSlug = uniqueId("org-other");
+      await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrgId,
+        orgSlug: otherOrgSlug,
+        clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Cross-org new run",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
     // Note: "Missing required secrets" validation is tested in the Validation
     // describe block above (lines 138-197).
   });
@@ -1072,6 +1135,41 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await response.json();
 
       // Returns 404 for security (don't leak checkpoint existence)
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return 404 when resuming checkpoint from a different org", async () => {
+      // Create compose and run under org A, then complete it (creates checkpoint)
+      const { runId } = await createTestRun(testComposeId, "Checkpoint run");
+      const { checkpointId } = await completeTestRun(user.userId, runId);
+
+      // Switch to org B
+      const otherOrgId = uniqueId("org-other");
+      const otherOrgSlug = uniqueId("org-other");
+      await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrgId,
+        orgSlug: otherOrgSlug,
+        clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            checkpointId,
+            prompt: "Cross-org checkpoint resume",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
       expect(response.status).toBe(404);
       expect(data.error.code).toBe("NOT_FOUND");
     });
@@ -1433,7 +1531,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should reject sandbox token without agent-run:read for list", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
-        "storage:read",
+        "artifact:read",
       ]);
 
       const request = createTestRequest(

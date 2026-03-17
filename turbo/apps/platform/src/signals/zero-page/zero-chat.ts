@@ -432,6 +432,13 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
 
 export const switchZeroSession$ = command(
   async ({ get, set }, sessionId: string) => {
+    // Abort any in-flight polling from the previous session
+    const prev = get(pollingAbortController$);
+    if (prev) {
+      prev.abort();
+    }
+    set(pollingAbortController$, null);
+
     // Set session immediately so the UI switches without loading delay
     set(internalSessionId$, sessionId);
     set(internalMessages$, []);
@@ -483,7 +490,14 @@ export const switchZeroSession$ = command(
   },
 );
 
-export const startNewZeroSession$ = command(({ set }) => {
+export const startNewZeroSession$ = command(({ get, set }) => {
+  // Abort any in-flight polling from the previous session
+  const prev = get(pollingAbortController$);
+  if (prev) {
+    prev.abort();
+  }
+  set(pollingAbortController$, null);
+
   set(internalMessages$, []);
   set(internalSessionId$, null);
   set(internalActiveRunId$, null);

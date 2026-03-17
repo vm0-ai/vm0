@@ -125,7 +125,7 @@ describe("sandbox-token", () => {
 
   describe("capabilities", () => {
     it("should include capabilities in verified token", async () => {
-      const capabilities = ["storage:read", "storage:write"] as const;
+      const capabilities = ["artifact:read", "artifact:write"] as const;
       const token = await generateSandboxToken(
         "user-123",
         "run-456",
@@ -136,7 +136,7 @@ describe("sandbox-token", () => {
       expect(auth).not.toBeNull();
       expect(auth?.userId).toBe("user-123");
       expect(auth?.runId).toBe("run-456");
-      expect(auth?.capabilities).toEqual(["storage:read", "storage:write"]);
+      expect(auth?.capabilities).toEqual(["artifact:read", "artifact:write"]);
     });
 
     it("should work without capabilities (backward compat)", async () => {
@@ -159,9 +159,9 @@ describe("sandbox-token", () => {
     it("should reject token with invalid capability value", async () => {
       // Cast invalid capability through type system to simulate a malformed token
       const invalidCaps = [
-        "storage:read",
+        "artifact:read",
         "volume:read",
-      ] as unknown as readonly ("storage:read" | "storage:write")[];
+      ] as unknown as readonly ("artifact:read" | "artifact:write")[];
       const token = await generateSandboxToken(
         "user-123",
         "run-456",
@@ -174,8 +174,8 @@ describe("sandbox-token", () => {
 
     it("should roundtrip all valid capabilities", async () => {
       const capabilities = [
-        "storage:read",
-        "storage:write",
+        "artifact:read",
+        "artifact:write",
         "agent:read",
         "agent:write",
         "agent-run:read",

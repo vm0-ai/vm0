@@ -82,6 +82,12 @@ function getOverrides(
         "Execute deep reasoning and analytical tasks with cost-effective performance.",
     };
   }
+  if (type === "vercel-ai-gateway") {
+    return {
+      description:
+        "Access Claude models through Vercel AI Gateway with a unified API.",
+    };
+  }
   if (type === "azure-foundry") {
     return {
       label: "Azure foundry portal",

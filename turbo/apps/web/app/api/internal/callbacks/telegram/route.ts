@@ -153,7 +153,11 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   let responseText: string | undefined;
   if (status === "completed") {
     responseText = output ?? "Task completed successfully.";
-    const deepLinks = detectDeepLinks(responseText, getPlatformUrl());
+    const deepLinks = detectDeepLinks(
+      responseText,
+      getPlatformUrl(),
+      agentName,
+    );
     htmlOutput = buildTelegramResponse(
       responseText,
       agentName,

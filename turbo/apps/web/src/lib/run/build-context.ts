@@ -12,7 +12,7 @@ import {
   MODEL_PROVIDER_TYPES,
   VALID_CAPABILITIES,
   normalizeCapabilities,
-  type ExperimentalFirewall,
+  type ExperimentalFirewalls,
   type ConnectorType,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -770,7 +770,7 @@ interface BuildContextResult {
 }
 
 /**
- * Build ExperimentalFirewall manifest from agent compose's expanded experimental_firewall.
+ * Build ExperimentalFirewalls manifest from agent compose's expanded experimental_firewalls.
  * Returns null if no firewall configs are declared.
  *
  * Reads pre-expanded ExpandedFirewallConfig objects (resolved at compose time)
@@ -778,14 +778,14 @@ interface BuildContextResult {
  *
  * Placeholder env var injection is handled by expandEnvironmentFromCompose.
  */
-function buildExperimentalFirewall(
+function buildExperimentalFirewalls(
   agentCompose: unknown,
-): ExperimentalFirewall | null {
+): ExperimentalFirewalls | null {
   const compose = agentCompose as AgentComposeYaml | undefined;
   if (!compose?.agents) return null;
 
   const firstAgent = Object.values(compose.agents)[0];
-  const firewallConfigs = firstAgent?.experimental_firewall;
+  const firewallConfigs = firstAgent?.experimental_firewalls;
   if (!firewallConfigs || firewallConfigs.length === 0) return null;
 
   return firewallConfigs.map((fw) => ({
@@ -923,8 +923,8 @@ export async function buildExecutionContext(
   const userTimezone = userPrefs?.timezone ?? undefined;
 
   // Build experimental firewall manifest (base + auth entries for the runner)
-  const experimentalFirewall =
-    buildExperimentalFirewall(agentCompose) ?? undefined;
+  const experimentalFirewalls =
+    buildExperimentalFirewalls(agentCompose) ?? undefined;
 
   // Build experimental capabilities list from compose
   const experimentalCapabilities = buildExperimentalCapabilities(agentCompose);
@@ -948,7 +948,7 @@ export async function buildExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      experimentalFirewall,
+      experimentalFirewalls,
       experimentalCapabilities,
       resumeSession,
       resumeArtifact,

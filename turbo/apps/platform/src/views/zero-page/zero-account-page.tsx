@@ -50,7 +50,7 @@ function AppearanceSettings() {
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconPalette
-              size={28}
+              size={22}
               stroke={1.5}
               className="text-muted-foreground"
             />
@@ -125,7 +125,7 @@ function SendModeSettings() {
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconKeyboard
-              size={28}
+              size={22}
               stroke={1.5}
               className="text-muted-foreground"
             />

@@ -97,8 +97,8 @@ const deployScheduleRequestSchema = z
  * Schedule response - returned from API
  */
 const scheduleResponseSchema = z.object({
-  id: z.string().uuid(),
-  composeId: z.string().uuid(),
+  id: z.uuid(),
+  composeId: z.uuid(),
   composeName: z.string(),
   orgSlug: z.string(),
   userId: z.string(),
@@ -130,7 +130,7 @@ const scheduleResponseSchema = z.object({
  * Run summary for schedule runs list
  */
 const runSummarySchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   status: z.enum([
     "queued",
     "pending",

@@ -2,6 +2,7 @@ import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { transitionRunStatus } from "./run-status";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { orgCache } from "../../db/schema/org-cache";
 import { env } from "../../env";
 import { logger } from "../logger";
 import { isConcurrentRunLimit } from "../errors";
@@ -9,9 +10,10 @@ import {
   encryptSecretsMap,
   decryptSecretsMap,
 } from "../crypto/secrets-encryption";
-import { PENDING_RUN_TTL_MS } from "./run-service";
+import { PENDING_RUN_TTL_MS, checkRunConcurrencyLimit } from "./run-service";
 import { resolveOrg } from "../org/resolve-org";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
+import type { OrgTier } from "@vm0/core";
 
 const log = logger("service:run-queue");
 
@@ -19,11 +21,13 @@ const log = logger("service:run-queue");
 const QUEUE_TTL_MS = 2 * 60 * 60 * 1000;
 
 /**
- * Executor function type for dispatching queued runs.
+ * Dispatcher function type for queued runs.
+ * Receives a run that has already been dequeued and transitioned to "pending".
  * Injected by callers to avoid circular dependency with run-service.
  */
-type QueuedRunExecutor = (
+type QueuedRunDispatcher = (
   runId: string,
+  createdAt: Date,
   params: CreateRunParams,
 ) => Promise<void>;
 
@@ -105,13 +109,14 @@ export async function enqueueRun(
 /**
  * Drain the run queue for an org.
  *
- * Dequeues the oldest entry using SELECT FOR UPDATE SKIP LOCKED,
- * deletes the queue record (encrypted secrets removed), and dispatches
- * the run through the provided executor.
+ * Atomically dequeues the oldest entry, checks concurrency, deletes the
+ * queue record, and transitions the run to "pending" — all within a single
+ * advisory-locked transaction. This eliminates the orphaned run risk that
+ * existed when dequeue and execute were separate transactions.
  *
  * Uses an iterative approach: on dispatch failure, marks the run as failed
  * and tries the next entry. Stops when a run is successfully dispatched,
- * the queue is empty, or a concurrency conflict occurs.
+ * the queue is empty, or the concurrency limit is reached.
  *
  * Called from:
  * - Completion webhook (event-driven, primary path)
@@ -119,112 +124,145 @@ export async function enqueueRun(
  * - Cleanup cron (fallback for missed dequeues)
  *
  * @param orgId - Org whose queue to drain
- * @param execute - Executor function (injected to avoid circular dependency)
+ * @param dispatch - Dispatcher function (injected to avoid circular dependency)
  */
 export async function drainOrgQueue(
   orgId: string,
-  execute: QueuedRunExecutor,
+  dispatch: QueuedRunDispatcher,
 ): Promise<void> {
+  const db = globalThis.services.db;
   const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
-  let entry = await dequeueNext(orgId);
 
-  while (entry) {
-    const runId = entry.runId;
+  for (;;) {
+    // Single transaction: advisory lock → concurrency check → dequeue → status update
+    const dequeued = await dequeueNextAtomic(db, orgId);
+    if (!dequeued) return; // Queue empty, entry skipped, or concurrency full
 
-    // Decrypt CreateRunParams
+    // Decrypt CreateRunParams (outside transaction — no lock held)
     const decryptedMap = decryptSecretsMap(
-      entry.encryptedParams,
+      dequeued.encryptedParams,
       encryptionKey,
     );
     if (!decryptedMap?.__params) {
-      log.error(`Failed to decrypt params for queued run ${runId}`);
-      await markQueuedRunFailed(runId, "Failed to decrypt queued run params");
-      entry = await dequeueNext(orgId);
-      continue;
+      log.error(`Failed to decrypt params for queued run ${dequeued.runId}`);
+      await markQueuedRunFailed(
+        dequeued.runId,
+        "Failed to decrypt queued run params",
+      );
+      continue; // Try next entry
     }
 
     const params: CreateRunParams = JSON.parse(decryptedMap.__params);
 
-    // Execute the queued run (re-checks concurrency before dispatching)
+    // Dispatch the run (compose loading, authorization, execution)
     try {
-      await execute(runId, params);
-      log.debug(`Queued run ${runId} dispatched successfully`);
+      await dispatch(dequeued.runId, dequeued.createdAt, params);
+      log.debug(`Queued run ${dequeued.runId} dispatched successfully`);
       return; // Successfully dispatched — done
     } catch (error) {
-      if (isConcurrentRunLimit(error)) {
-        // Slot was claimed by another request — re-enqueue and stop
-        await reEnqueueRun(
-          runId,
-          entry.userId,
-          entry.orgId,
-          entry.encryptedParams,
-          entry.createdAt,
-          entry.expiresAt,
-        );
-        return;
-      }
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      log.error(`Failed to dispatch queued run ${runId}: ${errorMessage}`);
-      await markQueuedRunFailed(runId, errorMessage);
-      entry = await dequeueNext(orgId);
-      continue;
+      log.error(
+        `Failed to dispatch queued run ${dequeued.runId}: ${errorMessage}`,
+      );
+      await markQueuedRunFailed(dequeued.runId, errorMessage);
+      continue; // Try next entry
     }
   }
 }
 
-interface QueueEntry {
+interface DequeuedEntry {
   runId: string;
-  userId: string;
-  orgId: string;
-  encryptedParams: string | null;
   createdAt: Date;
-  expiresAt: Date;
+  encryptedParams: string | null;
 }
 
 /**
  * Atomically dequeue the oldest queue entry for an org.
  *
- * SELECT FOR UPDATE SKIP LOCKED + DELETE run inside a single transaction
- * so the row-level lock is held until the delete commits, preventing
- * concurrent dequeue of the same entry.
+ * Within a single advisory-locked transaction:
+ * 1. Check concurrency limit (don't dequeue if no slot)
+ * 2. Select oldest queue entry
+ * 3. Delete queue entry
+ * 4. Transition run from "queued" to "pending"
+ *
+ * If a run was already processed (e.g. cancelled), its queue entry is
+ * removed and the next entry is tried within the same transaction.
+ *
+ * Returns undefined if queue is empty or concurrency limit reached.
  */
-async function dequeueNext(orgId: string): Promise<QueueEntry | undefined> {
-  return globalThis.services.db.transaction(async (tx) => {
-    const rows = await tx.execute<{
-      run_id: string;
-      user_id: string;
-      org_id: string;
-      encrypted_params: string | null;
-      created_at: string;
-      expires_at: string;
-    }>(
-      sql`SELECT run_id, user_id, org_id, encrypted_params, created_at, expires_at
-       FROM agent_run_queue
-       WHERE org_id = ${orgId}
-       ORDER BY created_at ASC
-       LIMIT 1
-       FOR UPDATE SKIP LOCKED`,
-    );
+async function dequeueNextAtomic(
+  db: typeof globalThis.services.db,
+  orgId: string,
+): Promise<DequeuedEntry | undefined> {
+  try {
+    return await db.transaction(async (tx) => {
+      // Serialize all queue operations for this org
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-    const row = rows.rows[0];
-    if (!row) {
+      // Look up org tier from cache (simple DB read, no external API call).
+      // Falls back to "free" (most conservative limit) if cache is empty.
+      const [cached] = await tx
+        .select({ tier: orgCache.tier })
+        .from(orgCache)
+        .where(eq(orgCache.orgId, orgId))
+        .limit(1);
+      const orgTier = parseOrgTier(cached?.tier);
+
+      // Check concurrency FIRST — don't dequeue if no slot available
+      await checkRunConcurrencyLimit(orgId, orgTier, tx);
+
+      // Fetch all queue entries for this org (ordered FIFO).
+      // Typically 0-2 entries; iterating in-transaction to skip
+      // already-processed runs without releasing the advisory lock.
+      const rows = await tx.execute<{
+        run_id: string;
+        encrypted_params: string | null;
+      }>(
+        sql`SELECT run_id, encrypted_params
+         FROM agent_run_queue
+         WHERE org_id = ${orgId}
+         ORDER BY created_at ASC`,
+      );
+
+      for (const row of rows.rows) {
+        // Delete queue entry
+        await tx
+          .delete(agentRunQueue)
+          .where(eq(agentRunQueue.runId, row.run_id));
+
+        // Update run status — fails silently if run was already cancelled/failed
+        const [updated] = await tx
+          .update(agentRuns)
+          .set({ status: "pending", lastHeartbeatAt: new Date() })
+          .where(
+            and(eq(agentRuns.id, row.run_id), eq(agentRuns.status, "queued")),
+          )
+          .returning({ createdAt: agentRuns.createdAt });
+
+        if (!updated) {
+          // Run was cancelled/failed between enqueue and drain — skip it
+          log.debug(`Run ${row.run_id} already processed, skipping`);
+          continue;
+        }
+
+        log.debug(`Dequeued run ${row.run_id} for org ${orgId}`);
+        return {
+          runId: row.run_id,
+          createdAt: updated.createdAt,
+          encryptedParams: row.encrypted_params,
+        };
+      }
+
+      return undefined; // Queue empty (all entries were already processed)
+    });
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      // No slot available — nothing was dequeued
       return undefined;
     }
-
-    // Delete queue entry within the same transaction
-    await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, row.run_id));
-
-    log.debug(`Dequeued run ${row.run_id} for org ${orgId}`);
-    return {
-      runId: row.run_id,
-      userId: row.user_id,
-      orgId: row.org_id,
-      encryptedParams: row.encrypted_params,
-      createdAt: new Date(row.created_at),
-      expiresAt: new Date(row.expires_at),
-    };
-  });
+    throw error;
+  }
 }
 
 /**
@@ -264,10 +302,10 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
  * Drain queues for orgs that have queued runs but no active runs.
  * Used as a cron fallback in case completion webhooks miss the drain.
  *
- * @param execute - Executor function (injected to avoid circular dependency)
+ * @param dispatch - Dispatcher function (injected to avoid circular dependency)
  */
 export async function drainStaleQueues(
-  execute: QueuedRunExecutor,
+  dispatch: QueuedRunDispatcher,
 ): Promise<number> {
   const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
 
@@ -299,7 +337,7 @@ export async function drainStaleQueues(
     const activeCount = Number(result?.count ?? 0);
     if (activeCount === 0) {
       log.debug(`Draining stale queue for org ${orgId}`);
-      await drainOrgQueue(orgId, execute);
+      await drainOrgQueue(orgId, dispatch);
       drained++;
     }
   }
@@ -307,27 +345,12 @@ export async function drainStaleQueues(
   return drained;
 }
 
-/**
- * Re-enqueue a run that was dequeued but couldn't execute due to concurrency.
- * Preserves the original createdAt to maintain FIFO ordering.
- */
-async function reEnqueueRun(
-  runId: string,
-  userId: string,
-  orgId: string,
-  encryptedParams: string | null,
-  originalCreatedAt: Date,
-  originalExpiresAt: Date,
-): Promise<void> {
-  await globalThis.services.db.insert(agentRunQueue).values({
-    runId,
-    userId,
-    orgId,
-    encryptedParams,
-    createdAt: originalCreatedAt,
-    expiresAt: originalExpiresAt,
-  });
-  log.debug(`Re-enqueued run ${runId} (concurrency conflict)`);
+const VALID_ORG_TIERS = new Set<string>(["free", "pro", "max"]);
+
+/** Parse a raw tier string into OrgTier, defaulting to "free". */
+function parseOrgTier(raw: string | undefined): OrgTier {
+  if (raw && VALID_ORG_TIERS.has(raw)) return raw as OrgTier;
+  return "free";
 }
 
 async function markQueuedRunFailed(

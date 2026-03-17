@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
-# Test experimental_firewall placeholder env var injection and permission-based matching
+# Test experimental_firewalls placeholder env var injection and permission-based matching
 #
-# Verifies that when experimental_firewall is declared:
+# Verifies that when experimental_firewalls is declared:
 # 1. Placeholder env vars replace secret values in the sandbox (with custom formats)
 # 2. Proxy replaces placeholder tokens and enforces permission-based access control
 
@@ -91,7 +91,7 @@ agents:
     description: "Multi-firewall placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_firewall:
+    experimental_firewalls:
       github:
         permissions: all
       slack:
@@ -130,7 +130,7 @@ agents:
     description: "Permission-based request matching test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_firewall:
+    experimental_firewalls:
       github:
         permissions:
           - repo-read

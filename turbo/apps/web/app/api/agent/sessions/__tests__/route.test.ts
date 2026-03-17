@@ -5,6 +5,7 @@ import {
   createTestCompose,
   createTestRun,
   completeTestRun,
+  insertOrgCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -78,6 +79,29 @@ describe("GET /api/agent/sessions", () => {
     expect(session.id).toBe(agentSessionId);
     expect(session.messageCount).toBe(0);
     expect(session.preview).toBeNull();
+  });
+
+  it("should return 404 when accessing compose from a different org", async () => {
+    // Switch to org B — different org for the same user
+    const otherOrgId = uniqueId("org-other");
+    const otherOrgSlug = uniqueId("org-other");
+    await insertOrgCacheEntry({ orgId: otherOrgId, slug: otherOrgSlug });
+    mockClerk({
+      userId: user.userId,
+      orgId: otherOrgId,
+      orgSlug: otherOrgSlug,
+      clerkOrgs: [{ id: otherOrgId, slug: otherOrgSlug, name: otherOrgSlug }],
+    });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/sessions?agentComposeId=${testComposeId}`,
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
   });
 
   it("should return 401 when not authenticated", async () => {

@@ -4,7 +4,6 @@ import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
 import { ZeroPreferencesPage } from "./zero-account-page.tsx";
 import { ZeroJobsPage } from "./zero-jobs-page.tsx";
-import { ZeroMeetPage } from "./zero-meet-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
@@ -19,7 +18,7 @@ interface ZeroContentProps {
     message: string,
     options?: { modelProvider?: string },
   ) => void;
-  onNavigateToActivity?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
   onNavigateToSchedule?: () => void;
   onNavigateToTeam?: () => void;
   onNavigateToChat?: () => void;
@@ -31,7 +30,10 @@ interface ZeroContentProps {
   chatAgentName?: string;
   /** Override avatar for the chat page when a sub-agent is selected. */
   chatAvatarSrc?: string;
-  onAvatarClick?: () => void;
+  /** Navigate to agent profile — clicking chat header avatar. */
+  onChatAvatarClick?: () => void;
+  /** Cycle the default agent (Zero) avatar. */
+  onCycleZeroAvatar?: () => void;
 }
 
 function getSectionTitles(
@@ -39,7 +41,6 @@ function getSectionTitles(
 ): Readonly<Record<ZeroNavId, string>> {
   return {
     chat: `Chat with ${agentName}`,
-    meet: `Meet ${agentName}`,
     schedule: "Scheduled",
     team: `${agentName}'s team`,
     activity: "Activities",
@@ -63,7 +64,8 @@ export function ZeroContent({
   zeroAvatarSrc = "/zero-avatar.png",
   chatAgentName,
   chatAvatarSrc,
-  onAvatarClick,
+  onChatAvatarClick,
+  onCycleZeroAvatar,
 }: ZeroContentProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
@@ -74,10 +76,11 @@ export function ZeroContent({
         <ZeroSessionChatPage
           zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
           chatAgentName={chatAgentName}
-          onAvatarClick={onAvatarClick}
           onBack={onBackFromSession}
           onNavigateToTeam={onNavigateToTeam}
           onNavigateToSchedule={onNavigateToSchedule}
+          onNavigateToActivity={onNavigateToActivity}
+          onAvatarClick={onChatAvatarClick}
         />
       );
     }
@@ -90,15 +93,6 @@ export function ZeroContent({
         onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
         chatAgentName={chatAgentName}
-        onAvatarClick={onAvatarClick}
-      />
-    );
-  }
-  if (sectionId === "meet") {
-    return (
-      <ZeroMeetPage
-        zeroAvatarSrc={zeroAvatarSrc}
-        onAvatarClick={onAvatarClick}
       />
     );
   }
@@ -111,6 +105,7 @@ export function ZeroContent({
         onNavigateToChat={onNavigateToChat}
         selectedAgentName={selectedAgentName}
         zeroAvatarSrc={zeroAvatarSrc}
+        onCycleZeroAvatar={onCycleZeroAvatar}
       />
     );
   }

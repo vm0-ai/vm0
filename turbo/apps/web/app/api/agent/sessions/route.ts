@@ -3,9 +3,10 @@ import { sessionsContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { listAgentSessions } from "../../../../src/lib/agent-session";
+import { verifyComposeOrgAccess } from "../../../../src/lib/org/verify-compose-org-access";
 
 const router = tsr.router(sessionsContract, {
-  list: async ({ query, headers }) => {
+  list: async ({ query, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -14,6 +15,21 @@ const router = tsr.router(sessionsContract, {
         status: 401 as const,
         body: {
           error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    // Verify the requested compose belongs to the caller's active org
+    const hasOrgAccess = await verifyComposeOrgAccess(
+      query.agentComposeId,
+      userId,
+      request.url,
+    );
+    if (!hasOrgAccess) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
         },
       };
     }

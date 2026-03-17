@@ -23,7 +23,7 @@ export const skillsResolveContract = c.router({
     path: "/api/skills/resolve",
     headers: authHeadersSchema,
     body: z.object({
-      skills: z.array(z.string().url()).min(1).max(100),
+      skills: z.array(z.url()).min(1).max(100),
     }),
     responses: {
       200: z.object({

@@ -2,7 +2,7 @@ import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   ZeroSidebar,
-  getAgentAvatar,
+  useAgentAvatar,
   type ZeroNavId,
   type ZeroAccountAction,
   type SubagentInfo,
@@ -13,7 +13,10 @@ import { ZeroContent } from "./zero-content.tsx";
 import { ZeroOnboarding } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
 import { zeroNeedsOnboarding$ } from "../../signals/zero-page/zero-onboarding.ts";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  agentDisplayName$,
+  defaultAgentName$,
+} from "../../signals/zero-page/zero-agent-name.ts";
 import { resetDefaultAgent$ } from "../../signals/zero-page/zero-dev-tools.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -27,11 +30,7 @@ import {
   navigateToZeroSession$,
   navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
-import {
-  updateSearchParams$,
-  updatePathname$,
-  navigateInReact$,
-} from "../../signals/route.ts";
+import { updatePathname$, navigateInReact$ } from "../../signals/route.ts";
 import {
   zeroSessionList$,
   zeroSessionListLoading$,
@@ -263,6 +262,11 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const agentDisplayName = agentNameReady
     ? agentDisplayNameLoadable.data
     : "Zero";
+  const defaultAgentNameLoadable = useLastLoadable(defaultAgentName$);
+  const defaultRawName =
+    defaultAgentNameLoadable.state === "hasData"
+      ? defaultAgentNameLoadable.data
+      : null;
   const subagentsLoadable = useLastLoadable(zeroSubagents$);
   const subagents: SubagentInfo[] =
     subagentsLoadable.state === "hasData"
@@ -279,10 +283,13 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const setActiveId = useSet(setZeroActiveId$);
   const avatarIndex$ = useCCState(0);
   const avatarIndex = useGet(avatarIndex$);
+  const setAvatarIndex = useSet(avatarIndex$);
   const showAboutPage$ = useCCState(false);
   const showAboutPage = useGet(showAboutPage$);
   const setShowAboutPage = useSet(showAboutPage$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+  const cycleZeroAvatar = () =>
+    setAvatarIndex((avatarIndex + 1) % ZERO_AVATARS.length);
 
   // Resolve the effective agent name/avatar for the chat page
   const selectedSubagent = currentChatAgentId
@@ -291,14 +298,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const chatAgentName = selectedSubagent
     ? (selectedSubagent.displayName ?? selectedSubagent.name)
     : agentDisplayName;
-  const chatAvatarSrc = selectedSubagent
-    ? getAgentAvatar(selectedSubagent.name)
-    : zeroAvatarSrc;
-  const cycleAvatar$ = useCommand(({ set }) => {
-    set(avatarIndex$, (i: number) => (i + 1) % ZERO_AVATARS.length);
-  });
-  const cycleAvatar = useSet(cycleAvatar$);
-
+  const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.name ?? "");
+  const chatAvatarSrc = selectedSubagent ? subagentAvatarSrc : zeroAvatarSrc;
   const inChat = useGet(zeroInChat$);
   const urlSessionId = useGet(zeroSessionId$);
   const inSession = inChat;
@@ -359,7 +360,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const updateSearchParams = useSet(updateSearchParams$);
+  const navigate = useSet(updatePathname$);
   const navigateInReact = useSet(navigateInReact$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
 
@@ -373,12 +374,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
       <ZeroAppSkeleton visible={showSkeleton} />
-      {showOnboarding && (
-        <ZeroOnboarding
-          zeroAvatarSrc={zeroAvatarSrc}
-          onAvatarClick={cycleAvatar}
-        />
-      )}
+      {showOnboarding && <ZeroOnboarding zeroAvatarSrc={zeroAvatarSrc} />}
       <ZeroSidebar
         activeId={activeId}
         agentName={agentDisplayName}
@@ -408,42 +404,49 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
             selectedAgentName={initialJobAgent}
-            onNavigateToActivity={() => setActiveId("activity")}
+            onNavigateToActivity={(logId) => {
+              if (logId) {
+                navigate(`/zero/activity/${logId}`);
+              } else {
+                setActiveId("activity");
+              }
+            }}
             onNavigateToSchedule={() => {
-              if (selectedSubagent) {
+              const agentName = selectedSubagent?.name ?? defaultRawName;
+              if (agentName) {
                 navigateInReact("/zero/team/:name", {
-                  pathParams: { name: selectedSubagent.name },
+                  pathParams: { name: agentName },
                   searchParams: new URLSearchParams({ tab: "schedule" }),
                 });
-              } else {
-                setActiveId("schedule");
               }
             }}
             onNavigateToTeam={() => setActiveId("team")}
             onNavigateToChat={() => setActiveId("chat")}
             onNavigateToMeet={(tab) => {
-              if (selectedSubagent) {
+              const agentName = selectedSubagent?.name ?? defaultRawName;
+              if (agentName) {
                 const searchParams = tab
                   ? new URLSearchParams({ tab })
                   : undefined;
                 navigateInReact("/zero/team/:name", {
-                  pathParams: { name: selectedSubagent.name },
+                  pathParams: { name: agentName },
                   searchParams,
                 });
-              } else {
-                setActiveId("meet");
-                if (tab) {
-                  const next = new URLSearchParams();
-                  next.set("tab", tab);
-                  updateSearchParams(next);
-                }
               }
             }}
             onBackFromSession={handleBackFromSession}
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}
-            onAvatarClick={cycleAvatar}
+            onChatAvatarClick={() => {
+              const agentName = selectedSubagent?.name ?? defaultRawName;
+              if (agentName) {
+                navigateInReact("/zero/team/:name", {
+                  pathParams: { name: agentName },
+                });
+              }
+            }}
+            onCycleZeroAvatar={cycleZeroAvatar}
           />
         )}
       </div>

@@ -12,9 +12,14 @@ use tokio::sync::Notify;
 use tracing::{info, warn};
 use vsock_host::VsockHost;
 
+use crate::api::ApiClient;
+use crate::balloon;
 use crate::config::FirecrackerConfig;
+use crate::control;
+use crate::factory::InvariantConfig;
 use crate::network::PooledNetns;
 use crate::paths::{SandboxPaths, SockPaths};
+use crate::process::kill_process_group;
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -128,7 +133,7 @@ impl FirecrackerSandbox {
 
     /// Build the Firecracker JSON configuration for fresh boot.
     fn build_config(&self) -> serde_json::Value {
-        let inv = crate::factory::InvariantConfig::new();
+        let inv = InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let rootfs_path = self.factory_config.rootfs_path.display().to_string();
         let overlay_path = self.overlay.display().to_string();
@@ -312,7 +317,7 @@ impl FirecrackerSandbox {
 
         // Wait for Firecracker API to be ready, but bail early if the
         // process crashes before the socket appears.
-        let client = crate::api::ApiClient::new(&api_sock);
+        let client = ApiClient::new(&api_sock);
         let crash = Arc::clone(&self.crash_notify);
         tokio::select! {
             result = client.wait_for_ready(API_READY_TIMEOUT) => {
@@ -353,7 +358,7 @@ impl FirecrackerSandbox {
             return;
         };
 
-        crate::process::kill_process_group(child);
+        kill_process_group(child);
 
         // Reap the zombie process.
         let _ = child.wait().await;
@@ -374,7 +379,7 @@ impl Drop for FirecrackerSandbox {
         // `kill_on_drop(true)` only sends SIGKILL to the direct child (`sudo`);
         // `killpg` ensures the entire tree (including firecracker) is cleaned up.
         if let Some(ref child) = self.process {
-            crate::process::kill_process_group(child);
+            kill_process_group(child);
         }
         // Dropping `self.process` (Option<Child>) will trigger kill_on_drop as
         // a secondary safety net.
@@ -500,7 +505,7 @@ impl Sandbox for FirecrackerSandbox {
         }
 
         // Start control socket server for `runner exec`.
-        self.control_server = Some(crate::control::spawn_server(
+        self.control_server = Some(control::spawn_server(
             self.sock_paths.control_sock(),
             Arc::clone(&self.guest),
         ));
@@ -508,7 +513,7 @@ impl Sandbox for FirecrackerSandbox {
         // Spawn balloon controller to reclaim unused guest memory.
         // Only in snapshot mode — fresh boot uses --no-api so no API socket exists.
         if self.factory_config.snapshot.is_some() {
-            self.balloon_controller = Some(crate::balloon::spawn(
+            self.balloon_controller = Some(balloon::spawn(
                 self.sock_paths.api_sock().to_owned(),
                 self.config.resources.memory_mb,
                 Arc::clone(&self.crash_notify),

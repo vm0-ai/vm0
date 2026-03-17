@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.3...ably-subscriber-v0.6.4) (2026-03-17)
+
+
+### Refactoring
+
+* **rust:** replace inline crate:: paths with top-level use imports ([#5061](https://github.com/vm0-ai/vm0/issues/5061)) ([149aaa0](https://github.com/vm0-ai/vm0/commit/149aaa09ca2bf69ffb1bc35471ba813e5884e534)), closes [#5038](https://github.com/vm0-ai/vm0/issues/5038)
+
 ## [0.6.3](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.2...ably-subscriber-v0.6.3) (2026-02-27)
 
 

@@ -1,5 +1,11 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import slackIcon from "./components/settings/icons/slack.svg";
 import {
   Dialog,
@@ -12,6 +18,7 @@ import {
 import { ProviderIcon } from "./components/settings/provider-icons";
 import {
   MODEL_PROVIDER_TYPES,
+  isProviderVisible,
   type ConnectorType,
   type ModelProviderType,
 } from "@vm0/core";
@@ -58,6 +65,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { IconCircleCheck, IconLoader } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
   "claude-code-oauth-token",
@@ -67,6 +75,7 @@ const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
   "minimax-api-key",
   "deepseek-api-key",
   "zai-api-key",
+  "vercel-ai-gateway",
   "azure-foundry",
   "aws-bedrock",
 ];
@@ -209,10 +218,8 @@ function OnboardingSkillsStep({
 /** Zero onboarding: creates org, model provider, and default agent. */
 export function ZeroOnboarding({
   zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
 }: {
   zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
 }) {
   const step = useGet(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
@@ -244,6 +251,7 @@ export function ZeroOnboarding({
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
+  const features = useLastResolved(featureSwitch$);
   const slackData = useGet(slackOrgData$);
 
   // Local UI state: whether user has picked a provider (showing form vs list)
@@ -344,19 +352,14 @@ export function ZeroOnboarding({
           aria-describedby={undefined}
         >
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-16 w-16 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 mb-5"
-              aria-label="Switch Zero avatar"
-            >
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl mb-5">
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-16 w-16 rounded-full object-cover object-top"
               />
-            </button>
+            </div>
             <DialogHeader className="space-y-2">
               <DialogTitle className="text-xl font-semibold tracking-tight">
                 Meet your new teammate
@@ -432,7 +435,9 @@ export function ZeroOnboarding({
                   provider below to get started.
                 </p>
                 <div className="w-full flex flex-wrap justify-center gap-3">
-                  {MODEL_PROVIDER_LIST.map((type) => {
+                  {MODEL_PROVIDER_LIST.filter((type) =>
+                    isProviderVisible(type, features ?? {}),
+                  ).map((type) => {
                     const config = MODEL_PROVIDER_TYPES[type];
                     return (
                       <button

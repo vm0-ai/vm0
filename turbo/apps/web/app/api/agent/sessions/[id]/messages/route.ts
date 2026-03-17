@@ -4,13 +4,16 @@ import {
   TsRestResponse,
 } from "../../../../../../src/lib/ts-rest-handler";
 import { sessionMessagesContract } from "@vm0/core";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { appendChatMessages } from "../../../../../../src/lib/agent-session";
 import { isNotFound } from "../../../../../../src/lib/errors";
+import { agentSessions } from "../../../../../../src/db/schema/agent-session";
+import { verifyComposeOrgAccess } from "../../../../../../src/lib/org/verify-compose-org-access";
 
 const router = tsr.router(sessionMessagesContract, {
-  append: async ({ params, body, headers }) => {
+  append: async ({ params, body, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -19,6 +22,39 @@ const router = tsr.router(sessionMessagesContract, {
         status: 401 as const,
         body: {
           error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    // Verify session belongs to the caller's active organization
+    const [session] = await globalThis.services.db
+      .select({
+        agentComposeId: agentSessions.agentComposeId,
+        userId: agentSessions.userId,
+      })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, params.id))
+      .limit(1);
+
+    if (!session || session.userId !== userId) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Session not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    const hasOrgAccess = await verifyComposeOrgAccess(
+      session.agentComposeId,
+      userId,
+      request.url,
+    );
+    if (!hasOrgAccess) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Session not found", code: "NOT_FOUND" },
         },
       };
     }

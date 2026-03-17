@@ -74,7 +74,7 @@ interface AgentConfig {
   skills?: string[];
   environment?: Record<string, string>;
   metadata?: { displayName?: string; sound?: string };
-  experimental_firewall?: Record<string, FirewallSelection>;
+  experimental_firewalls?: Record<string, FirewallSelection>;
 }
 
 interface LoadedConfig {
@@ -512,7 +512,7 @@ async function finalizeCompose(
   // Merge skill variables into environment
   mergeSkillVariables(agent, variables);
 
-  // Expand experimental_firewall from names to full configs before sending to API
+  // Expand experimental_firewalls from names to full configs before sending to API
   await expandFirewallConfigs(config);
 
   // Call API

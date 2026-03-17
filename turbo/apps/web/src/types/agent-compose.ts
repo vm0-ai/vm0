@@ -49,7 +49,7 @@ interface AgentDefinition {
    * Resolved from firewall names at compose time, stored as full objects.
    * Input format (CLI): string[] — expanded server-side before storage.
    */
-  experimental_firewall?: ExpandedFirewallConfig[];
+  experimental_firewalls?: ExpandedFirewallConfig[];
   /**
    * Capabilities that the agent is allowed to use.
    * Validated at compose time against VALID_CAPABILITIES.
