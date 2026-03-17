@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.120.0](https://github.com/vm0-ai/vm0/compare/platform-v0.119.0...platform-v0.120.0) (2026-03-17)
+
+
+### Features
+
+* add scope field to merged model provider list endpoint ([#5182](https://github.com/vm0-ai/vm0/issues/5182)) ([2b3d4ef](https://github.com/vm0-ai/vm0/commit/2b3d4ef87af7ba9831ffb34ba2a207d1114decc6))
+
+
+### Bug Fixes
+
+* improve slack connect flow with loading state, install DM, and org check ([#5153](https://github.com/vm0-ai/vm0/issues/5153)) ([6f4f1f5](https://github.com/vm0-ai/vm0/commit/6f4f1f57214216477ebdb4b53d01de4cca0c924c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.76.0
+
 ## [0.119.0](https://github.com/vm0-ai/vm0/compare/platform-v0.118.1...platform-v0.119.0) (2026-03-17)
 
 

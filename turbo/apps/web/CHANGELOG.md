@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.122.0](https://github.com/vm0-ai/vm0/compare/web-v12.121.0...web-v12.122.0) (2026-03-17)
+
+
+### Features
+
+* add org model-provider management api (admin-only) ([#5187](https://github.com/vm0-ai/vm0/issues/5187)) ([10e79f9](https://github.com/vm0-ai/vm0/commit/10e79f969862e66f845a7b56a3ed90b47e6d6575))
+* add org-level fallback for model providers, secrets, and variables ([#5185](https://github.com/vm0-ai/vm0/issues/5185)) ([60fe6b0](https://github.com/vm0-ai/vm0/commit/60fe6b0fe6c5a48537b81285fc65953c0b723e4c)), closes [#5168](https://github.com/vm0-ai/vm0/issues/5168)
+* add org-level secrets and variables service functions ([#5181](https://github.com/vm0-ai/vm0/issues/5181)) ([ee3de44](https://github.com/vm0-ai/vm0/commit/ee3de44c998e11d846691ff8b506cedad72300d3)), closes [#5171](https://github.com/vm0-ai/vm0/issues/5171)
+* add scope field to merged model provider list endpoint ([#5182](https://github.com/vm0-ai/vm0/issues/5182)) ([2b3d4ef](https://github.com/vm0-ai/vm0/commit/2b3d4ef87af7ba9831ffb34ba2a207d1114decc6))
+
+
+### Bug Fixes
+
+* improve slack connect flow with loading state, install DM, and org check ([#5153](https://github.com/vm0-ai/vm0/issues/5153)) ([6f4f1f5](https://github.com/vm0-ai/vm0/commit/6f4f1f57214216477ebdb4b53d01de4cca0c924c))
+
+
+### Refactoring
+
+* remove remaining org cache fallbacks from resolve-org ([#5159](https://github.com/vm0-ai/vm0/issues/5159)) ([88c118b](https://github.com/vm0-ai/vm0/commit/88c118b58746102ebb40d8ad711b59dd94bca5b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.76.0
+
 ## [12.121.0](https://github.com/vm0-ai/vm0/compare/web-v12.120.0...web-v12.121.0) (2026-03-17)
 
 

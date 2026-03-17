@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.31.2...runner-rs-v0.31.3) (2026-03-17)
+
+
+### Refactoring
+
+* **sandbox-fc:** replace target-size pool pre-warming with fixed buffer ([#5191](https://github.com/vm0-ai/vm0/issues/5191)) ([4ce60ac](https://github.com/vm0-ai/vm0/commit/4ce60ac8c1c5b0f60dae8169d71135b11ee3b968))
+
 ## [0.31.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.31.1...runner-rs-v0.31.2) (2026-03-17)
 
 ## [0.31.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.31.0...runner-rs-v0.31.1) (2026-03-17)

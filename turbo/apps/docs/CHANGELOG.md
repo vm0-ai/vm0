@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.24.0](https://github.com/vm0-ai/vm0/compare/docs-v2.23.0...docs-v2.24.0) (2026-03-17)
+
+
+### Features
+
+* **docs:** remove non-existent --message option from volume/artifact push docs ([#5177](https://github.com/vm0-ai/vm0/issues/5177)) ([ea10d28](https://github.com/vm0-ai/vm0/commit/ea10d28e2d6e02c3ca327a7c39c825ca00624573)), closes [#5174](https://github.com/vm0-ai/vm0/issues/5174)
+* **docs:** update outdated date in schedule one-time example ([#5189](https://github.com/vm0-ai/vm0/issues/5189)) ([1eb9233](https://github.com/vm0-ai/vm0/commit/1eb9233955c4bc4671dfab351101b889798dd310))
+
 ## [2.23.0](https://github.com/vm0-ai/vm0/compare/docs-v2.22.3...docs-v2.23.0) (2026-03-17)
 
 

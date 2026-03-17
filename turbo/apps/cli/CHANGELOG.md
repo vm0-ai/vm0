@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.63.2](https://github.com/vm0-ai/vm0/compare/cli-v9.63.1...cli-v9.63.2) (2026-03-17)
+
+
+### Refactoring
+
+* remove remaining org cache fallbacks from resolve-org ([#5159](https://github.com/vm0-ai/vm0/issues/5159)) ([88c118b](https://github.com/vm0-ai/vm0/commit/88c118b58746102ebb40d8ad711b59dd94bca5b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.76.0
+
 ## [9.63.1](https://github.com/vm0-ai/vm0/compare/cli-v9.63.0...cli-v9.63.1) (2026-03-17)
 
 

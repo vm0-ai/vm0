@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.76.0](https://github.com/vm0-ai/vm0/compare/core-v8.75.0...core-v8.76.0) (2026-03-17)
+
+
+### Features
+
+* add org model-provider management api (admin-only) ([#5187](https://github.com/vm0-ai/vm0/issues/5187)) ([10e79f9](https://github.com/vm0-ai/vm0/commit/10e79f969862e66f845a7b56a3ed90b47e6d6575))
+* add scope field to merged model provider list endpoint ([#5182](https://github.com/vm0-ai/vm0/issues/5182)) ([2b3d4ef](https://github.com/vm0-ai/vm0/commit/2b3d4ef87af7ba9831ffb34ba2a207d1114decc6))
+* enable model selection for vercel-ai-gateway provider ([#5197](https://github.com/vm0-ai/vm0/issues/5197)) ([120134b](https://github.com/vm0-ai/vm0/commit/120134ba777647d32cb75c2335e3e2c9b84a2fe3)), closes [#5196](https://github.com/vm0-ai/vm0/issues/5196)
+
 ## [8.75.0](https://github.com/vm0-ai/vm0/compare/core-v8.74.0...core-v8.75.0) (2026-03-17)
 
 
