@@ -3,29 +3,36 @@ import { runsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(runsByIdContract, {
-  getById: async ({ params, headers }) => {
+  getById: async ({ params, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization, {
+    const authCtx = await requireAuth(headers.authorization, {
       requiredCapability: "agent-run:read",
     });
-    if (!userId) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
-    // Query run from database - filter by userId for security
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(userId, orgSlug);
+
+    // Query run from database - filter by userId and orgId for security
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
-      .where(and(eq(agentRuns.id, params.id), eq(agentRuns.userId, userId)))
+      .where(
+        and(
+          eq(agentRuns.id, params.id),
+          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, org.orgId),
+        ),
+      )
       .limit(1);
 
     if (!run) {

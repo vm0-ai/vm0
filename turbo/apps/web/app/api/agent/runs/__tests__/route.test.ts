@@ -1511,16 +1511,33 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
   describe("Sandbox Token Capability Enforcement", () => {
     it("should accept sandbox token with agent-run:read for list", async () => {
+      // Refresh org and member caches with current Date.now() timestamp
+      // (a previous test may have advanced Date.now via dateNow mock,
+      // making older cache entries appear stale)
+      await insertOrgCacheEntry({
+        orgId: user.orgId,
+        slug: (await getOrgCacheEntry(user.orgId))!.slug,
+        cachedAt: new Date(Date.now()),
+      });
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        cachedAt: new Date(Date.now()),
+      });
+
+      // Create a run via DB (needs Clerk mock for compose lookup)
+      const { runId } = await createTestRunInDb(user.userId, testComposeId);
+
+      // Now switch to sandbox auth (no Clerk session)
       mockClerk({ userId: null });
 
-      // Create a run via DB so it exists for listing
-      const { runId } = await createTestRunInDb(user.userId, testComposeId);
       const token = await generateSandboxToken(user.userId, runId, [
         "agent-run:read",
       ]);
 
+      const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs?limit=10",
+        `http://localhost:3000/api/agent/runs?limit=10&org=${orgEntry!.slug}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       const response = await GET(request);
@@ -1593,5 +1610,97 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(response.status).toBe(403);
     });
+  });
+});
+
+describe("GET /api/agent/runs - List Runs", () => {
+  const context = testContext();
+  let user: UserContext;
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+
+    const { composeId } = await createTestCompose(uniqueId("list-agent"));
+    testComposeId = composeId;
+  });
+
+  it("should return runs belonging to the user's org", async () => {
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "running",
+      prompt: "Org A run",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs?status=running&limit=50",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.runs.length).toBeGreaterThanOrEqual(1);
+    expect(
+      data.runs.some((r: { prompt: string }) => r.prompt === "Org A run"),
+    ).toBe(true);
+  });
+
+  it("should not return runs from a different org", async () => {
+    // Create a run in the user's default org
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "running",
+      prompt: "Default org run",
+    });
+
+    // Create a compose + run in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+    await createTestRunInDb(user.userId, otherOrg.id, {
+      status: "running",
+      prompt: "Other org run",
+    });
+
+    // List runs — should only see runs from the default org
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs?status=running&limit=50",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const prompts = data.runs.map((r: { prompt: string }) => r.prompt);
+    expect(prompts).toContain("Default org run");
+    expect(prompts).not.toContain("Other org run");
+  });
+
+  it("should filter by org when ?org= query param is provided", async () => {
+    // Create a compose + run in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+    await createTestRunInDb(user.userId, otherOrg.id, {
+      status: "running",
+      prompt: "Target org run",
+    });
+
+    // Look up the other org's slug
+    const orgEntry = await getOrgCacheEntry(otherOrg.orgId);
+
+    // Switch Clerk mock to be a member of the other org
+    mockClerk({
+      userId: user.userId,
+      orgId: otherOrg.orgId,
+      orgSlug: orgEntry!.slug,
+      clerkOrgs: [
+        { id: otherOrg.orgId, slug: orgEntry!.slug, name: orgEntry!.slug },
+      ],
+    });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/runs?status=running&limit=50&org=${orgEntry!.slug}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const prompts = data.runs.map((r: { prompt: string }) => r.prompt);
+    expect(prompts).toContain("Target org run");
   });
 });
