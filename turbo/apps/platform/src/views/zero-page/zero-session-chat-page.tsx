@@ -619,6 +619,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           <RunActivityLine />
         </div>
       </div>
+      {logButton}
     </div>
   );
 }
