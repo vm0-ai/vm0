@@ -50,7 +50,7 @@ describe("Org-level model provider service", () => {
 
       const providers = await listOrgModelProviders(orgId);
       expect(providers).toHaveLength(1);
-      expect(providers[0].type).toBe("anthropic-api-key");
+      expect(providers[0]?.type).toBe("anthropic-api-key");
     });
 
     it("should update existing org provider on re-upsert", async () => {
@@ -82,7 +82,7 @@ describe("Org-level model provider service", () => {
     it("should throw when deleting non-existent org provider", async () => {
       await expect(
         deleteOrgModelProvider(orgId, "anthropic-api-key"),
-      ).rejects.toThrow('Org model provider "anthropic-api-key" not found');
+      ).rejects.toThrow('Model provider "anthropic-api-key" not found');
     });
 
     it("should store selectedModel", async () => {
@@ -145,8 +145,8 @@ describe("Org-level model provider service", () => {
 
       const providers = await listOrgModelProviders(orgId);
       expect(providers).toHaveLength(1);
-      expect(providers[0].type).toBe("claude-code-oauth-token");
-      expect(providers[0].isDefault).toBe(true);
+      expect(providers[0]?.type).toBe("claude-code-oauth-token");
+      expect(providers[0]?.isDefault).toBe(true);
     });
 
     it("should get org default provider for framework", async () => {
@@ -247,7 +247,7 @@ describe("Org-level model provider service", () => {
 
       // Verify user default is unchanged
       const userProviders = await listModelProviders(user.orgId, user.userId);
-      expect(userProviders[0].isDefault).toBe(true);
+      expect(userProviders[0]?.isDefault).toBe(true);
     });
   });
 });

@@ -80,15 +80,19 @@ function getTypesForFramework(framework: ModelProviderFramework): string[] {
 
 /**
  * Atomically assign isDefault=true to a provider, but only if no other provider
- * for the same framework already has isDefault=true.
+ * for the same framework already has isDefault=true for the same userId scope.
  *
  * Uses a single UPDATE with NOT EXISTS subquery to prevent the race condition
  * where two concurrent inserts both set isDefault=true.
+ *
+ * The userId filter ensures org-level defaults (sentinel userId) and user-level
+ * defaults are independent — they do not interfere with each other.
  *
  * @returns true if isDefault was set, false if another default already exists
  */
 async function assignDefaultIfFirst(
   orgId: string,
+  userId: string,
   providerId: string,
   framework: ModelProviderFramework,
 ): Promise<boolean> {
@@ -107,44 +111,7 @@ async function assignDefaultIfFirst(
             .where(
               and(
                 eq(modelProviders.orgId, orgId),
-                eq(modelProviders.isDefault, true),
-                ne(modelProviders.id, providerId),
-                inArray(modelProviders.type, frameworkTypes),
-              ),
-            ),
-        ),
-      ),
-    );
-
-  return (result.rowCount ?? 0) > 0;
-}
-
-/**
- * Org-scoped variant of assignDefaultIfFirst.
- * Only considers org-level providers (sentinel userId) when checking for existing defaults,
- * ensuring org defaults are independent from user defaults.
- */
-async function assignOrgDefaultIfFirst(
-  orgId: string,
-  providerId: string,
-  framework: ModelProviderFramework,
-): Promise<boolean> {
-  const frameworkTypes = getTypesForFramework(framework);
-
-  const result = await globalThis.services.db
-    .update(modelProviders)
-    .set({ isDefault: true })
-    .where(
-      and(
-        eq(modelProviders.id, providerId),
-        notExists(
-          globalThis.services.db
-            .select({ id: sql`1` })
-            .from(modelProviders)
-            .where(
-              and(
-                eq(modelProviders.orgId, orgId),
-                eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+                eq(modelProviders.userId, userId),
                 eq(modelProviders.isDefault, true),
                 ne(modelProviders.id, providerId),
                 inArray(modelProviders.type, frameworkTypes),
@@ -332,6 +299,7 @@ export async function upsertModelProvider(
   if (!provider!.isDefault) {
     const isDefault = await assignDefaultIfFirst(
       orgId,
+      userId,
       provider!.id,
       framework,
     );
@@ -557,6 +525,7 @@ export async function upsertMultiAuthModelProvider(
   if (!provider!.isDefault) {
     const isDefault = await assignDefaultIfFirst(
       orgId,
+      userId,
       provider!.id,
       framework,
     );
@@ -893,532 +862,86 @@ export async function getDefaultModelProvider(
 
 // ============================================================================
 // Org-Level Model Provider Functions
+//
+// These delegate to the user-level functions using ORG_SENTINEL_USER_ID.
+// The sentinel userId ensures org and user providers are fully isolated.
 // ============================================================================
 
 /**
  * List all org-level model providers
  */
-export async function listOrgModelProviders(
+export function listOrgModelProviders(
   orgId: string,
 ): Promise<ModelProviderInfo[]> {
-  const result = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
-    .from(modelProviders)
-    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-      ),
-    )
-    .orderBy(modelProviders.type);
-
-  return result.map((row) =>
-    toModelProviderInfo({
-      id: row.id,
-      type: row.type as ModelProviderType,
-      secretName: row.secretName,
-      authMethod: row.authMethod,
-      isDefault: row.isDefault,
-      selectedModel: row.selectedModel,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }),
-  );
+  return listModelProviders(orgId, ORG_SENTINEL_USER_ID);
 }
 
 /**
  * Create or update an org-level model provider (single-secret).
  * Uses ORG_SENTINEL_USER_ID for org-scoped storage.
  */
-export async function upsertOrgModelProvider(
+export function upsertOrgModelProvider(
   orgId: string,
   type: ModelProviderType,
   secret: string,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
-  if (hasAuthMethods(type)) {
-    throw badRequest(
-      `Provider "${type}" requires multiple secrets. Use the multi-auth API instead.`,
-    );
-  }
-
-  const secretName = getSecretNameForType(type);
-  if (!secretName) {
-    throw badRequest(`Provider "${type}" does not have a secret name`);
-  }
-  const framework = getFrameworkForType(type);
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptSecretValue(secret, encryptionKey);
-
-  const userId = ORG_SENTINEL_USER_ID;
-
-  log.debug("upserting org model provider", { orgId, type, secretName });
-
-  const [existingProvider] = await globalThis.services.db
-    .select({ id: modelProviders.id })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  const [upsertedSecret] = await globalThis.services.db
-    .insert(secrets)
-    .values({
-      userId,
-      name: secretName,
-      encryptedValue,
-      type: "model-provider",
-      description: `Org model provider secret for ${MODEL_PROVIDER_TYPES[type].label}`,
-      orgId,
-    })
-    .onConflictDoUpdate({
-      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
-      set: { encryptedValue, updatedAt: new Date() },
-    })
-    .returning();
-
-  const [provider] = await globalThis.services.db
-    .insert(modelProviders)
-    .values({
-      type,
-      userId,
-      secretId: upsertedSecret!.id,
-      isDefault: false,
-      selectedModel: selectedModel ?? null,
-      orgId,
-    })
-    .onConflictDoUpdate({
-      target: [
-        modelProviders.orgId,
-        modelProviders.userId,
-        modelProviders.type,
-      ],
-      set: {
-        secretId: upsertedSecret!.id,
-        selectedModel: selectedModel ?? null,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
-
-  const wasCreated = !existingProvider;
-
-  if (!provider!.isDefault) {
-    const isDefault = await assignOrgDefaultIfFirst(
-      orgId,
-      provider!.id,
-      framework,
-    );
-    if (isDefault) {
-      provider!.isDefault = true;
-    }
-  }
-
-  log.debug(
-    wasCreated ? "org model provider created" : "org model provider updated",
-    {
-      providerId: provider!.id,
-      type,
-      selectedModel,
-      isDefault: provider!.isDefault,
-    },
+  return upsertModelProvider(
+    orgId,
+    ORG_SENTINEL_USER_ID,
+    type,
+    secret,
+    selectedModel,
   );
-
-  return {
-    provider: toModelProviderInfo({
-      id: provider!.id,
-      type,
-      secretName,
-      isDefault: provider!.isDefault,
-      selectedModel: provider!.selectedModel,
-      createdAt: provider!.createdAt,
-      updatedAt: provider!.updatedAt,
-    }),
-    created: wasCreated,
-  };
 }
 
 /**
  * Create or update an org-level multi-auth model provider (e.g., aws-bedrock).
  * Uses ORG_SENTINEL_USER_ID for org-scoped storage.
  */
-export async function upsertOrgMultiAuthModelProvider(
+export function upsertOrgMultiAuthModelProvider(
   orgId: string,
   type: ModelProviderType,
   authMethod: string,
   secretValues: Record<string, string>,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
-  if (!hasAuthMethods(type)) {
-    throw badRequest(
-      `Provider "${type}" is a legacy single-secret provider. Use the standard upsert API.`,
-    );
-  }
-
-  const authMethods = getAuthMethodsForType(type);
-  if (!authMethods || !(authMethod in authMethods)) {
-    const validMethods = authMethods ? Object.keys(authMethods).join(", ") : "";
-    throw badRequest(
-      `Invalid auth method "${authMethod}" for provider "${type}". Valid methods: ${validMethods}`,
-    );
-  }
-
-  const secretsConfig = getSecretsForAuthMethod(type, authMethod);
-  if (!secretsConfig) {
-    throw badRequest(`No secrets config found for auth method "${authMethod}"`);
-  }
-
-  const missingRequired: string[] = [];
-  for (const [name, config] of Object.entries(secretsConfig)) {
-    if (config.required && !secretValues[name]) {
-      missingRequired.push(name);
-    }
-  }
-
-  if (missingRequired.length > 0) {
-    throw badRequest(
-      `Missing required secrets for ${authMethod}: ${missingRequired.join(", ")}`,
-    );
-  }
-
-  const framework = getFrameworkForType(type);
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const userId = ORG_SENTINEL_USER_ID;
-
-  log.debug("upserting org multi-auth model provider", {
+  return upsertMultiAuthModelProvider(
     orgId,
+    ORG_SENTINEL_USER_ID,
     type,
     authMethod,
-    secretNames: Object.keys(secretValues),
-  });
-
-  const [existingProvider] = await globalThis.services.db
-    .select()
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (existingProvider && existingProvider.authMethod !== authMethod) {
-    await cleanupOldAuthMethodSecrets(
-      orgId,
-      userId,
-      type,
-      existingProvider.authMethod ?? "",
-      Object.keys(secretValues),
-    );
-  }
-
-  const secretNames = Object.keys(secretValues);
-  const secretDescription = `${MODEL_PROVIDER_TYPES[type].label} secret (${authMethod})`;
-
-  for (const [name, value] of Object.entries(secretValues)) {
-    await upsertMultiAuthSecret(
-      orgId,
-      userId,
-      name,
-      value,
-      secretDescription,
-      encryptionKey,
-    );
-  }
-
-  const [provider] = await globalThis.services.db
-    .insert(modelProviders)
-    .values({
-      type,
-      userId,
-      authMethod,
-      isDefault: false,
-      selectedModel: selectedModel ?? null,
-      orgId,
-    })
-    .onConflictDoUpdate({
-      target: [
-        modelProviders.orgId,
-        modelProviders.userId,
-        modelProviders.type,
-      ],
-      set: {
-        authMethod,
-        selectedModel: selectedModel ?? null,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
-
-  const wasCreated = !existingProvider;
-
-  if (!provider!.isDefault) {
-    const isDefault = await assignOrgDefaultIfFirst(
-      orgId,
-      provider!.id,
-      framework,
-    );
-    if (isDefault) {
-      provider!.isDefault = true;
-    }
-  }
-
-  log.debug(
-    wasCreated
-      ? "org multi-auth model provider created"
-      : "org multi-auth model provider updated",
-    {
-      providerId: provider!.id,
-      type,
-      authMethod,
-      selectedModel,
-      isDefault: provider!.isDefault,
-    },
+    secretValues,
+    selectedModel,
   );
-
-  return {
-    provider: toModelProviderInfo({
-      id: provider!.id,
-      type,
-      authMethod,
-      secretNames,
-      isDefault: provider!.isDefault,
-      selectedModel: provider!.selectedModel,
-      createdAt: provider!.createdAt,
-      updatedAt: provider!.updatedAt,
-    }),
-    created: wasCreated,
-  };
 }
 
 /**
  * Delete an org-level model provider and its secrets
  */
-export async function deleteOrgModelProvider(
+export function deleteOrgModelProvider(
   orgId: string,
   type: ModelProviderType,
 ): Promise<void> {
-  const framework = getFrameworkForType(type);
-  const userId = ORG_SENTINEL_USER_ID;
-
-  const [provider] = await globalThis.services.db
-    .select()
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (!provider) {
-    throw notFound(`Org model provider "${type}" not found`);
-  }
-
-  const wasDefault = provider.isDefault;
-  const secretId = provider.secretId;
-
-  if (secretId) {
-    await globalThis.services.db
-      .delete(secrets)
-      .where(eq(secrets.id, secretId));
-  } else {
-    if (provider.authMethod) {
-      const secretNames = getSecretNamesForAuthMethod(
-        type,
-        provider.authMethod,
-      );
-      if (secretNames && secretNames.length > 0) {
-        await globalThis.services.db
-          .delete(secrets)
-          .where(
-            and(
-              eq(secrets.orgId, orgId),
-              eq(secrets.userId, userId),
-              inArray(secrets.name, secretNames),
-            ),
-          );
-      }
-    }
-    await globalThis.services.db
-      .delete(modelProviders)
-      .where(eq(modelProviders.id, provider.id));
-  }
-
-  log.debug("org model provider deleted", { orgId, type });
-
-  if (wasDefault) {
-    const remaining = await globalThis.services.db
-      .select({ id: modelProviders.id, type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
-      )
-      .orderBy(modelProviders.createdAt);
-
-    const nextDefault = remaining.find(
-      (p) => getFrameworkForType(p.type as ModelProviderType) === framework,
-    );
-
-    if (nextDefault) {
-      await globalThis.services.db
-        .update(modelProviders)
-        .set({ isDefault: true, updatedAt: new Date() })
-        .where(eq(modelProviders.id, nextDefault.id));
-
-      log.debug("new org default assigned", {
-        framework,
-        newDefaultType: nextDefault.type,
-      });
-    }
-  }
+  return deleteModelProvider(orgId, ORG_SENTINEL_USER_ID, type);
 }
 
 /**
  * Set an org-level model provider as default for its framework
  */
-export async function setOrgModelProviderDefault(
+export function setOrgModelProviderDefault(
   orgId: string,
   type: ModelProviderType,
 ): Promise<ModelProviderInfo> {
-  const framework = getFrameworkForType(type);
-  const secretName = getSecretNameForType(type) ?? null;
-  const userId = ORG_SENTINEL_USER_ID;
-
-  const [target] = await globalThis.services.db
-    .select()
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, userId),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (!target) {
-    throw notFound(`Org model provider "${type}" not found`);
-  }
-
-  if (target.isDefault) {
-    return toModelProviderInfo({
-      id: target.id,
-      type,
-      secretName,
-      authMethod: target.authMethod,
-      isDefault: true,
-      selectedModel: target.selectedModel,
-      createdAt: target.createdAt,
-      updatedAt: target.updatedAt,
-    });
-  }
-
-  const allProviders = await globalThis.services.db
-    .select({ id: modelProviders.id, type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
-    );
-
-  const sameFrameworkIds = allProviders
-    .filter(
-      (p) => getFrameworkForType(p.type as ModelProviderType) === framework,
-    )
-    .map((p) => p.id);
-
-  await globalThis.services.db.transaction(async (tx) => {
-    if (sameFrameworkIds.length > 0) {
-      await tx
-        .update(modelProviders)
-        .set({ isDefault: false, updatedAt: new Date() })
-        .where(inArray(modelProviders.id, sameFrameworkIds));
-    }
-
-    await tx
-      .update(modelProviders)
-      .set({ isDefault: true, updatedAt: new Date() })
-      .where(eq(modelProviders.id, target.id));
-  });
-
-  log.debug("org model provider set as default", { type, framework });
-
-  return toModelProviderInfo({
-    id: target.id,
-    type,
-    secretName,
-    authMethod: target.authMethod,
-    isDefault: true,
-    selectedModel: target.selectedModel,
-    createdAt: target.createdAt,
-    updatedAt: new Date(),
-  });
+  return setModelProviderDefault(orgId, ORG_SENTINEL_USER_ID, type);
 }
 
 /**
  * Get the org-level default model provider for a framework
  */
-export async function getOrgDefaultModelProvider(
+export function getOrgDefaultModelProvider(
   orgId: string,
   framework: ModelProviderFramework,
 ): Promise<ModelProviderInfo | null> {
-  const allProviders = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
-    .from(modelProviders)
-    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-      ),
-    );
-
-  const defaultProvider = allProviders.find(
-    (p) =>
-      p.isDefault &&
-      getFrameworkForType(p.type as ModelProviderType) === framework,
-  );
-
-  if (!defaultProvider) {
-    return null;
-  }
-
-  return toModelProviderInfo({
-    id: defaultProvider.id,
-    type: defaultProvider.type as ModelProviderType,
-    secretName: defaultProvider.secretName,
-    authMethod: defaultProvider.authMethod,
-    isDefault: defaultProvider.isDefault,
-    selectedModel: defaultProvider.selectedModel,
-    createdAt: defaultProvider.createdAt,
-    updatedAt: defaultProvider.updatedAt,
-  });
+  return getDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID, framework);
 }
