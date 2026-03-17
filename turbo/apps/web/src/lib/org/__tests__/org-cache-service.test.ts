@@ -141,6 +141,30 @@ describe("getOrgData", () => {
     expect(result.tier).toBe("pro");
   });
 
+  it("reads credits from Clerk privateMetadata", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    await createTestOrg(slug);
+    const orgId = `org_mock_${slug}`;
+
+    // Override getOrganization to return credits in privateMetadata
+    const client = await clerkClient();
+    vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
+      id: orgId,
+      slug,
+      name: slug,
+      publicMetadata: {},
+      privateMetadata: { credits: 500 },
+    } as unknown as Awaited<
+      ReturnType<typeof client.organizations.getOrganization>
+    >);
+
+    const result = await getOrgData(orgId);
+
+    expect(result.credits).toBe(500);
+  });
+
   it("throws when Clerk org has no slug", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
@@ -229,6 +253,33 @@ describe("getOrgBySlug", () => {
     const result = await getOrgBySlug("nonexistent-slug");
 
     expect(result).toBeNull();
+  });
+
+  it("reads credits from Clerk privateMetadata", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    const orgId = `org_mock_${slug}`;
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: orgId, slug, name: slug }],
+    });
+
+    // Override getOrganization to return credits in privateMetadata
+    const client = await clerkClient();
+    vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
+      id: orgId,
+      slug,
+      name: slug,
+      publicMetadata: {},
+      privateMetadata: { credits: 500 },
+    } as unknown as Awaited<
+      ReturnType<typeof client.organizations.getOrganization>
+    >);
+
+    const result = await getOrgBySlug(slug);
+
+    expect(result).not.toBeNull();
+    expect(result!.credits).toBe(500);
   });
 
   it("refetches from Clerk when cache is stale", async () => {
