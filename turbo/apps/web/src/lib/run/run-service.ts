@@ -32,6 +32,7 @@ import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
 
 import { getVariableValues } from "../variable/variable-service";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
 import { type OrgTier } from "@vm0/core";
 
@@ -436,8 +437,11 @@ async function validateComposeRequirements(
   if (checkEnv) {
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
-      const storedVars = await getVariableValues(orgId, userId);
-      const allVars = { ...storedVars, ...vars };
+      const [orgVars, userVars] = await Promise.all([
+        getVariableValues(orgId, ORG_SENTINEL_USER_ID),
+        getVariableValues(orgId, userId),
+      ]);
+      const allVars = { ...orgVars, ...userVars, ...vars };
       const missingVars = requiredVars.filter(
         (varName) => allVars[varName] === undefined,
       );

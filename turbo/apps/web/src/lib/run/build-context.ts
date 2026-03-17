@@ -33,7 +33,11 @@ import { expandEnvironmentFromCompose } from "./environment";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
-import { getDefaultModelProvider } from "../model-provider/model-provider-service";
+import {
+  getDefaultModelProvider,
+  getOrgDefaultModelProvider,
+} from "../model-provider/model-provider-service";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { connectors } from "../../db/schema/connector";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
 import { refreshConnectorAccessToken } from "../connector/connector-service";
@@ -194,12 +198,22 @@ async function resolveModelProviderSecrets(
     return { secrets, injectedEnvironment: undefined };
   }
 
-  // Fetch default provider once (used for type resolution, model selection, and auth method)
-  const defaultProvider = await getDefaultModelProvider(
+  // Fetch default provider: try user-level first, fall back to org-level
+  const userProvider = await getDefaultModelProvider(
     orgId,
     userId,
     framework as ModelProviderFramework,
   );
+  const defaultProvider =
+    userProvider ??
+    (await getOrgDefaultModelProvider(
+      orgId,
+      framework as ModelProviderFramework,
+    ));
+
+  // Secrets must match the provider's ownership scope:
+  // user provider → user secrets, org provider → org secrets
+  const secretUserId = userProvider ? userId : ORG_SENTINEL_USER_ID;
 
   const providerType = resolveProviderType(
     framework,
@@ -225,10 +239,10 @@ async function resolveModelProviderSecrets(
       return { secrets, injectedEnvironment: undefined };
     }
 
-    // Fetch all model-provider secrets by name
+    // Fetch all model-provider secrets by name (scoped to provider owner)
     const allSecretValues = await getSecretValues(
       orgId,
-      userId,
+      secretUserId,
       "model-provider",
     );
     const secretsMap: Record<string, string> = {};
@@ -276,7 +290,7 @@ async function resolveModelProviderSecrets(
 
   const secretValue = await getSecretValue(
     orgId,
-    userId,
+    secretUserId,
     secretName,
     "model-provider",
   );
@@ -441,12 +455,16 @@ async function fetchReferencedSecrets(
   const referencedNames = grouped.secrets.map((r) => r.name);
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
-  // Only fetch user secrets for variable expansion (model-provider secrets are isolated)
-  const userSecrets = await getSecretValues(orgId, userId, "user");
+  // Fetch org and user secrets in parallel, merge with user > org priority
+  const [orgSecrets, userSecrets] = await Promise.all([
+    getSecretValues(orgId, ORG_SENTINEL_USER_ID, "user"),
+    getSecretValues(orgId, userId, "user"),
+  ]);
+  const mergedSecrets = { ...orgSecrets, ...userSecrets };
   log.debug(
-    `Fetched ${Object.keys(userSecrets).length} user secret(s) for org ${orgId}`,
+    `Fetched ${Object.keys(mergedSecrets).length} user secret(s) for org ${orgId}`,
   );
-  return userSecrets;
+  return mergedSecrets;
 }
 
 /**
@@ -462,7 +480,12 @@ async function fetchAndMergeVariables(
   userId: string,
   cliVars: Record<string, string> | undefined,
 ): Promise<Record<string, string> | undefined> {
-  const storedVars = await getVariableValues(orgId, userId);
+  // Fetch org and user variables in parallel, merge with user > org priority
+  const [orgVars, userVars] = await Promise.all([
+    getVariableValues(orgId, ORG_SENTINEL_USER_ID),
+    getVariableValues(orgId, userId),
+  ]);
+  const storedVars = { ...orgVars, ...userVars };
   if (Object.keys(storedVars).length === 0) {
     return cliVars;
   }
