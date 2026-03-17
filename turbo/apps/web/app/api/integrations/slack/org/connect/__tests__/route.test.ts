@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { WebClient } from "@slack/web-api";
 import { GET, POST } from "../route";
 import {
   testContext,
@@ -11,6 +12,7 @@ import {
   createTestSlackOrgConnection,
   createTestRequest,
   findTestSlackOrgConnection,
+  insertOrgCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 
 const context = testContext();
@@ -38,30 +40,31 @@ async function givenBoundWorkspace(opts?: { isAdmin?: boolean }) {
 }
 
 /**
- * Helper — set up an unbound Slack installation (no orgId).
+ * Helper — create an unbound Slack installation via OAuth callback (no orgId in state).
  */
 async function givenUnboundWorkspace(opts?: { isAdmin?: boolean }) {
   const { isAdmin = true } = opts ?? {};
   const user = await context.setupUser();
   const org = await createTestOrg(uniqueId("org"));
 
-  const { slackWorkspaceId } = await createTestSlackOrgInstallation({
-    orgId: org.id,
-  });
+  // Create unbound installation via the oauth callback route (no state → null orgId)
+  const workspaceId = `T-${uniqueId("ws")}`;
+  const mockClient = vi.mocked(new WebClient(), true);
+  mockClient.oauth.v2.access.mockResolvedValueOnce({
+    ok: true,
+    access_token: "xoxb-unbound-token",
+    bot_user_id: "B-unbound",
+    team: { id: workspaceId, name: "Unbound Workspace" },
+    authed_user: { id: "U-installer" },
+  } as never);
 
-  // Unbind the workspace
-  const { initServices } = await import(
-    "../../../../../../../src/lib/init-services"
+  const { GET: oauthCallback } = await import(
+    "../../../../../slack/org/oauth/callback/route"
   );
-  const { slackOrgInstallations } = await import(
-    "../../../../../../../src/db/schema/slack-org-installation"
+  const callbackReq = createTestRequest(
+    `http://localhost:3000/api/slack/org/oauth/callback?code=test-code`,
   );
-  const { eq } = await import("drizzle-orm");
-  initServices();
-  await globalThis.services.db
-    .update(slackOrgInstallations)
-    .set({ orgId: null })
-    .where(eq(slackOrgInstallations.slackWorkspaceId, slackWorkspaceId));
+  await oauthCallback(callbackReq);
 
   mockClerk({
     userId: user.userId,
@@ -69,7 +72,7 @@ async function givenUnboundWorkspace(opts?: { isAdmin?: boolean }) {
     orgRole: isAdmin ? "org:admin" : "org:member",
   });
 
-  return { user, org, workspaceId: slackWorkspaceId };
+  return { user, org, workspaceId };
 }
 
 describe("/api/integrations/slack/org/connect", () => {
@@ -94,7 +97,7 @@ describe("/api/integrations/slack/org/connect", () => {
     });
 
     it("returns isConnected=false when user has no connection", async () => {
-      const { org } = await givenBoundWorkspace();
+      await givenBoundWorkspace();
 
       const request = new Request(
         "http://localhost:3000/api/integrations/slack/org/connect",
@@ -339,7 +342,7 @@ describe("/api/integrations/slack/org/connect", () => {
 
     it("returns 403 when workspace is bound to a different org", async () => {
       // Set up org A (admin) with a bound workspace
-      const userA = await context.setupUser();
+      await context.setupUser();
       const orgA = await createTestOrg(uniqueId("org-a"));
       const { slackWorkspaceId } = await createTestSlackOrgInstallation({
         orgId: orgA.id,
@@ -382,7 +385,7 @@ describe("/api/integrations/slack/org/connect", () => {
 
     it("returns 403 with switch-org message when user is member of target org but wrong active org", async () => {
       // User is a member of two orgs; workspace is bound to orgA
-      const user = await context.setupUser();
+      const { userId } = await context.setupUser();
       const orgASlug = uniqueId("org-a");
       const orgA = await createTestOrg(orgASlug);
       const { slackWorkspaceId } = await createTestSlackOrgInstallation({
@@ -392,13 +395,10 @@ describe("/api/integrations/slack/org/connect", () => {
       // Create a second org and set it as active (wrong active org)
       const orgBId = uniqueId("org-b");
       const orgBSlug = uniqueId("org-b");
-      const { insertOrgCacheEntry } = await import(
-        "../../../../../../../src/__tests__/api-test-helpers"
-      );
       await insertOrgCacheEntry({ orgId: orgBId, slug: orgBSlug });
 
       mockClerk({
-        userId: user.userId,
+        userId,
         orgId: orgBId,
         clerkOrgs: [
           { id: orgA.id, slug: orgASlug, name: orgASlug },
@@ -429,7 +429,7 @@ describe("/api/integrations/slack/org/connect", () => {
     });
 
     it("connect is idempotent — second connect returns success", async () => {
-      const { user, org, workspaceId } = await givenBoundWorkspace();
+      const { workspaceId } = await givenBoundWorkspace();
       const slackUserId = `U-${uniqueId("slack")}`;
 
       // First connect
