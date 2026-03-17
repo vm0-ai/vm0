@@ -79,7 +79,6 @@ export function ZeroContent({
           onBack={onBackFromSession}
           onNavigateToTeam={onNavigateToTeam}
           onNavigateToSchedule={onNavigateToSchedule}
-          onNavigateToActivity={onNavigateToActivity}
           onAvatarClick={onChatAvatarClick}
         />
       );

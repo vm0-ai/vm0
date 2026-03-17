@@ -65,7 +65,6 @@ interface ZeroSessionChatPageProps {
   onBack?: () => void;
   onNavigateToTeam?: () => void;
   onNavigateToSchedule?: () => void;
-  onNavigateToActivity?: (logId?: string) => void;
   onAvatarClick?: () => void;
   chatAgentName?: string;
 }
@@ -75,7 +74,6 @@ export function ZeroSessionChatPage({
   onBack,
   onNavigateToTeam,
   onNavigateToSchedule,
-  onNavigateToActivity,
   onAvatarClick,
   chatAgentName,
 }: ZeroSessionChatPageProps) {
@@ -222,7 +220,6 @@ export function ZeroSessionChatPage({
               key={msg.id}
               message={msg}
               zeroAvatarSrc={zeroAvatarSrc}
-              onNavigateToActivity={onNavigateToActivity}
             />
           ))}
           <div ref={setMessagesEndEl} />
@@ -368,24 +365,13 @@ function ChatSkeleton() {
 interface ChatMessageRowProps {
   message: ZeroChatMessage;
   zeroAvatarSrc: string;
-  onNavigateToActivity?: (logId?: string) => void;
 }
 
-function ChatMessageRow({
-  message,
-  zeroAvatarSrc,
-  onNavigateToActivity,
-}: ChatMessageRowProps) {
+function ChatMessageRow({ message, zeroAvatarSrc }: ChatMessageRowProps) {
   if (message.role === "user") {
     return <UserMessage message={message} />;
   }
-  return (
-    <AssistantMessage
-      message={message}
-      zeroAvatarSrc={zeroAvatarSrc}
-      onNavigateToActivity={onNavigateToActivity}
-    />
-  );
+  return <AssistantMessage message={message} zeroAvatarSrc={zeroAvatarSrc} />;
 }
 
 /**
@@ -560,14 +546,9 @@ function queueLabel(position: number): string {
 interface AssistantMessageProps {
   message: ZeroChatMessage;
   zeroAvatarSrc: string;
-  onNavigateToActivity?: (logId?: string) => void;
 }
 
-function AssistantMessage({
-  message,
-  zeroAvatarSrc,
-  onNavigateToActivity,
-}: AssistantMessageProps) {
+function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
@@ -588,13 +569,6 @@ function AssistantMessage({
             <TooltipTrigger asChild>
               <SimpleLink
                 href={`/zero/activity/${message.runId}`}
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                    return;
-                  }
-                  e.preventDefault();
-                  onNavigateToActivity?.(message.runId);
-                }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
                 aria-label="View run logs"
               >
