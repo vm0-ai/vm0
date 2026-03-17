@@ -62,6 +62,20 @@ export function ZeroSkillCard({
                 <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
                 Connecting…
               </span>
+            ) : connector.connected && connector.needsReconnect ? (
+              <span className="flex items-center gap-2 text-xs truncate">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                <span className="text-amber-600 dark:text-amber-400">
+                  Connection expired
+                </span>
+                <button
+                  type="button"
+                  onClick={onConnect}
+                  className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
+                >
+                  Reconnect
+                </button>
+              </span>
             ) : connector.connected ? (
               <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />

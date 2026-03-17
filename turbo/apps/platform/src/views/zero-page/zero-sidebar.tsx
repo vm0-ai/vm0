@@ -37,7 +37,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { SessionListItem } from "@vm0/core";
+import type { ChatThreadListItem } from "@vm0/core";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -171,7 +171,7 @@ interface ZeroSidebarProps {
   onRecentSelect?: (id: string) => void;
   selectedRecentId?: string | null;
   onAccountAction?: (action: ZeroAccountAction) => void;
-  recentSessions?: SessionListItem[];
+  recentSessions?: ChatThreadListItem[];
   recentSessionsLoading?: boolean;
   recentSessionsError?: string | null;
   onNewChat?: (agentId: string | null) => void;
@@ -435,7 +435,7 @@ function RecentChatSection({
   selectedRecentId,
   onRecentSelect,
 }: {
-  recentSessions: SessionListItem[];
+  recentSessions: ChatThreadListItem[];
   recentSessionsLoading: boolean;
   recentSessionsError: string | null;
   selectedRecentId: string | null;

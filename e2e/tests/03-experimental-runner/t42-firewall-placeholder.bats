@@ -133,7 +133,7 @@ agents:
     experimental_firewalls:
       github:
         permissions:
-          - repo-read
+          - metadata-read
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 EOF

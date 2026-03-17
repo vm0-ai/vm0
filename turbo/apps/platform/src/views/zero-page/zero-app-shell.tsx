@@ -35,7 +35,7 @@ import {
   zeroSessionList$,
   zeroSessionListLoading$,
   zeroSessionListError$,
-  zeroCurrentSessionId$,
+  zeroChatThreadId$,
   fetchZeroSessionList$,
   switchZeroSession$,
   startNewZeroSession$,
@@ -303,7 +303,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const inChat = useGet(zeroInChat$);
   const urlSessionId = useGet(zeroSessionId$);
   const inSession = inChat;
-  const currentSessionId = useGet(zeroCurrentSessionId$);
+  const currentThreadId = useGet(zeroChatThreadId$);
   const switchSession = useSet(switchZeroSession$);
   const startNewSession = useSet(startNewZeroSession$);
   const sendMessage = useSet(sendZeroChatMessage$);
@@ -311,8 +311,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const { recentSessions, recentSessionsLoading, recentSessionsError } =
     useSessionLifecycle(isLoggedIn, onboardingReady, needsOnboarding);
 
-  // Sync URL session ID to chat signal (skip if signal already matches)
-  useUrlSessionSync(urlSessionId, currentSessionId, switchSession);
+  // Sync URL thread ID to chat signal (skip if signal already matches)
+  useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
 
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
     set(navigateToZeroSession$, sessionId);

@@ -1800,6 +1800,28 @@ export async function findTestConnectorSecret(
  * @param type - The connector type (e.g. "notion", "github")
  * @returns The tokenExpiresAt Date, or null if not set, or undefined if connector not found
  */
+/**
+ * Set the needsReconnect flag for a connector in the database.
+ * Used for testing the needsReconnect feature without triggering a real token refresh failure.
+ */
+export async function setTestConnectorNeedsReconnect(
+  orgId: string,
+  userId: string,
+  type: string,
+  needsReconnect: boolean,
+): Promise<void> {
+  await globalThis.services.db
+    .update(connectors)
+    .set({ needsReconnect })
+    .where(
+      and(
+        eq(connectors.orgId, orgId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, type),
+      ),
+    );
+}
+
 export async function findTestConnectorTokenExpiresAt(
   orgId: string,
   type: string,

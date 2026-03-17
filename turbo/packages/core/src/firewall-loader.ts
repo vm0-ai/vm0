@@ -15,8 +15,8 @@ import {
 /** Minimal fetch function signature for dependency injection in tests */
 export type FetchFn = (url: string) => Promise<Response>;
 
-/** Max response size for firewall YAML files (64KB — configs are typically <1KB) */
-const MAX_RESPONSE_SIZE = 64 * 1024;
+/** Max response size for firewall YAML files (128KB) */
+const MAX_RESPONSE_SIZE = 128 * 1024;
 
 /**
  * Build the raw GitHub URL for a firewall's YAML config file.

@@ -44,6 +44,7 @@ describe("connector list command", () => {
                 externalUsername: "octocat",
                 externalEmail: "octocat@github.com",
                 oauthScopes: ["repo"],
+                needsReconnect: false,
                 createdAt: "2025-01-01T00:00:00Z",
                 updatedAt: "2025-01-01T00:00:00Z",
               },
@@ -79,6 +80,37 @@ describe("connector list command", () => {
       expect(logCalls).not.toContain("@octocat");
     });
 
+    it("should show reconnect needed status for needsReconnect connector", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "octocat",
+                externalEmail: "octocat@github.com",
+                oauthScopes: ["repo"],
+                needsReconnect: true,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["github"],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("!");
+      expect(logCalls).toContain("(reconnect needed)");
+      expect(logCalls).not.toContain("✓");
+    });
+
     it("should always show connect hint", async () => {
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
@@ -92,6 +124,7 @@ describe("connector list command", () => {
                 externalUsername: "octocat",
                 externalEmail: null,
                 oauthScopes: ["repo"],
+                needsReconnect: false,
                 createdAt: "2025-01-01T00:00:00Z",
                 updatedAt: "2025-01-01T00:00:00Z",
               },

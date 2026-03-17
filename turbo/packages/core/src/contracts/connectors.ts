@@ -3058,6 +3058,7 @@ export const connectorResponseSchema = z.object({
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
   oauthScopes: z.array(z.string()).nullable(),
+  needsReconnect: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

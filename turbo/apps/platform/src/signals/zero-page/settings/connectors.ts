@@ -37,6 +37,8 @@ export interface ConnectorTypeWithStatus {
   usedByAgent?: boolean;
   /** True if stored OAuth scopes don't cover all currently required scopes. */
   scopeMismatch: boolean;
+  /** True if OAuth token refresh failed and user needs to reconnect. */
+  needsReconnect: boolean;
 }
 
 export const allConnectorTypes$ = computed(async (get) => {
@@ -77,6 +79,7 @@ export const allConnectorTypes$ = computed(async (get) => {
           connector !== null &&
           connector.authMethod === "oauth" &&
           !hasRequiredScopes(type, connector.oauthScopes),
+        needsReconnect: connector?.needsReconnect ?? false,
       };
     });
 });

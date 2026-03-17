@@ -123,7 +123,7 @@ apis: []
   });
 
   it("should throw when response exceeds max size", async () => {
-    const largeContent = "x".repeat(65 * 1024); // > 64KB
+    const largeContent = "x".repeat(129 * 1024); // > 128KB
     await expect(
       fetchFirewallConfig("too-large", mockFetch(largeContent)),
     ).rejects.toThrow("exceeds maximum size");
@@ -133,7 +133,7 @@ apis: []
     const fetchFn: FetchFn = vi.fn<FetchFn>().mockResolvedValue(
       new Response("small body", {
         status: 200,
-        headers: { "Content-Length": String(100 * 1024) },
+        headers: { "Content-Length": String(200 * 1024) },
       }),
     );
     await expect(fetchFirewallConfig("large-header", fetchFn)).rejects.toThrow(

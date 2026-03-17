@@ -45,11 +45,15 @@ export const listCommand = new Command()
       for (const type of allTypes) {
         const connector = connectedMap.get(type);
         const status = connector
-          ? chalk.green("✓".padEnd(statusWidth))
+          ? connector.needsReconnect
+            ? chalk.yellow("!".padEnd(statusWidth))
+            : chalk.green("✓".padEnd(statusWidth))
           : chalk.dim("-".padEnd(statusWidth));
-        const account = connector?.externalUsername
-          ? `@${connector.externalUsername}`
-          : chalk.dim("-");
+        const account = connector?.needsReconnect
+          ? chalk.yellow("(reconnect needed)")
+          : connector?.externalUsername
+            ? `@${connector.externalUsername}`
+            : chalk.dim("-");
 
         const row = [type.padEnd(typeWidth), status, account].join("  ");
         console.log(row);
