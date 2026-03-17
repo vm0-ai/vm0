@@ -46,7 +46,7 @@ const router = tsr.router(orgContract, {
         body: resolvedOrgToResponse(resolvedOrg),
       };
     } catch (error) {
-      if (isNotFound(error)) {
+      if (isNotFound(error) || isBadRequest(error)) {
         return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
@@ -76,7 +76,7 @@ const router = tsr.router(orgContract, {
     try {
       ({ org: resolvedOrg } = await resolveOrg(userId));
     } catch (error) {
-      if (isNotFound(error)) {
+      if (isNotFound(error) || isBadRequest(error)) {
         return createErrorResponse(
           "NOT_FOUND",
           "No org configured. Set your org with: vm0 org set <slug>",

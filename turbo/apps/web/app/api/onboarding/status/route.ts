@@ -3,7 +3,7 @@ import { onboardingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { isNotFound } from "../../../../src/lib/errors";
+import { isBadRequest, isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
 import {
   agentComposes,
@@ -93,10 +93,10 @@ const router = tsr.router(onboardingStatusContract, {
         }
       }
     } catch (error) {
-      if (!isNotFound(error)) {
+      if (!isNotFound(error) && !isBadRequest(error)) {
         throw error;
       }
-      // Org not found — all flags stay false
+      // Org not found or no explicit org context — all flags stay false
     }
 
     const needsOnboarding = !hasOrg || !hasModelProvider || !hasDefaultAgent;
