@@ -450,6 +450,7 @@ export function allowsCustomModel(type: ModelProviderType): boolean {
 export function getProviderFeatureFlag(
   _type: ModelProviderType,
 ): FeatureSwitchKey | undefined {
+  void _type;
   return undefined;
 }
 
