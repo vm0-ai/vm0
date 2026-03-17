@@ -123,12 +123,8 @@ export const pollSlackConnection$ = command(
       const data = (await res.json()) as SlackOrgData;
       set(slackOrgState$, { data, loading: false, error: null });
 
-      if (data.isConnected || data.isInstalled) {
-        if (data.isConnected) {
-          toast.success("Slack connected successfully");
-        } else {
-          toast.success("Slack installed successfully");
-        }
+      if (data.isConnected) {
+        toast.success("Slack connected successfully");
         return;
       }
     }
