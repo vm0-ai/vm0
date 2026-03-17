@@ -84,7 +84,7 @@ function formatGitHubComment(opts: {
 }): string {
   const { status, agentName, runId, output, error, triggerCommentBody } = opts;
   const platformUrl = getPlatformUrl();
-  const logsUrl = `${platformUrl}/agents/${encodeURIComponent(agentName)}/logs/${encodeURIComponent(runId)}`;
+  const logsUrl = `${platformUrl}/activity/${encodeURIComponent(runId)}`;
   const content =
     status === "completed"
       ? (output ?? "Task completed successfully.")

@@ -232,7 +232,7 @@ describe("buildAppHomeView", () => {
       text: { type: "plain_text", text: "Open Zero Settings" },
       style: "primary",
     });
-    expect("url" in button && button.url).toContain("/zero/works");
+    expect("url" in button && button.url).toContain("/works");
   });
 
   it("should show not-connected state when isLinked is false and isInstalled is not false", () => {

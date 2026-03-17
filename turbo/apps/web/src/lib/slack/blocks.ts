@@ -63,7 +63,7 @@ export function buildAppHomeView(options: {
               type: "plain_text",
               text: "Open Zero Settings",
             },
-            url: `${getPlatformUrl()}/zero/works`,
+            url: `${getPlatformUrl()}/works`,
             action_id: "home_open_settings",
             style: "primary",
           },
@@ -143,7 +143,7 @@ export function buildAppHomeView(options: {
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "Settings" },
-        url: `${getPlatformUrl()}/zero/works`,
+        url: `${getPlatformUrl()}/works`,
         action_id: "home_environment_setup",
       },
     });
