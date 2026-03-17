@@ -39,6 +39,14 @@ pub struct SubmitArgs {
 }
 
 pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
+    if let Some(ref profile) = args.profile
+        && !crate::profile::validate_name(profile)
+    {
+        return Err(RunnerError::Config(format!(
+            "invalid profile name: {profile} (must be org/name format, lowercase alphanumeric + hyphens)"
+        )));
+    }
+
     let home = HomePaths::new()?;
     let group_dir = home.groups_dir().join(&args.group);
 
