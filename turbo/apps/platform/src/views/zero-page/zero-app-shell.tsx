@@ -38,7 +38,6 @@ import {
   zeroSessionListLoading$,
   zeroSessionListError$,
   zeroChatThreadId$,
-  fetchZeroSessionList$,
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
@@ -150,38 +149,10 @@ function useSkeletonVisibility(isLoggedIn: boolean, dataReady: boolean) {
  * Manages session lifecycle: fetches session list when onboarding completes,
  * and auto-sends an introductory message for new users.
  */
-function useSessionLifecycle(
-  isLoggedIn: boolean,
-  onboardingReady: boolean,
-  needsOnboarding: boolean,
-  talkAgentReady: boolean,
-) {
+function useSessionLifecycle() {
   const recentSessions = useGet(zeroSessionList$);
   const recentSessionsLoading = useGet(zeroSessionListLoading$);
   const recentSessionsError = useGet(zeroSessionListError$);
-  const fetchSessionList = useSet(fetchZeroSessionList$);
-  // "init" → "onboarding" → "ready" lifecycle
-  const lifecycleRef$ = useCCState<"init" | "onboarding" | "ready">("init");
-  const lifecycle = useGet(lifecycleRef$);
-  const setLifecycle = useSet(lifecycleRef$);
-
-  if (isLoggedIn && onboardingReady && talkAgentReady) {
-    if (needsOnboarding && lifecycle === "init") {
-      queueMicrotask(() => setLifecycle("onboarding"));
-    } else if (!needsOnboarding && lifecycle !== "ready") {
-      const wasOnboarding = lifecycle === "onboarding";
-      queueMicrotask(() => {
-        setLifecycle("ready");
-        // Skip fetching sessions right after onboarding — the onboarding
-        // handler already navigates to chat and sends the intro message,
-        // which will create the first session.
-        if (!wasOnboarding) {
-          detach(fetchSessionList(), Reason.DomCallback);
-        }
-      });
-    }
-  }
-
   return { recentSessions, recentSessionsLoading, recentSessionsError };
 }
 
@@ -317,12 +288,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const talkAgentReady = !talkAgentName || talkAgentResolved;
 
   const { recentSessions, recentSessionsLoading, recentSessionsError } =
-    useSessionLifecycle(
-      isLoggedIn,
-      onboardingReady,
-      needsOnboarding,
-      talkAgentReady,
-    );
+    useSessionLifecycle();
 
   // Sync URL thread ID to chat signal (skip if signal already matches)
   useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
@@ -331,19 +297,16 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     set(navigateToZeroSession$, sessionId);
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
+  const navigate = useSet(updatePathname$);
 
-  const fetchSessionList = useSet(fetchZeroSessionList$);
   const handleNewChat = (agent: { id: string; name: string } | null) => {
-    // Set agent in-memory first, so fetchZeroSessionList$ reads it
     setChatAgent(agent);
-    // Navigate to the correct URL
+    startNewSession();
     if (agent) {
       navigate(`/zero/talk/${encodeURIComponent(agent.name)}`);
     } else {
       setActiveId("chat");
     }
-    startNewSession();
-    detach(fetchSessionList(), Reason.DomCallback);
   };
 
   const handleSendFromDemo$ = useCommand(

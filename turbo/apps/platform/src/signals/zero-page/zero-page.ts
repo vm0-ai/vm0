@@ -8,6 +8,7 @@ import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initZeroActivity$ } from "./zero-activity.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { zeroChatAgentName$, setZeroChatAgent$ } from "./zero-nav.ts";
+import { fetchZeroSessionList$ } from "./zero-chat.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
 
@@ -67,6 +68,8 @@ export const setupZeroPage$ = command(
       set(setZeroChatAgent$, null);
     }
 
+    // Fetch session list after agent is resolved
+    detach(set(fetchZeroSessionList$), Reason.DomCallback);
     detach(set(initZeroActivity$), Reason.Daemon);
   },
 );
