@@ -21,6 +21,7 @@ const SKIP_I18N_PREFIXES = [
   "/sign-up",
   "/privacy-policy",
   "/terms-of-use",
+  "/export",
 ] as const;
 
 const STATIC_FILE_RE = /\.(ico|png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|eot)$/i;
