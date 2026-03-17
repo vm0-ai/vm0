@@ -168,7 +168,7 @@ impl JobProvider for LocalProvider {
             memory_name: None,
             experimental_firewalls: None,
             experimental_capabilities: None,
-            experimental_profile: None,
+            experimental_profile: req.profile,
         })
     }
 
