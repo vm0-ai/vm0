@@ -173,6 +173,7 @@ export async function appendChatMessages(
     role: "user" | "assistant";
     content: string;
     runId?: string;
+    summaries?: string[];
   }>,
 ): Promise<void> {
   const now = new Date().toISOString();

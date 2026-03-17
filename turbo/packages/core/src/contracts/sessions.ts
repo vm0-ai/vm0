@@ -11,6 +11,7 @@ const storedChatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   runId: z.string().optional(),
+  summaries: z.array(z.string()).optional(),
   createdAt: z.string(),
 });
 

@@ -479,12 +479,14 @@ function AccountDropdown({
 }
 
 function RecentChatSection({
+  agentLabel,
   recentSessions,
   recentSessionsLoading,
   recentSessionsError,
   selectedRecentId,
   onRecentSelect,
 }: {
+  agentLabel: string;
   recentSessions: ChatThreadListItem[];
   recentSessionsLoading: boolean;
   recentSessionsError: string | null;
@@ -539,8 +541,8 @@ function RecentChatSection({
         </div>
       ) : (
         <div className="shrink-0 zero-nav-recent-label h-7 flex items-center justify-between pl-2 pr-1">
-          <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
-            Recent chat
+          <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate">
+            Chats with {agentLabel}
           </span>
           <div className="flex items-center gap-0.5">
             <button
@@ -587,7 +589,7 @@ function RecentChatSection({
                 }}
                 className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
                   selectedRecentId === session.id
-                    ? "bg-sidebar-active text-sidebar-primary"
+                    ? "bg-sidebar-accent text-sidebar-foreground"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
@@ -859,6 +861,96 @@ function ManagePinnedAgentsDialog({
   );
 }
 
+function TalkToSection({
+  activeId,
+  currentChatAgentId,
+  selectedRecentId,
+  displayName,
+  talkToLabel,
+  defaultAgentRawName,
+  zeroAvatarSrc,
+  pinnedAgents,
+  onManagePinned,
+}: {
+  activeId: ZeroNavId | "chat";
+  currentChatAgentId: string | null;
+  selectedRecentId: string | null;
+  displayName: string;
+  talkToLabel: string;
+  defaultAgentRawName?: string | null;
+  zeroAvatarSrc: string;
+  pinnedAgents: SubagentInfo[];
+  onManagePinned: () => void;
+}) {
+  return (
+    <div className="shrink-0 mt-4">
+      <div className="h-7 flex items-center pl-2">
+        <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate">
+          Talk to {talkToLabel}
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <Link
+          pathname={defaultAgentRawName ? "/zero/talk/:name" : "/zero"}
+          options={
+            defaultAgentRawName
+              ? { pathParams: { name: defaultAgentRawName } }
+              : undefined
+          }
+          className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+            activeId === "chat" &&
+            !selectedRecentId &&
+            currentChatAgentId === null
+              ? "bg-sidebar-active text-sidebar-primary font-medium"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
+          }`}
+        >
+          <img
+            src={zeroAvatarSrc}
+            alt={displayName}
+            className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+          />
+          <span className="truncate">{displayName}</span>
+        </Link>
+        {pinnedAgents.map((agent) => (
+          <Link
+            key={agent.id}
+            pathname="/zero/talk/:name"
+            options={{ pathParams: { name: agent.name } }}
+            className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+              activeId === "chat" &&
+              !selectedRecentId &&
+              currentChatAgentId === agent.id
+                ? "bg-sidebar-active text-sidebar-primary font-medium"
+                : "text-sidebar-foreground hover:bg-sidebar-accent"
+            }`}
+          >
+            <AgentAvatarImg
+              name={agent.name}
+              alt={agent.displayName ?? agent.name}
+              className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+            />
+            <span className="truncate">
+              {agent.displayName ?? agent.name}
+            </span>
+          </Link>
+        ))}
+        <button
+          type="button"
+          className="flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200"
+          aria-label="Manage pinned agents"
+          onClick={onManagePinned}
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
+            <IconPlus size={12} />
+          </span>
+          <span className="truncate">Pin agent</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ZeroSidebar({
   activeId,
   agentName,
@@ -1038,74 +1130,21 @@ export function ZeroSidebar({
           </div>
 
           {/* Chat section */}
-          <div className="shrink-0 mt-4">
-            <div className="h-7 flex items-center pl-2">
-              <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
-                Talk to {talkToLabel}
-              </span>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <Link
-                pathname={defaultAgentRawName ? "/talk/:name" : "/"}
-                options={
-                  defaultAgentRawName
-                    ? { pathParams: { name: defaultAgentRawName } }
-                    : undefined
-                }
-                className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                  activeId === "chat" &&
-                  !selectedRecentId &&
-                  currentChatAgentId === null
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                }`}
-              >
-                <img
-                  src={zeroAvatarSrc}
-                  alt={displayName}
-                  className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
-                />
-                <span className="truncate">{displayName}</span>
-              </Link>
-              {pinnedAgents.map((agent) => (
-                <Link
-                  key={agent.id}
-                  pathname="/talk/:name"
-                  options={{ pathParams: { name: agent.name } }}
-                  className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                    activeId === "chat" &&
-                    !selectedRecentId &&
-                    currentChatAgentId === agent.id
-                      ? "bg-sidebar-active text-sidebar-primary font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <AgentAvatarImg
-                    name={agent.name}
-                    alt={agent.displayName ?? agent.name}
-                    className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
-                  />
-                  <span className="truncate">
-                    {agent.displayName ?? agent.name}
-                  </span>
-                </Link>
-              ))}
-              <button
-                type="button"
-                className="flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200"
-                aria-label="Manage pinned agents"
-                onClick={() => setManagePinnedOpen(true)}
-              >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
-                  <IconPlus size={12} />
-                </span>
-                <span className="truncate">Pin agent</span>
-              </button>
-            </div>
-          </div>
+          <TalkToSection
+            activeId={activeId}
+            currentChatAgentId={currentChatAgentId}
+            selectedRecentId={selectedRecentId}
+            displayName={displayName}
+            talkToLabel={talkToLabel}
+            defaultAgentRawName={defaultAgentRawName}
+            zeroAvatarSrc={zeroAvatarSrc}
+            pinnedAgents={pinnedAgents}
+            onManagePinned={() => setManagePinnedOpen(true)}
+          />
 
           {/* Recent chat sessions */}
           <RecentChatSection
+            agentLabel={talkToLabel}
             recentSessions={recentSessions}
             recentSessionsLoading={recentSessionsLoading}
             recentSessionsError={recentSessionsError}

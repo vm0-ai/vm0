@@ -243,7 +243,7 @@ function HelloFromZeroBlock({
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0">
+        <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0">
           <p className="text-foreground">
             Hi! I&apos;m {agentName}, your AI teammate. I help you automate
             tasks, run workflows, and get things done across your connected
@@ -253,7 +253,7 @@ function HelloFromZeroBlock({
       </div>
       <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
         {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-2">
+        <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-2">
           <p className="font-medium text-foreground">
             You&apos;ve connected Notion.
           </p>
@@ -308,7 +308,7 @@ function ChatScenarioBlock({
             className="h-9 w-9 rounded-full object-cover object-top"
           />
         </div>
-        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
+        <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
           <ChatScenarioAssistantContent
             scene={scene}
             commandAllowed={commandAllowed}
@@ -951,7 +951,7 @@ export function ZeroChatPage({
                     className="h-9 w-9 rounded-full object-cover object-top"
                   />
                 </div>
-                <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
+                <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
                   <div className="px-4 pt-4 pb-2">
                     <p className="text-sm text-foreground leading-relaxed">
                       You have {ZERO_TEAM_JOBS.length} sub-agents with different

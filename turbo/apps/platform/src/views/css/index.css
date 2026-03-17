@@ -39,6 +39,32 @@
   animation: zero-tagline-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/* Shimmer text effect for active/thinking states */
+@keyframes zero-shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+.zero-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted-foreground) / 0.5) 0%,
+    hsl(var(--muted-foreground) / 0.5) 38%,
+    hsl(var(--foreground)) 49%,
+    hsl(var(--foreground)) 51%,
+    hsl(var(--muted-foreground) / 0.5) 62%,
+    hsl(var(--muted-foreground) / 0.5) 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: zero-shimmer 10s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
   --zero-card-radius: 0.75rem;
@@ -273,7 +299,7 @@
 /* Chat: assistant (Zero) message bubble */
 .zero-app .zero-chat-bubble-assistant {
   background-color: hsl(var(--card));
-  border-color: hsl(var(--border));
+  border: none;
 }
 
 /* Composer / input card (white, light border — “Just ask” / chat input) */
@@ -485,22 +511,42 @@
 }
 
 /* --- Spacing ------------------------------------------------------------ */
-.wmde-markdown p,
+.wmde-markdown p {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
 .wmde-markdown h1,
 .wmde-markdown h2,
 .wmde-markdown h3,
 .wmde-markdown h4,
 .wmde-markdown h5,
-.wmde-markdown h6,
+.wmde-markdown h6 {
+  margin-top: 20px;
+  margin-bottom: 6px;
+}
+
 .wmde-markdown blockquote,
-.wmde-markdown ul,
-.wmde-markdown ol,
-.wmde-markdown dl,
 .wmde-markdown table,
 .wmde-markdown pre,
 .wmde-markdown details {
-  margin-top: 6px;
-  margin-bottom: 6px;
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.wmde-markdown ul,
+.wmde-markdown ol,
+.wmde-markdown dl {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.wmde-markdown > :first-child {
+  margin-top: 0;
+}
+
+.wmde-markdown > :last-child {
+  margin-bottom: 0;
 }
 
 .wmde-markdown li > p {
@@ -546,13 +592,21 @@
 
 /* --- Links -------------------------------------------------------------- */
 .wmde-markdown a {
-  color: hsl(var(--primary-700));
+  color: hsl(216 70% 45%);
   text-decoration: none;
 }
 
 .wmde-markdown a:hover {
   text-decoration: underline;
-  color: hsl(var(--primary-800));
+  color: hsl(216 75% 38%);
+}
+
+:where([data-theme="dark"]) .wmde-markdown a {
+  color: hsl(216 65% 62%);
+}
+
+:where([data-theme="dark"]) .wmde-markdown a:hover {
+  color: hsl(216 70% 70%);
 }
 
 /* --- Blockquote --------------------------------------------------------- */
@@ -601,6 +655,10 @@
   border-bottom-color: hsl(var(--border));
 }
 
+.zero-chat-bubble-assistant .wmde-markdown hr {
+  display: none;
+}
+
 /* --- Mark / highlight --------------------------------------------------- */
 .wmde-markdown mark {
   background-color: hsl(var(--primary-100));
@@ -609,16 +667,19 @@
 
 /* --- Tables ------------------------------------------------------------- */
 .wmde-markdown table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
-  display: block;
-  overflow-x: auto;
+  display: table;
+  overflow: hidden;
+  border: 0.7px solid hsl(var(--gray-400));
+  border-radius: 8px;
 }
 
 .wmde-markdown table th,
 .wmde-markdown table td {
-  border: 1px solid hsl(var(--border));
-  padding: 6px 12px;
+  border: none;
+  padding: 8px 12px;
   text-align: left;
   color: hsl(var(--foreground));
 }
@@ -629,8 +690,8 @@
 }
 
 .wmde-markdown table tr {
+  border: none;
   background-color: transparent;
-  border-top-color: hsl(var(--border));
 }
 
 .wmde-markdown table tr:nth-child(2n) {
@@ -648,7 +709,7 @@
 /* --- Code Blocks -------------------------------------------------------- */
 .wmde-markdown pre {
   overflow-x: auto;
-  border: 1px solid hsl(var(--border));
+  border: 0.7px solid hsl(var(--gray-400));
   border-radius: 8px;
 }
 

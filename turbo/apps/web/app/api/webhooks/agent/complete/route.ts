@@ -53,6 +53,68 @@ async function extractResultFromAxiom(runId: string): Promise<string | null> {
   return typeof result === "string" ? result : null;
 }
 
+interface AxiomEventContent {
+  type: string;
+  text?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+}
+
+function extractSummariesFromEvents(
+  events: Array<{
+    eventData: { message?: { content?: AxiomEventContent[] } };
+  }>,
+): string[] {
+  let lastTextIdx = -1;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (!event) {
+      continue;
+    }
+    const content = event.eventData?.message?.content ?? [];
+    if (content.some((b) => b.type === "text" && b.text)) {
+      lastTextIdx = i;
+      break;
+    }
+  }
+
+  const summaries: string[] = [];
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (!event) {
+      continue;
+    }
+    const content = event.eventData?.message?.content ?? [];
+    for (const block of content) {
+      if (block.type === "tool_use" && block.name) {
+        summaries.push(block.name);
+        break;
+      }
+      if (i !== lastTextIdx && block.type === "text" && block.text) {
+        const line = block.text.split("\n")[0] ?? "";
+        summaries.push(line.length > 80 ? line.slice(0, 80) + "…" : line);
+        break;
+      }
+    }
+  }
+  return summaries;
+}
+
+async function extractSummariesFromAxiom(runId: string): Promise<string[]> {
+  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+  const apl = `['${dataset}']
+| where runId == "${runId}"
+| where eventType == "message"
+| order by sequenceNumber asc
+| limit 200`;
+
+  const events = await queryAxiom<{
+    eventData: { message?: { content?: AxiomEventContent[] } };
+  }>(apl);
+
+  return extractSummariesFromEvents(events);
+}
+
 /**
  * Persist user prompt and assistant result as chat messages on the session.
  * Runs in after() — best-effort, errors are logged but not propagated.
@@ -63,16 +125,25 @@ async function persistChatMessages(
   userId: string,
   prompt: string,
 ): Promise<void> {
-  const result = await extractResultFromAxiom(runId);
+  const [result, summaries] = await Promise.all([
+    extractResultFromAxiom(runId),
+    extractSummariesFromAxiom(runId),
+  ]);
 
   const messages: Array<{
     role: "user" | "assistant";
     content: string;
     runId?: string;
+    summaries?: string[];
   }> = [{ role: "user", content: prompt }];
 
   if (result) {
-    messages.push({ role: "assistant", content: result, runId });
+    messages.push({
+      role: "assistant",
+      content: result,
+      runId,
+      ...(summaries.length > 0 ? { summaries } : {}),
+    });
   }
 
   await appendChatMessages(sessionId, userId, messages);

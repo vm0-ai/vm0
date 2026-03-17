@@ -17,6 +17,44 @@ import type { ChatThreadListItem } from "@vm0/core";
 const L = logger("ZeroChat");
 
 // ---------------------------------------------------------------------------
+// Summaries local cache (survives page refresh until server-side persists)
+// ---------------------------------------------------------------------------
+
+const SUMMARIES_CACHE_KEY = "zero-chat-summaries";
+const SUMMARIES_CACHE_MAX = 100;
+
+function cacheSummaries(runId: string, summaries: string[]): void {
+  try {
+    const raw = localStorage.getItem(SUMMARIES_CACHE_KEY);
+    const cache: Record<string, string[]> = raw ? JSON.parse(raw) : {};
+    cache[runId] = summaries;
+    const keys = Object.keys(cache);
+    if (keys.length > SUMMARIES_CACHE_MAX) {
+      for (const k of keys.slice(0, keys.length - SUMMARIES_CACHE_MAX)) {
+        delete cache[k];
+      }
+    }
+    localStorage.setItem(SUMMARIES_CACHE_KEY, JSON.stringify(cache));
+  } catch (error) {
+    throwIfAbort(error);
+  }
+}
+
+function getCachedSummaries(runId: string): string[] | undefined {
+  try {
+    const raw = localStorage.getItem(SUMMARIES_CACHE_KEY);
+    if (!raw) {
+      return undefined;
+    }
+    const cache: Record<string, string[]> = JSON.parse(raw);
+    return cache[runId];
+  } catch (error) {
+    throwIfAbort(error);
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -34,17 +72,33 @@ function isResultEventData(data: unknown): data is { result: string } {
 async function extractResultFromEvents(
   pages: Computed<Promise<PageResult>>[],
   get: (c: Computed<Promise<PageResult>>) => Promise<PageResult>,
-): Promise<string> {
+): Promise<{ result: string; summaries: string[] }> {
   let result = "";
+  const allEvents: AgentEvent[] = [];
   for (const page$ of pages) {
     const page = await get(page$);
     for (const event of page.events) {
+      allEvents.push(event);
       if (event.eventType === "result" && isResultEventData(event.eventData)) {
         result = event.eventData.result;
       }
     }
   }
-  return result;
+  let lastTextIdx = -1;
+  for (let i = allEvents.length - 1; i >= 0; i--) {
+    if (hasTextBlock(allEvents[i])) {
+      lastTextIdx = i;
+      break;
+    }
+  }
+  const summaries: string[] = [];
+  for (let i = 0; i < allEvents.length; i++) {
+    const s = summarizeEvent(allEvents[i], i === lastTextIdx);
+    if (s) {
+      summaries.push(s);
+    }
+  }
+  return { result, summaries };
 }
 
 /** Fetch queue position for a run. Returns 0 if not queued. */
@@ -162,6 +216,7 @@ export interface ZeroChatMessage {
   error?: string;
   cancelled?: boolean;
   attachments?: ZeroChatMessageAttachment[];
+  summaries?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -289,41 +344,48 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
+function domainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch (error) {
+    throwIfAbort(error);
+    return truncate(url, 30);
+  }
+}
+
 const TOOL_LABELS: Readonly<
   Record<string, (input: Record<string, unknown> | undefined) => string>
 > = {
-  Bash: (i) =>
-    i?.command
-      ? `Running: ${truncate(String(i.command), 60)}`
-      : "Running a command",
+  Bash: () => "Running a command...",
   Read: (i) =>
     i?.file_path
       ? `Reading ${basename(String(i.file_path))}`
-      : "Reading a file",
+      : "Peeking at a file...",
   Write: (i) =>
     i?.file_path
       ? `Writing ${basename(String(i.file_path))}`
-      : "Writing a file",
+      : "Jotting things down...",
   Edit: (i) =>
     i?.file_path
-      ? `Editing ${basename(String(i.file_path))}`
-      : "Editing a file",
-  Grep: (i) =>
-    i?.pattern
-      ? `Searching for "${truncate(String(i.pattern), 40)}"`
-      : "Searching code",
-  Glob: (i) =>
-    i?.pattern
-      ? `Finding files: ${truncate(String(i.pattern), 40)}`
-      : "Finding files",
-  Skill: (i) => (i?.skill ? `Using ${String(i.skill)}` : "Using a skill"),
+      ? `Tweaking ${basename(String(i.file_path))}`
+      : "Making some edits...",
+  Search: () => "Searching for info...",
+  Grep: () => "Digging through the code...",
+  Glob: () => "Scouting for files...",
+  Skill: (i) =>
+    i?.skill ? `Using ${String(i.skill)}` : "Pulling out a trick...",
   WebSearch: (i) =>
     i?.query
-      ? `Searching: ${truncate(String(i.query), 50)}`
-      : "Searching the web",
+      ? `Looking up "${truncate(String(i.query), 40)}"`
+      : "Browsing the web...",
   WebFetch: (i) =>
-    i?.url ? `Fetching: ${truncate(String(i.url), 50)}` : "Fetching a page",
-  Agent: () => "Working on a subtask",
+    i?.url
+      ? `Checking out ${domainFromUrl(String(i.url))}`
+      : "Grabbing a page...",
+  Agent: () => "Delegating to a helper...",
+  ToolSearch: () => "Finding the right tool...",
+  CodeSearch: () => "Searching through code...",
+  FileSearch: () => "Looking for files...",
 };
 
 function humanizeToolUse(
@@ -334,7 +396,11 @@ function humanizeToolUse(
   if (fn) {
     return fn(input);
   }
-  return name.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  const readable = name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .toLowerCase();
+  return `Working on it (${readable})...`;
 }
 
 function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
@@ -632,6 +698,7 @@ export const switchZeroSession$ = command(
           role: "user" | "assistant";
           content: string;
           runId?: string;
+          summaries?: string[];
           createdAt: string;
         }[];
         latestSessionId?: string | null;
@@ -660,14 +727,23 @@ export const switchZeroSession$ = command(
       // Switch agent if it changed, or fetch session list if empty (fresh load).
       await syncAgentForThread(get, set, data.agentComposeId);
 
-      const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(
-        (m) => ({
+      const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map((m) => {
+        const serverSummaries =
+          m.summaries && m.summaries.length > 0
+            ? m.summaries.map((s) =>
+                TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s,
+              )
+            : undefined;
+        const cached = m.runId ? getCachedSummaries(m.runId) : undefined;
+        const summaries = serverSummaries ?? cached;
+        return {
           id: crypto.randomUUID(),
           role: m.role,
           content: m.content,
           runId: m.runId,
-        }),
-      );
+          ...(summaries && summaries.length > 0 ? { summaries } : {}),
+        };
+      });
 
       // Append unsaved runs (active, failed, pending) not yet in chatMessages.
       // These are in chronological order from the server.
@@ -987,11 +1063,14 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       }
     }
 
-    // Extract result content from telemetry events
+    // Extract result content and summaries from telemetry events
     const pages = get(internalRunEvents$);
-    const resultContent = await extractResultFromEvents(pages, get);
+    const { result: resultContent, summaries } = await extractResultFromEvents(
+      pages,
+      get,
+    );
 
-    if (resultContent) {
+    if (resultContent || summaries.length > 0) {
       set(internalMessages$, (prev) => {
         const idx = prev.findIndex(
           (m) => m.role === "assistant" && m.runId === runId,
@@ -1000,9 +1079,17 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
           return prev;
         }
         const updated = [...prev];
-        updated[idx] = { ...updated[idx], content: resultContent };
+        updated[idx] = {
+          ...updated[idx],
+          ...(resultContent ? { content: resultContent } : {}),
+          ...(summaries.length > 0 ? { summaries } : {}),
+        };
         return updated;
       });
+
+      if (summaries.length > 0) {
+        cacheSummaries(runId, summaries);
+      }
     }
 
     // Refresh session list (messages are persisted server-side via webhook)

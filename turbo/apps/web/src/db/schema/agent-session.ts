@@ -18,6 +18,7 @@ export interface StoredChatMessage {
   role: "user" | "assistant";
   content: string;
   runId?: string;
+  summaries?: string[];
   createdAt: string;
 }
 
