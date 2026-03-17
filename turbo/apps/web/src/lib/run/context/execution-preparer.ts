@@ -7,6 +7,7 @@ import {
   ensureStorageExists,
 } from "../../storage/storage-service";
 import type { StorageManifest } from "../../storage/types";
+import { DEFAULT_PROFILE } from "@vm0/core";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import {
@@ -50,6 +51,32 @@ function resolveRunnerGroup(agentCompose: unknown): string | null {
 }
 
 /**
+ * Known profiles (hardcoded for Phase 1).
+ * Add "vm0/browser" here when rootfs-browser.Dockerfile lands (PR 5).
+ * Must stay in sync with Rust: crates/runner/src/profile.rs
+ */
+const KNOWN_PROFILES = [DEFAULT_PROFILE];
+
+/**
+ * Resolve runner profile from agent compose config
+ * Defaults to "vm0/default" when experimental_runner is set but profile is omitted.
+ * Rejects unknown profiles with 400.
+ */
+function resolveRunnerProfile(agentCompose: unknown): string | null {
+  const compose = agentCompose as AgentComposeYaml | undefined;
+  if (!compose?.agents) return null;
+  const agents = Object.values(compose.agents);
+  const profile = agents[0]?.experimental_profile;
+  if (!profile) return null;
+  if (!KNOWN_PROFILES.includes(profile)) {
+    throw badRequest(
+      `Unknown profile "${profile}". Valid profiles: ${KNOWN_PROFILES.join(", ")}`,
+    );
+  }
+  return profile;
+}
+
+/**
  * Prepare execution context for executors
  *
  * This function transforms an ExecutionContext into a PreparedContext
@@ -80,9 +107,10 @@ export async function prepareForExecution(
   const workingDir = extractWorkingDir(context.agentCompose);
   const cliAgentType = extractCliAgentType(context.agentCompose);
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
+  const profile = resolveRunnerProfile(context.agentCompose);
 
   log.debug(
-    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}`,
+    `Extracted config: workingDir=${workingDir}, cliAgentType=${cliAgentType}, runnerGroup=${runnerGroup}, profile=${profile}`,
   );
 
   // Resolve the Agent Org for volume resolution.
@@ -165,6 +193,7 @@ export async function prepareForExecution(
     workingDir,
     cliAgentType,
     runnerGroup,
+    profile,
     storageManifest,
     agentOrgInfo.orgSlug,
   );
@@ -190,6 +219,7 @@ function buildPreparedContext(
   workingDir: string,
   cliAgentType: string,
   runnerGroup: string | null,
+  profile: string | null,
   storageManifest: StorageManifest,
   agentOrgSlug: string | null,
 ): PreparedContext {
@@ -229,6 +259,9 @@ function buildPreparedContext(
 
     // Experimental capabilities
     experimentalCapabilities: context.experimentalCapabilities ?? null,
+
+    // Experimental profile
+    experimentalProfile: profile,
 
     // Routing
     runnerGroup,

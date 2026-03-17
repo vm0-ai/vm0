@@ -29,6 +29,7 @@ import {
 } from "../run-service";
 import { isForbidden, isBadRequest } from "../../errors";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
+import { POST as pollRoute } from "../../../../app/api/runners/poll/route";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 
 const context = testContext();
@@ -646,6 +647,102 @@ describe("createRun()", () => {
       expect(run).toBeDefined();
       expect(run!.status).toBe("failed");
       expect(run!.error).toMatch(/nonexistent-org/);
+    });
+  });
+
+  describe("Experimental Profile", () => {
+    it("should store profile in runner job queue when experimental_profile is set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const compose = await createTestCompose(uniqueId("profile-agent"), {
+        overrides: { experimental_profile: "vm0/default" },
+      });
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.profile).toBe("vm0/default");
+      expect(job!.executionContext.experimentalProfile).toBe("vm0/default");
+    });
+
+    it("should default to vm0/default when experimental_profile is not set", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const result = await createRun(baseParams());
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.profile).toBe("vm0/default");
+      expect(job!.executionContext.experimentalProfile).toBe("vm0/default");
+    });
+
+    it("should filter jobs by profiles array in poll endpoint", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      // Create two runs — one with default profile, one with explicit profile
+      const browserCompose = await createTestCompose(
+        uniqueId("browser-agent"),
+        { overrides: { experimental_profile: "vm0/default" } },
+      );
+      await createRun(baseParams({ prompt: "default job" }));
+      await createRun(
+        baseParams({
+          prompt: "browser job",
+          agentComposeVersionId: browserCompose.versionId,
+        }),
+      );
+
+      // Poll with profiles filter for a non-existent profile — should find nothing
+      const officialToken = `vm0_official_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef`;
+      const emptyPoll = await pollRoute(
+        createTestRequest("http://localhost:3000/api/runners/poll", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${officialToken}`,
+          },
+          body: JSON.stringify({
+            group: "vm0/production",
+            profiles: ["vm0/nonexistent"],
+          }),
+        }),
+      );
+      const emptyResult = await emptyPoll.json();
+      expect(emptyResult.job).toBeNull();
+
+      // Poll without profiles filter — should find a job
+      const allPoll = await pollRoute(
+        createTestRequest("http://localhost:3000/api/runners/poll", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${officialToken}`,
+          },
+          body: JSON.stringify({ group: "vm0/production" }),
+        }),
+      );
+      const allResult = await allPoll.json();
+      expect(allResult.job).not.toBeNull();
+      expect(allResult.job.experimentalProfile).toBe("vm0/default");
+    });
+
+    it("should reject unknown profile with 400", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const compose = await createTestCompose(uniqueId("bad-profile"), {
+        overrides: { experimental_profile: "vm0/unknown" },
+      });
+
+      await expect(
+        createRun(baseParams({ agentComposeVersionId: compose.versionId })),
+      ).rejects.toSatisfy(isBadRequest);
     });
   });
 

@@ -147,6 +147,18 @@ const agentDefinitionSchema = z.object({
     })
     .optional(),
   /**
+   * VM profile for resource allocation (e.g., "vm0/default", "vm0/browser").
+   * Determines rootfs image and VM resources (vCPU, memory).
+   * Defaults to "vm0/default" when omitted.
+   */
+  experimental_profile: z
+    .string()
+    .regex(
+      /^[a-z0-9-]+\/[a-z0-9-]+$/,
+      "Profile must be in org/name format (e.g., vm0/default)",
+    )
+    .optional(),
+  /**
    * External firewall rules for proxy-side token replacement.
    * CLI input: map format { slack: { permissions: [...] | "all" } }
    * — expanded by CLI to full ExpandedFirewallConfig[] before API call.
