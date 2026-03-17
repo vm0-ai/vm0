@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface CloseUserInfo {
   id: string;
@@ -73,7 +74,7 @@ export async function exchangeCloseCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Close token exchange failed: ${response.status}`);
+    await throwOAuthError("Close", "exchange", response);
   }
 
   const data = z
@@ -140,7 +141,7 @@ export async function refreshCloseToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Close token refresh failed: ${response.status}`);
+    await throwOAuthError("Close", "refresh", response);
   }
 
   const data = z

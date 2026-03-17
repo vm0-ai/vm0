@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const NEON_USER_INFO_URL = "https://console.neon.tech/api/v2/users/me";
 
@@ -78,7 +79,7 @@ export async function exchangeNeonCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Neon token exchange failed: ${response.status}`);
+    await throwOAuthError("Neon", "exchange", response);
   }
 
   const data = z
@@ -140,7 +141,7 @@ export async function refreshNeonToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Neon token refresh failed: ${response.status}`);
+    await throwOAuthError("Neon", "refresh", response);
   }
 
   const data = z

@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
 const REDDIT_USER_AGENT = "web:vm0-reddit-connector:v1.0";
@@ -82,7 +83,7 @@ export async function exchangeRedditCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Reddit token exchange failed: ${response.status}`);
+    await throwOAuthError("Reddit", "exchange", response);
   }
 
   const data = z
@@ -184,7 +185,7 @@ export async function refreshRedditToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Reddit token refresh failed: ${response.status}`);
+    await throwOAuthError("Reddit", "refresh", response);
   }
 
   const data = z

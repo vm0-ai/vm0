@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface MondayUserInfo {
   id: string;
@@ -77,7 +78,7 @@ export async function exchangeMondayCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Monday.com token exchange failed: ${response.status}`);
+    await throwOAuthError("Monday.com", "exchange", response);
   }
 
   const data = z
@@ -138,7 +139,7 @@ export async function refreshMondayToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Monday.com token refresh failed: ${response.status}`);
+    await throwOAuthError("Monday.com", "refresh", response);
   }
 
   const data = z

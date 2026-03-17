@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface SlackTokenResult {
   accessToken: string;
@@ -66,7 +67,7 @@ export async function exchangeSlackCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Slack token exchange failed: ${response.status}`);
+    await throwOAuthError("Slack", "exchange", response);
   }
 
   const data = z

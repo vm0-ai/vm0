@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface IntervalsIcuTokenResult {
   accessToken: string;
@@ -64,7 +65,7 @@ export async function exchangeIntervalsIcuCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Intervals.icu token exchange failed: ${response.status}`);
+    await throwOAuthError("Intervals.icu", "exchange", response);
   }
 
   const data = z

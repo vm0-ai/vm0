@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const HUBSPOT_TOKEN_INFO_URL = "https://api.hubapi.com/oauth/v1/access-tokens";
 
@@ -75,7 +76,7 @@ export async function exchangeHubSpotCode(
   });
 
   if (!response.ok) {
-    throw new Error(`HubSpot token exchange failed: ${response.status}`);
+    await throwOAuthError("HubSpot", "exchange", response);
   }
 
   const data = z
@@ -135,7 +136,7 @@ export async function refreshHubSpotToken(
   });
 
   if (!response.ok) {
-    throw new Error(`HubSpot token refresh failed: ${response.status}`);
+    await throwOAuthError("HubSpot", "refresh", response);
   }
 
   const data = z

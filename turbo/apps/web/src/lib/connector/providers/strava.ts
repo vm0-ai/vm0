@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const STRAVA_ATHLETE_URL = "https://www.strava.com/api/v3/athlete";
 
@@ -77,7 +78,7 @@ export async function exchangeStravaCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Strava token exchange failed: ${response.status}`);
+    await throwOAuthError("Strava", "exchange", response);
   }
 
   const data = z
@@ -157,7 +158,7 @@ export async function refreshStravaToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Strava token refresh failed: ${response.status}`);
+    await throwOAuthError("Strava", "refresh", response);
   }
 
   const data = z

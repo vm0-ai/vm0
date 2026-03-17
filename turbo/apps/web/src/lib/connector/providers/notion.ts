@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface NotionUserInfo {
   id: string;
@@ -82,7 +83,7 @@ export async function exchangeNotionCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Notion token exchange failed: ${response.status}`);
+    await throwOAuthError("Notion", "exchange", response);
   }
 
   const data = z
@@ -155,7 +156,7 @@ export async function refreshNotionToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Notion token refresh failed: ${response.status}`);
+    await throwOAuthError("Notion", "refresh", response);
   }
 
   const data = z

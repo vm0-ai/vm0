@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const MAILCHIMP_METADATA_URL = "https://login.mailchimp.com/oauth2/metadata";
 
@@ -68,7 +69,7 @@ export async function exchangeMailchimpCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Mailchimp token exchange failed: ${response.status}`);
+    await throwOAuthError("Mailchimp", "exchange", response);
   }
 
   const data = z

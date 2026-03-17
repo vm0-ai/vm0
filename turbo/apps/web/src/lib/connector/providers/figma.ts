@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
 
@@ -80,7 +81,7 @@ export async function exchangeFigmaCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Figma token exchange failed: ${response.status}`);
+    await throwOAuthError("Figma", "exchange", response);
   }
 
   const data = z
@@ -145,7 +146,7 @@ export async function refreshFigmaToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Figma token refresh failed: ${response.status}`);
+    await throwOAuthError("Figma", "refresh", response);
   }
 
   const data = z

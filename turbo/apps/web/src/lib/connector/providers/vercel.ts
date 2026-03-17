@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface VercelUserInfo {
   id: string;
@@ -60,7 +61,7 @@ export async function exchangeVercelCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Vercel token exchange failed: ${response.status}`);
+    await throwOAuthError("Vercel", "exchange", response);
   }
 
   const data = z

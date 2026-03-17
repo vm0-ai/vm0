@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const SUPABASE_ORGANIZATIONS_URL = "https://api.supabase.com/v1/organizations";
 
@@ -115,7 +116,7 @@ export async function refreshSupabaseToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Supabase token refresh failed: ${response.status}`);
+    await throwOAuthError("Supabase", "refresh", response);
   }
 
   const data = z
@@ -179,7 +180,7 @@ export async function exchangeSupabaseCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Supabase token exchange failed: ${response.status}`);
+    await throwOAuthError("Supabase", "exchange", response);
   }
 
   const data = z

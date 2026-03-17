@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
 
@@ -77,7 +78,7 @@ export async function exchangeMercuryCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Mercury token exchange failed: ${response.status}`);
+    await throwOAuthError("Mercury", "exchange", response);
   }
 
   const data = z
@@ -139,7 +140,7 @@ export async function refreshMercuryToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Mercury token refresh failed: ${response.status}`);
+    await throwOAuthError("Mercury", "refresh", response);
   }
 
   const data = z

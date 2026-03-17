@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const META_USER_URL = "https://graph.facebook.com/v22.0/me";
 
@@ -72,7 +73,7 @@ export async function exchangeMetaAdsCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Meta Ads token exchange failed: ${response.status}`);
+    await throwOAuthError("Meta Ads", "exchange", response);
   }
 
   const data = z
@@ -138,9 +139,7 @@ async function exchangeForLongLivedToken(
   );
 
   if (!response.ok) {
-    throw new Error(
-      `Meta Ads long-lived token exchange failed: ${response.status}`,
-    );
+    await throwOAuthError("Meta Ads", "long-lived token exchange", response);
   }
 
   const data = z

@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 // User info URL is not part of ConnectorOAuthConfig since it uses GraphQL (POST), not a standard
 // REST GET endpoint. Same pattern as GMAIL_PROFILE_URL in gmail.ts.
@@ -81,7 +82,7 @@ export async function exchangeLinearCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Linear token exchange failed: ${response.status}`);
+    await throwOAuthError("Linear", "exchange", response);
   }
 
   const data = z
@@ -143,7 +144,7 @@ export async function refreshLinearToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Linear token refresh failed: ${response.status}`);
+    await throwOAuthError("Linear", "refresh", response);
   }
 
   const data = z

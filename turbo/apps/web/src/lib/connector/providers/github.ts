@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const GITHUB_API_BASE = "https://api.github.com";
 
@@ -61,7 +62,7 @@ export async function exchangeGitHubCode(
   });
 
   if (!response.ok) {
-    throw new Error(`GitHub token exchange failed: ${response.status}`);
+    await throwOAuthError("GitHub", "exchange", response);
   }
 
   const data = z

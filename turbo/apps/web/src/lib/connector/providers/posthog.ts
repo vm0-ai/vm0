@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const POSTHOG_USER_INFO_URL = "https://us.posthog.com/api/users/@me/";
 
@@ -76,7 +77,7 @@ export async function exchangePosthogCode(
   });
 
   if (!response.ok) {
-    throw new Error(`PostHog token exchange failed: ${response.status}`);
+    await throwOAuthError("PostHog", "exchange", response);
   }
 
   const data = z
@@ -137,7 +138,7 @@ export async function refreshPosthogToken(
   });
 
   if (!response.ok) {
-    throw new Error(`PostHog token refresh failed: ${response.status}`);
+    await throwOAuthError("PostHog", "refresh", response);
   }
 
   const data = z

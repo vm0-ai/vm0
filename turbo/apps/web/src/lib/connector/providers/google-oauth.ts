@@ -1,5 +1,6 @@
 import { type ConnectorType, getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
@@ -82,9 +83,7 @@ export async function exchangeGoogleOAuthCode(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `${connectorType} token exchange failed: ${response.status}`,
-    );
+    await throwOAuthError(connectorType, "exchange", response);
   }
 
   const data = z
@@ -148,9 +147,7 @@ export async function refreshGoogleToken(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `${connectorType} token refresh failed: ${response.status}`,
-    );
+    await throwOAuthError(connectorType, "refresh", response);
   }
 
   const data = z

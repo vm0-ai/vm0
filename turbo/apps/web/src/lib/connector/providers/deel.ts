@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
 
@@ -116,7 +117,7 @@ export async function refreshDeelToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Deel token refresh failed: ${response.status}`);
+    await throwOAuthError("Deel", "refresh", response);
   }
 
   const data = z
@@ -179,7 +180,7 @@ export async function exchangeDeelCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Deel token exchange failed: ${response.status}`);
+    await throwOAuthError("Deel", "exchange", response);
   }
 
   const data = z

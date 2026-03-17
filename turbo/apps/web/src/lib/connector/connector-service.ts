@@ -565,7 +565,11 @@ export async function refreshConnectorAccessToken(
     return result.accessToken;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    log.warn(`${connectorType} token refresh failed: ${message}`);
+    log.warn(`${connectorType} token refresh failed: ${message}`, {
+      connectorType,
+      orgId,
+      userId,
+    });
     return null;
   }
 }

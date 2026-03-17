@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface WebflowTokenResult {
   accessToken: string;
@@ -65,10 +66,7 @@ export async function exchangeWebflowCode(
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(
-      `Webflow token exchange failed: ${response.status} ${text}`,
-    );
+    await throwOAuthError("Webflow", "exchange", response);
   }
 
   const data = z

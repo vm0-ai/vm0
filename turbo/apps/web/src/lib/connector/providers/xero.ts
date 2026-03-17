@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 
@@ -77,7 +78,7 @@ export async function exchangeXeroCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Xero token exchange failed: ${response.status}`);
+    await throwOAuthError("Xero", "exchange", response);
   }
 
   const data = z
@@ -140,7 +141,7 @@ export async function refreshXeroToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Xero token refresh failed: ${response.status}`);
+    await throwOAuthError("Xero", "refresh", response);
   }
 
   const data = z

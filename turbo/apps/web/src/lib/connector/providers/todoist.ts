@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const TODOIST_USER_URL = "https://api.todoist.com/api/v1/user";
 
@@ -67,7 +68,7 @@ export async function exchangeTodoistCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Todoist token exchange failed: ${response.status}`);
+    await throwOAuthError("Todoist", "exchange", response);
   }
 
   const data = z

@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 interface SentryUserInfo {
   id: string;
@@ -75,7 +76,7 @@ export async function exchangeSentryCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Sentry token exchange failed: ${response.status}`);
+    await throwOAuthError("Sentry", "exchange", response);
   }
 
   const data = z
@@ -150,7 +151,7 @@ export async function refreshSentryToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Sentry token refresh failed: ${response.status}`);
+    await throwOAuthError("Sentry", "refresh", response);
   }
 
   const data = z

@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const CANVA_ME_URL = "https://api.canva.com/rest/v1/users/me";
 const CANVA_PROFILE_URL = "https://api.canva.com/rest/v1/users/me/profile";
@@ -116,7 +117,7 @@ export async function refreshCanvaToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Canva token refresh failed: ${response.status}`);
+    await throwOAuthError("Canva", "refresh", response);
   }
 
   const data = z
@@ -179,7 +180,7 @@ export async function exchangeCanvaCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Canva token exchange failed: ${response.status}`);
+    await throwOAuthError("Canva", "exchange", response);
   }
 
   const data = z

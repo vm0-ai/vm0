@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const AHREFS_SUBSCRIPTION_URL =
   "https://api.ahrefs.com/v3/subscription-info/limits-and-usage";
@@ -77,7 +78,7 @@ export async function exchangeAhrefsCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Ahrefs token exchange failed: ${response.status}`);
+    await throwOAuthError("Ahrefs", "exchange", response);
   }
 
   const data = z
@@ -139,7 +140,7 @@ export async function refreshAhrefsToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Ahrefs token refresh failed: ${response.status}`);
+    await throwOAuthError("Ahrefs", "refresh", response);
   }
 
   const data = z

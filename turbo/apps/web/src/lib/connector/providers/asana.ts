@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const ASANA_USER_URL = "https://app.asana.com/api/1.0/users/me";
 
@@ -74,7 +75,7 @@ export async function exchangeAsanaCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Asana token exchange failed: ${response.status}`);
+    await throwOAuthError("Asana", "exchange", response);
   }
 
   const data = z
@@ -184,7 +185,7 @@ export async function refreshAsanaToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Asana token refresh failed: ${response.status}`);
+    await throwOAuthError("Asana", "refresh", response);
   }
 
   const data = z

@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
@@ -75,7 +76,7 @@ export async function exchangeGmailCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Gmail token exchange failed: ${response.status}`);
+    await throwOAuthError("Gmail", "exchange", response);
   }
 
   const data = z

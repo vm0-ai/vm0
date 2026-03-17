@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const DROPBOX_CURRENT_ACCOUNT_URL =
   "https://api.dropboxapi.com/2/users/get_current_account";
@@ -80,7 +81,7 @@ export async function exchangeDropboxCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Dropbox token exchange failed: ${response.status}`);
+    await throwOAuthError("Dropbox", "exchange", response);
   }
 
   const data = z
@@ -142,7 +143,7 @@ export async function refreshDropboxToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Dropbox token refresh failed: ${response.status}`);
+    await throwOAuthError("Dropbox", "refresh", response);
   }
 
   const data = z

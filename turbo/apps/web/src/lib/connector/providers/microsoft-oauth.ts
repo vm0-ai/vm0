@@ -1,5 +1,6 @@
 import { type ConnectorType, getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me";
 
@@ -81,9 +82,7 @@ export async function exchangeMicrosoftOAuthCode(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `${connectorType} token exchange failed: ${response.status}`,
-    );
+    await throwOAuthError(connectorType, "exchange", response);
   }
 
   const data = z
@@ -147,9 +146,7 @@ export async function refreshMicrosoftToken(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `${connectorType} token refresh failed: ${response.status}`,
-    );
+    await throwOAuthError(connectorType, "refresh", response);
   }
 
   const data = z

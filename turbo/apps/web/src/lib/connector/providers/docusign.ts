@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const DOCUSIGN_USERINFO_URL = "https://account.docusign.com/oauth/userinfo";
 
@@ -119,10 +120,7 @@ export async function exchangeDocuSignCode(
   });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(
-      `DocuSign token exchange failed: ${response.status} ${errorBody}`,
-    );
+    await throwOAuthError("DocuSign", "exchange", response);
   }
 
   const data = z
@@ -188,7 +186,7 @@ export async function refreshDocuSignToken(
   });
 
   if (!response.ok) {
-    throw new Error(`DocuSign token refresh failed: ${response.status}`);
+    await throwOAuthError("DocuSign", "refresh", response);
   }
 
   const data = z

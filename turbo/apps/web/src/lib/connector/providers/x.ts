@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const X_USERS_ME_URL =
   "https://api.twitter.com/2/users/me?user.fields=id,username,name";
@@ -116,7 +117,7 @@ export async function refreshXToken(
   });
 
   if (!response.ok) {
-    throw new Error(`X token refresh failed: ${response.status}`);
+    await throwOAuthError("X", "refresh", response);
   }
 
   const data = z
@@ -179,7 +180,7 @@ export async function exchangeXCode(
   });
 
   if (!response.ok) {
-    throw new Error(`X token exchange failed: ${response.status}`);
+    await throwOAuthError("X", "exchange", response);
   }
 
   const data = z

@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 
@@ -74,7 +75,7 @@ export async function exchangeStripeCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Stripe token exchange failed: ${response.status}`);
+    await throwOAuthError("Stripe", "exchange", response);
   }
 
   const data = z
@@ -139,7 +140,7 @@ export async function refreshStripeToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Stripe token refresh failed: ${response.status}`);
+    await throwOAuthError("Stripe", "refresh", response);
   }
 
   const data = z

@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const GARMIN_USER_ID_URL = "https://apis.garmin.com/wellness-api/rest/user/id";
 
@@ -116,7 +117,7 @@ export async function exchangeGarminConnectCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Garmin Connect token exchange failed: ${response.status}`);
+    await throwOAuthError("Garmin Connect", "exchange", response);
   }
 
   const data = z
@@ -178,7 +179,7 @@ export async function refreshGarminConnectToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Garmin Connect token refresh failed: ${response.status}`);
+    await throwOAuthError("Garmin Connect", "refresh", response);
   }
 
   const data = z

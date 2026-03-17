@@ -1,5 +1,6 @@
 import { getConnectorOAuthConfig } from "@vm0/core";
 import { z } from "zod";
+import { throwOAuthError } from "./oauth-error";
 
 const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
 
@@ -118,7 +119,7 @@ export async function exchangeAirtableCode(
   });
 
   if (!response.ok) {
-    throw new Error(`Airtable token exchange failed: ${response.status}`);
+    await throwOAuthError("Airtable", "exchange", response);
   }
 
   const data = z
@@ -181,7 +182,7 @@ export async function refreshAirtableToken(
   });
 
   if (!response.ok) {
-    throw new Error(`Airtable token refresh failed: ${response.status}`);
+    await throwOAuthError("Airtable", "refresh", response);
   }
 
   const data = z
