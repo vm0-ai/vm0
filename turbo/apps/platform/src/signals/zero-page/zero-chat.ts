@@ -130,11 +130,14 @@ async function addRunToThread(
   threadId: string,
   runId: string,
 ): Promise<void> {
-  await fetchFn(`/api/chat-threads/${threadId}/runs`, {
+  const response = await fetchFn(`/api/chat-threads/${threadId}/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ runId }),
   });
+  if (!response.ok) {
+    throw new Error(`Failed to associate run with thread: ${response.status}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
