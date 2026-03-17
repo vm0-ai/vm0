@@ -297,11 +297,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     : agentDisplayName;
   const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.name ?? "");
   const chatAvatarSrc = selectedSubagent ? subagentAvatarSrc : zeroAvatarSrc;
-  const cycleAvatar$ = useCommand(({ set }) => {
-    set(avatarIndex$, (i: number) => (i + 1) % ZERO_AVATARS.length);
-  });
-  const cycleAvatar = useSet(cycleAvatar$);
-
   const inChat = useGet(zeroInChat$);
   const urlSessionId = useGet(zeroSessionId$);
   const inSession = inChat;
@@ -440,14 +435,12 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}
-            onAvatarClick={cycleAvatar}
             onChatAvatarClick={() => {
-              if (selectedSubagent) {
+              const agentName = selectedSubagent?.name ?? defaultRawName;
+              if (agentName) {
                 navigateInReact("/zero/team/:name", {
-                  pathParams: { name: selectedSubagent.name },
+                  pathParams: { name: agentName },
                 });
-              } else {
-                setActiveId("meet");
               }
             }}
           />

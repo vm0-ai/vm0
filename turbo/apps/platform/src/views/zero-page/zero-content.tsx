@@ -30,8 +30,6 @@ interface ZeroContentProps {
   chatAgentName?: string;
   /** Override avatar for the chat page when a sub-agent is selected. */
   chatAvatarSrc?: string;
-  /** Cycle avatar — only used by meet (team detail) page. */
-  onAvatarClick?: () => void;
   /** Navigate to agent profile — clicking chat header avatar. */
   onChatAvatarClick?: () => void;
 }
@@ -64,7 +62,6 @@ export function ZeroContent({
   zeroAvatarSrc = "/zero-avatar.png",
   chatAgentName,
   chatAvatarSrc,
-  onAvatarClick,
   onChatAvatarClick,
 }: ZeroContentProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
