@@ -114,7 +114,7 @@ EXISTING_WORKER=$(echo "$PR_LABELS" | grep -E "^vm[0-9]{2}$" | head -1)
 
 If `EXISTING_WORKER` is set, skip Steps 4-5 and go directly to Step 6 (report).
 
-### Step 4: Get Current User and Count Issues Per Worker
+### Step 4: Get Current User and Count Issues + PRs Per Worker
 
 Only runs if PR has no existing worker label.
 
@@ -124,8 +124,10 @@ ME=$(gh api user --jq '.login')
 MAX_WORKERS=<from args or 4>
 for i in $(seq 1 $MAX_WORKERS); do
   LABEL=$(printf "vm%02d" "$i")
-  COUNT=$(gh issue list --repo vm0-ai/vm0 --label "$LABEL" --assignee "$ME" --state open --json number --jq 'length')
-  echo "$LABEL: $COUNT"
+  ISSUE_COUNT=$(gh issue list --repo vm0-ai/vm0 --label "$LABEL" --assignee "$ME" --state open --json number --jq 'length')
+  PR_COUNT=$(gh pr list --repo vm0-ai/vm0 --label "$LABEL" --author "$ME" --state open --json number --jq 'length')
+  TOTAL=$((ISSUE_COUNT + PR_COUNT))
+  echo "$LABEL: $TOTAL (issues: $ISSUE_COUNT, PRs: $PR_COUNT)"
 done
 ```
 
@@ -133,7 +135,7 @@ done
 
 ### Step 5: Apply Worker Label
 
-Pick the worker label with the fewest open issues. Break ties by lowest number.
+Pick the worker label with the lowest total (issues + PRs). Prefer workers with **zero** total items. Break ties by lowest number.
 
 ```bash
 gh label create "$SELECTED_LABEL" --description "Coding worker $SELECTED_LABEL" --color 0E8A16 2>/dev/null || true
@@ -156,11 +158,11 @@ Mode: <created / updated>
 Assigned to worker: <LABEL> <(existing) if kept>
 Pending label: <removed / not present>
 
-Worker load:
-  vm01: 3 issues
-  vm02: 2 issues  <-- assigned here
-  vm03: 3 issues
-  vm04: 4 issues
+Worker load (issues + PRs):
+  vm01: 3 (issues: 2, PRs: 1)
+  vm02: 0 (issues: 0, PRs: 0)  <-- assigned here
+  vm03: 3 (issues: 1, PRs: 2)
+  vm04: 4 (issues: 3, PRs: 1)
 ```
 
 ---
