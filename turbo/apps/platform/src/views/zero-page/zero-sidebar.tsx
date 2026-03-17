@@ -930,9 +930,7 @@ function TalkToSection({
               alt={agent.displayName ?? agent.name}
               className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
             />
-            <span className="truncate">
-              {agent.displayName ?? agent.name}
-            </span>
+            <span className="truncate">{agent.displayName ?? agent.name}</span>
           </Link>
         ))}
         <button

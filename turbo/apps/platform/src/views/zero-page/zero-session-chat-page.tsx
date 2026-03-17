@@ -1,4 +1,4 @@
-import type { ChangeEvent, MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
@@ -12,6 +12,8 @@ import {
   IconChartLine,
   IconPlayerStop,
   IconChevronDown,
+  IconCopy,
+  IconCheck,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -23,10 +25,7 @@ import {
 } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
-import {
-  FileAttachmentChip,
-  AttachmentChip,
-} from "./zero-attachment-chips.tsx";
+import { FileAttachmentChip } from "./zero-attachment-chips.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroChatMessages$,
@@ -146,53 +145,56 @@ export function ZeroSessionChatPage({
         </div>
       </header>
 
-      {/* Message list */}
-      <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
-        <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
-          {sessionError && (
-            <div className="flex-1 flex items-center justify-center py-16">
-              <div className="flex items-center gap-2 text-destructive">
-                <IconAlertCircle size={16} />
-                <p className="text-sm">{sessionError}</p>
+      {/* Scrollable area — messages + sticky composer share the same scroll context */}
+      <div className="flex-1 overflow-auto flex flex-col min-h-0">
+        <main className="flex-1 px-4 sm:px-6 py-4">
+          <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
+            {sessionError && (
+              <div className="flex-1 flex items-center justify-center py-16">
+                <div className="flex items-center gap-2 text-destructive">
+                  <IconAlertCircle size={16} />
+                  <p className="text-sm">{sessionError}</p>
+                </div>
               </div>
-            </div>
-          )}
-          {!sessionError && messages.length === 0 && sessionSwitching && (
-            <ChatSkeleton />
-          )}
-          {!sessionError && messages.length === 0 && !sessionSwitching && (
-            <div className="flex-1 flex items-center justify-center py-16">
-              <p className="text-sm text-muted-foreground">
-                Send a message to start the conversation
-              </p>
-            </div>
-          )}
-          {messages.map((msg) => (
-            <ChatMessageRow
-              key={msg.id}
-              message={msg}
-              zeroAvatarSrc={zeroAvatarSrc}
-            />
-          ))}
-          <div ref={setMessagesEndEl} />
-        </div>
-      </main>
+            )}
+            {!sessionError && messages.length === 0 && sessionSwitching && (
+              <ChatSkeleton />
+            )}
+            {!sessionError && messages.length === 0 && !sessionSwitching && (
+              <div className="flex-1 flex items-center justify-center py-16">
+                <p className="text-sm text-muted-foreground">
+                  Send a message to start the conversation
+                </p>
+              </div>
+            )}
+            {messages.map((msg) => (
+              <ChatMessageRow
+                key={msg.id}
+                message={msg}
+                zeroAvatarSrc={zeroAvatarSrc}
+              />
+            ))}
+            <div ref={setMessagesEndEl} />
+          </div>
+        </main>
 
-      {/* Composer */}
-      <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
-        <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
-          <div className="w-9 shrink-0" />
-          <ZeroChatComposer
-            className="w-full min-w-0"
-            input={input}
-            onInputChange={setInput}
-            onSend={handleSend}
-            sending={sending}
-            onCancel={() => void cancelRun()}
-            agentName={agentName}
-          />
-        </div>
-      </footer>
+        {/* Composer — sticky inside the scroll container so it aligns with messages */}
+        <footer className="relative sticky bottom-0 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
+          <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
+          <div className="mx-auto max-w-[900px] grid grid-cols-[36px_1fr] gap-2.5">
+            <div className="w-9 shrink-0" />
+            <ZeroChatComposer
+              className="w-full min-w-0"
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSend}
+              sending={sending}
+              onCancel={() => void cancelRun()}
+              agentName={agentName}
+            />
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
@@ -205,14 +207,11 @@ function ChatSkeleton() {
   return (
     <>
       {/* User bubble skeleton */}
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
-        <div className="w-9 h-9 shrink-0" />
-        <div className="flex min-w-0 justify-end">
-          <Skeleton className="h-10 w-[60%] rounded-xl" />
-        </div>
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
         <Skeleton className="h-9 w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
@@ -221,14 +220,11 @@ function ChatSkeleton() {
         </div>
       </div>
       {/* User bubble skeleton */}
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
-        <div className="w-9 h-9 shrink-0" />
-        <div className="flex min-w-0 justify-end">
-          <Skeleton className="h-10 w-[45%] rounded-xl" />
-        </div>
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
         <Skeleton className="h-9 w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
@@ -309,7 +305,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
 
   return (
     <>
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="w-9 h-9 shrink-0" />
         <div className="flex flex-col items-end min-w-0">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
@@ -462,7 +458,10 @@ function RunActivityLine() {
   if (rawSummaries.length === 0) {
     return (
       <div ref={cycleRef} className="flex items-center gap-2 min-w-0">
-        <IconLoader2 size={14} className="animate-spin text-primary shrink-0" />
+        <IconLoader2
+          size={14}
+          className="animate-spin text-foreground/50 shrink-0"
+        />
         <p className="zero-shimmer-text text-xs truncate">{thinkingMsg}</p>
       </div>
     );
@@ -497,10 +496,13 @@ function RunActivityLine() {
           >
             <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
               {isLast ? (
-                <IconLoader2 size={12} className="animate-spin text-primary" />
+                <IconLoader2
+                  size={12}
+                  className="animate-spin text-foreground/50"
+                />
               ) : (
                 <span
-                  className="text-[8px] leading-none text-green-700"
+                  className="text-[8px] leading-none text-foreground/30"
                   aria-hidden
                 >
                   ●
@@ -536,19 +538,19 @@ function CollapsibleTimeline({ summaries }: { summaries: string[] }) {
   const items = deduplicateSummaries(summaries);
 
   return (
-    <div className="mb-3">
+    <div className="mb-6">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
+        className="flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
       >
         <IconChevronDown
           size={12}
           stroke={1.5}
           className={`shrink-0 transition-transform duration-200 ${expanded ? "" : "-rotate-90"}`}
         />
-        <span>
-          {items.length} step{items.length === 1 ? "" : "s"}
+        <span className="font-medium">
+          Took {items.length} step{items.length === 1 ? "" : "s"}
         </span>
       </button>
       {expanded && (
@@ -570,11 +572,11 @@ function CollapsibleTimeline({ summaries }: { summaries: string[] }) {
           {items.map((summary, idx) => (
             <p
               key={`${idx}-${summary}`}
-              className="flex items-center gap-2.5 min-w-0 text-xs text-muted-foreground truncate"
+              className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
             >
               <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
                 <span
-                  className="text-[8px] leading-none text-green-700"
+                  className="text-[8px] leading-none text-foreground/30"
                   aria-hidden
                 >
                   ●
@@ -594,10 +596,7 @@ interface AssistantMessageProps {
   zeroAvatarSrc: string;
 }
 
-function AssistantMessage({
-  message,
-  zeroAvatarSrc,
-}: AssistantMessageProps) {
+function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
@@ -609,36 +608,75 @@ function AssistantMessage({
     </div>
   );
 
-  const logButton = message.runId ? (
-    <div className="grid grid-cols-[48px_1fr] gap-3">
-      <div />
-      <div className="flex">
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <SimpleLink
-                href={`/activity/${message.runId}`}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
-                aria-label="View run logs"
-              >
-                <IconChartLine size={18} stroke={1.5} />
-              </SimpleLink>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">View activity logs</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+  const hasSummaries = message.summaries && message.summaries.length > 0;
+
+  const copied$ = useCCState(false);
+  const copied = useGet(copied$);
+  const setCopied = useSet(copied$);
+
+  const handleCopy = () => {
+    if (!message.content) {
+      return;
+    }
+    navigator.clipboard.writeText(message.content).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  const logButton =
+    hasSummaries && message.runId ? (
+      <div className="grid grid-cols-[36px_1fr] gap-2.5">
+        <div />
+        <div className="flex py-2 gap-1">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SimpleLink
+                  href={`/zero/activity/${message.runId}`}
+                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                  aria-label="View run logs"
+                >
+                  <IconChartLine size={18} stroke={1.5} />
+                </SimpleLink>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">View activity logs</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          {message.content && (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                    aria-label="Copy message"
+                  >
+                    {copied ? (
+                      <IconCheck size={18} stroke={1.5} />
+                    ) : (
+                      <IconCopy size={18} stroke={1.5} />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {copied ? "Copied!" : "Copy message"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
-    </div>
-  ) : null;
+    ) : null;
 
   if (message.error) {
     return (
       <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+        <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
-            {message.summaries && message.summaries.length > 0 && (
-              <CollapsibleTimeline summaries={message.summaries} />
+          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+            {hasSummaries && (
+              <CollapsibleTimeline summaries={message.summaries!} />
             )}
             <div className="flex items-start gap-2 text-destructive">
               <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
@@ -654,11 +692,11 @@ function AssistantMessage({
   if (message.content) {
     return (
       <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+        <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
-            {message.summaries && message.summaries.length > 0 && (
-              <CollapsibleTimeline summaries={message.summaries} />
+          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+            {hasSummaries && (
+              <CollapsibleTimeline summaries={message.summaries!} />
             )}
             <Markdown source={message.content} />
             {message.cancelled && (
@@ -677,7 +715,7 @@ function AssistantMessage({
   // Thinking / loading state — show live run activity
   return (
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <RunActivityLine />

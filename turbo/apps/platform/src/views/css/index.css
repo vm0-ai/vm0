@@ -42,27 +42,27 @@
 /* Shimmer text effect for active/thinking states */
 @keyframes zero-shimmer {
   0% {
-    background-position: 200% center;
+    background-position: 100% center;
   }
   100% {
-    background-position: -200% center;
+    background-position: -100% center;
   }
 }
 .zero-shimmer-text {
   background: linear-gradient(
     90deg,
-    hsl(var(--muted-foreground) / 0.5) 0%,
-    hsl(var(--muted-foreground) / 0.5) 38%,
-    hsl(var(--foreground)) 49%,
-    hsl(var(--foreground)) 51%,
-    hsl(var(--muted-foreground) / 0.5) 62%,
-    hsl(var(--muted-foreground) / 0.5) 100%
+    hsl(var(--muted-foreground) / 0.8) 0%,
+    hsl(var(--muted-foreground) / 0.8) 35%,
+    hsl(var(--foreground)) 48%,
+    hsl(var(--foreground)) 52%,
+    hsl(var(--muted-foreground) / 0.8) 65%,
+    hsl(var(--muted-foreground) / 0.8) 100%
   );
-  background-size: 300% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: zero-shimmer 10s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation: zero-shimmer 3.5s linear infinite;
 }
 
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
