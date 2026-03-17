@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import type { NextFetchEvent } from "next/server";
 import { NextRequest } from "next/server";
 import {
   runLayers,
@@ -87,7 +88,10 @@ const clerk = clerkMiddleware(async (auth, request: NextRequest) => {
  * 3. After Clerk runs, copy x-vm0-authorization back to Authorization
  *    in the response headers so the downstream route handler receives it
  */
-export default async function middleware(request: NextRequest) {
+export default async function middleware(
+  request: NextRequest,
+  event: NextFetchEvent,
+) {
   const authHeader = request.headers.get("authorization");
   const hasSandboxToken =
     authHeader?.startsWith("Bearer " + SANDBOX_TOKEN_PREFIX) ?? false;
@@ -105,7 +109,7 @@ export default async function middleware(request: NextRequest) {
       duplex: "half",
     });
 
-    const response = await clerk(rewritten, {} as never);
+    const response = await clerk(rewritten, event);
 
     // Restore the original Authorization header for the route handler
     if (response) {
@@ -118,7 +122,7 @@ export default async function middleware(request: NextRequest) {
     return response;
   }
 
-  return clerk(request, {} as never);
+  return clerk(request, event);
 }
 
 export const config = {
