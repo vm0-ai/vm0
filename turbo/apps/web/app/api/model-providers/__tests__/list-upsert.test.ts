@@ -9,6 +9,7 @@ import {
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
+import { upsertOrgModelProvider } from "../../../../src/lib/model-provider/model-provider-service";
 
 vi.mock("@axiomhq/logging");
 
@@ -64,6 +65,7 @@ describe("GET /api/model-providers", () => {
     expect(body.modelProviders[0].framework).toBe("claude-code");
     expect(body.modelProviders[0].secretName).toBe("ANTHROPIC_API_KEY");
     expect(body.modelProviders[0].isDefault).toBe(true);
+    expect(body.modelProviders[0].scope).toBe("user");
   });
 
   it("should return selectedModel in provider list", async () => {
@@ -85,6 +87,50 @@ describe("GET /api/model-providers", () => {
 
     expect(response.status).toBe(200);
     expect(body.modelProviders[0].selectedModel).toBeNull();
+  });
+});
+
+describe("GET /api/model-providers (merged scope)", () => {
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+  });
+
+  it("should return merged list with org providers first", async () => {
+    const user = await context.setupUser();
+    await upsertOrgModelProvider(user.orgId, "deepseek-api-key", "org-key");
+    await createTestModelProvider("anthropic-api-key", "user-key");
+
+    const response = await listProviders();
+    const body = await response.json();
+
+    expect(body.modelProviders).toHaveLength(2);
+    expect(body.modelProviders[0].scope).toBe("org");
+    expect(body.modelProviders[0].type).toBe("deepseek-api-key");
+    expect(body.modelProviders[1].scope).toBe("user");
+    expect(body.modelProviders[1].type).toBe("anthropic-api-key");
+  });
+
+  it("should return only org providers when user has none", async () => {
+    const user = await context.setupUser();
+    await upsertOrgModelProvider(user.orgId, "anthropic-api-key", "org-key");
+
+    const response = await listProviders();
+    const body = await response.json();
+
+    expect(body.modelProviders).toHaveLength(1);
+    expect(body.modelProviders[0].scope).toBe("org");
+    expect(body.modelProviders[0].type).toBe("anthropic-api-key");
+  });
+
+  it("should return only user providers when org has none", async () => {
+    await createTestModelProvider("anthropic-api-key", "user-key");
+
+    const response = await listProviders();
+    const body = await response.json();
+
+    expect(body.modelProviders).toHaveLength(1);
+    expect(body.modelProviders[0].scope).toBe("user");
   });
 });
 

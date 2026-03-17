@@ -19,6 +19,7 @@ const DUMMY_MODEL_PROVIDER: ModelProviderResponse = {
   secretNames: null,
   isDefault: false,
   selectedModel: null,
+  scope: "user",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -67,6 +68,7 @@ export const apiModelProvidersHandlers = [
       isDefault:
         mockModelProviders.length === 0 || existing?.isDefault || false,
       selectedModel: null,
+      scope: "user",
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };

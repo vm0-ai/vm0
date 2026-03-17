@@ -477,6 +477,7 @@ export const modelProviderResponseSchema = z.object({
   secretNames: z.array(z.string()).nullable(), // For multi-auth providers
   isDefault: z.boolean(),
   selectedModel: z.string().nullable(),
+  scope: z.enum(["org", "user"]).optional(), // Optional for backward compat
   createdAt: z.string(),
   updatedAt: z.string(),
 });
