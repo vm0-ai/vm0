@@ -162,8 +162,10 @@ export function handleNonInteractiveMode(options: {
   secret: string[];
   authMethod?: string;
   model?: string;
+  commandPrefix?: string;
 }): SetupInput {
   const type = validateProviderType(options.type);
+  const cmdPrefix = options.commandPrefix ?? "vm0 model-provider setup";
 
   let selectedModel: string | undefined;
 
@@ -197,7 +199,7 @@ export function handleNonInteractiveMode(options: {
           `--auth-method is required for "${type}" (multiple auth methods available)`,
           {
             cause: new Error(
-              `Available: ${methods}. Example: vm0 model-provider setup --type ${type} --auth-method ${authMethodNames[0]} --secret KEY=VALUE`,
+              `Available: ${methods}. Example: ${cmdPrefix} --type ${type} --auth-method ${authMethodNames[0]} --secret KEY=VALUE`,
             ),
           },
         );

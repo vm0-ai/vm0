@@ -197,6 +197,7 @@ export const setupCommand = new Command()
             secret: secretArgs,
             authMethod: options.authMethod,
             model: options.model,
+            commandPrefix: "vm0 org model-provider setup",
           });
         } else if (options.type || secretArgs.length > 0) {
           throw new Error("Both --type and --secret are required");
