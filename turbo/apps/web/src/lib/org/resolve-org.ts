@@ -1,12 +1,6 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { eq, desc } from "drizzle-orm";
-import {
-  forbidden,
-  badRequest,
-  notFound,
-  isNotFound,
-  isForbidden,
-} from "../errors";
+import { desc, eq } from "drizzle-orm";
+import { forbidden, isForbidden, isNotFound, notFound } from "../errors";
 import { logger } from "../logger";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
@@ -272,35 +266,4 @@ export async function resolveCallerOrgId(
     if (isNotFound(error) || isForbidden(error)) return null;
     throw error;
   }
-}
-
-/**
- * Extract and validate org from a request's ?org= query parameter.
- * Throws if the param is missing, the org doesn't exist, or the user
- * is not a member.
- *
- * Use this in org routes that always require an explicit org parameter.
- */
-export async function requireOrgFromRequest(
-  request: Request,
-  userId: string,
-): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
-  const url = new URL(request.url);
-  const orgSlug = url.searchParams.get("org");
-
-  if (!orgSlug) {
-    throw badRequest("org query parameter is required");
-  }
-
-  // Try slug first, fall back to orgId (callers may pass either via ?org=)
-  const orgData =
-    (await getOrgBySlug(orgSlug)) ?? (await getOrgDataOrNull(orgSlug));
-
-  if (!orgData) {
-    throw notFound("Org not found");
-  }
-
-  const authResult = await auth();
-  const member = await verifyMembership(orgData, userId, authResult);
-  return { org: applyJwtTier(orgData, authResult), member };
 }

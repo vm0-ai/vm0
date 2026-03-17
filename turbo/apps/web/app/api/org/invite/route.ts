@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { requireOrgFromRequest } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { inviteMember } from "../../../../src/lib/org/org-member-service";
 import {
+  badRequest,
   isBadRequest,
   isNotFound,
   isForbidden,
@@ -40,7 +41,9 @@ export async function POST(request: Request) {
   const body = parseResult.data;
 
   try {
-    const { org, member } = await requireOrgFromRequest(request, userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    if (!orgSlug) throw badRequest("org query parameter is required");
+    const { org, member } = await resolveOrg(userId, orgSlug);
     await inviteMember(userId, org.orgId, member.role, body.email);
     return NextResponse.json({ message: `Invitation sent to ${body.email}` });
   } catch (error) {

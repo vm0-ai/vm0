@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.30.0...runner-rs-v0.31.0) (2026-03-17)
+
+
+### Features
+
+* **runner:** add experimental profile passthrough from compose to runner ([#5100](https://github.com/vm0-ai/vm0/issues/5100)) ([5eb8dd4](https://github.com/vm0-ai/vm0/commit/5eb8dd44baaa24ea40baf2804ec022a3d006528a)), closes [#5037](https://github.com/vm0-ai/vm0/issues/5037)
+
 ## [0.30.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.3...runner-rs-v0.30.0) (2026-03-17)
 
 

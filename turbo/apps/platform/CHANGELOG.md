@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.117.0](https://github.com/vm0-ai/vm0/compare/platform-v0.116.3...platform-v0.117.0) (2026-03-17)
+
+
+### Features
+
+* add chat threads for instant sidebar and stable url routing ([#5102](https://github.com/vm0-ai/vm0/issues/5102)) ([c902c8c](https://github.com/vm0-ai/vm0/commit/c902c8c892f93e3496c94a5fda0e835b1957086d))
+* add needs-reconnect flag for connector token refresh failures ([#5128](https://github.com/vm0-ai/vm0/issues/5128)) ([5da9c4e](https://github.com/vm0-ai/vm0/commit/5da9c4e15385589a41a49007dfc2b0009f58bbe8))
+
+
+### Bug Fixes
+
+* compare with zeroChatThreadId$ and add loading guard. ([c902c8c](https://github.com/vm0-ai/vm0/commit/c902c8c892f93e3496c94a5fda0e835b1957086d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.74.0
+
 ## [0.116.3](https://github.com/vm0-ai/vm0/compare/platform-v0.116.2...platform-v0.116.3) (2026-03-17)
 
 

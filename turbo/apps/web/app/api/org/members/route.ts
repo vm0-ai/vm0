@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { requireOrgFromRequest } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   getOrgMembers,
   removeMember,
 } from "../../../../src/lib/org/org-member-service";
 import {
+  badRequest,
   isBadRequest,
   isNotFound,
   isForbidden,
@@ -32,7 +33,9 @@ export async function GET(request: Request) {
   const { userId } = authCtx;
 
   try {
-    const { org } = await requireOrgFromRequest(request, userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    if (!orgSlug) throw badRequest("org query parameter is required");
+    const { org } = await resolveOrg(userId, orgSlug);
     const status = await getOrgMembers(userId, org.orgId, org.slug);
     return NextResponse.json(status);
   } catch (error) {
@@ -86,7 +89,9 @@ export async function DELETE(request: Request) {
   const body = parseResult.data;
 
   try {
-    const { org, member } = await requireOrgFromRequest(request, userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    if (!orgSlug) throw badRequest("org query parameter is required");
+    const { org, member } = await resolveOrg(userId, orgSlug);
     await removeMember(userId, org.orgId, member.role, body.email);
     return NextResponse.json({
       message: `Removed ${body.email} from org`,
