@@ -1,5 +1,4 @@
 import { auth } from "@clerk/nextjs/server";
-import { eq, desc } from "drizzle-orm";
 import {
   forbidden,
   badRequest,
@@ -10,7 +9,6 @@ import {
 } from "../errors";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
-import { orgMembersCache } from "../../db/schema/org-members-cache";
 
 import type { OrgRole } from "@vm0/core";
 
@@ -171,27 +169,6 @@ export async function resolveOrg(
     return { org: applyJwtTier(orgData, authResult), member };
   }
 
-  // 3. CLI token fallback: no Clerk session means this is a CLI token or
-  //    similar non-session auth. Look up the user's most recent org from
-  //    org_members_cache. This is narrower than the old Tier 3/4 which also
-  //    ran for web users — here it only activates without a Clerk session.
-  if (!authResult.userId) {
-    const [cached] = await globalThis.services.db
-      .select({ orgId: orgMembersCache.orgId })
-      .from(orgMembersCache)
-      .where(eq(orgMembersCache.userId, userId))
-      .orderBy(desc(orgMembersCache.cachedAt))
-      .limit(1);
-
-    if (cached) {
-      const orgData = await getOrgDataOrNull(cached.orgId);
-      if (orgData) {
-        const member = await verifyMembership(orgData, userId, authResult);
-        return { org: orgData, member };
-      }
-    }
-  }
-
   // No explicit org context available — require callers to provide one
   throw badRequest(
     "Explicit org context required — pass ?org= query parameter or ensure active org in session",
@@ -216,30 +193,6 @@ export async function resolveOrgOrNull(
     if (isNotFound(error) || isBadRequest(error)) return null;
     throw error;
   }
-}
-
-/**
- * Resolve a user's default org from org_members_cache.
- *
- * Used exclusively by the org management endpoints (GET/PUT /api/org) to
- * support CLI tokens that don't carry Clerk session context. General API
- * routes should use resolveOrg with explicit org context instead.
- *
- * Returns null if no cached membership exists for the user.
- */
-export async function resolveDefaultOrgFromCache(
-  userId: string,
-): Promise<ResolvedOrg | null> {
-  const [cached] = await globalThis.services.db
-    .select({ orgId: orgMembersCache.orgId })
-    .from(orgMembersCache)
-    .where(eq(orgMembersCache.userId, userId))
-    .orderBy(desc(orgMembersCache.cachedAt))
-    .limit(1);
-
-  if (!cached) return null;
-
-  return getOrgDataOrNull(cached.orgId);
 }
 
 /**
