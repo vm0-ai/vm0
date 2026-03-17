@@ -69,6 +69,26 @@ class TestMatchPath:
         result = mitm_addon.match_path("/api/v1/anything/here", "/api/v1/{rest+}")
         assert result == {"rest": "anything/here"}
 
+    def test_star_param_matches_rest(self):
+        result = mitm_addon.match_path("/repos/octocat/hello-world", "/{path*}")
+        assert result == {"path": "repos/octocat/hello-world"}
+
+    def test_star_param_matches_single_segment(self):
+        result = mitm_addon.match_path("/foo", "/{path*}")
+        assert result == {"path": "foo"}
+
+    def test_star_param_matches_empty(self):
+        result = mitm_addon.match_path("/", "/{path*}")
+        assert result == {"path": ""}
+
+    def test_star_after_literal(self):
+        result = mitm_addon.match_path("/api/v1/anything/here", "/api/v1/{rest*}")
+        assert result == {"rest": "anything/here"}
+
+    def test_star_after_literal_empty(self):
+        result = mitm_addon.match_path("/api/v1", "/api/v1/{rest*}")
+        assert result == {"rest": ""}
+
     def test_path_too_short(self):
         assert mitm_addon.match_path("/repos", "/repos/{owner}/{repo}") is None
 
