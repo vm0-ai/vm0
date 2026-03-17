@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getOrg } from "../../lib/api";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { withErrorHandler } from "../../lib/command";
 
 export const statusCommand = new Command()
@@ -14,10 +15,7 @@ export const statusCommand = new Command()
         console.log(chalk.bold("Organization Information:"));
         console.log(`  Slug: ${chalk.green(org.slug)}`);
       } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message.includes("No org configured")
-        ) {
+        if (error instanceof ApiRequestError && error.status === 404) {
           throw new Error("No organization configured", {
             cause: new Error("Set your organization with: vm0 org set <slug>"),
           });

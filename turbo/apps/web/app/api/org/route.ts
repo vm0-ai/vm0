@@ -24,12 +24,12 @@ function resolvedOrgToResponse(resolved: ResolvedOrg) {
 
 const router = tsr.router(orgContract, {
   /**
-   * GET /api/org - Get current user's default org
+   * GET /api/org - Get current user's org
    *
-   * Resolves the active org via orgId from Clerk session,
-   * or falls back to the user's default org (first admin membership).
+   * Resolves the active org via ?org= query param, orgId from Clerk session,
+   * or explicit org context. Requires explicit org selection.
    */
-  get: async ({ headers }) => {
+  get: async ({ headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -38,8 +38,10 @@ const router = tsr.router(orgContract, {
     }
     const { userId } = authCtx;
 
+    const orgSlug = new URL(request.url).searchParams.get("org");
+
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId);
+      const { org: resolvedOrg } = await resolveOrg(userId, orgSlug);
 
       return {
         status: 200 as const,
@@ -56,10 +58,10 @@ const router = tsr.router(orgContract, {
   /**
    * PUT /api/org - Update active org slug
    *
-   * Resolves the active org via orgId from Clerk session,
-   * or falls back to the user's default org (first admin membership).
+   * Resolves the active org via ?org= query param or orgId from Clerk session.
+   * Requires explicit org context.
    */
-  update: async ({ body, headers }) => {
+  update: async ({ body, headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -69,12 +71,13 @@ const router = tsr.router(orgContract, {
     const { userId } = authCtx;
 
     const { slug, force } = body;
+    const orgSlug = new URL(request.url).searchParams.get("org");
 
     log.debug("updating org", { userId, slug, force });
 
     let resolvedOrg;
     try {
-      ({ org: resolvedOrg } = await resolveOrg(userId));
+      ({ org: resolvedOrg } = await resolveOrg(userId, orgSlug));
     } catch (error) {
       if (isNotFound(error) || isBadRequest(error)) {
         return createErrorResponse(
