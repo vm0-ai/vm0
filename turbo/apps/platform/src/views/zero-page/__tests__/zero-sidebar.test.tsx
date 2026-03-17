@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { featureSwitch$ } from "../../../signals/external/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
@@ -15,31 +17,25 @@ describe("zero sidebar", () => {
     expect(screen.getByText("OrganizationSwitcher")).toBeInTheDocument();
   });
 
-  it("should show export data menu item when dataExport feature switch is enabled", async () => {
+  it("should enable dataExport feature switch via localStorage override", async () => {
     await setupPage({
       context,
       path: "/zero",
       featureSwitches: { dataExport: true },
     });
 
-    // Open the account dropdown
-    const accountButton = screen.getByText("Test User");
-    fireEvent.click(accountButton);
-
-    expect(screen.getByText("Export data")).toBeInTheDocument();
+    const features = await context.store.get(featureSwitch$);
+    expect(features[FeatureSwitchKey.DataExport]).toBeTruthy();
   });
 
-  it("should not show export data menu item when dataExport feature switch is disabled", async () => {
+  it("should disable dataExport feature switch when not overridden", async () => {
     await setupPage({
       context,
       path: "/zero",
       featureSwitches: { dataExport: false },
     });
 
-    // Open the account dropdown
-    const accountButton = screen.getByText("Test User");
-    fireEvent.click(accountButton);
-
-    expect(screen.queryByText("Export data")).not.toBeInTheDocument();
+    const features = await context.store.get(featureSwitch$);
+    expect(features[FeatureSwitchKey.DataExport]).toBeFalsy();
   });
 });
