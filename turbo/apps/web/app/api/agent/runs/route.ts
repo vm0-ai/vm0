@@ -291,7 +291,7 @@ function handleCreateRunError(error: unknown) {
 }
 
 const router = tsr.router(runsMainContract, {
-  list: async ({ query, headers }) => {
+  list: async ({ query, headers }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -299,6 +299,9 @@ const router = tsr.router(runsMainContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(userId, orgSlug);
 
     // Parse and validate status values
     const statusValues: string[] = query.status
@@ -321,7 +324,10 @@ const router = tsr.router(runsMainContract, {
     }
 
     // Build query conditions
-    const conditions = [eq(agentRuns.userId, userId)];
+    const conditions = [
+      eq(agentRuns.userId, userId),
+      eq(agentRuns.orgId, org.orgId),
+    ];
 
     // Filter by status
     conditions.push(inArray(agentRuns.status, statusValues));

@@ -5,7 +5,11 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  createTestRunInDb,
   completeTestRun,
+  insertOrgCacheEntry,
+  insertOrgMembersCacheEntry,
+  getOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import {
@@ -124,16 +128,81 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
     });
   });
 
+  describe("Org-Scoped Filtering", () => {
+    it("should return 404 for run from a different org", async () => {
+      // Create a compose + run in a different org
+      const otherOrg = await context.createAgentCompose(user.userId);
+      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+        status: "running",
+        prompt: "Other org run",
+      });
+
+      // Default user is in the default org — the run belongs to otherOrg
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${runId}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return run when switching to the correct org", async () => {
+      // Create a compose + run in a different org
+      const otherOrg = await context.createAgentCompose(user.userId);
+      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+        status: "running",
+        prompt: "Other org run",
+      });
+
+      // Switch Clerk mock to the other org
+      const orgEntry = await getOrgCacheEntry(otherOrg.orgId);
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrg.orgId,
+        orgSlug: orgEntry!.slug,
+        clerkOrgs: [
+          { id: otherOrg.orgId, slug: orgEntry!.slug, name: orgEntry!.slug },
+        ],
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${runId}?org=${orgEntry!.slug}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.runId).toBe(runId);
+    });
+  });
+
   describe("Sandbox Token Capability Enforcement", () => {
     it("should accept sandbox token with agent-run:read", async () => {
       const run = await createTestRun(testComposeId, "Test prompt");
+
+      // Refresh caches with current Date.now() timestamp
+      // (a previous test may have advanced Date.now via dateNow mock)
+      await insertOrgCacheEntry({
+        orgId: user.orgId,
+        slug: (await getOrgCacheEntry(user.orgId))!.slug,
+        cachedAt: new Date(Date.now()),
+      });
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        cachedAt: new Date(Date.now()),
+      });
+
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, run.runId, [
         "agent-run:read",
       ]);
 
+      const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${run.runId}`,
+        `http://localhost:3000/api/agent/runs/${run.runId}?org=${orgEntry!.slug}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       const response = await GET(request);
@@ -153,7 +222,8 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       );
       const response = await GET(request);
 
-      expect(response.status).toBe(401);
+      // requireAuth returns 403 for valid sandbox tokens missing the required capability
+      expect(response.status).toBe(403);
     });
   });
 });
