@@ -34,6 +34,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
+    path: "/zero/talk/:name",
+    setup: setupAuthPageWrapper(setupZeroPage$),
+  },
+  {
     path: "/zero/team/:name",
     setup: setupAuthPageWrapper(setupZeroJobDetailRoute$),
   },

@@ -174,7 +174,7 @@ interface ZeroSidebarProps {
   recentSessions?: ChatThreadListItem[];
   recentSessionsLoading?: boolean;
   recentSessionsError?: string | null;
-  onNewChat?: (agentId: string | null) => void;
+  onNewChat?: (agent: { id: string; name: string } | null) => void;
   onResetAgent?: () => void;
 }
 
@@ -996,7 +996,9 @@ export function ZeroSidebar({
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
-                  onClick={() => onNewChat?.(agent.id)}
+                  onClick={() =>
+                    onNewChat?.({ id: agent.id, name: agent.name })
+                  }
                 >
                   <AgentAvatarImg
                     name={agent.name}

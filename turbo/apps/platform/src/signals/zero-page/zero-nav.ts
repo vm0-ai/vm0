@@ -1,14 +1,6 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { pathname$, updatePathname$ } from "../route.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
 import type { ZeroNavId } from "../../views/zero-page/zero-sidebar.tsx";
-
-const CHAT_AGENT_KEY = "zero.chatAgentId";
-const {
-  get$: storedChatAgentId$,
-  set$: persistChatAgentId$,
-  clear$: clearChatAgentId$,
-} = localStorageSignals(CHAT_AGENT_KEY);
 
 function isValidTab(tab: string): tab is ZeroNavId {
   return (
@@ -24,7 +16,8 @@ function isValidTab(tab: string): tab is ZeroNavId {
 
 /**
  * Active zero nav id, derived from the URL path `/zero/:tab`.
- * `/zero`, `/zero/chat`, and `/zero/chat/:sessionId` all resolve to "chat".
+ * `/zero`, `/zero/chat`, `/zero/chat/:sessionId`, and `/zero/talk/:name`
+ * all resolve to "chat".
  */
 export const zeroActiveId$ = computed((get): ZeroNavId => {
   const path = get(pathname$);
@@ -36,7 +29,7 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
 });
 
 /**
- * Whether the user is on a chat page — `/zero/chat` or `/zero/chat/:sessionId`.
+ * Whether the user is on a chat session page — `/zero/chat` or `/zero/chat/:sessionId`.
  */
 export const zeroInChat$ = computed((get): boolean => {
   const path = get(pathname$);
@@ -45,7 +38,7 @@ export const zeroInChat$ = computed((get): boolean => {
 
 /**
  * Session ID extracted from `/zero/chat/:sessionId`.
- * Returns null when on `/zero` or `/zero/chat` (no active session).
+ * Returns null when on `/zero`, `/zero/chat`, or `/zero/talk/:name`.
  */
 export const zeroSessionId$ = computed((get): string | null => {
   const path = get(pathname$);
@@ -54,12 +47,35 @@ export const zeroSessionId$ = computed((get): string | null => {
 });
 
 /**
- * Currently selected chat agent ID, persisted in localStorage.
- * Returns null when chatting with the default/main agent (Zero).
+ * Agent name extracted from `/zero/talk/:name`.
+ * Returns null when chatting with the default agent.
+ */
+export const zeroChatAgentName$ = computed((get): string | null => {
+  const path = get(pathname$);
+  const match = /^\/zero\/talk\/([^/]+)/.exec(path);
+  return match ? decodeURIComponent(match[1]) : null;
+});
+
+/**
+ * In-memory state tracking the current chat agent ID.
+ * Null means default agent. Set when navigating to a chat route.
+ */
+const internalChatAgentId$ = state<string | null>(null);
+
+/**
+ * Currently selected chat agent ID (in-memory).
+ * Returns null when chatting with the default/main agent.
  */
 export const zeroChatAgentId$ = computed((get): string | null => {
-  return get(storedChatAgentId$);
+  return get(internalChatAgentId$);
 });
+
+/**
+ * Last chat agent name, preserved across non-chat navigation.
+ * Used to maintain recent chat context when visiting schedule/team pages,
+ * and to navigate back from sessions to the correct talk route.
+ */
+const internalLastChatAgentName$ = state<string | null>(null);
 
 /**
  * Navigate to a zero tab — updates the URL path to `/zero/:tab`.
@@ -71,16 +87,13 @@ export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
 });
 
 /**
- * Set the chat agent ID, persisted in localStorage.
+ * Set the chat agent ID and name (in-memory).
  * Pass null to clear (chat with default agent).
  */
-export const setZeroChatAgentId$ = command(
-  ({ set }, agentId: string | null) => {
-    if (agentId) {
-      set(persistChatAgentId$, agentId);
-    } else {
-      set(clearChatAgentId$);
-    }
+export const setZeroChatAgent$ = command(
+  ({ set }, agent: { id: string; name: string } | null) => {
+    set(internalChatAgentId$, agent?.id ?? null);
+    set(internalLastChatAgentName$, agent?.name ?? null);
   },
 );
 
@@ -102,8 +115,14 @@ export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
 });
 
 /**
- * Navigate back from a chat session to the chat home — `/zero`.
+ * Navigate back from a chat session to the chat home.
+ * Returns to `/zero/talk/:name` if a team agent was selected, otherwise `/zero`.
  */
-export const navigateFromZeroSession$ = command(({ set }) => {
-  set(updatePathname$, "/zero");
+export const navigateFromZeroSession$ = command(({ get, set }) => {
+  const agentName = get(internalLastChatAgentName$);
+  if (agentName) {
+    set(updatePathname$, `/zero/talk/${encodeURIComponent(agentName)}`);
+  } else {
+    set(updatePathname$, "/zero");
+  }
 });

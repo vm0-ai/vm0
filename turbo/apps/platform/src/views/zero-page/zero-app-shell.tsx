@@ -26,7 +26,7 @@ import {
   zeroSessionId$,
   zeroChatAgentId$,
   setZeroActiveId$,
-  setZeroChatAgentId$,
+  setZeroChatAgent$,
   navigateToZeroSession$,
   navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
@@ -277,7 +277,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         }))
       : [];
   const currentChatAgentId = useGet(zeroChatAgentId$);
-  const setChatAgentId = useSet(setZeroChatAgentId$);
+  const setChatAgent = useSet(setZeroChatAgent$);
 
   const activeId = useGet(zeroActiveId$);
   const setActiveId = useSet(setZeroActiveId$);
@@ -320,10 +320,15 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const handleRecentSelect = useSet(handleRecentSelect$);
 
   const fetchSessionList = useSet(fetchZeroSessionList$);
-  const handleNewChat = (agentId: string | null) => {
-    setActiveId("chat");
-    // Persist agent selection to localStorage first, so fetchZeroSessionList$ reads it
-    setChatAgentId(agentId);
+  const handleNewChat = (agent: { id: string; name: string } | null) => {
+    // Set agent in-memory first, so fetchZeroSessionList$ reads it
+    setChatAgent(agent);
+    // Navigate to the correct URL
+    if (agent) {
+      navigate(`/zero/talk/${encodeURIComponent(agent.name)}`);
+    } else {
+      setActiveId("chat");
+    }
     startNewSession();
     detach(fetchSessionList(), Reason.DomCallback);
   };

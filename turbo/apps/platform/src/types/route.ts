@@ -5,4 +5,5 @@ export type RoutePath =
   | "/zero/:tab"
   | "/zero/chat/:sessionId"
   | "/zero/team/:name"
+  | "/zero/talk/:name"
   | `/projects/${string}`;
