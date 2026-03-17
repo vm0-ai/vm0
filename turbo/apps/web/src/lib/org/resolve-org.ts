@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 import {
   forbidden,
   badRequest,
@@ -9,6 +9,7 @@ import {
 } from "../errors";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
+import type { AuthContext } from "../auth/get-user-id";
 
 import type { OrgRole } from "@vm0/core";
 
@@ -73,15 +74,10 @@ type ResolvedMember = {
   userId: string;
 };
 
-/** Map Clerk org role string to our OrgRole type. */
-function mapOrgRole(clerkRole: string | undefined | null): OrgRole {
-  return clerkRole === "org:admin" ? "admin" : "member";
-}
-
 /**
  * Verify a user's membership in a Clerk organization.
  *
- * Fast path: if the org's orgId matches the JWT's active org,
+ * Fast path: if the org's orgId matches the AuthContext's active org,
  * trust the JWT claims and skip the Clerk API call entirely.
  *
  * Cache path: for CLI tokens or cross-org access, use org_members_cache
@@ -89,14 +85,13 @@ function mapOrgRole(clerkRole: string | undefined | null): OrgRole {
  */
 async function verifyMembership(
   resolved: ResolvedOrg,
-  userId: string,
-  authResult: Awaited<ReturnType<typeof auth>>,
+  authCtx: AuthContext,
 ): Promise<ResolvedMember> {
   // JWT fast path: active org matches → trust JWT, no API call
-  if (resolved.orgId === authResult.orgId) {
+  if (resolved.orgId === authCtx.orgId) {
     return {
-      role: mapOrgRole(authResult.orgRole),
-      userId,
+      role: authCtx.orgRole ?? "member",
+      userId: authCtx.userId,
     };
   }
 
@@ -105,26 +100,23 @@ async function verifyMembership(
   }
 
   // Cache-backed path: check org_members_cache, fall back to Clerk API
-  const result = await verifyMembershipCached(resolved.orgId, userId);
+  const result = await verifyMembershipCached(resolved.orgId, authCtx.userId);
   if (!result) {
     throw forbidden("You are not a member of this organization");
   }
-  return { role: result.role, userId };
+  return { role: result.role, userId: authCtx.userId };
 }
 
 /**
  * Override org tier with JWT session claim when the resolved org matches
- * the JWT's active org. Falls back to org_cache tier if claim is missing.
+ * the AuthContext's active org. Falls back to org_cache tier if claim is missing.
  */
 function applyJwtTier(
   resolved: ResolvedOrg,
-  authResult: Awaited<ReturnType<typeof auth>>,
+  authCtx: AuthContext,
 ): ResolvedOrg {
-  if (
-    resolved.orgId === authResult.orgId &&
-    authResult.sessionClaims?.org_tier
-  ) {
-    return { ...resolved, tier: authResult.sessionClaims.org_tier };
+  if (resolved.orgId === authCtx.orgId && authCtx.orgTier) {
+    return { ...resolved, tier: authCtx.orgTier };
   }
   return resolved;
 }
@@ -133,40 +125,38 @@ function applyJwtTier(
  * Resolve org from request context using org_cache.
  *
  * Requires explicit org context — either an orgSlug (?org= query param),
- * an explicit orgId, or a JWT session with active org. Does NOT guess
+ * an explicit orgId, or an AuthContext with active org. Does NOT guess
  * the user's org from cache or Clerk API.
  *
  * Resolution order:
  * 1. orgSlug (?org=<slug> query param) -> org_cache lookup, verify membership
- * 2. orgId (explicit param or JWT session) -> org_cache lookup, verify membership
+ * 2. orgId (explicit param or AuthContext) -> org_cache lookup, verify membership
  *
- * When the resolved org matches the JWT's active org, `tier` is read from
- * sessionClaims.org_tier (falling back to org_cache value if missing).
+ * When the resolved org matches the AuthContext's active org, `tier` is read from
+ * authCtx.orgTier (falling back to org_cache value if missing).
  *
  * @throws BadRequestError when no explicit org context is available
  */
 export async function resolveOrg(
-  userId: string,
+  authCtx: AuthContext,
   orgSlug?: string | null,
   orgId?: string | null,
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
-  const authResult = await auth();
-
   // 1. Explicit org selection via ?org= query param (highest priority)
   if (orgSlug) {
     const orgData = await getOrgBySlug(orgSlug);
     if (!orgData) throw notFound("Org not found");
 
-    const member = await verifyMembership(orgData, userId, authResult);
-    return { org: applyJwtTier(orgData, authResult), member };
+    const member = await verifyMembership(orgData, authCtx);
+    return { org: applyJwtTier(orgData, authCtx), member };
   }
 
-  // 2. Explicit orgId — use provided value or auto-detect from JWT.
-  const effectiveOrgId = orgId ?? authResult.orgId ?? null;
+  // 2. Explicit orgId — use provided value or auto-detect from AuthContext.
+  const effectiveOrgId = orgId ?? authCtx.orgId ?? null;
   if (effectiveOrgId) {
     const orgData = await getOrgData(effectiveOrgId);
-    const member = await verifyMembership(orgData, userId, authResult);
-    return { org: applyJwtTier(orgData, authResult), member };
+    const member = await verifyMembership(orgData, authCtx);
+    return { org: applyJwtTier(orgData, authCtx), member };
   }
 
   // No explicit org context available — require callers to provide one
@@ -181,17 +171,66 @@ export async function resolveOrg(
  *
  * Used by handlers that operate outside request context
  * (Slack, Telegram, email) where missing org is expected.
+ *
+ * When no orgSlug is provided and the AuthContext has no orgId,
+ * falls back to the user's first org via Clerk API (auto-detect).
  */
 export async function resolveOrgOrNull(
-  userId: string,
+  authCtx: AuthContext,
   orgSlug?: string | null,
 ): Promise<ResolvedOrg | null> {
   try {
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     return org;
   } catch (error) {
-    if (isNotFound(error) || isBadRequest(error)) return null;
+    if (isNotFound(error) || isForbidden(error)) return null;
+    // When no explicit org context was given, try auto-detect via Clerk API
+    if (isBadRequest(error) && !orgSlug && !authCtx.orgId) {
+      return autoDetectUserOrg(authCtx.userId);
+    }
+    if (isBadRequest(error)) return null;
     throw error;
+  }
+}
+
+/**
+ * Auto-detect the user's first org via org_members_cache / Clerk API.
+ * Used as a fallback when no explicit org context is available
+ * (e.g., agent@domain email trigger without org slug).
+ */
+async function autoDetectUserOrg(userId: string): Promise<ResolvedOrg | null> {
+  // 1. Check org_members_cache for any org this user belongs to
+  const db = globalThis.services.db;
+  const { orgMembersCache } = await import("../../db/schema/org-members-cache");
+  const [cached] = await db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId))
+    .limit(1);
+
+  if (cached) {
+    try {
+      return await getOrgData(cached.orgId);
+    } catch {
+      // Fall through to Clerk API
+    }
+  }
+
+  // 2. Fall back to Clerk API
+  const { clerkClient } = await import("@clerk/nextjs/server");
+  const client = await clerkClient();
+  const memberships = await client.users.getOrganizationMembershipList({
+    userId,
+    limit: 1,
+  });
+
+  if (memberships.data.length === 0) return null;
+
+  const orgId = memberships.data[0]!.organization.id;
+  try {
+    return await getOrgData(orgId);
+  } catch {
+    return null;
   }
 }
 
@@ -204,12 +243,12 @@ export async function resolveOrgOrNull(
  * resource exists.
  */
 export async function resolveCallerOrgId(
-  userId: string,
+  authCtx: AuthContext,
   request: Request,
 ): Promise<string | null> {
   const orgSlug = new URL(request.url).searchParams.get("org");
   try {
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     return org.orgId;
   } catch (error) {
     if (isNotFound(error) || isForbidden(error)) return null;
