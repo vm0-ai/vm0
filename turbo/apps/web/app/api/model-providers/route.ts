@@ -139,6 +139,7 @@ const router = tsr.router(modelProvidersMainContract, {
             secretNames: provider.secretNames ?? null,
             isDefault: provider.isDefault,
             selectedModel: provider.selectedModel,
+            scope: "user" as const,
             createdAt: provider.createdAt.toISOString(),
             updatedAt: provider.updatedAt.toISOString(),
           },
