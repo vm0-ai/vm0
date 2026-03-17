@@ -368,6 +368,9 @@ mod tests {
         let (run_id, profile) = provider.discover().await.unwrap();
         assert_eq!(run_id, job_id);
         assert_eq!(profile, "vm0/browser");
+
+        let ctx = provider.claim(run_id).await.unwrap();
+        assert_eq!(ctx.experimental_profile.as_deref(), Some("vm0/browser"));
     }
 
     #[tokio::test]
