@@ -502,6 +502,8 @@ export const switchZeroSession$ = command(
           createdAt: string;
         }[];
         latestSessionId?: string | null;
+        activeRunId?: string | null;
+        activeRunPrompt?: string | null;
       };
 
       if (data.latestSessionId) {
@@ -517,7 +519,63 @@ export const switchZeroSession$ = command(
         }),
       );
 
+      // If there's an active run, add the user prompt + assistant placeholder
+      // and resume polling so the user sees the conversation continuing.
+      if (data.activeRunId && data.activeRunPrompt) {
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "user",
+          content: data.activeRunPrompt,
+        });
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "",
+          runId: data.activeRunId,
+        });
+      }
+
       set(internalMessages$, messages);
+
+      // Resume polling for the active run
+      if (data.activeRunId) {
+        set(internalActiveRunId$, data.activeRunId);
+        set(internalSending$, true);
+
+        const controller = new AbortController();
+        set(pollingAbortController$, controller);
+
+        // Fire-and-forget: polling loop runs in background
+        set(setupPollingLoop$, {
+          runId: data.activeRunId,
+          signal: controller.signal,
+          state: {
+            get events$() {
+              return get(internalRunEvents$);
+            },
+            setEvents: (updater) => {
+              set(internalRunEvents$, updater);
+            },
+            setStatus: (s) => {
+              set(internalRunStatus$, s);
+              updateQueuePosition(s, fetchFn, data.activeRunId!, (pos) =>
+                set(internalQueuePosition$, pos),
+              );
+            },
+            setError: (e) => {
+              set(internalRunError$, e);
+            },
+          },
+          onTerminal: (completedRunId) => {
+            set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
+              throwIfAbort(error);
+              L.error("onRunComplete error:", error);
+            });
+          },
+        }).catch((error: unknown) => {
+          throwIfAbort(error);
+        });
+      }
     } catch (error) {
       throwIfAbort(error);
       const msg =

@@ -25,6 +25,8 @@ const chatThreadDetailSchema = z.object({
   agentComposeId: z.string(),
   chatMessages: z.array(storedChatMessageSchema),
   latestSessionId: z.string().nullable(),
+  activeRunId: z.string().nullable(),
+  activeRunPrompt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

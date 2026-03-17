@@ -149,6 +149,13 @@ export async function addRunToThread(
  * Get chat messages for a thread by finding the associated session.
  * Resolves: thread → runs → latest completed run → agentSessionId → chatMessages
  */
+const TERMINAL_STATUSES = new Set([
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+]);
+
 export async function getChatThreadMessages(
   threadId: string,
   userId: string,
@@ -160,11 +167,15 @@ export async function getChatThreadMessages(
     createdAt: string;
   }>;
   latestSessionId: string | null;
+  activeRunId: string | null;
+  activeRunPrompt: string | null;
 }> {
   // Get all runs for this thread, ordered by creation time desc
   const runs = await globalThis.services.db
     .select({
       runId: agentRuns.id,
+      status: agentRuns.status,
+      prompt: agentRuns.prompt,
       result: agentRuns.result,
       continuedFromSessionId: agentRuns.continuedFromSessionId,
     })
@@ -173,22 +184,32 @@ export async function getChatThreadMessages(
     .where(eq(chatThreadRuns.chatThreadId, threadId))
     .orderBy(desc(chatThreadRuns.createdAt));
 
-  // Find the latest sessionId from completed runs
+  // Find the active (non-terminal) run and the latest sessionId
   let sessionId: string | null = null;
+  let activeRunId: string | null = null;
+  let activeRunPrompt: string | null = null;
+
   for (const run of runs) {
-    const result = run.result as { agentSessionId?: string } | null;
-    if (result?.agentSessionId) {
-      sessionId = result.agentSessionId;
-      break;
+    if (!TERMINAL_STATUSES.has(run.status) && !activeRunId) {
+      activeRunId = run.runId;
+      activeRunPrompt = run.prompt;
     }
-    if (run.continuedFromSessionId) {
+    const result = run.result as { agentSessionId?: string } | null;
+    if (!sessionId && result?.agentSessionId) {
+      sessionId = result.agentSessionId;
+    }
+    if (!sessionId && run.continuedFromSessionId) {
       sessionId = run.continuedFromSessionId;
-      break;
     }
   }
 
   if (!sessionId) {
-    return { chatMessages: [], latestSessionId: null };
+    return {
+      chatMessages: [],
+      latestSessionId: null,
+      activeRunId,
+      activeRunPrompt,
+    };
   }
 
   // Load messages from the session
@@ -209,5 +230,10 @@ export async function getChatThreadMessages(
 
   const messages = (session?.chatMessages ?? []) as StoredMessage[];
 
-  return { chatMessages: messages, latestSessionId: sessionId };
+  return {
+    chatMessages: messages,
+    latestSessionId: sessionId,
+    activeRunId,
+    activeRunPrompt,
+  };
 }
