@@ -220,7 +220,7 @@ export function ZeroActivityDetailPage() {
               </Button>
             </div>
             {detail.error && status === "failed" && (
-              <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
                 {detail.error}
               </div>
             )}

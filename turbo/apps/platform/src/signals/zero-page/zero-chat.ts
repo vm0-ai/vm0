@@ -631,7 +631,8 @@ export const switchZeroSession$ = command(
           runId: data.activeRunId,
         });
       } else if (data.failedRunId && data.failedRunPrompt) {
-        // If the latest run failed, show the user's message and the error
+        // If the latest run failed, show the user's message and a generic error.
+        // Don't expose internal error details — guide user to activity logs.
         messages.push({
           id: crypto.randomUUID(),
           role: "user",
@@ -643,7 +644,7 @@ export const switchZeroSession$ = command(
           content: "",
           runId: data.failedRunId,
           status: "failed",
-          error: data.failedRunError ?? "Run failed",
+          error: "Something went wrong. Check the activity logs for details.",
         });
       }
 
