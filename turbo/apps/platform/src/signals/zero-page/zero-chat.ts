@@ -11,6 +11,7 @@ import {
   setZeroChatAgent$,
   zeroInChat$,
 } from "./zero-nav.ts";
+import { agentsList$ } from "./agents-list.ts";
 import type { ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
@@ -530,7 +531,12 @@ async function syncAgentForThread(
     const isDefault = agentComposeId === status.defaultAgentComposeId;
     const newAgentId = isDefault ? null : agentComposeId;
     if (newAgentId !== currentAgentId) {
-      set(switchActiveAgent$, newAgentId ? { id: newAgentId, name: "" } : null);
+      const agentName =
+        newAgentId && get(agentsList$).find((a) => a.id === newAgentId)?.name;
+      set(
+        switchActiveAgent$,
+        newAgentId ? { id: newAgentId, name: agentName ?? "" } : null,
+      );
     } else if (get(internalSessionList$).length === 0) {
       detach(set(fetchZeroSessionList$), Reason.DomCallback);
     }
