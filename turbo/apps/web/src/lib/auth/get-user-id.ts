@@ -33,90 +33,97 @@ export async function getAuthContext(
     acceptAnySandboxCapability?: boolean;
   },
 ): Promise<AuthContext | null> {
-  // Session auth via Clerk
+  // Check Bearer token prefixes first (fast, no external calls)
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.substring(7); // Remove "Bearer "
+
+    if (isSandboxToken(token)) {
+      // Without any sandbox opt-in, reject sandbox tokens (existing behavior)
+      if (
+        !options?.requiredCapability &&
+        !options?.acceptAnySandboxCapability
+      ) {
+        log.debug("Rejected sandbox JWT token on normal API endpoint");
+        return null;
+      }
+
+      // Verify sandbox token signature and expiry
+      const sandboxAuth = verifySandboxToken(token);
+      if (!sandboxAuth) {
+        log.debug("Invalid or expired sandbox token");
+        return null;
+      }
+
+      // acceptAnySandboxCapability: accept if token has any capability
+      if (options?.acceptAnySandboxCapability) {
+        if (
+          !sandboxAuth.capabilities ||
+          sandboxAuth.capabilities.length === 0
+        ) {
+          log.debug("Sandbox token has no capabilities");
+          return null;
+        }
+        return {
+          userId: sandboxAuth.userId,
+          runId: sandboxAuth.runId,
+          capabilities: [...sandboxAuth.capabilities],
+        };
+      }
+
+      // requiredCapability: check specific capability
+      const hasCap = sandboxAuth.capabilities?.some(
+        (cap) => cap === options.requiredCapability,
+      );
+      if (!hasCap) {
+        log.debug(
+          `Sandbox token missing required capability: ${options.requiredCapability}`,
+        );
+        return null;
+      }
+
+      return {
+        userId: sandboxAuth.userId,
+        runId: sandboxAuth.runId,
+        capabilities: sandboxAuth.capabilities
+          ? [...sandboxAuth.capabilities]
+          : undefined,
+      };
+    }
+
+    // Check for CLI token format (vm0_live_)
+    if (token.startsWith("vm0_live_")) {
+      const [tokenRecord] = await globalThis.services.db
+        .select()
+        .from(cliTokens)
+        .where(
+          and(eq(cliTokens.token, token), gt(cliTokens.expiresAt, new Date())),
+        )
+        .limit(1);
+
+      if (!tokenRecord) {
+        return null;
+      }
+
+      // Update last used timestamp (non-blocking)
+      globalThis.services.db
+        .update(cliTokens)
+        .set({ lastUsedAt: new Date() })
+        .where(eq(cliTokens.token, token))
+        .catch((err) => log.error("Failed to update token lastUsedAt:", err));
+
+      return {
+        userId: tokenRecord.userId,
+      };
+    }
+  }
+
+  // Fall back to Clerk session auth
   const { userId } = await auth();
   if (userId) {
     return { userId };
   }
 
-  if (!authHeader?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  const token = authHeader.substring(7); // Remove "Bearer "
-
-  if (isSandboxToken(token)) {
-    // Without any sandbox opt-in, reject sandbox tokens (existing behavior)
-    if (!options?.requiredCapability && !options?.acceptAnySandboxCapability) {
-      log.debug("Rejected sandbox JWT token on normal API endpoint");
-      return null;
-    }
-
-    // Verify sandbox token signature and expiry
-    const sandboxAuth = verifySandboxToken(token);
-    if (!sandboxAuth) {
-      log.debug("Invalid or expired sandbox token");
-      return null;
-    }
-
-    // acceptAnySandboxCapability: accept if token has any capability
-    if (options?.acceptAnySandboxCapability) {
-      if (!sandboxAuth.capabilities || sandboxAuth.capabilities.length === 0) {
-        log.debug("Sandbox token has no capabilities");
-        return null;
-      }
-      return {
-        userId: sandboxAuth.userId,
-        runId: sandboxAuth.runId,
-        capabilities: [...sandboxAuth.capabilities],
-      };
-    }
-
-    // requiredCapability: check specific capability
-    const hasCap = sandboxAuth.capabilities?.some(
-      (cap) => cap === options.requiredCapability,
-    );
-    if (!hasCap) {
-      log.debug(
-        `Sandbox token missing required capability: ${options.requiredCapability}`,
-      );
-      return null;
-    }
-
-    return {
-      userId: sandboxAuth.userId,
-      runId: sandboxAuth.runId,
-      capabilities: sandboxAuth.capabilities
-        ? [...sandboxAuth.capabilities]
-        : undefined,
-    };
-  }
-
-  // Check for CLI token format (vm0_live_)
-  if (!token.startsWith("vm0_live_")) {
-    return null;
-  }
-
-  const [tokenRecord] = await globalThis.services.db
-    .select()
-    .from(cliTokens)
-    .where(and(eq(cliTokens.token, token), gt(cliTokens.expiresAt, new Date())))
-    .limit(1);
-
-  if (!tokenRecord) {
-    return null;
-  }
-
-  // Update last used timestamp (non-blocking)
-  globalThis.services.db
-    .update(cliTokens)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(cliTokens.token, token))
-    .catch((err) => log.error("Failed to update token lastUsedAt:", err));
-
-  return {
-    userId: tokenRecord.userId,
-  };
+  return null;
 }
 
 /**

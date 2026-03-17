@@ -177,3 +177,46 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
     expect(result?.capabilities).toBeUndefined();
   });
 });
+
+describe("getAuthContext auth() call optimization", () => {
+  const mockAuth = vi.mocked(auth);
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({
+      userId: null,
+    } as Awaited<ReturnType<typeof auth>>);
+  });
+
+  it("should not call auth() when sandbox token is provided", async () => {
+    const token = await generateSandboxToken("user-1", "run-1", [
+      "artifact:read",
+    ]);
+    await getAuthContext(`Bearer ${token}`, {
+      requiredCapability: "artifact:read",
+    });
+    expect(mockAuth).not.toHaveBeenCalled();
+  });
+
+  it("should not call auth() when sandbox token is rejected", async () => {
+    const token = await generateSandboxToken("user-1", "run-1", [
+      "artifact:read",
+    ]);
+    await getAuthContext(`Bearer ${token}`);
+    expect(mockAuth).not.toHaveBeenCalled();
+  });
+
+  it("should call auth() when no auth header provided", async () => {
+    await getAuthContext();
+    expect(mockAuth).toHaveBeenCalled();
+  });
+
+  it("should call auth() when non-Bearer auth header provided", async () => {
+    await getAuthContext("Basic sometoken");
+    expect(mockAuth).toHaveBeenCalled();
+  });
+
+  it("should call auth() for unknown Bearer token", async () => {
+    await getAuthContext("Bearer unknown_token_format");
+    expect(mockAuth).toHaveBeenCalled();
+  });
+});
