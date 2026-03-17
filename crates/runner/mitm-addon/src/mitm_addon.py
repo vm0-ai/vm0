@@ -131,7 +131,7 @@ def match_path(path: str, pattern: str) -> dict | None:
 
     - Literal segments must match exactly.
     - {name} matches a single non-empty path segment.
-    - {name+} matches the rest of the path (zero or more segments). Must be last.
+    - {name+} matches the rest of the path (one or more segments). Must be last.
     """
     path_segs = [s for s in path.split("/") if s]
     pattern_segs = [s for s in pattern.split("/") if s]
