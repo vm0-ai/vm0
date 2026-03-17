@@ -63,6 +63,28 @@ describe("org leave command", () => {
     expect(logCalls).toContain("Switched to: other-org");
   });
 
+  it("should handle no remaining organizations after leaving", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/org/leave", () => {
+        return HttpResponse.json({
+          message: "Left organization",
+        });
+      }),
+      http.get("http://localhost:3000/api/org/list", () => {
+        return HttpResponse.json({
+          orgs: [],
+          active: undefined,
+        });
+      }),
+    );
+
+    await leaveCommand.parseAsync(["node", "cli"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Left organization");
+    expect(logCalls).toContain("No remaining organizations");
+  });
+
   it("should handle admin-cannot-leave error", async () => {
     server.use(
       http.post("http://localhost:3000/api/org/leave", () => {
