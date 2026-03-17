@@ -54,7 +54,7 @@ import {
   saveZeroJobSkills$,
   discardZeroJobSkills$,
 } from "../../signals/zero-page/zero-job-detail.ts";
-import type { AgentDetail } from "../../signals/agent-detail/types.ts";
+import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import { setZeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
 import {

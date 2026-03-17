@@ -139,7 +139,6 @@ export const user$ = computed(async (get) => {
  *   - User belongs to more than 1 organization
  *   - User has pending organization invitations
  *
- * Note: callers should gate on the Zero feature flag before using this signal.
  */
 export const needsOrgSelection$ = computed(async (get) => {
   get(reload$);

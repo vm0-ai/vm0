@@ -6,11 +6,6 @@ const internalPreference$ = state<ThemePreference>("system");
 const internalResolved$ = state<"light" | "dark">("light");
 
 /**
- * Current resolved theme value (always "light" or "dark").
- */
-export const theme$ = computed((get) => get(internalResolved$));
-
-/**
  * User's theme preference ("light", "dark", or "system").
  */
 export const themePreference$ = computed((get) => get(internalPreference$));
@@ -42,18 +37,6 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
   set(internalResolved$, resolved);
   applyTheme(resolved);
   localStorage.setItem("theme", preference);
-});
-
-/**
- * Toggle between light and dark theme.
- */
-export const toggleTheme$ = command(({ get, set }) => {
-  const current = get(internalResolved$);
-  const newTheme = current === "light" ? "dark" : "light";
-  set(internalPreference$, newTheme);
-  set(internalResolved$, newTheme);
-  applyTheme(newTheme);
-  localStorage.setItem("theme", newTheme);
 });
 
 /**

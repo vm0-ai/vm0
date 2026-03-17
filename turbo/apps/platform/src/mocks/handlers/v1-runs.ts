@@ -8,7 +8,7 @@ import { http, HttpResponse } from "msw";
 import type {
   LogsListResponse,
   LogDetail,
-} from "../../signals/logs-page/types.ts";
+} from "../../signals/zero-page/log-types.ts";
 
 // Mock data for log details
 const mockLogDetails: LogDetail[] = [

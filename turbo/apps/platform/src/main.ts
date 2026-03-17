@@ -5,7 +5,6 @@ import { createRoot } from "react-dom/client";
 import { appStore, AppStoreProvider } from "./signals/app-store.ts";
 import { bootstrap$ } from "./signals/bootstrap.ts";
 import { setLogErrorHandler } from "./signals/log.ts";
-import { initSidebar$ } from "./signals/sidebar.ts";
 import { initTheme$ } from "./signals/theme.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
@@ -25,9 +24,8 @@ setLogErrorHandler((loggerName, args) => {
 });
 
 async function main(rootEl: HTMLDivElement, signal: AbortSignal) {
-  // Initialize theme and sidebar before bootstrap
+  // Initialize theme before bootstrap
   detach(appStore.set(initTheme$), Reason.Entrance);
-  detach(appStore.set(initSidebar$), Reason.Entrance);
 
   await appStore.set(
     bootstrap$,

@@ -218,7 +218,7 @@ export async function handleSettingsCommand(
   await sendMessage(
     client,
     chatId,
-    `⚙️ <b>Settings</b>\n\n${escapeHtml(desc)}\n\n<a href="${escapeHtml(platformUrl)}/settings/telegram">Open Platform</a>`,
+    `⚙️ <b>Settings</b>\n\n${escapeHtml(desc)}\n\n<a href="${escapeHtml(platformUrl)}/zero/works">Open Platform</a>`,
     replyOptions,
   );
 }

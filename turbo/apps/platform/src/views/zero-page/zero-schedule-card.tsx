@@ -42,7 +42,7 @@ import {
   COMMON_TIMEZONES,
   getTodayDateLocal,
   getBrowserTimezone,
-} from "../../signals/agent-detail/cron.ts";
+} from "../../signals/zero-page/cron.ts";
 
 export const SCHEDULE_FREQUENCY_OPTIONS = [
   { value: "now", label: "Now" },

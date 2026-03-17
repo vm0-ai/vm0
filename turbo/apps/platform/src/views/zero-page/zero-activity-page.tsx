@@ -15,8 +15,8 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
-import type { LogEntry } from "../../signals/logs-page/types.ts";
-import { StatusBadge } from "../logs-page/status-badge.tsx";
+import type { LogEntry } from "../../signals/zero-page/log-types.ts";
+import { StatusBadge } from "./components/logs/status-badge.tsx";
 import { Pagination } from "../components/pagination.tsx";
 import { ZeroActivityDetailPage } from "./zero-activity-detail-page.tsx";
 import {

@@ -13,13 +13,13 @@ import {
   pollingConnectorType$,
   justConnectedTypes$,
   clearJustConnectedTypes$,
-} from "../../signals/settings-page/connectors.ts";
+} from "../../signals/zero-page/settings/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   AddConnectionDialog,
   ConnectModal,
-} from "../settings-page/add-connection-dialog.tsx";
+} from "./components/settings/add-connection-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";

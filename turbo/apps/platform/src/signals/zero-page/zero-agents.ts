@@ -4,7 +4,7 @@ import {
   agentsLoading$,
   agentsError$,
   fetchAgentsList$,
-} from "../agents-page/agents-list.ts";
+} from "./agents-list.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 
 export { agentsLoading$, agentsError$, fetchAgentsList$ };

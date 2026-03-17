@@ -39,5 +39,4 @@ export enum FeatureSwitchKey {
   ResendConnector = "resendConnector",
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
-  Zero = "zero",
 }

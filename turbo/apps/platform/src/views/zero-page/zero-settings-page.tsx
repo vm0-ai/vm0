@@ -21,12 +21,12 @@ import {
   setDefaultProvider$,
   openEditDialog$,
   openDeleteDialog$,
-} from "../../signals/settings-page/model-providers.ts";
-import { getUILabel } from "../settings-page/provider-ui-config.ts";
-import { ProviderIcon } from "../settings-page/provider-icons.tsx";
-import { AddProviderDialog } from "../settings-page/add-provider-dialog.tsx";
-import { ProviderDialog } from "../settings-page/provider-dialog.tsx";
-import { DeleteProviderDialog } from "../settings-page/delete-provider-dialog.tsx";
+} from "../../signals/zero-page/settings/model-providers.ts";
+import { getUILabel } from "./components/settings/provider-ui-config.ts";
+import { ProviderIcon } from "./components/settings/provider-icons.tsx";
+import { AddProviderDialog } from "./components/settings/add-provider-dialog.tsx";
+import { ProviderDialog } from "./components/settings/provider-dialog.tsx";
+import { DeleteProviderDialog } from "./components/settings/delete-provider-dialog.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 

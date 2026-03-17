@@ -41,7 +41,7 @@ import {
   DialogTitle,
   cn,
 } from "@vm0/ui";
-import slackIcon from "../settings-page/icons/slack.svg";
+import slackIcon from "./components/settings/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {

@@ -12,9 +12,9 @@ import {
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
 import { createModelProvider$ } from "../external/model-providers.ts";
-import { getProviderShape } from "../../views/settings-page/provider-ui-config.ts";
+import { getProviderShape } from "../../views/zero-page/components/settings/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
-import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
+import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
