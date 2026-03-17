@@ -319,7 +319,8 @@ function AccountDropdown({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[240px]"
+        className="w-[240px] rounded-lg"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       >
         {/* Current account header */}
         {current && (
@@ -342,15 +343,39 @@ function AccountDropdown({
                 </div>
               </div>
             </div>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator
+              className="h-0 bg-transparent"
+              style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+            />
           </>
         )}
 
-        {/* Switch account sub-menu or Add account */}
+        {/* Preferences (standalone) */}
+        <DropdownMenuItem
+          onClick={() => handleAccountAction("preferences")}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconAdjustmentsHorizontal
+            size={18}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          <span>Preferences</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator
+          className="h-0 bg-transparent"
+          style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+        />
+
+        {/* Account management group */}
         {hasOthers ? (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5">
-              <IconSwitchHorizontal size={18} stroke={1.5} />
+            <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
+              <IconSwitchHorizontal
+                size={18}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
               <span className="flex-1">Switch account</span>
               <IconChevronRight
                 size={14}
@@ -358,12 +383,15 @@ function AccountDropdown({
                 className="text-muted-foreground"
               />
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-[220px]">
+            <DropdownMenuSubContent
+              className="w-[220px] rounded-lg"
+              style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+            >
               {others.map((account) => (
                 <DropdownMenuItem
                   key={account.sessionId}
                   onClick={() => handleSwitchSession(account.sessionId)}
-                  className="gap-3 px-3 py-2.5"
+                  className="gap-3 px-3 py-2.5 rounded-lg"
                 >
                   <AccountAvatar
                     imageUrl={account.imageUrl}
@@ -380,12 +408,19 @@ function AccountDropdown({
                   </div>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator
+                className="h-0 bg-transparent"
+                style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+              />
               <DropdownMenuItem
                 onClick={handleAddAccount}
-                className="gap-3 px-3 py-2.5"
+                className="gap-3 px-3 py-2.5 rounded-lg"
               >
-                <IconPlus size={18} stroke={1.5} />
+                <IconPlus
+                  size={18}
+                  stroke={1.5}
+                  className="text-muted-foreground"
+                />
                 <span>Add account</span>
               </DropdownMenuItem>
             </DropdownMenuSubContent>
@@ -393,56 +428,54 @@ function AccountDropdown({
         ) : (
           <DropdownMenuItem
             onClick={handleAddAccount}
-            className="gap-3 px-3 py-2.5"
+            className="gap-3 px-3 py-2.5 rounded-lg"
           >
-            <IconPlus size={18} stroke={1.5} />
+            <IconPlus
+              size={18}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
             <span>Add account</span>
           </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
-
-        {/* Actions */}
-        <DropdownMenuItem
-          onClick={() => handleAccountAction("preferences")}
-          className="gap-3 px-3 py-2.5"
-        >
-          <IconAdjustmentsHorizontal size={18} stroke={1.5} />
-          <span>Preferences</span>
-        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => handleAccountAction("manage")}
-          className="gap-3 px-3 py-2.5"
+          className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconUser size={18} stroke={1.5} />
+          <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
           <span>Manage account</span>
         </DropdownMenuItem>
         {showExportData && (
           <DropdownMenuItem
             onClick={() => window.open(`${apiBase}/export`, "_blank")}
-            className="gap-3 px-3 py-2.5"
+            className="gap-3 px-3 py-2.5 rounded-lg"
           >
-            <IconDatabaseExport size={18} stroke={1.5} />
+            <IconDatabaseExport
+              size={18}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
             <span>Export data</span>
           </DropdownMenuItem>
         )}
         {onResetAgent && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onResetAgent}
-              className="gap-3 px-3 py-2.5 text-amber-500"
-            >
-              <IconRefresh size={18} stroke={1.5} />
-              <span>Reset Default Agent</span>
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem
+            onClick={onResetAgent}
+            className="gap-3 px-3 py-2.5 rounded-lg text-amber-500"
+          >
+            <IconRefresh size={18} stroke={1.5} />
+            <span>Reset Default Agent</span>
+          </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => handleAccountAction("signout")}
-          className="gap-3 px-3 py-2.5"
+          className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconLogout size={18} stroke={1.5} />
+          <IconLogout
+            size={18}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
           <span>Sign out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
