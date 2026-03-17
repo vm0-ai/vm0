@@ -3,8 +3,8 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import type { AgentDetail, AgentInstructions } from "../agent-detail/types.ts";
-import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
+import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
+import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 import {
@@ -13,7 +13,7 @@ import {
   isAtTimePast,
   type ScheduleBody,
   type CronTimeOption,
-} from "../agent-detail/cron.ts";
+} from "./cron.ts";
 import { fetchAgentsList$ } from "./zero-agents.ts";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 

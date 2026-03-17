@@ -10,7 +10,7 @@ import {
   isAtTimePast,
   type ScheduleBody,
   type CronTimeOption,
-} from "../agent-detail/cron.ts";
+} from "./cron.ts";
 
 const L = logger("ZeroSchedule");
 

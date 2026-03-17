@@ -48,8 +48,8 @@ import {
   type ScheduleEntry,
 } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import { agentsList$ } from "../../signals/agents-page/agents-list.ts";
-import { COMMON_TIMEZONES } from "../../signals/agent-detail/cron.ts";
+import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
+import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,

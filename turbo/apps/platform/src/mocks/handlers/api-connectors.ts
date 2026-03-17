@@ -20,10 +20,6 @@ export function resetMockConnectors(): void {
   mockConnectors = [];
 }
 
-export function setMockConnectors(connectors: ConnectorResponse[]): void {
-  mockConnectors = [...connectors];
-}
-
 export const apiConnectorsHandlers = [
   // GET /api/connectors - List all connectors
   http.get("/api/connectors", () => {

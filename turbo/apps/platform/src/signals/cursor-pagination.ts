@@ -6,7 +6,7 @@
  * needs to provide a URL builder for the data fetch.
  */
 import { state, computed, command, type Computed, type State } from "ccstate";
-import type { LogsListResponse } from "./logs-page/types.ts";
+import type { LogsListResponse } from "./zero-page/log-types.ts";
 import { fetch$ } from "./fetch.ts";
 import { searchParams$, updateSearchParams$ } from "./route.ts";
 

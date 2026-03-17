@@ -5,8 +5,8 @@ import {
   zeroOnboardingStatus$,
   reloadOnboardingStatus$,
 } from "./zero-onboarding.ts";
-import { triggerAndPollComposeJob } from "../agent-detail/compose-job.ts";
-import type { AgentInstructions } from "../agent-detail/types.ts";
+import { triggerAndPollComposeJob } from "./compose-job.ts";
+import type { AgentInstructions } from "./agent-types.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";

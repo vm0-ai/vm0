@@ -2,7 +2,7 @@ import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { Card, CardContent } from "@vm0/ui";
 import { ZeroScheduleCard, type ScheduleEntry } from "./zero-schedule-card.tsx";
-import { notificationPreferences$ } from "../../signals/settings-page/notification-settings.ts";
+import { notificationPreferences$ } from "../../signals/zero-page/settings/notification-settings.ts";
 
 interface ZeroScheduleSaveParams {
   prompt: string;

@@ -1,6 +1,6 @@
 import { stripMetadataFrontmatter } from "@vm0/core";
 import { Card, CardContent } from "@vm0/ui";
-import type { AgentInstructions } from "../../signals/agent-detail/types.ts";
+import type { AgentInstructions } from "../../signals/zero-page/agent-types.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 
 interface ZeroInstructionsTabProps {

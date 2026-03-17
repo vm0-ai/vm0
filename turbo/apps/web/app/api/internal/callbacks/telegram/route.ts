@@ -148,7 +148,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   const output = status === "completed" ? await getRunOutput(runId) : undefined;
 
   // Build response text
-  const logsUrl = buildLogsUrl(runId, agentName);
+  const logsUrl = buildLogsUrl(runId);
   let htmlOutput: string;
   let responseText: string | undefined;
   if (status === "completed") {

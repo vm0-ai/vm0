@@ -10,8 +10,11 @@ import {
 import { Button, Input } from "@vm0/ui";
 import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
 import { SimpleLink } from "../router/link.tsx";
-import type { LogStatus, AgentEvent } from "../../signals/logs-page/types.ts";
-import { StatusBadge } from "../logs-page/status-badge.tsx";
+import type {
+  LogStatus,
+  AgentEvent,
+} from "../../signals/zero-page/log-types.ts";
+import { StatusBadge } from "./components/logs/status-badge.tsx";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
@@ -23,9 +26,9 @@ import {
   groupEventsIntoMessages,
   groupedMessageMatchesSearch,
   type GroupedMessage,
-} from "../logs-page/log-detail/utils.ts";
-import { GroupedMessageCard } from "../logs-page/components/grouped-message-card.tsx";
-import { StatusDot } from "../logs-page/components/status-dot.tsx";
+} from "./components/logs/log-detail-utils.ts";
+import { GroupedMessageCard } from "./components/logs/grouped-message-card.tsx";
+import { StatusDot } from "./components/logs/status-dot.tsx";
 import { Markdown } from "../components/markdown.tsx";
 
 // ---------------------------------------------------------------------------

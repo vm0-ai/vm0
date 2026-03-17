@@ -1,7 +1,7 @@
 import { IconPlug, IconLoader2, IconDotsVertical } from "@tabler/icons-react";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
-import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
-import type { ConnectorTypeWithStatus } from "../../signals/settings-page/connectors.ts";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import type { ConnectorTypeWithStatus } from "../../signals/zero-page/settings/connectors.ts";
 import {
   Button,
   DropdownMenu,

@@ -1,9 +1,9 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { AgentEvent, LogStatus } from "../logs-page/types.ts";
+import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { setupPollingLoop$, type PageResult } from "../agent-detail/polling.ts";
+import { setupPollingLoop$, type PageResult } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
   navigateToZeroSession$,

@@ -6,7 +6,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import slackIcon from "../settings-page/icons/slack.svg";
+import slackIcon from "./components/settings/icons/slack.svg";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import {
   Button,
   Input,
 } from "@vm0/ui";
-import { ProviderIcon } from "../settings-page/provider-icons";
+import { ProviderIcon } from "./components/settings/provider-icons";
 import {
   MODEL_PROVIDER_TYPES,
   isProviderVisible,
@@ -23,8 +23,8 @@ import {
   type ModelProviderType,
 } from "@vm0/core";
 import { skills$ } from "../../data/skills.ts";
-import { ProviderFormFields } from "../shared/provider-form-fields";
-import { getUILabel } from "../settings-page/provider-ui-config";
+import { ProviderFormFields } from "./components/settings/provider-form-fields";
+import { getUILabel } from "./components/settings/provider-ui-config";
 import {
   zeroOnboardingStep$,
   zeroAgentName$,
@@ -59,8 +59,8 @@ import {
   pollingConnectorType$,
   selectedConnectorType$,
   setSelectedConnectorType$,
-} from "../../signals/settings-page/connectors.ts";
-import { ConnectModal } from "../settings-page/add-connection-dialog.tsx";
+} from "../../signals/zero-page/settings/connectors.ts";
+import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { IconCircleCheck, IconLoader } from "@tabler/icons-react";

@@ -54,7 +54,7 @@ import {
   saveZeroJobSkills$,
   discardZeroJobSkills$,
 } from "../../signals/zero-page/zero-job-detail.ts";
-import type { AgentDetail } from "../../signals/agent-detail/types.ts";
+import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { Link } from "../router/link.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";

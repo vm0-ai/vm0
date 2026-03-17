@@ -43,11 +43,11 @@ import { ZERO_TEAM_JOBS } from "./zero-mock-data";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import type { ConnectorType } from "@vm0/core";
-import { ConnectorIcon } from "../settings-page/connector-icons.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   AddConnectionDialog,
   ConnectModal,
-} from "../settings-page/add-connection-dialog.tsx";
+} from "./components/settings/add-connection-dialog.tsx";
 import { skills$ } from "../../data/skills.ts";
 import {
   allConnectorTypes$,
@@ -56,7 +56,7 @@ import {
   setSelectedConnectorType$,
   justConnectedTypes$,
   clearJustConnectedTypes$,
-} from "../../signals/settings-page/connectors.ts";
+} from "../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   zeroAddedSkills$,

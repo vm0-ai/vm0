@@ -4,7 +4,7 @@ import type {
   AgentEvent,
   AgentEventsResponse,
   LogStatus,
-} from "../logs-page/types.ts";
+} from "./log-types.ts";
 import type { ComposeListItem } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";

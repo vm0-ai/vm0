@@ -1,9 +1,7 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
-import { FeatureSwitchKey } from "@vm0/core";
 import type { RoutePath } from "../types/route.ts";
 import { clerk$, needsOrgSelection$ } from "./auth.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
 import { pathname, pushState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
@@ -194,9 +192,7 @@ export const generateRouterPath = <T extends RoutePath>(
   return _path;
 };
 
-export const setupPageWrapper = (
-  fn: Command<Promise<void> | void, [AbortSignal]>,
-) => {
+const setupPageWrapper = (fn: Command<Promise<void> | void, [AbortSignal]>) => {
   return command(async ({ set }, signal: AbortSignal) => {
     set(setPageSignal$, signal);
     await set(fn, signal);
@@ -221,20 +217,15 @@ export const setupAuthPageWrapper = (
       return;
     }
 
-    // Redirect to org selection if needed (Zero feature flag + skip if already on /select-org)
+    // Redirect to org selection if needed (skip if already on /select-org)
     if (pathname() !== "/select-org") {
-      const features = await get(featureSwitch$);
+      const needsSelection = await get(needsOrgSelection$);
       signal.throwIfAborted();
 
-      if (features[FeatureSwitchKey.Zero]) {
-        const needsSelection = await get(needsOrgSelection$);
-        signal.throwIfAborted();
-
-        if (needsSelection) {
-          L.debug("redirect to /select-org because org selection is needed");
-          set(navigateInReact$, "/select-org");
-          return;
-        }
+      if (needsSelection) {
+        L.debug("redirect to /select-org because org selection is needed");
+        set(navigateInReact$, "/select-org");
+        return;
       }
     }
 

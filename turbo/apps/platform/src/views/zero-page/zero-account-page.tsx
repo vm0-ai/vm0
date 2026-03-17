@@ -10,8 +10,8 @@ import {
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { cn } from "@vm0/ui";
-import { NotificationSettings } from "../settings-page/notification-settings.tsx";
-import { TimezoneSettings } from "../settings-page/timezone-settings.tsx";
+import { NotificationSettings } from "./components/settings/notification-settings.tsx";
+import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import {
   themePreference$,
   setTheme$,
@@ -20,7 +20,7 @@ import {
 import { sendMode$ } from "../../signals/send-mode.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { SendMode } from "@vm0/core";
-import { updateNotificationPreference$ } from "../../signals/settings-page/notification-settings.ts";
+import { updateNotificationPreference$ } from "../../signals/zero-page/settings/notification-settings.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 function AppearanceSettings() {

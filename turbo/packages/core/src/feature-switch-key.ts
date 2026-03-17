@@ -40,5 +40,4 @@ export enum FeatureSwitchKey {
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
   VercelAiGateway = "vercelAiGateway",
-  Zero = "zero",
 }

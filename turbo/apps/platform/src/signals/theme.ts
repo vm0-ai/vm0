@@ -45,18 +45,6 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
 });
 
 /**
- * Toggle between light and dark theme.
- */
-export const toggleTheme$ = command(({ get, set }) => {
-  const current = get(internalResolved$);
-  const newTheme = current === "light" ? "dark" : "light";
-  set(internalPreference$, newTheme);
-  set(internalResolved$, newTheme);
-  applyTheme(newTheme);
-  localStorage.setItem("theme", newTheme);
-});
-
-/**
  * Initialize theme from localStorage or system preference.
  */
 export const initTheme$ = command(({ set }) => {
