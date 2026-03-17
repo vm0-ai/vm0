@@ -147,9 +147,6 @@ export function ZeroActivityPage() {
       : undefined;
   const isLoading = dataLoadable.state === "loading";
 
-  // Build name → displayName lookup from org agents
-  const nameToDisplay = new Map(orgAgents.map((a) => [a.name, a.displayName]));
-
   // Agent filter options: show display names, map back to compose name
   const agentOptions = [
     { value: "all", label: "All agents" },
@@ -265,9 +262,7 @@ export function ZeroActivityPage() {
                   key={entry.id}
                   entry={entry}
                   href={`/zero/activity/${entry.id}`}
-                  agentName={
-                    nameToDisplay.get(entry.agentName) ?? entry.agentName
-                  }
+                  agentName={entry.displayName ?? entry.agentName}
                 />
               ))
             )}
