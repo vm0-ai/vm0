@@ -3,6 +3,7 @@ import { chatThreadRunsContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
 import { addRunToThread } from "../../../../../src/lib/chat-thread";
+import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(chatThreadRunsContract, {
   addRun: async ({ params, body, headers }) => {
@@ -26,7 +27,7 @@ const router = tsr.router(chatThreadRunsContract, {
         body: undefined,
       };
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) {
+      if (isNotFound(error)) {
         return {
           status: 404 as const,
           body: {

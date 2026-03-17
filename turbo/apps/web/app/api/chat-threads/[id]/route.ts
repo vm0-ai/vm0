@@ -6,6 +6,7 @@ import {
   getChatThread,
   getChatThreadMessages,
 } from "../../../../src/lib/chat-thread";
+import { isNotFound } from "../../../../src/lib/errors";
 
 const router = tsr.router(chatThreadByIdContract, {
   get: async ({ params, headers }) => {
@@ -41,7 +42,7 @@ const router = tsr.router(chatThreadByIdContract, {
         },
       };
     } catch (error) {
-      if (error instanceof Error && error.message.includes("not found")) {
+      if (isNotFound(error)) {
         return {
           status: 404 as const,
           body: {

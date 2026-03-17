@@ -130,6 +130,17 @@ export async function addRunToThread(
     .where(eq(chatThreads.id, threadId));
 }
 
+function hasAgentSessionId(
+  value: unknown,
+): value is { agentSessionId: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "agentSessionId" in value &&
+    typeof (value as { agentSessionId: unknown }).agentSessionId === "string"
+  );
+}
+
 /**
  * Get chat messages for a thread by finding the associated session.
  * Resolves: thread → runs → latest completed run → agentSessionId → chatMessages
@@ -179,9 +190,8 @@ export async function getChatThreadMessages(
       activeRunId = run.runId;
       activeRunPrompt = run.prompt;
     }
-    const result = run.result as { agentSessionId?: string } | null;
-    if (!sessionId && result?.agentSessionId) {
-      sessionId = result.agentSessionId;
+    if (!sessionId && hasAgentSessionId(run.result)) {
+      sessionId = run.result.agentSessionId;
     }
     if (!sessionId && run.continuedFromSessionId) {
       sessionId = run.continuedFromSessionId;
