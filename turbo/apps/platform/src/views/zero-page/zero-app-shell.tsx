@@ -25,6 +25,7 @@ import {
   zeroInChat$,
   zeroSessionId$,
   zeroChatAgentId$,
+  zeroChatAgentName$,
   setZeroActiveId$,
   setZeroChatAgent$,
   navigateToZeroSession$,
@@ -372,7 +373,11 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const sidebarCollapsed = useGet(sidebarCollapsed$);
   const setSidebarCollapsed = useSet(sidebarCollapsed$);
 
-  const dataReady = isLoggedIn && onboardingReady && agentNameReady;
+  // When visiting /zero/talk/:name, wait for the agent to be resolved
+  const talkAgentName = useGet(zeroChatAgentName$);
+  const talkAgentReady = !talkAgentName || currentChatAgentId !== null;
+  const dataReady =
+    isLoggedIn && onboardingReady && agentNameReady && talkAgentReady;
   const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
 
   return (
