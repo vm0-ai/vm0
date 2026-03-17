@@ -56,7 +56,6 @@ export const apiOrgModelProvidersHandlers = [
       isDefault:
         mockOrgModelProviders.length === 0 || existing?.isDefault || false,
       selectedModel: body.selectedModel ?? null,
-      scope: "org",
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
