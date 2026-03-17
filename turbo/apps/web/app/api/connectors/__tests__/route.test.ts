@@ -8,6 +8,7 @@ import {
 import {
   createTestRequest,
   createTestConnector,
+  setTestConnectorNeedsReconnect,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -74,6 +75,38 @@ describe("GET /api/connectors - List Connectors", () => {
     expect(data.connectorProvidedSecretNames).toHaveLength(2);
   });
 
+  it("should return needsReconnect false by default", async () => {
+    await context.setupUser();
+    await createTestConnector();
+
+    const request = createTestRequest("http://localhost:3000/api/connectors");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.connectors[0].needsReconnect).toBe(false);
+  });
+
+  it("should return needsReconnect true when set in DB", async () => {
+    const user = await context.setupUser();
+    await createTestConnector();
+
+    // Set needsReconnect via test helper
+    await setTestConnectorNeedsReconnect(
+      user.orgId,
+      user.userId,
+      "github",
+      true,
+    );
+
+    const request = createTestRequest("http://localhost:3000/api/connectors");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.connectors[0].needsReconnect).toBe(true);
+  });
+
   it("should not return connectors from other users", async () => {
     // Create first user with connector
     const user1 = await context.setupUser();
@@ -97,6 +130,40 @@ describe("GET /api/connectors - List Connectors", () => {
     const data2 = await response2.json();
 
     expect(data2.connectors).toHaveLength(1);
+  });
+});
+
+describe("needsReconnect - OAuth callback clears flag", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should clear needsReconnect after OAuth reconnect", async () => {
+    const user = await context.setupUser();
+    await createTestConnector();
+
+    // Set needsReconnect to true via test helper
+    await setTestConnectorNeedsReconnect(
+      user.orgId,
+      user.userId,
+      "github",
+      true,
+    );
+
+    // Verify it's true
+    const request1 = createTestRequest("http://localhost:3000/api/connectors");
+    const response1 = await GET(request1);
+    const data1 = await response1.json();
+    expect(data1.connectors[0].needsReconnect).toBe(true);
+
+    // Reconnect via OAuth (createTestConnector calls the callback route)
+    await createTestConnector();
+
+    // Verify needsReconnect is cleared
+    const request2 = createTestRequest("http://localhost:3000/api/connectors");
+    const response2 = await GET(request2);
+    const data2 = await response2.json();
+    expect(data2.connectors[0].needsReconnect).toBe(false);
   });
 });
 

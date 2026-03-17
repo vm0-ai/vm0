@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   timestamp,
+  boolean,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -29,6 +30,8 @@ export const connectors = pgTable(
     tokenExpiresAt: timestamp("token_expires_at"), // null = non-expiring token
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
+
+    needsReconnect: boolean("needs_reconnect").notNull().default(false),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -58,6 +58,7 @@ export async function listConnectors(
         externalUsername: connectors.externalUsername,
         externalEmail: connectors.externalEmail,
         oauthScopes: connectors.oauthScopes,
+        needsReconnect: connectors.needsReconnect,
         createdAt: connectors.createdAt,
         updatedAt: connectors.updatedAt,
       })
@@ -88,6 +89,7 @@ export async function listConnectors(
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
     oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+    needsReconnect: row.needsReconnect,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }));
@@ -113,6 +115,7 @@ export async function listConnectors(
       externalUsername: null,
       externalEmail: null,
       oauthScopes: null,
+      needsReconnect: false,
       createdAt: now,
       updatedAt: now,
     }));
@@ -139,6 +142,7 @@ export async function getConnector(
       externalUsername: connectors.externalUsername,
       externalEmail: connectors.externalEmail,
       oauthScopes: connectors.oauthScopes,
+      needsReconnect: connectors.needsReconnect,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
     })
@@ -162,6 +166,7 @@ export async function getConnector(
       externalUsername: row.externalUsername,
       externalEmail: row.externalEmail,
       oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+      needsReconnect: row.needsReconnect,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -210,6 +215,7 @@ export async function getConnector(
     externalUsername: null,
     externalEmail: null,
     oauthScopes: null,
+    needsReconnect: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -279,6 +285,7 @@ export async function upsertOAuthConnector(
       externalEmail: userInfo.email,
       oauthScopes: JSON.stringify(oauthScopes),
       tokenExpiresAt,
+      needsReconnect: false,
       orgId,
     })
     .onConflictDoUpdate({
@@ -290,6 +297,7 @@ export async function upsertOAuthConnector(
         externalEmail: userInfo.email,
         oauthScopes: JSON.stringify(oauthScopes),
         tokenExpiresAt,
+        needsReconnect: false,
         updatedAt: new Date(),
       },
     })
@@ -311,6 +319,7 @@ export async function upsertOAuthConnector(
       oauthScopes: connectorRow.oauthScopes
         ? JSON.parse(connectorRow.oauthScopes)
         : null,
+      needsReconnect: connectorRow.needsReconnect,
       createdAt: connectorRow.createdAt.toISOString(),
       updatedAt: connectorRow.updatedAt.toISOString(),
     },
@@ -566,6 +575,19 @@ export async function refreshConnectorAccessToken(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     log.warn(`${connectorType} token refresh failed: ${message}`);
+
+    // Mark connector as needing reconnect so the UI can surface the failure
+    await globalThis.services.db
+      .update(connectors)
+      .set({ needsReconnect: true, updatedAt: new Date() })
+      .where(
+        and(
+          eq(connectors.orgId, orgId),
+          eq(connectors.userId, userId),
+          eq(connectors.type, connectorType),
+        ),
+      );
+
     return null;
   }
 }
