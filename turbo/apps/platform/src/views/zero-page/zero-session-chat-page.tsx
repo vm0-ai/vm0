@@ -596,10 +596,7 @@ interface AssistantMessageProps {
   zeroAvatarSrc: string;
 }
 
-function AssistantMessage({
-  message,
-  zeroAvatarSrc,
-}: AssistantMessageProps) {
+function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
@@ -668,8 +665,7 @@ function AssistantMessage({
           </TooltipProvider>
         )}
       </div>
-    </div>
-  ) : null;
+    ) : null;
 
   if (message.error) {
     const isNoModelProvider = message.error.includes(
