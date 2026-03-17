@@ -61,9 +61,9 @@ class TestMatchPath:
         result = mitm_addon.match_path("/foo", "/{path+}")
         assert result == {"path": "foo"}
 
-    def test_greedy_param_matches_empty(self):
+    def test_greedy_param_rejects_empty(self):
         result = mitm_addon.match_path("/", "/{path+}")
-        assert result == {"path": ""}
+        assert result is None
 
     def test_greedy_after_literal(self):
         result = mitm_addon.match_path("/api/v1/anything/here", "/api/v1/{rest+}")
