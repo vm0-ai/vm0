@@ -3166,7 +3166,7 @@ export async function findTestSystemStorages() {
 export async function createTestSlackOrgInstallation(opts: {
   workspaceId?: string;
   workspaceName?: string;
-  orgId: string;
+  orgId: string | null;
 }): Promise<{
   slackWorkspaceId: string;
   slackWorkspaceName: string;

@@ -63,7 +63,7 @@ function parseOAuthState(state: string | null): OAuthState {
  *    - User already has an installed workspace; just needs to link their Slack identity
  *    - Exchange code for authed_user.id
  *    - Look up installation for the org, create connection record
- *    - Redirect to /zero/works
+ *    - Redirect to /slack/connect
  */
 export async function GET(request: Request) {
   initServices();
@@ -192,8 +192,11 @@ export async function GET(request: Request) {
 
   // Platform install flow: verify admin and create connection
   if (state.orgId && state.vm0UserId) {
+    const orgId = state.orgId;
+    const vm0UserId = state.vm0UserId;
+
     // Verify user is org admin
-    const member = await requireOrgMember(state.orgId, state.vm0UserId);
+    const member = await requireOrgMember(orgId, vm0UserId);
     if (member.role !== "admin") {
       return NextResponse.redirect(
         `${platformUrl}/slack/failed?error=${encodeURIComponent("Only org admins can install Slack for an organization.")}`,
@@ -206,8 +209,8 @@ export async function GET(request: Request) {
       .values({
         slackUserId: oauthResult.authedUserId,
         slackWorkspaceId: oauthResult.teamId,
-        vm0UserId: state.vm0UserId,
-        orgId: state.orgId,
+        vm0UserId,
+        orgId,
       })
       .onConflictDoNothing();
 
@@ -221,7 +224,7 @@ export async function GET(request: Request) {
       void notifyConnectSuccess({
         installation: inst,
         slackUserId: oauthResult.authedUserId,
-        orgId: state.orgId!,
+        orgId,
       }).catch((err) =>
         log.warn("Failed to notify connect success after install", {
           error: err,

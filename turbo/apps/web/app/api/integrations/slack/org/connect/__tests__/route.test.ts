@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { WebClient } from "@slack/web-api";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import {
   testContext,
@@ -40,31 +39,16 @@ async function givenBoundWorkspace(opts?: { isAdmin?: boolean }) {
 }
 
 /**
- * Helper — create an unbound Slack installation via OAuth callback (no orgId in state).
+ * Helper — set up an unbound Slack installation (no orgId).
  */
 async function givenUnboundWorkspace(opts?: { isAdmin?: boolean }) {
   const { isAdmin = true } = opts ?? {};
   const user = await context.setupUser();
   const org = await createTestOrg(uniqueId("org"));
 
-  // Create unbound installation via the oauth callback route (no state → null orgId)
-  const workspaceId = `T-${uniqueId("ws")}`;
-  const mockClient = vi.mocked(new WebClient(), true);
-  mockClient.oauth.v2.access.mockResolvedValueOnce({
-    ok: true,
-    access_token: "xoxb-unbound-token",
-    bot_user_id: "B-unbound",
-    team: { id: workspaceId, name: "Unbound Workspace" },
-    authed_user: { id: "U-installer" },
-  } as never);
-
-  const { GET: oauthCallback } = await import(
-    "../../../../../slack/org/oauth/callback/route"
-  );
-  const callbackReq = createTestRequest(
-    `http://localhost:3000/api/slack/org/oauth/callback?code=test-code`,
-  );
-  await oauthCallback(callbackReq);
+  const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+    orgId: null,
+  });
 
   mockClerk({
     userId: user.userId,
@@ -72,7 +56,7 @@ async function givenUnboundWorkspace(opts?: { isAdmin?: boolean }) {
     orgRole: isAdmin ? "org:admin" : "org:member",
   });
 
-  return { user, org, workspaceId };
+  return { user, org, workspaceId: slackWorkspaceId };
 }
 
 describe("/api/integrations/slack/org/connect", () => {
