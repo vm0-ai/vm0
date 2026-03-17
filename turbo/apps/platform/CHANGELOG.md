@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.118.1](https://github.com/vm0-ai/vm0/compare/platform-v0.118.0...platform-v0.118.1) (2026-03-17)
+
+
+### Refactoring
+
+* **platform:** remove /zero prefix from all platform routes ([#5155](https://github.com/vm0-ai/vm0/issues/5155)) ([228b4dd](https://github.com/vm0-ai/vm0/commit/228b4dd81efe36be51606f695057bf20c4aba034))
+
 ## [0.118.0](https://github.com/vm0-ai/vm0/compare/platform-v0.117.0...platform-v0.118.0) (2026-03-17)
 
 

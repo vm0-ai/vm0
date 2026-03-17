@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.3](https://github.com/vm0-ai/vm0/compare/docs-v2.22.2...docs-v2.22.3) (2026-03-17)
+
+
+### Refactoring
+
+* **platform:** remove /zero prefix from all platform routes ([#5155](https://github.com/vm0-ai/vm0/issues/5155)) ([228b4dd](https://github.com/vm0-ai/vm0/commit/228b4dd81efe36be51606f695057bf20c4aba034))
+
 ## [2.22.2](https://github.com/vm0-ai/vm0/compare/docs-v2.22.1...docs-v2.22.2) (2026-03-17)
 
 
