@@ -27,6 +27,7 @@ import {
   IconGripVertical,
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
+  IconCrown,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -642,11 +643,25 @@ function ManagePinnedAgentsDialog({
   pinnedIds: string[];
   onPinnedIdsChange: (ids: string[]) => void;
 }) {
-  const orderedPinned = pinnedIds
+  const draftIds$ = useCCState(pinnedIds);
+  const draftIds = useGet(draftIds$);
+  const setDraftIds = useSet(draftIds$);
+
+  const prevOpen$ = useCCState(false);
+  const prevOpen = useGet(prevOpen$);
+  const setPrevOpen = useSet(prevOpen$);
+  if (open && !prevOpen) {
+    setDraftIds(pinnedIds);
+  }
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+  }
+
+  const orderedPinned = draftIds
     .map((id) => subagents.find((a) => a.id === id))
     .filter((a): a is SubagentInfo => a !== undefined);
 
-  const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
+  const unpinned = subagents.filter((a) => !draftIds.includes(a.id));
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -660,23 +675,28 @@ function ManagePinnedAgentsDialog({
     if (!over || active.id === over.id) {
       return;
     }
-    const oldIndex = pinnedIds.indexOf(String(active.id));
-    const newIndex = pinnedIds.indexOf(String(over.id));
+    const oldIndex = draftIds.indexOf(String(active.id));
+    const newIndex = draftIds.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) {
       return;
     }
-    const next = [...pinnedIds];
+    const next = [...draftIds];
     next.splice(oldIndex, 1);
-    next.splice(newIndex, 0, pinnedIds[oldIndex]!);
-    onPinnedIdsChange(next);
+    next.splice(newIndex, 0, draftIds[oldIndex]!);
+    setDraftIds(next);
   };
 
   const togglePin = (agentId: string) => {
-    if (pinnedIds.includes(agentId)) {
-      onPinnedIdsChange(pinnedIds.filter((id) => id !== agentId));
-    } else if (pinnedIds.length < MAX_PINNED) {
-      onPinnedIdsChange([...pinnedIds, agentId]);
+    if (draftIds.includes(agentId)) {
+      setDraftIds(draftIds.filter((id) => id !== agentId));
+    } else if (draftIds.length < MAX_PINNED) {
+      setDraftIds([...draftIds, agentId]);
     }
+  };
+
+  const handleSave = () => {
+    onPinnedIdsChange(draftIds);
+    onOpenChange(false);
   };
 
   return (
@@ -709,7 +729,12 @@ function ManagePinnedAgentsDialog({
             <span className="text-sm font-medium text-foreground flex-1 truncate">
               {displayName}
             </span>
-            <span className="text-[11px] text-muted-foreground/60 mr-0.5">
+            <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium bg-background">
+              <IconCrown
+                size={12}
+                stroke={1.8}
+                className="shrink-0 text-amber-500 dark:text-amber-400"
+              />
               Lead
             </span>
           </div>
@@ -766,12 +791,12 @@ function ManagePinnedAgentsDialog({
                     type="button"
                     className={cn(
                       "transition-colors px-2 py-0.5 rounded-md text-xs font-medium",
-                      pinnedIds.length >= MAX_PINNED
+                      draftIds.length >= MAX_PINNED
                         ? "text-muted-foreground/30 cursor-not-allowed"
                         : "text-primary hover:text-primary/80 hover:bg-primary/10",
                     )}
                     onClick={() => togglePin(agent.id)}
-                    disabled={pinnedIds.length >= MAX_PINNED}
+                    disabled={draftIds.length >= MAX_PINNED}
                   >
                     Pin
                   </button>
@@ -789,12 +814,16 @@ function ManagePinnedAgentsDialog({
           </div>
         )}
 
-        <div className="px-5 pb-5 pt-2">
+        <div className="px-5 pb-5 pt-2 flex justify-end gap-2">
           <Button
-            className="w-full"
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi"
             onClick={() => onOpenChange(false)}
-            disabled={saving}
           >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </div>
