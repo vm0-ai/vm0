@@ -422,7 +422,7 @@ export function testContext(): TestContext {
       const userId = `${prefix}-${suffix}`;
       trackedUserIds.push(userId);
 
-      // Mock Clerk for this user
+      // Mock Clerk for this user (orgId defaults to org_mock_${userId})
       mockClerk({ userId });
 
       // Pre-populate org_cache for the default Clerk org so that

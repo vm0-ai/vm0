@@ -28,11 +28,11 @@ describe("resolveOrgOrNull", () => {
     // setupUser initializes services (db, etc.) needed by resolveOrg
     await context.setupUser();
 
-    // Re-mock Clerk with a specific user
+    // Re-mock Clerk with a specific user and explicit orgId in JWT
     const userId = uniqueId("test-user");
     const orgId = `org_mock_${userId}`;
     const slug = uniqueId("org");
-    mockClerk({ userId });
+    mockClerk({ userId, orgId });
 
     // Pre-populate org_cache
     await insertOrgCacheEntry({ orgId, slug, tier: "free" });

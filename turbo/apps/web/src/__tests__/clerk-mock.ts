@@ -108,11 +108,20 @@ export function mockClerk(options: {
   // mockClerk() again to configure orgId — without module-level tracking,
   // the org from createTestOrg would be lost.
 
+  // Default orgId: use user's default org when not explicitly set.
+  // Pass orgId: null to simulate CLI tokens with no active org.
+  const effectiveOrgId =
+    options.orgId !== undefined
+      ? options.orgId
+      : options.userId
+        ? `org_mock_${options.userId}`
+        : undefined;
+
   mockAuth.mockResolvedValue({
     userId: options.userId,
-    orgId: options.orgId,
+    orgId: effectiveOrgId,
     orgSlug: options.orgSlug,
-    orgRole: options.orgRole ?? (options.orgId ? "org:admin" : undefined),
+    orgRole: options.orgRole ?? (effectiveOrgId ? "org:admin" : undefined),
     sessionClaims: {
       ...(options.orgTier !== undefined && { org_tier: options.orgTier }),
       ...(options.membershipTimezone !== undefined && {
