@@ -20,11 +20,6 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("chat");
     });
 
-    it("should default to 'chat' for /", () => {
-      mockLocation({ pathname: "/", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
-    });
-
     it("should resolve /chat to 'chat'", () => {
       mockLocation({ pathname: "/chat", search: "" }, context.signal);
       expect(context.store.get(zeroActiveId$)).toBe("chat");

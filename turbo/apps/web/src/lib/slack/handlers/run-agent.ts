@@ -8,6 +8,8 @@ import { buildIntegrationContext } from "../../integration-context";
 import { queryAxiom, getDatasetName, DATASETS } from "../../axiom";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
+import { getOrgData } from "../../org/org-cache-service";
+import { orgTierSchema } from "@vm0/core";
 
 const log = logger("slack:run-agent");
 
@@ -66,6 +68,7 @@ export async function runAgentForSlack(
       .select({
         id: agentComposes.id,
         headVersionId: agentComposes.headVersionId,
+        orgId: agentComposes.orgId,
       })
       .from(agentComposes)
       .where(eq(agentComposes.id, composeId))
@@ -109,6 +112,10 @@ export async function runAgentForSlack(
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack`;
     const callbackSecret = generateCallbackSecret();
 
+    // Resolve org context from compose
+    const orgData = await getOrgData(compose.orgId);
+    const orgTier = orgTierSchema.parse(orgData.tier);
+
     // Delegate all orchestration to createRun()
     const result = await createRun({
       userId,
@@ -119,6 +126,9 @@ export async function runAgentForSlack(
       agentName,
       artifactName: "artifact",
       memoryName: "memory",
+      orgId: compose.orgId,
+      orgSlug: orgData.slug,
+      orgTier,
       callbacks: [
         {
           url: callbackUrl,

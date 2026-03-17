@@ -38,7 +38,9 @@ describe("/api/org", () => {
 
     it("should return 404 for user with no Clerk org", async () => {
       const userId = `no-org-user-${Date.now()}`;
-      mockClerk({ userId, clerkOrgs: [] });
+      // Use a non-existent orgId so resolveOrg throws NotFoundError (caught by route)
+      // rather than BadRequestError (which would propagate as 500)
+      mockClerk({ userId, clerkOrgs: [], orgId: "org_nonexistent" });
 
       const request = createTestRequest("http://localhost:3000/api/org");
       const response = await GET(request);

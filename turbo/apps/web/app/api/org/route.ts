@@ -7,7 +7,10 @@ import { orgContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import { updateOrgSlug } from "../../../src/lib/org/org-service";
-import { resolveOrg } from "../../../src/lib/org/resolve-org";
+import {
+  resolveOrg,
+  resolveDefaultOrgFromCache,
+} from "../../../src/lib/org/resolve-org";
 import type { ResolvedOrg } from "../../../src/lib/org/resolve-org";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
@@ -46,6 +49,17 @@ const router = tsr.router(orgContract, {
         body: resolvedOrgToResponse(resolvedOrg),
       };
     } catch (error) {
+      if (isBadRequest(error)) {
+        // CLI tokens lack Clerk session — fall back to org_members_cache
+        const cachedOrg = await resolveDefaultOrgFromCache(userId);
+        if (cachedOrg) {
+          return {
+            status: 200 as const,
+            body: resolvedOrgToResponse(cachedOrg),
+          };
+        }
+        return createErrorResponse("NOT_FOUND", "Resource not found");
+      }
       if (isNotFound(error)) {
         return createErrorResponse("NOT_FOUND", "Resource not found");
       }
@@ -76,13 +90,25 @@ const router = tsr.router(orgContract, {
     try {
       ({ org: resolvedOrg } = await resolveOrg(userId));
     } catch (error) {
-      if (isNotFound(error)) {
+      if (isBadRequest(error)) {
+        // CLI tokens lack Clerk session — fall back to org_members_cache
+        const cachedOrg = await resolveDefaultOrgFromCache(userId);
+        if (cachedOrg) {
+          resolvedOrg = cachedOrg;
+        } else {
+          return createErrorResponse(
+            "NOT_FOUND",
+            "No org configured. Set your org with: vm0 org set <slug>",
+          );
+        }
+      } else if (isNotFound(error)) {
         return createErrorResponse(
           "NOT_FOUND",
           "No org configured. Set your org with: vm0 org set <slug>",
         );
+      } else {
+        throw error;
       }
-      throw error;
     }
 
     try {

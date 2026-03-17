@@ -26,8 +26,10 @@ import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import {
   resolveOrg,
+  resolveDefaultOrgFromCache,
   getOrgDataOrNull,
 } from "../../../../src/lib/org/resolve-org";
+import { isBadRequest } from "../../../../src/lib/errors";
 import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
 import { canAccessCompose } from "../../../../src/lib/agent/compose-access";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -65,8 +67,27 @@ const router = tsr.router(composesMainContract, {
       }
       orgId = orgData.orgId;
     } else {
-      const { org: resolvedOrg } = await resolveOrg(userId);
-      orgId = resolvedOrg.orgId;
+      try {
+        const { org: resolvedOrg } = await resolveOrg(userId);
+        orgId = resolvedOrg.orgId;
+      } catch (error) {
+        if (!isBadRequest(error)) throw error;
+        // CLI token without ?org= — fall back to cached default org
+        const defaultOrg = await resolveDefaultOrgFromCache(userId);
+        if (!defaultOrg) {
+          return {
+            status: 404 as const,
+            body: {
+              error: {
+                message:
+                  "No org configured. Set your org with: vm0 org set <slug>",
+                code: "NOT_FOUND",
+              },
+            },
+          };
+        }
+        orgId = defaultOrg.orgId;
+      }
     }
 
     // JOIN compose + version in a single query
@@ -132,7 +153,7 @@ const router = tsr.router(composesMainContract, {
     };
   },
 
-  create: async ({ body, headers }) => {
+  create: async ({ body, headers }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -251,7 +272,28 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's org (required for compose creation)
-    const { org } = await resolveOrg(userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    let org;
+    try {
+      ({ org } = await resolveOrg(userId, orgSlug));
+    } catch (error) {
+      if (!isBadRequest(error)) throw error;
+      // CLI token without ?org= — fall back to cached default org
+      const defaultOrg = await resolveDefaultOrgFromCache(userId);
+      if (!defaultOrg) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message:
+                "No org configured. Set your org with: vm0 org set <slug>",
+              code: "BAD_REQUEST",
+            },
+          },
+        };
+      }
+      org = defaultOrg;
+    }
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

@@ -8,6 +8,8 @@ import { buildIntegrationContext } from "../../integration-context";
 import { isConcurrentRunLimit } from "../../errors";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
+import { getOrgData } from "../../org/org-cache-service";
+import { orgTierSchema } from "@vm0/core";
 
 const log = logger("telegram:run-agent");
 
@@ -66,6 +68,7 @@ export async function runAgentForTelegram(
     .select({
       id: agentComposes.id,
       headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, composeId))
@@ -110,6 +113,10 @@ export async function runAgentForTelegram(
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/telegram`;
   const callbackSecret = generateCallbackSecret();
 
+  // Resolve org context from compose
+  const orgData = await getOrgData(compose.orgId);
+  const orgTier = orgTierSchema.parse(orgData.tier);
+
   try {
     const result = await createRun({
       userId,
@@ -120,6 +127,9 @@ export async function runAgentForTelegram(
       agentName,
       artifactName: "artifact",
       memoryName: "memory",
+      orgId: compose.orgId,
+      orgSlug: orgData.slug,
+      orgTier,
       callbacks: [
         {
           url: callbackUrl,

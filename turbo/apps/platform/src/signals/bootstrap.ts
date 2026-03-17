@@ -2,14 +2,11 @@ import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { initRoutes$, setupAuthPageWrapper } from "./route.ts";
-import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupZeroPage$ } from "./zero-page/zero-page.ts";
 import { setupZeroJobDetailRoute$ } from "./zero-page/zero-job-detail-route.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
-
-const L = logger("Bootstrap");
 
 const ROUTE_CONFIG = [
   {

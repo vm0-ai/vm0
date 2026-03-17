@@ -31,7 +31,6 @@ import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
 
-import { resolveOrg, resolveOrgOrNull } from "../org/resolve-org";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
 import { type OrgTier } from "@vm0/core";
@@ -310,10 +309,9 @@ export interface CreateRunParams {
   modelProvider?: string;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
-  // Caller-resolved org slug and orgId for variable/storage resolution.
-  // When provided, used instead of resolveOrg fallback.
+  // Caller-resolved org context for variable/storage resolution.
   orgSlug?: string;
-  orgId?: string;
+  orgId: string;
   // Caller-resolved org tier for concurrency limit derivation.
   orgTier?: OrgTier;
 }
@@ -426,9 +424,9 @@ async function authorizeCompose(
 async function validateComposeRequirements(
   userId: string,
   composeContent: AgentComposeYaml,
+  orgId: string,
   vars?: Record<string, string>,
   checkEnv?: boolean,
-  orgId?: string,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
@@ -438,11 +436,7 @@ async function validateComposeRequirements(
   if (checkEnv) {
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
-      const resolvedClerkOrgId =
-        orgId ?? (await resolveOrgOrNull(userId))?.orgId;
-      const storedVars = resolvedClerkOrgId
-        ? await getVariableValues(resolvedClerkOrgId, userId)
-        : {};
+      const storedVars = await getVariableValues(orgId, userId);
       const allVars = { ...storedVars, ...vars };
       const missingVars = requiredVars.filter(
         (varName) => allVars[varName] === undefined,
@@ -527,7 +521,7 @@ async function buildAndDispatchRun(opts: {
   composeContent: AgentComposeYaml;
   apiStartTime: number;
   orgSlug: string | undefined;
-  orgId: string | undefined;
+  orgId: string;
   authorizeTime: number;
   transactionTime: number;
 }): Promise<{ status: string; sandboxId?: string }> {
@@ -710,9 +704,9 @@ export async function createRun(
     await validateComposeRequirements(
       userId,
       composeContent,
+      params.orgId,
       params.vars,
       params.checkEnv,
-      params.orgId,
     );
   }
 
@@ -723,17 +717,9 @@ export async function createRun(
     );
   }
 
-  // Resolve org slug and orgId for the run record and storage
-  let orgSlug: string | undefined;
-  let orgId: string;
-  if (params.orgId) {
-    orgId = params.orgId;
-    orgSlug = params.orgSlug;
-  } else {
-    const { org } = await resolveOrg(userId);
-    orgSlug = org.slug;
-    orgId = org.orgId;
-  }
+  // Org context for the run record and storage (required from caller)
+  const orgSlug = params.orgSlug;
+  const orgId = params.orgId;
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
   // to prevent TOCTOU race where two concurrent requests both pass the
@@ -837,9 +823,9 @@ export async function dispatchQueuedRun(
     await validateComposeRequirements(
       userId,
       composeContent,
+      params.orgId,
       params.vars,
       params.checkEnv,
-      params.orgId,
     );
   }
 

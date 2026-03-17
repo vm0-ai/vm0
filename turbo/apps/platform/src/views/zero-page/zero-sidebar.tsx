@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
-import { useLoadable, useLastLoadable, useGet, useSet } from "ccstate-react";
+import {
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+  useGet,
+  useSet,
+} from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import {
   IconChartLine,
@@ -20,6 +26,7 @@ import {
   IconEdit,
   IconGripVertical,
   IconLayoutSidebarLeftCollapse,
+  IconDatabaseExport,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -37,7 +44,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { ChatThreadListItem } from "@vm0/core";
+import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -70,6 +77,8 @@ import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
 import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatars.ts";
 import { Link, SimpleLink } from "../router/link.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 
 /** Max pinned sub-agents (default agent counts as 1, total slots = 5). */
 const MAX_PINNED = 4;
@@ -239,6 +248,9 @@ function AccountDropdown({
   collapsed?: boolean;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
+  const features = useLastResolved(featureSwitch$);
+  const apiBase = useGet(apiBaseForNavigation$);
+  const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const accountName = user?.fullName ?? "User";
   const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
   const accountInitial = accountName.charAt(0).toUpperCase();
@@ -404,6 +416,15 @@ function AccountDropdown({
           <IconUser size={18} stroke={1.5} />
           <span>Manage account</span>
         </DropdownMenuItem>
+        {showExportData && (
+          <DropdownMenuItem
+            onClick={() => window.open(`${apiBase}/export`, "_blank")}
+            className="gap-3 px-3 py-2.5"
+          >
+            <IconDatabaseExport size={18} stroke={1.5} />
+            <span>Export data</span>
+          </DropdownMenuItem>
+        )}
         {onResetAgent && (
           <>
             <DropdownMenuSeparator />

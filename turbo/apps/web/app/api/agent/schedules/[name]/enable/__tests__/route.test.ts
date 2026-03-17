@@ -260,7 +260,7 @@ describe("POST /api/agent/schedules/:name/enable - Sandbox Token Auth", () => {
       orgId: user.orgId,
       userId: user.userId,
     });
-    mockClerk({ userId: null });
+    mockClerk({ userId: null, orgId: user.orgId });
     const token = await generateSandboxToken(user.userId, "run-123", [
       "schedule:write",
     ]);

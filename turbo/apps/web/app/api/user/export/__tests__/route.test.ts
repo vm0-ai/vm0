@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST } from "../route";
+import { POST, GET } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
@@ -199,6 +199,162 @@ describe("POST /api/user/export", () => {
       expect(job!.status).toBe("completed");
       // User B's export should not contain User A's artifact URLs
       expect(job!.artifactUrls).toBeNull();
+    });
+  });
+});
+
+function createGetExportRequest() {
+  return createTestRequest("http://localhost:3000/api/user/export", {
+    method: "GET",
+  });
+}
+
+describe("GET /api/user/export", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  describe("Authentication", () => {
+    it("should reject unauthenticated request", async () => {
+      mockClerk({ userId: null });
+
+      const response = await GET(createGetExportRequest());
+
+      expect(response.status).toBe(401);
+      const data = await response.json();
+      expect(data.error.code).toBe("UNAUTHORIZED");
+    });
+  });
+
+  describe("No previous exports", () => {
+    it("should return null job and canExport true", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      const response = await GET(createGetExportRequest());
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.job).toBeNull();
+      expect(data.canExport).toBe(true);
+      expect(data.nextExportAt).toBeNull();
+    });
+  });
+
+  describe("Completed export with download URL", () => {
+    it("should return job with downloadUrl when completed and not expired", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Trigger and complete an export
+      const postRes = await POST(createExportRequest());
+      expect(postRes.status).toBe(202);
+      await context.mocks.flushAfter();
+
+      // Verify job completed in DB
+      const postData = await postRes.json();
+      const job = await findTestExportJobById(postData.jobId);
+      expect(job?.status).toBe("completed");
+
+      const response = await GET(createGetExportRequest());
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.job).toBeDefined();
+      expect(data.job.status).toBe("completed");
+      expect(data.job.downloadUrl).toBeDefined();
+      expect(data.job.completedAt).toBeDefined();
+      expect(data.job.expiresAt).toBeDefined();
+      expect(data.canExport).toBe(false);
+      expect(data.nextExportAt).toBeDefined();
+    });
+  });
+
+  describe("Pending/running export", () => {
+    it("should return pending job and canExport false", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Trigger export but don't flush (stays pending)
+      await POST(createExportRequest());
+
+      const response = await GET(createGetExportRequest());
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.job).toBeDefined();
+      expect(data.job.status).toBe("pending");
+      expect(data.job.downloadUrl).toBeNull();
+      expect(data.canExport).toBe(false);
+    });
+  });
+
+  describe("Rate limited state", () => {
+    it("should return canExport false and nextExportAt when rate limited", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Complete an export
+      const postRes = await POST(createExportRequest());
+      expect(postRes.status).toBe(202);
+      await context.mocks.flushAfter();
+
+      // Verify the job actually completed
+      const postData = await postRes.json();
+      const completedJob = await findTestExportJobById(postData.jobId);
+      expect(completedJob?.status).toBe("completed");
+
+      const response = await GET(createGetExportRequest());
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.job?.status).toBe("completed");
+      expect(data.canExport).toBe(false);
+      expect(data.nextExportAt).toBeDefined();
+    });
+  });
+
+  describe("Can export after cooldown", () => {
+    it("should return canExport true after 24 hours", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Complete an export
+      await POST(createExportRequest());
+      await context.mocks.flushAfter();
+
+      // Time travel 25 hours
+      const twentyFiveHoursLater = new Date(Date.now() + 25 * 60 * 60 * 1000);
+      context.mocks.date.setSystemTime(twentyFiveHoursLater);
+
+      const response = await GET(createGetExportRequest());
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.canExport).toBe(true);
+    });
+  });
+
+  describe("Failed export", () => {
+    it("should return failed job with error", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Trigger export and make it fail by sabotaging S3
+      context.mocks.s3.uploadS3Buffer.mockRejectedValueOnce(
+        new Error("S3 upload failed"),
+      );
+      await POST(createExportRequest());
+      await context.mocks.flushAfter();
+
+      const response = await GET(createGetExportRequest());
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.job).toBeDefined();
+      expect(data.job.status).toBe("failed");
+      expect(data.job.error).toBeDefined();
+      expect(data.canExport).toBe(true);
     });
   });
 });

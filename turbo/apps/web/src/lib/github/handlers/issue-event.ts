@@ -20,6 +20,8 @@ import {
 } from "../api";
 import { env } from "../../../env";
 import { logger } from "../../logger";
+import { getOrgData } from "../../org/org-cache-service";
+import { orgTierSchema } from "@vm0/core";
 
 const log = logger("github:issue-event");
 
@@ -461,6 +463,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, installation.defaultComposeId))
@@ -521,6 +524,10 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     triggerReactionId: reactionId,
   };
 
+  // Resolve org context from compose
+  const orgData = await getOrgData(compose.orgId);
+  const orgTier = orgTierSchema.parse(orgData.tier);
+
   try {
     const result = await createRun({
       userId: vm0UserId,
@@ -530,6 +537,9 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       sessionId: existingSessionId,
       agentName: compose.name,
       artifactName: "artifact",
+      orgId: compose.orgId,
+      orgSlug: orgData.slug,
+      orgTier,
       callbacks: [
         {
           url: callbackUrl,

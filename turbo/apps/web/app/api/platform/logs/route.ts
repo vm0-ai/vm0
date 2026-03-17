@@ -25,9 +25,10 @@ import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
 
 const log = logger("api:platform:logs");
 
-// Minimal type for extracting framework from compose content
+// Minimal type for extracting framework and displayName from compose content
 interface AgentComposeContent {
   agents: Record<string, { framework: string }>;
+  metadata?: { displayName?: string };
 }
 
 interface LogsQuery {
@@ -118,6 +119,16 @@ function extractFramework(composeContent: unknown): string | null {
   const firstAgent =
     agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
   return firstAgent?.framework ?? null;
+}
+
+/**
+ * Extract display name from compose content metadata.
+ */
+function extractDisplayName(composeContent: unknown): string | null {
+  const content = composeContent as AgentComposeContent | null;
+  return typeof content?.metadata?.displayName === "string"
+    ? content.metadata.displayName
+    : null;
 }
 
 const router = tsr.router(platformLogsListContract, {
@@ -241,6 +252,7 @@ const router = tsr.router(platformLogsListContract, {
           id: run.id,
           sessionId: run.sessionId ?? null,
           agentName: run.composeName ?? "unknown",
+          displayName: extractDisplayName(run.composeContent),
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
           modelProvider: run.modelProvider ?? null,
