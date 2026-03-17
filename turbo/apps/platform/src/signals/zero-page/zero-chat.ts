@@ -512,28 +512,20 @@ export const switchZeroSession$ = command(
       }
 
       // Resolve the correct agent from the thread's compose ID.
-      // If it differs from the current selection, update and re-fetch sessions.
+      // Set the correct agent from the thread's compose ID and fetch sessions
       if (data.agentComposeId) {
-        const currentAgentId = get(zeroChatAgentId$);
         const status = await get(zeroOnboardingStatus$);
         const isDefault = data.agentComposeId === status.defaultAgentComposeId;
-        const needsSwitch = isDefault
-          ? currentAgentId !== null
-          : currentAgentId !== data.agentComposeId;
-
-        if (needsSwitch) {
-          if (isDefault) {
-            set(setZeroChatAgent$, null);
-          } else {
-            const subagents = await get(zeroSubagents$);
-            const agent = subagents.find((a) => a.id === data.agentComposeId);
-            if (agent) {
-              set(setZeroChatAgent$, { id: agent.id, name: agent.name });
-            }
+        if (isDefault) {
+          set(setZeroChatAgent$, null);
+        } else {
+          const subagents = await get(zeroSubagents$);
+          const agent = subagents.find((a) => a.id === data.agentComposeId);
+          if (agent) {
+            set(setZeroChatAgent$, { id: agent.id, name: agent.name });
           }
-          // Re-fetch session list for the correct agent
-          detach(set(fetchZeroSessionList$), Reason.DomCallback);
         }
+        detach(set(fetchZeroSessionList$), Reason.DomCallback);
       }
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(

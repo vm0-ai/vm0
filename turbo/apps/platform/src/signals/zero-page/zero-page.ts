@@ -7,7 +7,11 @@ import { defaultAgentName$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initZeroActivity$ } from "./zero-activity.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
-import { zeroChatAgentName$, setZeroChatAgent$ } from "./zero-nav.ts";
+import {
+  zeroChatAgentName$,
+  setZeroChatAgent$,
+  zeroInChat$,
+} from "./zero-nav.ts";
 import { fetchZeroSessionList$ } from "./zero-chat.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
@@ -68,7 +72,12 @@ async function resolveTalkAgent(
     set(setZeroChatAgent$, null);
   }
 
-  detach(set(fetchZeroSessionList$), Reason.DomCallback);
+  // On chat session URLs (/zero/chat/:threadId), switchZeroSession$ will
+  // resolve the correct agent and fetch sessions. Skip here to avoid a
+  // race where this fetch (for the wrong agent) overwrites the correct one.
+  if (!get(zeroInChat$)) {
+    detach(set(fetchZeroSessionList$), Reason.DomCallback);
+  }
 }
 
 export const setupZeroPage$ = command(
