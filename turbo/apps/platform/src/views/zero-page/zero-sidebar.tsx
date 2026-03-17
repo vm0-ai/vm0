@@ -971,14 +971,20 @@ export function ZeroSidebar({
               </span>
             </div>
             <div className="flex flex-col gap-0.5">
-              <button
-                type="button"
-                className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
+              <Link
+                pathname="/zero"
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onNewChat?.(null);
+                }}
+                className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   activeId === "chat" && currentChatAgentId === null
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
-                onClick={() => onNewChat?.(null)}
               >
                 <img
                   src={zeroAvatarSrc}
@@ -986,19 +992,24 @@ export function ZeroSidebar({
                   className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
                 />
                 <span className="truncate">{displayName}</span>
-              </button>
+              </Link>
               {pinnedAgents.map((agent) => (
-                <button
+                <Link
                   key={agent.id}
-                  type="button"
-                  className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                  pathname="/zero/talk/:name"
+                  options={{ pathParams: { name: agent.name } }}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                      return;
+                    }
+                    e.preventDefault();
+                    onNewChat?.({ id: agent.id, name: agent.name });
+                  }}
+                  className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                     activeId === "chat" && currentChatAgentId === agent.id
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
-                  onClick={() =>
-                    onNewChat?.({ id: agent.id, name: agent.name })
-                  }
                 >
                   <AgentAvatarImg
                     name={agent.name}
@@ -1008,7 +1019,7 @@ export function ZeroSidebar({
                   <span className="truncate">
                     {agent.displayName ?? agent.name}
                   </span>
-                </button>
+                </Link>
               ))}
               <button
                 type="button"
