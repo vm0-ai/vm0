@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.119.1](https://github.com/vm0-ai/vm0/compare/web-v12.119.0...web-v12.119.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* pass through descriptive error messages in schedule deploy route ([#5140](https://github.com/vm0-ai/vm0/issues/5140)) ([b157d00](https://github.com/vm0-ai/vm0/commit/b157d0066e95771cce4f6a7be1277975fddb1653)), closes [#5071](https://github.com/vm0-ai/vm0/issues/5071)
+
+
+### Refactoring
+
+* consolidate org resolution into single function ([#5117](https://github.com/vm0-ai/vm0/issues/5117)) ([8ad5e87](https://github.com/vm0-ai/vm0/commit/8ad5e8713ce810d5e6b57f05dfe05fac0e2b791b))
+
 ## [12.119.0](https://github.com/vm0-ai/vm0/compare/web-v12.118.3...web-v12.119.0) (2026-03-17)
 
 
