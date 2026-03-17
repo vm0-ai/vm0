@@ -16,6 +16,7 @@ import {
 } from "../lib/auth/sandbox-token";
 import { server } from "../mocks/server";
 import { reloadEnv } from "../env";
+import { randomBytes } from "crypto";
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
@@ -42,6 +43,8 @@ import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
 import { userCache } from "../db/schema/user-cache";
+import { creditUsage } from "../db/schema/credit-usage";
+import { creditPricing } from "../db/schema/credit-pricing";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -3230,4 +3233,123 @@ export async function createTestSlackOrgConnection(opts: {
     .returning({ id: slackOrgConnections.id });
 
   return { slackUserId, connectionId: connection!.id };
+}
+
+/**
+ * Insert a credit_pricing record for testing.
+ * Uses upsert so tests can safely set pricing for the same model.
+ */
+export async function insertTestCreditPricing(
+  model: string,
+  options?: {
+    inputTokenPrice?: number;
+    outputTokenPrice?: number;
+    turnPrice?: number;
+  },
+): Promise<void> {
+  initServices();
+  const inputTokenPrice = options?.inputTokenPrice ?? 100;
+  const outputTokenPrice = options?.outputTokenPrice ?? 200;
+  const turnPrice = options?.turnPrice ?? 50;
+
+  await globalThis.services.db
+    .insert(creditPricing)
+    .values({ model, inputTokenPrice, outputTokenPrice, turnPrice })
+    .onConflictDoUpdate({
+      target: creditPricing.model,
+      set: { inputTokenPrice, outputTokenPrice, turnPrice },
+    });
+}
+
+/**
+ * Insert a credit_usage record for testing.
+ * Creates the required compose, version, and run records as FK dependencies.
+ *
+ * @returns The credit_usage record ID
+ */
+export async function insertTestCreditUsage(
+  orgId: string,
+  options: {
+    userId?: string;
+    model?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    numTurns?: number;
+    status?: string;
+    creditsCharged?: number;
+  },
+): Promise<string> {
+  initServices();
+  const userId = options.userId ?? "test-user";
+
+  // Create compose for the run
+  const composeName = `compose-${randomBytes(4).toString("hex")}`;
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({ userId, orgId, name: composeName })
+    .returning();
+
+  // agentComposeVersions.id is a content-addressed SHA-256 hash
+  const versionId = randomBytes(32).toString("hex");
+  await globalThis.services.db.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId: compose!.id,
+    content: {},
+    createdBy: userId,
+  });
+
+  // Create a run (FK required by credit_usage)
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      orgId,
+      agentComposeVersionId: versionId,
+      prompt: "test",
+      status: "completed",
+    })
+    .returning();
+
+  const [record] = await globalThis.services.db
+    .insert(creditUsage)
+    .values({
+      runId: run!.id,
+      orgId,
+      userId,
+      model: options.model ?? "gpt-4",
+      inputTokens: options.inputTokens ?? 1000,
+      outputTokens: options.outputTokens ?? 500,
+      numTurns: options.numTurns ?? 2,
+      status: options.status ?? "pending",
+      creditsCharged: options.creditsCharged ?? null,
+    })
+    .returning();
+
+  return record!.id;
+}
+
+/**
+ * Read a credit_usage record by ID.
+ */
+export async function findTestCreditUsage(id: string): Promise<
+  | {
+      id: string;
+      status: string;
+      creditsCharged: number | null;
+      processedAt: Date | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [record] = await globalThis.services.db
+    .select({
+      id: creditUsage.id,
+      status: creditUsage.status,
+      creditsCharged: creditUsage.creditsCharged,
+      processedAt: creditUsage.processedAt,
+    })
+    .from(creditUsage)
+    .where(eq(creditUsage.id, id))
+    .limit(1);
+  return record;
 }
