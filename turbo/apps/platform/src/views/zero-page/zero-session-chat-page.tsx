@@ -585,8 +585,8 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
         <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
-            <div className="flex items-center gap-2 text-destructive">
-              <IconAlertCircle size={16} className="shrink-0" />
+            <div className="flex items-start gap-2 text-destructive">
+              <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
               <span>{message.error}</span>
             </div>
           </div>
