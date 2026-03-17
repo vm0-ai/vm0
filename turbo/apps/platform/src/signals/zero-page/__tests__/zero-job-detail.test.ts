@@ -166,7 +166,7 @@ describe("zero-job-detail signals", () => {
 
       expect(detail).toBeNull();
       expect(loading).toBeFalsy();
-      expect(error).toBe("Failed to fetch agent: Not Found");
+      expect(error).toBe("Failed to fetch agent: Not Found (404)");
     });
 
     it("should set instructions error when instructions API fails", async () => {
