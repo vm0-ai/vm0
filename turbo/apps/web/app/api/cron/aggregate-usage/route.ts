@@ -30,9 +30,10 @@ export async function GET(request: Request): Promise<Response> {
 
   // Aggregate completed runs from yesterday and upsert daily usage in one query
   const result = await globalThis.services.db.execute(sql`
-    INSERT INTO usage_daily (user_id, date, run_count, run_time_ms)
+    INSERT INTO usage_daily (user_id, org_id, date, run_count, run_time_ms)
     SELECT
       ${agentRuns.userId},
+      ${agentRuns.orgId},
       ${targetDate}::date,
       COUNT(*)::int,
       COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint
@@ -40,8 +41,8 @@ export async function GET(request: Request): Promise<Response> {
     WHERE ${agentRuns.createdAt} >= ${yesterday}
       AND ${agentRuns.createdAt} < ${today}
       AND ${agentRuns.completedAt} IS NOT NULL
-    GROUP BY ${agentRuns.userId}
-    ON CONFLICT (user_id, date) DO UPDATE SET
+    GROUP BY ${agentRuns.userId}, ${agentRuns.orgId}
+    ON CONFLICT (user_id, org_id, date) DO UPDATE SET
       run_count = EXCLUDED.run_count,
       run_time_ms = EXCLUDED.run_time_ms,
       updated_at = NOW()

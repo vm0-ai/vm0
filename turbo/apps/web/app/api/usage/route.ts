@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import { agentRuns } from "../../../src/db/schema/agent-run";
 import { usageDaily } from "../../../src/db/schema/usage-daily";
 import { sql, and, gte, lt, eq, isNotNull } from "drizzle-orm";
@@ -44,6 +45,7 @@ function utcMidnight(d: Date): Date {
 async function queryAgentRunsDaily(
   db: typeof globalThis.services.db,
   userId: string,
+  orgId: string,
   from: Date,
   to: Date,
 ): Promise<DailyUsage[]> {
@@ -62,6 +64,7 @@ async function queryAgentRunsDaily(
     .where(
       and(
         eq(agentRuns.userId, userId),
+        eq(agentRuns.orgId, orgId),
         gte(agentRuns.createdAt, from),
         lt(agentRuns.createdAt, to),
         isNotNull(agentRuns.completedAt),
@@ -100,6 +103,10 @@ export async function GET(request: NextRequest) {
       { status: 401 },
     );
   }
+
+  // Resolve org context
+  const orgSlug = request.nextUrl.searchParams.get("org");
+  const { org } = await resolveOrg(userId, orgSlug);
 
   // Parse query parameters
   const searchParams = request.nextUrl.searchParams;
@@ -190,11 +197,19 @@ export async function GET(request: NextRequest) {
 
   if (historicalFrom >= historicalTo) {
     // No complete historical days — use agent_runs for entire range
-    daily.push(...(await queryAgentRunsDaily(db, userId, startDate, endDate)));
+    daily.push(
+      ...(await queryAgentRunsDaily(db, userId, org.orgId, startDate, endDate)),
+    );
   } else {
     // Part 1: partial start day from agent_runs [startDate, historicalFrom)
     daily.push(
-      ...(await queryAgentRunsDaily(db, userId, startDate, historicalFrom)),
+      ...(await queryAgentRunsDaily(
+        db,
+        userId,
+        org.orgId,
+        startDate,
+        historicalFrom,
+      )),
     );
 
     // Part 2: complete historical days — dual-path (cache + on-demand compute)
@@ -212,6 +227,7 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           eq(usageDaily.userId, userId),
+          eq(usageDaily.orgId, org.orgId),
           gte(usageDaily.date, fromStr),
           lt(usageDaily.date, toStr),
         ),
@@ -236,6 +252,7 @@ export async function GET(request: NextRequest) {
       const computedRows = await queryAgentRunsDaily(
         db,
         userId,
+        org.orgId,
         historicalFrom,
         historicalTo,
       );
@@ -249,12 +266,13 @@ export async function GET(request: NextRequest) {
             .insert(usageDaily)
             .values({
               userId,
+              orgId: org.orgId,
               date: row.date,
               runCount: row.run_count,
               runTimeMs: row.run_time_ms,
             })
             .onConflictDoUpdate({
-              target: [usageDaily.userId, usageDaily.date],
+              target: [usageDaily.userId, usageDaily.orgId, usageDaily.date],
               set: {
                 runCount: row.run_count,
                 runTimeMs: row.run_time_ms,
@@ -267,7 +285,13 @@ export async function GET(request: NextRequest) {
 
     // Part 3: today + partial end day from agent_runs [historicalTo, endDate)
     daily.push(
-      ...(await queryAgentRunsDaily(db, userId, historicalTo, endDate)),
+      ...(await queryAgentRunsDaily(
+        db,
+        userId,
+        org.orgId,
+        historicalTo,
+        endDate,
+      )),
     );
   }
 
