@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
 import {
   forbidden,
   badRequest,
@@ -9,6 +10,7 @@ import {
 } from "../errors";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
+import { orgMembersCache } from "../../db/schema/org-members-cache";
 import type { AuthContext } from "../auth/get-user-id";
 
 import type { OrgRole } from "@vm0/core";
@@ -201,7 +203,6 @@ export async function resolveOrgOrNull(
 async function autoDetectUserOrg(userId: string): Promise<ResolvedOrg | null> {
   // 1. Check org_members_cache for any org this user belongs to
   const db = globalThis.services.db;
-  const { orgMembersCache } = await import("../../db/schema/org-members-cache");
   const [cached] = await db
     .select({ orgId: orgMembersCache.orgId })
     .from(orgMembersCache)
@@ -209,15 +210,12 @@ async function autoDetectUserOrg(userId: string): Promise<ResolvedOrg | null> {
     .limit(1);
 
   if (cached) {
-    try {
-      return await getOrgData(cached.orgId);
-    } catch {
-      // Fall through to Clerk API
-    }
+    const orgData = await getOrgDataOrNull(cached.orgId);
+    if (orgData) return orgData;
+    // Cache entry points to a deleted/invalid org — fall through to Clerk API
   }
 
   // 2. Fall back to Clerk API
-  const { clerkClient } = await import("@clerk/nextjs/server");
   const client = await clerkClient();
   const memberships = await client.users.getOrganizationMembershipList({
     userId,
@@ -227,11 +225,7 @@ async function autoDetectUserOrg(userId: string): Promise<ResolvedOrg | null> {
   if (memberships.data.length === 0) return null;
 
   const orgId = memberships.data[0]!.organization.id;
-  try {
-    return await getOrgData(orgId);
-  } catch {
-    return null;
-  }
+  return getOrgDataOrNull(orgId);
 }
 
 /**
