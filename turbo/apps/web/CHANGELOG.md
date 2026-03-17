@@ -1,5 +1,18 @@
 # Changelog
 
+## [12.121.0](https://github.com/vm0-ai/vm0/compare/web-v12.120.0...web-v12.121.0) (2026-03-17)
+
+
+### Features
+
+* shared sentinel infrastructure + org-level model-provider service ([#5163](https://github.com/vm0-ai/vm0/issues/5163)) ([167d4dd](https://github.com/vm0-ai/vm0/commit/167d4dd7fd292ff6cae4c1b923244c5492153d38))
+
+
+### Bug Fixes
+
+* add /export to skip-i18n prefixes to prevent redirect 404 ([#5184](https://github.com/vm0-ai/vm0/issues/5184)) ([3bebef1](https://github.com/vm0-ai/vm0/commit/3bebef1f2dfbdb178530f50c0a9a93b5c4c6cc49)), closes [#5180](https://github.com/vm0-ai/vm0/issues/5180)
+* **test:** stabilize flaky queue cleanup test ([#5165](https://github.com/vm0-ai/vm0/issues/5165)) ([6624167](https://github.com/vm0-ai/vm0/commit/66241676ac200528291535ddf08ba3acc40b529c))
+
 ## [12.120.0](https://github.com/vm0-ai/vm0/compare/web-v12.119.1...web-v12.120.0) (2026-03-17)
 
 

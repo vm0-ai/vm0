@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.119.0](https://github.com/vm0-ai/vm0/compare/platform-v0.118.1...platform-v0.119.0) (2026-03-17)
+
+
+### Features
+
+* integrate lighthouse ci audits for web and platform homepages ([#5139](https://github.com/vm0-ai/vm0/issues/5139)) ([dd9f570](https://github.com/vm0-ai/vm0/commit/dd9f570eafda6b8a740c51a95db3fa9ecf7ab077))
+
 ## [0.118.1](https://github.com/vm0-ai/vm0/compare/platform-v0.118.0...platform-v0.118.1) (2026-03-17)
 
 

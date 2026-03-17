@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.14.2"
+version = "0.14.3"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.31.1"
+version = "0.31.2"
 dependencies = [
  "ably-subscriber",
  "async-trait",

@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.23.0](https://github.com/vm0-ai/vm0/compare/docs-v2.22.3...docs-v2.23.0) (2026-03-17)
+
+
+### Features
+
+* **docs:** add missing --memory option to vm0 run documentation ([#5178](https://github.com/vm0-ai/vm0/issues/5178)) ([4e97bed](https://github.com/vm0-ai/vm0/commit/4e97bed9316793567b809631b3621e96f52ec03c)), closes [#5175](https://github.com/vm0-ai/vm0/issues/5175)
+* **docs:** document vm0 logs search subcommand ([#5186](https://github.com/vm0-ai/vm0/issues/5186)) ([5af7dd8](https://github.com/vm0-ai/vm0/commit/5af7dd8561105da5975c6426c1cd5ae62be8c1e5)), closes [#5183](https://github.com/vm0-ai/vm0/issues/5183)
+* **docs:** remove empty best-practices directory ([#5188](https://github.com/vm0-ai/vm0/issues/5188)) ([15ef3e9](https://github.com/vm0-ai/vm0/commit/15ef3e92ca616e8e0f3221e970f639fb99f47f66))
+
+
+### Documentation
+
+* fix vm0 secret set syntax to use --body flag ([#5176](https://github.com/vm0-ai/vm0/issues/5176)) ([f8049a7](https://github.com/vm0-ai/vm0/commit/f8049a7e5279c2a9d38620dbb67d7d2cb8dda1c9)), closes [#5173](https://github.com/vm0-ai/vm0/issues/5173)
+
 ## [2.22.3](https://github.com/vm0-ai/vm0/compare/docs-v2.22.2...docs-v2.22.3) (2026-03-17)
 
 
