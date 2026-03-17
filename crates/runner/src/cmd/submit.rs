@@ -30,6 +30,9 @@ pub struct SubmitArgs {
     /// Agent type
     #[arg(long, default_value = "claude-code")]
     cli_agent_type: String,
+    /// VM profile to use (e.g. "vm0/default", "vm0/browser")
+    #[arg(long)]
+    profile: Option<String>,
     /// Timeout in seconds waiting for a runner to complete the job
     #[arg(long, default_value_t = 300)]
     timeout: u64,
@@ -52,6 +55,7 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         vars: None,
         environment: None,
         user_timezone: None,
+        profile: args.profile,
     };
 
     let json = serde_json::to_vec(&request)
