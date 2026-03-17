@@ -37,6 +37,7 @@ describe("getOrgData", () => {
       orgId,
       slug,
       tier: "free",
+      credits: 0,
     });
 
     // Verify cache row was created
@@ -71,6 +72,7 @@ describe("getOrgData", () => {
       orgId,
       slug: "cached-slug",
       tier: "pro",
+      credits: 0,
     });
 
     // Clerk API should NOT have been called
@@ -184,6 +186,7 @@ describe("getOrgBySlug", () => {
       orgId,
       slug,
       tier: "free",
+      credits: 0,
     });
 
     // Verify cache row was created
@@ -212,7 +215,7 @@ describe("getOrgBySlug", () => {
 
     const result = await getOrgBySlug(slug);
 
-    expect(result).toEqual({ orgId, slug, tier: "pro" });
+    expect(result).toEqual({ orgId, slug, tier: "pro", credits: 0 });
 
     // Clerk API should NOT have been called
     const client = await clerkClient();

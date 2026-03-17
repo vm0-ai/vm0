@@ -1,0 +1,49 @@
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  bigint,
+  integer,
+  timestamp,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+import { agentRuns } from "./agent-run";
+
+/**
+ * Per-run token usage records for credits billing.
+ * Inserted by webhook when a run completes, processed later
+ * by the deduction processor to charge credits.
+ */
+export const creditUsage = pgTable(
+  "credit_usage",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    runId: uuid("run_id")
+      .references(() => agentRuns.id, { onDelete: "cascade" })
+      .notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    model: varchar("model", { length: 255 }).notNull(),
+    inputTokens: bigint("input_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    numTurns: integer("num_turns").notNull().default(0),
+    creditsCharged: bigint("credits_charged", { mode: "number" }),
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    processedAt: timestamp("processed_at"),
+  },
+  (table) => [
+    uniqueIndex("uq_credit_usage_run_id").on(table.runId),
+    index("idx_credit_usage_org_status").on(table.orgId, table.status),
+    index("idx_credit_usage_org_created").on(
+      table.orgId,
+      table.createdAt.desc(),
+    ),
+  ],
+);

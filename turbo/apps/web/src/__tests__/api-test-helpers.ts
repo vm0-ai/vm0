@@ -340,11 +340,12 @@ export async function createTestOrg(
       orgId,
       slug,
       tier: "free",
+      credits: 0,
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, tier: "free", cachedAt: new Date() },
+      set: { slug, tier: "free", credits: 0, cachedAt: new Date() },
     });
 
   return { id: orgId, slug };
@@ -2599,10 +2600,16 @@ export async function createTestTelegramInstallation(options?: {
   // Pre-populate org cache for getOrgData()
   await globalThis.services.db
     .insert(orgCache)
-    .values({ orgId, slug: orgSlug, tier: "free", cachedAt: new Date() })
+    .values({
+      orgId,
+      slug: orgSlug,
+      tier: "free",
+      credits: 0,
+      cachedAt: new Date(),
+    })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
+      set: { slug: orgSlug, tier: "free", credits: 0, cachedAt: new Date() },
     });
 
   const [compose] = await globalThis.services.db
@@ -2838,6 +2845,7 @@ export async function insertOrgCacheEntry(entry: {
   orgId: string;
   slug: string;
   tier?: string;
+  credits?: number;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
@@ -2847,6 +2855,7 @@ export async function insertOrgCacheEntry(entry: {
       orgId: entry.orgId,
       slug: entry.slug,
       tier: entry.tier ?? "free",
+      credits: entry.credits ?? 0,
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
@@ -2854,6 +2863,7 @@ export async function insertOrgCacheEntry(entry: {
       set: {
         slug: entry.slug,
         tier: entry.tier ?? "free",
+        credits: entry.credits ?? 0,
         cachedAt: entry.cachedAt ?? new Date(),
       },
     });
