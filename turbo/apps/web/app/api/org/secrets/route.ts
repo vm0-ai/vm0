@@ -32,10 +32,9 @@ const router = tsr.router(orgSecretsMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const secrets = await listOrgSecrets(org.orgId);
 
     return {
@@ -64,10 +63,9 @@ const router = tsr.router(orgSecretsMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(userId, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     if (member.role !== "admin") {
       return createErrorResponse(

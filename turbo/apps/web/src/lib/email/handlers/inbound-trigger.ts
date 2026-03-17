@@ -84,7 +84,7 @@ async function resolveTrigger(
   }
 
   // 3. Resolve runtime org (explicit slug from address, or user's default)
-  const runtimeOrg = await resolveOrgOrNull(userId, parsed.runtimeOrg);
+  const runtimeOrg = await resolveOrgOrNull({ userId }, parsed.runtimeOrg);
   if (!runtimeOrg) {
     const msg = parsed.runtimeOrg
       ? `Workspace "${parsed.runtimeOrg}" was not found.`

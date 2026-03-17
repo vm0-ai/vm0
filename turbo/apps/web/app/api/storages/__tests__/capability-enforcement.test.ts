@@ -431,10 +431,11 @@ describe("Storage capability enforcement", () => {
       // CLI token user is authenticated via Clerk session (getAuthContext checks Clerk first).
       // The key is that adding requiredCapability to getAuthContext doesn't break CLI/session flows.
       const cliToken = await createTestCliToken(userId);
+      const orgSlug = `org-${userId.slice(-8)}`;
 
       const response = await listRoute(
         createTestRequest(
-          "http://localhost:3000/api/storages/list?type=artifact",
+          `http://localhost:3000/api/storages/list?type=artifact&org=${orgSlug}`,
           { headers: { authorization: `Bearer ${cliToken}` } },
         ),
       );

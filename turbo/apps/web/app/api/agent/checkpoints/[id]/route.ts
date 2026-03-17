@@ -8,7 +8,7 @@ import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { resolveOrgOrNull } from "../../../../../src/lib/org/resolve-org";
 
 interface AgentComposeSnapshot {
@@ -30,8 +30,8 @@ const router = tsr.router(checkpointsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -39,9 +39,10 @@ const router = tsr.router(checkpointsByIdContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const org = await resolveOrgOrNull(userId, orgSlug);
+    const org = await resolveOrgOrNull(authCtx, orgSlug);
 
     const [checkpoint] = await globalThis.services.db
       .select()

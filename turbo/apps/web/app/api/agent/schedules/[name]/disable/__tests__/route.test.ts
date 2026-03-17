@@ -197,13 +197,14 @@ describe("POST /api/agent/schedules/:name/disable - Sandbox Token Auth", () => {
       orgId: user.orgId,
       userId: user.userId,
     });
+    const orgSlug = `org-${user.userId.slice(-8)}`;
     mockClerk({ userId: null, orgId: user.orgId });
     const token = await generateSandboxToken(user.userId, "run-123", [
       "schedule:write",
     ]);
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/schedules/sandbox-disable-test/disable`,
+      `http://localhost:3000/api/agent/schedules/sandbox-disable-test/disable?org=${orgSlug}`,
       {
         method: "POST",
         headers: {

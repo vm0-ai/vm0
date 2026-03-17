@@ -6,7 +6,7 @@ import {
 import { sessionMessagesContract } from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
 import { appendChatMessages } from "../../../../../../src/lib/agent-session";
 import { isNotFound } from "../../../../../../src/lib/errors";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
@@ -16,8 +16,8 @@ const router = tsr.router(sessionMessagesContract, {
   append: async ({ params, body, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -25,6 +25,7 @@ const router = tsr.router(sessionMessagesContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     // Verify session belongs to the caller's active organization (runtime org)
     const [session] = await globalThis.services.db
@@ -45,7 +46,7 @@ const router = tsr.router(sessionMessagesContract, {
       };
     }
 
-    const callerOrgId = await resolveCallerOrgId(userId, request);
+    const callerOrgId = await resolveCallerOrgId(authCtx, request);
     if (callerOrgId !== session.orgId) {
       return {
         status: 404 as const,

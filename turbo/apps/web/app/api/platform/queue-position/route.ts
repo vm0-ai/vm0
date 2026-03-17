@@ -5,9 +5,9 @@
  * Returns the position of a queued run within its org queue.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { eq, and, lte } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveOrgOrNull } from "../../../../src/lib/org/resolve-org";
 import { agentRunQueue } from "../../../../src/db/schema/agent-run-queue";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
@@ -15,13 +15,16 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 export async function GET(request: Request) {
   initServices();
 
-  const { userId } = await auth();
-  if (!userId) {
+  const authCtx = await getAuthContext(
+    request.headers.get("authorization") ?? undefined,
+  );
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId } = authCtx;
 
   const url = new URL(request.url);
   const runId = url.searchParams.get("runId");
@@ -33,7 +36,7 @@ export async function GET(request: Request) {
   }
 
   const orgSlug = url.searchParams.get("org");
-  const org = await resolveOrgOrNull(userId, orgSlug);
+  const org = await resolveOrgOrNull(authCtx, orgSlug);
 
   // Verify the run belongs to this user and org
   const [run] = await globalThis.services.db

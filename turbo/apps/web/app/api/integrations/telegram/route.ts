@@ -125,7 +125,7 @@ export async function GET(request: Request) {
 
   // Resolve user's default org and get existing secrets, vars, connectors
   const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org } = await resolveOrg(userId, orgSlug);
+  const { org } = await resolveOrg(authCtx, orgSlug);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
     listVariables(org.orgId, userId),
@@ -273,7 +273,7 @@ export async function PATCH(request: Request) {
   } else {
     try {
       const urlOrgSlug = new URL(request.url).searchParams.get("org");
-      ({ org: targetOrg } = await resolveOrg(userId, urlOrgSlug));
+      ({ org: targetOrg } = await resolveOrg(authCtx, urlOrgSlug));
     } catch (error) {
       if (isNotFound(error)) {
         return NextResponse.json(

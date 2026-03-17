@@ -1,7 +1,7 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { onboardingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isBadRequest, isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
@@ -17,8 +17,8 @@ const router = tsr.router(onboardingStatusContract, {
   getStatus: async ({ headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -41,7 +41,7 @@ const router = tsr.router(onboardingStatusContract, {
 
     const orgSlug = new URL(request.url).searchParams.get("org");
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId, orgSlug);
+      const { org: resolvedOrg } = await resolveOrg(authCtx, orgSlug);
       hasOrg = true;
 
       // Check model provider
