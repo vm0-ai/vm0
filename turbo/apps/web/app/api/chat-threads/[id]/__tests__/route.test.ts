@@ -39,7 +39,7 @@ describe("GET /api/chat-threads/:id - Get Thread Detail", () => {
 
   it("should return 404 for non-existent thread", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/chat-threads/non-existent-id",
+      "http://localhost:3000/api/chat-threads/00000000-0000-0000-0000-000000000000",
     );
     const response = await GET(request);
 

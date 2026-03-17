@@ -68,7 +68,7 @@ describe("POST /api/chat-threads - Create Thread", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: "non-existent-compose-id",
+          agentComposeId: "00000000-0000-0000-0000-000000000000",
           title: "Test thread",
         }),
       },

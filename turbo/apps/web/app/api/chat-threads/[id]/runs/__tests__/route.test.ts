@@ -80,7 +80,7 @@ describe("POST /api/chat-threads/:id/runs - Add Run to Thread", () => {
     const { runId } = await createTestRun(testComposeId, "Test prompt");
 
     const request = createTestRequest(
-      "http://localhost:3000/api/chat-threads/non-existent-id/runs",
+      "http://localhost:3000/api/chat-threads/00000000-0000-0000-0000-000000000000/runs",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
