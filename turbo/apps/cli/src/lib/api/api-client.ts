@@ -30,7 +30,7 @@ import {
 } from "@vm0/core";
 import type { z } from "zod";
 import { getApiUrl, getActiveToken } from "./config";
-import { handleError } from "./core/client-factory";
+import { getClientConfig, handleError } from "./core/client-factory";
 
 // Import types from @vm0/core contracts
 import type {
@@ -1095,14 +1095,9 @@ class ApiClient {
     before?: number;
     after?: number;
   }): Promise<LogsSearchResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    const client = initClient(logsSearchContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    const client = initClient(logsSearchContract, config);
 
     const result = await client.searchLogs({
       query: {
