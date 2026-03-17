@@ -13,9 +13,13 @@ import { getSlackRedirectBaseUrl } from "../../../../../../src/lib/slack";
  *
  * Unlike the install flow, no bot scopes are requested — the app is already
  * installed.  We only need Slack to authenticate the user.
+ *
+ * Uses Slack's OpenID Connect endpoint instead of the standard OAuth v2
+ * endpoint so we can pass `prompt=consent` to force the authorization screen
+ * every time (OAuth v2 silently auto-approves previously granted scopes).
  */
 
-const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
+const SLACK_OIDC_URL = "https://slack.com/openid/connect/authorize";
 
 export async function GET(request: Request) {
   const { SLACK_CLIENT_ID } = env();
@@ -43,14 +47,18 @@ export async function GET(request: Request) {
 
   const state = JSON.stringify({ orgId, vm0UserId, flow: "connect" });
 
-  const authUrl = new URL(SLACK_OAUTH_URL);
+  const authUrl = new URL(SLACK_OIDC_URL);
   authUrl.searchParams.set("client_id", SLACK_CLIENT_ID);
-  // No bot scopes — app is already installed.
-  // Request minimal user scope so Slack shows the consent screen and
-  // returns the authed_user.id we need to create the connection.
+  authUrl.searchParams.set("response_type", "code");
+  // openid is required for the OIDC endpoint; identity.basic gives us the
+  // authed_user.id via oauth.v2.access which the callback already uses.
+  authUrl.searchParams.set("scope", "openid");
   authUrl.searchParams.set("user_scope", "identity.basic");
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("state", state);
+  // Force Slack to always show the consent screen instead of silently
+  // auto-approving previously granted scopes.
+  authUrl.searchParams.set("prompt", "consent");
 
   return NextResponse.redirect(authUrl.toString(), {
     headers: { "Cache-Control": "no-store" },
