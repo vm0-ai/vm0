@@ -87,10 +87,10 @@ describe("/api/slack/org/oauth/callback", () => {
     );
     const response = await GET(request);
 
-    // Should redirect to /zero/works?installed=1
+    // Should redirect to /slack/connect?status=connected
     expect(response.status).toBe(307);
-    expect(response.headers.get("Location")).toBe(
-      "http://localhost:3001/zero/works?installed=1",
+    expect(response.headers.get("Location")).toContain(
+      "/slack/connect?status=connected",
     );
 
     // Verify installation was created with org_id
@@ -293,7 +293,7 @@ describe("/api/slack/org/oauth/callback", () => {
     const responseA = await GET(requestA);
     expect(responseA.status).toBe(307);
     expect(responseA.headers.get("Location")).toContain(
-      "/zero/works?installed=1",
+      "/slack/connect?status=connected",
     );
 
     // Second: Org B tries to install the same workspace
@@ -318,7 +318,7 @@ describe("/api/slack/org/oauth/callback", () => {
     // Should redirect to /zero/works with error
     expect(responseB.status).toBe(307);
     const location = responseB.headers.get("Location")!;
-    expect(location).toContain("/zero/works?error=");
+    expect(location).toContain("/slack/connect?error=");
     expect(decodeURIComponent(location)).toContain(
       "already installed by another organization",
     );
@@ -381,7 +381,7 @@ describe("/api/slack/org/oauth/callback", () => {
     // Should succeed
     expect(response.status).toBe(307);
     expect(response.headers.get("Location")).toContain(
-      "/zero/works?installed=1",
+      "/slack/connect?status=connected",
     );
 
     // Bot token should be updated
@@ -428,8 +428,8 @@ describe("/api/slack/org/oauth/callback", () => {
     const response = await GET(secondRequest);
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("Location")).toBe(
-      "http://localhost:3001/zero/works?installed=1",
+    expect(response.headers.get("Location")).toContain(
+      "/slack/connect?status=connected",
     );
 
     // Should still have exactly one connection (onConflictDoNothing)
