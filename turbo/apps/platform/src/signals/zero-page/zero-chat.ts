@@ -311,6 +311,50 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
 
 const pollingAbortController$ = state<AbortController | null>(null);
 
+/** Resume polling for an active run (used when switching to a session with an in-progress run). */
+function resumeRunPolling(
+  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
+  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+  fetchFn: typeof fetch,
+  runId: string,
+) {
+  set(internalActiveRunId$, runId);
+  set(internalSending$, true);
+
+  const controller = new AbortController();
+  set(pollingAbortController$, controller);
+
+  set(setupPollingLoop$, {
+    runId,
+    signal: controller.signal,
+    state: {
+      get events$() {
+        return get(internalRunEvents$);
+      },
+      setEvents: (updater) => {
+        set(internalRunEvents$, updater);
+      },
+      setStatus: (s) => {
+        set(internalRunStatus$, s);
+        updateQueuePosition(s, fetchFn, runId, (pos) =>
+          set(internalQueuePosition$, pos),
+        );
+      },
+      setError: (e) => {
+        set(internalRunError$, e);
+      },
+    },
+    onTerminal: (completedRunId) => {
+      set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
+        throwIfAbort(error);
+        L.error("onRunComplete error:", error);
+      });
+    },
+  }).catch((error: unknown) => {
+    throwIfAbort(error);
+  });
+}
+
 // Chat thread ID (for URL routing — set before run starts)
 const internalChatThreadId$ = state<string | null>(null);
 export const zeroChatThreadId$ = computed((get) => get(internalChatThreadId$));
@@ -501,7 +545,7 @@ export const switchZeroSession$ = command(
       const fetchFn = get(fetch$);
 
       // Try chat-threads API first; fall back to legacy sessions API
-      console.warn("[switchSession] loading thread:", threadId);
+      L.info("loading thread:", threadId);
       let res = await fetchFn(`/api/chat-threads/${threadId}`);
       let isLegacySession = false;
       if (!res.ok) {
@@ -509,7 +553,7 @@ export const switchZeroSession$ = command(
         isLegacySession = true;
       }
       if (!res.ok) {
-        console.warn("[switchSession] both APIs failed, status:", res.status);
+        L.warn("both APIs failed, status:", res.status);
         set(internalSessionError$, `Failed to load chat: ${res.statusText}`);
         return;
       }
@@ -524,9 +568,12 @@ export const switchZeroSession$ = command(
         latestSessionId?: string | null;
         activeRunId?: string | null;
         activeRunPrompt?: string | null;
+        failedRunId?: string | null;
+        failedRunPrompt?: string | null;
+        failedRunError?: string | null;
       };
 
-      console.warn("[switchSession] loaded:", {
+      L.info("loaded:", {
         isLegacySession,
         agentComposeId: data.agentComposeId,
         latestSessionId: data.latestSessionId,
@@ -583,48 +630,28 @@ export const switchZeroSession$ = command(
           content: "",
           runId: data.activeRunId,
         });
+      } else if (data.failedRunId && data.failedRunPrompt) {
+        // If the latest run failed, show the user's message and the error
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "user",
+          content: data.failedRunPrompt,
+        });
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "",
+          runId: data.failedRunId,
+          status: "failed",
+          error: data.failedRunError ?? "Run failed",
+        });
       }
 
       set(internalMessages$, messages);
 
       // Resume polling for the active run
       if (data.activeRunId) {
-        set(internalActiveRunId$, data.activeRunId);
-        set(internalSending$, true);
-
-        const controller = new AbortController();
-        set(pollingAbortController$, controller);
-
-        // Fire-and-forget: polling loop runs in background
-        set(setupPollingLoop$, {
-          runId: data.activeRunId,
-          signal: controller.signal,
-          state: {
-            get events$() {
-              return get(internalRunEvents$);
-            },
-            setEvents: (updater) => {
-              set(internalRunEvents$, updater);
-            },
-            setStatus: (s) => {
-              set(internalRunStatus$, s);
-              updateQueuePosition(s, fetchFn, data.activeRunId!, (pos) =>
-                set(internalQueuePosition$, pos),
-              );
-            },
-            setError: (e) => {
-              set(internalRunError$, e);
-            },
-          },
-          onTerminal: (completedRunId) => {
-            set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
-              throwIfAbort(error);
-              L.error("onRunComplete error:", error);
-            });
-          },
-        }).catch((error: unknown) => {
-          throwIfAbort(error);
-        });
+        resumeRunPolling(get, set, fetchFn, data.activeRunId);
       }
     } catch (error) {
       throwIfAbort(error);

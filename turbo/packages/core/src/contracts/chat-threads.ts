@@ -27,6 +27,9 @@ const chatThreadDetailSchema = z.object({
   latestSessionId: z.string().nullable(),
   activeRunId: z.string().nullable(),
   activeRunPrompt: z.string().nullable(),
+  failedRunId: z.string().nullable(),
+  failedRunPrompt: z.string().nullable(),
+  failedRunError: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

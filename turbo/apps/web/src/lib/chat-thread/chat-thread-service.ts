@@ -165,6 +165,9 @@ export async function getChatThreadMessages(
   latestSessionId: string | null;
   activeRunId: string | null;
   activeRunPrompt: string | null;
+  failedRunId: string | null;
+  failedRunPrompt: string | null;
+  failedRunError: string | null;
 }> {
   // Get all runs for this thread, ordered by creation time desc
   const runs = await globalThis.services.db
@@ -172,6 +175,7 @@ export async function getChatThreadMessages(
       runId: agentRuns.id,
       status: agentRuns.status,
       prompt: agentRuns.prompt,
+      error: agentRuns.error,
       result: agentRuns.result,
       continuedFromSessionId: agentRuns.continuedFromSessionId,
     })
@@ -180,15 +184,24 @@ export async function getChatThreadMessages(
     .where(eq(chatThreadRuns.chatThreadId, threadId))
     .orderBy(desc(chatThreadRuns.createdAt));
 
-  // Find the active (non-terminal) run and the latest sessionId
+  // Find active run, failed run (latest), and session ID
   let sessionId: string | null = null;
   let activeRunId: string | null = null;
   let activeRunPrompt: string | null = null;
+  let failedRunId: string | null = null;
+  let failedRunPrompt: string | null = null;
+  let failedRunError: string | null = null;
 
   for (const run of runs) {
     if (!TERMINAL_STATUSES.has(run.status) && !activeRunId) {
       activeRunId = run.runId;
       activeRunPrompt = run.prompt;
+    }
+    // Capture the most recent failed run
+    if (run.status === "failed" && !failedRunId) {
+      failedRunId = run.runId;
+      failedRunPrompt = run.prompt;
+      failedRunError = run.error;
     }
     if (!sessionId && hasAgentSessionId(run.result)) {
       sessionId = run.result.agentSessionId;
@@ -204,6 +217,9 @@ export async function getChatThreadMessages(
       latestSessionId: null,
       activeRunId,
       activeRunPrompt,
+      failedRunId,
+      failedRunPrompt,
+      failedRunError,
     };
   }
 
@@ -230,5 +246,8 @@ export async function getChatThreadMessages(
     latestSessionId: sessionId,
     activeRunId,
     activeRunPrompt,
+    failedRunId,
+    failedRunPrompt,
+    failedRunError,
   };
 }

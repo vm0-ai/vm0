@@ -24,8 +24,15 @@ const router = tsr.router(chatThreadByIdContract, {
 
     try {
       const thread = await getChatThread(params.id, userId);
-      const { chatMessages, latestSessionId, activeRunId, activeRunPrompt } =
-        await getChatThreadMessages(params.id, userId);
+      const {
+        chatMessages,
+        latestSessionId,
+        activeRunId,
+        activeRunPrompt,
+        failedRunId,
+        failedRunPrompt,
+        failedRunError,
+      } = await getChatThreadMessages(params.id, userId);
 
       return {
         status: 200 as const,
@@ -37,6 +44,9 @@ const router = tsr.router(chatThreadByIdContract, {
           latestSessionId,
           activeRunId,
           activeRunPrompt,
+          failedRunId,
+          failedRunPrompt,
+          failedRunError,
           createdAt: thread.createdAt.toISOString(),
           updatedAt: thread.updatedAt.toISOString(),
         },
