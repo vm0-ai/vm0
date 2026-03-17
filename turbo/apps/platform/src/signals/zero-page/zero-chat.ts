@@ -500,7 +500,14 @@ export const switchZeroSession$ = command(
 
     try {
       const fetchFn = get(fetch$);
-      const res = await fetchFn(`/api/chat-threads/${threadId}`);
+
+      // Try chat-threads API first; fall back to legacy sessions API
+      let res = await fetchFn(`/api/chat-threads/${threadId}`);
+      let isLegacySession = false;
+      if (!res.ok) {
+        res = await fetchFn(`/api/agent/sessions/${threadId}`);
+        isLegacySession = true;
+      }
       if (!res.ok) {
         set(internalSessionError$, `Failed to load chat: ${res.statusText}`);
         return;
@@ -519,7 +526,10 @@ export const switchZeroSession$ = command(
         activeRunPrompt?: string | null;
       };
 
-      if (data.latestSessionId) {
+      if (isLegacySession) {
+        // Legacy session: the ID itself is the sessionId
+        set(internalSessionId$, threadId);
+      } else if (data.latestSessionId) {
         set(internalSessionId$, data.latestSessionId);
       }
 
@@ -536,6 +546,9 @@ export const switchZeroSession$ = command(
             set(switchActiveAgent$, { id: agent.id, name: agent.name });
           }
         }
+      } else {
+        // Legacy session or no agentComposeId: fetch default agent sessions
+        set(switchActiveAgent$, null);
       }
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(
