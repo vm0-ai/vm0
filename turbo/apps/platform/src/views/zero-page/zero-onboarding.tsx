@@ -7,6 +7,7 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import slackIcon from "./components/settings/icons/slack.svg";
+import zeroAvatarImg from "./assets/zero-avatar.png";
 import {
   Dialog,
   DialogContent,
@@ -217,7 +218,7 @@ function OnboardingSkillsStep({
 
 /** Zero onboarding: creates org, model provider, and default agent. */
 export function ZeroOnboarding({
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
 }: {
   zeroAvatarSrc?: string;
 }) {

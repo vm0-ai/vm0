@@ -13,6 +13,8 @@ import {
 import { Link } from "../router/link.tsx";
 import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
+import zeroAvatarImg from "./assets/zero-avatar.png";
+import emptyChatImg from "./assets/empty-chat.png";
 
 interface ZeroJobsPageProps {
   selectedAgentName?: string | null;
@@ -22,7 +24,7 @@ interface ZeroJobsPageProps {
 
 export function ZeroJobsPage({
   selectedAgentName,
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   onCycleZeroAvatar,
 }: ZeroJobsPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
@@ -167,7 +169,7 @@ export function ZeroJobsPage({
             <Card className="zero-card">
               <CardContent className="flex flex-col items-center justify-center px-6 py-12 gap-3">
                 <img
-                  src="/images/empty-chat.png"
+                  src={emptyChatImg}
                   alt="No teammates"
                   className="h-20 w-20 object-contain opacity-80"
                 />

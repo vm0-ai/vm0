@@ -67,6 +67,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
 import { Link } from "../router/link.tsx";
+import chatFolderImg from "./assets/chat-folder.png";
+import chatCoffeeImg from "./assets/chat-coffee.png";
+import chatMacImg from "./assets/chat-mac.png";
+import zeroAvatarImg from "./assets/zero-avatar.png";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -81,7 +85,7 @@ const SUGGESTED_PROMPTS = [
   {
     title: "Auto-organize inbox",
     description: "Smart categorization, reply, and daily email digest",
-    image: "/images/chat-folder.png",
+    image: chatFolderImg,
     imageClassName: "h-12 w-12",
     prompt:
       "Set up auto-organization for my inbox with smart categorization, auto-reply rules, and a daily email digest",
@@ -89,7 +93,7 @@ const SUGGESTED_PROMPTS = [
   {
     title: "Daily morning brief",
     description: "Trending topics on a schedule, your personalized digest",
-    image: "/images/chat-coffee.png",
+    image: chatCoffeeImg,
     imageClassName: "h-14 w-14 -mt-1",
     prompt:
       "Create a daily morning brief that curates trending topics and delivers a personalized digest every morning",
@@ -97,7 +101,7 @@ const SUGGESTED_PROMPTS = [
   {
     title: "Create a sub-agent",
     description: "Build a specialized agent for a specific workflow",
-    image: "/images/chat-mac.png",
+    image: chatMacImg,
     imageClassName: "h-[4.5rem] w-[4.5rem]",
     prompt:
       "I want to create a new sub-agent to handle a specific workflow for my team",
@@ -258,7 +262,7 @@ interface ChatScenarioBlockProps {
 }
 
 function HelloFromZeroBlock({
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   agentName = "Zero",
 }: {
   zeroAvatarSrc?: string;
@@ -321,7 +325,7 @@ function ChatScenarioBlock({
   setTeamPersonalChoice,
   connectorConnected,
   setConnectorConnected,
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   agentName = "Zero",
 }: ChatScenarioBlockProps) {
   return (
@@ -987,7 +991,7 @@ export function ZeroChatPage({
   onNavigateToSchedule,
   onNavigateToMeet,
   onSendMessage,
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
 }: ZeroChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);

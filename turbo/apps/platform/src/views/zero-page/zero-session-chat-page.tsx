@@ -55,6 +55,7 @@ import {
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
 import { Link, SimpleLink } from "../router/link.tsx";
+import zeroAvatarImg from "./assets/zero-avatar.png";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
@@ -69,7 +70,7 @@ interface ZeroSessionChatPageProps {
 }
 
 export function ZeroSessionChatPage({
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   onBack,
   onNavigateToSchedule,
   onAvatarClick,

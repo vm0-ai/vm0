@@ -27,6 +27,7 @@ import {
   pollSlackConnection$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
+import slackIconImg from "./assets/slack-icon.svg";
 
 /** Append a cache-busting timestamp so the browser never reuses a cached OAuth redirect. */
 function openFreshOAuth(url: string) {
@@ -151,7 +152,7 @@ function SlackCard({ agentName }: { agentName: string }) {
         className="zero-card flex items-center gap-4 p-4"
       >
         <div className="shrink-0">
-          <img src="/slack-icon.svg" alt="" className="h-7 w-7" />
+          <img src={slackIconImg} alt="" className="h-7 w-7" />
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
           <div className="text-sm font-medium text-foreground">Slack</div>

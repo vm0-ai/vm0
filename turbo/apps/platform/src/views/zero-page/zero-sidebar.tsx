@@ -66,6 +66,11 @@ import {
   Button,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
+import avatar1Img from "./assets/avatar-1.png";
+import avatar2Img from "./assets/avatar-2.png";
+import avatar3Img from "./assets/avatar-3.png";
+import avatar4Img from "./assets/avatar-4.png";
+import zeroAvatarImg from "./assets/zero-avatar.png";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -84,10 +89,10 @@ import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 const MAX_PINNED = 4;
 
 export const AGENT_AVATARS = [
-  "/avatars/avatar-1.png",
-  "/avatars/avatar-2.png",
-  "/avatars/avatar-3.png",
-  "/avatars/avatar-4.png",
+  avatar1Img,
+  avatar2Img,
+  avatar3Img,
+  avatar4Img,
 ] as const;
 
 function getAgentAvatar(name: string): string {
@@ -807,7 +812,7 @@ export function ZeroSidebar({
   activeId,
   agentName,
   defaultAgentRawName,
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   subagents = [],
   currentChatAgentId = null,
   collapsed = false,

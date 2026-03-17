@@ -9,6 +9,7 @@ import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 import { ZeroSettingsPage } from "./zero-settings-page.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import zeroAvatarImg from "./assets/zero-avatar.png";
 
 interface ZeroContentProps {
   sectionId: ZeroNavId;
@@ -55,7 +56,7 @@ export function ZeroContent({
   selectedAgentName,
   onNavigateToMeet,
   onBackFromSession,
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
   chatAvatarSrc,
   onChatAvatarClick,

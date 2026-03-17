@@ -42,12 +42,18 @@ import {
   sendZeroChatMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 
+import zeroAvatarImg from "./assets/zero-avatar.png";
+import avatar1Img from "./assets/avatar-1.png";
+import avatar2Img from "./assets/avatar-2.png";
+import avatar3Img from "./assets/avatar-3.png";
+import avatar4Img from "./assets/avatar-4.png";
+
 const ZERO_AVATARS = [
-  "/zero-avatar.png",
-  "/avatars/avatar-1.png",
-  "/avatars/avatar-2.png",
-  "/avatars/avatar-3.png",
-  "/avatars/avatar-4.png",
+  zeroAvatarImg,
+  avatar1Img,
+  avatar2Img,
+  avatar3Img,
+  avatar4Img,
 ] as const;
 
 function ZeroAppSkeleton({ visible }: { visible: boolean }) {
