@@ -521,3 +521,15 @@ export {
   type OrgModelProvidersSetDefaultContract,
   type OrgModelProvidersUpdateModelContract,
 } from "./org-model-providers";
+export {
+  orgSecretsMainContract,
+  orgSecretsByNameContract,
+  type OrgSecretsMainContract,
+  type OrgSecretsByNameContract,
+} from "./org-secrets";
+export {
+  orgVariablesMainContract,
+  orgVariablesByNameContract,
+  type OrgVariablesMainContract,
+  type OrgVariablesByNameContract,
+} from "./org-variables";

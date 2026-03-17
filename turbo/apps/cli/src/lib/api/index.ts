@@ -100,5 +100,19 @@ export {
   updateUserPreferences,
 } from "./domains/user-preferences";
 
+// Domain modules - Org Secrets
+export {
+  listOrgSecrets,
+  setOrgSecret,
+  deleteOrgSecret,
+} from "./domains/org-secrets";
+
+// Domain modules - Org Variables
+export {
+  listOrgVariables,
+  setOrgVariable,
+  deleteOrgVariable,
+} from "./domains/org-variables";
+
 // Domain modules - Skills
 export { resolveSkills } from "./domains/skills";
