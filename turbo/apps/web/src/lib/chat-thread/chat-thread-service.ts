@@ -60,25 +60,10 @@ export async function listChatThreads(
     )
     .orderBy(desc(chatThreads.updatedAt));
 
-  // For each thread, get the first run's prompt as preview
-  const results = await Promise.all(
-    threads.map(async (thread) => {
-      const [firstRun] = await globalThis.services.db
-        .select({ prompt: agentRuns.prompt })
-        .from(chatThreadRuns)
-        .innerJoin(agentRuns, eq(chatThreadRuns.runId, agentRuns.id))
-        .where(eq(chatThreadRuns.chatThreadId, thread.id))
-        .orderBy(chatThreadRuns.createdAt)
-        .limit(1);
-
-      return {
-        ...thread,
-        preview: firstRun ? firstRun.prompt.slice(0, 100) : null,
-      };
-    }),
-  );
-
-  return results;
+  return threads.map((thread) => ({
+    ...thread,
+    preview: thread.title,
+  }));
 }
 
 /**
