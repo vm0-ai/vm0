@@ -30,8 +30,8 @@ agents:
 Store your secrets on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set CLOUDINARY_API_KEY your-cloudinary-api-key
-vm0 secret set CLOUDINARY_API_SECRET your-cloudinary-api-secret
+vm0 secret set CLOUDINARY_API_KEY --body "your-cloudinary-api-key"
+vm0 secret set CLOUDINARY_API_SECRET --body "your-cloudinary-api-secret"
 ```
 
 Then run your agent - secrets are automatically loaded:

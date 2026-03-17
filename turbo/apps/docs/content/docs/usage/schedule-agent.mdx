@@ -143,7 +143,7 @@ Variables and secrets for scheduled runs are inherited from the agent's platform
 
 ```bash
 vm0 variable set ENV production
-vm0 secret set API_KEY sk-xxx
+vm0 secret set API_KEY --body "sk-xxx"
 ```
 
 Then set up your schedule:

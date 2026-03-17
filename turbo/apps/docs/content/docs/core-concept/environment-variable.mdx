@@ -47,10 +47,10 @@ Store values once and use them across all agent runs.
 
 ```bash
 # Store a secret
-vm0 secret set MY_API_KEY sk-xxx
+vm0 secret set MY_API_KEY --body "sk-xxx"
 
 # With optional description
-vm0 secret set MY_API_KEY sk-xxx -d "OpenAI API key for production"
+vm0 secret set MY_API_KEY --body "sk-xxx" -d "OpenAI API key for production"
 
 # List all secrets (values are hidden)
 vm0 secret list
@@ -142,7 +142,7 @@ The CLI resolves values locally (steps 1-3), then sends them to the server where
 Example:
 
 ```bash
-# Platform has: vm0 secret set API_KEY stored-value
+# Platform has: vm0 secret set API_KEY --body "stored-value"
 # .env file contains: API_KEY=from-env-file
 # Shell environment has: export API_KEY=from-shell-env
 
@@ -172,7 +172,7 @@ For API keys you use repeatedly across multiple runs:
 
 ```bash
 # Set once
-vm0 secret set ANTHROPIC_API_KEY sk-xxx
+vm0 secret set ANTHROPIC_API_KEY --body "sk-xxx"
 ```
 
 Then use in any agent:

@@ -39,8 +39,8 @@ agents:
 Store your secrets on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set GMAIL_CLIENT_SECRET your-gmail-client-secret
-vm0 secret set GMAIL_REFRESH_TOKEN your-gmail-refresh-token
+vm0 secret set GMAIL_CLIENT_SECRET --body "your-gmail-client-secret"
+vm0 secret set GMAIL_REFRESH_TOKEN --body "your-gmail-refresh-token"
 ```
 
 Then run your agent - secrets are automatically loaded:

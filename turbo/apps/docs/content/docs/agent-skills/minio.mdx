@@ -30,8 +30,8 @@ agents:
 Store your secrets on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set MINIO_ACCESS_KEY your-minio-access-key
-vm0 secret set MINIO_SECRET_KEY your-minio-secret-key
+vm0 secret set MINIO_ACCESS_KEY --body "your-minio-access-key"
+vm0 secret set MINIO_SECRET_KEY --body "your-minio-secret-key"
 ```
 
 Then run your agent - secrets are automatically loaded:

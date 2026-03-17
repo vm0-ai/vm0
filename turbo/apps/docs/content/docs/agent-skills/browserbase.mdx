@@ -29,8 +29,8 @@ agents:
 Store your secrets on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set BROWSERBASE_API_KEY your-browserbase-api-key
-vm0 secret set BROWSERBASE_PROJECT_ID your-browserbase-project-id
+vm0 secret set BROWSERBASE_API_KEY --body "your-browserbase-api-key"
+vm0 secret set BROWSERBASE_PROJECT_ID --body "your-browserbase-project-id"
 ```
 
 Then run your agent - secrets are automatically loaded:

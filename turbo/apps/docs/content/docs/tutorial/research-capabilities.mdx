@@ -107,8 +107,8 @@ VM0 is asking you to approve the new secrets required by these skills. This is a
 Before running, store your API keys on the platform (one-time setup):
 
 ```bash
-vm0 secret set FIRECRAWL_API_KEY fc-xxx
-vm0 secret set TAVILY_API_KEY tvly-xxx
+vm0 secret set FIRECRAWL_API_KEY --body "fc-xxx"
+vm0 secret set TAVILY_API_KEY --body "tvly-xxx"
 ```
 
 This stores your secrets securely on VM0's servers. They'll be automatically loaded whenever you run your agent.

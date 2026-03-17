@@ -35,8 +35,8 @@ agents:
 Store your secrets on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set CF_ACCESS_CLIENT_ID your-client-id
-vm0 secret set CF_ACCESS_CLIENT_SECRET your-client-secret
+vm0 secret set CF_ACCESS_CLIENT_ID --body "your-client-id"
+vm0 secret set CF_ACCESS_CLIENT_SECRET --body "your-client-secret"
 ```
 
 Then run your agent - secrets are automatically loaded:

@@ -75,9 +75,9 @@ agents:
 First, store your secrets on the platform (one-time setup):
 
 ```bash
-vm0 secret set FIRECRAWL_API_KEY fc-xxx
-vm0 secret set NOTION_API_KEY secret_xxx
-vm0 secret set SLACK_BOT_TOKEN xoxb-xxx
+vm0 secret set FIRECRAWL_API_KEY --body "fc-xxx"
+vm0 secret set NOTION_API_KEY --body "secret_xxx"
+vm0 secret set SLACK_BOT_TOKEN --body "xoxb-xxx"
 ```
 
 Then run your agent - secrets are automatically loaded:
@@ -129,9 +129,9 @@ Help the agent understand where and how to use each skill:
 Store required credentials on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set GOOGLE_SHEETS_CLIENT_ID xxx
-vm0 secret set GOOGLE_SHEETS_CLIENT_SECRET xxx
-vm0 secret set GOOGLE_SHEETS_REFRESH_TOKEN xxx
+vm0 secret set GOOGLE_SHEETS_CLIENT_ID --body "xxx"
+vm0 secret set GOOGLE_SHEETS_CLIENT_SECRET --body "xxx"
+vm0 secret set GOOGLE_SHEETS_REFRESH_TOKEN --body "xxx"
 ```
 
 Then run your agent - secrets are automatically loaded:

@@ -42,7 +42,7 @@ vm0 run my-agent:abc123 "build a todo app"
 
 ```bash
 vm0 variable set ENV production
-vm0 secret set API_KEY sk-xxx
+vm0 secret set API_KEY --body "sk-xxx"
 ```
 
 Then run your agent - values are automatically loaded:
@@ -178,8 +178,8 @@ Store values once and they're automatically loaded on every run:
 ```bash
 vm0 variable set ENV production
 vm0 variable set REGION us-west
-vm0 secret set API_KEY sk-xxx
-vm0 secret set DB_PASSWORD pwd123
+vm0 secret set API_KEY --body "sk-xxx"
+vm0 secret set DB_PASSWORD --body "pwd123"
 ```
 
 Then just run:

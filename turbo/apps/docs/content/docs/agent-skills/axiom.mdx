@@ -30,8 +30,8 @@ agents:
 Store your secrets on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set AXIOM_TOKEN your-axiom-api-token
-vm0 secret set AXIOM_PERSONAL_ACCESS_TOKEN your-axiom-personal-access-token
+vm0 secret set AXIOM_TOKEN --body "your-axiom-api-token"
+vm0 secret set AXIOM_PERSONAL_ACCESS_TOKEN --body "your-axiom-personal-access-token"
 ```
 
 Then run your agent - secrets are automatically loaded:
