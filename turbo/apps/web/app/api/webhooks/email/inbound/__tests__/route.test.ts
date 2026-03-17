@@ -11,7 +11,6 @@ import {
   findTestRunsByUserAndPrompt,
   findTestRunsByUserAndPromptContaining,
   findTestCallbacksByRunId,
-  insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -158,11 +157,6 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Mock Clerk to return the session owner when looking up by email
     const senderEmail = "user@example.com";
     mockClerk({ userId: user.userId, email: senderEmail });
-    await insertOrgMembersCacheEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      role: "admin",
-    });
 
     // Build inbound email webhook payload
     const payload = JSON.stringify({
@@ -263,11 +257,6 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Mock Clerk to return the session owner when looking up by email
     const senderEmail = "user@example.com";
     mockClerk({ userId: user.userId, email: senderEmail });
-    await insertOrgMembersCacheEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      role: "admin",
-    });
 
     // Mock Resend to return empty text (e.g., email with only quoted content)
     mockReceivedEmailGet({
@@ -369,11 +358,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // Mock Clerk to return the session owner only for their email
     mockClerk({ userId: user.userId, email: "owner@example.com" });
-    await insertOrgMembersCacheEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      role: "admin",
-    });
 
     // Send reply from an unregistered email address
     const unregisteredSender = "stranger@example.com";
@@ -483,11 +467,6 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Mock Clerk to return the session owner
     const senderEmail = "owner@example.com";
     mockClerk({ userId: user.userId, email: senderEmail });
-    await insertOrgMembersCacheEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      role: "admin",
-    });
 
     // Override Resend mock to return dmarc=fail
     mockReceivedEmailGet({
@@ -554,11 +533,6 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Mock Clerk to return the user when looking up by email
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Build inbound email webhook payload with org+agent format
       const payload = JSON.stringify({
@@ -730,11 +704,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "spoofed@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Override Resend mock to return dmarc=fail
       mockReceivedEmailGet({
@@ -789,11 +758,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "user@nodmarc.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Override Resend mock: dmarc=none but dkim=pass — still rejected
       mockReceivedEmailGet({
@@ -846,11 +810,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "user@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Override Resend mock: no authentication-results header
       mockReceivedEmailGet({
@@ -900,11 +859,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "user@misconfigured.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Override Resend mock: all authentication methods fail
       mockReceivedEmailGet({
@@ -957,11 +911,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Return an email with empty text and empty HTML, DMARC passes
       mockReceivedEmailGet({
@@ -1009,11 +958,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Override Resend mock to return HTML-only content (empty text)
       mockReceivedEmailGet({
@@ -1074,11 +1018,6 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Mock Clerk to return the session owner when looking up by email
     const senderEmail = "user@example.com";
     mockClerk({ userId: user.userId, email: senderEmail });
-    await insertOrgMembersCacheEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      role: "admin",
-    });
 
     // Override Resend mock to return HTML-only content
     mockReceivedEmailGet({
@@ -1128,11 +1067,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Mock Resend to return email with attachment metadata
       mockReceivedEmailGet({
@@ -1228,11 +1162,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       mockReceivedEmailGet({
         from: senderEmail,
@@ -1294,11 +1223,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       mockReceivedEmailGet({
         from: senderEmail,
@@ -1368,11 +1292,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       mockReceivedEmailGet({
         from: senderEmail,
@@ -1479,11 +1398,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Simulate Gmail inline image: base64 data URI embedded in HTML body
       const fakeBase64 = "A".repeat(1000);
@@ -1567,11 +1481,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Inline image with no alt attribute
       const fakeBase64 = "B".repeat(500);
@@ -1661,11 +1570,6 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Mock Clerk to return the session owner when looking up by email
       const senderEmail = "user@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Mock Resend to return reply email
       mockReceivedEmailGet({
@@ -1744,20 +1648,15 @@ describe("POST /api/webhooks/email/inbound", () => {
   });
 
   describe("Email Trigger (agent@domain, auto-detect org)", () => {
-    it("should dispatch agent run for agent-only email (auto-detect org)", async () => {
+    it("should send error reply for agent-only email without org context", async () => {
       const user = await context.setupUser({ prefix: "auto-org" });
       const agentName = uniqueId("auto-agent");
       await createTestCompose(agentName);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
-      // Send to agentname@domain (no org, no plus sign)
+      // Send to agentname@domain (no org, no plus sign) — no org context
       const payload = JSON.stringify({
         type: "email.received",
         data: {
@@ -1775,27 +1674,12 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      // Verify: agent run was created
+      // Without org context, the handler sends an error reply
       const runs = await findTestRunsByUserAndPromptContaining(
         user.userId,
-        "Auto Org Test\n\nHello from email",
+        "Auto Org Test",
       );
-      expect(runs).toHaveLength(1);
-
-      // Verify: trigger callback was registered
-      const callbacks = await findTestCallbacksByRunId(runs[0]!.id);
-      const triggerCallback = callbacks.find((c) =>
-        c.url.includes("/callbacks/email/trigger"),
-      );
-      expect(triggerCallback).toBeDefined();
-      expect(triggerCallback!.payload).toMatchObject({
-        senderEmail,
-        userId: user.userId,
-        inboundEmailId: "auto-org-email",
-        inboundMessageId: "<default-msg-id@example.com>",
-        subject: "Auto Org Test",
-        triggerLocalPart: agentName,
-      });
+      expect(runs).toHaveLength(0);
     });
 
     it("should send error reply for agent-only email from unregistered sender", async () => {
@@ -1865,11 +1749,6 @@ describe("POST /api/webhooks/email/inbound", () => {
       const user = await context.setupUser({ prefix: "no-agent" });
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Send to an agent that doesn't exist in the sender's org
       const payload = JSON.stringify({
@@ -1903,11 +1782,6 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       const senderEmail = "spoofed@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
-      await insertOrgMembersCacheEntry({
-        orgId: user.orgId,
-        userId: user.userId,
-        role: "admin",
-      });
 
       // Override Resend mock to return dmarc=fail
       mockReceivedEmailGet({
@@ -1996,11 +1870,6 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Mock Clerk to return the user when looking up by email
     const senderEmail = "crash-sender@example.com";
     mockClerk({ userId: user.userId, email: senderEmail });
-    await insertOrgMembersCacheEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      role: "admin",
-    });
 
     // Make getReceivedEmail throw an unexpected error
     mockResend.emails.receiving.get.mockRejectedValueOnce(

@@ -1,5 +1,3 @@
-import { eq } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 import {
   forbidden,
   badRequest,
@@ -10,7 +8,6 @@ import {
 } from "../errors";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
-import { orgMembersCache } from "../../db/schema/org-members-cache";
 import type { AuthContext } from "../auth/get-user-id";
 
 import type { OrgRole } from "@vm0/core";
@@ -173,9 +170,6 @@ export async function resolveOrg(
  *
  * Used by handlers that operate outside request context
  * (Slack, Telegram, email) where missing org is expected.
- *
- * When no orgSlug is provided and the AuthContext has no orgId,
- * falls back to the user's first org via Clerk API (auto-detect).
  */
 export async function resolveOrgOrNull(
   authCtx: AuthContext,
@@ -185,47 +179,9 @@ export async function resolveOrgOrNull(
     const { org } = await resolveOrg(authCtx, orgSlug);
     return org;
   } catch (error) {
-    if (isNotFound(error) || isForbidden(error)) return null;
-    // When no explicit org context was given, try auto-detect via Clerk API
-    if (isBadRequest(error) && !orgSlug && !authCtx.orgId) {
-      return autoDetectUserOrg(authCtx.userId);
-    }
-    if (isBadRequest(error)) return null;
+    if (isNotFound(error) || isBadRequest(error)) return null;
     throw error;
   }
-}
-
-/**
- * Auto-detect the user's first org via org_members_cache / Clerk API.
- * Used as a fallback when no explicit org context is available
- * (e.g., agent@domain email trigger without org slug).
- */
-async function autoDetectUserOrg(userId: string): Promise<ResolvedOrg | null> {
-  // 1. Check org_members_cache for any org this user belongs to
-  const db = globalThis.services.db;
-  const [cached] = await db
-    .select({ orgId: orgMembersCache.orgId })
-    .from(orgMembersCache)
-    .where(eq(orgMembersCache.userId, userId))
-    .limit(1);
-
-  if (cached) {
-    const orgData = await getOrgDataOrNull(cached.orgId);
-    if (orgData) return orgData;
-    // Cache entry points to a deleted/invalid org — fall through to Clerk API
-  }
-
-  // 2. Fall back to Clerk API
-  const client = await clerkClient();
-  const memberships = await client.users.getOrganizationMembershipList({
-    userId,
-    limit: 1,
-  });
-
-  if (memberships.data.length === 0) return null;
-
-  const orgId = memberships.data[0]!.organization.id;
-  return getOrgDataOrNull(orgId);
 }
 
 /**
