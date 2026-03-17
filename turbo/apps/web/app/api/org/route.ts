@@ -11,14 +11,16 @@ import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import type { ResolvedOrg } from "../../../src/lib/org/resolve-org";
 import { logger } from "../../../src/lib/logger";
 import { isBadRequest, isForbidden, isNotFound } from "../../../src/lib/errors";
+import type { OrgRole } from "@vm0/core";
 
 const log = logger("api:org");
 
-function resolvedOrgToResponse(resolved: ResolvedOrg) {
+function resolvedOrgToResponse(resolved: ResolvedOrg, role?: OrgRole) {
   return {
     id: resolved.orgId,
     slug: resolved.slug,
     tier: resolved.tier,
+    role,
   };
 }
 
@@ -41,11 +43,11 @@ const router = tsr.router(orgContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
 
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId, orgSlug);
+      const { org: resolvedOrg, member } = await resolveOrg(userId, orgSlug);
 
       return {
         status: 200 as const,
-        body: resolvedOrgToResponse(resolvedOrg),
+        body: resolvedOrgToResponse(resolvedOrg, member.role),
       };
     } catch (error) {
       if (isNotFound(error) || isBadRequest(error)) {

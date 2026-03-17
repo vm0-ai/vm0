@@ -14,6 +14,10 @@ import {
   resetMockConnectors,
 } from "./api-connectors.ts";
 import { apiOrgHandlers } from "./api-org.ts";
+import {
+  apiOrgModelProvidersHandlers,
+  resetMockOrgModelProviders,
+} from "./api-org-model-providers.ts";
 import { apiSecretsHandlers, resetMockSecrets } from "./api-secrets.ts";
 import { apiVariablesHandlers, resetMockVariables } from "./api-variables.ts";
 import { exampleHandlers } from "./example.ts";
@@ -37,6 +41,7 @@ export const handlers = [
   ...apiModelProvidersHandlers,
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
+  ...apiOrgModelProvidersHandlers,
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
   ...exampleHandlers,
@@ -56,4 +61,5 @@ export function resetAllMockHandlers(): void {
   resetMockSlackOrgIntegration();
   resetMockTelegramIntegration();
   resetMockUserPreferences();
+  resetMockOrgModelProviders();
 }
