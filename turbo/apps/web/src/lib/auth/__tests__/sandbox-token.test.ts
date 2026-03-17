@@ -3,19 +3,24 @@ import {
   generateSandboxToken,
   verifySandboxToken,
   isSandboxToken,
+  generateComposeJobToken,
+  verifyComposeJobToken,
+  SANDBOX_TOKEN_PREFIX,
 } from "../sandbox-token";
 
 // SECRETS_ENCRYPTION_KEY is set in setup.ts
 
 describe("sandbox-token", () => {
   describe("generateSandboxToken", () => {
-    it("should generate a valid JWT token", async () => {
+    it("should generate a prefixed token", async () => {
       const token = await generateSandboxToken("user-123", "run-456");
 
       expect(token).toBeDefined();
       expect(typeof token).toBe("string");
-      // JWT format: header.payload.signature
-      expect(token.split(".")).toHaveLength(3);
+      expect(token.startsWith(SANDBOX_TOKEN_PREFIX)).toBe(true);
+      // JWT portion after prefix should have 3 dot-separated parts
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      expect(jwt.split(".")).toHaveLength(3);
     });
 
     it("should generate different tokens for different runs", async () => {
@@ -43,18 +48,26 @@ describe("sandbox-token", () => {
       expect(auth?.runId).toBe("run-456");
     });
 
-    it("should return null for invalid token format", () => {
+    it("should return null for token without prefix", () => {
       const auth = verifySandboxToken("not-a-jwt-token");
+
+      expect(auth).toBeNull();
+    });
+
+    it("should return null for raw JWT without prefix", () => {
+      // A raw JWT (3 dot-separated parts) should be rejected without prefix
+      const auth = verifySandboxToken("header.payload.signature");
 
       expect(auth).toBeNull();
     });
 
     it("should return null for tampered token", async () => {
       const token = await generateSandboxToken("user-123", "run-456");
-      // Tamper with the token by modifying the payload
-      const parts = token.split(".");
+      // Tamper with the JWT portion after the prefix
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      const parts = jwt.split(".");
       parts[1] = parts[1] + "tampered";
-      const tamperedToken = parts.join(".");
+      const tamperedToken = SANDBOX_TOKEN_PREFIX + parts.join(".");
 
       const auth = verifySandboxToken(tamperedToken);
 
@@ -63,10 +76,10 @@ describe("sandbox-token", () => {
 
     it("should return null for token with invalid signature", async () => {
       const token = await generateSandboxToken("user-123", "run-456");
-      // Replace signature with invalid one
-      const parts = token.split(".");
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      const parts = jwt.split(".");
       parts[2] = "invalid-signature";
-      const invalidToken = parts.join(".");
+      const invalidToken = SANDBOX_TOKEN_PREFIX + parts.join(".");
 
       const auth = verifySandboxToken(invalidToken);
 
@@ -74,7 +87,6 @@ describe("sandbox-token", () => {
     });
 
     it("should return null for expired token", async () => {
-      // Generate token with current time
       const token = await generateSandboxToken("user-123", "run-456");
 
       // Mock time to be 3 hours in the future (beyond 2 hour expiration)
@@ -107,18 +119,22 @@ describe("sandbox-token", () => {
   });
 
   describe("isSandboxToken", () => {
-    it("should return true for JWT-like tokens", () => {
-      expect(isSandboxToken("a.b.c")).toBe(true);
-      expect(isSandboxToken("header.payload.signature")).toBe(true);
+    it("should return true for tokens with sandbox prefix", () => {
+      expect(isSandboxToken("vm0_sandbox_header.payload.signature")).toBe(true);
+      expect(isSandboxToken("vm0_sandbox_anything")).toBe(true);
     });
 
     it("should return false for CLI tokens", () => {
       expect(isSandboxToken("vm0_live_abc123")).toBe(false);
     });
 
+    it("should return false for raw JWTs without prefix", () => {
+      expect(isSandboxToken("a.b.c")).toBe(false);
+      expect(isSandboxToken("header.payload.signature")).toBe(false);
+    });
+
     it("should return false for random strings", () => {
       expect(isSandboxToken("not-a-token")).toBe(false);
-      expect(isSandboxToken("only.two.parts.extra")).toBe(false);
       expect(isSandboxToken("")).toBe(false);
     });
   });
@@ -211,6 +227,68 @@ describe("sandbox-token", () => {
         expect(auth?.userId).toBe(userId);
         expect(auth?.runId).toBe(runId);
       }
+    });
+  });
+
+  describe("compose job tokens", () => {
+    it("should generate a prefixed compose job token", async () => {
+      const token = await generateComposeJobToken("user-123", "job-456");
+
+      expect(token.startsWith(SANDBOX_TOKEN_PREFIX)).toBe(true);
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      expect(jwt.split(".")).toHaveLength(3);
+    });
+
+    it("should verify a valid compose job token", async () => {
+      const token = await generateComposeJobToken("user-123", "job-456");
+      const auth = verifyComposeJobToken(token);
+
+      expect(auth).not.toBeNull();
+      expect(auth?.userId).toBe("user-123");
+      expect(auth?.jobId).toBe("job-456");
+    });
+
+    it("should return null for expired compose job token", async () => {
+      const token = await generateComposeJobToken("user-123", "job-456");
+
+      // Mock time to be 15 minutes in the future (beyond 10 minute expiration)
+      const realDateNow = Date.now;
+      Date.now = () => realDateNow() + 15 * 60 * 1000;
+
+      try {
+        const auth = verifyComposeJobToken(token);
+        expect(auth).toBeNull();
+      } finally {
+        Date.now = realDateNow;
+      }
+    });
+
+    it("should return null for token without prefix", () => {
+      expect(verifyComposeJobToken("header.payload.signature")).toBeNull();
+    });
+  });
+
+  describe("cross-scope rejection", () => {
+    it("should reject sandbox token with verifyComposeJobToken", async () => {
+      const token = await generateSandboxToken("user-123", "run-456");
+      const auth = verifyComposeJobToken(token);
+
+      expect(auth).toBeNull();
+    });
+
+    it("should reject compose job token with verifySandboxToken", async () => {
+      const token = await generateComposeJobToken("user-123", "job-456");
+      const auth = verifySandboxToken(token);
+
+      expect(auth).toBeNull();
+    });
+
+    it("should identify both token types with isSandboxToken", async () => {
+      const sandboxToken = await generateSandboxToken("user-123", "run-456");
+      const composeToken = await generateComposeJobToken("user-123", "job-456");
+
+      expect(isSandboxToken(sandboxToken)).toBe(true);
+      expect(isSandboxToken(composeToken)).toBe(true);
     });
   });
 });

@@ -8,6 +8,13 @@ type Capability = (typeof VALID_CAPABILITIES)[number];
 const log = logger("auth:sandbox");
 
 /**
+ * Token prefix for self-signed JWTs (sandbox and compose-job tokens).
+ * Both token types share this prefix and are differentiated by the
+ * `scope` field inside the JWT payload.
+ */
+export const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
+
+/**
  * JWT payload for sandbox tokens (agent runs)
  */
 interface SandboxTokenPayload {
@@ -84,9 +91,14 @@ function getJwtKey(): Buffer {
 }
 
 /**
+ * Union of all self-signed JWT payload types
+ */
+type JwtPayload = SandboxTokenPayload | ComposeJobTokenPayload;
+
+/**
  * Create a JWT token with HMAC-SHA256 signature
  */
-function createJwt(payload: SandboxTokenPayload): string {
+function createJwt(payload: JwtPayload): string {
   const header = { alg: "HS256", typ: "JWT" };
   const headerEncoded = base64UrlEncode(JSON.stringify(header));
   const payloadEncoded = base64UrlEncode(JSON.stringify(payload));
@@ -99,11 +111,12 @@ function createJwt(payload: SandboxTokenPayload): string {
 }
 
 /**
- * Verify and decode a JWT token
- * Returns null if invalid or expired
+ * Verify JWT signature and expiry, decode payload.
+ * Does NOT validate scope or fields — callers handle that.
+ * @param rawJwt - The raw JWT string (without any prefix)
  */
-function verifyJwt(token: string): SandboxTokenPayload | null {
-  const parts = token.split(".");
+function verifyJwtPayload(rawJwt: string): JwtPayload | null {
+  const parts = rawJwt.split(".");
   if (parts.length !== 3) {
     return null;
   }
@@ -121,34 +134,14 @@ function verifyJwt(token: string): SandboxTokenPayload | null {
     return null;
   }
 
-  // Decode and validate payload
+  // Decode payload and check expiration
   try {
     const payload = JSON.parse(
       base64UrlDecode(payloadEncoded!).toString(),
-    ) as SandboxTokenPayload;
+    ) as JwtPayload;
 
-    // Check expiration
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
       return null;
-    }
-
-    // Validate required fields
-    if (payload.scope !== "sandbox" || !payload.userId || !payload.runId) {
-      return null;
-    }
-
-    // Validate capability values if present
-    if (payload.capabilities) {
-      if (!Array.isArray(payload.capabilities)) {
-        return null;
-      }
-      const validSet = new Set<string>(VALID_CAPABILITIES);
-      for (const cap of payload.capabilities) {
-        if (typeof cap !== "string" || !validSet.has(cap)) {
-          log.debug(`Invalid capability in token: ${String(cap)}`);
-          return null;
-        }
-      }
     }
 
     return payload;
@@ -183,21 +176,48 @@ export async function generateSandboxToken(
     exp: now + expiresIn,
   };
 
-  const token = createJwt(payload);
+  const jwt = createJwt(payload);
   log.debug(`Generated sandbox JWT for run ${runId}`);
-  return token;
+  return SANDBOX_TOKEN_PREFIX + jwt;
 }
 
 /**
- * Verify a sandbox JWT token and extract auth info
- * Returns null if token is invalid, expired, or not a sandbox token
+ * Verify a sandbox JWT token and extract auth info.
+ * Returns null if token is invalid, expired, or not a sandbox token.
  *
- * @param token - The JWT token (without "Bearer " prefix)
+ * @param token - The full prefixed token (without "Bearer " prefix)
  */
 export function verifySandboxToken(token: string): SandboxAuth | null {
-  const payload = verifyJwt(token);
+  if (!token.startsWith(SANDBOX_TOKEN_PREFIX)) {
+    return null;
+  }
+
+  const rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+  const payload = verifyJwtPayload(rawJwt);
   if (!payload) {
     return null;
+  }
+
+  // Validate scope and required fields
+  if (payload.scope !== "sandbox") {
+    return null;
+  }
+  if (!("runId" in payload) || !payload.userId || !payload.runId) {
+    return null;
+  }
+
+  // Validate capability values if present
+  if (payload.capabilities) {
+    if (!Array.isArray(payload.capabilities)) {
+      return null;
+    }
+    const validSet = new Set<string>(VALID_CAPABILITIES);
+    for (const cap of payload.capabilities) {
+      if (typeof cap !== "string" || !validSet.has(cap)) {
+        log.debug(`Invalid capability in token: ${String(cap)}`);
+        return null;
+      }
+    }
   }
 
   return {
@@ -208,11 +228,11 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
 }
 
 /**
- * Check if a token looks like a sandbox JWT token
- * (has 3 parts separated by dots)
+ * Check if a token is a self-signed JWT (sandbox or compose-job)
+ * by checking for the vm0_sandbox_ prefix.
  */
 export function isSandboxToken(token: string): boolean {
-  return token.split(".").length === 3;
+  return token.startsWith(SANDBOX_TOKEN_PREFIX);
 }
 
 // ============================================================================
@@ -246,55 +266,38 @@ export async function generateComposeJobToken(
     exp: now + expiresIn,
   };
 
-  const token = createJwt(payload as unknown as SandboxTokenPayload);
+  const jwt = createJwt(payload);
   log.debug(`Generated compose job JWT for job ${jobId}`);
-  return token;
+  return SANDBOX_TOKEN_PREFIX + jwt;
 }
 
 /**
- * Verify a compose job JWT token and extract auth info
- * Returns null if token is invalid, expired, or not a compose-job token
+ * Verify a compose job JWT token and extract auth info.
+ * Returns null if token is invalid, expired, or not a compose-job token.
+ *
+ * @param token - The full prefixed token (without "Bearer " prefix)
  */
 export function verifyComposeJobToken(token: string): ComposeJobAuth | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) {
+  if (!token.startsWith(SANDBOX_TOKEN_PREFIX)) {
     return null;
   }
 
-  const [headerEncoded, payloadEncoded, signatureEncoded] = parts;
-
-  // Verify signature
-  const data = `${headerEncoded}.${payloadEncoded}`;
-  const expectedSignature = createHmac("sha256", getJwtKey())
-    .update(data)
-    .digest();
-  const actualSignature = base64UrlDecode(signatureEncoded!);
-
-  if (!expectedSignature.equals(actualSignature)) {
+  const rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+  const payload = verifyJwtPayload(rawJwt);
+  if (!payload) {
     return null;
   }
 
-  // Decode and validate payload
-  try {
-    const payload = JSON.parse(
-      base64UrlDecode(payloadEncoded!).toString(),
-    ) as ComposeJobTokenPayload;
-
-    // Check expiration
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return null;
-    }
-
-    // Validate required fields - must be compose-job scope
-    if (payload.scope !== "compose-job" || !payload.userId || !payload.jobId) {
-      return null;
-    }
-
-    return {
-      userId: payload.userId,
-      jobId: payload.jobId,
-    };
-  } catch {
+  // Validate scope and required fields
+  if (payload.scope !== "compose-job") {
     return null;
   }
+  if (!("jobId" in payload) || !payload.userId || !payload.jobId) {
+    return null;
+  }
+
+  return {
+    userId: payload.userId,
+    jobId: payload.jobId,
+  };
 }
