@@ -319,6 +319,7 @@ Memory provides persistent long-term storage for agents. Unlike artifacts which 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
 | `vm0 logs <runId>` | View logs for an agent run | `-a/--agent`, `-s/--system`, `-m/--metrics`, `-n/--network`, `--since`, `--tail`, `--head`, `--all` |
+| `vm0 logs search <keyword>` | Search agent events across runs | `-A <n>`, `-B <n>`, `-C <n>`, `--agent <name>`, `--run <id>`, `--since <time>`, `--limit <n>` |
 
 **Examples:**
 ```bash
@@ -336,6 +337,18 @@ vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810 --since 5m
 
 # Fetch all log entries
 vm0 logs 11007483-20b2-42b1-8f2a-b42a10186810 --all
+
+# Search for errors across all runs
+vm0 logs search "error"
+
+# Search with context (like grep -C)
+vm0 logs search "OOM" -C 3
+
+# Filter by agent and time range
+vm0 logs search "timeout" --agent my-agent --since 30d
+
+# Filter by specific run
+vm0 logs search "connection" --run 11007483-20b2-42b1-8f2a-b42a10186810
 ```
 
 ## Usage Statistics

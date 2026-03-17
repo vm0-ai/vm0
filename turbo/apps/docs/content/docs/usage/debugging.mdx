@@ -128,3 +128,35 @@ vm0 logs <run-id> --since 2h
 # Logs since a specific time
 vm0 logs <run-id> --since 2024-01-15T10:30:00Z
 ```
+
+### Searching Across Runs
+
+Use `vm0 logs search` to find events across multiple runs without knowing specific run IDs. Results are grouped by run, with a header showing the run ID, agent name, and timestamp.
+
+```bash
+# Search for errors across all runs in the last 7 days (default)
+vm0 logs search "error"
+
+# Search with context lines before and after each match
+vm0 logs search "OOM" -C 3
+
+# Narrow results to a specific agent and time range
+vm0 logs search "timeout" --agent my-agent --since 30d
+
+# Search within a specific run
+vm0 logs search "connection refused" --run 11007483-20b2-42b1-8f2a-b42a10186810
+```
+
+#### Search Options
+
+| Option | Description |
+|--------|-------------|
+| `-A, --after-context <n>` | Show n events after each match (max 10) |
+| `-B, --before-context <n>` | Show n events before each match (max 10) |
+| `-C, --context <n>` | Show n events before and after each match (max 10) |
+| `--agent <name>` | Filter by agent name |
+| `--run <id>` | Filter by specific run ID |
+| `--since <time>` | Search window (default: 7d) |
+| `--limit <n>` | Maximum number of matches (default: 20, max 50) |
+
+When results are truncated, a hint is displayed. Use `--limit` to increase the number of matches returned.
