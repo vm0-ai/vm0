@@ -12,6 +12,7 @@ import {
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { and, eq, inArray, gte } from "drizzle-orm";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,
   getDatasetName,
@@ -36,6 +37,7 @@ function escapeApl(value: string): string {
 async function getAgentNames(
   runIds: string[],
   userId: string,
+  orgId: string,
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   if (runIds.length === 0) return result;
@@ -54,7 +56,13 @@ async function getAgentNames(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .where(and(inArray(agentRuns.id, runIds), eq(agentRuns.userId, userId)));
+    .where(
+      and(
+        inArray(agentRuns.id, runIds),
+        eq(agentRuns.userId, userId),
+        eq(agentRuns.orgId, orgId),
+      ),
+    );
 
   for (const row of rows) {
     result.set(row.runId, row.composeName || "unknown");
@@ -65,11 +73,13 @@ async function getAgentNames(
 
 async function getUserRunIds(
   userId: string,
+  orgId: string,
   since: Date,
   agentName?: string,
 ): Promise<string[]> {
   const conditions = [
     eq(agentRuns.userId, userId),
+    eq(agentRuns.orgId, orgId),
     gte(agentRuns.createdAt, since),
   ];
 
@@ -165,7 +175,7 @@ function toRunEvent(event: AxiomAgentEvent): RunEvent {
 }
 
 const router = tsr.router(logsSearchContract, {
-  searchLogs: async ({ query, headers }) => {
+  searchLogs: async ({ query, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -177,6 +187,9 @@ const router = tsr.router(logsSearchContract, {
         },
       };
     }
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(userId, orgSlug);
 
     const { keyword, agent, runId, limit, before, after } = query;
     const since = query.since ?? Date.now() - SEVEN_DAYS_MS;
@@ -190,7 +203,13 @@ const router = tsr.router(logsSearchContract, {
       const [run] = await globalThis.services.db
         .select({ id: agentRuns.id })
         .from(agentRuns)
-        .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
+        .where(
+          and(
+            eq(agentRuns.id, runId),
+            eq(agentRuns.userId, userId),
+            eq(agentRuns.orgId, org.orgId),
+          ),
+        )
         .limit(1);
 
       if (!run) {
@@ -201,7 +220,7 @@ const router = tsr.router(logsSearchContract, {
       }
       targetRunIds = [runId];
     } else {
-      targetRunIds = await getUserRunIds(userId, sinceDate, agent);
+      targetRunIds = await getUserRunIds(userId, org.orgId, sinceDate, agent);
       if (targetRunIds.length === 0) {
         return {
           status: 200 as const,
@@ -240,7 +259,7 @@ const router = tsr.router(logsSearchContract, {
 
     // Assemble results
     const matchedRunIds = [...new Set(matches.map((e) => e.runId))];
-    const agentNames = await getAgentNames(matchedRunIds, userId);
+    const agentNames = await getAgentNames(matchedRunIds, userId, org.orgId);
 
     const results = matches.map((match) => {
       const contextBefore: RunEvent[] = [];
