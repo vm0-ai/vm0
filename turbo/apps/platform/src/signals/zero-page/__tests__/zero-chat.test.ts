@@ -186,6 +186,12 @@ describe("zero-chat signals", () => {
             statusText: "Not Found",
           });
         }),
+        http.get("*/api/agent/sessions/:id", () => {
+          return new HttpResponse(null, {
+            status: 404,
+            statusText: "Not Found",
+          });
+        }),
       );
 
       await setup();

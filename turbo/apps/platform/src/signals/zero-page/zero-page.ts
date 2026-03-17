@@ -9,8 +9,11 @@ import { initZeroActivity$ } from "./zero-activity.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { zeroChatAgentName$, zeroInChat$ } from "./zero-nav.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
+import { logger } from "../log.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
+
+const L = logger("ZeroPage");
 
 /** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
 const initialDataLoaded$ = state(false);
@@ -35,10 +38,10 @@ async function resolveAndSwitchAgent(
   // On /zero/chat/:threadId, switchZeroSession$ resolves the agent from
   // the thread's agentComposeId. Don't interfere here.
   if (get(zeroInChat$)) {
-    console.warn("[resolveAgent] on chat URL, deferring to switchZeroSession$");
+    L.info("on chat URL, deferring to switchZeroSession$");
     return;
   }
-  console.warn("[resolveAgent] path:", currentPath);
+  L.info("resolveAgent path:", currentPath);
 
   // If on bare /zero, redirect to /zero/talk/:defaultAgent
   if (/^\/zero\/?$/.test(currentPath)) {

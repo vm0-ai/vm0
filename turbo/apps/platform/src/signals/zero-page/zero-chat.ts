@@ -519,6 +519,29 @@ export const switchActiveAgent$ = command(
   },
 );
 
+/** Resolve which agent to activate based on the thread's agentComposeId. */
+async function syncAgentForThread(
+  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
+  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+  agentComposeId: string | undefined,
+) {
+  if (agentComposeId) {
+    const currentAgentId = get(zeroChatAgentId$);
+    const status = await get(zeroOnboardingStatus$);
+    const isDefault = agentComposeId === status.defaultAgentComposeId;
+    const newAgentId = isDefault ? null : agentComposeId;
+    if (newAgentId !== currentAgentId) {
+      set(switchActiveAgent$, newAgentId ? { id: newAgentId, name: "" } : null);
+    } else if (get(internalSessionList$).length === 0) {
+      detach(set(fetchZeroSessionList$), Reason.DomCallback);
+    }
+  } else if (get(zeroChatAgentId$) !== null) {
+    set(switchActiveAgent$, null);
+  } else if (get(internalSessionList$).length === 0) {
+    detach(set(fetchZeroSessionList$), Reason.DomCallback);
+  }
+}
+
 export const switchZeroSession$ = command(
   async ({ get, set }, threadId: string) => {
     // Abort any in-flight polling from the previous session
@@ -588,24 +611,7 @@ export const switchZeroSession$ = command(
       }
 
       // Switch agent if it changed, or fetch session list if empty (fresh load).
-      if (data.agentComposeId) {
-        const currentAgentId = get(zeroChatAgentId$);
-        const status = await get(zeroOnboardingStatus$);
-        const isDefault = data.agentComposeId === status.defaultAgentComposeId;
-        const newAgentId = isDefault ? null : data.agentComposeId;
-        if (newAgentId !== currentAgentId) {
-          set(
-            switchActiveAgent$,
-            newAgentId ? { id: newAgentId, name: "" } : null,
-          );
-        } else if (get(internalSessionList$).length === 0) {
-          detach(set(fetchZeroSessionList$), Reason.DomCallback);
-        }
-      } else if (get(zeroChatAgentId$) !== null) {
-        set(switchActiveAgent$, null);
-      } else if (get(internalSessionList$).length === 0) {
-        detach(set(fetchZeroSessionList$), Reason.DomCallback);
-      }
+      await syncAgentForThread(get, set, data.agentComposeId);
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(
         (m) => ({
