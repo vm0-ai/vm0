@@ -87,6 +87,15 @@ export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
 });
 
 /**
+ * Whether the talk agent has been resolved from the URL.
+ * Set to true after setupZeroPage$ processes the /zero/talk/:name route.
+ */
+const internalTalkAgentResolved$ = state(false);
+export const zeroTalkAgentResolved$ = computed((get) =>
+  get(internalTalkAgentResolved$),
+);
+
+/**
  * Set the chat agent ID and name (in-memory).
  * Pass null to clear (chat with default agent).
  */
@@ -94,6 +103,7 @@ export const setZeroChatAgent$ = command(
   ({ set }, agent: { id: string; name: string } | null) => {
     set(internalChatAgentId$, agent?.id ?? null);
     set(internalLastChatAgentName$, agent?.name ?? null);
+    set(internalTalkAgentResolved$, true);
   },
 );
 

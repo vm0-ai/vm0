@@ -162,6 +162,7 @@ interface SessionAccount {
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
   agentName?: string | null;
+  defaultAgentRawName?: string | null;
   zeroAvatarSrc?: string;
   subagents?: SubagentInfo[];
   currentChatAgentId?: string | null;
@@ -784,6 +785,7 @@ function ManagePinnedAgentsDialog({
 export function ZeroSidebar({
   activeId,
   agentName,
+  defaultAgentRawName,
   zeroAvatarSrc = "/zero-avatar.png",
   subagents = [],
   currentChatAgentId = null,
@@ -972,7 +974,12 @@ export function ZeroSidebar({
             </div>
             <div className="flex flex-col gap-0.5">
               <Link
-                pathname="/zero"
+                pathname={defaultAgentRawName ? "/zero/talk/:name" : "/zero"}
+                options={
+                  defaultAgentRawName
+                    ? { pathParams: { name: defaultAgentRawName } }
+                    : undefined
+                }
                 className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   activeId === "chat" && currentChatAgentId === null
                     ? "bg-sidebar-active text-sidebar-primary font-medium"

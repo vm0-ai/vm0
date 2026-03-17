@@ -26,6 +26,7 @@ import {
   zeroSessionId$,
   zeroChatAgentId$,
   zeroChatAgentName$,
+  zeroTalkAgentResolved$,
   setZeroActiveId$,
   setZeroChatAgent$,
   navigateToZeroSession$,
@@ -312,7 +313,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
 
   // When visiting /zero/talk/:name, wait for the agent to be resolved
   const talkAgentName = useGet(zeroChatAgentName$);
-  const talkAgentReady = !talkAgentName || currentChatAgentId !== null;
+  const talkAgentResolved = useGet(zeroTalkAgentResolved$);
+  const talkAgentReady = !talkAgentName || talkAgentResolved;
 
   const { recentSessions, recentSessionsLoading, recentSessionsError } =
     useSessionLifecycle(
@@ -394,6 +396,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
       <ZeroSidebar
         activeId={activeId}
         agentName={agentDisplayName}
+        defaultAgentRawName={defaultRawName}
         zeroAvatarSrc={zeroAvatarSrc}
         subagents={subagents}
         currentChatAgentId={currentChatAgentId}
