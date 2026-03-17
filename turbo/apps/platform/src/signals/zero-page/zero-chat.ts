@@ -704,14 +704,10 @@ export const sendZeroChatMessage$ = command(
           return;
         }
         set(internalChatThreadId$, threadId);
-        // Navigate and refresh sidebar immediately
+        // Navigate immediately so URL updates
         if (get(zeroInChat$)) {
           set(navigateToZeroSession$, threadId);
         }
-        set(fetchZeroSessionList$).catch((error: unknown) => {
-          throwIfAbort(error);
-          L.error("Failed to refresh chat list:", error);
-        });
       }
 
       const modelProvider =
@@ -739,9 +735,13 @@ export const sendZeroChatMessage$ = command(
         return;
       }
 
-      // Associate run to thread (fire-and-forget)
-      addRunToThread(fetchFn, threadId, runId).catch((error: unknown) => {
-        L.error("Failed to associate run to thread:", error);
+      // Associate run to thread (must complete before polling so refresh works)
+      await addRunToThread(fetchFn, threadId, runId);
+
+      // Refresh sidebar after run is associated (has preview now)
+      set(fetchZeroSessionList$).catch((error: unknown) => {
+        throwIfAbort(error);
+        L.error("Failed to refresh chat list:", error);
       });
 
       set(internalMessages$, (prev) => {
