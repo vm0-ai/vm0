@@ -137,9 +137,7 @@ const router = tsr.router(runsCancelContract, {
           : undefined,
       );
       if (shouldDrain) {
-        await processOrgCredits(run.orgId).catch((err) =>
-          log.error("Failed to process credits", { err }),
-        );
+        await processOrgCredits(run.orgId);
       }
     });
 

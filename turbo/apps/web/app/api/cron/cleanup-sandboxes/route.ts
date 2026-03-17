@@ -240,9 +240,7 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             () => drainOrgQueue(run.orgId, dispatchQueuedRun),
           );
 
-          await processOrgCredits(run.orgId).catch((err) =>
-            log.error("Failed to process credits for timed out run", { err }),
-          );
+          await processOrgCredits(run.orgId);
 
           const isDebug =
             run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;

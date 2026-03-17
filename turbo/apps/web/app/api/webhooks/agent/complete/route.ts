@@ -92,9 +92,7 @@ function scheduleTerminalSideEffects(
     await dispatchTerminalSideEffects(runId, status, errorMsg, () =>
       drainOrgQueue(orgId, dispatchQueuedRun),
     );
-    await processOrgCredits(orgId).catch((err) =>
-      log.error("Failed to process credits", { err }),
-    );
+    await processOrgCredits(orgId);
   });
 }
 
