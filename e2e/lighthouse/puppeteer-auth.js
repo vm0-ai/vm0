@@ -22,11 +22,6 @@ async function waitFor(page, selector, timeout = 30000) {
   return page.$(selector);
 }
 
-/** Sleep for the given number of milliseconds. */
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 module.exports = async (browser, context) => {
   const webUrl = process.env.WEB_URL;
   const platformUrl = process.env.PLATFORM_URL;
@@ -70,14 +65,15 @@ module.exports = async (browser, context) => {
   const emailInput = await waitFor(page, 'input[name="identifier"]');
   await emailInput.type(TEST_EMAIL);
 
-  // Click continue
+  // Click continue and wait for the next form to load
   const continueBtn = await waitFor(page, ".cl-formButtonPrimary");
   await continueBtn.click();
-  await sleep(2000);
+  await page.waitForSelector('a[class*="link"]:not([href])', {
+    visible: true,
+    timeout: 15000,
+  });
 
   // Switch to email code method
-  await waitFor(page, 'a[class*="link"]:not([href])');
-  // Find the "Use another method" link by text content
   const links = await page.$$("a, button");
   for (const link of links) {
     const text = await page.evaluate((el) => el.textContent, link);
@@ -86,7 +82,15 @@ module.exports = async (browser, context) => {
       break;
     }
   }
-  await sleep(1000);
+
+  // Wait for method selection buttons to appear
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("button")].some((b) =>
+        b.textContent?.includes("Email code"),
+      ),
+    { timeout: 10000 },
+  );
 
   // Select email code option
   const buttons = await page.$$("button");
@@ -97,7 +101,12 @@ module.exports = async (browser, context) => {
       break;
     }
   }
-  await sleep(2000);
+
+  // Wait for OTP input to appear
+  await page.waitForSelector('input[data-input-otp="true"]', {
+    visible: true,
+    timeout: 15000,
+  });
 
   // Enter OTP with retry
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -105,26 +114,38 @@ module.exports = async (browser, context) => {
     if (otpInput) {
       await otpInput.click();
       await otpInput.type(TEST_OTP);
-      await sleep(3000);
 
-      // Check if we navigated away from sign-in
-      const currentUrl = page.url();
-      if (!currentUrl.includes("/sign-in")) {
+      // Wait for navigation away from sign-in
+      try {
+        await page.waitForFunction(
+          () => !window.location.href.includes("/sign-in"),
+          { timeout: 5000 },
+        );
         break;
+      } catch {
+        // Still on sign-in page, clear and retry
+        await otpInput.click({ clickCount: 3 });
+        await page.keyboard.press("Backspace");
+        await page.waitForFunction(
+          () => {
+            const input = document.querySelector(
+              'input[data-input-otp="true"]',
+            );
+            return input && input.value === "";
+          },
+          { timeout: 5000 },
+        );
       }
-
-      // Clear and retry
-      await otpInput.click({ clickCount: 3 });
-      await page.keyboard.press("Backspace");
-      await sleep(2000);
-    } else {
-      await sleep(2000);
     }
   }
 
-  // Wait for authentication to complete — either redirected to platform
-  // or still on web with authenticated state
-  await sleep(3000);
+  // Verify authentication succeeded
+  const finalUrl = page.url();
+  if (finalUrl.includes("/sign-in")) {
+    throw new Error(
+      `Authentication failed after 3 OTP attempts. Still on ${finalUrl}`,
+    );
+  }
 
   // Navigate to platform to ensure session is established there too
   await page.goto(platformUrl, { waitUntil: "domcontentloaded" });

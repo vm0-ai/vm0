@@ -1508,7 +1508,7 @@ jobs:
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
 
-  # Lighthouse CI audit for web homepage (informational only, not a merge blocker)
+  # Lighthouse CI audit for web homepage (failure blocks merge, skip is allowed)
   lighthouse-web:
     runs-on: ubuntu-latest
     needs: [prepare, deploy-web]
@@ -1547,7 +1547,7 @@ jobs:
           path: e2e/lighthouse/lighthouse-reports/web/
           retention-days: 7
 
-  # Lighthouse CI audit for platform homepage (informational only, not a merge blocker)
+  # Lighthouse CI audit for platform homepage (failure blocks merge, skip is allowed)
   lighthouse-platform:
     runs-on: ubuntu-latest
     needs: [prepare, deploy-web, deploy-platform]
