@@ -31,6 +31,7 @@ export const agentSessions = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
+    orgId: text("org_id").notNull(),
     agentComposeId: uuid("agent_compose_id")
       .references(() => agentComposes.id, { onDelete: "cascade" })
       .notNull(),
@@ -52,5 +53,6 @@ export const agentSessions = pgTable(
       table.agentComposeId,
       table.artifactName,
     ),
+    index("idx_agent_sessions_org").on(table.orgId),
   ],
 );

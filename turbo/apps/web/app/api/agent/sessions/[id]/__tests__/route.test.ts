@@ -6,6 +6,7 @@ import {
   createTestRun,
   completeTestRun,
   insertOrgCacheEntry,
+  createTestRunInDb,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -117,6 +118,53 @@ describe("GET /api/agent/sessions/:id", () => {
 
     expect(response.status).toBe(404);
     expect(data.error.code).toBe("NOT_FOUND");
+  });
+
+  it("should validate session access using runtime org, not compose org", async () => {
+    // Scenario: compose belongs to org-A (user's default), but run executes in org-B.
+    // Session's orgId = org-B (runtime org). Accessing from org-B should succeed.
+
+    const orgBId = uniqueId("org-b");
+    const orgBSlug = uniqueId("org-b");
+    await insertOrgCacheEntry({ orgId: orgBId, slug: orgBSlug });
+
+    // Create a run under org-B (bypassing API to set custom orgId)
+    const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+      orgId: orgBId,
+    });
+    const { agentSessionId } = await completeTestRun(user.userId, runId);
+
+    // Switch to org-B
+    mockClerk({
+      userId: user.userId,
+      orgId: orgBId,
+      orgSlug: orgBSlug,
+      clerkOrgs: [{ id: orgBId, slug: orgBSlug, name: orgBSlug }],
+    });
+
+    // Access session from org-B — should succeed since session.orgId = org-B
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/sessions/${agentSessionId}`,
+    );
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe(agentSessionId);
+
+    // Now switch back to org-A (compose's org) — should fail since session.orgId = org-B
+    mockClerk({ userId: user.userId });
+
+    const request2 = createTestRequest(
+      `http://localhost:3000/api/agent/sessions/${agentSessionId}`,
+    );
+
+    const response2 = await GET(request2);
+    const data2 = await response2.json();
+
+    expect(response2.status).toBe(404);
+    expect(data2.error.code).toBe("NOT_FOUND");
   });
 
   it("should return 401 when not authenticated", async () => {

@@ -1037,6 +1037,13 @@
       "when": 1773650787446,
       "tag": "0147_drop_old_slack_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1773719424137,
+      "tag": "0148_massive_doctor_strange",
+      "breakpoints": true
     }
   ]
 }
