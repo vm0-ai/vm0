@@ -424,16 +424,16 @@ async function authorizeCompose(
 async function validateComposeRequirements(
   userId: string,
   composeContent: AgentComposeYaml,
+  orgId: string,
   vars?: Record<string, string>,
   checkEnv?: boolean,
-  orgId?: string,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
   }
 
   // Only validate vars when checkEnv is enabled (matching expand-environment.ts behavior)
-  if (checkEnv && orgId) {
+  if (checkEnv) {
     const requiredVars = extractTemplateVars(composeContent);
     if (requiredVars.length > 0) {
       const storedVars = await getVariableValues(orgId, userId);
@@ -704,9 +704,9 @@ export async function createRun(
     await validateComposeRequirements(
       userId,
       composeContent,
+      params.orgId,
       params.vars,
       params.checkEnv,
-      params.orgId,
     );
   }
 
@@ -823,9 +823,9 @@ export async function dispatchQueuedRun(
     await validateComposeRequirements(
       userId,
       composeContent,
+      params.orgId,
       params.vars,
       params.checkEnv,
-      params.orgId,
     );
   }
 
