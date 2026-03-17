@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.119.0](https://github.com/vm0-ai/vm0/compare/web-v12.118.3...web-v12.119.0) (2026-03-17)
+
+
+### Features
+
+* add chat threads for instant sidebar and stable url routing ([#5102](https://github.com/vm0-ai/vm0/issues/5102)) ([c902c8c](https://github.com/vm0-ai/vm0/commit/c902c8c892f93e3496c94a5fda0e835b1957086d))
+* add needs-reconnect flag for connector token refresh failures ([#5128](https://github.com/vm0-ai/vm0/issues/5128)) ([5da9c4e](https://github.com/vm0-ai/vm0/commit/5da9c4e15385589a41a49007dfc2b0009f58bbe8))
+* **runner:** add experimental profile passthrough from compose to runner ([#5100](https://github.com/vm0-ai/vm0/issues/5100)) ([5eb8dd4](https://github.com/vm0-ai/vm0/commit/5eb8dd44baaa24ea40baf2804ec022a3d006528a)), closes [#5037](https://github.com/vm0-ai/vm0/issues/5037)
+
+
+### Bug Fixes
+
+* capture response body and structured context in oauth error diagnostics ([#5132](https://github.com/vm0-ai/vm0/issues/5132)) ([3e59a60](https://github.com/vm0-ai/vm0/commit/3e59a607778dc90f27ce81e402911990f04f18c1)), closes [#5125](https://github.com/vm0-ai/vm0/issues/5125)
+* compare with zeroChatThreadId$ and add loading guard. ([c902c8c](https://github.com/vm0-ai/vm0/commit/c902c8c892f93e3496c94a5fda0e835b1957086d))
+
+
+### Refactoring
+
+* remove deprecated capability aliases ([#5135](https://github.com/vm0-ai/vm0/issues/5135)) ([c2680d3](https://github.com/vm0-ai/vm0/commit/c2680d3d06da36cda2c139b232641931c44f4400)), closes [#5130](https://github.com/vm0-ai/vm0/issues/5130)
+* update vercel ai gateway to use anthropic/claude-sonnet-4.6 ([#5123](https://github.com/vm0-ai/vm0/issues/5123)) ([41a0442](https://github.com/vm0-ai/vm0/commit/41a0442039f6597963fa83bd8a4c0e799881ce8f)), closes [#5119](https://github.com/vm0-ai/vm0/issues/5119)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.74.0
+
 ## [12.118.3](https://github.com/vm0-ai/vm0/compare/web-v12.118.2...web-v12.118.3) (2026-03-17)
 
 

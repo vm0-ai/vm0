@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.63.0](https://github.com/vm0-ai/vm0/compare/cli-v9.62.7...cli-v9.63.0) (2026-03-17)
+
+
+### Features
+
+* add needs-reconnect flag for connector token refresh failures ([#5128](https://github.com/vm0-ai/vm0/issues/5128)) ([5da9c4e](https://github.com/vm0-ai/vm0/commit/5da9c4e15385589a41a49007dfc2b0009f58bbe8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.74.0
+
 ## [9.62.7](https://github.com/vm0-ai/vm0/compare/cli-v9.62.6...cli-v9.62.7) (2026-03-17)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.1](https://github.com/vm0-ai/vm0/compare/docs-v2.22.0...docs-v2.22.1) (2026-03-17)
+
+
+### Refactoring
+
+* remove deprecated capability aliases ([#5135](https://github.com/vm0-ai/vm0/issues/5135)) ([c2680d3](https://github.com/vm0-ai/vm0/commit/c2680d3d06da36cda2c139b232641931c44f4400)), closes [#5130](https://github.com/vm0-ai/vm0/issues/5130)
+
 ## [2.22.0](https://github.com/vm0-ai/vm0/compare/docs-v2.21.1...docs-v2.22.0) (2026-03-17)
 
 
