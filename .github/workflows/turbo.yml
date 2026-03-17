@@ -1508,6 +1508,82 @@ jobs:
       - name: Build summary
         run: echo "✅ E2B templates built successfully (development account)"
 
+  # Lighthouse CI audit for web homepage (informational only, not a merge blocker)
+  lighthouse-web:
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy-web]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true'
+      )
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chrome for Puppeteer
+        run: npx puppeteer browsers install chrome
+      - name: Install LHCI CLI
+        run: npm install -g @lhci/cli
+      - name: Run Lighthouse CI (web)
+        working-directory: e2e/lighthouse
+        run: |
+          lhci collect \
+            --config=lighthouserc-web.json \
+            --url="${WEB_URL}"
+        env:
+          WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Upload Lighthouse report (web)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report-web
+          path: e2e/lighthouse/lighthouse-reports/web/
+          retention-days: 7
+
+  # Lighthouse CI audit for platform homepage (informational only, not a merge blocker)
+  lighthouse-platform:
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy-web, deploy-platform]
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.platform-changed == 'true'
+      )
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chrome for Puppeteer
+        run: npx puppeteer browsers install chrome
+      - name: Install LHCI CLI
+        run: npm install -g @lhci/cli
+      - name: Run Lighthouse CI (platform)
+        working-directory: e2e/lighthouse
+        run: |
+          lhci collect \
+            --config=lighthouserc-platform.json \
+            --url="${PLATFORM_URL}"
+        env:
+          WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Upload Lighthouse report (platform)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report-platform
+          path: e2e/lighthouse/lighthouse-reports/platform/
+          retention-days: 7
+
   # CI Gate: single required check for merge queue
   # Aggregates all job results — must ALWAYS run to report explicit success/failure.
   # Using !failure() or !cancelled() would cause the gate to be skipped when
@@ -1538,6 +1614,8 @@ jobs:
       - deploy-runner-prepare
       - deploy-runner-start
       - cli-e2e-03-runner
+      - lighthouse-web
+      - lighthouse-platform
     # Always run so the gate reports an explicit result (not "skipped").
     # Skip on release-please commits — GitHub treats "skipped" as passing.
     if: >-
@@ -1589,6 +1667,8 @@ jobs:
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "true"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "true"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "true"
+          check_result "lighthouse-web" "${{ needs.lighthouse-web.result }}" "true"
+          check_result "lighthouse-platform" "${{ needs.lighthouse-platform.result }}" "true"
 
           echo "::endgroup::"
           exit $FAILED

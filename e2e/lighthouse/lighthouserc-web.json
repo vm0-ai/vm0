@@ -1,0 +1,22 @@
+{
+  "ci": {
+    "collect": {
+      "numberOfRuns": 3,
+      "url": [],
+      "settings": {
+        "onlyCategories": [
+          "performance",
+          "accessibility",
+          "best-practices",
+          "seo"
+        ],
+        "chromeFlags": "--no-sandbox --headless"
+      },
+      "puppeteerScript": "./puppeteer-bypass.js"
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "lighthouse-reports/web"
+    }
+  }
+}
