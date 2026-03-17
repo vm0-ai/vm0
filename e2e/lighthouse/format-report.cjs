@@ -15,11 +15,11 @@ const path = require("path");
 
 const appName = process.argv[2];
 if (!appName) {
-  console.error("Usage: node format-report.cjs <app-name>");
+  console.error("Usage: node format-report.cjs <app-name> [lhci-dir]");
   process.exit(1);
 }
 
-const lhciDir = path.resolve(".lighthouseci");
+const lhciDir = path.resolve(process.argv[3] || ".lighthouseci");
 const manifest = JSON.parse(
   fs.readFileSync(path.join(lhciDir, "manifest.json"), "utf8"),
 );

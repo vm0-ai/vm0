@@ -1539,19 +1539,29 @@ jobs:
         env:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Upload Lighthouse report (web)
+      - name: Locate LHCI output (web)
+        id: lhci-dir-web
         if: always()
+        run: |
+          for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
+            if [ -f "$d/manifest.json" ]; then
+              echo "dir=$d" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "dir=" >> "$GITHUB_OUTPUT"
+      - name: Upload Lighthouse report (web)
+        if: always() && steps.lhci-dir-web.outputs.dir != ''
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-report-web
-          path: e2e/lighthouse/.lighthouseci/
+          path: ${{ steps.lhci-dir-web.outputs.dir }}/
           retention-days: 7
       - name: Format Lighthouse comment (web)
-        if: success() && github.event_name == 'pull_request'
+        if: success() && github.event_name == 'pull_request' && steps.lhci-dir-web.outputs.dir != ''
         id: lighthouse-comment-web
-        working-directory: e2e/lighthouse
         run: |
-          comment=$(node format-report.cjs "Web")
+          comment=$(node e2e/lighthouse/format-report.cjs "Web" "${{ steps.lhci-dir-web.outputs.dir }}")
           {
             echo "body<<LIGHTHOUSE_EOF"
             echo "$comment"
@@ -1597,19 +1607,29 @@ jobs:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Upload Lighthouse report (platform)
+      - name: Locate LHCI output (platform)
+        id: lhci-dir-platform
         if: always()
+        run: |
+          for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
+            if [ -f "$d/manifest.json" ]; then
+              echo "dir=$d" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "dir=" >> "$GITHUB_OUTPUT"
+      - name: Upload Lighthouse report (platform)
+        if: always() && steps.lhci-dir-platform.outputs.dir != ''
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-report-platform
-          path: e2e/lighthouse/.lighthouseci/
+          path: ${{ steps.lhci-dir-platform.outputs.dir }}/
           retention-days: 7
       - name: Format Lighthouse comment (platform)
-        if: success() && github.event_name == 'pull_request'
+        if: success() && github.event_name == 'pull_request' && steps.lhci-dir-platform.outputs.dir != ''
         id: lighthouse-comment-platform
-        working-directory: e2e/lighthouse
         run: |
-          comment=$(node format-report.cjs "Platform")
+          comment=$(node e2e/lighthouse/format-report.cjs "Platform" "${{ steps.lhci-dir-platform.outputs.dir }}")
           {
             echo "body<<LIGHTHOUSE_EOF"
             echo "$comment"
