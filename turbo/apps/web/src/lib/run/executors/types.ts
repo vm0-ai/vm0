@@ -48,6 +48,9 @@ export interface PreparedContext {
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: (typeof VALID_CAPABILITIES)[number][] | null;
 
+  // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
+  experimentalProfile: string | null;
+
   // Routing hint (runner group name)
   runnerGroup: string | null;
 

@@ -1,4 +1,4 @@
-import type { StoredExecutionContext } from "@vm0/core";
+import { DEFAULT_PROFILE, type StoredExecutionContext } from "@vm0/core";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
 import { encryptSecretsMap } from "../../crypto/secrets-encryption";
 import { validateRunnerGroupOrg } from "../../org/org-service";
@@ -31,6 +31,7 @@ export async function executeRunnerJob(
   }
 
   const runnerGroup = context.runnerGroup;
+  const profile = context.experimentalProfile ?? DEFAULT_PROFILE;
 
   if (!runnerGroup) {
     throw new Error("RunnerExecutor requires a runner group");
@@ -59,6 +60,7 @@ export async function executeRunnerJob(
     cliAgentType: context.cliAgentType,
     experimentalFirewalls: context.experimentalFirewalls ?? undefined,
     experimentalCapabilities: context.experimentalCapabilities ?? undefined,
+    experimentalProfile: profile,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,
     userTimezone: context.userTimezone ?? undefined,
@@ -73,6 +75,7 @@ export async function executeRunnerJob(
   await globalThis.services.db.insert(runnerJobQueue).values({
     runId: context.runId,
     runnerGroup,
+    profile,
     executionContext: storedContext,
     expiresAt,
   });
@@ -80,9 +83,13 @@ export async function executeRunnerJob(
   log.debug(`Run ${context.runId} queued for runner group: ${runnerGroup}`);
 
   // Publish job notification to Ably for instant runner pickup
-  // Only sends runId - runner will claim job to get full context
+  // Sends runId + profile so runner can pre-check resource budget before claiming
   // This is fire-and-forget - failure doesn't affect the queue insertion
-  const published = await publishJobNotification(runnerGroup, context.runId);
+  const published = await publishJobNotification(
+    runnerGroup,
+    context.runId,
+    profile,
+  );
   if (published) {
     log.debug(`Job notification published for run ${context.runId}`);
   }

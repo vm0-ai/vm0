@@ -174,8 +174,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
       ANTHROPIC_API_KEY: "",
-      ANTHROPIC_MODEL: "moonshotai/kimi-k2.5",
-      ANTHROPIC_CUSTOM_HEADERS: "x-ai-gateway-providers-only: moonshot",
+      ANTHROPIC_MODEL: "anthropic/claude-sonnet-4.6",
     } as Record<string, string>,
   },
   "azure-foundry": {

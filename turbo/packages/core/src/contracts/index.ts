@@ -292,6 +292,7 @@ export {
   executionContextSchema,
   storedExecutionContextSchema,
   storageEntrySchema,
+  DEFAULT_PROFILE,
   artifactEntrySchema,
   storageManifestSchema,
   resumeSessionSchema,

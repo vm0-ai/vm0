@@ -7,7 +7,7 @@ import { runnersPollContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
-import { eq, and, isNull, type SQL } from "drizzle-orm";
+import { eq, and, isNull, inArray, type SQL } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { logger } from "../../../../src/lib/logger";
 import {
@@ -26,7 +26,7 @@ const router = tsr.router(runnersPollContract, {
       return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }
 
-    const { group } = body;
+    const { group, profiles } = body;
 
     // Build query conditions based on auth type
     let whereConditions: SQL<unknown>[];
@@ -59,6 +59,11 @@ const router = tsr.router(runnersPollContract, {
       ];
     }
 
+    // Filter by profile if runner sends an affordability list
+    if (profiles && profiles.length > 0) {
+      whereConditions.push(inArray(runnerJobQueue.profile, profiles));
+    }
+
     // Query runner_job_queue for unclaimed jobs
     const [pendingJob] = await globalThis.services.db
       .select({
@@ -67,6 +72,7 @@ const router = tsr.router(runnersPollContract, {
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
         resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
+        profile: runnerJobQueue.profile,
       })
       .from(runnerJobQueue)
       .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
@@ -84,6 +90,7 @@ const router = tsr.router(runnersPollContract, {
             agentComposeVersionId: pendingJob.agentComposeVersionId,
             vars: (pendingJob.vars as Record<string, string>) ?? null,
             checkpointId: pendingJob.resumedFromCheckpointId ?? null,
+            experimentalProfile: pendingJob.profile,
           },
         },
       };

@@ -58,12 +58,13 @@ export async function generateRunnerGroupToken(
 
 /**
  * Publish job notification to a runner group's Ably channel.
- * Only sends runId - runner will claim job to get full context.
+ * Sends runId + profile so runner can pre-check resource budget before claiming.
  * Non-blocking - logs errors but doesn't throw.
  */
 export async function publishJobNotification(
   group: string,
   runId: string,
+  profile: string,
 ): Promise<boolean> {
   const client = getAblyClient();
   if (!client) {
@@ -73,7 +74,7 @@ export async function publishJobNotification(
 
   try {
     const channel = client.channels.get(getRunnerGroupChannelName(group));
-    await channel.publish("job", { runId });
+    await channel.publish("job", { runId, profile });
     log.debug(`Published job notification ${runId} to runner-group:${group}`);
     return true;
   } catch (error) {

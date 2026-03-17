@@ -206,6 +206,7 @@ const router = tsr.router(runnersJobClaimContract, {
         experimentalCapabilities: storedContext.experimentalCapabilities
           ? normalizeCapabilities(storedContext.experimentalCapabilities)
           : undefined,
+        experimentalProfile: storedContext.experimentalProfile,
         debugNoMockClaude: storedContext.debugNoMockClaude,
         apiStartTime: storedContext.apiStartTime,
         userTimezone: storedContext.userTimezone,

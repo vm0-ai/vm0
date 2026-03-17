@@ -1680,13 +1680,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "needs_reconnect": {
-          "name": "needs_reconnect",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {
