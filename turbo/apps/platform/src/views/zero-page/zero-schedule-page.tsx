@@ -678,7 +678,7 @@ function ScheduleCreateDialogInner({
   const minute = useGet(minute$);
   const setMinute = useSet(minute$);
   const timezone$ = useCCState(
-    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    new Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
   const timezone = useGet(timezone$);
   const setTimezone = useSet(timezone$);
