@@ -589,12 +589,12 @@ export const switchZeroSession$ = command(
           createdAt: string;
         }[];
         latestSessionId?: string | null;
-        unsavedRuns?: Array<{
+        unsavedRuns?: {
           runId: string;
           status: string;
           prompt: string;
           error: string | null;
-        }>;
+        }[];
       };
 
       L.info("loaded:", {
