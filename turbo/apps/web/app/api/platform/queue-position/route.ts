@@ -8,7 +8,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eq, and, lte } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrgOrNull } from "../../../../src/lib/org/resolve-org";
 import { agentRunQueue } from "../../../../src/db/schema/agent-run-queue";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   }
 
   const orgSlug = url.searchParams.get("org");
-  const { org } = await resolveOrg(userId, orgSlug);
+  const org = await resolveOrgOrNull(userId, orgSlug);
 
   // Verify the run belongs to this user and org
   const [run] = await globalThis.services.db
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       and(
         eq(agentRuns.id, runId),
         eq(agentRuns.userId, userId),
-        eq(agentRuns.orgId, org.orgId),
+        ...(org ? [eq(agentRuns.orgId, org.orgId)] : []),
       ),
     )
     .limit(1);

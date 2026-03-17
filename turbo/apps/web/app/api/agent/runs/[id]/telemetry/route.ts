@@ -9,7 +9,7 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { sandboxTelemetry } from "../../../../../../src/db/schema/sandbox-telemetry";
 import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import { resolveOrgOrNull } from "../../../../../../src/lib/org/resolve-org";
 
 /**
  * Telemetry data structure stored in JSONB
@@ -43,7 +43,7 @@ const router = tsr.router(runTelemetryContract, {
     }
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const org = await resolveOrgOrNull(userId, orgSlug);
 
     // Verify run exists and belongs to user+org
     const [run] = await globalThis.services.db
@@ -53,7 +53,7 @@ const router = tsr.router(runTelemetryContract, {
         and(
           eq(agentRuns.id, params.id),
           eq(agentRuns.userId, userId),
-          eq(agentRuns.orgId, org.orgId),
+          ...(org ? [eq(agentRuns.orgId, org.orgId)] : []),
         ),
       )
       .limit(1);

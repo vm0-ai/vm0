@@ -9,7 +9,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrgOrNull } from "../../../../../src/lib/org/resolve-org";
 
 interface AgentComposeSnapshot {
   agentComposeVersionId: string;
@@ -41,7 +41,7 @@ const router = tsr.router(checkpointsByIdContract, {
     }
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const org = await resolveOrgOrNull(userId, orgSlug);
 
     const [checkpoint] = await globalThis.services.db
       .select()
@@ -66,7 +66,7 @@ const router = tsr.router(checkpointsByIdContract, {
         and(
           eq(agentRuns.id, checkpoint.runId),
           eq(agentRuns.userId, userId),
-          eq(agentRuns.orgId, org.orgId),
+          ...(org ? [eq(agentRuns.orgId, org.orgId)] : []),
         ),
       )
       .limit(1);
