@@ -96,6 +96,7 @@
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
     "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/web/src/lib/model-provider/model-provider-service.ts",
+    "apps/web/src/lib/org/org-sentinel.ts",
     "apps/cli/src/lib/api/api-client.ts",
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/cli/src/commands/cook/cook.ts",
