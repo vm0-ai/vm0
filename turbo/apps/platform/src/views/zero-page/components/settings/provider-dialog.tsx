@@ -180,7 +180,7 @@ export function ProviderDialog() {
   );
 }
 
-function OAuthFields({
+export function OAuthFields({
   secret,
   onSecretChange,
   error,
@@ -209,7 +209,7 @@ function OAuthFields({
   );
 }
 
-function ApiKeyFields({
+export function ApiKeyFields({
   providerType,
   secret,
   selectedModel,
@@ -271,7 +271,7 @@ function ApiKeyFields({
   );
 }
 
-function MultiAuthFields({
+export function MultiAuthFields({
   providerType,
   authMethod,
   secrets,
