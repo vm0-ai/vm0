@@ -143,7 +143,9 @@ def match_path(path: str, pattern: str) -> dict | None:
         if seg.startswith("{") and seg.endswith("}"):
             name = seg[1:-1]
             if name.endswith("+"):
-                # Greedy: consume rest of path (zero or more segments)
+                # Greedy: consume rest of path (one or more segments)
+                if pi >= len(path_segs):
+                    return None
                 params[name[:-1]] = "/".join(path_segs[pi:])
                 return params
             # Single segment
