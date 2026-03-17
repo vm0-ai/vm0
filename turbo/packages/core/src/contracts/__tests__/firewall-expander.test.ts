@@ -360,6 +360,12 @@ describe("validateRule", () => {
       "empty parameter name",
     );
   });
+
+  it("should reject empty star parameter name", () => {
+    expect(() => validateRule("GET /repos/{*}", "p", "fw")).toThrow(
+      "empty parameter name",
+    );
+  });
 });
 
 describe("validateBaseUrl", () => {

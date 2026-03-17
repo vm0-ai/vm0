@@ -140,6 +140,8 @@ def match_path(path: str, pattern: str) -> dict | None:
     params: dict[str, str] = {}
     pi = 0
 
+    # Note: greedy params ({name+}, {name*}) must be the last segment.
+    # This invariant is enforced at compose time by validateRule() in firewall-expander.ts.
     for seg in pattern_segs:
         if seg.startswith("{") and seg.endswith("}"):
             name = seg[1:-1]
