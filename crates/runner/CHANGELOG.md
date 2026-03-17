@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.3...runner-rs-v0.30.0) (2026-03-17)
+
+
+### Features
+
+* support {param*} wildcard for zero-or-more path segments ([#5114](https://github.com/vm0-ai/vm0/issues/5114)) ([408c637](https://github.com/vm0-ai/vm0/commit/408c637b37ed74ce20c9ac48b778f1a363dbe842))
+
 ## [0.29.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.2...runner-rs-v0.29.3) (2026-03-17)
 
 
