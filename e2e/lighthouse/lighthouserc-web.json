@@ -15,8 +15,7 @@
       "puppeteerScript": "./puppeteer-bypass.js"
     },
     "upload": {
-      "target": "filesystem",
-      "outputDir": "lighthouse-reports/web"
+      "target": "temporary-public-storage"
     }
   }
 }

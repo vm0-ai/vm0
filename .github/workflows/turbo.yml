@@ -1544,8 +1544,25 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-report-web
-          path: e2e/lighthouse/lighthouse-reports/web/
+          path: e2e/lighthouse/.lighthouseci/
           retention-days: 7
+      - name: Format Lighthouse comment (web)
+        if: success() && github.event_name == 'pull_request'
+        id: lighthouse-comment-web
+        working-directory: e2e/lighthouse
+        run: |
+          comment=$(node format-report.cjs "Web")
+          {
+            echo "body<<LIGHTHOUSE_EOF"
+            echo "$comment"
+            echo "LIGHTHOUSE_EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Post Lighthouse comment (web)
+        if: steps.lighthouse-comment-web.outcome == 'success'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: lighthouse-web
+          message: ${{ steps.lighthouse-comment-web.outputs.body }}
 
   # Lighthouse CI audit for platform homepage (failure blocks merge, skip is allowed)
   lighthouse-platform:
@@ -1585,8 +1602,25 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-report-platform
-          path: e2e/lighthouse/lighthouse-reports/platform/
+          path: e2e/lighthouse/.lighthouseci/
           retention-days: 7
+      - name: Format Lighthouse comment (platform)
+        if: success() && github.event_name == 'pull_request'
+        id: lighthouse-comment-platform
+        working-directory: e2e/lighthouse
+        run: |
+          comment=$(node format-report.cjs "Platform")
+          {
+            echo "body<<LIGHTHOUSE_EOF"
+            echo "$comment"
+            echo "LIGHTHOUSE_EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Post Lighthouse comment (platform)
+        if: steps.lighthouse-comment-platform.outcome == 'success'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: lighthouse-platform
+          message: ${{ steps.lighthouse-comment-platform.outputs.body }}
 
   # CI Gate: single required check for merge queue
   # Aggregates all job results — must ALWAYS run to report explicit success/failure.

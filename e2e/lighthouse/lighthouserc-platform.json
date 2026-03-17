@@ -11,8 +11,7 @@
       "puppeteerScript": "./puppeteer-auth.js"
     },
     "upload": {
-      "target": "filesystem",
-      "outputDir": "lighthouse-reports/platform"
+      "target": "temporary-public-storage"
     }
   }
 }
