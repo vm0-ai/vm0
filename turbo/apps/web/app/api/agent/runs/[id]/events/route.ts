@@ -7,8 +7,9 @@ import { runEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,
   getDatasetName,
@@ -22,7 +23,7 @@ import type {
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
 
 const router = tsr.router(runEventsContract, {
-  getEvents: async ({ params, query, headers }) => {
+  getEvents: async ({ params, query, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization, {
@@ -39,11 +40,13 @@ const router = tsr.router(runEventsContract, {
 
     const { since, limit } = query;
 
-    // Verify run exists and belongs to user, join with compose version to get framework
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(userId, orgSlug);
+
+    // Verify run exists and belongs to user+org, join with compose version to get framework
     const [runWithCompose] = await globalThis.services.db
       .select({
         id: agentRuns.id,
-        userId: agentRuns.userId,
         status: agentRuns.status,
         result: agentRuns.result,
         error: agentRuns.error,
@@ -54,10 +57,16 @@ const router = tsr.router(runEventsContract, {
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
-      .where(eq(agentRuns.id, params.id))
+      .where(
+        and(
+          eq(agentRuns.id, params.id),
+          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, org.orgId),
+        ),
+      )
       .limit(1);
 
-    if (!runWithCompose || runWithCompose.userId !== userId) {
+    if (!runWithCompose) {
       return {
         status: 404 as const,
         body: {

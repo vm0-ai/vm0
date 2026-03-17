@@ -4,11 +4,12 @@ import {
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
 import { checkpointsByIdContract } from "@vm0/core";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 
 interface AgentComposeSnapshot {
   agentComposeVersionId: string;
@@ -26,7 +27,7 @@ interface VolumeVersionsSnapshot {
 }
 
 const router = tsr.router(checkpointsByIdContract, {
-  getById: async ({ params, headers }) => {
+  getById: async ({ params, headers }, { request }) => {
     initServices();
 
     const userId = await getUserId(headers.authorization);
@@ -38,6 +39,9 @@ const router = tsr.router(checkpointsByIdContract, {
         },
       };
     }
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(userId, orgSlug);
 
     const [checkpoint] = await globalThis.services.db
       .select()
@@ -54,31 +58,24 @@ const router = tsr.router(checkpointsByIdContract, {
       };
     }
 
-    // Get the run to check authorization
+    // Get the run to check authorization - filter by userId and orgId for security
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
-      .where(eq(agentRuns.id, checkpoint.runId))
+      .where(
+        and(
+          eq(agentRuns.id, checkpoint.runId),
+          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, org.orgId),
+        ),
+      )
       .limit(1);
 
     if (!run) {
       return {
         status: 404 as const,
         body: {
-          error: { message: "Associated run not found", code: "NOT_FOUND" },
-        },
-      };
-    }
-
-    // Check authorization - user can only access their own checkpoints
-    if (run.userId !== userId) {
-      return {
-        status: 403 as const,
-        body: {
-          error: {
-            message: "You do not have permission to access this checkpoint",
-            code: "FORBIDDEN",
-          },
+          error: { message: "Checkpoint not found", code: "NOT_FOUND" },
         },
       };
     }

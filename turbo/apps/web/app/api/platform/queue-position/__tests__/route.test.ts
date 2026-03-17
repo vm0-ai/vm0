@@ -79,6 +79,26 @@ describe("GET /api/platform/queue-position", () => {
     expect(data.total).toBe(0);
   });
 
+  it("should return 404 for run from a different org", async () => {
+    // Create compose in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+
+    // Create run in the other org
+    const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+      status: "running",
+    });
+
+    // Access with default org context — the run belongs to otherOrg
+    const request = createTestRequest(
+      `http://localhost:3000/api/platform/queue-position?runId=${runId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
+  });
+
   it("should return position when run is queued", async () => {
     const { runId } = await createTestRunInDb(user.userId, testComposeId, {
       status: "queued",

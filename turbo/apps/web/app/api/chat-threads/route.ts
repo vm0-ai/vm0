@@ -6,7 +6,9 @@ import {
   createChatThread,
   listChatThreads,
 } from "../../../src/lib/chat-thread";
-import { verifyComposeOrgAccess } from "../../../src/lib/org/verify-compose-org-access";
+import { resolveCallerOrgId } from "../../../src/lib/org/resolve-org";
+import { agentComposes } from "../../../src/db/schema/agent-compose";
+import { eq } from "drizzle-orm";
 
 const router = tsr.router(chatThreadsContract, {
   create: async ({ body, headers }, { request }) => {
@@ -22,12 +24,23 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const hasOrgAccess = await verifyComposeOrgAccess(
-      body.agentComposeId,
-      userId,
-      request.url,
-    );
-    if (!hasOrgAccess) {
+    const [compose] = await globalThis.services.db
+      .select({ orgId: agentComposes.orgId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, body.agentComposeId))
+      .limit(1);
+
+    if (!compose) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    const callerOrgId = await resolveCallerOrgId(userId, request);
+    if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,
         body: {
@@ -64,12 +77,23 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const hasOrgAccess = await verifyComposeOrgAccess(
-      query.agentComposeId,
-      userId,
-      request.url,
-    );
-    if (!hasOrgAccess) {
+    const [compose] = await globalThis.services.db
+      .select({ orgId: agentComposes.orgId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, query.agentComposeId))
+      .limit(1);
+
+    if (!compose) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    const callerOrgId = await resolveCallerOrgId(userId, request);
+    if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,
         body: {
