@@ -33,6 +33,9 @@ agents:
       - https://github.com/vm0-ai/vm0-skills/tree/main/hackernews
     volumes:
       - my-volume:/home/user/.config
+    experimental_capabilities:
+      - artifact:read
+      - artifact:write
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       MY_VAR: ${{ vars.MY_VAR }}
@@ -71,6 +74,7 @@ Each agent key must be a valid agent name: 3-64 characters, starting and ending 
 | `skills`                 | array  | No       | `[]`           | List of skill references. Supports bare names (e.g., `"slack"`) which resolve to `https://github.com/vm0-ai/vm0-skills/tree/main/slack`, or full GitHub URLs. See [Skills](/docs/core-concept/skills) |
 | `volumes`                | array  | No       | `[]`           | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |
 | `environment`            | object | No       | `{}`           | Environment variables. See [Environment Variables](/docs/core-concept/environment-variable)       |
+| `experimental_capabilities` | array  | No       | `[]`           | Sandbox API access permissions. See [Capabilities](/docs/core-concept/capabilities)                       |
 | `experimental_runner`    | object | No       | -              | Self-hosted runner configuration. Object with `group` field in `org/name` format (e.g., `acme/production`) |
 
 ## Volume Fields

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.116.2](https://github.com/vm0-ai/vm0/compare/platform-v0.116.1...platform-v0.116.2) (2026-03-17)
+
+
+### Bug Fixes
+
+* abort in-flight polling when switching or starting new zero session ([#5087](https://github.com/vm0-ai/vm0/issues/5087)) ([286df7f](https://github.com/vm0-ai/vm0/commit/286df7f6f73770d01e7eb8a18ac8a2245d4b6807))
+* **platform:** navigate to /zero on org switch instead of reloading ([#5090](https://github.com/vm0-ai/vm0/issues/5090)) ([f85fbbb](https://github.com/vm0-ai/vm0/commit/f85fbbb008aac047eb9d663afe6629615bc81f65))
+
+
+### Refactoring
+
+* remove all non-zero platform pages and feature flag ([#5095](https://github.com/vm0-ai/vm0/issues/5095)) ([fa7f011](https://github.com/vm0-ai/vm0/commit/fa7f01187b84d7046b150f46f217c191d5ad5670))
+* route connector deep links to /zero/team/:name instead of /zero/meet ([#5023](https://github.com/vm0-ai/vm0/issues/5023)) ([42f5c63](https://github.com/vm0-ai/vm0/commit/42f5c63f7402081c7821597acb802820f4abb98b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.2
+
 ## [0.116.1](https://github.com/vm0-ai/vm0/compare/platform-v0.116.0...platform-v0.116.1) (2026-03-17)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.118.2](https://github.com/vm0-ai/vm0/compare/web-v12.118.1...web-v12.118.2) (2026-03-17)
+
+
+### Bug Fixes
+
+* add missing linear oauth scopes and force consent prompt ([#5109](https://github.com/vm0-ai/vm0/issues/5109)) ([cfee675](https://github.com/vm0-ai/vm0/commit/cfee675ef64aa7226cccd8547c45be60cb38db53))
+* add org-scoped filtering to run list and detail endpoints ([#5096](https://github.com/vm0-ai/vm0/issues/5096)) ([5641382](https://github.com/vm0-ai/vm0/commit/564138219e34cddfa02e0fa96bff5a3afdfa5516)), closes [#5091](https://github.com/vm0-ai/vm0/issues/5091)
+
+
+### Refactoring
+
+* remove all non-zero platform pages and feature flag ([#5095](https://github.com/vm0-ai/vm0/issues/5095)) ([fa7f011](https://github.com/vm0-ai/vm0/commit/fa7f01187b84d7046b150f46f217c191d5ad5670))
+* route connector deep links to /zero/team/:name instead of /zero/meet ([#5023](https://github.com/vm0-ai/vm0/issues/5023)) ([42f5c63](https://github.com/vm0-ai/vm0/commit/42f5c63f7402081c7821597acb802820f4abb98b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.2
+
 ## [12.118.1](https://github.com/vm0-ai/vm0/compare/web-v12.118.0...web-v12.118.1) (2026-03-17)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.2...runner-rs-v0.29.3) (2026-03-17)
+
+
+### Bug Fixes
+
+* {param+} path matching should require one or more segments ([#5106](https://github.com/vm0-ai/vm0/issues/5106)) ([b05ecd5](https://github.com/vm0-ai/vm0/commit/b05ecd5599e6c9a09232cdcef097f53d8d15161e))
+
 ## [0.29.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.1...runner-rs-v0.29.2) (2026-03-17)
 
 
