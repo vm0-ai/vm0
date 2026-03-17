@@ -45,6 +45,7 @@ export function buildLinearAuthorizationUrl(
     scope: oauthConfig.scopes.join(","),
     state,
     actor: "user",
+    prompt: "consent",
   });
 
   return `${oauthConfig.authorizationUrl}?${params.toString()}`;

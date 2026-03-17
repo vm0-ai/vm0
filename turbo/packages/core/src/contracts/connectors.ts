@@ -694,7 +694,13 @@ const CONNECTOR_TYPES_DEF = {
     oauth: {
       authorizationUrl: "https://linear.app/oauth/authorize",
       tokenUrl: "https://api.linear.app/oauth/token",
-      scopes: ["read", "write"],
+      scopes: [
+        "read",
+        "write",
+        "issues:create",
+        "comments:create",
+        "timeSchedule:write",
+      ],
       environmentMapping: {
         LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
       },
