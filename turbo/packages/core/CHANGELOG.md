@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.77.1](https://github.com/vm0-ai/vm0/compare/core-v8.77.0...core-v8.77.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* revert merged provider list to return only user providers ([#5261](https://github.com/vm0-ai/vm0/issues/5261)) ([a5783c7](https://github.com/vm0-ai/vm0/commit/a5783c7376dc7b6584c189d55a31269ccaf5aabd)), closes [#5259](https://github.com/vm0-ai/vm0/issues/5259)
+
 ## [8.77.0](https://github.com/vm0-ai/vm0/compare/core-v8.76.0...core-v8.77.0) (2026-03-17)
 
 

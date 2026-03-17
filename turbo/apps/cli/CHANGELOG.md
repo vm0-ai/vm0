@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.64.1](https://github.com/vm0-ai/vm0/compare/cli-v9.64.0...cli-v9.64.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* add org-scoped filtering to /api/logs/search ([#5236](https://github.com/vm0-ai/vm0/issues/5236)) ([d751c19](https://github.com/vm0-ai/vm0/commit/d751c19469a6c330f3396ebaf92aeb3f339dd736))
+* add org-scoped filtering to /api/usage ([#5240](https://github.com/vm0-ai/vm0/issues/5240)) ([fe83b0c](https://github.com/vm0-ai/vm0/commit/fe83b0c489304914647543f7739e3ceb9af1d3ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.77.1
+
 ## [9.64.0](https://github.com/vm0-ai/vm0/compare/cli-v9.63.2...cli-v9.64.0) (2026-03-17)
 
 

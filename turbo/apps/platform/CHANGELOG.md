@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.121.1](https://github.com/vm0-ai/vm0/compare/platform-v0.121.0...platform-v0.121.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* revert merged provider list to return only user providers ([#5261](https://github.com/vm0-ai/vm0/issues/5261)) ([a5783c7](https://github.com/vm0-ai/vm0/commit/a5783c7376dc7b6584c189d55a31269ccaf5aabd)), closes [#5259](https://github.com/vm0-ai/vm0/issues/5259)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.77.1
+
 ## [0.121.0](https://github.com/vm0-ai/vm0/compare/platform-v0.120.0...platform-v0.121.0) (2026-03-17)
 
 
