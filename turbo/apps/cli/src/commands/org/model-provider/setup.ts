@@ -2,20 +2,19 @@ import { Command } from "commander";
 import chalk from "chalk";
 import prompts from "prompts";
 import {
-  upsertModelProvider,
-  checkModelProviderSecret,
-  listModelProviders,
-  updateModelProviderModel,
-  setModelProviderDefault,
-} from "../../lib/api";
+  listOrgModelProviders,
+  upsertOrgModelProvider,
+  updateOrgModelProviderModel,
+  setOrgModelProviderDefault,
+} from "../../../lib/api";
 import {
   MODEL_PROVIDER_TYPES,
   hasModelSelection,
   hasAuthMethods,
   type ModelProviderType,
 } from "@vm0/core";
-import { isInteractive } from "../../lib/utils/prompt-utils";
-import { withErrorHandler } from "../../lib/command";
+import { isInteractive } from "../../../lib/utils/prompt-utils";
+import { withErrorHandler } from "../../../lib/command";
 import {
   type SetupInput,
   handleNonInteractiveMode,
@@ -23,19 +22,19 @@ import {
   promptForAuthMethod,
   promptForSecrets,
   collectSecrets,
-} from "./shared";
+} from "../../model-provider/shared";
 
 async function handleInteractiveMode(): Promise<SetupInput | null> {
   if (!isInteractive()) {
     throw new Error("Interactive mode requires a TTY", {
       cause: new Error(
-        'Use non-interactive mode: vm0 model-provider setup --type <type> --secret "<value>"',
+        'Use non-interactive mode: vm0 org model-provider setup --type <type> --secret "<value>"',
       ),
     });
   }
 
-  // Fetch configured providers to annotate choices
-  const { modelProviders: configuredProviders } = await listModelProviders();
+  // Fetch configured org providers to annotate choices
+  const { modelProviders: configuredProviders } = await listOrgModelProviders();
   const configuredTypes = new Set(configuredProviders.map((p) => p.type));
 
   // Build provider choices with configuration status
@@ -69,11 +68,10 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
 
   const type = typeResponse.type as ModelProviderType;
 
-  // Check if secret already exists
-  const checkResult = await checkModelProviderSecret(type);
+  // Check if provider is already configured using the list we already fetched
+  const existingProvider = configuredProviders.find((p) => p.type === type);
 
-  // Handle existing model-provider secret
-  if (checkResult.exists) {
+  if (existingProvider) {
     console.log();
     console.log(`"${type}" is already configured`);
     console.log();
@@ -92,7 +90,6 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     );
 
     if (actionResponse.action === "keep") {
-      // Keep existing secret - only prompt for model if applicable
       const selectedModel = await promptForModelSelection(type);
       return {
         type,
@@ -163,14 +160,14 @@ async function promptSetAsDefault(
   );
 
   if (response.setDefault) {
-    await setModelProviderDefault(type);
+    await setOrgModelProviderDefault(type);
     console.log(chalk.green(`✓ Default for ${framework} set to "${type}"`));
   }
 }
 
 export const setupCommand = new Command()
   .name("setup")
-  .description("Configure a model provider")
+  .description("Configure an org-level model provider")
   .option("-t, --type <type>", "Provider type (for non-interactive mode)")
   .option(
     "-s, --secret <value>",
@@ -206,14 +203,14 @@ export const setupCommand = new Command()
         } else {
           const result = await handleInteractiveMode();
           if (result === null) {
-            return; // Conversion was done
+            return;
           }
           input = result;
         }
 
         // Handle "keep existing secret" flow
         if (input.keepExistingSecret) {
-          const provider = await updateModelProviderModel(
+          const provider = await updateOrgModelProviderModel(
             input.type,
             input.selectedModel,
           );
@@ -225,15 +222,14 @@ export const setupCommand = new Command()
             ? ` with model: ${provider.selectedModel}`
             : "";
 
-          // If no model selection, show "unchanged" message
           if (!hasModelSelection(input.type)) {
             console.log(
-              chalk.green(`✓ Model provider "${input.type}" unchanged`),
+              chalk.green(`✓ Org model provider "${input.type}" unchanged`),
             );
           } else {
             console.log(
               chalk.green(
-                `✓ Model provider "${input.type}" updated${defaultNote}${modelNote}`,
+                `✓ Org model provider "${input.type}" updated${defaultNote}${modelNote}`,
               ),
             );
           }
@@ -248,7 +244,7 @@ export const setupCommand = new Command()
         }
 
         // Standard upsert flow with secret
-        const { provider, created } = await upsertModelProvider({
+        const { provider, created } = await upsertOrgModelProvider({
           type: input.type,
           secret: input.secret,
           authMethod: input.authMethod,
@@ -265,7 +261,7 @@ export const setupCommand = new Command()
           : "";
         console.log(
           chalk.green(
-            `✓ Model provider "${input.type}" ${action}${defaultNote}${modelNote}`,
+            `✓ Org model provider "${input.type}" ${action}${defaultNote}${modelNote}`,
           ),
         );
         if (input.isInteractiveMode) {
