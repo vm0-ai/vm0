@@ -49,7 +49,8 @@ export function validateRule(
     const seg = segments[i]!;
     if (seg.startsWith("{") && seg.endsWith("}")) {
       const name = seg.slice(1, -1);
-      const baseName = name.endsWith("+") ? name.slice(0, -1) : name;
+      const isGreedy = name.endsWith("+") || name.endsWith("*");
+      const baseName = isGreedy ? name.slice(0, -1) : name;
       if (!baseName) {
         throw new Error(
           `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty parameter name`,
@@ -61,7 +62,7 @@ export function validateRule(
         );
       }
       paramNames.add(baseName);
-      if (name.endsWith("+") && i !== segments.length - 1) {
+      if (isGreedy && i !== segments.length - 1) {
         throw new Error(
           `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": {${name}} must be the last segment`,
         );

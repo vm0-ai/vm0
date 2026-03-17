@@ -7,6 +7,12 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 /**
+ * Default profile when none is specified.
+ * Must stay in sync with Rust: crates/runner/src/profile.rs → DEFAULT_PROFILE
+ */
+export const DEFAULT_PROFILE = "vm0/default";
+
+/**
  * Runner group format: org/name (e.g., "acme/production")
  */
 export const runnerGroupSchema = z
@@ -25,6 +31,7 @@ export const jobSchema = z.object({
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
+  experimentalProfile: z.string().optional(),
 });
 
 /**
@@ -41,6 +48,7 @@ export const runnersPollContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       group: runnerGroupSchema,
+      profiles: z.array(z.string()).optional(),
     }),
     responses: {
       200: z.object({
@@ -118,6 +126,8 @@ export const storedExecutionContextSchema = z.object({
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
+  // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
+  experimentalProfile: z.string().optional(),
 });
 
 /**
@@ -158,6 +168,8 @@ export const executionContextSchema = z.object({
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
+  // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
+  experimentalProfile: z.string().optional(),
 });
 
 /**

@@ -5,11 +5,13 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  createTestRunInDb,
   createTestCallback,
   findTestQueueEntry,
   findTestRunRecord,
   findTestRunCallbacks,
   setTestRunStatus,
+  getOrgCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 import {
@@ -147,6 +149,55 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       // Verify callback was dispatched (status changed from "pending")
       const afterCallbacks = await findTestRunCallbacks(run.runId);
       expect(afterCallbacks[0]!.status).not.toBe("pending");
+    });
+  });
+
+  describe("Org-Scoped Filtering", () => {
+    it("should return 404 for run from a different org", async () => {
+      const otherOrg = await context.createAgentCompose(user.userId);
+      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+        status: "running",
+        prompt: "Other org run",
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${runId}/cancel`,
+        { method: "POST" },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should cancel run when switching to the correct org", async () => {
+      const otherOrg = await context.createAgentCompose(user.userId);
+      const { runId } = await createTestRunInDb(user.userId, otherOrg.id, {
+        status: "running",
+        prompt: "Other org run",
+      });
+
+      const orgEntry = await getOrgCacheEntry(otherOrg.orgId);
+      mockClerk({
+        userId: user.userId,
+        orgId: otherOrg.orgId,
+        orgSlug: orgEntry!.slug,
+        clerkOrgs: [
+          { id: otherOrg.orgId, slug: orgEntry!.slug, name: orgEntry!.slug },
+        ],
+      });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${runId}/cancel?org=${orgEntry!.slug}`,
+        { method: "POST" },
+      );
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.id).toBe(runId);
+      expect(data.status).toBe("cancelled");
     });
   });
 

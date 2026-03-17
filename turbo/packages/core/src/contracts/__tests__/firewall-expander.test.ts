@@ -330,6 +330,19 @@ describe("validateRule", () => {
     ).not.toThrow();
   });
 
+  it("should accept {param*} in last segment", () => {
+    expect(() => validateRule("ANY /{path*}", "p", "fw")).not.toThrow();
+    expect(() =>
+      validateRule("GET /repos/{owner}/{path*}", "p", "fw"),
+    ).not.toThrow();
+  });
+
+  it("should reject {param*} not in last segment", () => {
+    expect(() =>
+      validateRule("GET /foo/{path*}/bar", "read", "github"),
+    ).toThrow("{path*} must be the last segment");
+  });
+
   it("should reject duplicate parameter names", () => {
     expect(() => validateRule("GET /repos/{owner}/{owner}", "p", "fw")).toThrow(
       'duplicate parameter name "{owner}"',
@@ -344,6 +357,12 @@ describe("validateRule", () => {
 
   it("should reject empty greedy parameter name", () => {
     expect(() => validateRule("GET /repos/{+}", "p", "fw")).toThrow(
+      "empty parameter name",
+    );
+  });
+
+  it("should reject empty star parameter name", () => {
+    expect(() => validateRule("GET /repos/{*}", "p", "fw")).toThrow(
       "empty parameter name",
     );
   });

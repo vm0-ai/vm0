@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.0](https://github.com/vm0-ai/vm0/compare/docs-v2.21.1...docs-v2.22.0) (2026-03-17)
+
+
+### Features
+
+* **docs:** add documentation for experimental_capabilities in vm0.yaml ([#5107](https://github.com/vm0-ai/vm0/issues/5107)) ([5fb1c3b](https://github.com/vm0-ai/vm0/commit/5fb1c3bd5bdc3e90f0fe32b4977e5c6a937eb182))
+
 ## [2.21.1](https://github.com/vm0-ai/vm0/compare/docs-v2.21.0...docs-v2.21.1) (2026-03-17)
 
 

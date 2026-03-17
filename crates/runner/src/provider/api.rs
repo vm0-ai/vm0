@@ -139,9 +139,9 @@ impl JobProvider for ApiProvider {
                 event = recv_ably(ably) => {
                     match event {
                         Some(ably_subscriber::Event::Message(msg)) => {
-                            if let Some(run_id) = parse_job_run_id(&msg) {
-                                info!(run_id = %run_id, "ably: job notification");
-                                return Some(run_id);
+                            if let Some(notif) = parse_job_notification(&msg) {
+                                info!(run_id = %notif.run_id, profile = ?notif.profile, "ably: job notification");
+                                return Some(notif.run_id);
                             }
                         }
                         Some(ably_subscriber::Event::Connected) => {
@@ -265,25 +265,36 @@ impl JobProvider for ApiProvider {
 // Ably helpers (private)
 // ---------------------------------------------------------------------------
 
-/// Parse `run_id` from an Ably job notification message.
-fn parse_job_run_id(msg: &ably_subscriber::Message) -> Option<Uuid> {
+/// Parsed job notification from Ably.
+struct JobNotification {
+    run_id: Uuid,
+    profile: Option<String>,
+}
+
+fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification> {
     if msg.name.as_deref() != Some("job") {
         return None;
     }
     let raw = msg.data.get("runId").and_then(|v| v.as_str());
-    match raw {
+    let run_id = match raw {
         Some(s) => match s.parse() {
-            Ok(id) => Some(id),
+            Ok(id) => id,
             Err(e) => {
                 warn!(value = %s, error = %e, "ably: invalid runId");
-                None
+                return None;
             }
         },
         None => {
             warn!(data = %msg.data, "ably: job message missing runId");
-            None
+            return None;
         }
-    }
+    };
+    let profile = msg
+        .data
+        .get("profile")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    Some(JobNotification { run_id, profile })
 }
 
 /// Receive from Ably subscription, or pend forever if not connected.
@@ -523,42 +534,60 @@ mod tests {
     }
 
     #[test]
-    fn parse_job_run_id_valid() {
+    fn parse_job_notification_valid() {
         let msg = make_message(
             Some("job"),
             serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
         );
-        let id = parse_job_run_id(&msg).unwrap();
-        assert_eq!(id.to_string(), "00000000-0000-0000-0000-000000000001");
+        let notif = parse_job_notification(&msg).unwrap();
+        assert_eq!(
+            notif.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert!(notif.profile.is_none());
     }
 
     #[test]
-    fn parse_job_run_id_wrong_event_name() {
+    fn parse_job_notification_with_profile() {
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001", "profile": "vm0/browser" }),
+        );
+        let notif = parse_job_notification(&msg).unwrap();
+        assert_eq!(
+            notif.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert_eq!(notif.profile.as_deref(), Some("vm0/browser"));
+    }
+
+    #[test]
+    fn parse_job_notification_wrong_event_name() {
         let msg = make_message(
             Some("status"),
             serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
         );
-        assert!(parse_job_run_id(&msg).is_none());
+        assert!(parse_job_notification(&msg).is_none());
     }
 
     #[test]
-    fn parse_job_run_id_missing_name() {
+    fn parse_job_notification_missing_name() {
         let msg = make_message(
             None,
             serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
         );
-        assert!(parse_job_run_id(&msg).is_none());
+        assert!(parse_job_notification(&msg).is_none());
     }
 
     #[test]
-    fn parse_job_run_id_invalid_uuid() {
+    fn parse_job_notification_invalid_uuid() {
         let msg = make_message(Some("job"), serde_json::json!({ "runId": "not-a-uuid" }));
-        assert!(parse_job_run_id(&msg).is_none());
+        assert!(parse_job_notification(&msg).is_none());
     }
 
     #[test]
-    fn parse_job_run_id_missing_field() {
+    fn parse_job_notification_missing_field() {
         let msg = make_message(Some("job"), serde_json::json!({ "other": "data" }));
-        assert!(parse_job_run_id(&msg).is_none());
+        assert!(parse_job_notification(&msg).is_none());
     }
 }

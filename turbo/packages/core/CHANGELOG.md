@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.73.0](https://github.com/vm0-ai/vm0/compare/core-v8.72.2...core-v8.73.0) (2026-03-17)
+
+
+### Features
+
+* support {param*} wildcard for zero-or-more path segments ([#5114](https://github.com/vm0-ai/vm0/issues/5114)) ([408c637](https://github.com/vm0-ai/vm0/commit/408c637b37ed74ce20c9ac48b778f1a363dbe842))
+
 ## [8.72.2](https://github.com/vm0-ai/vm0/compare/core-v8.72.1...core-v8.72.2) (2026-03-17)
 
 

@@ -45,6 +45,12 @@ interface AgentDefinition {
     group: string;
   };
   /**
+   * VM profile for resource allocation (e.g., "vm0/default", "vm0/browser").
+   * Determines rootfs image and VM resources (vCPU, memory).
+   * Defaults to "vm0/default" when omitted.
+   */
+  experimental_profile?: string;
+  /**
    * Expanded firewall configs for proxy-side token replacement.
    * Resolved from firewall names at compose time, stored as full objects.
    * Input format (CLI): string[] — expanded server-side before storage.

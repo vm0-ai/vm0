@@ -24,6 +24,9 @@ export const runnerJobQueue = pgTable(
 
     // Runner routing
     runnerGroup: varchar("runner_group", { length: 255 }).notNull(),
+    profile: varchar("profile", { length: 255 })
+      .notNull()
+      .default("vm0/default"),
 
     // Claim status
     claimedAt: timestamp("claimed_at"),
@@ -36,9 +39,9 @@ export const runnerJobQueue = pgTable(
     expiresAt: timestamp("expires_at").notNull(), // TTL for auto-cleanup
   },
   (table) => [
-    // Index for polling unclaimed jobs by group
-    index("runner_job_queue_group_unclaimed_idx")
-      .on(table.runnerGroup)
+    // Index for polling unclaimed jobs by group and profile
+    index("runner_job_queue_group_profile_unclaimed_idx")
+      .on(table.runnerGroup, table.profile)
       .where(sql`claimed_at IS NULL`),
     // Index for TTL cleanup
     index("runner_job_queue_expires_at_idx").on(table.expiresAt),
