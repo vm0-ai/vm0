@@ -464,6 +464,18 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
   }
 });
 
+/**
+ * Single entry point for changing the active agent.
+ * Sets the agent identity AND refreshes the session list atomically.
+ * All callers that need to change the active agent should use this.
+ */
+export const switchActiveAgent$ = command(
+  ({ set }, agent: { id: string; name: string } | null) => {
+    set(setZeroChatAgent$, agent);
+    detach(set(fetchZeroSessionList$), Reason.DomCallback);
+  },
+);
+
 export const switchZeroSession$ = command(
   async ({ get, set }, threadId: string) => {
     // Abort any in-flight polling from the previous session
@@ -511,30 +523,19 @@ export const switchZeroSession$ = command(
         set(internalSessionId$, data.latestSessionId);
       }
 
-      // Set the correct agent from the thread's compose ID and fetch sessions
+      // Resolve agent from thread's compose ID and switch active agent
       if (data.agentComposeId) {
         const status = await get(zeroOnboardingStatus$);
         const isDefault = data.agentComposeId === status.defaultAgentComposeId;
-        L.debug(
-          `switchSession: agentComposeId=${data.agentComposeId}, defaultComposeId=${status.defaultAgentComposeId}, isDefault=${isDefault}`,
-        );
         if (isDefault) {
-          L.debug("switchSession: setting agent to default (null)");
-          set(setZeroChatAgent$, null);
+          set(switchActiveAgent$, null);
         } else {
           const subagents = await get(zeroSubagents$);
           const agent = subagents.find((a) => a.id === data.agentComposeId);
-          L.debug(
-            `switchSession: found subagent=${agent?.name ?? "NOT FOUND"} for composeId=${data.agentComposeId}`,
-          );
           if (agent) {
-            set(setZeroChatAgent$, { id: agent.id, name: agent.name });
+            set(switchActiveAgent$, { id: agent.id, name: agent.name });
           }
         }
-        L.debug("switchSession: fetching session list");
-        detach(set(fetchZeroSessionList$), Reason.DomCallback);
-      } else {
-        L.debug("switchSession: no agentComposeId in thread response");
       }
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(

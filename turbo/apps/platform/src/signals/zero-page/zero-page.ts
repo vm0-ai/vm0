@@ -7,38 +7,39 @@ import { defaultAgentName$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initZeroActivity$ } from "./zero-activity.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
-import {
-  zeroChatAgentName$,
-  setZeroChatAgent$,
-  zeroInChat$,
-} from "./zero-nav.ts";
-import { fetchZeroSessionList$ } from "./zero-chat.ts";
+import { zeroChatAgentName$, zeroInChat$ } from "./zero-nav.ts";
+import { switchActiveAgent$ } from "./zero-chat.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
-import { logger } from "../log.ts";
-
-const L = logger("ZeroPage");
 
 /** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
 const initialDataLoaded$ = state(false);
 
 /**
- * Resolve the talk agent from the URL and fetch the session list.
- * This is the fast path — it only awaits data that's already cached
- * after the initial page load (zeroSubagents$, defaultAgentName$).
+ * Resolve the active agent from the URL and switch to it.
+ *
+ * - `/zero/talk/:name` → find agent by name, switch to it
+ * - `/zero/chat/:threadId` → skip (switchZeroSession$ handles it)
+ * - `/zero` → redirect to `/zero/talk/:defaultAgent`
+ * - other `/zero/*` → switch to default agent
+ *
+ * switchActiveAgent$ sets the agent AND fetches the session list atomically.
  */
-async function resolveTalkAgent(
+async function resolveAndSwitchAgent(
   get: Parameters<Parameters<typeof command>[0]>[0]["get"],
   set: Parameters<Parameters<typeof command>[0]>[0]["set"],
   signal: AbortSignal,
 ) {
   const currentPath = get(pathname$);
-  const inChat = get(zeroInChat$);
-  L.debug(`resolveTalkAgent: path=${currentPath}, inChat=${inChat}`);
+
+  // On /zero/chat/:threadId, switchZeroSession$ resolves the agent from
+  // the thread's agentComposeId. Don't interfere here.
+  if (get(zeroInChat$)) {
+    return;
+  }
 
   // If on bare /zero, redirect to /zero/talk/:defaultAgent
-  const isBareZero = /^\/zero\/?$/.test(currentPath);
-  if (isBareZero) {
+  if (/^\/zero\/?$/.test(currentPath)) {
     const rawName = await get(defaultAgentName$);
     signal.throwIfAborted();
     if (rawName) {
@@ -50,29 +51,22 @@ async function resolveTalkAgent(
     }
   }
 
-  // Initialize chat agent from URL /zero/talk/:name
+  // Resolve agent from /zero/talk/:name
   const agentName = get(zeroChatAgentName$);
-  L.debug(`resolveTalkAgent: agentName=${agentName}`);
   if (agentName) {
     const subagents = await get(zeroSubagents$);
     const rawDefaultName = await get(defaultAgentName$);
     signal.throwIfAborted();
 
     if (agentName === rawDefaultName) {
-      L.debug("resolveTalkAgent: is default agent, setting null");
-      set(setZeroChatAgent$, null);
+      set(switchActiveAgent$, null);
     } else {
       const agent = subagents.find((a) => a.name === agentName);
       if (agent) {
-        L.debug(
-          `resolveTalkAgent: found subagent id=${agent.id} name=${agent.name}`,
-        );
-        set(setZeroChatAgent$, { id: agent.id, name: agent.name });
+        set(switchActiveAgent$, { id: agent.id, name: agent.name });
       } else {
-        L.debug(
-          `resolveTalkAgent: agent "${agentName}" not found, redirecting to default`,
-        );
-        set(setZeroChatAgent$, null);
+        // Unknown agent → redirect to default
+        set(switchActiveAgent$, null);
         if (rawDefaultName) {
           window.history.replaceState(
             {},
@@ -82,18 +76,9 @@ async function resolveTalkAgent(
         }
       }
     }
-    detach(set(fetchZeroSessionList$), Reason.DomCallback);
-  } else if (!inChat) {
-    // Only reset agent on non-chat URLs (e.g. /zero/schedule, /zero/team).
-    // On /zero/chat/:threadId, switchZeroSession$ will resolve the correct
-    // agent from the thread's agentComposeId.
-    L.debug("resolveTalkAgent: non-talk, non-chat URL → reset to default");
-    set(setZeroChatAgent$, null);
-    detach(set(fetchZeroSessionList$), Reason.DomCallback);
   } else {
-    L.debug(
-      "resolveTalkAgent: on chat URL, skipping agent reset (switchZeroSession$ handles it)",
-    );
+    // Non-talk, non-chat URL (e.g. /zero/schedule)
+    set(switchActiveAgent$, null);
   }
 }
 
@@ -114,9 +99,6 @@ export const setupZeroPage$ = command(
       detach(set(initZeroActivity$), Reason.Daemon);
     }
 
-    L.debug(
-      `setupZeroPage: initialDataLoaded=${get(initialDataLoaded$)}, resolving talk agent`,
-    );
-    await resolveTalkAgent(get, set, signal);
+    await resolveAndSwitchAgent(get, set, signal);
   },
 );
