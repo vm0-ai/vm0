@@ -278,8 +278,8 @@ export function mockClerk(options: {
               );
               // Match Clerk API 404 behavior so isNotFound() recognizes the error
               (err as { name: string }).name = "NotFoundError";
-              (err as { statusCode: number }).statusCode = 404;
-              (err as { code: string }).code = "NOT_FOUND";
+              (err as unknown as { statusCode: number }).statusCode = 404;
+              (err as unknown as { code: string }).code = "NOT_FOUND";
               return Promise.reject(err);
             }
             // Apply slug and metadata overrides

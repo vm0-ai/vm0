@@ -8,7 +8,9 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
+import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import { logger } from "../../../../../../src/lib/logger";
 import {
   transitionRunStatus,
@@ -30,10 +32,32 @@ const router = tsr.router(runsCancelContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
-
     const { id: runId } = params;
+
+    // Resolve org: sandbox tokens derive org from the run; CLI/session use resolveOrg
+    let orgId: string;
+    if (isSandboxAuth(authCtx)) {
+      const [sandboxRun] = await globalThis.services.db
+        .select({ orgId: agentRuns.orgId })
+        .from(agentRuns)
+        .where(
+          and(eq(agentRuns.id, authCtx.runId), eq(agentRuns.userId, userId)),
+        )
+        .limit(1);
+      if (!sandboxRun) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent run not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      orgId = (await getOrgData(sandboxRun.orgId)).orgId;
+    } else {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org } = await resolveOrg(userId, orgSlug);
+      orgId = org.orgId;
+    }
 
     // Find the run - filter by userId and orgId for security
     const [run] = await globalThis.services.db
@@ -43,7 +67,7 @@ const router = tsr.router(runsCancelContract, {
         and(
           eq(agentRuns.id, runId),
           eq(agentRuns.userId, userId),
-          eq(agentRuns.orgId, org.orgId),
+          eq(agentRuns.orgId, orgId),
         ),
       )
       .limit(1);
