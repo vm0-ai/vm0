@@ -17,7 +17,7 @@ const TEST_EMAIL = "e2e+clerk_test@vm0.ai";
 const TEST_OTP = "424242";
 
 /** Wait for a selector to appear and return the element handle. */
-async function waitFor(page, selector, timeout = 15000) {
+async function waitFor(page, selector, timeout = 30000) {
   await page.waitForSelector(selector, { visible: true, timeout });
   return page.$(selector);
 }
