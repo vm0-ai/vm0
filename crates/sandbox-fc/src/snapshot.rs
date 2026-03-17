@@ -123,12 +123,9 @@ pub async fn create_snapshot(
     info!("overlay created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
-    let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
-        size: 1,
-        proxy_port: None,
-    })
-    .await
-    .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
+    let mut netns_pool = NetnsPool::create(NetnsPoolConfig { proxy_port: None })
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
 
     // Guard: ensure netns cleanup on any exit path.
     let result =

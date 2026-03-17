@@ -7,8 +7,6 @@ pub struct FirecrackerConfig {
     pub rootfs_path: PathBuf,
     /// Base directory for runtime data (workspaces, overlays, etc.).
     pub base_dir: PathBuf,
-    /// Number of VMs that can run concurrently (determines pool pre-warm size).
-    pub concurrency: usize,
     /// Port of the HTTP/HTTPS proxy. When set, iptables rules redirect traffic through it.
     pub proxy_port: Option<u16>,
     /// Snapshot to restore from. When set, VMs boot via snapshot restore instead of fresh boot.

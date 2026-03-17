@@ -21,9 +21,10 @@ const OVERLAY_PREFIX: &str = "overlay-";
 /// File extension for overlay files.
 const OVERLAY_EXT: &str = ".ext4";
 
-/// Number of overlay files to pre-warm (blocking) at startup.
-/// Remaining files are created lazily via background replenishment.
-const INITIAL_POOL_SIZE: usize = 4;
+/// Number of ready overlay files to keep in the pool buffer.
+/// The pool pre-warms this many at startup and replenishes to
+/// maintain this level after each acquire.
+const BUFFER_SIZE: usize = 4;
 
 /// Maximum overlay files to create per replenishment cycle.
 const REPLENISH_BATCH: usize = 4;
@@ -133,10 +134,6 @@ async fn clean_stale_files(dir: &Path) {
 
 /// Configuration for creating an [`OverlayPool`].
 pub struct OverlayPoolConfig {
-    /// Number of overlay files to pre-create.
-    pub size: usize,
-    /// Start replenishment when available count drops below this.
-    pub replenish_threshold: usize,
     /// Directory in which overlay files are stored.
     pub pool_dir: PathBuf,
     /// Strategy for creating overlay files.
@@ -165,24 +162,19 @@ pub struct OverlayPool {
     /// access pool state directly.
     pending: tokio::task::JoinSet<Result<PathBuf>>,
     pool_dir: PathBuf,
-    size: usize,
-    replenish_threshold: usize,
     creator: Arc<dyn OverlayCreator>,
 }
 
 impl OverlayPool {
-    /// Create a new pool with lazy initialization.
+    /// Create a new pool with a small pre-warmed buffer.
     ///
     /// Creates the pool directory if it doesn't exist, removes stale files
-    /// from previous runs, and pre-creates a small batch of overlay files
-    /// (up to [`INITIAL_POOL_SIZE`]). Remaining files are created lazily
-    /// via background replenishment on each [`acquire`](Self::acquire).
+    /// from previous runs, and pre-creates [`BUFFER_SIZE`] overlay files.
+    /// After each [`acquire`](Self::acquire), the pool replenishes to
+    /// maintain the buffer level.
     pub async fn create(config: OverlayPoolConfig) -> Result<Self> {
-        let initial = config.size.min(INITIAL_POOL_SIZE);
         info!(
-            size = config.size,
-            initial,
-            threshold = config.replenish_threshold,
+            buffer = BUFFER_SIZE,
             dir = %config.pool_dir.display(),
             "initializing overlay pool"
         );
@@ -194,12 +186,12 @@ impl OverlayPool {
         clean_stale_files(&config.pool_dir).await;
 
         let creator: Arc<dyn OverlayCreator> = Arc::from(config.creator);
-        let mut queue = VecDeque::with_capacity(config.size);
+        let mut queue = VecDeque::with_capacity(BUFFER_SIZE);
 
-        // Pre-warm only `initial` files (blocking).
-        if initial > 0 {
+        // Pre-warm the buffer.
+        if BUFFER_SIZE > 0 {
             let mut join_set = tokio::task::JoinSet::new();
-            for _ in 0..initial {
+            for _ in 0..BUFFER_SIZE {
                 let dir = config.pool_dir.clone();
                 let c = Arc::clone(&creator);
                 join_set.spawn(async move {
@@ -216,38 +208,23 @@ impl OverlayPool {
             }
             if queue.is_empty() {
                 warn!(
-                    attempted = initial,
+                    attempted = BUFFER_SIZE,
                     "all initial overlay pre-warm tasks failed, pool starting with 0 ready files"
                 );
             }
         }
 
-        // Spawn a batch of background tasks for the remaining files.
-        let mut pending = tokio::task::JoinSet::new();
-        let background = config.size.saturating_sub(initial).min(REPLENISH_BATCH);
-        for _ in 0..background {
-            let dir = config.pool_dir.clone();
-            let c = Arc::clone(&creator);
-            pending.spawn(async move {
-                let path = dir.join(generate_file_name());
-                c.create(&path).await.map(|()| path)
-            });
-        }
-
         info!(
             available = queue.len(),
-            pending = background,
-            target = config.size,
+            buffer = BUFFER_SIZE,
             "overlay pool initialized"
         );
 
         Ok(Self {
             active: true,
             queue,
-            pending,
+            pending: tokio::task::JoinSet::new(),
             pool_dir: config.pool_dir,
-            size: config.size,
-            replenish_threshold: config.replenish_threshold,
             creator,
         })
     }
@@ -342,22 +319,16 @@ impl OverlayPool {
         self.queue.len()
     }
 
-    /// Spawn background creation tasks if the pool is running low.
+    /// Spawn background creation tasks if the buffer is running low.
     ///
     /// Spawns at most [`REPLENISH_BATCH`] tasks per call to avoid
-    /// bursting I/O. Subsequent [`acquire`](Self::acquire) calls will
-    /// trigger further batches until the pool reaches `size`.
-    ///
-    /// Trade-off: the pool may operate below target capacity for several
-    /// acquire cycles after startup or heavy consumption. This is acceptable
-    /// because Tier 2/3 fallbacks ensure `acquire` never fails due to an
-    /// empty pool.
+    /// bursting I/O. Maintains a ready buffer of [`BUFFER_SIZE`] files.
     fn maybe_replenish(&mut self) {
         let total = self.queue.len() + self.pending.len();
-        if total >= self.replenish_threshold {
+        if total >= BUFFER_SIZE {
             return;
         }
-        let needed = self.size.saturating_sub(total).min(REPLENISH_BATCH);
+        let needed = BUFFER_SIZE.saturating_sub(total).min(REPLENISH_BATCH);
         for _ in 0..needed {
             let dir = self.pool_dir.clone();
             let c = Arc::clone(&self.creator);
@@ -415,10 +386,8 @@ mod tests {
         }
     }
 
-    fn test_config(dir: &Path, size: usize, threshold: usize) -> OverlayPoolConfig {
+    fn test_config(dir: &Path) -> OverlayPoolConfig {
         OverlayPoolConfig {
-            size,
-            replenish_threshold: threshold,
             pool_dir: dir.to_path_buf(),
             creator: Box::new(TestCreator),
         }
@@ -453,17 +422,17 @@ mod tests {
     #[tokio::test]
     async fn create_prewarms_files() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 3, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
-        assert_eq!(pool.available_count(), 3);
+        assert_eq!(pool.available_count(), BUFFER_SIZE);
 
         let entries: Vec<_> = std::fs::read_dir(tmp.path())
             .expect("read_dir")
             .filter_map(|e| e.ok())
             .collect();
-        assert_eq!(entries.len(), 3);
+        assert_eq!(entries.len(), BUFFER_SIZE);
         for entry in &entries {
             assert!(is_overlay_file(&entry.file_name().to_string_lossy()));
         }
@@ -472,20 +441,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_lazy_init_large_pool() {
+    async fn acquire_beyond_buffer_uses_replenish_and_on_demand() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        // size=10 > INITIAL_POOL_SIZE(4): only 4 should be pre-warmed,
-        // remaining created lazily via pending + replenishment.
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 10, 5))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
-        // Only INITIAL_POOL_SIZE files are ready in the queue.
-        assert_eq!(pool.available_count(), INITIAL_POOL_SIZE);
-
-        // But we can still acquire all 10 (from queue + pending + replenish).
+        // Buffer is BUFFER_SIZE. Acquiring more than that exercises
+        // replenishment (Tier 2) and on-demand creation (Tier 3).
+        let count = BUFFER_SIZE + 4;
         let mut paths = Vec::new();
-        for i in 0..10 {
+        for i in 0..count {
             let path = pool.acquire().await.unwrap_or_else(|e| {
                 panic!("acquire {i} failed: {e}");
             });
@@ -512,12 +478,12 @@ mod tests {
         std::fs::write(&stale, b"stale").expect("write");
         assert!(stale.exists());
 
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 1, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
-        // Stale file should be gone; only the newly created one remains.
-        assert_eq!(pool.available_count(), 1);
+        // Stale file should be gone; only the newly created files remain.
+        assert_eq!(pool.available_count(), BUFFER_SIZE);
         assert!(!stale.exists());
 
         pool.cleanup().await;
@@ -526,7 +492,7 @@ mod tests {
     #[tokio::test]
     async fn acquire_returns_file() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 2, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
@@ -542,7 +508,7 @@ mod tests {
     #[tokio::test]
     async fn acquire_returns_unique_files() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 3, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
@@ -560,17 +526,20 @@ mod tests {
     #[tokio::test]
     async fn acquire_when_queue_exhausted() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 1, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
-        let _first = pool.acquire().await.expect("acquire pooled");
+        // Drain the entire buffer.
+        for _ in 0..BUFFER_SIZE {
+            pool.acquire().await.expect("drain buffer");
+        }
         assert_eq!(pool.available_count(), 0);
 
-        // Queue is empty but maybe_replenish spawned a pending task,
-        // so the second acquire comes from Tier 2 (pending).
-        let second = pool.acquire().await.expect("acquire from pending");
-        assert!(second.exists());
+        // Queue is empty but maybe_replenish spawned pending tasks,
+        // so the next acquire comes from Tier 2 (pending).
+        let path = pool.acquire().await.expect("acquire from pending");
+        assert!(path.exists());
 
         pool.cleanup().await;
     }
@@ -578,35 +547,18 @@ mod tests {
     #[tokio::test]
     async fn acquire_from_replenished_pending() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        // size=2, threshold=2: acquiring the first file triggers replenishment,
-        // so the second acquire should come from a pending task (Tier 2).
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 2, 2))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
-        let first = pool.acquire().await.expect("acquire 1 (pooled)");
-        assert!(first.exists());
+        // Drain the entire buffer so replenishment kicks in.
+        for _ in 0..BUFFER_SIZE {
+            pool.acquire().await.expect("drain buffer");
+        }
 
         // Queue is now empty, but maybe_replenish() should have spawned tasks.
-        // The second acquire hits Tier 2 (pending JoinSet).
-        let second = pool.acquire().await.expect("acquire 2 (replenished)");
-        assert!(second.exists());
-        assert_ne!(first, second);
-
-        pool.cleanup().await;
-    }
-
-    #[tokio::test]
-    async fn create_with_size_zero() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 0, 0))
-            .await
-            .expect("create");
-
-        assert_eq!(pool.available_count(), 0);
-
-        // acquire still works via on-demand (Tier 3).
-        let path = pool.acquire().await.expect("acquire on-demand");
+        // The next acquire hits Tier 2 (pending JoinSet).
+        let path = pool.acquire().await.expect("acquire from replenished");
         assert!(path.exists());
 
         pool.cleanup().await;
@@ -616,8 +568,6 @@ mod tests {
     async fn create_succeeds_when_all_prewarm_fail() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = OverlayPoolConfig {
-            size: 3,
-            replenish_threshold: 1,
             pool_dir: tmp.path().to_path_buf(),
             creator: Box::new(FailingCreator),
         };
@@ -632,7 +582,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_deletes_files() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 3, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
@@ -650,7 +600,7 @@ mod tests {
     #[tokio::test]
     async fn cleanup_noop_after_cleanup() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 2, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 
@@ -663,7 +613,7 @@ mod tests {
     #[tokio::test]
     async fn acquire_after_cleanup_errors() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut pool = OverlayPool::create(test_config(tmp.path(), 2, 1))
+        let mut pool = OverlayPool::create(test_config(tmp.path()))
             .await
             .expect("create");
 

@@ -207,7 +207,6 @@ impl RunnerConfig {
         &self,
         profile: &ProfileConfig,
         home: &HomePaths,
-        concurrency: usize,
         proxy_port: Option<u16>,
     ) -> sandbox_fc::FirecrackerConfig {
         let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
@@ -221,7 +220,6 @@ impl RunnerConfig {
             kernel_path: self.firecracker.kernel.clone(),
             rootfs_path: rootfs_paths.rootfs(),
             base_dir: self.base_dir.clone(),
-            concurrency,
             proxy_port,
             snapshot,
         }
@@ -635,7 +633,7 @@ profiles:
         };
 
         let profile = &config.profiles["vm0/default"];
-        let fc = config.firecracker_config(profile, &home, 4, Some(8080));
+        let fc = config.firecracker_config(profile, &home, Some(8080));
 
         assert_eq!(fc.binary_path, dir.path().join("firecracker"));
         assert_eq!(fc.kernel_path, dir.path().join("vmlinux"));
@@ -643,7 +641,6 @@ profiles:
             fc.rootfs_path,
             home.rootfs_dir().join("abc123").join("rootfs.squashfs")
         );
-        assert_eq!(fc.concurrency, 4);
         assert_eq!(fc.proxy_port, Some(8080));
         assert!(fc.snapshot.is_some());
     }

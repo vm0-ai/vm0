@@ -63,9 +63,10 @@ const IP_PREFIX: &str = "10.200";
 const MAX_POOLS: u32 = 64;
 /// Maximum namespaces a single pool can own (index 0x00–0xff).
 const MAX_NAMESPACES: u32 = 256;
-/// Number of namespaces to pre-warm per queue at startup.
-/// Remaining namespaces are created lazily via background replenishment.
-const INITIAL_POOL_SIZE: usize = 4;
+/// Number of ready namespaces to keep in each pool queue.
+/// The pool pre-warms this many at startup and replenishes to
+/// maintain this level after each acquire.
+const BUFFER_SIZE: usize = 4;
 
 // Compile-time check: all /30 subnets fit within `10.200.0.0/16`.
 // 64 pools × 256 ns × 4 addresses per /30 = 65536 = exactly 2^16.
@@ -90,11 +91,9 @@ pub struct PooledNetns {
 
 /// Configuration for creating a [`NetnsPool`].
 ///
-/// When `proxy_port` is set, the pool pre-warms **two** queues of `size`
-/// namespaces each (plain + proxy), doubling the total namespace count.
+/// When `proxy_port` is set, the pool maintains **two** queues
+/// (plain + proxy), each buffering [`BUFFER_SIZE`] namespaces.
 pub struct NetnsPoolConfig {
-    /// Number of namespaces to pre-create per queue.
-    pub size: usize,
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
     pub proxy_port: Option<u16>,
 }
@@ -532,11 +531,10 @@ fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
 
 /// Pre-warmed pool of network namespaces for Firecracker VMs.
 ///
-/// Uses lazy initialization: only [`INITIAL_POOL_SIZE`] namespaces are
-/// pre-warmed at startup. Additional namespaces are created in the
-/// background on each [`acquire`](Self::acquire) call until `target_size`
-/// is reached. After that, namespaces are recycled via
-/// [`release`](Self::release) with no further background creation.
+/// Maintains a buffer of [`BUFFER_SIZE`] ready namespaces per queue.
+/// After each [`acquire`](Self::acquire), the pool spawns a background
+/// task to replenish the buffer. Namespaces returned via
+/// [`release`](Self::release) are recycled back into the queue.
 pub struct NetnsPool {
     active: bool,
     plain_queue: VecDeque<PooledNetns>,
@@ -549,24 +547,17 @@ pub struct NetnsPool {
     pool_index: u32,
     proxy_port: Option<u16>,
     default_iface: String,
-    /// Target pool size per queue (from config).
-    target_size: usize,
-    /// Plain namespaces successfully created or in-flight (decremented on
-    /// failure). Compared against `target_size` to gate background replenishment.
-    created_plain: usize,
-    /// Proxy namespaces successfully created or in-flight (decremented on
-    /// failure). Compared against `target_size` to gate background replenishment.
-    created_proxy: usize,
     /// Held for the lifetime of the pool to reserve the pool index.
     _lock: Flock<File>,
 }
 
 impl NetnsPool {
-    /// Create a new pool with lazy initialization.
+    /// Create a new pool with a small pre-warmed buffer.
     ///
-    /// Only [`INITIAL_POOL_SIZE`] namespaces are pre-warmed per queue at
-    /// startup. The remaining namespaces (up to `config.size`) are created
-    /// lazily via background replenishment on each [`acquire`](Self::acquire).
+    /// Pre-warms [`BUFFER_SIZE`] namespaces per queue at startup.
+    /// After each [`acquire`](Self::acquire), the pool replenishes to
+    /// maintain the buffer level. Namespaces returned via
+    /// [`release`](Self::release) are recycled back into the queue.
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and cleans up orphaned resources from the acquired
@@ -575,13 +566,7 @@ impl NetnsPool {
         let lock_paths = LockPaths::new();
         let (index, lock) = acquire_pool_lock(&lock_paths)?;
 
-        let initial = config.size.min(INITIAL_POOL_SIZE);
-        info!(
-            index,
-            size = config.size,
-            initial,
-            "initializing namespace pool"
-        );
+        info!(index, buffer = BUFFER_SIZE, "initializing namespace pool");
 
         // Enable host-level IP forwarding (idempotent, needed once per host).
         exec("sysctl", &["-w", "net.ipv4.ip_forward=1"], Privilege::Sudo).await?;
@@ -593,9 +578,9 @@ impl NetnsPool {
 
         let mut pool = Self {
             active: true,
-            plain_queue: VecDeque::with_capacity(config.size),
+            plain_queue: VecDeque::with_capacity(BUFFER_SIZE),
             proxy_queue: VecDeque::with_capacity(if config.proxy_port.is_some() {
-                config.size
+                BUFFER_SIZE
             } else {
                 0
             }),
@@ -605,20 +590,16 @@ impl NetnsPool {
             pool_index: index,
             proxy_port: config.proxy_port,
             default_iface,
-            target_size: config.size,
-            created_plain: 0,
-            created_proxy: 0,
             _lock: lock,
         };
 
-        // Pre-warm only `initial` namespaces per queue (not all `size`).
-        // The rest are created lazily via background replenishment.
-        if initial > 0 {
+        // Pre-warm the buffer.
+        if BUFFER_SIZE > 0 {
             let mut plain_set = tokio::task::JoinSet::new();
             let mut proxy_set = tokio::task::JoinSet::new();
 
             // Plain namespaces (connectivity only).
-            for _ in 0..initial {
+            for _ in 0..BUFFER_SIZE {
                 let ns_index = pool.next_ns_index;
                 pool.next_ns_index += 1;
                 let pool_index = pool.pool_index;
@@ -633,7 +614,7 @@ impl NetnsPool {
 
             // Proxy namespaces (connectivity + REDIRECT rules).
             if let Some(proxy_port) = pool.proxy_port {
-                for _ in 0..initial {
+                for _ in 0..BUFFER_SIZE {
                     let ns_index = pool.next_ns_index;
                     pool.next_ns_index += 1;
                     let pool_index = pool.pool_index;
@@ -663,13 +644,10 @@ impl NetnsPool {
             }
         }
 
-        pool.created_plain = pool.plain_queue.len();
-        pool.created_proxy = pool.proxy_queue.len();
-
         info!(
             plain = pool.plain_queue.len(),
             proxy = pool.proxy_queue.len(),
-            target = pool.target_size,
+            buffer = BUFFER_SIZE,
             "namespace pool initialized"
         );
         Ok(pool)
@@ -683,7 +661,7 @@ impl NetnsPool {
     /// 3. Create on-demand as fallback
     ///
     /// After acquisition, spawns a background replenishment task if the
-    /// total created count hasn't reached `target_size`.
+    /// buffer is below [`BUFFER_SIZE`].
     ///
     /// The two queues are completely independent — `use_proxy=true` only
     /// touches the proxy queue, `use_proxy=false` only touches the plain queue.
@@ -728,20 +706,13 @@ impl NetnsPool {
                     self.maybe_replenish_plain();
                     return Ok(ns);
                 }
-                Ok(Err(e)) => {
-                    self.created_plain = self.created_plain.saturating_sub(1);
-                    error!(error = %e, "pending namespace creation failed");
-                }
-                Err(e) => {
-                    self.created_plain = self.created_plain.saturating_sub(1);
-                    error!(error = %e, "pending namespace task panicked");
-                }
+                Ok(Err(e)) => error!(error = %e, "pending namespace creation failed"),
+                Err(e) => error!(error = %e, "pending namespace task panicked"),
             }
         }
         // Tier 3: on-demand.
         info!("pool exhausted, creating namespace on-demand");
         let ns = self.create_on_demand(None).await?;
-        self.created_plain += 1;
         self.maybe_replenish_plain();
         Ok(ns)
     }
@@ -769,20 +740,13 @@ impl NetnsPool {
                     self.maybe_replenish_proxy();
                     return Ok(ns);
                 }
-                Ok(Err(e)) => {
-                    self.created_proxy = self.created_proxy.saturating_sub(1);
-                    error!(error = %e, "pending proxy namespace creation failed");
-                }
-                Err(e) => {
-                    self.created_proxy = self.created_proxy.saturating_sub(1);
-                    error!(error = %e, "pending proxy namespace task panicked");
-                }
+                Ok(Err(e)) => error!(error = %e, "pending proxy namespace creation failed"),
+                Err(e) => error!(error = %e, "pending proxy namespace task panicked"),
             }
         }
         // Tier 3: on-demand.
         info!("proxy pool exhausted, creating namespace on-demand");
         let ns = self.create_on_demand(self.proxy_port).await?;
-        self.created_proxy += 1;
         self.maybe_replenish_proxy();
         Ok(ns)
     }
@@ -808,43 +772,30 @@ impl NetnsPool {
     /// Move completed background tasks into their respective queues.
     ///
     /// Uses `try_join_next()` to avoid blocking — only drains tasks that
-    /// have already finished. Decrements the created counter on failure so
-    /// the slot can be retried on the next replenishment cycle.
+    /// have already finished.
     fn drain_completed(&mut self) {
         while let Some(result) = self.pending_plain.try_join_next() {
             match result {
                 Ok(Ok(ns)) => self.plain_queue.push_back(ns),
-                Ok(Err(e)) => {
-                    self.created_plain = self.created_plain.saturating_sub(1);
-                    error!(error = %e, "background namespace creation failed");
-                }
-                Err(e) => {
-                    self.created_plain = self.created_plain.saturating_sub(1);
-                    error!(error = %e, "background namespace creation panicked");
-                }
+                Ok(Err(e)) => error!(error = %e, "background namespace creation failed"),
+                Err(e) => error!(error = %e, "background namespace creation panicked"),
             }
         }
         while let Some(result) = self.pending_proxy.try_join_next() {
             match result {
                 Ok(Ok(ns)) => self.proxy_queue.push_back(ns),
-                Ok(Err(e)) => {
-                    self.created_proxy = self.created_proxy.saturating_sub(1);
-                    error!(error = %e, "background proxy namespace creation failed");
-                }
-                Err(e) => {
-                    self.created_proxy = self.created_proxy.saturating_sub(1);
-                    error!(error = %e, "background proxy namespace creation panicked");
-                }
+                Ok(Err(e)) => error!(error = %e, "background proxy namespace creation failed"),
+                Err(e) => error!(error = %e, "background proxy namespace creation panicked"),
             }
         }
     }
 
     /// Spawn a background plain namespace creation task if needed.
     ///
-    /// Skips if: total created already reached target, a task is already
-    /// in-flight, or namespace index limit reached.
+    /// Skips if: buffer is full, a task is already in-flight, or
+    /// namespace index limit reached.
     fn maybe_replenish_plain(&mut self) {
-        if self.created_plain >= self.target_size
+        if self.plain_queue.len() + self.pending_plain.len() >= BUFFER_SIZE
             || !self.pending_plain.is_empty()
             || self.next_ns_index >= MAX_NAMESPACES
         {
@@ -852,7 +803,6 @@ impl NetnsPool {
         }
         let ns_index = self.next_ns_index;
         self.next_ns_index += 1;
-        self.created_plain += 1;
         let pool_index = self.pool_index;
         let default_iface = self.default_iface.clone();
         self.pending_plain.spawn(create_single_namespace(
@@ -865,13 +815,13 @@ impl NetnsPool {
 
     /// Spawn a background proxy namespace creation task if needed.
     ///
-    /// Skips if: no proxy port configured, total created already reached
-    /// target, a task is already in-flight, or namespace index limit reached.
+    /// Skips if: no proxy port configured, buffer is full, a task is
+    /// already in-flight, or namespace index limit reached.
     fn maybe_replenish_proxy(&mut self) {
         let Some(proxy_port) = self.proxy_port else {
             return;
         };
-        if self.created_proxy >= self.target_size
+        if self.proxy_queue.len() + self.pending_proxy.len() >= BUFFER_SIZE
             || !self.pending_proxy.is_empty()
             || self.next_ns_index >= MAX_NAMESPACES
         {
@@ -879,7 +829,6 @@ impl NetnsPool {
         }
         let ns_index = self.next_ns_index;
         self.next_ns_index += 1;
-        self.created_proxy += 1;
         let pool_index = self.pool_index;
         let default_iface = self.default_iface.clone();
         self.pending_proxy.spawn(create_single_namespace(

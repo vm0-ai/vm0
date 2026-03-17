@@ -188,26 +188,27 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         "resource budget initialized"
     );
 
-    // Factory concurrency hint for pool sizing (overlay + netns pre-warming).
-    assert!(vcpu > 0, "profile vcpu must be > 0");
-    assert!(memory_mb > 0, "profile memory_mb must be > 0");
-    let resource_limit = std::cmp::min(
-        budget.effective_vcpu() as usize / vcpu as usize,
-        budget.effective_memory_mb() as usize / memory_mb as usize,
-    )
-    .max(1);
-    let concurrency = if max_concurrent > 0 {
-        std::cmp::min(resource_limit, max_concurrent)
-    } else {
-        resource_limit
-    };
-
     // Build firecracker config with all parameters resolved.
-    let fc_config =
-        runner_config.firecracker_config(default_profile, &home, concurrency, Some(mitm.port()));
+    let fc_config = runner_config.firecracker_config(default_profile, &home, Some(mitm.port()));
     let is_snapshot = fc_config.snapshot.is_some();
 
-    let mut status = StatusTracker::new(paths.status(), concurrency);
+    // Estimated capacity: theoretical max concurrent VMs from resource budget.
+    // Used for status reporting only — actual admission is controlled by ResourceBudget.
+    assert!(vcpu > 0, "profile vcpu must be > 0");
+    assert!(memory_mb > 0, "profile memory_mb must be > 0");
+    let estimated_capacity = {
+        let resource_limit = std::cmp::min(
+            budget.effective_vcpu() as usize / vcpu as usize,
+            budget.effective_memory_mb() as usize / memory_mb as usize,
+        )
+        .max(1);
+        if max_concurrent > 0 {
+            std::cmp::min(resource_limit, max_concurrent)
+        } else {
+            resource_limit
+        }
+    };
+    let mut status = StatusTracker::new(paths.status(), estimated_capacity);
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
 

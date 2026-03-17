@@ -172,18 +172,15 @@ impl SandboxFactory for FirecrackerFactory {
             ));
         }
 
-        let concurrency = self.config.concurrency.max(1);
-
         let t = std::time::Instant::now();
         let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
-            size: concurrency,
             proxy_port: self.config.proxy_port,
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
         info!(
             elapsed_ms = t.elapsed().as_millis() as u64,
-            concurrency, "netns pool created"
+            "netns pool created"
         );
 
         let overlay_creator: Box<dyn OverlayCreator> = match &self.config.snapshot {
@@ -193,8 +190,6 @@ impl SandboxFactory for FirecrackerFactory {
 
         let t = std::time::Instant::now();
         let overlay_pool = match OverlayPool::create(OverlayPoolConfig {
-            size: concurrency,
-            replenish_threshold: (concurrency / 2).max(1),
             pool_dir: self.factory_paths.overlays(),
             creator: overlay_creator,
         })
@@ -210,7 +205,7 @@ impl SandboxFactory for FirecrackerFactory {
         };
         info!(
             elapsed_ms = t.elapsed().as_millis() as u64,
-            concurrency, "overlay pool created"
+            "overlay pool created"
         );
 
         self.netns_pool = Some(tokio::sync::Mutex::new(netns_pool));
@@ -221,7 +216,7 @@ impl SandboxFactory for FirecrackerFactory {
         } else {
             "fresh"
         };
-        info!(concurrency, mode, "factory started");
+        info!(mode, "factory started");
 
         Ok(())
     }
