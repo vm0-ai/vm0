@@ -1,9 +1,11 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { sessionsContract } from "@vm0/core";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getUserId } from "../../../../src/lib/auth/get-user-id";
 import { listAgentSessions } from "../../../../src/lib/agent-session";
-import { verifyComposeOrgAccess } from "../../../../src/lib/org/verify-compose-org-access";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import { resolveCallerOrgId } from "../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(sessionsContract, {
   list: async ({ query, headers }, { request }) => {
@@ -20,12 +22,23 @@ const router = tsr.router(sessionsContract, {
     }
 
     // Verify the requested compose belongs to the caller's active org
-    const hasOrgAccess = await verifyComposeOrgAccess(
-      query.agentComposeId,
-      userId,
-      request.url,
-    );
-    if (!hasOrgAccess) {
+    const [compose] = await globalThis.services.db
+      .select({ orgId: agentComposes.orgId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, query.agentComposeId))
+      .limit(1);
+
+    if (!compose) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    const callerOrgId = await resolveCallerOrgId(userId, request);
+    if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,
         body: {

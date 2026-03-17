@@ -10,7 +10,7 @@ import { getUserId } from "../../../../../../src/lib/auth/get-user-id";
 import { appendChatMessages } from "../../../../../../src/lib/agent-session";
 import { isNotFound } from "../../../../../../src/lib/errors";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
-import { verifyComposeOrgAccess } from "../../../../../../src/lib/org/verify-compose-org-access";
+import { resolveCallerOrgId } from "../../../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(sessionMessagesContract, {
   append: async ({ params, body, headers }, { request }) => {
@@ -26,10 +26,10 @@ const router = tsr.router(sessionMessagesContract, {
       };
     }
 
-    // Verify session belongs to the caller's active organization
+    // Verify session belongs to the caller's active organization (runtime org)
     const [session] = await globalThis.services.db
       .select({
-        agentComposeId: agentSessions.agentComposeId,
+        orgId: agentSessions.orgId,
         userId: agentSessions.userId,
       })
       .from(agentSessions)
@@ -45,12 +45,8 @@ const router = tsr.router(sessionMessagesContract, {
       };
     }
 
-    const hasOrgAccess = await verifyComposeOrgAccess(
-      session.agentComposeId,
-      userId,
-      request.url,
-    );
-    if (!hasOrgAccess) {
+    const callerOrgId = await resolveCallerOrgId(userId, request);
+    if (callerOrgId !== session.orgId) {
       return {
         status: 404 as const,
         body: {

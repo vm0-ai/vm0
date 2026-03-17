@@ -12,7 +12,7 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { verifyComposeOrgAccess } from "../../../../../src/lib/org/verify-compose-org-access";
+import { resolveCallerOrgId } from "../../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(sessionsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
@@ -56,13 +56,9 @@ const router = tsr.router(sessionsByIdContract, {
       };
     }
 
-    // Verify session belongs to the caller's active organization
-    const hasOrgAccess = await verifyComposeOrgAccess(
-      session.agentComposeId,
-      userId,
-      request.url,
-    );
-    if (!hasOrgAccess) {
+    // Verify session belongs to the caller's active organization (runtime org)
+    const callerOrgId = await resolveCallerOrgId(userId, request);
+    if (callerOrgId !== session.orgId) {
       return {
         status: 404 as const,
         body: {

@@ -160,6 +160,7 @@ export async function createCheckpoint(
     // New run: always create a new session (with artifact/memory name if present)
     agentSession = await createAgentSession({
       userId: run.userId,
+      orgId: run.orgId,
       agentComposeId: version.composeId,
       artifactName: artifactSnapshot?.artifactName,
       memoryName: memorySnapshot?.memoryName,

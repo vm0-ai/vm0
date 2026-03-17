@@ -10,6 +10,7 @@
 export interface AgentSessionData {
   id: string;
   userId: string;
+  orgId: string;
   agentComposeId: string;
   conversationId: string | null;
   artifactName: string | null;
@@ -23,6 +24,7 @@ export interface AgentSessionData {
  */
 export interface CreateAgentSessionInput {
   userId: string;
+  orgId: string;
   agentComposeId: string;
   artifactName?: string;
   memoryName?: string;

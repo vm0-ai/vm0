@@ -1,6 +1,12 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { eq, desc } from "drizzle-orm";
-import { forbidden, badRequest, notFound, isNotFound } from "../errors";
+import {
+  forbidden,
+  badRequest,
+  notFound,
+  isNotFound,
+  isForbidden,
+} from "../errors";
 import { logger } from "../logger";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
@@ -242,6 +248,28 @@ export async function resolveOrgOrNull(
     return org;
   } catch (error) {
     if (isNotFound(error)) return null;
+    throw error;
+  }
+}
+
+/**
+ * Resolve the caller's org ID from the request's ?org= query parameter.
+ *
+ * Returns null if the org cannot be resolved (not found, forbidden, or user
+ * is not a member). Use this in endpoints that need to compare the caller's
+ * org against a resource's org without leaking information about whether the
+ * resource exists.
+ */
+export async function resolveCallerOrgId(
+  userId: string,
+  request: Request,
+): Promise<string | null> {
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  try {
+    const { org } = await resolveOrg(userId, orgSlug);
+    return org.orgId;
+  } catch (error) {
+    if (isNotFound(error) || isForbidden(error)) return null;
     throw error;
   }
 }

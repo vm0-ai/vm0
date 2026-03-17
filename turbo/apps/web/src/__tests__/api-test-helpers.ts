@@ -473,9 +473,15 @@ export async function createTestAgentSession(
   userId: string,
   agentComposeId: string,
 ): Promise<{ id: string }> {
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
   const [session] = await globalThis.services.db
     .insert(agentSessions)
-    .values({ userId, agentComposeId })
+    .values({ userId, orgId: compose.orgId, agentComposeId })
     .returning({ id: agentSessions.id });
   return session!;
 }
@@ -604,6 +610,7 @@ export async function createTestSessionWithConversation(
     .insert(agentSessions)
     .values({
       userId,
+      orgId: compose.orgId,
       agentComposeId,
       conversationId: conversation.id,
     })
@@ -623,6 +630,7 @@ export async function createTestRunInDb(
     status?: string;
     prompt?: string;
     createdAt?: Date;
+    orgId?: string;
   },
 ): Promise<{ runId: string }> {
   // Look up orgId from compose
@@ -636,12 +644,17 @@ export async function createTestRunInDb(
   }
   // Create a version for the run
   const versionId = await createTestComposeVersion(agentComposeId, userId);
-  // Create run directly
-  const run = await createTestRunDirect(userId, versionId, compose.orgId, {
-    status: options?.status ?? "pending",
-    prompt: options?.prompt ?? "test prompt",
-    createdAt: options?.createdAt,
-  });
+  // Create run directly (use provided orgId or fall back to compose orgId)
+  const run = await createTestRunDirect(
+    userId,
+    versionId,
+    options?.orgId ?? compose.orgId,
+    {
+      status: options?.status ?? "pending",
+      prompt: options?.prompt ?? "test prompt",
+      createdAt: options?.createdAt,
+    },
+  );
   return { runId: run.id };
 }
 
@@ -2998,9 +3011,15 @@ export async function insertTestAgentSessionWithMessages(
   agentComposeId: string,
   chatMessages: StoredChatMessage[],
 ) {
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentComposeId))
+    .limit(1);
+  if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
   const [session] = await globalThis.services.db
     .insert(agentSessions)
-    .values({ userId, agentComposeId, chatMessages })
+    .values({ userId, orgId: compose.orgId, agentComposeId, chatMessages })
     .returning({ id: agentSessions.id });
   return session!;
 }

@@ -64,6 +64,7 @@ export async function createAgentSession(
     .insert(agentSessions)
     .values({
       userId: input.userId,
+      orgId: input.orgId,
       agentComposeId: input.agentComposeId,
       artifactName: input.artifactName,
       memoryName: input.memoryName,
@@ -199,6 +200,7 @@ function mapToAgentSessionData(
   return {
     id: session.id,
     userId: session.userId,
+    orgId: session.orgId,
     agentComposeId: session.agentComposeId,
     conversationId: session.conversationId,
     artifactName: session.artifactName,
