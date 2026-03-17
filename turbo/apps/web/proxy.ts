@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   runLayers,
   corsLayer,
@@ -102,7 +102,6 @@ export default async function middleware(request: NextRequest) {
       method: request.method,
       headers,
       body: request.body,
-      // @ts-expect-error NextRequest constructor accepts duplex
       duplex: "half",
     });
 
