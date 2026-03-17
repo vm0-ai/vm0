@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { env } from "../../../../../../src/env";
 import {
   exchangeOAuthCode,
   exchangeOAuthCodeForUser,
   getSlackRedirectBaseUrl,
-  createSlackClient,
 } from "../../../../../../src/lib/slack";
-import { postMessage } from "../../../../../../src/lib/slack/client";
-import {
-  buildSuccessMessage,
-  buildWelcomeMessage,
-} from "../../../../../../src/lib/slack/blocks";
 import { encryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
@@ -20,13 +14,8 @@ import { requireOrgMember } from "../../../../../../src/lib/org/org-member-servi
 import {
   adminConnect,
   memberConnect,
+  notifyConnectSuccess,
 } from "../../../../../../src/lib/slack-org/connect-service";
-import { refreshOrgAppHome } from "../../../../../../src/lib/slack-org/handlers/app-home";
-import {
-  resolveDefaultComposeId,
-  getWorkspaceAgent,
-} from "../../../../../../src/lib/slack-org/handlers/shared";
-import { decryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { getPlatformUrl } from "../../../../../../src/lib/url";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -121,7 +110,6 @@ export async function GET(request: Request) {
       platformUrl,
       clientId: SLACK_CLIENT_ID,
       clientSecret: SLACK_CLIENT_SECRET,
-      encryptionKey: SECRETS_ENCRYPTION_KEY,
     });
   }
 
@@ -223,17 +211,21 @@ export async function GET(request: Request) {
       })
       .onConflictDoNothing();
 
-    // Refresh App Home for the installing user (best-effort)
-    const client = createSlackClient(oauthResult.accessToken);
+    // Send DM + welcome and refresh App Home (best-effort, fire-and-forget)
     const [inst] = await db
       .select()
       .from(slackOrgInstallations)
       .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId))
       .limit(1);
     if (inst) {
-      await refreshOrgAppHome(client, inst, oauthResult.authedUserId).catch(
-        (err) =>
-          log.warn("Failed to refresh App Home after install", { error: err }),
+      void notifyConnectSuccess({
+        installation: inst,
+        slackUserId: oauthResult.authedUserId,
+        orgId: state.orgId!,
+      }).catch((err) =>
+        log.warn("Failed to notify connect success after install", {
+          error: err,
+        }),
       );
     }
 
@@ -262,17 +254,9 @@ async function handleConnectCallback(params: {
   platformUrl: string;
   clientId: string;
   clientSecret: string;
-  encryptionKey: string;
 }): Promise<NextResponse> {
-  const {
-    code,
-    redirectUri,
-    state,
-    platformUrl,
-    clientId,
-    clientSecret,
-    encryptionKey,
-  } = params;
+  const { code, redirectUri, state, platformUrl, clientId, clientSecret } =
+    params;
 
   if (!state.orgId || !state.vm0UserId) {
     return NextResponse.redirect(
@@ -343,58 +327,11 @@ async function handleConnectCallback(params: {
   });
 
   // Send DM + refresh App Home (best-effort, fire-and-forget)
-  const botToken = decryptSecretValue(
-    installation.encryptedBotToken,
-    encryptionKey,
-  );
-  const client = createSlackClient(botToken);
-
-  void (async () => {
-    // Resolve agent name for the DM
-    let agentName: string | undefined;
-    const composeId = await resolveDefaultComposeId(state.orgId!);
-    if (composeId) {
-      const agent = await getWorkspaceAgent(composeId);
-      agentName = agent?.displayName ?? agent?.name;
-    }
-
-    const agentLine = agentName
-      ? `Your workspace agent is *${agentName}*.`
-      : `No workspace agent configured yet.`;
-
-    const connectMsg = await postMessage(
-      client,
-      userIdentity.authedUserId,
-      "You're connected!",
-      {
-        blocks: buildSuccessMessage(
-          `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
-        ),
-      },
-    );
-
-    if (connectMsg?.ts) {
-      await postMessage(client, userIdentity.authedUserId, "Hi! I'm Zero.", {
-        threadTs: connectMsg.ts,
-        blocks: buildWelcomeMessage(agentName),
-      });
-    }
-
-    await globalThis.services.db
-      .update(slackOrgConnections)
-      .set({ dmWelcomeSent: true })
-      .where(
-        and(
-          eq(slackOrgConnections.slackUserId, userIdentity.authedUserId),
-          eq(
-            slackOrgConnections.slackWorkspaceId,
-            installation.slackWorkspaceId,
-          ),
-        ),
-      );
-
-    await refreshOrgAppHome(client, installation, userIdentity.authedUserId);
-  })().catch((err) =>
+  void notifyConnectSuccess({
+    installation,
+    slackUserId: userIdentity.authedUserId,
+    orgId: state.orgId,
+  }).catch((err) =>
     log.warn("Failed to notify connect success", { error: err }),
   );
 

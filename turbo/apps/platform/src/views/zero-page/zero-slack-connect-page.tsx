@@ -36,9 +36,9 @@ function BackLink() {
  */
 export function ZeroSlackConnectPage() {
   const fetchFn = useGet(fetch$);
-  const status$ = useCCState<"idle" | "connecting" | "success" | "error">(
-    "idle",
-  );
+  const status$ = useCCState<
+    "idle" | "checking" | "connecting" | "success" | "error"
+  >("idle");
   const status = useGet(status$);
   const setStatus = useSet(status$);
   const errorMsg$ = useCCState("");
@@ -52,12 +52,42 @@ export function ZeroSlackConnectPage() {
   const initialError = params.get("error");
   const workspaceName = params.get("workspace");
 
+  // Check if already connected on mount
+  const checked$ = useCCState(false);
+  const checked = useGet(checked$);
+  const setChecked = useSet(checked$);
+  const alreadyConnected$ = useCCState(false);
+  const alreadyConnected = useGet(alreadyConnected$);
+  const setAlreadyConnected = useSet(alreadyConnected$);
+
+  if (!checked && !initialStatus && !initialError && workspaceId) {
+    queueMicrotask(() => {
+      setChecked(true);
+      setStatus("checking");
+      detach(
+        (async () => {
+          const res = await fetchFn("/api/integrations/slack/org/connect");
+          if (res.ok) {
+            const data = (await res.json()) as { isConnected?: boolean };
+            if (data.isConnected) {
+              setAlreadyConnected(true);
+              setStatus("success");
+              return;
+            }
+          }
+          setStatus("idle");
+        })(),
+        Reason.DomCallback,
+      );
+    });
+  }
+
   const effectiveStatus =
     initialStatus === "connected" ? "success" : initialError ? "error" : status;
   const effectiveError = initialError ?? errorMsg;
 
-  // Auto-open Slack on success
-  if (effectiveStatus === "success") {
+  // Auto-open Slack on success (redirect or connect button, not initial check)
+  if (effectiveStatus === "success" && !alreadyConnected) {
     queueMicrotask(() => {
       window.location.href = "slack://open";
     });
@@ -183,6 +213,23 @@ function PageContent({
           <div className="flex justify-center">
             <BackLink />
           </div>
+        </div>
+      </>
+    );
+  }
+
+  // Loading — checking login / connection status
+  if (effectiveStatus === "checking") {
+    return (
+      <>
+        <IconLoader2 size={40} className="text-muted-foreground animate-spin" />
+        <div className="text-center space-y-1.5">
+          <h2 className="text-base font-semibold text-foreground">
+            Checking account status…
+          </h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Please wait while we verify your connection.
+          </p>
         </div>
       </>
     );

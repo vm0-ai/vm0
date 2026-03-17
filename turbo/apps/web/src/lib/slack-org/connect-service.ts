@@ -1,8 +1,17 @@
 import { eq, and, isNull } from "drizzle-orm";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
-import { ensureOrgArtifact } from "./handlers/shared";
+import {
+  ensureOrgArtifact,
+  resolveDefaultComposeId,
+  getWorkspaceAgent,
+} from "./handlers/shared";
+import { refreshOrgAppHome } from "./handlers/app-home";
 import { getOrgData } from "../org/org-cache-service";
+import { env } from "../../env";
+import { decryptSecretValue } from "../crypto/secrets-encryption";
+import { createSlackClient, postMessage } from "../slack/client";
+import { buildSuccessMessage, buildWelcomeMessage } from "../slack/blocks";
 import { logger } from "../logger";
 
 const log = logger("slack-org:connect");
@@ -204,4 +213,82 @@ export async function disconnect(params: {
     .where(eq(slackOrgConnections.id, connectionId));
 
   log.info("User disconnected from Slack", params);
+}
+
+/**
+ * Send a Slack DM confirming successful connection, a welcome thread,
+ * mark dmWelcomeSent, and refresh App Home.
+ *
+ * Fire-and-forget — callers should use `void notifyConnectSuccess(...)`.
+ * When channelId is provided, sends an ephemeral message in that channel
+ * instead of a DM.
+ */
+export async function notifyConnectSuccess(params: {
+  installation: typeof slackOrgInstallations.$inferSelect;
+  slackUserId: string;
+  orgId: string;
+  channelId?: string | null;
+  threadTs?: string | null;
+}): Promise<void> {
+  const { installation, slackUserId, orgId, channelId, threadTs } = params;
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const botToken = decryptSecretValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  let agentName: string | undefined;
+  const composeId = await resolveDefaultComposeId(orgId);
+  if (composeId) {
+    const agent = await getWorkspaceAgent(composeId);
+    agentName = agent?.displayName ?? agent?.name;
+  }
+
+  const agentLine = agentName
+    ? `Your workspace agent is *${agentName}*.`
+    : `No workspace agent configured yet.`;
+
+  const blocks = buildSuccessMessage(
+    `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+  );
+
+  if (channelId) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: slackUserId,
+      text: "You're connected!",
+      blocks,
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+    });
+  } else {
+    const connectMsg = await postMessage(
+      client,
+      slackUserId,
+      "You're connected!",
+      { blocks },
+    );
+
+    if (connectMsg?.ts) {
+      await postMessage(client, slackUserId, "Hi! I'm Zero.", {
+        threadTs: connectMsg.ts,
+        blocks: buildWelcomeMessage(agentName),
+      });
+    }
+
+    await globalThis.services.db
+      .update(slackOrgConnections)
+      .set({ dmWelcomeSent: true })
+      .where(
+        and(
+          eq(slackOrgConnections.slackUserId, slackUserId),
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        ),
+      );
+  }
+
+  await refreshOrgAppHome(client, installation, slackUserId);
 }
