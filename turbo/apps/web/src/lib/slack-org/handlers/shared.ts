@@ -197,7 +197,7 @@ export function buildOrgConnectUrl(
   if (threadTs) {
     params.set("t", threadTs);
   }
-  return `${platformUrl}/zero/slack/connect?${params.toString()}`;
+  return `${platformUrl}/slack/connect?${params.toString()}`;
 }
 
 /**

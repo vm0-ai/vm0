@@ -15,7 +15,7 @@ import { Link } from "../router/link.tsx";
 function BackLink() {
   return (
     <Link
-      pathname="/zero/:tab"
+      pathname="/:tab"
       options={{ pathParams: { tab: "works" } }}
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >

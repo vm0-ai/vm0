@@ -41,7 +41,7 @@ export async function GET(request: Request) {
 
   if (!workspaceId || !slackUserId) {
     return NextResponse.redirect(
-      `${platformUrl}/zero/slack/connect?error=${encodeURIComponent("Invalid connect link.")}`,
+      `${platformUrl}/slack/connect?error=${encodeURIComponent("Invalid connect link.")}`,
     );
   }
 
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
   if (!installation) {
     return NextResponse.redirect(
-      `${platformUrl}/zero/slack/connect?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
+      `${platformUrl}/slack/connect?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
     );
   }
 
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 
     if (member.role !== "admin") {
       return NextResponse.redirect(
-        `${platformUrl}/zero/slack/connect?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
+        `${platformUrl}/slack/connect?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
       );
     }
 
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
       threadTs,
     }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
     return NextResponse.redirect(
-      `${platformUrl}/zero/slack/connect?status=connected`,
+      `${platformUrl}/slack/connect?status=connected`,
     );
   }
 
@@ -118,7 +118,7 @@ export async function GET(request: Request) {
       : "You don't have access to the organization this Slack workspace belongs to. Contact the organization admin for an invite.";
 
     return NextResponse.redirect(
-      `${platformUrl}/zero/slack/connect?error=${encodeURIComponent(message)}`,
+      `${platformUrl}/slack/connect?error=${encodeURIComponent(message)}`,
     );
   }
 
@@ -154,7 +154,5 @@ export async function GET(request: Request) {
     channelId,
     threadTs,
   }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
-  return NextResponse.redirect(
-    `${platformUrl}/zero/slack/connect?status=connected`,
-  );
+  return NextResponse.redirect(`${platformUrl}/slack/connect?status=connected`);
 }
