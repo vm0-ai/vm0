@@ -22,6 +22,19 @@ async function waitFor(page, selector, timeout = 60000) {
   return page.$(selector);
 }
 
+/** Find and click an element by its text content. */
+async function clickByText(page, selector, text) {
+  const elements = await page.$$(selector);
+  for (const el of elements) {
+    const elText = await page.evaluate((e) => e.textContent, el);
+    if (elText && elText.includes(text)) {
+      await el.click();
+      return true;
+    }
+  }
+  return false;
+}
+
 module.exports = async (browser, context) => {
   const webUrl = process.env.WEB_URL;
   const platformUrl = process.env.PLATFORM_URL;
@@ -49,56 +62,33 @@ module.exports = async (browser, context) => {
     );
   }
 
-  // Navigate to web app landing page
-  await page.goto(webUrl, { waitUntil: "networkidle0", timeout: 60000 });
+  // Navigate directly to sign-in page. Don't wait for network idle —
+  // Clerk/Termly analytics keep the network busy for 20s+ and will eat
+  // into the timeout budget. Instead, wait directly for the Clerk form.
+  await page.goto(`${webUrl}/sign-in`, { waitUntil: "domcontentloaded" });
 
-  // Click sign-up link in navbar to start auth flow
-  const signUpLink = await waitFor(page, "a.btn-get-access[href='/sign-up']");
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {}),
-    signUpLink.click(),
-  ]);
-  // Wait for the sign-up page to render (Clerk UI)
-  await page.waitForFunction(
-    () => window.location.href.includes("/sign-up"),
-    { timeout: 30000 },
-  );
-
-  // Switch to sign-in (test account already exists)
-  const signInLink = await waitFor(page, 'a[href*="sign-in"]');
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {}),
-    signInLink.click(),
-  ]);
-  // Wait for the sign-in page to render
-  await page.waitForFunction(
-    () => window.location.href.includes("/sign-in"),
-    { timeout: 30000 },
-  );
-
-  // Enter email
+  // Wait for Clerk identifier input to be visible
   const emailInput = await waitFor(page, 'input[name="identifier"]');
-  await emailInput.type(TEST_EMAIL);
 
-  // Click continue and wait for the next form to load
+  // Dismiss cookie consent banner if present (it can block button clicks)
+  await clickByText(page, "button", "Accept");
+  await emailInput.type(TEST_EMAIL);
   const continueBtn = await waitFor(page, ".cl-formButtonPrimary");
   await continueBtn.click();
-  await page.waitForSelector('a[class*="link"]:not([href])', {
-    visible: true,
-    timeout: 15000,
-  });
+
+  // Wait for factor-one page with "Use another method" link
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("a, button")].some((el) =>
+        el.textContent?.includes("Use another method"),
+      ),
+    { timeout: 15000 },
+  );
 
   // Switch to email code method
-  const links = await page.$$("a, button");
-  for (const link of links) {
-    const text = await page.evaluate((el) => el.textContent, link);
-    if (text && text.includes("Use another method")) {
-      await link.click();
-      break;
-    }
-  }
+  await clickByText(page, "a, button", "Use another method");
 
-  // Wait for method selection buttons to appear
+  // Wait for method selection and choose email code
   await page.waitForFunction(
     () =>
       [...document.querySelectorAll("button")].some((b) =>
@@ -106,18 +96,9 @@ module.exports = async (browser, context) => {
       ),
     { timeout: 10000 },
   );
+  await clickByText(page, "button", "Email code");
 
-  // Select email code option
-  const buttons = await page.$$("button");
-  for (const button of buttons) {
-    const text = await page.evaluate((el) => el.textContent, button);
-    if (text && text.includes("Email code")) {
-      await button.click();
-      break;
-    }
-  }
-
-  // Wait for OTP input to appear
+  // Wait for OTP input and enter code
   await page.waitForSelector('input[data-input-otp="true"]', {
     visible: true,
     timeout: 15000,
@@ -130,11 +111,11 @@ module.exports = async (browser, context) => {
       await otpInput.click();
       await otpInput.type(TEST_OTP);
 
-      // Wait for navigation away from sign-in
+      // Wait for navigation away from sign-in (allow extra time for auth processing)
       try {
         await page.waitForFunction(
           () => !window.location.href.includes("/sign-in"),
-          { timeout: 5000 },
+          { timeout: 15000 },
         );
         break;
       } catch {
