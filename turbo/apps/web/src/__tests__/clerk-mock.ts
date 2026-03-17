@@ -273,11 +273,14 @@ export function mockClerk(options: {
               }
             }
             if (!org) {
-              return Promise.reject(
-                new Error(
-                  `Organization ${params.organizationId ?? params.slug} not found`,
-                ),
+              const err = new Error(
+                `Organization ${params.organizationId ?? params.slug} not found`,
               );
+              // Match Clerk API 404 behavior so isNotFound() recognizes the error
+              (err as { name: string }).name = "NotFoundError";
+              (err as { statusCode: number }).statusCode = 404;
+              (err as { code: string }).code = "NOT_FOUND";
+              return Promise.reject(err);
             }
             // Apply slug and metadata overrides
             const slug = orgSlugOverrides.get(org.id) ?? org.slug;

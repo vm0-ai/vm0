@@ -995,8 +995,8 @@ describe("POST /api/agent/schedules - Sandbox Token Auth", () => {
       userId: user.userId,
     });
 
-    // Clear Clerk session so sandbox token path is exercised
-    mockClerk({ userId: null });
+    // Clear Clerk session so sandbox token path is exercised (provide orgId so resolveOrg works)
+    mockClerk({ userId: null, orgId: user.orgId });
   });
 
   it("should accept sandbox token with schedule:write capability", async () => {
@@ -1069,8 +1069,8 @@ describe("GET /api/agent/schedules - Sandbox Token Auth", () => {
       userId: user.userId,
     });
 
-    // Clear Clerk session so sandbox token path is exercised
-    mockClerk({ userId: null });
+    // Clear Clerk session so sandbox token path is exercised (provide orgId so resolveOrg works)
+    mockClerk({ userId: null, orgId: user.orgId });
   });
 
   it("should accept sandbox token with schedule:read capability", async () => {

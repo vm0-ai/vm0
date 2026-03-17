@@ -38,8 +38,8 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      // Switch to sandbox auth
-      mockClerk({ userId: null });
+      // Switch to sandbox auth (provide orgId so resolveOrg can find org via JWT)
+      mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:read",
       ]);
@@ -90,7 +90,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      mockClerk({ userId: null });
+      mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:write",
       ]);
@@ -165,7 +165,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      mockClerk({ userId: null });
+      mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:read",
       ]);
