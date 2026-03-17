@@ -360,7 +360,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const navigate = useSet(updatePathname$);
   const navigateInReact = useSet(navigateInReact$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
 
@@ -404,13 +403,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
             selectedAgentName={initialJobAgent}
-            onNavigateToActivity={(logId) => {
-              if (logId) {
-                navigate(`/zero/activity/${logId}`);
-              } else {
-                setActiveId("activity");
-              }
-            }}
             onNavigateToSchedule={() => {
               const agentName = selectedSubagent?.name ?? defaultRawName;
               if (agentName) {
@@ -420,8 +412,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
                 });
               }
             }}
-            onNavigateToTeam={() => setActiveId("team")}
-            onNavigateToChat={() => setActiveId("chat")}
             onNavigateToMeet={(tab) => {
               const agentName = selectedSubagent?.name ?? defaultRawName;
               if (agentName) {

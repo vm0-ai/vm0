@@ -66,6 +66,7 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
+import { Link } from "../router/link.tsx";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -242,7 +243,6 @@ interface StreamedScenario {
 
 interface ChatScenarioBlockProps {
   scene: StreamedScenario;
-  onNavigateToActivity?: (logId?: string) => void;
   commandAllowed: boolean;
   setCommandAllowed: (v: boolean) => void;
   approveDone: boolean;
@@ -311,7 +311,6 @@ function HelloFromZeroBlock({
 
 function ChatScenarioBlock({
   scene,
-  onNavigateToActivity,
   commandAllowed,
   setCommandAllowed,
   approveDone,
@@ -347,7 +346,6 @@ function ChatScenarioBlock({
         <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-0">
           <ChatScenarioAssistantContent
             scene={scene}
-            onNavigateToActivity={onNavigateToActivity}
             commandAllowed={commandAllowed}
             setCommandAllowed={setCommandAllowed}
             approveDone={approveDone}
@@ -370,7 +368,6 @@ type ChatScenarioAssistantContentProps = ChatScenarioBlockProps;
 
 function ChatScenarioAssistantContent({
   scene,
-  onNavigateToActivity,
   commandAllowed,
   setCommandAllowed,
   approveDone,
@@ -455,15 +452,14 @@ function ChatScenarioAssistantContent({
   -d @~/slack_digest.json`}</code>
         </pre>
         <div className="mt-3.5 pt-3.5 border-t border-border/30">
-          <Button
-            size="sm"
-            variant="outline"
-            className="zero-chat-btn rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border"
-            onClick={() => onNavigateToActivity?.()}
+          <Link
+            pathname="/zero/:tab"
+            options={{ pathParams: { tab: "activity" } }}
+            className="zero-chat-btn inline-flex items-center rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border"
           >
             <IconChartLine size={13} />
             View activity
-          </Button>
+          </Link>
         </div>
       </div>
     );
@@ -974,9 +970,7 @@ function startConnectorFlow(
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
-  onNavigateToActivity?: (logId?: string) => void;
   onNavigateToSchedule?: () => void;
-  onNavigateToTeam?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (
     message: string,
@@ -990,9 +984,7 @@ interface ZeroChatPageProps {
 export function ZeroChatPage({
   initialScenarioId,
   onClearScenario,
-  onNavigateToActivity,
   onNavigateToSchedule,
-  onNavigateToTeam,
   onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = "/zero-avatar.png",
@@ -1270,7 +1262,6 @@ export function ZeroChatPage({
                 <ChatScenarioBlock
                   key={scene.id}
                   scene={scene}
-                  onNavigateToActivity={onNavigateToActivity}
                   commandAllowed={commandAllowed}
                   setCommandAllowed={setCommandAllowed}
                   approveDone={approveDone}
@@ -1352,14 +1343,13 @@ export function ZeroChatPage({
                     ))}
                   </ul>
                   <div className="border-t border-border/50 px-4 py-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="zero-btn-morandi w-fit rounded-lg"
-                      onClick={onNavigateToTeam}
+                    <Link
+                      pathname="/zero/:tab"
+                      options={{ pathParams: { tab: "team" } }}
+                      className="zero-btn-morandi inline-flex items-center w-fit rounded-lg h-8 px-3 text-sm font-medium border"
                     >
                       Manage in {agentName}&apos;s team
-                    </Button>
+                    </Link>
                   </div>
                 </div>
               </div>

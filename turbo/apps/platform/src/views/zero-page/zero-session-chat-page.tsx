@@ -54,6 +54,7 @@ import {
 } from "../../signals/zero-page/zero-chat.ts";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
+import { Link, SimpleLink } from "../router/link.tsx";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
@@ -62,9 +63,7 @@ import { useSendKeyHandler } from "./zero-send-key.ts";
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
   onBack?: () => void;
-  onNavigateToTeam?: () => void;
   onNavigateToSchedule?: () => void;
-  onNavigateToActivity?: (logId?: string) => void;
   onAvatarClick?: () => void;
   chatAgentName?: string;
 }
@@ -72,9 +71,7 @@ interface ZeroSessionChatPageProps {
 export function ZeroSessionChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onBack,
-  onNavigateToTeam,
   onNavigateToSchedule,
-  onNavigateToActivity,
   onAvatarClick,
   chatAgentName,
 }: ZeroSessionChatPageProps) {
@@ -174,15 +171,14 @@ export function ZeroSessionChatPage({
           <span className="font-semibold text-foreground">{agentName}</span>
         </div>
         <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={onNavigateToTeam}
+          <Link
+            pathname="/zero/:tab"
+            options={{ pathParams: { tab: "team" } }}
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
             aria-label="Sub-agents"
           >
             <IconUsers size={18} stroke={1.5} />
-          </Button>
+          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -221,7 +217,6 @@ export function ZeroSessionChatPage({
               key={msg.id}
               message={msg}
               zeroAvatarSrc={zeroAvatarSrc}
-              onNavigateToActivity={onNavigateToActivity}
             />
           ))}
           <div ref={setMessagesEndEl} />
@@ -367,24 +362,13 @@ function ChatSkeleton() {
 interface ChatMessageRowProps {
   message: ZeroChatMessage;
   zeroAvatarSrc: string;
-  onNavigateToActivity?: (logId?: string) => void;
 }
 
-function ChatMessageRow({
-  message,
-  zeroAvatarSrc,
-  onNavigateToActivity,
-}: ChatMessageRowProps) {
+function ChatMessageRow({ message, zeroAvatarSrc }: ChatMessageRowProps) {
   if (message.role === "user") {
     return <UserMessage message={message} />;
   }
-  return (
-    <AssistantMessage
-      message={message}
-      zeroAvatarSrc={zeroAvatarSrc}
-      onNavigateToActivity={onNavigateToActivity}
-    />
-  );
+  return <AssistantMessage message={message} zeroAvatarSrc={zeroAvatarSrc} />;
 }
 
 /**
@@ -559,14 +543,9 @@ function queueLabel(position: number): string {
 interface AssistantMessageProps {
   message: ZeroChatMessage;
   zeroAvatarSrc: string;
-  onNavigateToActivity?: (logId?: string) => void;
 }
 
-function AssistantMessage({
-  message,
-  zeroAvatarSrc,
-  onNavigateToActivity,
-}: AssistantMessageProps) {
+function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
@@ -585,14 +564,13 @@ function AssistantMessage({
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => onNavigateToActivity?.(message.runId)}
+              <SimpleLink
+                href={`/zero/activity/${message.runId}`}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
                 aria-label="View run logs"
               >
                 <IconChartLine size={18} stroke={1.5} />
-              </button>
+              </SimpleLink>
             </TooltipTrigger>
             <TooltipContent side="bottom">View activity logs</TooltipContent>
           </Tooltip>

@@ -18,10 +18,7 @@ interface ZeroContentProps {
     message: string,
     options?: { modelProvider?: string },
   ) => void;
-  onNavigateToActivity?: (logId?: string) => void;
   onNavigateToSchedule?: () => void;
-  onNavigateToTeam?: () => void;
-  onNavigateToChat?: () => void;
   selectedAgentName?: string | null;
   onNavigateToMeet?: (tab?: string) => void;
   onBackFromSession?: () => void;
@@ -54,10 +51,7 @@ export function ZeroContent({
   sectionId,
   inSession = false,
   onSendMessage,
-  onNavigateToActivity,
   onNavigateToSchedule,
-  onNavigateToTeam,
-  onNavigateToChat,
   selectedAgentName,
   onNavigateToMeet,
   onBackFromSession,
@@ -77,9 +71,7 @@ export function ZeroContent({
           zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
           chatAgentName={chatAgentName}
           onBack={onBackFromSession}
-          onNavigateToTeam={onNavigateToTeam}
           onNavigateToSchedule={onNavigateToSchedule}
-          onNavigateToActivity={onNavigateToActivity}
           onAvatarClick={onChatAvatarClick}
         />
       );
@@ -87,9 +79,7 @@ export function ZeroContent({
     return (
       <ZeroChatPage
         onSendMessage={onSendMessage}
-        onNavigateToActivity={onNavigateToActivity}
         onNavigateToSchedule={onNavigateToSchedule}
-        onNavigateToTeam={onNavigateToTeam}
         onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
         chatAgentName={chatAgentName}
@@ -102,7 +92,6 @@ export function ZeroContent({
   if (sectionId === "team") {
     return (
       <ZeroJobsPage
-        onNavigateToChat={onNavigateToChat}
         selectedAgentName={selectedAgentName}
         zeroAvatarSrc={zeroAvatarSrc}
         onCycleZeroAvatar={onCycleZeroAvatar}
