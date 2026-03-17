@@ -147,7 +147,7 @@ export function ZeroJobsPage({
                 className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] px-4 py-3.5 transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group col-span-full"
                 onClick={onNavigateToChat}
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/8 group-hover:bg-foreground/12 transition-colors">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
                   <IconMessageCircle
                     size={16}
                     stroke={1.5}

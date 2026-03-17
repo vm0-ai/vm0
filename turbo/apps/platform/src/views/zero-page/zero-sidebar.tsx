@@ -19,7 +19,6 @@ import {
   IconX,
   IconEdit,
   IconGripVertical,
-  IconChevronDown,
   IconLayoutSidebarLeftCollapse,
 } from "@tabler/icons-react";
 import {
@@ -802,9 +801,6 @@ export function ZeroSidebar({
   onResetAgent,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
-  const chatExpanded$ = useCCState(true);
-  const chatExpanded = useGet(chatExpanded$);
-  const setChatExpanded = useSet(chatExpanded$);
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
@@ -970,105 +966,60 @@ export function ZeroSidebar({
 
           {/* Chat section */}
           <div className="shrink-0 mt-4">
-            <button
-              type="button"
-              className="flex h-7 w-full items-center gap-1 px-2 text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
-              onClick={() => setChatExpanded(!chatExpanded)}
-            >
-              <span className="text-[13px] font-medium truncate">
+            <div className="h-7 flex items-center pl-2">
+              <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
                 Talk to {talkToLabel}
               </span>
-              <IconChevronDown
-                size={14}
-                className={`shrink-0 transition-transform ${chatExpanded ? "" : "-rotate-90"}`}
-              />
-            </button>
-            {chatExpanded && (
-              <div className="flex items-center gap-1.5 px-2 pb-1 pt-1">
-                <TooltipProvider delayDuration={300}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
-                          currentChatAgentId === null
-                            ? "bg-foreground/10"
-                            : "hover:bg-foreground/5"
-                        }`}
-                        onClick={() => onNewChat?.(null)}
-                      >
-                        <img
-                          src={zeroAvatarSrc}
-                          alt={displayName}
-                          className="h-full w-full object-cover object-top"
-                        />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="text-xs">
-                      {displayName}
-                    </TooltipContent>
-                  </Tooltip>
-                  {pinnedAgents.map((agent) => (
-                    <Tooltip key={agent.id}>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden transition-all ${
-                            currentChatAgentId === agent.id
-                              ? "bg-foreground/10"
-                              : "hover:bg-foreground/5"
-                          }`}
-                          onClick={() => onNewChat?.(agent.id)}
-                        >
-                          <AgentAvatarImg
-                            name={agent.name}
-                            alt={agent.displayName ?? agent.name}
-                            className="h-full w-full object-cover object-top"
-                          />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="text-xs">
-                        {agent.displayName ?? agent.name}
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-dashed border-sidebar-foreground/25 text-sidebar-foreground/30 hover:border-sidebar-foreground/40 hover:text-sidebar-foreground/60 transition-colors"
-                        aria-label="Manage pinned agents"
-                        onClick={() => setManagePinnedOpen(true)}
-                      >
-                        <IconPlus size={14} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="text-xs">
-                      Manage pinned agents
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            )}
-            <div className="flex flex-col gap-1 mt-1">
-              <Link
-                pathname="/zero"
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                    return;
-                  }
-                  e.preventDefault();
-                  onSelect("chat");
-                }}
-                className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                  activeId === "chat" && !selectedRecentId
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <button
+                type="button"
+                className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                  activeId === "chat" && currentChatAgentId === null
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
+                onClick={() => onNewChat?.(null)}
               >
-                <IconEdit size={16} className="shrink-0" />
-                <span className="truncate">New chat</span>
-              </Link>
+                <img
+                  src={zeroAvatarSrc}
+                  alt={displayName}
+                  className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                />
+                <span className="truncate">{displayName}</span>
+              </button>
+              {pinnedAgents.map((agent) => (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                    activeId === "chat" && currentChatAgentId === agent.id
+                      ? "bg-sidebar-active text-sidebar-primary font-medium"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                  onClick={() => onNewChat?.(agent.id)}
+                >
+                  <AgentAvatarImg
+                    name={agent.name}
+                    alt={agent.displayName ?? agent.name}
+                    className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                  />
+                  <span className="truncate">
+                    {agent.displayName ?? agent.name}
+                  </span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200"
+                aria-label="Manage pinned agents"
+                onClick={() => setManagePinnedOpen(true)}
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
+                  <IconPlus size={12} />
+                </span>
+                <span className="truncate">Pin agent</span>
+              </button>
             </div>
           </div>
 

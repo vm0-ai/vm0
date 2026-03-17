@@ -55,7 +55,7 @@ function ProviderCardInDialog({
         </div>
       )}
       <div className="mt-auto">
-        <span className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground text-center block">
+        <span className="w-full h-8 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--gray-50))] px-3 text-sm font-medium text-foreground hover:bg-[hsl(var(--gray-100))] transition-colors text-center flex items-center justify-center">
           Add
         </span>
       </div>

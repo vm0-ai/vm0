@@ -792,7 +792,7 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex shrink-0 items-center rounded-lg h-9 px-1.5 hover:bg-accent transition-colors"
+                className="inline-flex shrink-0 items-center justify-center rounded-lg h-9 min-w-9 px-1.5 hover:bg-accent transition-colors"
               >
                 <ConnectorTriggerIcons connectors={connectors} />
               </button>
@@ -804,56 +804,58 @@ function ConnectorsPopoverButton({
         </Tooltip>
       </TooltipProvider>
       <PopoverContent side="top" align="start" className="w-64 p-0 rounded-xl">
-        <div className="p-2">
-          <div className="flex flex-col">
-            {connectors.map((item) => (
-              <div
-                key={item.type}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
-              >
-                <span
-                  className={cn(
-                    "flex h-5 w-5 shrink-0 items-center justify-center",
-                    !item.connected && "opacity-40",
-                  )}
+        {connectors.length > 0 && (
+          <div className="p-2">
+            <div className="flex flex-col">
+              {connectors.map((item) => (
+                <div
+                  key={item.type}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
                 >
-                  {item.iconUrl ? (
-                    <img src={item.iconUrl} alt="" className="h-5 w-5" />
-                  ) : (
-                    <ConnectorIcon
-                      type={item.type as ConnectorType}
-                      size={20}
-                    />
-                  )}
-                </span>
-                <span
-                  className={cn(
-                    "text-sm flex-1",
-                    item.connected
-                      ? "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {item.label}
-                </span>
-                {item.connected ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                ) : (
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onConnect(item.type);
-                    }}
+                  <span
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center",
+                      !item.connected && "opacity-40",
+                    )}
                   >
-                    Connect
-                  </button>
-                )}
-              </div>
-            ))}
+                    {item.iconUrl ? (
+                      <img src={item.iconUrl} alt="" className="h-5 w-5" />
+                    ) : (
+                      <ConnectorIcon
+                        type={item.type as ConnectorType}
+                        size={20}
+                      />
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-sm flex-1",
+                      item.connected
+                        ? "text-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                  {item.connected ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onConnect(item.type);
+                      }}
+                    >
+                      Connect
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <div
           className={cn(
             "p-2 flex flex-col",
@@ -1389,7 +1391,7 @@ export function ZeroChatPage({
                     <div className="flex items-center gap-1 text-muted-foreground">
                       <button
                         type="button"
-                        className="p-2 rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                        className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                         aria-label="Attach"
                         onClick={handleFileSelect}
                       >
@@ -1494,7 +1496,7 @@ export function ZeroChatPage({
                   <div className="flex items-center gap-1 text-muted-foreground">
                     <button
                       type="button"
-                      className="p-2 rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
+                      className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                       aria-label="Attach"
                       onClick={handleFileSelect}
                     >
@@ -1552,7 +1554,7 @@ export function ZeroChatPage({
                 <button
                   key={title}
                   type="button"
-                  className="zero-card cursor-pointer p-4 text-left flex gap-3 items-center relative group"
+                  className="zero-card cursor-pointer p-4 text-left flex flex-col sm:flex-row gap-3 items-start sm:items-center relative group"
                   onClick={() => setInput(prompt)}
                 >
                   <IconArrowUpRight
