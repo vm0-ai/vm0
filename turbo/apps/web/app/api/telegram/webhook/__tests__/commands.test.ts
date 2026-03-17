@@ -386,7 +386,7 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("Settings");
-      expect(sendMsg.calls[0]?.text).toContain("zero/works");
+      expect(sendMsg.calls[0]?.text).toContain("works");
     });
   });
 

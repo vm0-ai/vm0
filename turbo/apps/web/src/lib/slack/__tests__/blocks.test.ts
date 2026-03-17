@@ -131,7 +131,7 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔑",
       label: "Configure model providers",
-      url: `${platformUrl}/zero/settings`,
+      url: `${platformUrl}/settings`,
     });
   });
 
@@ -145,7 +145,7 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/zero/team/my-agent?tab=connectors`,
+      url: `${platformUrl}/team/my-agent?tab=connectors`,
     });
   });
 
@@ -158,7 +158,7 @@ describe("detectDeepLinks", () => {
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/zero/team`,
+      url: `${platformUrl}/team`,
     });
   });
 
@@ -179,9 +179,7 @@ describe("detectDeepLinks", () => {
       "my-agent",
     );
     expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(
-      `${platformUrl}/zero/team/my-agent?tab=connectors`,
-    );
+    expect(links[0]?.url).toBe(`${platformUrl}/team/my-agent?tab=connectors`);
   });
 
   it("should return multiple links for different destinations", () => {
@@ -192,8 +190,8 @@ describe("detectDeepLinks", () => {
     );
     expect(links).toHaveLength(2);
     const urls = links.map((l) => l.url);
-    expect(urls).toContain(`${platformUrl}/zero/settings`);
-    expect(urls).toContain(`${platformUrl}/zero/team/my-agent?tab=connectors`);
+    expect(urls).toContain(`${platformUrl}/settings`);
+    expect(urls).toContain(`${platformUrl}/team/my-agent?tab=connectors`);
   });
 
   it("should encode special characters in agent name", () => {
@@ -204,7 +202,7 @@ describe("detectDeepLinks", () => {
     );
     expect(links).toHaveLength(1);
     expect(links[0]?.url).toBe(
-      `${platformUrl}/zero/team/agent%20with%20spaces?tab=connectors`,
+      `${platformUrl}/team/agent%20with%20spaces?tab=connectors`,
     );
   });
 });

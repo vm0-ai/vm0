@@ -47,13 +47,13 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
 
 function buildPath(category: KeywordCategory, agentName?: string): string {
   if (category === "provider") {
-    return "/zero/settings";
+    return "/settings";
   }
   // Connector links route to the agent's team page with connectors tab
   if (agentName) {
-    return `/zero/team/${encodeURIComponent(agentName)}?tab=connectors`;
+    return `/team/${encodeURIComponent(agentName)}?tab=connectors`;
   }
-  return "/zero/team";
+  return "/team";
 }
 
 /**
@@ -63,7 +63,7 @@ function buildPath(category: KeywordCategory, agentName?: string): string {
  * matching platform deep links (deduplicated by destination path).
  *
  * When `agentName` is provided, connector links point to
- * `/zero/team/{agentName}?tab=connectors` instead of the generic team page.
+ * `/team/{agentName}?tab=connectors` instead of the generic team page.
  */
 export function detectDeepLinks(
   responseText: string,

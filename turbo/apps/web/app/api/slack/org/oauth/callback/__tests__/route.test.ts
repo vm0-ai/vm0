@@ -315,7 +315,7 @@ describe("/api/slack/org/oauth/callback", () => {
     );
     const responseB = await GET(requestB);
 
-    // Should redirect to /zero/works with error
+    // Should redirect to /works with error
     expect(responseB.status).toBe(307);
     const location = responseB.headers.get("Location")!;
     expect(location).toContain("/slack/connect?error=");

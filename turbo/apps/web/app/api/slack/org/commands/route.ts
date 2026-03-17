@@ -165,7 +165,7 @@ function buildNotInstalledMessage(detail?: string): unknown[] {
         {
           type: "button",
           text: { type: "plain_text", text: "Set up on Platform" },
-          url: `${platformUrl}/zero/works`,
+          url: `${platformUrl}/works`,
           action_id: "open_platform_setup",
         },
       ],
@@ -188,8 +188,8 @@ async function handleSettings(
     }
   }
   const settingsPath = agentName
-    ? `/zero/team/${encodeURIComponent(agentName)}?tab=connectors`
-    : "/zero/team";
+    ? `/team/${encodeURIComponent(agentName)}?tab=connectors`
+    : "/team";
   return ephemeral([
     {
       type: "section",

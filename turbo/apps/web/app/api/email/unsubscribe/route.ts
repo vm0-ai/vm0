@@ -72,7 +72,7 @@ export async function GET(request: Request): Promise<Response> {
   <div class="card">
     <h1>You have been unsubscribed</h1>
     <p>You will no longer receive system-initiated email notifications from VM0.</p>
-    <p><a href="${platformUrl}/zero/settings">Manage notification preferences</a></p>
+    <p><a href="${platformUrl}/settings">Manage notification preferences</a></p>
   </div>
 </body>
 </html>`;
