@@ -15,6 +15,7 @@ import {
   isNotFound,
   isBadRequest,
   isForbidden,
+  isSchedulePast,
 } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
@@ -65,7 +66,7 @@ const router = tsr.router(schedulesMainContract, {
         return {
           status: 404 as const,
           body: {
-            error: { message: "Resource not found", code: "NOT_FOUND" },
+            error: { message: error.message, code: "NOT_FOUND" },
           },
         };
       }
@@ -73,7 +74,18 @@ const router = tsr.router(schedulesMainContract, {
         return {
           status: 400 as const,
           body: {
-            error: { message: "Invalid request", code: "BAD_REQUEST" },
+            error: { message: error.message, code: "BAD_REQUEST" },
+          },
+        };
+      }
+      if (isSchedulePast(error)) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: error.message,
+              code: "SCHEDULE_PAST",
+            },
           },
         };
       }
