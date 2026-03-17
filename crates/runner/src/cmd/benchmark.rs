@@ -10,9 +10,10 @@ use uuid::Uuid;
 
 use crate::config;
 use crate::deps::MITMPROXY_VERSION;
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::executor;
 use crate::paths::{HomePaths, RunnerPaths};
+use crate::prefetch;
 use crate::proxy;
 
 struct Timing {
@@ -56,10 +57,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
         .profiles
         .get(&args.profile)
         .ok_or_else(|| {
-            crate::error::RunnerError::Config(format!(
-                "profile '{}' not found in config",
-                args.profile
-            ))
+            RunnerError::Config(format!("profile '{}' not found in config", args.profile))
         })?
         .clone();
     let is_snapshot = default_profile.snapshot_hash.is_some();
@@ -67,7 +65,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     if let Some(hash) = &default_profile.snapshot_hash {
         let path = home.snapshots_dir().join(hash).join("memory.bin");
-        let _ = tokio::task::spawn_blocking(move || crate::prefetch::prefetch_memory(&path)).await;
+        let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
 
     // 2. Start proxy (unconditional — benchmark always uses proxy)
@@ -189,7 +187,7 @@ async fn run_sandbox(
         run_id: &run_id,
         sandbox_token: "",
         network_log_path: &network_log_path,
-        firewall: None,
+        firewalls: None,
         encrypted_secrets: None,
         secret_connector_map: None,
     };

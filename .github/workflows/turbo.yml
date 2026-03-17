@@ -1095,7 +1095,7 @@ jobs:
           # Weight = number of @test cases per file.
           # Greedy assignment: heaviest file goes to the lightest chunk,
           # ensuring heavy tests are spread across chunks instead of clustering.
-          NUM_CHUNKS=8
+          NUM_CHUNKS=12
 
           # Compute weight per file: count @test declarations
           declare -A WEIGHTS

@@ -14,7 +14,7 @@ function makeCompose(
         framework: "claude-code" as const,
         working_dir: "/home/user",
         environment,
-        ...(firewallConfigs ? { experimental_firewall: firewallConfigs } : {}),
+        ...(firewallConfigs ? { experimental_firewalls: firewallConfigs } : {}),
       },
     },
   };

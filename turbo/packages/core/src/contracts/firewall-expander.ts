@@ -148,7 +148,7 @@ export function collectAndValidatePermissions(
 }
 
 /**
- * Expand experimental_firewall from map format to ExpandedFirewallConfig[] in-place.
+ * Expand experimental_firewalls from map format to ExpandedFirewallConfig[] in-place.
  * Validates permission names and filters api_entries to only include selected permissions.
  * Mutates the config object so the API receives pre-expanded firewall objects.
  *
@@ -172,7 +172,7 @@ export async function expandFirewallConfigs(
     agents?: Record<
       string,
       {
-        experimental_firewall?:
+        experimental_firewalls?:
           | Record<string, FirewallSelection>
           | ExpandedFirewallConfig[];
       }
@@ -181,7 +181,7 @@ export async function expandFirewallConfigs(
   if (!compose?.agents) return;
 
   for (const agent of Object.values(compose.agents)) {
-    const configs = agent.experimental_firewall;
+    const configs = agent.experimental_firewalls;
     if (!configs) continue;
     // Skip if already expanded (array, not map)
     if (Array.isArray(configs)) continue;
@@ -242,6 +242,6 @@ export async function expandFirewallConfigs(
       expanded.push(entry);
     }
 
-    agent.experimental_firewall = expanded;
+    agent.experimental_firewalls = expanded;
   }
 }

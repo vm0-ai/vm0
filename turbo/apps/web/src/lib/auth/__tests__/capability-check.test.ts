@@ -17,18 +17,33 @@ describe("capability-check", () => {
   });
 
   describe("storageCapability", () => {
-    it("should map action to unified storage capability", () => {
-      expect(storageCapability("read")).toBe("storage:read");
-      expect(storageCapability("write")).toBe("storage:write");
+    it("should map volume to agent capability", () => {
+      expect(storageCapability("read", "volume")).toBe("agent:read");
+      expect(storageCapability("write", "volume")).toBe("agent:write");
+    });
+
+    it("should map artifact to artifact capability", () => {
+      expect(storageCapability("read", "artifact")).toBe("artifact:read");
+      expect(storageCapability("write", "artifact")).toBe("artifact:write");
+    });
+
+    it("should map memory to artifact capability", () => {
+      expect(storageCapability("read", "memory")).toBe("artifact:read");
+      expect(storageCapability("write", "memory")).toBe("artifact:write");
+    });
+
+    it("should default to artifact capability when no type provided", () => {
+      expect(storageCapability("read")).toBe("artifact:read");
+      expect(storageCapability("write")).toBe("artifact:write");
     });
   });
 
   describe("missingCapabilityError", () => {
     it("should return 403 error body with capability name", () => {
-      const error = missingCapabilityError("storage:read");
+      const error = missingCapabilityError("artifact:read");
 
       expect(error.error.message).toBe(
-        "Missing required capability: storage:read",
+        "Missing required capability: artifact:read",
       );
       expect(error.error.code).toBe("FORBIDDEN");
     });

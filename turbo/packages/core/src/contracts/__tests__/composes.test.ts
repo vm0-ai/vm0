@@ -35,7 +35,7 @@ describe("experimental_capabilities in agentDefinitionSchema", () => {
   it("accepts valid capabilities array", () => {
     const result = agentDefinitionSchema.safeParse({
       ...baseAgent,
-      experimental_capabilities: ["storage:read", "storage:write"],
+      experimental_capabilities: ["artifact:read", "artifact:write"],
     });
     expect(result.success).toBe(true);
   });
@@ -43,7 +43,7 @@ describe("experimental_capabilities in agentDefinitionSchema", () => {
   it("accepts a single valid capability", () => {
     const result = agentDefinitionSchema.safeParse({
       ...baseAgent,
-      experimental_capabilities: ["storage:read"],
+      experimental_capabilities: ["agent:read"],
     });
     expect(result.success).toBe(true);
   });
@@ -69,10 +69,18 @@ describe("experimental_capabilities in agentDefinitionSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects deprecated storage:read as direct value", () => {
+    const result = agentDefinitionSchema.safeParse({
+      ...baseAgent,
+      experimental_capabilities: ["storage:read"],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects duplicate capabilities", () => {
     const result = agentDefinitionSchema.safeParse({
       ...baseAgent,
-      experimental_capabilities: ["storage:read", "storage:read"],
+      experimental_capabilities: ["artifact:read", "artifact:read"],
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -88,8 +96,8 @@ describe("experimental_capabilities in agentComposeApiContentSchema", () => {
     const result = agentComposeApiContentSchema.safeParse(
       wrapInCompose({
         experimental_capabilities: [
-          "storage:read",
-          "storage:write",
+          "agent:read",
+          "artifact:write",
           "agent-run:read",
         ],
       }),
@@ -114,34 +122,36 @@ describe("experimental_capabilities in agentComposeApiContentSchema", () => {
 
 describe("normalizeCapabilities", () => {
   it("passes through current capabilities unchanged", () => {
-    expect(normalizeCapabilities(["storage:read", "agent:write"])).toEqual(
-      expect.arrayContaining(["storage:read", "agent:write"]),
+    expect(normalizeCapabilities(["artifact:read", "agent:write"])).toEqual(
+      expect.arrayContaining(["artifact:read", "agent:write"]),
     );
   });
 
-  it("normalizes volume:read to storage:read", () => {
-    expect(normalizeCapabilities(["volume:read"])).toEqual(["storage:read"]);
+  it("normalizes volume:read to agent:read", () => {
+    expect(normalizeCapabilities(["volume:read"])).toEqual(["agent:read"]);
   });
 
-  it("normalizes volume:write to storage:write", () => {
-    expect(normalizeCapabilities(["volume:write"])).toEqual(["storage:write"]);
+  it("normalizes volume:write to agent:write", () => {
+    expect(normalizeCapabilities(["volume:write"])).toEqual(["agent:write"]);
   });
 
-  it("normalizes artifact:read to storage:read", () => {
-    expect(normalizeCapabilities(["artifact:read"])).toEqual(["storage:read"]);
+  it("normalizes storage:read to artifact:read", () => {
+    expect(normalizeCapabilities(["storage:read"])).toEqual(["artifact:read"]);
   });
 
-  it("normalizes memory:write to storage:write", () => {
-    expect(normalizeCapabilities(["memory:write"])).toEqual(["storage:write"]);
+  it("normalizes storage:write to artifact:write", () => {
+    expect(normalizeCapabilities(["storage:write"])).toEqual([
+      "artifact:write",
+    ]);
+  });
+
+  it("normalizes memory:write to artifact:write", () => {
+    expect(normalizeCapabilities(["memory:write"])).toEqual(["artifact:write"]);
   });
 
   it("deduplicates when multiple old caps map to same new cap", () => {
-    const result = normalizeCapabilities([
-      "volume:read",
-      "artifact:read",
-      "memory:read",
-    ]);
-    expect(result).toEqual(["storage:read"]);
+    const result = normalizeCapabilities(["storage:read", "memory:read"]);
+    expect(result).toEqual(["artifact:read"]);
   });
 
   it("handles mixed old and new capabilities", () => {
@@ -151,9 +161,9 @@ describe("normalizeCapabilities", () => {
       "storage:write",
     ]);
     expect(result).toHaveLength(3);
-    expect(result).toContain("storage:read");
+    expect(result).toContain("agent:read");
     expect(result).toContain("agent:write");
-    expect(result).toContain("storage:write");
+    expect(result).toContain("artifact:write");
   });
 
   it("drops unknown capabilities", () => {

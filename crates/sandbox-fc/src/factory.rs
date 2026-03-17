@@ -9,6 +9,7 @@ use crate::overlay::{
     Ext4Creator, OverlayCreator, OverlayPool, OverlayPoolConfig, SnapshotCopyCreator,
 };
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
+use crate::prerequisites;
 use crate::sandbox::FirecrackerSandbox;
 
 /// Shell command executed during snapshot creation to pre-warm guest state.
@@ -114,7 +115,7 @@ impl FirecrackerFactory {
     /// Call `startup()` to initialize pools before use.
     pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
-        crate::prerequisites::check_prerequisites(&crate::prerequisites::PrerequisiteConfig {
+        prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
             binary_path: &config.binary_path,
             kernel_path: &config.kernel_path,
             rootfs_path: &config.rootfs_path,

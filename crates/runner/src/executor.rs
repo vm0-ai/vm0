@@ -14,12 +14,13 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::network_logs;
 use crate::paths::{LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, ResumeSession, StorageManifest};
 
 /// Configuration for a single execution.
 pub struct ExecutorConfig {
@@ -109,11 +110,11 @@ async fn execute_inner(
 
     // Register VM in proxy registry when firewall rules are present
     let source_ip = sandbox.source_ip().to_string();
-    let has_firewall = context
-        .experimental_firewall
+    let has_firewalls = context
+        .experimental_firewalls
         .as_ref()
         .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
-    let proxy_registered = has_firewall;
+    let proxy_registered = has_firewalls;
     let network_log_path = config.log_paths.network_log(context.run_id);
 
     if proxy_registered {
@@ -122,7 +123,7 @@ async fn execute_inner(
             run_id: &run_id_str,
             sandbox_token: &context.sandbox_token,
             network_log_path: &network_log_path,
-            firewall: context.experimental_firewall.as_deref(),
+            firewalls: context.experimental_firewalls.as_deref(),
             encrypted_secrets: context.encrypted_secrets.as_deref(),
             secret_connector_map: context.secret_connector_map.as_ref(),
         };
@@ -143,7 +144,7 @@ async fn execute_inner(
         if let Err(e) = config.registry.unregister_vm(&source_ip).await {
             warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
         }
-        crate::network_logs::upload_network_logs(
+        network_logs::upload_network_logs(
             &config.http,
             context.run_id,
             &context.sandbox_token,
@@ -407,11 +408,11 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
 async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    manifest: &crate::types::StorageManifest,
+    manifest: &StorageManifest,
     log_file: &str,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
-        .map_err(|e| crate::error::RunnerError::Internal(format!("manifest json: {e}")))?;
+        .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
     sandbox
         .write_file(guest::STORAGE_MANIFEST, &manifest_json)
         .await?;
@@ -432,7 +433,7 @@ async fn download_storages(
         .await?;
 
     if result.exit_code != 0 {
-        return Err(crate::error::RunnerError::Internal(format!(
+        return Err(RunnerError::Internal(format!(
             "storage download failed (exit code {})",
             result.exit_code
         )));
@@ -446,7 +447,7 @@ async fn download_storages(
 async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &crate::types::ResumeSession,
+    session: &ResumeSession,
 ) -> RunnerResult<()> {
     if !(context.cli_agent_type.is_empty() || context.cli_agent_type == "claude-code") {
         return Ok(());
@@ -460,7 +461,7 @@ async fn restore_session(
 
     // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
     if !is_valid_session_id(&session.session_id) {
-        return Err(crate::error::RunnerError::Internal(format!(
+        return Err(RunnerError::Internal(format!(
             "invalid session_id: {}",
             session.session_id
         )));
@@ -563,7 +564,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // MITM is always enabled when firewall rules are configured.
     // The certificate is pre-baked into the rootfs at build time.
     let proxy_active = context
-        .experimental_firewall
+        .experimental_firewalls
         .as_ref()
         .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
     if proxy_active {
@@ -641,7 +642,10 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+    use crate::types::{
+        ArtifactEntry, Firewall, FirewallApi, FirewallAuth, ResumeSession, StorageEntry,
+        StorageManifest,
+    };
     use uuid::Uuid;
 
     fn minimal_context() -> ExecutionContext {
@@ -666,7 +670,7 @@ mod tests {
             agent_name: None,
             agent_org_slug: None,
             memory_name: None,
-            experimental_firewall: None,
+            experimental_firewalls: None,
             experimental_capabilities: None,
         }
     }
@@ -887,13 +891,13 @@ mod tests {
     #[test]
     fn build_env_json_firewall_enable_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewall = Some(vec![crate::types::Firewall {
+        ctx.experimental_firewalls = Some(vec![Firewall {
             name: "gmail".into(),
             ref_key: "gmail".into(),
-            apis: vec![crate::types::FirewallApi {
+            apis: vec![FirewallApi {
                 id: String::new(),
                 base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
-                auth: crate::types::FirewallAuth {
+                auth: FirewallAuth {
                     headers: std::collections::HashMap::from([(
                         "Authorization".into(),
                         "Bearer ${{ secrets.GMAIL_TOKEN }}".into(),
@@ -909,7 +913,7 @@ mod tests {
     #[test]
     fn build_env_json_empty_firewall_no_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewall = Some(vec![]);
+        ctx.experimental_firewalls = Some(vec![]);
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
     }
@@ -917,7 +921,7 @@ mod tests {
     #[test]
     fn build_env_json_capabilities_inject_cli_vars() {
         let mut ctx = minimal_context();
-        ctx.experimental_capabilities = Some(vec!["storage:read".into()]);
+        ctx.experimental_capabilities = Some(vec!["artifact:read".into()]);
         ctx.agent_org_slug = Some("my-org".into());
         let env = build_env_json(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
@@ -944,7 +948,7 @@ mod tests {
     #[test]
     fn build_env_json_capabilities_cli_vars_override_user_env() {
         let mut ctx = minimal_context();
-        ctx.experimental_capabilities = Some(vec!["storage:read".into()]);
+        ctx.experimental_capabilities = Some(vec!["artifact:read".into()]);
         ctx.agent_org_slug = Some("my-org".into());
         ctx.environment = Some(HashMap::from([
             ("VM0_TOKEN".into(), "tampered".into()),
@@ -963,22 +967,22 @@ mod tests {
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
-            "experimentalCapabilities": ["storage:read", "storage:write"]
+            "experimentalCapabilities": ["artifact:read", "artifact:write"]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let caps = ctx.experimental_capabilities.unwrap();
-        assert_eq!(caps, vec!["storage:read", "storage:write"]);
+        assert_eq!(caps, vec!["artifact:read", "artifact:write"]);
     }
 
     #[test]
-    fn execution_context_deserializes_with_firewall() {
+    fn execution_context_deserializes_with_firewalls() {
         let json = serde_json::json!({
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
-            "experimentalFirewall": [{
+            "experimentalFirewalls": [{
                 "name": "github",
                 "ref": "github",
                 "apis": [{
@@ -1001,7 +1005,7 @@ mod tests {
             }]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        let svcs = ctx.experimental_firewall.unwrap();
+        let svcs = ctx.experimental_firewalls.unwrap();
         assert_eq!(svcs.len(), 1);
         assert_eq!(svcs[0].name, "github");
         assert_eq!(svcs[0].ref_key, "github");
@@ -1015,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_deserializes_without_firewall() {
+    fn execution_context_deserializes_without_firewalls() {
         let json = serde_json::json!({
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
@@ -1024,7 +1028,7 @@ mod tests {
             "cliAgentType": "claude-code"
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert!(ctx.experimental_firewall.is_none());
+        assert!(ctx.experimental_firewalls.is_none());
     }
 
     #[test]

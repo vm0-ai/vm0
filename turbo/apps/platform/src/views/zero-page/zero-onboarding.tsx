@@ -218,10 +218,8 @@ function OnboardingSkillsStep({
 /** Zero onboarding: creates org, model provider, and default agent. */
 export function ZeroOnboarding({
   zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
 }: {
   zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
 }) {
   const step = useGet(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
@@ -354,19 +352,14 @@ export function ZeroOnboarding({
           aria-describedby={undefined}
         >
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-16 w-16 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 mb-5"
-              aria-label="Switch Zero avatar"
-            >
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl mb-5">
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-16 w-16 rounded-full object-cover object-top"
               />
-            </button>
+            </div>
             <DialogHeader className="space-y-2">
               <DialogTitle className="text-xl font-semibold tracking-tight">
                 Meet your new teammate

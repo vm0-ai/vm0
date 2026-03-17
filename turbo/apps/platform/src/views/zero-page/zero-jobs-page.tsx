@@ -1,9 +1,5 @@
 import { useGet, useLastResolved, useLoadable } from "ccstate-react";
-import {
-  IconSparkles,
-  IconMessageCircle,
-  IconUsers,
-} from "@tabler/icons-react";
+import { IconCrown, IconMessageCircle, IconUsers } from "@tabler/icons-react";
 import { Card, CardContent } from "@vm0/ui";
 import {
   zeroSubagents$,
@@ -13,7 +9,7 @@ import {
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { Link } from "../router/link.tsx";
 import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
-import { getAgentAvatar } from "./zero-sidebar.tsx";
+import { useAgentAvatar } from "./zero-sidebar.tsx";
 
 interface ZeroJobsPageProps {
   onNavigateToChat?: () => void;
@@ -71,13 +67,13 @@ export function ZeroJobsPage({
                     <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
                       {agentName}
                     </h2>
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
-                      <IconSparkles
+                    <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
+                      <IconCrown
                         size={12}
-                        stroke={1.5}
-                        className="h-3 w-3 shrink-0 text-violet-600 dark:text-violet-400"
+                        stroke={1.8}
+                        className="shrink-0 text-amber-500 dark:text-amber-400"
                       />
-                      Main
+                      Lead
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground mt-0.5">
@@ -132,10 +128,11 @@ export function ZeroJobsPage({
                 />
                 <div className="text-center">
                   <p className="text-sm font-medium text-foreground">
-                    No teammates yet
+                    Just {agentName} for now
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Start a chat with {agentName} to create one.
+                    Ask {agentName} to create a teammate and they&apos;ll show
+                    up here.
                   </p>
                 </div>
               </CardContent>
@@ -162,49 +159,62 @@ export function ZeroJobsPage({
                 </span>
               </button>
 
-              {agents.map((agent) => {
-                const displayName = agent.displayName ?? agent.name;
-                return (
-                  <Link
-                    key={agent.name}
-                    pathname="/zero/team/:name"
-                    options={{ pathParams: { name: agent.name } }}
-                    className="block no-underline text-inherit"
-                  >
-                    <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
-                      <CardContent className="p-5 flex flex-col flex-1 gap-3">
-                        <span className="self-start inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
-                          <IconUsers
-                            size={12}
-                            stroke={1.5}
-                            className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
-                          />
-                          Workspace
-                        </span>
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={getAgentAvatar(agent.name)}
-                            alt={displayName}
-                            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-                          />
-                          <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                            {displayName}
-                          </h2>
-                        </div>
-                        {agent.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {agent.description}
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
+              {agents.map((agent) => (
+                <Link
+                  key={agent.name}
+                  pathname="/zero/team/:name"
+                  options={{ pathParams: { name: agent.name } }}
+                  className="block no-underline text-inherit"
+                >
+                  <AgentCard agent={agent} />
+                </Link>
+              ))}
             </div>
           )}
         </div>
       </main>
     </div>
+  );
+}
+
+function AgentCard({
+  agent,
+}: {
+  agent: {
+    name: string;
+    displayName?: string | null;
+    description?: string | null;
+  };
+}) {
+  const avatarSrc = useAgentAvatar(agent.name);
+  const displayName = agent.displayName ?? agent.name;
+  return (
+    <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
+      <CardContent className="p-5 flex flex-col flex-1 gap-3">
+        <span className="self-start inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
+          <IconUsers
+            size={12}
+            stroke={1.5}
+            className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
+          />
+          Workspace
+        </span>
+        <div className="flex items-center gap-2.5">
+          <img
+            src={avatarSrc}
+            alt={displayName}
+            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+          />
+          <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
+            {displayName}
+          </h2>
+        </div>
+        {agent.description && (
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {agent.description}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

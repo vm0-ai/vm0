@@ -1,10 +1,12 @@
 //! CLI command building and execution for Claude Code.
 
+use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::events;
 use crate::masker::SecretMasker;
 use crate::paths;
+use crate::timing;
 use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -131,7 +133,7 @@ pub async fn execute_cli(
     // parallel tool calls correctly.
     // See: https://github.com/anthropics/claude-code/issues/11650
     let mut stuck_tool_tracker: HashMap<String, (String, Instant)> = HashMap::new();
-    let stuck_tool_interval = Duration::from_secs(crate::constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
+    let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
     let mut stuck_tool_check = tokio::time::interval_at(
         tokio::time::Instant::now() + stuck_tool_interval,
         stuck_tool_interval,
@@ -168,7 +170,7 @@ pub async fn execute_cli(
                         if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
                             // First event is the CLI init (system/init or thread.started)
                             if seq == 0 {
-                                crate::timing::record_e2e_from_api("api_to_cli_init");
+                                timing::record_e2e_from_api("api_to_cli_init");
                             }
                             // Print result to stdout if applicable
                             if event.get("type").and_then(|v| v.as_str()) == Some("result")

@@ -11,6 +11,7 @@ import {
   IconCalendar,
   IconX,
   IconPhoto,
+  IconChartLine,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -22,6 +23,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -56,19 +61,21 @@ import { useSendKeyHandler } from "./zero-send-key.ts";
 
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
-  onAvatarClick?: () => void;
   onBack?: () => void;
   onNavigateToTeam?: () => void;
   onNavigateToSchedule?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
+  onAvatarClick?: () => void;
   chatAgentName?: string;
 }
 
 export function ZeroSessionChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
-  onAvatarClick,
   onBack,
   onNavigateToTeam,
   onNavigateToSchedule,
+  onNavigateToActivity,
+  onAvatarClick,
   chatAgentName,
 }: ZeroSessionChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
@@ -154,8 +161,8 @@ export function ZeroSessionChatPage({
           <button
             type="button"
             onClick={onAvatarClick}
-            className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="Switch Zero avatar"
+            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label="View agent profile"
           >
             <img
               src={zeroAvatarSrc}
@@ -214,7 +221,7 @@ export function ZeroSessionChatPage({
               key={msg.id}
               message={msg}
               zeroAvatarSrc={zeroAvatarSrc}
-              onAvatarClick={onAvatarClick}
+              onNavigateToActivity={onNavigateToActivity}
             />
           ))}
           <div ref={setMessagesEndEl} />
@@ -360,13 +367,13 @@ function ChatSkeleton() {
 interface ChatMessageRowProps {
   message: ZeroChatMessage;
   zeroAvatarSrc: string;
-  onAvatarClick?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
 }
 
 function ChatMessageRow({
   message,
   zeroAvatarSrc,
-  onAvatarClick,
+  onNavigateToActivity,
 }: ChatMessageRowProps) {
   if (message.role === "user") {
     return <UserMessage message={message} />;
@@ -375,7 +382,7 @@ function ChatMessageRow({
     <AssistantMessage
       message={message}
       zeroAvatarSrc={zeroAvatarSrc}
-      onAvatarClick={onAvatarClick}
+      onNavigateToActivity={onNavigateToActivity}
     />
   );
 }
@@ -552,61 +559,87 @@ function queueLabel(position: number): string {
 interface AssistantMessageProps {
   message: ZeroChatMessage;
   zeroAvatarSrc: string;
-  onAvatarClick?: () => void;
+  onNavigateToActivity?: (logId?: string) => void;
 }
 
 function AssistantMessage({
   message,
   zeroAvatarSrc,
-  onAvatarClick,
+  onNavigateToActivity,
 }: AssistantMessageProps) {
-  const avatarButton = (
-    <button
-      type="button"
-      onClick={onAvatarClick}
-      className="h-9 w-9 shrink-0 mt-0.5 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label="Switch Zero avatar"
-    >
+  const avatar = (
+    <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
         src={zeroAvatarSrc}
         alt=""
         role="presentation"
         className="h-9 w-9 rounded-full object-cover object-top"
       />
-    </button>
+    </div>
   );
+
+  const logButton = message.runId ? (
+    <div className="grid grid-cols-[48px_1fr] gap-3">
+      <div />
+      <div className="flex">
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onNavigateToActivity?.(message.runId)}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                aria-label="View run logs"
+              >
+                <IconChartLine size={18} stroke={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">View activity logs</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    </div>
+  ) : null;
 
   if (message.error) {
     return (
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-        {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
-          <div className="flex items-start gap-1.5 text-destructive">
-            <IconAlertCircle size={14} className="shrink-0 mt-0.5" />
-            <span>{message.error}</span>
+      <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+          {avatar}
+          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+            <div className="flex items-start gap-1.5 text-destructive">
+              <IconAlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>{message.error}</span>
+            </div>
           </div>
         </div>
+        {logButton}
       </div>
     );
   }
 
   if (message.content) {
     return (
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-        {avatarButton}
-        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
-          <Markdown source={message.content} />
+      <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+          {avatar}
+          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+            <Markdown source={message.content} />
+          </div>
         </div>
+        {logButton}
       </div>
     );
   }
 
   // Thinking / loading state — show live run activity
   return (
-    <div className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-      {avatarButton}
-      <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-        <RunActivityLine />
+    <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+        {avatar}
+        <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+          <RunActivityLine />
+        </div>
       </div>
     </div>
   );

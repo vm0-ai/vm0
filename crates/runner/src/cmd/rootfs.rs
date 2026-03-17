@@ -3,8 +3,11 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use sha2::{Digest, Sha256};
 
+use crate::ca;
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::{HomePaths, RootfsPaths};
+use crate::lock;
+use crate::paths::{HomePaths, RootfsPaths, touch_mtime};
+use crate::profile;
 
 const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
@@ -111,7 +114,7 @@ async fn resolve_guest(
 
 /// Build rootfs and return the content hash of the inputs.
 pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
-    let def = crate::profile::get(&args.profile)?;
+    let def = profile::get(&args.profile)?;
     let dockerfile = def.dockerfile;
     let dry_run = args.dry_run;
 
@@ -153,7 +156,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let paths = HomePaths::new()?;
 
     // Ensure CA exists — rootfs build embeds the CA cert into the image.
-    crate::ca::ensure(&paths).await?;
+    ca::ensure(&paths).await?;
 
     let rootfs_paths = RootfsPaths::new(&paths, &hash);
     let output_dir = rootfs_paths.dir();
@@ -161,18 +164,18 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");
-        crate::paths::touch_mtime(output_dir);
+        touch_mtime(output_dir);
         return Ok(hash);
     }
 
     // Acquire exclusive lock to prevent concurrent builds with the same hash.
-    let _lock = crate::lock::acquire(paths.rootfs_lock(&hash)).await?;
+    let _lock = lock::acquire(paths.rootfs_lock(&hash)).await?;
 
     // Re-check after acquiring lock — another process may have completed the build.
     if is_build_complete(&rootfs_paths).await? {
         tracing::info!("[OK] rootfs already built: {}", output_dir.display());
         tracing::info!("rootfs hash: {hash}");
-        crate::paths::touch_mtime(output_dir);
+        touch_mtime(output_dir);
         return Ok(hash);
     }
 

@@ -53,10 +53,10 @@ agents:
   my-agent:
     framework: claude-code
     environment:
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-5-20251101"
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-5-20250929"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-6"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-6"
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-4-5-20251001"
-      CLAUDE_CODE_SUBAGENT_MODEL: "claude-sonnet-4-5-20250929"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-sonnet-4-6"
 ```
 
 | Variable | Purpose | Default |
@@ -71,7 +71,7 @@ If you don't specify these variables, Claude Code automatically uses the latest 
 </Callout>
 
 <Callout type="warning">
-You must use the **full model name** (e.g., `claude-sonnet-4-5-20250929`) in environment variables, not aliases like `opus`, `sonnet`, or `haiku`.
+You must use the **full model name** (e.g., `claude-sonnet-4-6`) in environment variables, not aliases like `opus`, `sonnet`, or `haiku`.
 </Callout>
 
 ## Resources

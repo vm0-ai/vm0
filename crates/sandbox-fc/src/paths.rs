@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::SnapshotConfig;
+
 /// Base directory for runtime sockets under `/run`.
 /// Created with mode 1777 (world-writable + sticky bit) by `prerequisites.rs`.
 pub const RUNTIME_DIR: &str = "/run/vm0";
@@ -174,11 +176,11 @@ impl SnapshotOutputPaths {
     ///
     /// `sock_id` identifies the socket directory under `/run/vm0/sock/` —
     /// typically the config hash so each snapshot gets a unique path.
-    pub fn snapshot_config(&self, sock_id: &str) -> crate::SnapshotConfig {
+    pub fn snapshot_config(&self, sock_id: &str) -> SnapshotConfig {
         let work = SandboxPaths::new(self.work_dir());
         let runtime = RuntimePaths::new();
         let sock = SockPaths::new(runtime.sock_dir(sock_id));
-        crate::SnapshotConfig {
+        SnapshotConfig {
             snapshot_path: self.snapshot(),
             memory_path: self.memory(),
             overlay_path: self.overlay(),

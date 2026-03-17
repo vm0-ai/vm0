@@ -371,9 +371,120 @@
   color: hsl(var(--foreground));
 }
 
-/* Markdown preview spacing overrides - outside @layer for higher specificity */
+/* ==========================================================================
+   Markdown Preview — full theme override for @uiw/react-markdown-preview.
+   We set data-color-mode on the wrapper (via React prop) so the library's
+   [data-color-mode] selectors activate. Then we override with the same
+   selector pattern (same specificity, later source order wins).
+   ========================================================================== */
 
-/* Unified spacing for all elements */
+/* --- Color Variables (Light) -------------------------------------------- */
+[data-color-mode*="light"] .wmde-markdown,
+.wmde-markdown[data-color-mode*="light"] {
+  --color-fg-default: hsl(var(--foreground));
+  --color-fg-muted: hsl(var(--muted-foreground));
+  --color-fg-subtle: hsl(var(--gray-600));
+  --color-canvas-default: transparent;
+  --color-canvas-subtle: hsl(var(--gray-50));
+  --color-border-default: hsl(var(--border));
+  --color-border-muted: hsl(var(--border));
+  --color-neutral-muted: hsl(var(--gray-100));
+  --color-accent-fg: hsl(var(--primary-700));
+  --color-accent-emphasis: hsl(var(--primary-700));
+  --color-attention-subtle: hsl(var(--primary-50));
+  --color-attention-fg: hsl(var(--primary-800));
+  --color-attention-emphasis: hsl(var(--primary-800));
+  --color-danger-fg: hsl(var(--destructive));
+  --color-danger-emphasis: hsl(var(--destructive));
+  --color-success-fg: #2a7a4b;
+  --color-success-emphasis: #2a7a4b;
+  --color-done-fg: #6a5acd;
+  --color-done-emphasis: #6a5acd;
+  --color-copied-active-bg: hsl(var(--gray-400));
+
+  /* Syntax — muted earth tones on cool-neutral background */
+  --color-prettylights-syntax-comment: hsl(var(--gray-600));
+  --color-prettylights-syntax-constant: #6a5acd;
+  --color-prettylights-syntax-entity: #7c5cbf;
+  --color-prettylights-syntax-storage-modifier-import: hsl(var(--foreground));
+  --color-prettylights-syntax-entity-tag: #2a7a4b;
+  --color-prettylights-syntax-keyword: #b35a00;
+  --color-prettylights-syntax-string: #4a6fa5;
+  --color-prettylights-syntax-variable: hsl(var(--gray-800));
+  --color-prettylights-syntax-string-regexp: #2a7a4b;
+  --color-prettylights-syntax-brackethighlighter-unmatched: hsl(
+    var(--destructive)
+  );
+  --color-prettylights-syntax-brackethighlighter-angle: hsl(var(--gray-600));
+  --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
+  --color-prettylights-syntax-constant-other-reference-link: #4a6fa5;
+  --color-prettylights-syntax-meta-diff-range: #6a5acd;
+  --color-prettylights-syntax-markup-heading: hsl(var(--primary-800));
+  --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-deleted-text: #8b2020;
+  --color-prettylights-syntax-markup-deleted-bg: #fce8e8;
+  --color-prettylights-syntax-markup-inserted-text: #2a7a4b;
+  --color-prettylights-syntax-markup-inserted-bg: #e6f6ed;
+  --color-prettylights-syntax-markup-changed-text: #b35a00;
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--primary-50));
+  --color-prettylights-syntax-markup-list: #b35a00;
+}
+
+/* --- Color Variables (Dark) --------------------------------------------- */
+[data-color-mode*="dark"] .wmde-markdown,
+.wmde-markdown[data-color-mode*="dark"] {
+  --color-fg-default: hsl(var(--foreground));
+  --color-fg-muted: hsl(var(--muted-foreground));
+  --color-fg-subtle: hsl(var(--gray-600));
+  --color-canvas-default: transparent;
+  --color-canvas-subtle: hsl(var(--gray-100));
+  --color-border-default: hsl(var(--border));
+  --color-border-muted: hsl(var(--border));
+  --color-neutral-muted: hsl(var(--gray-200));
+  --color-accent-fg: hsl(var(--primary-900));
+  --color-accent-emphasis: hsl(var(--primary-700));
+  --color-attention-subtle: hsl(var(--primary-100));
+  --color-attention-fg: hsl(var(--primary-900));
+  --color-attention-emphasis: hsl(var(--primary-700));
+  --color-danger-fg: hsl(var(--destructive));
+  --color-danger-emphasis: hsl(var(--destructive));
+  --color-success-fg: #7dba97;
+  --color-success-emphasis: #7dba97;
+  --color-done-fg: #b8a0d8;
+  --color-done-emphasis: #b8a0d8;
+  --color-copied-active-bg: hsl(var(--gray-400));
+
+  /* Syntax — softer tones for dark backgrounds */
+  --color-prettylights-syntax-comment: hsl(var(--gray-600));
+  --color-prettylights-syntax-constant: #d4976c;
+  --color-prettylights-syntax-entity: #b8a0d8;
+  --color-prettylights-syntax-storage-modifier-import: hsl(var(--foreground));
+  --color-prettylights-syntax-entity-tag: #7dba97;
+  --color-prettylights-syntax-keyword: #d4976c;
+  --color-prettylights-syntax-string: #8aabcc;
+  --color-prettylights-syntax-variable: hsl(var(--gray-900));
+  --color-prettylights-syntax-string-regexp: #7dba97;
+  --color-prettylights-syntax-brackethighlighter-unmatched: hsl(
+    var(--destructive)
+  );
+  --color-prettylights-syntax-brackethighlighter-angle: hsl(var(--gray-600));
+  --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
+  --color-prettylights-syntax-constant-other-reference-link: #8aabcc;
+  --color-prettylights-syntax-meta-diff-range: #b8a0d8;
+  --color-prettylights-syntax-markup-heading: hsl(var(--primary-900));
+  --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
+  --color-prettylights-syntax-markup-deleted-text: #e8a0a0;
+  --color-prettylights-syntax-markup-deleted-bg: hsl(var(--gray-200));
+  --color-prettylights-syntax-markup-inserted-text: #7dba97;
+  --color-prettylights-syntax-markup-inserted-bg: hsl(var(--gray-200));
+  --color-prettylights-syntax-markup-changed-text: #d4976c;
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--gray-200));
+  --color-prettylights-syntax-markup-list: #d4976c;
+}
+
+/* --- Spacing ------------------------------------------------------------ */
 .wmde-markdown p,
 .wmde-markdown h1,
 .wmde-markdown h2,
@@ -397,7 +508,7 @@
   margin-bottom: 0;
 }
 
-/* Heading sizes - H1 max 16px, others smaller */
+/* --- Headings ----------------------------------------------------------- */
 .wmde-markdown h1 {
   font-size: 16px;
   padding-bottom: 0;
@@ -430,9 +541,28 @@
 .wmde-markdown h6 {
   font-size: 12px;
   font-weight: 500;
+  color: hsl(var(--muted-foreground));
 }
 
-/* Reduce list indentation */
+/* --- Links -------------------------------------------------------------- */
+.wmde-markdown a {
+  color: hsl(var(--primary-700));
+  text-decoration: none;
+}
+
+.wmde-markdown a:hover {
+  text-decoration: underline;
+  color: hsl(var(--primary-800));
+}
+
+/* --- Blockquote --------------------------------------------------------- */
+.wmde-markdown blockquote {
+  padding-left: 10px;
+  color: hsl(var(--muted-foreground));
+  border-left: 3px solid hsl(var(--gray-300));
+}
+
+/* --- Lists -------------------------------------------------------------- */
 .wmde-markdown ul,
 .wmde-markdown ol {
   padding-left: 8px;
@@ -445,7 +575,6 @@
   padding-left: 6px;
 }
 
-/* Ensure list markers are visible */
 .wmde-markdown ul {
   list-style-type: disc;
   padding-left: 20px;
@@ -466,12 +595,19 @@
   padding-left: 22px;
 }
 
-/* Reduce blockquote indentation */
-.wmde-markdown blockquote {
-  padding-left: 6px;
+/* --- Horizontal Rule ---------------------------------------------------- */
+.wmde-markdown hr {
+  background-color: hsl(var(--border));
+  border-bottom-color: hsl(var(--border));
 }
 
-/* Table styling for light/dark mode visibility */
+/* --- Mark / highlight --------------------------------------------------- */
+.wmde-markdown mark {
+  background-color: hsl(var(--primary-100));
+  color: hsl(var(--foreground));
+}
+
+/* --- Tables ------------------------------------------------------------- */
 .wmde-markdown table {
   border-collapse: collapse;
   width: 100%;
@@ -481,7 +617,7 @@
 
 .wmde-markdown table th,
 .wmde-markdown table td {
-  border-bottom: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border));
   padding: 6px 12px;
   text-align: left;
   color: hsl(var(--foreground));
@@ -489,21 +625,81 @@
 
 .wmde-markdown table th {
   font-weight: 600;
-  border-bottom-width: 2px;
+  background-color: hsl(var(--gray-50));
 }
 
-/* Override library color variables to match our theme */
-.wmde-markdown {
-  --color-fg-default: hsl(var(--foreground));
-  --color-fg-muted: hsl(var(--muted-foreground));
-  --color-canvas-default: transparent;
-  --color-canvas-subtle: hsl(var(--gray-50));
-  --color-border-default: hsl(var(--border));
+.wmde-markdown table tr {
+  background-color: transparent;
+  border-top-color: hsl(var(--border));
 }
 
-/* Code block styling */
+.wmde-markdown table tr:nth-child(2n) {
+  background-color: hsl(var(--gray-50) / 0.5);
+}
+
+/* --- Inline Code -------------------------------------------------------- */
+.wmde-markdown code,
+.wmde-markdown tt {
+  background-color: hsl(var(--gray-100));
+  color: hsl(var(--foreground));
+  border-radius: 4px;
+}
+
+/* --- Code Blocks -------------------------------------------------------- */
 .wmde-markdown pre {
   overflow-x: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+
+.wmde-markdown pre code,
+.wmde-markdown pre tt {
+  background-color: transparent;
+  border: 0;
+}
+
+/* Code block scrollbar */
+.wmde-markdown pre > code::-webkit-scrollbar-thumb {
+  background: hsl(var(--gray-400));
+}
+
+/* --- Code Block Copy Button --------------------------------------------- */
+.wmde-markdown pre .copied {
+  background: hsl(var(--gray-200));
+  color: hsl(var(--muted-foreground));
+  border-radius: 6px;
+}
+
+.wmde-markdown pre:hover .copied:hover {
+  background: hsl(var(--gray-300));
+  color: hsl(var(--foreground));
+}
+
+.wmde-markdown pre:hover .copied:active,
+.wmde-markdown pre .copied.active {
+  background: hsl(var(--gray-400));
+  color: hsl(var(--foreground));
+}
+
+/* --- KBD ---------------------------------------------------------------- */
+.wmde-markdown kbd {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--gray-50));
+  border-color: hsl(var(--gray-300));
+  box-shadow: inset 0 -1px 0 hsl(var(--gray-300));
+}
+
+/* --- Alerts ------------------------------------------------------------- */
+.wmde-markdown .markdown-alert {
+  border-left-color: hsl(var(--border));
+}
+
+.wmde-markdown .markdown-alert.markdown-alert-note {
+  border-left-color: hsl(var(--primary-600));
+}
+
+.wmde-markdown .markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: hsl(var(--primary-700));
 }
 
 /* Details/summary animation */

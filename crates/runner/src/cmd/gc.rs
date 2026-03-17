@@ -8,7 +8,8 @@ use tracing::info;
 
 use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::HomePaths;
+use crate::lock;
+use crate::paths::{HomePaths, LogPaths};
 
 /// Per-job log files older than this are eligible for GC.
 const JOB_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
@@ -181,7 +182,7 @@ enum LockProbe {
 
 /// Try a nonblocking exclusive flock to check if a resource is in use.
 fn probe_lock(path: &Path) -> LockProbe {
-    let file = match crate::lock::open_lock_file(path) {
+    let file = match lock::open_lock_file(path) {
         Ok(f) => f,
         Err(e) => return LockProbe::Error(e.to_string()),
     };
@@ -266,7 +267,7 @@ async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)
         let Some(name) = name.to_str() else { continue };
 
         // Only target per-job log files, not runner logs.
-        if !crate::paths::LogPaths::is_job_log(name) {
+        if !LogPaths::is_job_log(name) {
             continue;
         }
 

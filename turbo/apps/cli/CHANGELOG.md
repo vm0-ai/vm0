@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.62.4](https://github.com/vm0-ai/vm0/compare/cli-v9.62.3...cli-v9.62.4) (2026-03-16)
+
+
+### Refactoring
+
+* rename firewall array fields to plural form ([#5034](https://github.com/vm0-ai/vm0/issues/5034)) ([79bd167](https://github.com/vm0-ai/vm0/commit/79bd1675288e6a5a92acb6ef9c199099b9dd11bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.0
+
 ## [9.62.3](https://github.com/vm0-ai/vm0/compare/cli-v9.62.2...cli-v9.62.3) (2026-03-16)
 
 

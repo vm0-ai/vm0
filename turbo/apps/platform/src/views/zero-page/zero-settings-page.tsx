@@ -123,7 +123,7 @@ function ZeroDefaultProvider() {
             <span className="text-sm font-medium text-foreground">
               Default provider
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-sm text-muted-foreground">
               The provider used by default when running agents.
             </span>
           </div>

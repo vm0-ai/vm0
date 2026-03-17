@@ -437,13 +437,13 @@ export {
   firewallPermissionSchema,
   firewallApiSchema,
   firewallSchema,
-  experimentalFirewallSchema,
+  experimentalFirewallsSchema,
   firewallConfigSchema,
   type FirewallConfig,
   type ExpandedFirewallConfig,
   type FirewallApi,
   type Firewall,
-  type ExperimentalFirewall,
+  type ExperimentalFirewalls,
 } from "./firewalls";
 
 export {

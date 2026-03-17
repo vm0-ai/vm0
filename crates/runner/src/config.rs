@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::paths::{HomePaths, RootfsPaths};
+use crate::profile;
 
 /// 0 means auto-detect from host CPU and memory at startup.
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
@@ -85,11 +87,11 @@ pub struct ServerConfig {
 ///
 /// Relative paths in the config are resolved against the config file's parent directory.
 pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
-    let home = crate::paths::HomePaths::new()?;
+    let home = HomePaths::new()?;
     load_with_home(path, &home).await
 }
 
-async fn load_with_home(path: &Path, home: &crate::paths::HomePaths) -> RunnerResult<RunnerConfig> {
+async fn load_with_home(path: &Path, home: &HomePaths) -> RunnerResult<RunnerConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
         .map_err(|e| RunnerError::Config(format!("read {}: {e}", path.display())))?;
@@ -132,7 +134,7 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
     Ok(())
 }
 
-async fn validate(config: &RunnerConfig, home: &crate::paths::HomePaths) -> RunnerResult<()> {
+async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
     check_path_exists(&config.ca_dir, "ca_dir").await?;
     check_path_exists(&config.firecracker.binary, "firecracker binary").await?;
     check_path_exists(&config.firecracker.kernel, "kernel").await?;
@@ -141,7 +143,7 @@ async fn validate(config: &RunnerConfig, home: &crate::paths::HomePaths) -> Runn
         return Err(RunnerError::Config("profiles must not be empty".into()));
     }
     for (name, profile) in &config.profiles {
-        if !crate::profile::validate_name(name) {
+        if !profile::validate_name(name) {
             return Err(RunnerError::Config(format!(
                 "invalid profile name: {name} (must be org/name format, lowercase alphanumeric + hyphens)"
             )));
@@ -152,7 +154,7 @@ async fn validate(config: &RunnerConfig, home: &crate::paths::HomePaths) -> Runn
             )));
         }
         // Validate rootfs exists on disk.
-        let rootfs_path = crate::paths::RootfsPaths::new(home, &profile.rootfs_hash).rootfs();
+        let rootfs_path = RootfsPaths::new(home, &profile.rootfs_hash).rootfs();
         check_path_exists(&rootfs_path, &format!("profile {name} rootfs")).await?;
         // Validate snapshot files exist if snapshot_hash is set.
         if let Some(hash) = &profile.snapshot_hash {
@@ -204,11 +206,11 @@ impl RunnerConfig {
     pub fn firecracker_config(
         &self,
         profile: &ProfileConfig,
-        home: &crate::paths::HomePaths,
+        home: &HomePaths,
         concurrency: usize,
         proxy_port: Option<u16>,
     ) -> sandbox_fc::FirecrackerConfig {
-        let rootfs_paths = crate::paths::RootfsPaths::new(home, &profile.rootfs_hash);
+        let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
         let snapshot = profile.snapshot_hash.as_ref().map(|hash| {
             let snapshot_output =
                 sandbox_fc::SnapshotOutputPaths::new(home.snapshots_dir().join(hash));
@@ -235,10 +237,10 @@ mod tests {
     async fn test_home_with_artifacts(
         dir: &std::path::Path,
         profiles: &[(&str, Option<&str>)], // (rootfs_hash, snapshot_hash)
-    ) -> crate::paths::HomePaths {
-        let home = crate::paths::HomePaths::with_root(dir.join(".vm0-runner"));
+    ) -> HomePaths {
+        let home = HomePaths::with_root(dir.join(".vm0-runner"));
         for &(rootfs_hash, snapshot_hash) in profiles {
-            let rootfs = crate::paths::RootfsPaths::new(&home, rootfs_hash).rootfs();
+            let rootfs = RootfsPaths::new(&home, rootfs_hash).rootfs();
             tokio::fs::create_dir_all(rootfs.parent().unwrap())
                 .await
                 .unwrap();
@@ -616,7 +618,7 @@ profiles:
     #[test]
     fn firecracker_config_resolves_paths() {
         let dir = tempfile::tempdir().unwrap();
-        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let home = HomePaths::with_root(dir.path().to_path_buf());
 
         let config = RunnerConfig {
             name: "test".into(),

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.29.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.0...runner-rs-v0.29.1) (2026-03-16)
+
+
+### Bug Fixes
+
+* return detailed json error on firewall 403 responses ([#5053](https://github.com/vm0-ai/vm0/issues/5053)) ([285cc4c](https://github.com/vm0-ai/vm0/commit/285cc4c6b79366fe6aedaeaeff4291a3fc584f1e))
+
+
+### Refactoring
+
+* align experimental_capabilities with resource model ([#5063](https://github.com/vm0-ai/vm0/issues/5063)) ([9d025ce](https://github.com/vm0-ai/vm0/commit/9d025ce6e43570242af0604181adb3047fe81370))
+* rename firewall array fields to plural form ([#5034](https://github.com/vm0-ai/vm0/issues/5034)) ([79bd167](https://github.com/vm0-ai/vm0/commit/79bd1675288e6a5a92acb6ef9c199099b9dd11bf))
+
 ## [0.29.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.28.2...runner-rs-v0.29.0) (2026-03-16)
 
 
