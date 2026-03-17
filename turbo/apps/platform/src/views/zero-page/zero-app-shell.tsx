@@ -153,6 +153,7 @@ function useSessionLifecycle(
   isLoggedIn: boolean,
   onboardingReady: boolean,
   needsOnboarding: boolean,
+  talkAgentReady: boolean,
 ) {
   const recentSessions = useGet(zeroSessionList$);
   const recentSessionsLoading = useGet(zeroSessionListLoading$);
@@ -163,7 +164,7 @@ function useSessionLifecycle(
   const lifecycle = useGet(lifecycleRef$);
   const setLifecycle = useSet(lifecycleRef$);
 
-  if (isLoggedIn && onboardingReady) {
+  if (isLoggedIn && onboardingReady && talkAgentReady) {
     if (needsOnboarding && lifecycle === "init") {
       queueMicrotask(() => setLifecycle("onboarding"));
     } else if (!needsOnboarding && lifecycle !== "ready") {
@@ -309,8 +310,17 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const startNewSession = useSet(startNewZeroSession$);
   const sendMessage = useSet(sendZeroChatMessage$);
 
+  // When visiting /zero/talk/:name, wait for the agent to be resolved
+  const talkAgentName = useGet(zeroChatAgentName$);
+  const talkAgentReady = !talkAgentName || currentChatAgentId !== null;
+
   const { recentSessions, recentSessionsLoading, recentSessionsError } =
-    useSessionLifecycle(isLoggedIn, onboardingReady, needsOnboarding);
+    useSessionLifecycle(
+      isLoggedIn,
+      onboardingReady,
+      needsOnboarding,
+      talkAgentReady,
+    );
 
   // Sync URL thread ID to chat signal (skip if signal already matches)
   useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
@@ -373,9 +383,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const sidebarCollapsed = useGet(sidebarCollapsed$);
   const setSidebarCollapsed = useSet(sidebarCollapsed$);
 
-  // When visiting /zero/talk/:name, wait for the agent to be resolved
-  const talkAgentName = useGet(zeroChatAgentName$);
-  const talkAgentReady = !talkAgentName || currentChatAgentId !== null;
   const dataReady =
     isLoggedIn && onboardingReady && agentNameReady && talkAgentReady;
   const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
