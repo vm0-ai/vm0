@@ -285,6 +285,18 @@ export {
   type VolumeVersionsSnapshot,
 } from "./sessions";
 export {
+  chatThreadsContract,
+  chatThreadByIdContract,
+  chatThreadRunsContract,
+  chatThreadListItemSchema,
+  chatThreadDetailSchema,
+  type ChatThreadsContract,
+  type ChatThreadByIdContract,
+  type ChatThreadRunsContract,
+  type ChatThreadListItem,
+  type ChatThreadDetail,
+} from "./chat-threads";
+export {
   runnersPollContract,
   runnersJobClaimContract,
   runnerGroupSchema,

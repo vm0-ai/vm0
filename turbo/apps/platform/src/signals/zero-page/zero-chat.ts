@@ -10,7 +10,7 @@ import {
   zeroChatAgentId$,
   zeroInChat$,
 } from "./zero-nav.ts";
-import type { SessionListItem } from "@vm0/core";
+import type { ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
 
@@ -106,6 +106,35 @@ async function startAgentRun(
 
   const data = (await response.json()) as { runId: string };
   return data.runId;
+}
+
+async function createChatThread(
+  fetchFn: typeof fetch,
+  agentComposeId: string,
+  title?: string,
+): Promise<string | null> {
+  const response = await fetchFn("/api/chat-threads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentComposeId, title }),
+  });
+  if (!response.ok) {
+    return null;
+  }
+  const data = (await response.json()) as { id: string };
+  return data.id;
+}
+
+async function addRunToThread(
+  fetchFn: typeof fetch,
+  threadId: string,
+  runId: string,
+): Promise<void> {
+  await fetchFn(`/api/chat-threads/${threadId}/runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runId }),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -278,8 +307,12 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
 
 const pollingAbortController$ = state<AbortController | null>(null);
 
-// Session list state
-const internalSessionList$ = state<SessionListItem[]>([]);
+// Chat thread ID (for URL routing — set before run starts)
+const internalChatThreadId$ = state<string | null>(null);
+export const zeroChatThreadId$ = computed((get) => get(internalChatThreadId$));
+
+// Session list state (now backed by chat threads)
+const internalSessionList$ = state<ChatThreadListItem[]>([]);
 export const zeroSessionList$ = computed((get) => get(internalSessionList$));
 
 const internalSessionListLoading$ = state(false);
@@ -408,30 +441,26 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
   try {
     const fetchFn = get(fetch$);
     const res = await fetchFn(
-      `/api/agent/sessions?agentComposeId=${encodeURIComponent(composeId)}`,
+      `/api/chat-threads?agentComposeId=${encodeURIComponent(composeId)}`,
     );
     if (!res.ok) {
-      set(
-        internalSessionListError$,
-        `Failed to load sessions: ${res.statusText}`,
-      );
+      set(internalSessionListError$, `Failed to load chats: ${res.statusText}`);
       return;
     }
-    const data = (await res.json()) as { sessions: SessionListItem[] };
-    set(internalSessionList$, data.sessions);
+    const data = (await res.json()) as { threads: ChatThreadListItem[] };
+    set(internalSessionList$, data.threads);
   } catch (error) {
     throwIfAbort(error);
-    const msg =
-      error instanceof Error ? error.message : "Failed to load sessions";
+    const msg = error instanceof Error ? error.message : "Failed to load chats";
     set(internalSessionListError$, msg);
-    L.error("Failed to fetch session list:", error);
+    L.error("Failed to fetch chat thread list:", error);
   } finally {
     set(internalSessionListLoading$, false);
   }
 });
 
 export const switchZeroSession$ = command(
-  async ({ get, set }, sessionId: string) => {
+  async ({ get, set }, threadId: string) => {
     // Abort any in-flight polling from the previous session
     const prev = get(pollingAbortController$);
     if (prev) {
@@ -439,8 +468,9 @@ export const switchZeroSession$ = command(
     }
     set(pollingAbortController$, null);
 
-    // Set session immediately so the UI switches without loading delay
-    set(internalSessionId$, sessionId);
+    // Set thread immediately so the UI switches without loading delay
+    set(internalChatThreadId$, threadId);
+    set(internalSessionId$, null);
     set(internalMessages$, []);
     set(internalActiveRunId$, null);
     set(internalRunEvents$, []);
@@ -453,9 +483,9 @@ export const switchZeroSession$ = command(
 
     try {
       const fetchFn = get(fetch$);
-      const res = await fetchFn(`/api/agent/sessions/${sessionId}`);
+      const res = await fetchFn(`/api/chat-threads/${threadId}`);
       if (!res.ok) {
-        set(internalSessionError$, `Failed to load session: ${res.statusText}`);
+        set(internalSessionError$, `Failed to load chat: ${res.statusText}`);
         return;
       }
 
@@ -466,7 +496,12 @@ export const switchZeroSession$ = command(
           runId?: string;
           createdAt: string;
         }[];
+        latestSessionId?: string | null;
       };
+
+      if (data.latestSessionId) {
+        set(internalSessionId$, data.latestSessionId);
+      }
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(
         (m) => ({
@@ -481,9 +516,9 @@ export const switchZeroSession$ = command(
     } catch (error) {
       throwIfAbort(error);
       const msg =
-        error instanceof Error ? error.message : "Failed to load session";
+        error instanceof Error ? error.message : "Failed to load chat";
       set(internalSessionError$, msg);
-      L.error("Failed to switch session:", error);
+      L.error("Failed to switch chat thread:", error);
     } finally {
       set(internalSessionSwitching$, false);
     }
@@ -500,6 +535,7 @@ export const startNewZeroSession$ = command(({ get, set }) => {
 
   set(internalMessages$, []);
   set(internalSessionId$, null);
+  set(internalChatThreadId$, null);
   set(internalActiveRunId$, null);
   set(internalRunEvents$, []);
   set(internalRunStatus$, null);
@@ -586,6 +622,34 @@ export const sendZeroChatMessage$ = command(
     try {
       const fetchFn = get(fetch$);
       const sessionId = get(internalSessionId$);
+      let threadId = get(internalChatThreadId$);
+
+      // Create a chat thread if this is a new conversation
+      if (!threadId) {
+        const title = prompt.trim().slice(0, 100);
+        threadId = await createChatThread(fetchFn, composeId, title);
+        if (!threadId) {
+          set(internalMessages$, (prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              error: "Failed to create chat thread",
+            };
+            return updated;
+          });
+          set(internalSending$, false);
+          return;
+        }
+        set(internalChatThreadId$, threadId);
+        // Navigate and refresh sidebar immediately
+        if (get(zeroInChat$)) {
+          set(navigateToZeroSession$, threadId);
+        }
+        set(fetchZeroSessionList$).catch((error: unknown) => {
+          throwIfAbort(error);
+          L.error("Failed to refresh chat list:", error);
+        });
+      }
 
       const modelProvider =
         options?.modelProvider && options.modelProvider !== "default"
@@ -611,6 +675,11 @@ export const sendZeroChatMessage$ = command(
         set(internalSending$, false);
         return;
       }
+
+      // Associate run to thread (fire-and-forget)
+      addRunToThread(fetchFn, threadId, runId).catch((error: unknown) => {
+        L.error("Failed to associate run to thread:", error);
+      });
 
       set(internalMessages$, (prev) => {
         const updated = [...prev];
@@ -714,13 +783,9 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       const data = (await res.json()) as {
         result?: { output?: string; agentSessionId?: string };
       };
+      // Store sessionId for conversation continuity (used by next message)
       if (data.result?.agentSessionId) {
-        const prevSessionId = get(internalSessionId$);
         set(internalSessionId$, data.result.agentSessionId);
-        // Update URL only if user is still on the chat page
-        if (!prevSessionId && get(zeroInChat$)) {
-          set(navigateToZeroSession$, data.result.agentSessionId);
-        }
       }
     }
 

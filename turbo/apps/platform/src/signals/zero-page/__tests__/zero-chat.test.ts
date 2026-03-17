@@ -13,6 +13,7 @@ import {
   zeroSessionListLoading$,
   zeroSessionListError$,
   zeroSessionError$,
+  zeroChatThreadId$,
   setZeroChatInput$,
   clearZeroChatInput$,
   fetchZeroSessionList$,
@@ -31,6 +32,24 @@ async function setup() {
   });
 }
 
+/** Default chat-threads handlers used by most send tests. */
+function useChatThreadHandlers() {
+  server.use(
+    http.post("*/api/chat-threads", () => {
+      return HttpResponse.json(
+        { id: "thread-1", createdAt: "2026-03-10T00:00:00Z" },
+        { status: 201 },
+      );
+    }),
+    http.post("*/api/chat-threads/:id/runs", () => {
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get("*/api/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+  );
+}
+
 describe("zero-chat signals", () => {
   describe("chat input", () => {
     it("should set and clear chat input", async () => {
@@ -45,13 +64,25 @@ describe("zero-chat signals", () => {
   });
 
   describe("fetchZeroSessionList$", () => {
-    it("should fetch and store session list", async () => {
+    it("should fetch and store thread list", async () => {
       server.use(
-        http.get("*/api/agent/sessions", () => {
+        http.get("*/api/chat-threads", () => {
           return HttpResponse.json({
-            sessions: [
-              { id: "s1", preview: "Hello", createdAt: "2026-03-10T00:00:00Z" },
-              { id: "s2", preview: "World", createdAt: "2026-03-10T01:00:00Z" },
+            threads: [
+              {
+                id: "t1",
+                title: null,
+                preview: "Hello",
+                createdAt: "2026-03-10T00:00:00Z",
+                updatedAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "t2",
+                title: null,
+                preview: "World",
+                createdAt: "2026-03-10T01:00:00Z",
+                updatedAt: "2026-03-10T01:00:00Z",
+              },
             ],
           });
         }),
@@ -60,17 +91,17 @@ describe("zero-chat signals", () => {
       await setup();
       await context.store.set(fetchZeroSessionList$);
 
-      const sessions = context.store.get(zeroSessionList$);
-      expect(sessions).toHaveLength(2);
-      expect(sessions[0]?.id).toBe("s1");
-      expect(sessions[1]?.preview).toBe("World");
+      const threads = context.store.get(zeroSessionList$);
+      expect(threads).toHaveLength(2);
+      expect(threads[0]?.id).toBe("t1");
+      expect(threads[1]?.preview).toBe("World");
       expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
       expect(context.store.get(zeroSessionListError$)).toBeNull();
     });
 
     it("should set error on API failure", async () => {
       server.use(
-        http.get("*/api/agent/sessions", () => {
+        http.get("*/api/chat-threads", () => {
           return new HttpResponse(null, {
             status: 500,
             statusText: "Internal Server Error",
@@ -82,7 +113,7 @@ describe("zero-chat signals", () => {
       await context.store.set(fetchZeroSessionList$);
 
       expect(context.store.get(zeroSessionListError$)).toBe(
-        "Failed to load sessions: Internal Server Error",
+        "Failed to load chats: Internal Server Error",
       );
       expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
     });
@@ -90,9 +121,9 @@ describe("zero-chat signals", () => {
     it("should pass agentComposeId as query parameter", async () => {
       let capturedUrl = "";
       server.use(
-        http.get("*/api/agent/sessions", ({ request }) => {
+        http.get("*/api/chat-threads", ({ request }) => {
           capturedUrl = request.url;
-          return HttpResponse.json({ sessions: [] });
+          return HttpResponse.json({ threads: [] });
         }),
       );
 
@@ -105,10 +136,13 @@ describe("zero-chat signals", () => {
   });
 
   describe("switchZeroSession$", () => {
-    it("should set session id immediately and load messages", async () => {
+    it("should set thread id and load messages from thread API", async () => {
       server.use(
-        http.get("*/api/agent/sessions/:id", () => {
+        http.get("*/api/chat-threads/:id", () => {
           return HttpResponse.json({
+            id: "thread-abc",
+            title: null,
+            agentComposeId: "mock-compose-id",
             chatMessages: [
               {
                 role: "user",
@@ -122,13 +156,17 @@ describe("zero-chat signals", () => {
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ],
+            latestSessionId: "session-abc",
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:01Z",
           });
         }),
       );
 
       await setup();
-      await context.store.set(switchZeroSession$, "session-abc");
+      await context.store.set(switchZeroSession$, "thread-abc");
 
+      expect(context.store.get(zeroChatThreadId$)).toBe("thread-abc");
       expect(context.store.get(zeroCurrentSessionId$)).toBe("session-abc");
 
       const messages = context.store.get(zeroChatMessages$);
@@ -142,7 +180,7 @@ describe("zero-chat signals", () => {
 
     it("should set error on API failure", async () => {
       server.use(
-        http.get("*/api/agent/sessions/:id", () => {
+        http.get("*/api/chat-threads/:id", () => {
           return new HttpResponse(null, {
             status: 404,
             statusText: "Not Found",
@@ -151,14 +189,14 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(switchZeroSession$, "bad-session");
+      await context.store.set(switchZeroSession$, "bad-thread");
 
       expect(context.store.get(zeroSessionError$)).toBe(
-        "Failed to load session: Not Found",
+        "Failed to load chat: Not Found",
       );
     });
 
-    it("should abort in-flight polling when switching sessions", async () => {
+    it("should abort in-flight polling when switching threads", async () => {
       let pollCount = 0;
       server.use(
         http.post("*/api/agent/runs", () => {
@@ -173,7 +211,6 @@ describe("zero-chat signals", () => {
         }),
         http.get("*/api/platform/logs/:runId", () => {
           pollCount++;
-          // Return non-terminal status to keep polling alive
           return HttpResponse.json({
             id: "run-old",
             status: "running",
@@ -184,68 +221,68 @@ describe("zero-chat signals", () => {
             completedAt: null,
           });
         }),
-        http.get("*/api/agent/sessions/:id", () => {
+        http.get("*/api/chat-threads/:id", () => {
           return HttpResponse.json({
+            id: "new-thread",
+            title: null,
+            agentComposeId: "mock-compose-id",
             chatMessages: [
               {
                 role: "user",
-                content: "New session msg",
+                content: "New thread msg",
                 createdAt: "2026-03-10T00:00:00Z",
               },
             ],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
+      useChatThreadHandlers();
+
+      await setup();
+
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "Start polling")
+        .catch(() => {});
+
+      await delay(50);
+      expect(pollCount).toBeGreaterThan(0);
+
+      await context.store.set(switchZeroSession$, "new-thread");
+      await sendPromise;
+
+      const pollCountAfterAbort = pollCount;
+      await delay(200);
+      expect(pollCount).toBe(pollCountAfterAbort);
+
+      expect(context.store.get(zeroChatThreadId$)).toBe("new-thread");
+      const messages = context.store.get(zeroChatMessages$);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.content).toBe("New thread msg");
+    });
+
+    it("should clear previous messages when switching", async () => {
+      server.use(
+        http.get("*/api/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "thread-1",
+            title: null,
+            agentComposeId: "mock-compose-id",
+            chatMessages: [],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
           });
         }),
       );
 
       await setup();
 
-      // Start a send (it will enter the polling loop since status is "running")
-      const sendPromise = context.store
-        .set(sendZeroChatMessage$, "Start polling")
-        .catch(() => {
-          // AbortError is expected — the polling loop throws when aborted
-        });
-
-      // Wait briefly for the polling loop to begin phase 2
-      await delay(50);
-
-      // Verify polling actually started before we abort it
-      expect(pollCount).toBeGreaterThan(0);
-
-      // Switching sessions should abort the polling controller
-      await context.store.set(switchZeroSession$, "new-session-id");
-
-      // The send should complete (polling aborted via signal)
-      await sendPromise;
-
-      // Record poll count after abort and wait to verify no more polls happen
-      const pollCountAfterAbort = pollCount;
-      await delay(200);
-
-      // No additional polls should have occurred after abort
-      expect(pollCount).toBe(pollCountAfterAbort);
-
-      // State should reflect the switched session
-      expect(context.store.get(zeroCurrentSessionId$)).toBe("new-session-id");
-      const messages = context.store.get(zeroChatMessages$);
-      expect(messages).toHaveLength(1);
-      expect(messages[0]?.content).toBe("New session msg");
-    });
-
-    it("should clear previous messages when switching", async () => {
-      server.use(
-        http.get("*/api/agent/sessions/:id", () => {
-          return HttpResponse.json({ chatMessages: [] });
-        }),
-      );
-
-      await setup();
-
-      // Set some initial state
       context.store.set(setZeroChatInput$, "draft");
-      await context.store.set(switchZeroSession$, "session-1");
+      await context.store.set(switchZeroSession$, "thread-1");
 
-      // Messages should be empty (from the empty response)
       expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
@@ -255,13 +292,12 @@ describe("zero-chat signals", () => {
     it("should reset all chat state", async () => {
       await setup();
 
-      // Populate some state first
       context.store.set(setZeroChatInput$, "some input");
-
       context.store.set(startNewZeroSession$);
 
       expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
       expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
+      expect(context.store.get(zeroChatThreadId$)).toBeNull();
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
       expect(context.store.get(zeroChatInput$)).toBe("");
     });
@@ -281,7 +317,6 @@ describe("zero-chat signals", () => {
         }),
         http.get("*/api/platform/logs/:runId", () => {
           pollCount++;
-          // Return non-terminal status to keep polling alive
           return HttpResponse.json({
             id: "run-poll",
             status: "running",
@@ -293,50 +328,54 @@ describe("zero-chat signals", () => {
           });
         }),
       );
+      useChatThreadHandlers();
 
       await setup();
 
-      // Start a send (it will enter the polling loop since status is "running")
       const sendPromise = context.store
         .set(sendZeroChatMessage$, "Start polling")
-        .catch(() => {
-          // AbortError is expected — the polling loop throws when aborted
-        });
+        .catch(() => {});
 
-      // Wait briefly for the polling loop to begin phase 2
       await delay(50);
-
-      // Verify polling actually started before we abort it
       expect(pollCount).toBeGreaterThan(0);
 
-      // Starting a new session should abort the polling controller
       context.store.set(startNewZeroSession$);
-
-      // The send should complete (polling aborted via signal)
       await sendPromise;
 
-      // Record poll count after abort and wait to verify no more polls happen
       const pollCountAfterAbort = pollCount;
       await delay(200);
-
-      // No additional polls should have occurred after abort
       expect(pollCount).toBe(pollCountAfterAbort);
 
-      // State should reflect the new session, not the old one
       expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
+      expect(context.store.get(zeroChatThreadId$)).toBeNull();
       expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
     });
   });
 
   describe("sendZeroChatMessage$", () => {
-    it("should add user and placeholder messages then start a run", async () => {
-      let capturedBody: Record<string, string> | null = null;
+    it("should create thread, add messages, and start a run", async () => {
+      let capturedRunBody: Record<string, string> | null = null;
+      let threadCreated = false;
+      let runAssociated = false;
       server.use(
+        http.post("*/api/chat-threads", () => {
+          threadCreated = true;
+          return HttpResponse.json(
+            { id: "thread-new", createdAt: "2026-03-10T00:00:00Z" },
+            { status: 201 },
+          );
+        }),
+        http.post("*/api/chat-threads/:id/runs", () => {
+          runAssociated = true;
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.get("*/api/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
         http.post("*/api/agent/runs", async ({ request }) => {
-          capturedBody = (await request.json()) as Record<string, string>;
+          capturedRunBody = (await request.json()) as Record<string, string>;
           return HttpResponse.json({ runId: "run-123" });
         }),
-        // Phase 1: telemetry events (eager load)
         http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
             events: [],
@@ -344,7 +383,6 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        // Phase 2: polling checks /api/platform/logs/:runId for terminal status
         http.get("*/api/platform/logs/:runId", () => {
           return HttpResponse.json({
             id: "run-123",
@@ -356,34 +394,26 @@ describe("zero-chat signals", () => {
             completedAt: "2026-03-10T00:00:02Z",
           });
         }),
-        // onZeroRunComplete$ fetches /api/agent/runs/:runId for session id
         http.get("*/api/agent/runs/:runId", () => {
           return HttpResponse.json({
             result: { agentSessionId: "new-session-id" },
           });
-        }),
-        // Persist messages endpoint
-        http.post("*/api/agent/sessions/:id/messages", () => {
-          return HttpResponse.json({ ok: true });
-        }),
-        // Session list refresh
-        http.get("*/api/agent/sessions", () => {
-          return HttpResponse.json({ sessions: [] });
         }),
       );
 
       await setup();
       await context.store.set(sendZeroChatMessage$, "What can you do?");
 
-      // Verify the run was started with correct payload
-      expect(capturedBody).toBeTruthy();
-      expect(capturedBody!.agentComposeId).toBe("mock-compose-id");
-      expect(capturedBody!.prompt).toBe("What can you do?");
+      expect(threadCreated).toBeTruthy();
+      expect(runAssociated).toBeTruthy();
 
-      // After completion, sending should be false
+      expect(capturedRunBody).toBeTruthy();
+      expect(capturedRunBody!.agentComposeId).toBe("mock-compose-id");
+      expect(capturedRunBody!.prompt).toBe("What can you do?");
+
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
+      expect(context.store.get(zeroChatThreadId$)).toBe("thread-new");
 
-      // Messages should contain at least user + assistant
       const messages = context.store.get(zeroChatMessages$);
       expect(messages.length).toBeGreaterThanOrEqual(2);
       expect(messages[0]?.role).toBe("user");
@@ -392,6 +422,7 @@ describe("zero-chat signals", () => {
     });
 
     it("should set error on run creation failure", async () => {
+      useChatThreadHandlers();
       server.use(
         http.post("*/api/agent/runs", () => {
           return new HttpResponse(null, { status: 500 });
@@ -404,6 +435,22 @@ describe("zero-chat signals", () => {
       const messages = context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
       expect(lastMsg?.error).toBe("Failed to start agent run");
+      expect(context.store.get(zeroChatSending$)).toBeFalsy();
+    });
+
+    it("should set error on thread creation failure", async () => {
+      server.use(
+        http.post("*/api/chat-threads", () => {
+          return new HttpResponse(null, { status: 500 });
+        }),
+      );
+
+      await setup();
+      await context.store.set(sendZeroChatMessage$, "Hello");
+
+      const messages = context.store.get(zeroChatMessages$);
+      const lastMsg = messages[messages.length - 1];
+      expect(lastMsg?.error).toBe("Failed to create chat thread");
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
 
@@ -423,14 +470,36 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
     });
 
-    it("should include sessionId when one exists", async () => {
-      let capturedBody: Record<string, string> | null = null;
+    it("should include sessionId when continuing a thread", async () => {
+      let capturedRunBody: Record<string, string> | null = null;
+      let threadCreateCalled = false;
       server.use(
-        http.get("*/api/agent/sessions/:id", () => {
-          return HttpResponse.json({ chatMessages: [] });
+        http.get("*/api/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "thread-existing",
+            title: null,
+            agentComposeId: "mock-compose-id",
+            chatMessages: [],
+            latestSessionId: "existing-session",
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+        http.post("*/api/chat-threads", () => {
+          threadCreateCalled = true;
+          return HttpResponse.json(
+            { id: "should-not-create", createdAt: "2026-03-10T00:00:00Z" },
+            { status: 201 },
+          );
+        }),
+        http.post("*/api/chat-threads/:id/runs", () => {
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.get("*/api/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
         }),
         http.post("*/api/agent/runs", async ({ request }) => {
-          capturedBody = (await request.json()) as Record<string, string>;
+          capturedRunBody = (await request.json()) as Record<string, string>;
           return HttpResponse.json({ runId: "run-456" });
         }),
         http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
@@ -456,24 +525,19 @@ describe("zero-chat signals", () => {
             result: { agentSessionId: "existing-session" },
           });
         }),
-        http.post("*/api/agent/sessions/:id/messages", () => {
-          return HttpResponse.json({ ok: true });
-        }),
-        http.get("*/api/agent/sessions", () => {
-          return HttpResponse.json({ sessions: [] });
-        }),
       );
 
       await setup();
 
-      // First switch to a session to set the sessionId
-      await context.store.set(switchZeroSession$, "existing-session");
+      // Switch to an existing thread first
+      await context.store.set(switchZeroSession$, "thread-existing");
 
-      // Now send a message — it should include the sessionId
+      // Now send a follow-up — should NOT create a new thread
       await context.store.set(sendZeroChatMessage$, "Follow up");
 
-      expect(capturedBody).toBeTruthy();
-      expect(capturedBody!.sessionId).toBe("existing-session");
+      expect(threadCreateCalled).toBeFalsy();
+      expect(capturedRunBody).toBeTruthy();
+      expect(capturedRunBody!.sessionId).toBe("existing-session");
     });
   });
 });

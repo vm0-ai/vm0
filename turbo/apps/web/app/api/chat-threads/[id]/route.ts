@@ -1,0 +1,59 @@
+import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
+import { chatThreadByIdContract } from "@vm0/core";
+import { initServices } from "../../../../src/lib/init-services";
+import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import {
+  getChatThread,
+  getChatThreadMessages,
+} from "../../../../src/lib/chat-thread";
+
+const router = tsr.router(chatThreadByIdContract, {
+  get: async ({ params, headers }) => {
+    initServices();
+
+    const userId = await getUserId(headers.authorization);
+    if (!userId) {
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    try {
+      const thread = await getChatThread(params.id, userId);
+      const { chatMessages, latestSessionId } = await getChatThreadMessages(
+        params.id,
+        userId,
+      );
+
+      return {
+        status: 200 as const,
+        body: {
+          id: thread.id,
+          title: thread.title,
+          agentComposeId: thread.agentComposeId,
+          chatMessages,
+          latestSessionId,
+          createdAt: thread.createdAt.toISOString(),
+          updatedAt: thread.updatedAt.toISOString(),
+        },
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("not found")) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Chat thread not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      throw error;
+    }
+  },
+});
+
+const handler = createHandler(chatThreadByIdContract, router);
+
+export { handler as GET };
