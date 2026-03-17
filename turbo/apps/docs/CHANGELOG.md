@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.22.2](https://github.com/vm0-ai/vm0/compare/docs-v2.22.1...docs-v2.22.2) (2026-03-17)
+
+
+### Bug Fixes
+
+* remove personal org concept from org leave and use commands ([#5147](https://github.com/vm0-ai/vm0/issues/5147)) ([314540b](https://github.com/vm0-ai/vm0/commit/314540bcf03897975c0cd1e830b627f8fce13aec))
+
 ## [2.22.1](https://github.com/vm0-ai/vm0/compare/docs-v2.22.0...docs-v2.22.1) (2026-03-17)
 
 

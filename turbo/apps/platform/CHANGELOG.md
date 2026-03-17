@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.118.0](https://github.com/vm0-ai/vm0/compare/platform-v0.117.0...platform-v0.118.0) (2026-03-17)
+
+
+### Features
+
+* add user settings ui for gdpr data export ([#5152](https://github.com/vm0-ai/vm0/issues/5152)) ([46c8c96](https://github.com/vm0-ai/vm0/commit/46c8c960ad1ab6969ba04b11fa61d1f914ea12d5))
+* **platform:** add talk route for url-driven agent chat selection ([#5098](https://github.com/vm0-ai/vm0/issues/5098)) ([34b6800](https://github.com/vm0-ai/vm0/commit/34b68005429fcfbede85fed2d55e8f54fd7a9ae1))
+
+
+### Refactoring
+
+* return display name from logs api instead of frontend mapping ([#5150](https://github.com/vm0-ai/vm0/issues/5150)) ([92d7877](https://github.com/vm0-ai/vm0/commit/92d787709fabc58b557a807749cf9d261bac707b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.75.0
+
 ## [0.117.0](https://github.com/vm0-ai/vm0/compare/platform-v0.116.3...platform-v0.117.0) (2026-03-17)
 
 
