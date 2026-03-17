@@ -12,8 +12,7 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { getUserId } from "../../../../../src/lib/auth/get-user-id";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
+import { resolveCallerOrgId } from "../../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(sessionsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
@@ -58,27 +57,14 @@ const router = tsr.router(sessionsByIdContract, {
     }
 
     // Verify session belongs to the caller's active organization (runtime org)
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    try {
-      const { org } = await resolveOrg(userId, orgSlug);
-      if (session.orgId !== org.orgId) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Session not found", code: "NOT_FOUND" },
-          },
-        };
-      }
-    } catch (error) {
-      if (isNotFound(error) || isForbidden(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Session not found", code: "NOT_FOUND" },
-          },
-        };
-      }
-      throw error;
+    const callerOrgId = await resolveCallerOrgId(userId, request);
+    if (callerOrgId !== session.orgId) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Session not found", code: "NOT_FOUND" },
+        },
+      };
     }
 
     // Extract secret names from HEAD compose content
