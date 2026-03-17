@@ -25,8 +25,9 @@ import {
   zeroInChat$,
   zeroSessionId$,
   zeroChatAgentId$,
+  zeroChatAgentName$,
+  zeroTalkAgentResolved$,
   setZeroActiveId$,
-  setZeroChatAgentId$,
   navigateToZeroSession$,
   navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
@@ -36,7 +37,6 @@ import {
   zeroSessionListLoading$,
   zeroSessionListError$,
   zeroChatThreadId$,
-  fetchZeroSessionList$,
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
@@ -148,37 +148,10 @@ function useSkeletonVisibility(isLoggedIn: boolean, dataReady: boolean) {
  * Manages session lifecycle: fetches session list when onboarding completes,
  * and auto-sends an introductory message for new users.
  */
-function useSessionLifecycle(
-  isLoggedIn: boolean,
-  onboardingReady: boolean,
-  needsOnboarding: boolean,
-) {
+function useSessionLifecycle() {
   const recentSessions = useGet(zeroSessionList$);
   const recentSessionsLoading = useGet(zeroSessionListLoading$);
   const recentSessionsError = useGet(zeroSessionListError$);
-  const fetchSessionList = useSet(fetchZeroSessionList$);
-  // "init" → "onboarding" → "ready" lifecycle
-  const lifecycleRef$ = useCCState<"init" | "onboarding" | "ready">("init");
-  const lifecycle = useGet(lifecycleRef$);
-  const setLifecycle = useSet(lifecycleRef$);
-
-  if (isLoggedIn && onboardingReady) {
-    if (needsOnboarding && lifecycle === "init") {
-      queueMicrotask(() => setLifecycle("onboarding"));
-    } else if (!needsOnboarding && lifecycle !== "ready") {
-      const wasOnboarding = lifecycle === "onboarding";
-      queueMicrotask(() => {
-        setLifecycle("ready");
-        // Skip fetching sessions right after onboarding — the onboarding
-        // handler already navigates to chat and sends the intro message,
-        // which will create the first session.
-        if (!wasOnboarding) {
-          detach(fetchSessionList(), Reason.DomCallback);
-        }
-      });
-    }
-  }
-
   return { recentSessions, recentSessionsLoading, recentSessionsError };
 }
 
@@ -190,23 +163,20 @@ function useUrlSessionSync(
   currentSessionId: string | null,
   switchSession: (id: string) => Promise<void>,
 ) {
-  const prevUrlSessionId$ = useCCState<string | null>(null);
-  const prevUrlSessionId = useGet(prevUrlSessionId$);
-  const setPrevUrlSessionId = useSet(prevUrlSessionId$);
-
+  const lastDispatched$ = useCCState<string | null>(null);
+  const lastDispatched = useGet(lastDispatched$);
+  const setLastDispatched = useSet(lastDispatched$);
   if (
     urlSessionId &&
-    urlSessionId !== prevUrlSessionId &&
+    urlSessionId !== lastDispatched &&
     urlSessionId !== currentSessionId
   ) {
+    setLastDispatched(urlSessionId);
     queueMicrotask(() => {
-      setPrevUrlSessionId(urlSessionId);
       detach(switchSession(urlSessionId), Reason.DomCallback);
     });
-  } else if (urlSessionId && urlSessionId !== prevUrlSessionId) {
-    queueMicrotask(() => setPrevUrlSessionId(urlSessionId));
-  } else if (!urlSessionId && prevUrlSessionId) {
-    queueMicrotask(() => setPrevUrlSessionId(null));
+  } else if (!urlSessionId) {
+    setLastDispatched(null);
   }
 }
 
@@ -242,21 +212,54 @@ function GuestNavBar({ onAbout }: { onAbout: () => void }) {
   );
 }
 
-interface ZeroAppShellProps {
-  initialJobAgent?: string | null;
+function useContentNavigation(resolvedAgentName: string | null) {
+  const navigate = useSet(updatePathname$);
+  const navigateInReact = useSet(navigateInReact$);
+
+  const handleNavigateToSchedule = () => {
+    if (resolvedAgentName) {
+      navigateInReact("/team/:name", {
+        pathParams: { name: resolvedAgentName },
+        searchParams: new URLSearchParams({ tab: "schedule" }),
+      });
+    }
+  };
+
+  const handleNavigateToMeet = (tab?: string) => {
+    if (resolvedAgentName) {
+      const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
+      navigateInReact("/team/:name", {
+        pathParams: { name: resolvedAgentName },
+        searchParams,
+      });
+    }
+  };
+
+  const handleChatAvatarClick = () => {
+    if (resolvedAgentName) {
+      navigateInReact("/team/:name", {
+        pathParams: { name: resolvedAgentName },
+      });
+    }
+  };
+
+  return {
+    navigate,
+    navigateInReact,
+    handleNavigateToSchedule,
+    handleNavigateToMeet,
+    handleChatAvatarClick,
+  };
 }
 
-export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
+function useZeroLoadables() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
-  // useLastLoadable keeps the previous value during re-fetches (e.g. Clerk
-  // session touch), preventing the onboarding dialog from unmounting.
   const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
   const onboardingReady = onboardingLoadable.state === "hasData";
   const needsOnboarding =
     onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
-  const showOnboarding = isLoggedIn && needsOnboarding;
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentDisplayNameLoadable.state === "hasData";
   const agentDisplayName = agentNameReady
@@ -276,11 +279,35 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
           displayName: a.displayName,
         }))
       : [];
+  return {
+    isLoggedIn,
+    onboardingReady,
+    needsOnboarding,
+    showOnboarding: isLoggedIn && needsOnboarding,
+    agentNameReady,
+    agentDisplayName,
+    defaultRawName,
+    subagents,
+  };
+}
+
+interface ZeroAppShellProps {
+  initialJobAgent?: string | null;
+}
+
+export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
+  const {
+    isLoggedIn,
+    onboardingReady,
+    showOnboarding,
+    agentNameReady,
+    agentDisplayName,
+    defaultRawName,
+    subagents,
+  } = useZeroLoadables();
   const currentChatAgentId = useGet(zeroChatAgentId$);
-  const setChatAgentId = useSet(setZeroChatAgentId$);
 
   const activeId = useGet(zeroActiveId$);
-  const setActiveId = useSet(setZeroActiveId$);
   const avatarIndex$ = useCCState(0);
   const avatarIndex = useGet(avatarIndex$);
   const setAvatarIndex = useSet(avatarIndex$);
@@ -308,29 +335,46 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const startNewSession = useSet(startNewZeroSession$);
   const sendMessage = useSet(sendZeroChatMessage$);
 
+  // When visiting /talk/:name, wait for the agent to be resolved
+  const talkAgentName = useGet(zeroChatAgentName$);
+  const talkAgentResolved = useGet(zeroTalkAgentResolved$);
+  const talkAgentReady = !talkAgentName || talkAgentResolved;
+
   const { recentSessions, recentSessionsLoading, recentSessionsError } =
-    useSessionLifecycle(isLoggedIn, onboardingReady, needsOnboarding);
+    useSessionLifecycle();
 
   // Sync URL thread ID to chat signal (skip if signal already matches)
   useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
+
+  const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
+  const {
+    navigateInReact,
+    handleNavigateToSchedule,
+    handleNavigateToMeet,
+    handleChatAvatarClick,
+  } = useContentNavigation(resolvedAgentName);
 
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
     set(navigateToZeroSession$, sessionId);
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
 
-  const fetchSessionList = useSet(fetchZeroSessionList$);
-  const handleNewChat = (agentId: string | null) => {
-    setActiveId("chat");
-    // Persist agent selection to localStorage first, so fetchZeroSessionList$ reads it
-    setChatAgentId(agentId);
+  const handleNewChat = (agent: { id: string; name: string } | null) => {
     startNewSession();
-    detach(fetchSessionList(), Reason.DomCallback);
+    // navigateInReact triggers loadRoute$ → setupZeroPage$ → resolveAndSwitchAgent
+    // which sets the agent and fetches the session list.
+    if (agent) {
+      navigateInReact("/talk/:name", {
+        pathParams: { name: agent.name },
+      });
+    } else {
+      navigateInReact("/");
+    }
   };
 
   const handleSendFromDemo$ = useCommand(
     ({ set }, message: string, options?: { modelProvider?: string }) => {
-      set(updatePathname$, "/zero/chat");
+      set(updatePathname$, "/chat");
       startNewSession();
       detach(sendMessage(message, options), Reason.DomCallback);
     },
@@ -360,14 +404,14 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const navigateInReact = useSet(navigateInReact$);
   const resetDefaultAgent = useSet(resetDefaultAgent$);
 
   const sidebarCollapsed$ = useCCState(false);
   const sidebarCollapsed = useGet(sidebarCollapsed$);
   const setSidebarCollapsed = useSet(sidebarCollapsed$);
 
-  const dataReady = isLoggedIn && onboardingReady && agentNameReady;
+  const dataReady =
+    isLoggedIn && onboardingReady && agentNameReady && talkAgentReady;
   const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
 
   return (
@@ -377,6 +421,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
       <ZeroSidebar
         activeId={activeId}
         agentName={agentDisplayName}
+        defaultAgentRawName={defaultRawName}
         zeroAvatarSrc={zeroAvatarSrc}
         subagents={subagents}
         currentChatAgentId={currentChatAgentId}
@@ -403,39 +448,13 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
             selectedAgentName={initialJobAgent}
-            onNavigateToSchedule={() => {
-              const agentName = selectedSubagent?.name ?? defaultRawName;
-              if (agentName) {
-                navigateInReact("/zero/team/:name", {
-                  pathParams: { name: agentName },
-                  searchParams: new URLSearchParams({ tab: "schedule" }),
-                });
-              }
-            }}
-            onNavigateToMeet={(tab) => {
-              const agentName = selectedSubagent?.name ?? defaultRawName;
-              if (agentName) {
-                const searchParams = tab
-                  ? new URLSearchParams({ tab })
-                  : undefined;
-                navigateInReact("/zero/team/:name", {
-                  pathParams: { name: agentName },
-                  searchParams,
-                });
-              }
-            }}
+            onNavigateToSchedule={handleNavigateToSchedule}
+            onNavigateToMeet={handleNavigateToMeet}
             onBackFromSession={handleBackFromSession}
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}
-            onChatAvatarClick={() => {
-              const agentName = selectedSubagent?.name ?? defaultRawName;
-              if (agentName) {
-                navigateInReact("/zero/team/:name", {
-                  pathParams: { name: agentName },
-                });
-              }
-            }}
+            onChatAvatarClick={handleChatAvatarClick}
             onCycleZeroAvatar={cycleZeroAvatar}
           />
         )}

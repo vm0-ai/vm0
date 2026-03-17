@@ -1,15 +1,17 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort } from "../utils.ts";
+import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
   navigateToZeroSession$,
   zeroChatAgentId$,
+  setZeroChatAgent$,
   zeroInChat$,
 } from "./zero-nav.ts";
+import { agentsList$ } from "./agents-list.ts";
 import type { ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
@@ -310,6 +312,50 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
 
 const pollingAbortController$ = state<AbortController | null>(null);
 
+/** Resume polling for an active run (used when switching to a session with an in-progress run). */
+function resumeRunPolling(
+  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
+  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+  fetchFn: typeof fetch,
+  runId: string,
+) {
+  set(internalActiveRunId$, runId);
+  set(internalSending$, true);
+
+  const controller = new AbortController();
+  set(pollingAbortController$, controller);
+
+  set(setupPollingLoop$, {
+    runId,
+    signal: controller.signal,
+    state: {
+      get events$() {
+        return get(internalRunEvents$);
+      },
+      setEvents: (updater) => {
+        set(internalRunEvents$, updater);
+      },
+      setStatus: (s) => {
+        set(internalRunStatus$, s);
+        updateQueuePosition(s, fetchFn, runId, (pos) =>
+          set(internalQueuePosition$, pos),
+        );
+      },
+      setError: (e) => {
+        set(internalRunError$, e);
+      },
+    },
+    onTerminal: (completedRunId) => {
+      set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
+        throwIfAbort(error);
+        L.error("onRunComplete error:", error);
+      });
+    },
+  }).catch((error: unknown) => {
+    throwIfAbort(error);
+  });
+}
+
 // Chat thread ID (for URL routing — set before run starts)
 const internalChatThreadId$ = state<string | null>(null);
 export const zeroChatThreadId$ = computed((get) => get(internalChatThreadId$));
@@ -428,13 +474,7 @@ export const removeZeroAttachment$ = command(({ set }, id: string) => {
 // ---------------------------------------------------------------------------
 
 export const fetchZeroSessionList$ = command(async ({ get, set }) => {
-  // Skip if already loading (prevents duplicate calls from rapid re-renders)
-  if (get(internalSessionListLoading$)) {
-    return;
-  }
-
-  // Clear stale data immediately (before any await)
-  set(internalSessionList$, []);
+  // Keep previous list visible while loading (no flash to empty).
   set(internalSessionListLoading$, true);
   set(internalSessionListError$, null);
 
@@ -467,6 +507,46 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
   }
 });
 
+/**
+ * Single entry point for changing the active agent.
+ * Sets the agent identity AND refreshes the session list atomically.
+ * All callers that need to change the active agent should use this.
+ */
+export const switchActiveAgent$ = command(
+  ({ set }, agent: { id: string; name: string } | null) => {
+    set(setZeroChatAgent$, agent);
+    detach(set(fetchZeroSessionList$), Reason.DomCallback);
+  },
+);
+
+/** Resolve which agent to activate based on the thread's agentComposeId. */
+async function syncAgentForThread(
+  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
+  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
+  agentComposeId: string | undefined,
+) {
+  if (agentComposeId) {
+    const currentAgentId = get(zeroChatAgentId$);
+    const status = await get(zeroOnboardingStatus$);
+    const isDefault = agentComposeId === status.defaultAgentComposeId;
+    const newAgentId = isDefault ? null : agentComposeId;
+    if (newAgentId !== currentAgentId) {
+      const agentName =
+        newAgentId && get(agentsList$).find((a) => a.id === newAgentId)?.name;
+      set(
+        switchActiveAgent$,
+        newAgentId ? { id: newAgentId, name: agentName ?? "" } : null,
+      );
+    } else if (get(internalSessionList$).length === 0) {
+      detach(set(fetchZeroSessionList$), Reason.DomCallback);
+    }
+  } else if (get(zeroChatAgentId$) !== null) {
+    set(switchActiveAgent$, null);
+  } else if (get(internalSessionList$).length === 0) {
+    detach(set(fetchZeroSessionList$), Reason.DomCallback);
+  }
+}
+
 export const switchZeroSession$ = command(
   async ({ get, set }, threadId: string) => {
     // Abort any in-flight polling from the previous session
@@ -491,13 +571,22 @@ export const switchZeroSession$ = command(
 
     try {
       const fetchFn = get(fetch$);
-      const res = await fetchFn(`/api/chat-threads/${threadId}`);
+
+      // Try chat-threads API first; fall back to legacy sessions API
+      L.info("loading thread:", threadId);
+      let res = await fetchFn(`/api/chat-threads/${threadId}`);
+      let isLegacySession = false;
       if (!res.ok) {
+        res = await fetchFn(`/api/agent/sessions/${threadId}`);
+        isLegacySession = true;
+      }
+      if (!res.ok) {
+        L.warn("both APIs failed, status:", res.status);
         set(internalSessionError$, `Failed to load chat: ${res.statusText}`);
         return;
       }
-
       const data = (await res.json()) as {
+        agentComposeId?: string;
         chatMessages?: {
           role: "user" | "assistant";
           content: string;
@@ -505,13 +594,30 @@ export const switchZeroSession$ = command(
           createdAt: string;
         }[];
         latestSessionId?: string | null;
-        activeRunId?: string | null;
-        activeRunPrompt?: string | null;
+        unsavedRuns?: {
+          runId: string;
+          status: string;
+          prompt: string;
+          error: string | null;
+        }[];
       };
 
-      if (data.latestSessionId) {
+      L.info("loaded:", {
+        isLegacySession,
+        agentComposeId: data.agentComposeId,
+        latestSessionId: data.latestSessionId,
+        msgCount: data.chatMessages?.length,
+      });
+
+      if (isLegacySession) {
+        // Legacy session: the ID itself is the sessionId
+        set(internalSessionId$, threadId);
+      } else if (data.latestSessionId) {
         set(internalSessionId$, data.latestSessionId);
       }
+
+      // Switch agent if it changed, or fetch session list if empty (fresh load).
+      await syncAgentForThread(get, set, data.agentComposeId);
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(
         (m) => ({
@@ -522,62 +628,46 @@ export const switchZeroSession$ = command(
         }),
       );
 
-      // If there's an active run, add the user prompt + assistant placeholder
-      // and resume polling so the user sees the conversation continuing.
-      if (data.activeRunId && data.activeRunPrompt) {
+      // Append unsaved runs (active, failed, pending) not yet in chatMessages.
+      // These are in chronological order from the server.
+      let activeRunToResume: string | null = null;
+      for (const run of data.unsavedRuns ?? []) {
         messages.push({
           id: crypto.randomUUID(),
           role: "user",
-          content: data.activeRunPrompt,
+          content: run.prompt,
         });
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "",
-          runId: data.activeRunId,
-        });
+
+        const isFailed =
+          run.status === "failed" ||
+          run.status === "timeout" ||
+          run.status === "cancelled";
+        if (isFailed) {
+          messages.push({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "",
+            runId: run.runId,
+            status: "failed",
+            error: "Something went wrong. Check the activity logs for details.",
+          });
+        } else {
+          // Active/pending/running — show placeholder for polling
+          messages.push({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "",
+            runId: run.runId,
+          });
+          activeRunToResume = run.runId;
+        }
       }
 
       set(internalMessages$, messages);
 
-      // Resume polling for the active run
-      if (data.activeRunId) {
-        set(internalActiveRunId$, data.activeRunId);
-        set(internalSending$, true);
-
-        const controller = new AbortController();
-        set(pollingAbortController$, controller);
-
-        // Fire-and-forget: polling loop runs in background
-        set(setupPollingLoop$, {
-          runId: data.activeRunId,
-          signal: controller.signal,
-          state: {
-            get events$() {
-              return get(internalRunEvents$);
-            },
-            setEvents: (updater) => {
-              set(internalRunEvents$, updater);
-            },
-            setStatus: (s) => {
-              set(internalRunStatus$, s);
-              updateQueuePosition(s, fetchFn, data.activeRunId!, (pos) =>
-                set(internalQueuePosition$, pos),
-              );
-            },
-            setError: (e) => {
-              set(internalRunError$, e);
-            },
-          },
-          onTerminal: (completedRunId) => {
-            set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
-              throwIfAbort(error);
-              L.error("onRunComplete error:", error);
-            });
-          },
-        }).catch((error: unknown) => {
-          throwIfAbort(error);
-        });
+      // Resume polling for the latest active run
+      if (activeRunToResume) {
+        resumeRunPolling(get, set, fetchFn, activeRunToResume);
       }
     } catch (error) {
       throwIfAbort(error);

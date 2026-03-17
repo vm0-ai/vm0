@@ -453,7 +453,7 @@ function ChatScenarioAssistantContent({
         </pre>
         <div className="mt-3.5 pt-3.5 border-t border-border/30">
           <Link
-            pathname="/zero/:tab"
+            pathname="/:tab"
             options={{ pathParams: { tab: "activity" } }}
             className="zero-chat-btn inline-flex items-center rounded-lg h-8 px-3.5 text-sm font-medium gap-1.5 border"
           >
@@ -1344,7 +1344,7 @@ export function ZeroChatPage({
                   </ul>
                   <div className="border-t border-border/50 px-4 py-3">
                     <Link
-                      pathname="/zero/:tab"
+                      pathname="/:tab"
                       options={{ pathParams: { tab: "team" } }}
                       className="zero-btn-morandi inline-flex items-center w-fit rounded-lg h-8 px-3 text-sm font-medium border"
                     >

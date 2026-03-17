@@ -116,7 +116,7 @@ export const watchOrgSwitch$ = command(
         // required because server-side data (agents, jobs, secrets, etc.) is
         // scoped to the active organization, and multiple signal trees depend
         // on the org context established at bootstrap time.
-        location.href = "/zero";
+        location.href = "/";
       }
     });
     signal.addEventListener("abort", unsubscribe);

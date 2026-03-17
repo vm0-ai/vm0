@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/vm0-ai/vm0/compare/v0.14.1...v0.14.2) (2026-03-17)
+
+
+### Bug Fixes
+
+* **guest-agent:** add stuck-tool watchdog for claude code network tool hang ([#4833](https://github.com/vm0-ai/vm0/issues/4833)) ([7b71fa7](https://github.com/vm0-ai/vm0/commit/7b71fa78f9d7155f08059118391416ecf785027f)), closes [#4785](https://github.com/vm0-ai/vm0/issues/4785)
+
 ## [0.14.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.14.0...guest-mock-claude-v0.14.1) (2026-03-15)
 
 

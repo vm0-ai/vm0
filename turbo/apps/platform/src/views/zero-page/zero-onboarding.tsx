@@ -309,7 +309,7 @@ export function ZeroOnboarding({
         if (slackData?.isAdmin && slackData.installUrl) {
           window.open(slackData.installUrl, "_blank");
         }
-        navigate("/zero/works");
+        navigate("/works");
       })(),
       Reason.DomCallback,
     );
@@ -321,7 +321,7 @@ export function ZeroOnboarding({
     detach(
       (async () => {
         await completeOnboarding(controller.signal);
-        navigate("/zero/chat");
+        navigate("/chat");
         startNewSession();
         detach(
           sendMessage("Who are you and what can you do?"),

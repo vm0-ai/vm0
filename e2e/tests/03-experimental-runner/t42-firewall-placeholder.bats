@@ -115,8 +115,8 @@ EOF
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "GITHUB_TOKEN=gho_Vm0PlaceHolder0000000000000000000000"
-    assert_output --partial "SLACK_TOKEN=xoxb-0000-0000-Vm0PlaceHolder0000000000"
+    assert_output --partial "GITHUB_TOKEN=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"
+    assert_output --partial "SLACK_TOKEN=xoxb-000000000000-0000000000000-Vm0PlaceHolder0000000000"
 }
 
 @test "firewall: permission-based request matching" {

@@ -67,7 +67,7 @@ function createMockLogDetail() {
 async function setup() {
   await setupPage({
     context,
-    path: "/zero/activity",
+    path: "/activity",
     withoutRender: true,
   });
 }

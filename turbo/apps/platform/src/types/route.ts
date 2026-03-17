@@ -1,8 +1,8 @@
 export type RoutePath =
   | "/"
   | "/select-org"
-  | "/zero"
-  | "/zero/:tab"
-  | "/zero/chat/:sessionId"
-  | "/zero/team/:name"
+  | "/:tab"
+  | "/chat/:sessionId"
+  | "/team/:name"
+  | "/talk/:name"
   | `/projects/${string}`;

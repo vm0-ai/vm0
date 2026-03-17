@@ -38,11 +38,20 @@ describe("org leave command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  it("should leave org and show success", async () => {
+  it("should leave org and auto-switch to remaining org", async () => {
     server.use(
       http.post("http://localhost:3000/api/org/leave", () => {
         return HttpResponse.json({
           message: "Left organization",
+        });
+      }),
+      http.get("http://localhost:3000/api/org/list", () => {
+        return HttpResponse.json({
+          orgs: [
+            { slug: "other-org", role: "member" },
+            { slug: "another-org", role: "admin" },
+          ],
+          active: undefined,
         });
       }),
     );
@@ -51,7 +60,29 @@ describe("org leave command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("Left organization");
-    expect(logCalls).toContain("personal org");
+    expect(logCalls).toContain("Switched to: other-org");
+  });
+
+  it("should handle no remaining organizations after leaving", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/org/leave", () => {
+        return HttpResponse.json({
+          message: "Left organization",
+        });
+      }),
+      http.get("http://localhost:3000/api/org/list", () => {
+        return HttpResponse.json({
+          orgs: [],
+          active: undefined,
+        });
+      }),
+    );
+
+    await leaveCommand.parseAsync(["node", "cli"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Left organization");
+    expect(logCalls).toContain("No remaining organizations");
   });
 
   it("should handle admin-cannot-leave error", async () => {

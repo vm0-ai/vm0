@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { clerkClient } from "@clerk/nextjs/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { isNotFound } from "../../../../../src/lib/errors";
+import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import {
   resolveTestUserId,
   isTestVariant,
@@ -40,47 +40,60 @@ function isTestTokenAllowed(request: Request): boolean {
 
 /**
  * Ensure the test user has an org_cache entry for org resolution.
- * Uses the same flow as production (resolveOrg) so that
- * Clerk API membership verification works during E2E tests.
+ * Queries Clerk API directly to find the user's org membership,
+ * then pre-populates org_members_cache for fast verification.
  *
  * If the user has no Clerk org yet, creates org_cache and org_members_cache
  * entries with a sentinel orgId.
  */
 async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
-  try {
-    const { org, member } = await resolveOrg(userId);
-    // Pre-populate org_members_cache so verifyMembershipCached hits cache
-    // instead of calling Clerk API on every request (avoids 429 rate limits)
-    await globalThis.services.db
-      .insert(orgMembersCache)
-      .values({
-        orgId: org.orgId,
-        userId,
-        role: member.role,
-        cachedAt: new Date(),
-      })
-      .onConflictDoNothing();
-    return { slug: org.slug };
-  } catch (error) {
-    if (!isNotFound(error)) throw error;
-    // User has no Clerk org — use sentinel orgId with org_cache + membership cache
-    const sentinelOrgId = `org_test_${userId}`;
-    const slug = "test-org";
-    await globalThis.services.db
-      .insert(orgCache)
-      .values({ orgId: sentinelOrgId, slug, tier: "free" })
-      .onConflictDoNothing();
-    await globalThis.services.db
-      .insert(orgMembersCache)
-      .values({
-        orgId: sentinelOrgId,
-        userId,
-        role: "admin",
-        cachedAt: new Date(),
-      })
-      .onConflictDoNothing();
-    return { slug };
+  // Query Clerk API directly for user's org memberships
+  const client = await clerkClient();
+  const memberships = await client.users.getOrganizationMembershipList({
+    userId,
+  });
+
+  // Find first org with a matching org_cache entry
+  for (const membership of memberships.data) {
+    const orgId = membership.organization.id;
+    try {
+      const orgData = await getOrgData(orgId);
+      const role = membership.role === "org:admin" ? "admin" : "member";
+      // Pre-populate org_members_cache so verifyMembershipCached hits cache
+      // instead of calling Clerk API on every request (avoids 429 rate limits)
+      await globalThis.services.db
+        .insert(orgMembersCache)
+        .values({
+          orgId,
+          userId,
+          role,
+          cachedAt: new Date(),
+        })
+        .onConflictDoNothing();
+      return { slug: orgData.slug };
+    } catch {
+      // Org not in org_cache — try next membership
+      continue;
+    }
   }
+
+  // User has no Clerk org — use sentinel orgId with org_cache + membership cache
+  const sentinelOrgId = `org_test_${userId}`;
+  const slug = "test-org";
+  await globalThis.services.db
+    .insert(orgCache)
+    .values({ orgId: sentinelOrgId, slug, tier: "free" })
+    .onConflictDoNothing();
+  await globalThis.services.db
+    .insert(orgMembersCache)
+    .values({
+      orgId: sentinelOrgId,
+      userId,
+      role: "admin",
+      cachedAt: new Date(),
+    })
+    .onConflictDoNothing();
+  return { slug };
 }
 
 /**

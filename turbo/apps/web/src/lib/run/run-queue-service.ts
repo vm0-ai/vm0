@@ -11,7 +11,6 @@ import {
   decryptSecretsMap,
 } from "../crypto/secrets-encryption";
 import { PENDING_RUN_TTL_MS, checkRunConcurrencyLimit } from "./run-service";
-import { resolveOrg } from "../org/resolve-org";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
 import type { OrgTier } from "@vm0/core";
 
@@ -43,14 +42,8 @@ export async function enqueueRun(
 ): Promise<CreateRunResult> {
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Resolve orgId (caller should have already resolved it, but fall back)
-  let orgId: string;
-  if (params.orgId) {
-    orgId = params.orgId;
-  } else {
-    const { org } = await resolveOrg(userId);
-    orgId = org.orgId;
-  }
+  // Org context is required from caller
+  const orgId = params.orgId;
 
   // Encrypt the full CreateRunParams for later replay
   const paramsJson = JSON.stringify(params);

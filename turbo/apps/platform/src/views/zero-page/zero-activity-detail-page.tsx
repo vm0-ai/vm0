@@ -18,7 +18,6 @@ import { StatusBadge } from "./components/logs/status-badge.tsx";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
-  zeroActivityOrgAgents$,
   formatLogTime,
   formatDuration,
 } from "../../signals/zero-page/zero-activity.ts";
@@ -52,7 +51,7 @@ function isVisibleMessage(
   return (message.toolOperations?.length ?? 0) > 0;
 }
 
-const ACTIVITY_HREF = "/zero/activity";
+const ACTIVITY_HREF = "/activity";
 
 function ActivityBreadcrumbLink() {
   return (
@@ -99,15 +98,10 @@ function ActivityNotFound() {
 export function ZeroActivityDetailPage() {
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
-  const orgAgents = useGet(zeroActivityOrgAgents$);
-
-  // Resolve agent display name from the detail's agentName
+  // Resolve agent display name from the detail response
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const nameToDisplay = new Map(orgAgents.map((a) => [a.name, a.displayName]));
-  const agentName = detail
-    ? (nameToDisplay.get(detail.agentName) ?? detail.agentName)
-    : "Agent";
+  const agentName = detail ? (detail.displayName ?? detail.agentName) : "Agent";
 
   const stepSearch$ = useCCState("");
   const stepSearch = useGet(stepSearch$);
@@ -220,7 +214,7 @@ export function ZeroActivityDetailPage() {
               </Button>
             </div>
             {detail.error && status === "failed" && (
-              <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
                 {detail.error}
               </div>
             )}
