@@ -589,11 +589,12 @@ export const switchZeroSession$ = command(
           createdAt: string;
         }[];
         latestSessionId?: string | null;
-        activeRunId?: string | null;
-        activeRunPrompt?: string | null;
-        failedRunId?: string | null;
-        failedRunPrompt?: string | null;
-        failedRunError?: string | null;
+        unsavedRuns?: Array<{
+          runId: string;
+          status: string;
+          prompt: string;
+          error: string | null;
+        }>;
       };
 
       L.info("loaded:", {
@@ -622,43 +623,46 @@ export const switchZeroSession$ = command(
         }),
       );
 
-      // If there's an active run, add the user prompt + assistant placeholder
-      // and resume polling so the user sees the conversation continuing.
-      if (data.activeRunId && data.activeRunPrompt) {
+      // Append unsaved runs (active, failed, pending) not yet in chatMessages.
+      // These are in chronological order from the server.
+      let activeRunToResume: string | null = null;
+      for (const run of data.unsavedRuns ?? []) {
         messages.push({
           id: crypto.randomUUID(),
           role: "user",
-          content: data.activeRunPrompt,
+          content: run.prompt,
         });
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "",
-          runId: data.activeRunId,
-        });
-      } else if (data.failedRunId && data.failedRunPrompt) {
-        // If the latest run failed, show the user's message and a generic error.
-        // Don't expose internal error details — guide user to activity logs.
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "user",
-          content: data.failedRunPrompt,
-        });
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "",
-          runId: data.failedRunId,
-          status: "failed",
-          error: "Something went wrong. Check the activity logs for details.",
-        });
+
+        const isFailed =
+          run.status === "failed" ||
+          run.status === "timeout" ||
+          run.status === "cancelled";
+        if (isFailed) {
+          messages.push({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "",
+            runId: run.runId,
+            status: "failed",
+            error: "Something went wrong. Check the activity logs for details.",
+          });
+        } else {
+          // Active/pending/running — show placeholder for polling
+          messages.push({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "",
+            runId: run.runId,
+          });
+          activeRunToResume = run.runId;
+        }
       }
 
       set(internalMessages$, messages);
 
-      // Resume polling for the active run
-      if (data.activeRunId) {
-        resumeRunPolling(get, set, fetchFn, data.activeRunId);
+      // Resume polling for the latest active run
+      if (activeRunToResume) {
+        resumeRunPolling(get, set, fetchFn, activeRunToResume);
       }
     } catch (error) {
       throwIfAbort(error);
