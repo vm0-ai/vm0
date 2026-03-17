@@ -8,7 +8,9 @@ import { getActiveToken, getActiveOrg } from "../config";
 async function appendOrgParam(path: string): Promise<string> {
   const activeOrg = await getActiveOrg();
   if (!activeOrg) {
-    return path;
+    throw new Error(
+      "No active organization configured. Run: vm0 org use <slug>",
+    );
   }
 
   // Check if org param already exists

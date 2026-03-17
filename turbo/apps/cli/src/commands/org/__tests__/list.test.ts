@@ -37,6 +37,7 @@ describe("org list command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("VM0_ACTIVE_ORG", "my-org");
     const configDir = path.join(TEST_HOME, ".vm0");
     await mkdir(configDir, { recursive: true });
     await writeFile(
