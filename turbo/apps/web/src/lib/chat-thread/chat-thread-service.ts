@@ -142,17 +142,6 @@ function hasAgentSessionId(
 }
 
 /**
- * Get chat messages for a thread by finding the associated session.
- * Resolves: thread → runs → latest completed run → agentSessionId → chatMessages
- */
-const TERMINAL_STATUSES = new Set([
-  "completed",
-  "failed",
-  "timeout",
-  "cancelled",
-]);
-
-/**
  * Represents a run whose messages are not persisted in the session yet.
  * The frontend uses these to reconstruct the full conversation on refresh.
  */
