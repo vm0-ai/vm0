@@ -54,13 +54,27 @@ module.exports = async (browser, context) => {
 
   // Click sign-up link in navbar to start auth flow
   const signUpLink = await waitFor(page, "a.btn-get-access[href='/sign-up']");
-  await signUpLink.click();
-  await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {}),
+    signUpLink.click(),
+  ]);
+  // Wait for the sign-up page to render (Clerk UI)
+  await page.waitForFunction(
+    () => window.location.href.includes("/sign-up"),
+    { timeout: 30000 },
+  );
 
   // Switch to sign-in (test account already exists)
   const signInLink = await waitFor(page, 'a[href*="sign-in"]');
-  await signInLink.click();
-  await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {}),
+    signInLink.click(),
+  ]);
+  // Wait for the sign-in page to render
+  await page.waitForFunction(
+    () => window.location.href.includes("/sign-in"),
+    { timeout: 30000 },
+  );
 
   // Enter email
   const emailInput = await waitFor(page, 'input[name="identifier"]');
