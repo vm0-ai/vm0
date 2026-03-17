@@ -8,6 +8,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import { logger } from "../../../../../../src/lib/logger";
 import {
   transitionRunStatus,
@@ -20,7 +21,7 @@ import { after } from "next/server";
 const log = logger("api:runs:cancel");
 
 const router = tsr.router(runsCancelContract, {
-  cancel: async ({ params, headers }) => {
+  cancel: async ({ params, headers }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -29,13 +30,22 @@ const router = tsr.router(runsCancelContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(userId, orgSlug);
+
     const { id: runId } = params;
 
-    // Find the run
+    // Find the run - filter by userId and orgId for security
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
-      .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
+      .where(
+        and(
+          eq(agentRuns.id, runId),
+          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, org.orgId),
+        ),
+      )
       .limit(1);
 
     if (!run) {
