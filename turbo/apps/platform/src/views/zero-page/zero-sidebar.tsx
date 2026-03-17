@@ -981,7 +981,9 @@ export function ZeroSidebar({
                     : undefined
                 }
                 className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                  activeId === "chat" && currentChatAgentId === null
+                  activeId === "chat" &&
+                  !selectedRecentId &&
+                  currentChatAgentId === null
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
@@ -999,7 +1001,9 @@ export function ZeroSidebar({
                   pathname="/zero/talk/:name"
                   options={{ pathParams: { name: agent.name } }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                    activeId === "chat" && currentChatAgentId === agent.id
+                    activeId === "chat" &&
+                    !selectedRecentId &&
+                    currentChatAgentId === agent.id
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
