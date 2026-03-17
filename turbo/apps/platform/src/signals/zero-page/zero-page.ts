@@ -82,6 +82,7 @@ async function resolveTalkAgent(
         }
       }
     }
+    detach(set(fetchZeroSessionList$), Reason.DomCallback);
   } else if (!inChat) {
     // Only reset agent on non-chat URLs (e.g. /zero/schedule, /zero/team).
     // On /zero/chat/:threadId, switchZeroSession$ will resolve the correct
