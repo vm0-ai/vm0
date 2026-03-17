@@ -34,7 +34,7 @@ import { canAccessCompose } from "../agent/compose-access";
 import { resolveOrg, resolveOrgOrNull } from "../org/resolve-org";
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
-import { normalizeCapabilities, type OrgTier } from "@vm0/core";
+import { type OrgTier } from "@vm0/core";
 
 const log = logger("service:run");
 
@@ -546,13 +546,8 @@ async function buildAndDispatchRun(opts: {
 
   try {
     // Extract capabilities from compose content for sandbox token
-    // Normalize deprecated capability names (e.g., volume:read → storage:read)
-    const agents = composeContent.agents;
-    const rawCapabilities = agents
-      ? Object.values(agents)[0]?.experimental_capabilities
-      : undefined;
-    const capabilities = rawCapabilities
-      ? normalizeCapabilities(rawCapabilities)
+    const capabilities = composeContent.agents
+      ? Object.values(composeContent.agents)[0]?.experimental_capabilities
       : undefined;
 
     // Register callbacks and generate sandbox token in parallel (independent operations)

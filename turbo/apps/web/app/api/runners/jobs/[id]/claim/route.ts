@@ -6,7 +6,6 @@ import {
 import {
   runnersJobClaimContract,
   createErrorResponse,
-  normalizeCapabilities,
   type StoredExecutionContext,
 } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -203,9 +202,7 @@ const router = tsr.router(runnersJobClaimContract, {
         encryptedSecrets: storedContext.encryptedSecrets, // Encrypted blob for auth resolution
         cliAgentType: storedContext.cliAgentType,
         experimentalFirewalls: storedContext.experimentalFirewalls,
-        experimentalCapabilities: storedContext.experimentalCapabilities
-          ? normalizeCapabilities(storedContext.experimentalCapabilities)
-          : undefined,
+        experimentalCapabilities: storedContext.experimentalCapabilities,
         experimentalProfile: storedContext.experimentalProfile,
         debugNoMockClaude: storedContext.debugNoMockClaude,
         apiStartTime: storedContext.apiStartTime,

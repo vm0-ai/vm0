@@ -44,40 +44,6 @@ export const VALID_CAPABILITIES = [
 ] as const;
 
 /**
- * Alias map for deprecated capability names.
- * Maps old storage:* and granular volume:/memory: names to the new model.
- */
-const CAPABILITY_ALIASES: Record<string, (typeof VALID_CAPABILITIES)[number]> =
-  {
-    "storage:read": "artifact:read",
-    "storage:write": "artifact:write",
-    "volume:read": "agent:read",
-    "volume:write": "agent:write",
-    "memory:read": "artifact:read",
-    "memory:write": "artifact:write",
-  };
-
-/**
- * Normalize capability strings by resolving deprecated aliases.
- * Unknown capabilities are silently dropped.
- * Deduplicates results (multiple old caps may map to the same new cap).
- */
-export function normalizeCapabilities(
-  capabilities: readonly string[],
-): (typeof VALID_CAPABILITIES)[number][] {
-  const result = new Set<(typeof VALID_CAPABILITIES)[number]>();
-  for (const cap of capabilities) {
-    const alias = CAPABILITY_ALIASES[cap];
-    if (alias) {
-      result.add(alias);
-    } else if ((VALID_CAPABILITIES as readonly string[]).includes(cap)) {
-      result.add(cap as (typeof VALID_CAPABILITIES)[number]);
-    }
-  }
-  return [...result];
-}
-
-/**
  * Agent name validation schema
  * - Must be 3-64 characters
  * - Letters, numbers, and hyphens only

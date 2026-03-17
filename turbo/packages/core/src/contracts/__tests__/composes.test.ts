@@ -3,7 +3,6 @@ import {
   agentDefinitionSchema,
   agentComposeApiContentSchema,
   VALID_CAPABILITIES,
-  normalizeCapabilities,
 } from "../composes";
 
 const baseAgent = {
@@ -117,60 +116,5 @@ describe("experimental_capabilities in agentComposeApiContentSchema", () => {
       }),
     );
     expect(result.success).toBe(false);
-  });
-});
-
-describe("normalizeCapabilities", () => {
-  it("passes through current capabilities unchanged", () => {
-    expect(normalizeCapabilities(["artifact:read", "agent:write"])).toEqual(
-      expect.arrayContaining(["artifact:read", "agent:write"]),
-    );
-  });
-
-  it("normalizes volume:read to agent:read", () => {
-    expect(normalizeCapabilities(["volume:read"])).toEqual(["agent:read"]);
-  });
-
-  it("normalizes volume:write to agent:write", () => {
-    expect(normalizeCapabilities(["volume:write"])).toEqual(["agent:write"]);
-  });
-
-  it("normalizes storage:read to artifact:read", () => {
-    expect(normalizeCapabilities(["storage:read"])).toEqual(["artifact:read"]);
-  });
-
-  it("normalizes storage:write to artifact:write", () => {
-    expect(normalizeCapabilities(["storage:write"])).toEqual([
-      "artifact:write",
-    ]);
-  });
-
-  it("normalizes memory:write to artifact:write", () => {
-    expect(normalizeCapabilities(["memory:write"])).toEqual(["artifact:write"]);
-  });
-
-  it("deduplicates when multiple old caps map to same new cap", () => {
-    const result = normalizeCapabilities(["storage:read", "memory:read"]);
-    expect(result).toEqual(["artifact:read"]);
-  });
-
-  it("handles mixed old and new capabilities", () => {
-    const result = normalizeCapabilities([
-      "volume:read",
-      "agent:write",
-      "storage:write",
-    ]);
-    expect(result).toHaveLength(3);
-    expect(result).toContain("agent:read");
-    expect(result).toContain("agent:write");
-    expect(result).toContain("artifact:write");
-  });
-
-  it("drops unknown capabilities", () => {
-    expect(normalizeCapabilities(["unknown:cap"])).toEqual([]);
-  });
-
-  it("returns empty array for empty input", () => {
-    expect(normalizeCapabilities([])).toEqual([]);
   });
 });
