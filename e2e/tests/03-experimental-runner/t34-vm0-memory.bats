@@ -1,14 +1,15 @@
 #!/usr/bin/env bats
 
 # Test VM0 memory flag persistence across continue and resume flows
-# This test verifies that:
-# 1. Agent runs with --memory flag can write files to the memory mount path
-# 2. vm0 run continue restores memory (files persist without --memory flag)
-# 3. vm0 run resume restores memory from checkpoint (files persist without --memory flag)
-# 4. Fresh run with same --memory name reads previously written marker (dedup path)
+# This test verifies the full auto-memory symlink flow:
+# 1. guest-agent creates symlink: ~/.claude/projects/-{wd}/memory/ -> /home/user/.vm0/memory
+# 2. Agent writes through the symlink path (as Claude Code does in production)
+# 3. vm0 run continue restores memory and symlink is recreated
+# 4. vm0 run resume restores memory from checkpoint and symlink is recreated
+# 5. Fresh run with same --memory name reads previously written marker (dedup path)
 #
 # mock-claude executes the prompt as a bash command, so we write a marker file
-# into /home/user/.vm0/memory and verify it survives across continue/resume.
+# through the symlink path and verify it survives across continue/resume.
 #
 # Each test is self-contained: it runs its own initial vm0 run to create state,
 # then verifies the behavior under test. Two vm0 run calls (~15s each) = ~30s,
@@ -50,6 +51,9 @@ volumes:
     version: latest
 EOF
 
+    # Symlink path: guest-agent encodes working_dir "/home/user/workspace" as "-home-user-workspace"
+    export SYMLINK_PATH="/home/user/.claude/projects/-home-user-workspace/memory"
+
     # Compose agent once for all tests in this file
     $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
 
@@ -72,10 +76,11 @@ teardown_file() {
     # Unique memory name per test to avoid conflicts with parallel tests
     local memory_name="e2e-mem-t34-2-$(date +%s%3N)-$RANDOM"
 
-    # Step 1: Run agent with --memory, write marker file
+    # Step 1: Run agent with --memory, write marker file through symlink
+    # Verifies: symlink exists, points to .vm0/memory, write-through works, visible at both paths
     run $CLI_COMMAND run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "mkdir -p /home/user/.vm0/memory && echo 'memory-marker-t34' > /home/user/.vm0/memory/marker.txt && cat /home/user/.vm0/memory/marker.txt"
+        "test -L $SYMLINK_PATH && readlink $SYMLINK_PATH | grep -q '.vm0/memory' && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt && cat /home/user/.vm0/memory/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -94,11 +99,11 @@ teardown_file() {
         return 1
     }
 
-    # Step 2: Continue from session, verify marker file is readable
+    # Step 2: Continue from session, verify marker file is readable through symlink
     echo "# Continuing from session: $session_id (no --memory flag)..."
     run $CLI_COMMAND run continue "$session_id" \
         --verbose \
-        "cat /home/user/.vm0/memory/marker.txt"
+        "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -109,10 +114,10 @@ teardown_file() {
     # Unique memory name per test to avoid conflicts with parallel tests
     local memory_name="e2e-mem-t34-3-$(date +%s%3N)-$RANDOM"
 
-    # Step 1: Run agent with --memory, write marker file
+    # Step 1: Run agent with --memory, write marker file through symlink
     run $CLI_COMMAND run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "mkdir -p /home/user/.vm0/memory && echo 'memory-marker-t34' > /home/user/.vm0/memory/marker.txt && cat /home/user/.vm0/memory/marker.txt"
+        "test -L $SYMLINK_PATH && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -131,11 +136,11 @@ teardown_file() {
         return 1
     }
 
-    # Step 2: Resume from checkpoint, verify marker file is readable
+    # Step 2: Resume from checkpoint, verify marker file is readable through symlink
     echo "# Resuming from checkpoint: $checkpoint_id (no --memory flag)..."
     run $CLI_COMMAND run resume "$checkpoint_id" \
         --verbose \
-        "cat /home/user/.vm0/memory/marker.txt"
+        "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -146,10 +151,10 @@ teardown_file() {
     # Unique memory name per test to avoid conflicts with parallel tests
     local memory_name="e2e-mem-t34-4-$(date +%s%3N)-$RANDOM"
 
-    # Step 1: Run agent with --memory, write marker file
+    # Step 1: Run agent with --memory, write marker file through symlink
     run $CLI_COMMAND run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "mkdir -p /home/user/.vm0/memory && echo 'memory-marker-t34' > /home/user/.vm0/memory/marker.txt && cat /home/user/.vm0/memory/marker.txt"
+        "test -L $SYMLINK_PATH && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -165,7 +170,7 @@ teardown_file() {
     echo "# Running fresh agent with --memory $memory_name (dedup path)..."
     run $CLI_COMMAND run "$AGENT_NAME" \
         --memory "$memory_name" \
-        "cat /home/user/.vm0/memory/marker.txt"
+        "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
 
     assert_success
     assert_output --partial "● Bash("
