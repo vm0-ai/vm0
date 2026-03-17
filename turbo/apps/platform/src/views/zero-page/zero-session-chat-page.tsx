@@ -54,7 +54,7 @@ import {
 } from "../../signals/zero-page/zero-chat.ts";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
-import { SimpleLink } from "../router/link.tsx";
+import { Link, SimpleLink } from "../router/link.tsx";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
@@ -63,7 +63,6 @@ import { SimpleLink } from "../router/link.tsx";
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
   onBack?: () => void;
-  onNavigateToTeam?: () => void;
   onNavigateToSchedule?: () => void;
   onAvatarClick?: () => void;
   chatAgentName?: string;
@@ -72,7 +71,6 @@ interface ZeroSessionChatPageProps {
 export function ZeroSessionChatPage({
   zeroAvatarSrc = "/zero-avatar.png",
   onBack,
-  onNavigateToTeam,
   onNavigateToSchedule,
   onAvatarClick,
   chatAgentName,
@@ -173,15 +171,14 @@ export function ZeroSessionChatPage({
           <span className="font-semibold text-foreground">{agentName}</span>
         </div>
         <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={onNavigateToTeam}
+          <Link
+            pathname="/zero/:tab"
+            options={{ pathParams: { tab: "team" } }}
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
             aria-label="Sub-agents"
           >
             <IconUsers size={18} stroke={1.5} />
-          </Button>
+          </Link>
           <Button
             variant="ghost"
             size="icon"

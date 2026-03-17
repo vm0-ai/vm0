@@ -15,14 +15,12 @@ import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 
 interface ZeroJobsPageProps {
-  onNavigateToChat?: () => void;
   selectedAgentName?: string | null;
   zeroAvatarSrc?: string;
   onCycleZeroAvatar?: () => void;
 }
 
 export function ZeroJobsPage({
-  onNavigateToChat,
   selectedAgentName,
   zeroAvatarSrc = "/zero-avatar.png",
   onCycleZeroAvatar,
@@ -189,10 +187,9 @@ export function ZeroJobsPage({
           {agents && agents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {/* Create teammate — col-span-full */}
-              <button
-                type="button"
+              <Link
+                pathname="/zero"
                 className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] px-4 py-3.5 transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group col-span-full"
-                onClick={onNavigateToChat}
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
                   <IconMessageCircle
@@ -204,7 +201,7 @@ export function ZeroJobsPage({
                 <span className="text-sm text-foreground/60 group-hover:text-foreground transition-colors">
                   Start a chat to create a new teammate&hellip;
                 </span>
-              </button>
+              </Link>
 
               {agents.map((agent) => (
                 <Link
