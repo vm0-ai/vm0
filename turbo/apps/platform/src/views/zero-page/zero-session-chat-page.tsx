@@ -54,6 +54,7 @@ import {
 } from "../../signals/zero-page/zero-chat.ts";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
+import { SimpleLink } from "../router/link.tsx";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
@@ -585,14 +586,20 @@ function AssistantMessage({
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => onNavigateToActivity?.(message.runId)}
+              <SimpleLink
+                href={`/zero/activity/${message.runId}`}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onNavigateToActivity?.(message.runId);
+                }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
                 aria-label="View run logs"
               >
                 <IconChartLine size={18} stroke={1.5} />
-              </button>
+              </SimpleLink>
             </TooltipTrigger>
             <TooltipContent side="bottom">View activity logs</TooltipContent>
           </Tooltip>
