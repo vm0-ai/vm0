@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.72.2](https://github.com/vm0-ai/vm0/compare/core-v8.72.1...core-v8.72.2) (2026-03-17)
+
+
+### Bug Fixes
+
+* add missing linear oauth scopes and force consent prompt ([#5109](https://github.com/vm0-ai/vm0/issues/5109)) ([cfee675](https://github.com/vm0-ai/vm0/commit/cfee675ef64aa7226cccd8547c45be60cb38db53))
+
+
+### Refactoring
+
+* remove all non-zero platform pages and feature flag ([#5095](https://github.com/vm0-ai/vm0/issues/5095)) ([fa7f011](https://github.com/vm0-ai/vm0/commit/fa7f01187b84d7046b150f46f217c191d5ad5670))
+
 ## [8.72.1](https://github.com/vm0-ai/vm0/compare/core-v8.72.0...core-v8.72.1) (2026-03-17)
 
 

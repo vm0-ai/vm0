@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.21.1](https://github.com/vm0-ai/vm0/compare/docs-v2.21.0...docs-v2.21.1) (2026-03-17)
+
+
+### Refactoring
+
+* remove all non-zero platform pages and feature flag ([#5095](https://github.com/vm0-ai/vm0/issues/5095)) ([fa7f011](https://github.com/vm0-ai/vm0/commit/fa7f01187b84d7046b150f46f217c191d5ad5670))
+
 ## [2.21.0](https://github.com/vm0-ai/vm0/compare/docs-v2.20.0...docs-v2.21.0) (2026-03-17)
 
 
