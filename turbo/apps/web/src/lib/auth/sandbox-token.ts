@@ -136,11 +136,29 @@ function verifyJwtPayload(rawJwt: string): JwtPayload | null {
 
   // Decode payload and check expiration
   try {
-    const payload = JSON.parse(
+    const parsed: unknown = JSON.parse(
       base64UrlDecode(payloadEncoded!).toString(),
-    ) as JwtPayload;
+    );
 
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+    // Runtime validation: ensure parsed value has the shape of a JWT payload
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("scope" in parsed) ||
+      typeof (parsed as Record<string, unknown>).scope !== "string" ||
+      !("exp" in parsed) ||
+      typeof (parsed as Record<string, unknown>).exp !== "number" ||
+      !("iat" in parsed) ||
+      typeof (parsed as Record<string, unknown>).iat !== "number" ||
+      !("userId" in parsed) ||
+      typeof (parsed as Record<string, unknown>).userId !== "string"
+    ) {
+      return null;
+    }
+
+    const payload = parsed as JwtPayload;
+
+    if (payload.exp < Math.floor(Date.now() / 1000)) {
       return null;
     }
 
