@@ -75,21 +75,21 @@ Query release-related information to show pending and in-progress releases.
 
 #### Step 3a: Check Open Release PR
 
-Find the open release PR created by release-please bot and extract its changelog:
+Find the open release PR created by the github-actions bot (title: "chore: release main") and extract its changelog:
 
 ```bash
-# Find release-please PR
-gh pr list --repo vm0-ai/vm0 --author "app/release-please" --state open \
+# Find release PR (authored by github-actions bot with title "chore: release main")
+gh pr list --repo vm0-ai/vm0 --author "app/github-actions" --state open \
   --json number,title,body --limit 1 \
-  --jq '.[0] | {number, title, body}'
+  --jq '.[0] | select(.title == "chore: release main") | {number, title, body}'
 ```
 
-If a release PR exists, parse the PR body to extract change titles. The release-please PR body contains changelog entries in markdown format (typically `* <title>` or `- <title>` lines under section headers):
+If a release PR exists, parse the PR body to extract change titles. The release PR body contains changelog entries inside `<details>` blocks in markdown format (`* <title>` lines). Filter out dependency-only lines and deduplicate:
 
 ```bash
-# Extract change titles from PR body (lines starting with * that contain commit titles)
+# Extract change titles from PR body, excluding dependency update noise and deduplicating
 gh pr view <PR_NUMBER> --repo vm0-ai/vm0 --json body \
-  --jq '.body' | grep -E '^\* ' | sed 's/^\* /- /'
+  --jq '.body' | grep -E '^\* ' | grep -v 'The following workspace dependencies were updated' | sort -u | sed 's/^\* /- /'
 ```
 
 #### Step 3b: Check In-Progress Release Deployment
