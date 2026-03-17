@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
 
 interface SlackOrgData {
@@ -94,6 +95,45 @@ export const uninstallSlackOrg$ = command(async ({ get, set }) => {
   toast.success("Slack workspace uninstalled");
   await set(fetchSlackOrg$);
 });
+
+const POLL_INTERVAL_MS = 3000;
+
+/**
+ * Poll Slack connection status until connected or aborted.
+ * Used on the works page so that after the user completes OAuth in another tab
+ * the UI updates automatically without a manual refresh.
+ */
+export const pollSlackConnection$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    // Already connected — nothing to poll.
+    const current = get(slackOrgState$).data;
+    if (current?.isConnected) {
+      return;
+    }
+
+    while (!signal.aborted) {
+      await delay(POLL_INTERVAL_MS, { signal });
+
+      const fetchFn = get(fetch$);
+      const res = await fetchFn("/api/integrations/slack/org", { signal });
+      if (!res.ok) {
+        continue;
+      }
+
+      const data = (await res.json()) as SlackOrgData;
+      set(slackOrgState$, { data, loading: false, error: null });
+
+      if (data.isConnected || data.isInstalled) {
+        if (data.isConnected) {
+          toast.success("Slack connected successfully");
+        } else {
+          toast.success("Slack installed successfully");
+        }
+        return;
+      }
+    }
+  },
+);
 
 export const initSlackOrg$ = command(async ({ set }) => {
   await set(fetchSlackOrg$);

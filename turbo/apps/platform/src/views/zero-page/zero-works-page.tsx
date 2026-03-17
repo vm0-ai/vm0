@@ -1,4 +1,4 @@
-import { useCCState } from "ccstate-react/experimental";
+import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconCircleCheck,
@@ -24,8 +24,9 @@ import {
   slackOrgData$,
   disconnectSlackOrg$,
   uninstallSlackOrg$,
+  pollSlackConnection$,
 } from "../../signals/zero-page/zero-slack.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, onRef, Reason } from "../../signals/utils.ts";
 
 /** Append a cache-busting timestamp so the browser never reuses a cached OAuth redirect. */
 function openFreshOAuth(url: string) {
@@ -133,9 +134,22 @@ function SlackCard({ agentName }: { agentName: string }) {
   const isInstalled = slackData?.isInstalled ?? isConnected;
   const isAdmin = slackData?.isAdmin ?? false;
 
+  // Poll for Slack connection while not connected — auto-detects when the
+  // user completes OAuth in another tab.
+  const startPolling$ = useCommand(
+    ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+      detach(set(pollSlackConnection$, signal), Reason.DomCallback);
+    },
+  );
+  const pollingRef$ = onRef(startPolling$);
+  const pollingRef = useSet(pollingRef$);
+
   return (
     <>
-      <div className="zero-card flex items-center gap-4 p-4">
+      <div
+        ref={isConnected ? undefined : pollingRef}
+        className="zero-card flex items-center gap-4 p-4"
+      >
         <div className="shrink-0">
           <img src="/slack-icon.svg" alt="" className="h-7 w-7" />
         </div>
