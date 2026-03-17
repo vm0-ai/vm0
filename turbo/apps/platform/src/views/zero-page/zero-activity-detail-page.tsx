@@ -52,7 +52,7 @@ function isVisibleMessage(
   return (message.toolOperations?.length ?? 0) > 0;
 }
 
-const ACTIVITY_HREF = "/zero/activity";
+const ACTIVITY_HREF = "/activity";
 
 function ActivityBreadcrumbLink() {
   return (

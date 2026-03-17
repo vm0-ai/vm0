@@ -9,7 +9,7 @@ describe("zero sidebar", () => {
   it("should render clerk org switcher", async () => {
     await setupPage({
       context,
-      path: "/zero",
+      path: "/",
     });
 
     expect(screen.getByText("OrganizationSwitcher")).toBeInTheDocument();

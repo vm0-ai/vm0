@@ -172,7 +172,7 @@ export function ZeroSessionChatPage({
         </div>
         <div className="flex items-center gap-0.5">
           <Link
-            pathname="/zero/:tab"
+            pathname="/:tab"
             options={{ pathParams: { tab: "team" } }}
             className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
             aria-label="Sub-agents"
@@ -565,7 +565,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <SimpleLink
-                href={`/zero/activity/${message.runId}`}
+                href={`/activity/${message.runId}`}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
                 aria-label="View run logs"
               >

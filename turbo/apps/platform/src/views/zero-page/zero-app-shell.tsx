@@ -218,7 +218,7 @@ function useContentNavigation(resolvedAgentName: string | null) {
 
   const handleNavigateToSchedule = () => {
     if (resolvedAgentName) {
-      navigateInReact("/zero/team/:name", {
+      navigateInReact("/team/:name", {
         pathParams: { name: resolvedAgentName },
         searchParams: new URLSearchParams({ tab: "schedule" }),
       });
@@ -228,7 +228,7 @@ function useContentNavigation(resolvedAgentName: string | null) {
   const handleNavigateToMeet = (tab?: string) => {
     if (resolvedAgentName) {
       const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
-      navigateInReact("/zero/team/:name", {
+      navigateInReact("/team/:name", {
         pathParams: { name: resolvedAgentName },
         searchParams,
       });
@@ -237,7 +237,7 @@ function useContentNavigation(resolvedAgentName: string | null) {
 
   const handleChatAvatarClick = () => {
     if (resolvedAgentName) {
-      navigateInReact("/zero/team/:name", {
+      navigateInReact("/team/:name", {
         pathParams: { name: resolvedAgentName },
       });
     }
@@ -335,7 +335,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const startNewSession = useSet(startNewZeroSession$);
   const sendMessage = useSet(sendZeroChatMessage$);
 
-  // When visiting /zero/talk/:name, wait for the agent to be resolved
+  // When visiting /talk/:name, wait for the agent to be resolved
   const talkAgentName = useGet(zeroChatAgentName$);
   const talkAgentResolved = useGet(zeroTalkAgentResolved$);
   const talkAgentReady = !talkAgentName || talkAgentResolved;
@@ -364,17 +364,17 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     // navigateInReact triggers loadRoute$ → setupZeroPage$ → resolveAndSwitchAgent
     // which sets the agent and fetches the session list.
     if (agent) {
-      navigateInReact("/zero/talk/:name", {
+      navigateInReact("/talk/:name", {
         pathParams: { name: agent.name },
       });
     } else {
-      navigateInReact("/zero");
+      navigateInReact("/");
     }
   };
 
   const handleSendFromDemo$ = useCommand(
     ({ set }, message: string, options?: { modelProvider?: string }) => {
-      set(updatePathname$, "/zero/chat");
+      set(updatePathname$, "/chat");
       startNewSession();
       detach(sendMessage(message, options), Reason.DomCallback);
     },

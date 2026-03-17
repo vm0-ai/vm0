@@ -1,11 +1,7 @@
 import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
-import {
-  initRoutes$,
-  navigateInReact$,
-  setupAuthPageWrapper,
-} from "./route.ts";
+import { initRoutes$, setupAuthPageWrapper } from "./route.ts";
 import { logger } from "./log.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
@@ -15,42 +11,33 @@ import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 
 const L = logger("Bootstrap");
 
-const setupHomeRedirect$ = command(({ set }) => {
-  L.debug("redirecting / to /zero");
-  set(navigateInReact$, "/zero");
-});
-
 const ROUTE_CONFIG = [
-  {
-    path: "/",
-    setup: setupAuthPageWrapper(setupHomeRedirect$),
-  },
   {
     path: "/select-org",
     setup: setupAuthPageWrapper(setupSelectOrgPage$),
   },
   {
-    path: "/zero/chat/:sessionId",
+    path: "/chat/:sessionId",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
-    path: "/zero/talk/:name",
+    path: "/talk/:name",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
-    path: "/zero/team/:name",
+    path: "/team/:name",
     setup: setupAuthPageWrapper(setupZeroJobDetailRoute$),
   },
   {
-    path: "/zero/:tab/:sub",
+    path: "/:tab/:sub",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
-    path: "/zero/:tab",
+    path: "/:tab",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
-    path: "/zero",
+    path: "/",
     setup: setupAuthPageWrapper(setupZeroPage$),
   },
 ] as const;

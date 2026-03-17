@@ -93,7 +93,7 @@ export function useNavigationHandler(
 // SimpleLink — for intra-route navigation with raw href strings.
 // Uses updatePathname$ (pushes history without re-running route setup),
 // suitable for sub-path navigation within the same route, e.g.
-// /zero/activity → /zero/activity/:id.
+// /activity → /activity/:id.
 // ---------------------------------------------------------------------------
 
 interface SimpleLinkProps

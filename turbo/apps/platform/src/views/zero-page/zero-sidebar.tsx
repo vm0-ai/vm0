@@ -528,7 +528,7 @@ function RecentChatSection({
             filteredSessions.map((session) => (
               <SimpleLink
                 key={session.id}
-                href={`/zero/chat/${session.id}`}
+                href={`/chat/${session.id}`}
                 onClick={(e) => {
                   if (e.metaKey || e.ctrlKey || e.shiftKey) {
                     return;
@@ -865,7 +865,7 @@ export function ZeroSidebar({
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>
                     <Link
-                      pathname={id === "chat" ? "/zero" : "/zero/:tab"}
+                      pathname={id === "chat" ? "/" : "/:tab"}
                       options={
                         id === "chat" ? undefined : { pathParams: { tab: id } }
                       }
@@ -943,7 +943,7 @@ export function ZeroSidebar({
               {manageNav.map(({ id, label, icon: Icon }) => (
                 <Link
                   key={id}
-                  pathname="/zero/:tab"
+                  pathname="/:tab"
                   options={{ pathParams: { tab: id } }}
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -974,7 +974,7 @@ export function ZeroSidebar({
             </div>
             <div className="flex flex-col gap-0.5">
               <Link
-                pathname={defaultAgentRawName ? "/zero/talk/:name" : "/zero"}
+                pathname={defaultAgentRawName ? "/talk/:name" : "/"}
                 options={
                   defaultAgentRawName
                     ? { pathParams: { name: defaultAgentRawName } }
@@ -998,7 +998,7 @@ export function ZeroSidebar({
               {pinnedAgents.map((agent) => (
                 <Link
                   key={agent.id}
-                  pathname="/zero/talk/:name"
+                  pathname="/talk/:name"
                   options={{ pathParams: { name: agent.name } }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                     activeId === "chat" &&
@@ -1048,7 +1048,7 @@ export function ZeroSidebar({
             {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
               <Link
                 key={id}
-                pathname="/zero/:tab"
+                pathname="/:tab"
                 options={{ pathParams: { tab: id } }}
                 onClick={(e) => {
                   if (e.metaKey || e.ctrlKey || e.shiftKey) {

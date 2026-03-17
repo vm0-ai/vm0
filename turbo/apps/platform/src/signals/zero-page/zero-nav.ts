@@ -15,13 +15,13 @@ function isValidTab(tab: string): tab is ZeroNavId {
 }
 
 /**
- * Active zero nav id, derived from the URL path `/zero/:tab`.
- * `/zero`, `/zero/chat`, `/zero/chat/:sessionId`, and `/zero/talk/:name`
+ * Active zero nav id, derived from the URL path `/:tab`.
+ * `/`, `/chat`, `/chat/:sessionId`, and `/talk/:name`
  * all resolve to "chat".
  */
 export const zeroActiveId$ = computed((get): ZeroNavId => {
   const path = get(pathname$);
-  const segment = path.replace(/^\/zero\/?/, "").split("/")[0];
+  const segment = path.split("/")[1] ?? "";
   if (segment && isValidTab(segment)) {
     return segment;
   }
@@ -29,30 +29,30 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
 });
 
 /**
- * Whether the user is on a chat session page — `/zero/chat` or `/zero/chat/:sessionId`.
+ * Whether the user is on a chat session page — `/chat` or `/chat/:sessionId`.
  */
 export const zeroInChat$ = computed((get): boolean => {
   const path = get(pathname$);
-  return /^\/zero\/chat(\/|$)/.test(path);
+  return /^\/chat(\/|$)/.test(path);
 });
 
 /**
- * Session ID extracted from `/zero/chat/:sessionId`.
- * Returns null when on `/zero`, `/zero/chat`, or `/zero/talk/:name`.
+ * Session ID extracted from `/chat/:sessionId`.
+ * Returns null when on `/`, `/chat`, or `/talk/:name`.
  */
 export const zeroSessionId$ = computed((get): string | null => {
   const path = get(pathname$);
-  const match = /^\/zero\/chat\/([^/]+)$/.exec(path);
+  const match = /^\/chat\/([^/]+)$/.exec(path);
   return match ? match[1] : null;
 });
 
 /**
- * Agent name extracted from `/zero/talk/:name`.
+ * Agent name extracted from `/talk/:name`.
  * Returns null when chatting with the default agent.
  */
 export const zeroChatAgentName$ = computed((get): string | null => {
   const path = get(pathname$);
-  const match = /^\/zero\/talk\/([^/]+)/.exec(path);
+  const match = /^\/talk\/([^/]+)/.exec(path);
   return match ? decodeURIComponent(match[1]) : null;
 });
 
@@ -78,11 +78,11 @@ export const zeroChatAgentId$ = computed((get): string | null => {
 const internalLastChatAgentName$ = state<string | null>(null);
 
 /**
- * Navigate to a zero tab — updates the URL path to `/zero/:tab`.
- * "chat" maps to `/zero` (the default, no suffix needed).
+ * Navigate to a zero tab — updates the URL path to `/:tab`.
+ * "chat" maps to `/` (the default, no suffix needed).
  */
 export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
-  const newPath = id === "chat" ? "/zero" : `/zero/${id}`;
+  const newPath = id === "chat" ? "/" : `/${id}`;
   set(updatePathname$, newPath);
 });
 
@@ -108,31 +108,31 @@ export const setZeroChatAgent$ = command(
 );
 
 /**
- * Sub-path segment under the current tab, e.g. `/zero/activity/:sub`.
+ * Sub-path segment under the current tab, e.g. `/activity/:sub`.
  * Returns null when there is no sub-segment.
  */
 export const zeroTabSub$ = computed((get): string | null => {
   const path = get(pathname$);
-  const parts = path.replace(/^\/zero\/?/, "").split("/");
-  return parts[1] || null;
+  const parts = path.split("/");
+  return parts[2] || null;
 });
 
 /**
- * Navigate to a specific chat session — `/zero/chat/:sessionId`.
+ * Navigate to a specific chat session — `/chat/:sessionId`.
  */
 export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
-  set(updatePathname$, `/zero/chat/${sessionId}`);
+  set(updatePathname$, `/chat/${sessionId}`);
 });
 
 /**
  * Navigate back from a chat session to the chat home.
- * Returns to `/zero/talk/:name` if a team agent was selected, otherwise `/zero`.
+ * Returns to `/talk/:name` if a team agent was selected, otherwise `/`.
  */
 export const navigateFromZeroSession$ = command(({ get, set }) => {
   const agentName = get(internalLastChatAgentName$);
   if (agentName) {
-    set(updatePathname$, `/zero/talk/${encodeURIComponent(agentName)}`);
+    set(updatePathname$, `/talk/${encodeURIComponent(agentName)}`);
   } else {
-    set(updatePathname$, "/zero");
+    set(updatePathname$, "/");
   }
 });

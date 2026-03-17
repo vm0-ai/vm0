@@ -128,7 +128,7 @@ export function ZeroActivityPage() {
     });
   }
 
-  // URL-driven detail: /zero/activity/:logId
+  // URL-driven detail: /activity/:logId
   const sub = useGet(zeroTabSub$);
   const syncSub = useSet(syncZeroActivitySub$);
   syncSub();
@@ -264,7 +264,7 @@ export function ZeroActivityPage() {
                 <ActivityRow
                   key={entry.id}
                   entry={entry}
-                  href={`/zero/activity/${entry.id}`}
+                  href={`/activity/${entry.id}`}
                   agentName={
                     nameToDisplay.get(entry.agentName) ?? entry.agentName
                   }

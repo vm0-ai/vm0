@@ -21,10 +21,10 @@ const initialDataLoaded$ = state(false);
 /**
  * Resolve the active agent from the URL and switch to it.
  *
- * - `/zero/talk/:name` → find agent by name, switch to it
- * - `/zero/chat/:threadId` → skip (switchZeroSession$ handles it)
- * - `/zero` → redirect to `/zero/talk/:defaultAgent`
- * - other `/zero/*` → switch to default agent
+ * - `/talk/:name` → find agent by name, switch to it
+ * - `/chat/:threadId` → skip (switchZeroSession$ handles it)
+ * - `/` → redirect to `/talk/:defaultAgent`
+ * - other `/*` → switch to default agent
  *
  * switchActiveAgent$ sets the agent AND fetches the session list atomically.
  */
@@ -35,7 +35,7 @@ async function resolveAndSwitchAgent(
 ) {
   const currentPath = get(pathname$);
 
-  // On /zero/chat/:threadId, switchZeroSession$ resolves the agent from
+  // On /chat/:threadId, switchZeroSession$ resolves the agent from
   // the thread's agentComposeId. Don't interfere here.
   if (get(zeroInChat$)) {
     L.info("on chat URL, deferring to switchZeroSession$");
@@ -43,20 +43,20 @@ async function resolveAndSwitchAgent(
   }
   L.info("resolveAgent path:", currentPath);
 
-  // If on bare /zero, redirect to /zero/talk/:defaultAgent
-  if (/^\/zero\/?$/.test(currentPath)) {
+  // If on bare /, redirect to /talk/:defaultAgent
+  if (/^\/?$/.test(currentPath)) {
     const rawName = await get(defaultAgentName$);
     signal.throwIfAborted();
     if (rawName) {
       window.history.replaceState(
         {},
         "",
-        `/zero/talk/${encodeURIComponent(rawName)}`,
+        `/talk/${encodeURIComponent(rawName)}`,
       );
     }
   }
 
-  // Resolve agent from /zero/talk/:name
+  // Resolve agent from /talk/:name
   const agentName = get(zeroChatAgentName$);
   if (agentName) {
     const subagents = await get(zeroSubagents$);
@@ -76,13 +76,13 @@ async function resolveAndSwitchAgent(
           window.history.replaceState(
             {},
             "",
-            `/zero/talk/${encodeURIComponent(rawDefaultName)}`,
+            `/talk/${encodeURIComponent(rawDefaultName)}`,
           );
         }
       }
     }
   } else {
-    // Non-talk, non-chat URL (e.g. /zero/schedule)
+    // Non-talk, non-chat URL (e.g. /schedule)
     set(switchActiveAgent$, null);
   }
 }
