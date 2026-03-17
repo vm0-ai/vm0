@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.77.0](https://github.com/vm0-ai/vm0/compare/core-v8.76.0...core-v8.77.0) (2026-03-17)
+
+
+### Features
+
+* add org secret and variable api routes and cli commands ([#5213](https://github.com/vm0-ai/vm0/issues/5213)) ([01b3662](https://github.com/vm0-ai/vm0/commit/01b3662aeaea0e7f32faacb1148e9722d45ef981)), closes [#5200](https://github.com/vm0-ai/vm0/issues/5200)
+* add org/personal tabs for model provider settings ([#5214](https://github.com/vm0-ai/vm0/issues/5214)) ([d035f1d](https://github.com/vm0-ai/vm0/commit/d035f1d7b372f07c6054e27fd71b2ac437f8bb26))
+* remove vercel ai gateway feature flag ([#5211](https://github.com/vm0-ai/vm0/issues/5211)) ([15f9a11](https://github.com/vm0-ai/vm0/commit/15f9a1108009d12a5c5e32f6c9bfd592afc4d590))
+
 ## [8.76.0](https://github.com/vm0-ai/vm0/compare/core-v8.75.0...core-v8.76.0) (2026-03-17)
 
 

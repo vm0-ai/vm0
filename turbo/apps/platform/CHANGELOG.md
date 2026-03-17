@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.121.0](https://github.com/vm0-ai/vm0/compare/platform-v0.120.0...platform-v0.121.0) (2026-03-17)
+
+
+### Features
+
+* add org/personal tabs for model provider settings ([#5214](https://github.com/vm0-ai/vm0/issues/5214)) ([d035f1d](https://github.com/vm0-ai/vm0/commit/d035f1d7b372f07c6054e27fd71b2ac437f8bb26))
+
+
+### Bug Fixes
+
+* add cache and security headers to platform vercel.json ([#5218](https://github.com/vm0-ai/vm0/issues/5218)) ([6aae552](https://github.com/vm0-ai/vm0/commit/6aae55282c1a8e797f25d7b2a3d6a04f3230f0b2)), closes [#5208](https://github.com/vm0-ai/vm0/issues/5208)
+
+
+### Refactoring
+
+* move platform public assets to colocated imports and remove unused files ([#5225](https://github.com/vm0-ai/vm0/issues/5225)) ([07ade10](https://github.com/vm0-ai/vm0/commit/07ade10d4beab290e3c3d9985f2fbfdba2d3554f)), closes [#5223](https://github.com/vm0-ai/vm0/issues/5223)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.77.0
+
 ## [0.120.0](https://github.com/vm0-ai/vm0/compare/platform-v0.119.0...platform-v0.120.0) (2026-03-17)
 
 
