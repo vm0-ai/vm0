@@ -1,0 +1,127 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+
+/**
+ * Captures the request that Clerk middleware receives, so we can verify
+ * the outer middleware strips/restores headers correctly.
+ */
+let capturedClerkRequest: NextRequest | undefined;
+
+// Override the global @clerk/nextjs/server mock with implementations that
+// return callable functions (the global setup.ts mock returns bare vi.fn()).
+type ClerkHandler = (
+  auth: { protect: ReturnType<typeof vi.fn> },
+  request: NextRequest,
+) => Promise<NextResponse | undefined>;
+
+vi.mock("@clerk/nextjs/server", () => ({
+  clerkMiddleware: vi.fn((handler: ClerkHandler) => {
+    // Return a NextMiddleware-shaped function that calls the handler
+    return vi.fn(async (request: NextRequest) => {
+      capturedClerkRequest = request;
+      // Simulate Clerk calling the handler with a mock auth object
+      const auth = { protect: vi.fn() };
+      const result = await handler(auth, request);
+      return result ?? NextResponse.next();
+    });
+  }),
+  createRouteMatcher: vi.fn(() => {
+    // Return a matcher that marks all routes as public
+    return () => true;
+  }),
+}));
+
+// Mock next-intl/middleware to avoid ESM resolution issues in test environment.
+// This is an external dependency mock (not internal code), which is acceptable.
+vi.mock("next-intl/middleware", () => ({
+  default: () => () => NextResponse.next(),
+}));
+
+// Import after mocks are set up
+import middleware from "../proxy";
+
+/**
+ * Create a minimal NextFetchEvent stub.
+ * The outer middleware passes this through to Clerk — we only need a
+ * type-compatible object, not a real FetchEvent.
+ */
+function createMockEvent() {
+  return {
+    sourcePage: "/test",
+    waitUntil: vi.fn(),
+    // Satisfy the NextFetchEvent interface without constructing a real FetchEvent
+  } as never;
+}
+
+describe("proxy middleware: sandbox token handling", () => {
+  beforeEach(() => {
+    capturedClerkRequest = undefined;
+  });
+
+  it("should strip sandbox token before Clerk and restore it after", async () => {
+    const token = "Bearer vm0_sandbox_header.payload.signature";
+    const request = new NextRequest("https://www.vm0.ai/api/sandbox/webhook", {
+      headers: { authorization: token },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    // Clerk should NOT see the Authorization header
+    expect(capturedClerkRequest).toBeDefined();
+    expect(capturedClerkRequest!.headers.get("authorization")).toBeNull();
+
+    // Clerk should see the original token in x-vm0-authorization
+    expect(capturedClerkRequest!.headers.get("x-vm0-authorization")).toBe(
+      token,
+    );
+
+    // Response should restore the Authorization header for the route handler
+    expect(response).toBeDefined();
+    expect(response!.headers.get("x-middleware-request-authorization")).toBe(
+      token,
+    );
+    expect(
+      response!.headers.get("x-middleware-request-x-vm0-authorization"),
+    ).toBe(token);
+  });
+
+  it("should pass non-sandbox tokens through to Clerk unchanged", async () => {
+    const token = "Bearer sk_test_some_clerk_session_token";
+    const request = new NextRequest("https://www.vm0.ai/api/runs", {
+      headers: { authorization: token },
+    });
+
+    await middleware(request, createMockEvent());
+
+    // Clerk should see the original Authorization header
+    expect(capturedClerkRequest).toBeDefined();
+    expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
+
+    // x-vm0-authorization should not be set
+    expect(capturedClerkRequest!.headers.get("x-vm0-authorization")).toBeNull();
+  });
+
+  it("should pass requests without authorization header through normally", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/skills");
+
+    await middleware(request, createMockEvent());
+
+    // Clerk should receive the request with no authorization header
+    expect(capturedClerkRequest).toBeDefined();
+    expect(capturedClerkRequest!.headers.get("authorization")).toBeNull();
+    expect(capturedClerkRequest!.headers.get("x-vm0-authorization")).toBeNull();
+  });
+
+  it("should pass CLI tokens through to Clerk unchanged", async () => {
+    const token = "Bearer vm0_live_abc123def456";
+    const request = new NextRequest("https://www.vm0.ai/api/runs", {
+      headers: { authorization: token },
+    });
+
+    await middleware(request, createMockEvent());
+
+    // CLI tokens (vm0_live_) are not sandbox tokens and should pass through
+    expect(capturedClerkRequest).toBeDefined();
+    expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
+  });
+});
