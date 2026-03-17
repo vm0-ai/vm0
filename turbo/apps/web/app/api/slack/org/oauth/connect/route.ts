@@ -52,5 +52,7 @@ export async function GET(request: Request) {
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("state", state);
 
-  return NextResponse.redirect(authUrl.toString());
+  return NextResponse.redirect(authUrl.toString(), {
+    headers: { "Cache-Control": "no-store" },
+  });
 }

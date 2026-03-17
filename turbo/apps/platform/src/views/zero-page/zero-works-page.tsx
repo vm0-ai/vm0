@@ -27,6 +27,13 @@ import {
 } from "../../signals/zero-page/zero-slack.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
+/** Append a cache-busting timestamp so the browser never reuses a cached OAuth redirect. */
+function openFreshOAuth(url: string) {
+  const fresh = new URL(url, window.location.origin);
+  fresh.searchParams.set("_t", String(Date.now()));
+  window.open(fresh.toString(), "_blank");
+}
+
 function SlackCardActions({
   isConnected,
   isInstalled,
@@ -57,7 +64,7 @@ function SlackCardActions({
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => window.open(installUrl, "_blank")}
+          onClick={() => openFreshOAuth(installUrl)}
         >
           <IconDownload size={14} stroke={1.5} />
           Install to Slack
@@ -68,7 +75,7 @@ function SlackCardActions({
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => window.open(connectUrl, "_blank")}
+          onClick={() => openFreshOAuth(connectUrl)}
         >
           Connect
         </Button>

@@ -307,7 +307,9 @@ export function ZeroOnboarding({
         await completeOnboarding(controller.signal);
         // Admin with install URL: open Slack OAuth install flow
         if (slackData?.isAdmin && slackData.installUrl) {
-          window.open(slackData.installUrl, "_blank");
+          const url = new URL(slackData.installUrl, window.location.origin);
+          url.searchParams.set("_t", String(Date.now()));
+          window.open(url.toString(), "_blank");
         }
         navigate("/works");
       })(),
