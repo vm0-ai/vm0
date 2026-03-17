@@ -4,6 +4,7 @@ import { secrets } from "../../db/schema/secret";
 import { encryptSecretValue, decryptSecretValue } from "../crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:secret");
 
@@ -290,4 +291,37 @@ export async function deleteSecret(
   await globalThis.services.db.delete(secrets).where(eq(secrets.id, secret.id));
 
   log.debug("secret deleted", { orgId, name });
+}
+
+// ============================================================================
+// Org-Level Secret Functions
+//
+// These delegate to the user-level functions using ORG_SENTINEL_USER_ID.
+// The sentinel userId ensures org and user secrets are fully isolated.
+// ============================================================================
+
+/**
+ * List all org-level secrets (metadata only, no values)
+ */
+export function listOrgSecrets(orgId: string): Promise<SecretInfo[]> {
+  return listSecrets(orgId, ORG_SENTINEL_USER_ID);
+}
+
+/**
+ * Create or update an org-level secret
+ */
+export function setOrgSecret(
+  orgId: string,
+  name: string,
+  value: string,
+  description?: string,
+): Promise<SecretInfo> {
+  return setSecret(orgId, ORG_SENTINEL_USER_ID, name, value, description);
+}
+
+/**
+ * Delete an org-level secret by name
+ */
+export function deleteOrgSecret(orgId: string, name: string): Promise<void> {
+  return deleteSecret(orgId, ORG_SENTINEL_USER_ID, name);
 }

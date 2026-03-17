@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { variables } from "../../db/schema/variable";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:variable");
 
@@ -197,4 +198,37 @@ export async function deleteVariable(
     .where(eq(variables.id, variable.id));
 
   log.debug("variable deleted", { orgId, name });
+}
+
+// ============================================================================
+// Org-Level Variable Functions
+//
+// These delegate to the user-level functions using ORG_SENTINEL_USER_ID.
+// The sentinel userId ensures org and user variables are fully isolated.
+// ============================================================================
+
+/**
+ * List all org-level variables (includes values)
+ */
+export function listOrgVariables(orgId: string): Promise<VariableInfo[]> {
+  return listVariables(orgId, ORG_SENTINEL_USER_ID);
+}
+
+/**
+ * Create or update an org-level variable
+ */
+export function setOrgVariable(
+  orgId: string,
+  name: string,
+  value: string,
+  description?: string,
+): Promise<VariableInfo> {
+  return setVariable(orgId, ORG_SENTINEL_USER_ID, name, value, description);
+}
+
+/**
+ * Delete an org-level variable by name
+ */
+export function deleteOrgVariable(orgId: string, name: string): Promise<void> {
+  return deleteVariable(orgId, ORG_SENTINEL_USER_ID, name);
 }
