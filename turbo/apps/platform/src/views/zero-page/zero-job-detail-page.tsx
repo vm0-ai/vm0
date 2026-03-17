@@ -7,6 +7,7 @@ import {
   IconCalendar,
   IconMessageCircle,
   IconUsers,
+  IconMoodSad,
 } from "@tabler/icons-react";
 import {
   Tabs,
@@ -65,6 +66,10 @@ import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
 
 interface ZeroJobDetailPageProps {
   agentName: string;
+  /** When set, this is the default agent — use this avatar instead of agent avatar. */
+  zeroAvatarSrc?: string;
+  /** Cycle the default agent's avatar. */
+  onCycleAvatar?: () => void;
 }
 
 function Breadcrumb({ currentName }: { currentName?: string }) {
@@ -103,6 +108,10 @@ function DetailSkeleton() {
   );
 }
 
+function isNotFoundError(error: string): boolean {
+  return /not found|404|no(t| )exist/i.test(error);
+}
+
 function DetailError({
   error,
   agentName,
@@ -110,6 +119,39 @@ function DetailError({
   error: string;
   agentName: string;
 }) {
+  if (isNotFoundError(error)) {
+    return (
+      <div className="flex flex-1 flex-col min-h-0">
+        <Breadcrumb />
+        <main className="flex-1 flex items-center justify-center px-4 sm:px-6 pb-16">
+          <div className="flex flex-col items-center text-center gap-4 max-w-sm">
+            <IconMoodSad
+              size={48}
+              stroke={1.2}
+              className="text-muted-foreground/40"
+            />
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-semibold text-foreground">
+                Agent not found
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                The agent &quot;{agentName}&quot; doesn&apos;t exist or you
+                don&apos;t have access to it.
+              </p>
+            </div>
+            <Link
+              pathname="/zero/:tab"
+              options={{ pathParams: { tab: "team" } }}
+              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+            >
+              Back to team
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <Breadcrumb />
@@ -279,7 +321,11 @@ function JobInstructionsTab() {
 // Main page
 // ---------------------------------------------------------------------------
 
-export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
+export function ZeroJobDetailPage({
+  agentName,
+  zeroAvatarSrc,
+  onCycleAvatar,
+}: ZeroJobDetailPageProps) {
   const detail = useGet(zeroJobDetail$);
   const loading = useGet(zeroJobDetailLoading$);
   const error = useGet(zeroJobDetailError$);
@@ -304,15 +350,19 @@ export function ZeroJobDetailPage({ agentName }: ZeroJobDetailPageProps) {
     syncTabToUrl(tab);
   };
 
-  const currentAvatar = useAgentAvatar(agentName);
+  const agentAvatar = useAgentAvatar(agentName);
   const setAgentAvatarCmd = useSet(setAgentAvatar$);
-  const cycleAvatar = () => {
-    const idx = AGENT_AVATARS.indexOf(
-      currentAvatar as (typeof AGENT_AVATARS)[number],
-    );
-    const next = AGENT_AVATARS[(idx + 1) % AGENT_AVATARS.length];
-    setAgentAvatarCmd(agentName, next);
-  };
+  // Default agent uses the shared zero avatar; sub-agents use their own override.
+  const currentAvatar = zeroAvatarSrc ?? agentAvatar;
+  const cycleAvatar =
+    onCycleAvatar ??
+    (() => {
+      const idx = AGENT_AVATARS.indexOf(
+        agentAvatar as (typeof AGENT_AVATARS)[number],
+      );
+      const next = AGENT_AVATARS[(idx + 1) % AGENT_AVATARS.length];
+      setAgentAvatarCmd(agentName, next);
+    });
 
   if (loading && !detail) {
     return <DetailSkeleton />;

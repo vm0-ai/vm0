@@ -283,10 +283,13 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const setActiveId = useSet(setZeroActiveId$);
   const avatarIndex$ = useCCState(0);
   const avatarIndex = useGet(avatarIndex$);
+  const setAvatarIndex = useSet(avatarIndex$);
   const showAboutPage$ = useCCState(false);
   const showAboutPage = useGet(showAboutPage$);
   const setShowAboutPage = useSet(showAboutPage$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+  const cycleZeroAvatar = () =>
+    setAvatarIndex((avatarIndex + 1) % ZERO_AVATARS.length);
 
   // Resolve the effective agent name/avatar for the chat page
   const selectedSubagent = currentChatAgentId
@@ -443,6 +446,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
                 });
               }
             }}
+            onCycleZeroAvatar={cycleZeroAvatar}
           />
         )}
       </div>

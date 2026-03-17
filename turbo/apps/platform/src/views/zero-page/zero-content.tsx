@@ -32,6 +32,8 @@ interface ZeroContentProps {
   chatAvatarSrc?: string;
   /** Navigate to agent profile — clicking chat header avatar. */
   onChatAvatarClick?: () => void;
+  /** Cycle the default agent (Zero) avatar. */
+  onCycleZeroAvatar?: () => void;
 }
 
 function getSectionTitles(
@@ -63,6 +65,7 @@ export function ZeroContent({
   chatAgentName,
   chatAvatarSrc,
   onChatAvatarClick,
+  onCycleZeroAvatar,
 }: ZeroContentProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
@@ -102,6 +105,7 @@ export function ZeroContent({
         onNavigateToChat={onNavigateToChat}
         selectedAgentName={selectedAgentName}
         zeroAvatarSrc={zeroAvatarSrc}
+        onCycleZeroAvatar={onCycleZeroAvatar}
       />
     );
   }

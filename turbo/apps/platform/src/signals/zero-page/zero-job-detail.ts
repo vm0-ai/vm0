@@ -64,7 +64,9 @@ const fetchZeroJobDetail$ = command(async ({ get, set }) => {
 
     const response = await fetchFn(`/api/agent/composes?${params.toString()}`);
     if (!response.ok) {
-      throw new Error(`Failed to fetch agent: ${response.statusText}`);
+      const status = response.status;
+      const text = response.statusText || `HTTP ${status}`;
+      throw new Error(`Failed to fetch agent: ${text} (${status})`);
     }
 
     const data = (await response.json()) as AgentDetail;
