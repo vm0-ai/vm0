@@ -17,7 +17,7 @@ const TEST_EMAIL = "e2e+clerk_test@vm0.ai";
 const TEST_OTP = "424242";
 
 /** Wait for a selector to appear and return the element handle. */
-async function waitFor(page, selector, timeout = 30000) {
+async function waitFor(page, selector, timeout = 60000) {
   await page.waitForSelector(selector, { visible: true, timeout });
   return page.$(selector);
 }
@@ -32,24 +32,25 @@ module.exports = async (browser, context) => {
     throw new Error("PLATFORM_URL environment variable is required");
 
   const page = await browser.newPage();
+  page.setDefaultNavigationTimeout(60000);
+  page.setDefaultTimeout(60000);
 
   // Set Vercel bypass cookie if needed
   if (bypassSecret) {
     await page.goto(
       `${webUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`,
+      { waitUntil: "networkidle0", timeout: 60000 },
     );
-    await page.waitForNetworkIdle({ idleTime: 1000 });
 
     // Also set bypass cookie on the platform domain
     await page.goto(
       `${platformUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`,
+      { waitUntil: "networkidle0", timeout: 60000 },
     );
-    await page.waitForNetworkIdle({ idleTime: 1000 });
   }
 
   // Navigate to web app landing page
-  await page.goto(webUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForNetworkIdle({ idleTime: 1000 });
+  await page.goto(webUrl, { waitUntil: "networkidle0", timeout: 60000 });
 
   // Click sign-up link in navbar to start auth flow
   const signUpLink = await waitFor(page, "a.btn-get-access[href='/sign-up']");
@@ -148,8 +149,7 @@ module.exports = async (browser, context) => {
   }
 
   // Navigate to platform to ensure session is established there too
-  await page.goto(platformUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForNetworkIdle({ idleTime: 2000 });
+  await page.goto(platformUrl, { waitUntil: "networkidle0", timeout: 60000 });
 
   // Close this setup page — LHCI will open its own pages for auditing
   await page.close();

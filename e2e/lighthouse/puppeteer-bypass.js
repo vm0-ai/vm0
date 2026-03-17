@@ -16,10 +16,11 @@ module.exports = async (browser, context) => {
 
   if (bypassSecret) {
     const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(60000);
     await page.goto(
       `${context.url}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`,
+      { waitUntil: "networkidle0", timeout: 60000 },
     );
-    await page.waitForNetworkIdle({ idleTime: 1000 });
     await page.close();
   }
 };
