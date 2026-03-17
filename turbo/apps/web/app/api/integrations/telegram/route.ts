@@ -122,8 +122,8 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's default org and get existing secrets, vars, connectors
-  const orgSlugParam = new URL(request.url).searchParams.get("org");
-  const { org } = await resolveOrg(userId, orgSlugParam);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org } = await resolveOrg(userId, orgSlug);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
     listVariables(org.orgId, userId),

@@ -55,8 +55,8 @@ export async function GET(request: Request) {
   }
 
   const { userId } = authCtx;
-  const orgSlugParam = new URL(request.url).searchParams.get("org");
-  const { org, member } = await resolveOrg(userId, orgSlugParam);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org, member } = await resolveOrg(userId, orgSlug);
 
   const db = globalThis.services.db;
 

@@ -123,8 +123,8 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's org for resource queries
-  const orgSlugParam = new URL(request.url).searchParams.get("org");
-  const { org } = await resolveOrg(userId, orgSlugParam);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org } = await resolveOrg(userId, orgSlug);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
