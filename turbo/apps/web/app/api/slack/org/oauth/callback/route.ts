@@ -4,6 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { env } from "../../../../../../src/env";
 import {
   exchangeOAuthCode,
+  exchangeOAuthCodeForUser,
   getSlackRedirectBaseUrl,
   createSlackClient,
 } from "../../../../../../src/lib/slack";
@@ -268,9 +269,9 @@ async function handleConnectCallback(params: {
     );
   }
 
-  let oauthResult;
+  let userIdentity;
   try {
-    oauthResult = await exchangeOAuthCode(
+    userIdentity = await exchangeOAuthCodeForUser(
       clientId,
       clientSecret,
       code,
@@ -280,12 +281,6 @@ async function handleConnectCallback(params: {
     log.error("Slack OAuth exchange failed (connect flow)", { error: err });
     return NextResponse.redirect(
       `${platformUrl}/zero/works?error=${encodeURIComponent("Failed to connect Slack account. Please try again.")}`,
-    );
-  }
-
-  if (!oauthResult.authedUserId) {
-    return NextResponse.redirect(
-      `${platformUrl}/zero/works?error=${encodeURIComponent("Could not identify your Slack account.")}`,
     );
   }
 
@@ -305,7 +300,7 @@ async function handleConnectCallback(params: {
   }
 
   // Verify workspace matches (user must have authed with the right workspace)
-  if (oauthResult.teamId !== installation.slackWorkspaceId) {
+  if (userIdentity.teamId !== installation.slackWorkspaceId) {
     return NextResponse.redirect(
       `${platformUrl}/zero/works?error=${encodeURIComponent("You authenticated with a different Slack workspace. Please use the workspace connected to your organization.")}`,
     );
@@ -318,21 +313,21 @@ async function handleConnectCallback(params: {
       userId: state.vm0UserId,
       orgId: state.orgId,
       workspaceId: installation.slackWorkspaceId,
-      slackUserId: oauthResult.authedUserId,
+      slackUserId: userIdentity.authedUserId,
     });
   } else {
     await memberConnect({
       userId: state.vm0UserId,
       orgId: state.orgId,
       workspaceId: installation.slackWorkspaceId,
-      slackUserId: oauthResult.authedUserId,
+      slackUserId: userIdentity.authedUserId,
     });
   }
 
   log.info("User connected via OAuth", {
     vm0UserId: state.vm0UserId,
     orgId: state.orgId,
-    slackUserId: oauthResult.authedUserId,
+    slackUserId: userIdentity.authedUserId,
     workspaceId: installation.slackWorkspaceId,
   });
 
@@ -342,9 +337,12 @@ async function handleConnectCallback(params: {
     encryptionKey,
   );
   const client = createSlackClient(botToken);
-  await refreshOrgAppHome(client, installation, oauthResult.authedUserId).catch(
-    (err) =>
-      log.warn("Failed to refresh App Home after connect", { error: err }),
+  await refreshOrgAppHome(
+    client,
+    installation,
+    userIdentity.authedUserId,
+  ).catch((err) =>
+    log.warn("Failed to refresh App Home after connect", { error: err }),
   );
 
   return NextResponse.redirect(`${platformUrl}/zero/works?connected=1`);
