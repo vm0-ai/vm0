@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
@@ -53,23 +54,31 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
     userId,
   });
 
+  // Use a far-future cachedAt so org_cache TTL checks never expire these
+  // entries and trigger a Clerk API refresh (sentinel orgs don't exist in Clerk).
+  const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
   // Find first org with a matching org_cache entry
   for (const membership of memberships.data) {
     const orgId = membership.organization.id;
     try {
       const orgData = await getOrgData(orgId);
       const role = membership.role === "org:admin" ? "admin" : "member";
-      // Pre-populate org_members_cache so verifyMembershipCached hits cache
-      // instead of calling Clerk API on every request (avoids 429 rate limits)
+      // Pre-populate caches with far-future timestamps to prevent TTL expiry
+      // during E2E test runs (avoids Clerk API calls + 429 rate limits)
       await globalThis.services.db
         .insert(orgMembersCache)
         .values({
           orgId,
           userId,
           role,
-          cachedAt: new Date(),
+          cachedAt: farFuture,
         })
         .onConflictDoNothing();
+      await globalThis.services.db
+        .update(orgCache)
+        .set({ cachedAt: farFuture })
+        .where(eq(orgCache.orgId, orgId));
       return { slug: orgData.slug };
     } catch {
       // Org not in org_cache — try next membership
@@ -82,7 +91,7 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   const slug = "test-org";
   await globalThis.services.db
     .insert(orgCache)
-    .values({ orgId: sentinelOrgId, slug, tier: "free" })
+    .values({ orgId: sentinelOrgId, slug, tier: "free", cachedAt: farFuture })
     .onConflictDoNothing();
   await globalThis.services.db
     .insert(orgMembersCache)
@@ -90,7 +99,7 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
       orgId: sentinelOrgId,
       userId,
       role: "admin",
-      cachedAt: new Date(),
+      cachedAt: farFuture,
     })
     .onConflictDoNothing();
   return { slug };
