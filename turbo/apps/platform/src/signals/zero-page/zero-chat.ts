@@ -1,7 +1,7 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort } from "../utils.ts";
+import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
@@ -516,19 +516,28 @@ export const switchZeroSession$ = command(
         set(internalSessionId$, data.latestSessionId);
       }
 
-      // Resolve the correct agent from the thread's compose ID
+      // Resolve the correct agent from the thread's compose ID.
+      // If it differs from the current selection, update and re-fetch sessions.
       if (data.agentComposeId) {
+        const currentAgentId = get(zeroChatAgentId$);
         const status = await get(zeroOnboardingStatus$);
         const isDefault = data.agentComposeId === status.defaultAgentComposeId;
-        if (isDefault) {
-          set(setZeroChatAgent$, null);
-        } else {
-          // Sub-agent: set compose ID so sidebar highlights correctly
-          const subagents = await get(zeroSubagents$);
-          const agent = subagents.find((a) => a.id === data.agentComposeId);
-          if (agent) {
-            set(setZeroChatAgent$, { id: agent.id, name: agent.name });
+        const needsSwitch = isDefault
+          ? currentAgentId !== null
+          : currentAgentId !== data.agentComposeId;
+
+        if (needsSwitch) {
+          if (isDefault) {
+            set(setZeroChatAgent$, null);
+          } else {
+            const subagents = await get(zeroSubagents$);
+            const agent = subagents.find((a) => a.id === data.agentComposeId);
+            if (agent) {
+              set(setZeroChatAgent$, { id: agent.id, name: agent.name });
+            }
           }
+          // Re-fetch session list for the correct agent
+          detach(set(fetchZeroSessionList$), Reason.DomCallback);
         }
       }
 
