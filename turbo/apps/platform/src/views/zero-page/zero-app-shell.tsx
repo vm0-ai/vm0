@@ -158,28 +158,25 @@ function useSessionLifecycle() {
 /**
  * Sync URL session ID to the chat signal, avoiding redundant switches.
  */
+/** Track the last URL session ID we dispatched a switch for. */
+const lastDispatchedId: { current: string | null } = { current: null };
+
 function useUrlSessionSync(
   urlSessionId: string | null,
   currentSessionId: string | null,
   switchSession: (id: string) => Promise<void>,
 ) {
-  const prevUrlSessionId$ = useCCState<string | null>(null);
-  const prevUrlSessionId = useGet(prevUrlSessionId$);
-  const setPrevUrlSessionId = useSet(prevUrlSessionId$);
-
   if (
     urlSessionId &&
-    urlSessionId !== prevUrlSessionId &&
+    urlSessionId !== lastDispatchedId.current &&
     urlSessionId !== currentSessionId
   ) {
+    lastDispatchedId.current = urlSessionId;
     queueMicrotask(() => {
-      setPrevUrlSessionId(urlSessionId);
       detach(switchSession(urlSessionId), Reason.DomCallback);
     });
-  } else if (urlSessionId && urlSessionId !== prevUrlSessionId) {
-    queueMicrotask(() => setPrevUrlSessionId(urlSessionId));
-  } else if (!urlSessionId && prevUrlSessionId) {
-    queueMicrotask(() => setPrevUrlSessionId(null));
+  } else if (!urlSessionId) {
+    lastDispatchedId.current = null;
   }
 }
 

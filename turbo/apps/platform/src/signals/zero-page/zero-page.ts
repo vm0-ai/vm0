@@ -35,8 +35,10 @@ async function resolveAndSwitchAgent(
   // On /zero/chat/:threadId, switchZeroSession$ resolves the agent from
   // the thread's agentComposeId. Don't interfere here.
   if (get(zeroInChat$)) {
+    console.warn("[resolveAgent] on chat URL, deferring to switchZeroSession$");
     return;
   }
+  console.warn("[resolveAgent] path:", currentPath);
 
   // If on bare /zero, redirect to /zero/talk/:defaultAgent
   if (/^\/zero\/?$/.test(currentPath)) {

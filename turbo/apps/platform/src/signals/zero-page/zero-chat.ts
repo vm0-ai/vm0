@@ -5,7 +5,6 @@ import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { zeroSubagents$ } from "./zero-agents.ts";
 import {
   navigateToZeroSession$,
   zeroChatAgentId$,
@@ -502,6 +501,7 @@ export const switchZeroSession$ = command(
       const fetchFn = get(fetch$);
 
       // Try chat-threads API first; fall back to legacy sessions API
+      console.warn("[switchSession] loading thread:", threadId);
       let res = await fetchFn(`/api/chat-threads/${threadId}`);
       let isLegacySession = false;
       if (!res.ok) {
@@ -509,10 +509,10 @@ export const switchZeroSession$ = command(
         isLegacySession = true;
       }
       if (!res.ok) {
+        console.warn("[switchSession] both APIs failed, status:", res.status);
         set(internalSessionError$, `Failed to load chat: ${res.statusText}`);
         return;
       }
-
       const data = (await res.json()) as {
         agentComposeId?: string;
         chatMessages?: {
@@ -526,6 +526,13 @@ export const switchZeroSession$ = command(
         activeRunPrompt?: string | null;
       };
 
+      console.warn("[switchSession] loaded:", {
+        isLegacySession,
+        agentComposeId: data.agentComposeId,
+        latestSessionId: data.latestSessionId,
+        msgCount: data.chatMessages?.length,
+      });
+
       if (isLegacySession) {
         // Legacy session: the ID itself is the sessionId
         set(internalSessionId$, threadId);
@@ -533,22 +540,24 @@ export const switchZeroSession$ = command(
         set(internalSessionId$, data.latestSessionId);
       }
 
-      // Resolve agent from thread's compose ID and switch active agent
+      // Switch agent if it changed, or fetch session list if empty (fresh load).
       if (data.agentComposeId) {
+        const currentAgentId = get(zeroChatAgentId$);
         const status = await get(zeroOnboardingStatus$);
         const isDefault = data.agentComposeId === status.defaultAgentComposeId;
-        if (isDefault) {
-          set(switchActiveAgent$, null);
-        } else {
-          const subagents = await get(zeroSubagents$);
-          const agent = subagents.find((a) => a.id === data.agentComposeId);
-          if (agent) {
-            set(switchActiveAgent$, { id: agent.id, name: agent.name });
-          }
+        const newAgentId = isDefault ? null : data.agentComposeId;
+        if (newAgentId !== currentAgentId) {
+          set(
+            switchActiveAgent$,
+            newAgentId ? { id: newAgentId, name: "" } : null,
+          );
+        } else if (get(internalSessionList$).length === 0) {
+          detach(set(fetchZeroSessionList$), Reason.DomCallback);
         }
-      } else {
-        // Legacy session or no agentComposeId: fetch default agent sessions
+      } else if (get(zeroChatAgentId$) !== null) {
         set(switchActiveAgent$, null);
+      } else if (get(internalSessionList$).length === 0) {
+        detach(set(fetchZeroSessionList$), Reason.DomCallback);
       }
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(
