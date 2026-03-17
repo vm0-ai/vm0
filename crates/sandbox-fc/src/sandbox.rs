@@ -230,12 +230,16 @@ impl FirecrackerSandbox {
         let crash = Arc::clone(&self.crash_notify);
         tokio::select! {
             result = client.wait_for_ready(API_READY_TIMEOUT) => {
-                result.map_err(|e| SandboxError::StartFailed(format!("API not ready: {e}")))?;
+                result.map_err(|e| SandboxError::StartFailed(format!(
+                    "API not ready: {e} (api_sock={})",
+                    api_sock.display()
+                )))?;
             }
             () = crash.notified() => {
-                return Err(SandboxError::StartFailed(
-                    "firecracker process exited before API became ready".into(),
-                ));
+                return Err(SandboxError::StartFailed(format!(
+                    "firecracker process exited before API became ready (api_sock={})",
+                    api_sock.display()
+                )));
             }
         }
 
