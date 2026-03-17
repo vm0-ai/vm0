@@ -85,11 +85,20 @@ impl LocalProvider {
             };
             let claim_path = self.group_dir.join(format!("{job_id}.claim"));
             if !claim_path.exists() {
-                let profile = std::fs::read(&path)
-                    .ok()
-                    .and_then(|buf| serde_json::from_slice::<JobRequest>(&buf).ok())
-                    .and_then(|req| req.profile)
-                    .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                let profile = match std::fs::read(&path) {
+                    Ok(buf) => match serde_json::from_slice::<JobRequest>(&buf) {
+                        Ok(req) => req.profile,
+                        Err(e) => {
+                            warn!(run_id = %job_id, error = %e, "local: failed to parse job file, using default profile");
+                            None
+                        }
+                    },
+                    Err(e) => {
+                        warn!(run_id = %job_id, error = %e, "local: failed to read job file, using default profile");
+                        None
+                    }
+                }
+                .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                 return Some((job_id, profile));
             }
         }
