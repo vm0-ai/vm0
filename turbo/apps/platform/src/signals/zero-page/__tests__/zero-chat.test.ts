@@ -209,6 +209,9 @@ describe("zero-chat signals", () => {
       // Wait briefly for the polling loop to begin phase 2
       await delay(50);
 
+      // Verify polling actually started before we abort it
+      expect(pollCount).toBeGreaterThan(0);
+
       // Switching sessions should abort the polling controller
       await context.store.set(switchZeroSession$, "new-session-id");
 
@@ -302,6 +305,9 @@ describe("zero-chat signals", () => {
 
       // Wait briefly for the polling loop to begin phase 2
       await delay(50);
+
+      // Verify polling actually started before we abort it
+      expect(pollCount).toBeGreaterThan(0);
 
       // Starting a new session should abort the polling controller
       context.store.set(startNewZeroSession$);
