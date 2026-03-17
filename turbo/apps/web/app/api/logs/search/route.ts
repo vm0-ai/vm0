@@ -11,7 +11,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { and, eq, inArray, gte } from "drizzle-orm";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,
@@ -178,8 +178,8 @@ const router = tsr.router(logsSearchContract, {
   searchLogs: async ({ query, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -187,9 +187,10 @@ const router = tsr.router(logsSearchContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     const { keyword, agent, runId, limit, before, after } = query;
     const since = query.since ?? Date.now() - SEVEN_DAYS_MS;

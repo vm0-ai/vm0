@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
-import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import { agentRuns } from "../../../src/db/schema/agent-run";
 import { usageDaily } from "../../../src/db/schema/usage-daily";
@@ -94,19 +94,20 @@ async function queryAgentRunsDaily(
 export async function GET(request: NextRequest) {
   initServices();
 
-  const userId = await getUserId(
+  const authCtx = await getAuthContext(
     request.headers.get("Authorization") ?? undefined,
   );
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
+  const { userId } = authCtx;
 
   // Resolve org context
   const orgSlug = request.nextUrl.searchParams.get("org");
-  const { org } = await resolveOrg(userId, orgSlug);
+  const { org } = await resolveOrg(authCtx, orgSlug);
 
   // Parse query parameters
   const searchParams = request.nextUrl.searchParams;
