@@ -973,13 +973,6 @@ export function ZeroSidebar({
             <div className="flex flex-col gap-0.5">
               <Link
                 pathname="/zero"
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                    return;
-                  }
-                  e.preventDefault();
-                  onNewChat?.(null);
-                }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   activeId === "chat" && currentChatAgentId === null
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
@@ -998,13 +991,6 @@ export function ZeroSidebar({
                   key={agent.id}
                   pathname="/zero/talk/:name"
                   options={{ pathParams: { name: agent.name } }}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                      return;
-                    }
-                    e.preventDefault();
-                    onNewChat?.({ id: agent.id, name: agent.name });
-                  }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                     activeId === "chat" && currentChatAgentId === agent.id
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
