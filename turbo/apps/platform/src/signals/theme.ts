@@ -6,6 +6,11 @@ const internalPreference$ = state<ThemePreference>("system");
 const internalResolved$ = state<"light" | "dark">("light");
 
 /**
+ * Current resolved theme value (always "light" or "dark").
+ */
+export const theme$ = computed((get) => get(internalResolved$));
+
+/**
  * User's theme preference ("light", "dark", or "system").
  */
 export const themePreference$ = computed((get) => get(internalPreference$));

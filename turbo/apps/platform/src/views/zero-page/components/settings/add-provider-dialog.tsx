@@ -14,6 +14,7 @@ import {
   configuredProviders$,
   openAddDialog$,
 } from "../../../../signals/zero-page/settings/model-providers.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
