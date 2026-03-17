@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.116.1](https://github.com/vm0-ai/vm0/compare/platform-v0.116.0...platform-v0.116.1) (2026-03-17)
+
+
+### Refactoring
+
+* use link components instead of buttons in zero pages ([#5062](https://github.com/vm0-ai/vm0/issues/5062)) ([cf093ad](https://github.com/vm0-ai/vm0/commit/cf093adcaf66844fb9a5f1926c43e9d6fc8478c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.1
+
 ## [0.116.0](https://github.com/vm0-ai/vm0/compare/platform-v0.115.0...platform-v0.116.0) (2026-03-16)
 
 

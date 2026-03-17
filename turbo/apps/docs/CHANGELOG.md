@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.21.0](https://github.com/vm0-ai/vm0/compare/docs-v2.20.0...docs-v2.21.0) (2026-03-17)
+
+
+### Features
+
+* **docs:** clarify openrouter default model behavior ([#5058](https://github.com/vm0-ai/vm0/issues/5058)) ([424cfc1](https://github.com/vm0-ai/vm0/commit/424cfc14bc9ad5ac324ec637f0f10dc7074e7386))
+
 ## [2.20.0](https://github.com/vm0-ai/vm0/compare/docs-v2.19.0...docs-v2.20.0) (2026-03-16)
 
 

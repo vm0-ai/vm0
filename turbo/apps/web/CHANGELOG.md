@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.118.1](https://github.com/vm0-ai/vm0/compare/web-v12.118.0...web-v12.118.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* prevent cross-org session access via org validation ([#5069](https://github.com/vm0-ai/vm0/issues/5069)) ([bfd8d49](https://github.com/vm0-ai/vm0/commit/bfd8d492faedb8e00e9ab07fef661f820051757d))
+
+
+### Refactoring
+
+* **core:** replace deprecated z.string().url() with z.url() ([#5077](https://github.com/vm0-ai/vm0/issues/5077)) ([a093545](https://github.com/vm0-ai/vm0/commit/a0935459d145e06d71ad91abce9e70d7e2d4210f))
+* replace deprecated z.string().uuid() with z.uuid() ([#5076](https://github.com/vm0-ai/vm0/issues/5076)) ([a11783d](https://github.com/vm0-ai/vm0/commit/a11783dc38e5c5226a7110a0bf64e519971249f6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.72.1
+
 ## [12.118.0](https://github.com/vm0-ai/vm0/compare/web-v12.117.0...web-v12.118.0) (2026-03-16)
 
 

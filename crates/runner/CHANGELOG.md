@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.1...runner-rs-v0.29.2) (2026-03-17)
+
+
+### Refactoring
+
+* **rust:** replace inline crate:: paths with top-level use imports ([#5061](https://github.com/vm0-ai/vm0/issues/5061)) ([149aaa0](https://github.com/vm0-ai/vm0/commit/149aaa09ca2bf69ffb1bc35471ba813e5884e534)), closes [#5038](https://github.com/vm0-ai/vm0/issues/5038)
+
 ## [0.29.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.29.0...runner-rs-v0.29.1) (2026-03-16)
 
 

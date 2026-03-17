@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.72.1](https://github.com/vm0-ai/vm0/compare/core-v8.72.0...core-v8.72.1) (2026-03-17)
+
+
+### Refactoring
+
+* **core:** replace deprecated z.string().url() with z.url() ([#5077](https://github.com/vm0-ai/vm0/issues/5077)) ([a093545](https://github.com/vm0-ai/vm0/commit/a0935459d145e06d71ad91abce9e70d7e2d4210f))
+* replace deprecated z.string().uuid() with z.uuid() ([#5076](https://github.com/vm0-ai/vm0/issues/5076)) ([a11783d](https://github.com/vm0-ai/vm0/commit/a11783dc38e5c5226a7110a0bf64e519971249f6))
+
 ## [8.72.0](https://github.com/vm0-ai/vm0/compare/core-v8.71.3...core-v8.72.0) (2026-03-16)
 
 
