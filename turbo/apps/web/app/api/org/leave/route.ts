@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
-import { requireOrgFromRequest } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { leaveOrg } from "../../../../src/lib/org/org-member-service";
 import {
+  badRequest,
   isBadRequest,
   isNotFound,
   isForbidden,
@@ -26,7 +27,9 @@ export async function POST(request: Request) {
   const { userId } = authCtx;
 
   try {
-    const { org, member } = await requireOrgFromRequest(request, userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    if (!orgSlug) throw badRequest("org query parameter is required");
+    const { org, member } = await resolveOrg(userId, orgSlug);
     await leaveOrg(userId, org.orgId, member.role);
     return NextResponse.json({ message: "Left org" });
   } catch (error) {

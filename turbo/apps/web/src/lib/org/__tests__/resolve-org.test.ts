@@ -6,7 +6,7 @@ import {
   insertOrgMembersCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
-import { resolveOrg, requireOrgFromRequest } from "../resolve-org";
+import { resolveOrg } from "../resolve-org";
 
 const context = testContext();
 
@@ -399,84 +399,5 @@ describe("resolveOrg", () => {
 
     expect(result.org.orgId).toBe(`org_mock_${slug1}`);
     expect(result.org.slug).toBe(slug1);
-  });
-});
-
-describe("requireOrgFromRequest", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
-  it("resolves org via ?org= param", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-
-    // Set up Clerk org BEFORE creating org
-    mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
-
-    mockClerk({
-      userId,
-      orgId: `org_mock_${slug}`,
-      clerkOrgs: testOrgs(slug),
-    });
-
-    const request = new Request(
-      `http://localhost/api/test?org=org_mock_${slug}`,
-    );
-    const result = await requireOrgFromRequest(request, userId);
-
-    expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    expect(result.org.slug).toBe(slug);
-  });
-
-  it("resolves org via ?org= slug param", async () => {
-    const userId = uniqueId("test-user");
-    const slug1 = uniqueId("org");
-
-    // createTestOrg derives orgId from auth().userId → org_mock_${userId}
-    const expectedOrgId = `org_mock_${userId}`;
-
-    // Set up Clerk org BEFORE creating org — use matching orgId
-    mockClerk({
-      userId,
-      clerkOrgs: [{ id: expectedOrgId, slug: slug1, name: slug1 }],
-    });
-    await createTestOrg(slug1);
-
-    mockClerk({
-      userId,
-      orgId: expectedOrgId,
-      clerkOrgs: [{ id: expectedOrgId, slug: slug1, name: slug1 }],
-    });
-
-    const request = new Request(`http://localhost/api/test?org=${slug1}`);
-    const result = await requireOrgFromRequest(request, userId);
-
-    expect(result.org.orgId).toBe(expectedOrgId);
-  });
-
-  it("throws 400 when ?org= not provided", async () => {
-    const userId = uniqueId("test-user");
-    mockClerk({ userId });
-
-    const request = new Request("http://localhost/api/test");
-
-    await expect(requireOrgFromRequest(request, userId)).rejects.toThrow(
-      "org query parameter is required",
-    );
-  });
-
-  it("throws 404 for non-existent ?org= value", async () => {
-    const userId = uniqueId("test-user");
-    mockClerk({ userId });
-
-    const request = new Request(
-      "http://localhost/api/test?org=org_nonexistent",
-    );
-
-    await expect(requireOrgFromRequest(request, userId)).rejects.toThrow(
-      "Org not found",
-    );
   });
 });
