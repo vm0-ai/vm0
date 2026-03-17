@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { eq, desc } from "drizzle-orm";
 import {
   forbidden,
   badRequest,
@@ -9,6 +10,7 @@ import {
 } from "../errors";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
+import { orgMembersCache } from "../../db/schema/org-members-cache";
 
 import type { OrgRole } from "@vm0/core";
 
@@ -193,6 +195,30 @@ export async function resolveOrgOrNull(
     if (isNotFound(error) || isBadRequest(error)) return null;
     throw error;
   }
+}
+
+/**
+ * Resolve a user's default org from org_members_cache.
+ *
+ * Used exclusively by the org management endpoints (GET/PUT /api/org) to
+ * support CLI tokens that don't carry Clerk session context. General API
+ * routes should use resolveOrg with explicit org context instead.
+ *
+ * Returns null if no cached membership exists for the user.
+ */
+export async function resolveDefaultOrgFromCache(
+  userId: string,
+): Promise<ResolvedOrg | null> {
+  const [cached] = await globalThis.services.db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId))
+    .orderBy(desc(orgMembersCache.cachedAt))
+    .limit(1);
+
+  if (!cached) return null;
+
+  return getOrgDataOrNull(cached.orgId);
 }
 
 /**
