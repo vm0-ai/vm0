@@ -30,6 +30,13 @@ pub struct ExecutorConfig {
     pub log_paths: LogPaths,
 }
 
+/// Per-job VM parameters resolved from the profile config.
+pub struct JobParams {
+    pub vcpu: u32,
+    pub memory_mb: u32,
+    pub use_snapshot: bool,
+}
+
 /// Execute a single job inside a Firecracker VM.
 ///
 /// Returns `(exit_code, error_message)`. The caller is responsible for
@@ -39,9 +46,7 @@ pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
     config: &ExecutorConfig,
-    vcpu: u32,
-    memory_mb: u32,
-    use_snapshot: bool,
+    params: &JobParams,
 ) -> (i32, Option<String>) {
     let run_id = context.run_id;
     let mut telemetry =
@@ -60,23 +65,14 @@ pub async fn execute_job(
         );
     }
 
-    let (exit_code, err) = match execute_inner(
-        factory,
-        &context,
-        config,
-        vcpu,
-        memory_mb,
-        use_snapshot,
-        &mut telemetry,
-    )
-    .await
-    {
-        Ok((code, stderr)) => (code, stderr),
-        Err(e) => {
-            error!(run_id = %run_id, error = %e, "job execution failed");
-            (1, Some(e.to_string()))
-        }
-    };
+    let (exit_code, err) =
+        match execute_inner(factory, &context, config, params, &mut telemetry).await {
+            Ok((code, stderr)) => (code, stderr),
+            Err(e) => {
+                error!(run_id = %run_id, error = %e, "job execution failed");
+                (1, Some(e.to_string()))
+            }
+        };
 
     info!(run_id = %run_id, exit_code, "job finished");
     telemetry.flush().await;
@@ -88,17 +84,15 @@ async fn execute_inner(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
     config: &ExecutorConfig,
-    vcpu: u32,
-    memory_mb: u32,
-    use_snapshot: bool,
+    params: &JobParams,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<(i32, Option<String>)> {
     let sandbox_id = context.run_id;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
-            cpu_count: vcpu,
-            memory_mb,
+            cpu_count: params.vcpu,
+            memory_mb: params.memory_mb,
         },
         use_proxy: true,
     };
@@ -146,7 +140,14 @@ async fn execute_inner(
     }
 
     // Run job inside sandbox, then destroy regardless of outcome
-    let result = run_in_sandbox(sandbox.as_ref(), context, config, use_snapshot, telemetry).await;
+    let result = run_in_sandbox(
+        sandbox.as_ref(),
+        context,
+        config,
+        params.use_snapshot,
+        telemetry,
+    )
+    .await;
 
     // Copy guest logs to host log directory (best-effort).
     copy_guest_logs(sandbox.as_ref(), context, &config.log_paths).await;

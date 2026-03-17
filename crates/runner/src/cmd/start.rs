@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::config::{self, ProfileConfig};
 use crate::deps;
@@ -309,7 +309,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     } = config;
 
     // Build per-profile factories with shared netns pool.
-    let mut factories: HashMap<String, Arc<FirecrackerFactory>> = HashMap::new();
+    let mut factories: BTreeMap<String, Arc<FirecrackerFactory>> = BTreeMap::new();
     for (profile_name, profile_config) in &profiles {
         let fc_config = config::RunnerConfig::build_firecracker_config(
             &firecracker,
@@ -538,10 +538,10 @@ struct JobProfile {
 
 /// Shut down all factories and clean up the shared netns pool.
 async fn shutdown_factories(
-    factories: &mut HashMap<String, Arc<FirecrackerFactory>>,
+    factories: &mut BTreeMap<String, Arc<FirecrackerFactory>>,
     shared_netns: &Arc<tokio::sync::Mutex<sandbox_fc::NetnsPool>>,
 ) {
-    for (name, factory) in factories.drain() {
+    for (name, factory) in std::mem::take(factories) {
         match Arc::try_unwrap(factory) {
             Ok(mut f) => f.shutdown().await,
             Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
@@ -573,8 +573,12 @@ fn spawn_job(
     let run_id = context.run_id;
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
-    let use_snapshot = job_profile.use_snapshot;
     let factory = job_profile.factory;
+    let params = executor::JobParams {
+        vcpu,
+        memory_mb,
+        use_snapshot: job_profile.use_snapshot,
+    };
 
     let provider = Arc::clone(provider);
     let exec_config = Arc::clone(exec_config);
@@ -585,15 +589,7 @@ fn spawn_job(
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and releases budget.
         let inner = tokio::spawn(async move {
-            executor::execute_job(
-                factory.as_ref(),
-                context,
-                &exec_config,
-                vcpu,
-                memory_mb,
-                use_snapshot,
-            )
-            .await
+            executor::execute_job(factory.as_ref(), context, &exec_config, &params).await
         });
 
         let (exit_code, err) = match inner.await {

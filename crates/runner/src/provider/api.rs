@@ -140,6 +140,8 @@ impl JobProvider for ApiProvider {
                     match event {
                         Some(ably_subscriber::Event::Message(msg)) => {
                             if let Some(notif) = parse_job_notification(&msg) {
+                                // Fall back to default profile when server doesn't send one
+                                // (backwards compat with pre-profile API).
                                 let profile = notif.profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                                 info!(run_id = %notif.run_id, %profile, "ably: job notification");
                                 return Some((notif.run_id, profile));
@@ -178,6 +180,8 @@ impl JobProvider for ApiProvider {
                     *poll_now = false;
                     match self.api.poll(&self.group).await {
                         Ok(Some(job)) => {
+                            // Fall back to default profile when server doesn't send one
+                            // (backwards compat with pre-profile API).
                             let profile = job.experimental_profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                             info!(run_id = %job.run_id, %profile, "poll: job found");
                             *poll_now = true;
