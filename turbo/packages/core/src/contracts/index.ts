@@ -511,3 +511,13 @@ export {
   skillFrontmatterSchema,
   type SkillsResolveContract,
 } from "./skills";
+export {
+  orgModelProvidersMainContract,
+  orgModelProvidersByTypeContract,
+  orgModelProvidersSetDefaultContract,
+  orgModelProvidersUpdateModelContract,
+  type OrgModelProvidersMainContract,
+  type OrgModelProvidersByTypeContract,
+  type OrgModelProvidersSetDefaultContract,
+  type OrgModelProvidersUpdateModelContract,
+} from "./org-model-providers";
