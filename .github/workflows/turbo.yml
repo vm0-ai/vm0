@@ -1533,7 +1533,9 @@ jobs:
         run: |
           lhci collect \
             --config=lighthouserc-web.json \
-            --url="${WEB_URL}"
+            --url="${WEB_URL}" &&
+          lhci upload \
+            --config=lighthouserc-web.json
         env:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -1571,7 +1573,9 @@ jobs:
         run: |
           lhci collect \
             --config=lighthouserc-platform.json \
-            --url="${PLATFORM_URL}"
+            --url="${PLATFORM_URL}" &&
+          lhci upload \
+            --config=lighthouserc-platform.json
         env:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}

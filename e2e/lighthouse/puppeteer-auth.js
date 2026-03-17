@@ -76,7 +76,7 @@ module.exports = async (browser, context) => {
   await sleep(2000);
 
   // Switch to email code method
-  const useAnotherMethod = await waitFor(page, 'a[class*="link"]:not([href])');
+  await waitFor(page, 'a[class*="link"]:not([href])');
   // Find the "Use another method" link by text content
   const links = await page.$$("a, button");
   for (const link of links) {

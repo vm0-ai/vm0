@@ -1,4 +1,5 @@
 // Initialize Sentry before anything else (side-effect import)
+// lighthouse-ci: trigger platform-changed detection
 import { Sentry } from "./lib/sentry.ts";
 import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
