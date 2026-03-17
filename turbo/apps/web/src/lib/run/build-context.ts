@@ -30,7 +30,6 @@ import {
   type ConversationResolution,
 } from "./resolvers";
 import { expandEnvironmentFromCompose } from "./environment";
-import { resolveOrg } from "../org/resolve-org";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
@@ -512,11 +511,9 @@ interface BuildContextParams {
   checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Caller-resolved org slug and orgId for secret/variable/storage resolution.
-  // When provided, used for both secrets and storage (artifacts/memory).
-  // When not provided, resolved via resolveOrg fallback.
+  // Caller-resolved org context for secret/variable/storage resolution.
   orgSlug?: string;
-  orgId?: string;
+  orgId: string;
 }
 
 /**
@@ -726,33 +723,22 @@ async function resolveOrgs(params: BuildContextParams): Promise<{
   runtimeClerkOrgId: string;
   pendingRuntimeScope: Promise<RuntimeOrg> | RuntimeOrg;
 }> {
-  if (params.orgId) {
-    if (params.orgSlug) {
-      return {
-        runtimeClerkOrgId: params.orgId,
-        pendingRuntimeScope: {
-          slug: params.orgSlug,
-          orgId: params.orgId,
-        },
-      };
-    }
-    // Have orgId but no slug — resolve slug from org cache
-    const orgData = await getOrgData(params.orgId);
+  if (params.orgSlug) {
     return {
       runtimeClerkOrgId: params.orgId,
       pendingRuntimeScope: {
-        slug: orgData.slug,
+        slug: params.orgSlug,
         orgId: params.orgId,
       },
     };
   }
-  // No explicit org — default org is used
-  const { org } = await resolveOrg(params.userId);
+  // Have orgId but no slug — resolve slug from org cache
+  const orgData = await getOrgData(params.orgId);
   return {
-    runtimeClerkOrgId: org.orgId,
+    runtimeClerkOrgId: params.orgId,
     pendingRuntimeScope: {
-      slug: org.slug,
-      orgId: org.orgId,
+      slug: orgData.slug,
+      orgId: params.orgId,
     },
   };
 }

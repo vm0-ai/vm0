@@ -142,15 +142,15 @@ function hasAgentSessionId(
 }
 
 /**
- * Get chat messages for a thread by finding the associated session.
- * Resolves: thread → runs → latest completed run → agentSessionId → chatMessages
+ * Represents a run whose messages are not persisted in the session yet.
+ * The frontend uses these to reconstruct the full conversation on refresh.
  */
-const TERMINAL_STATUSES = new Set([
-  "completed",
-  "failed",
-  "timeout",
-  "cancelled",
-]);
+interface UnsavedRun {
+  runId: string;
+  status: string;
+  prompt: string;
+  error: string | null;
+}
 
 export async function getChatThreadMessages(
   threadId: string,
@@ -163,72 +163,78 @@ export async function getChatThreadMessages(
     createdAt: string;
   }>;
   latestSessionId: string | null;
-  activeRunId: string | null;
-  activeRunPrompt: string | null;
+  /** Runs not yet reflected in chatMessages (active, failed, etc.) */
+  unsavedRuns: UnsavedRun[];
 }> {
-  // Get all runs for this thread, ordered by creation time desc
+  // Get all runs for this thread, ordered by creation time ASC (chronological)
   const runs = await globalThis.services.db
     .select({
       runId: agentRuns.id,
       status: agentRuns.status,
       prompt: agentRuns.prompt,
+      error: agentRuns.error,
       result: agentRuns.result,
       continuedFromSessionId: agentRuns.continuedFromSessionId,
+      createdAt: agentRuns.createdAt,
     })
     .from(chatThreadRuns)
     .innerJoin(agentRuns, eq(chatThreadRuns.runId, agentRuns.id))
     .where(eq(chatThreadRuns.chatThreadId, threadId))
-    .orderBy(desc(chatThreadRuns.createdAt));
+    .orderBy(chatThreadRuns.createdAt);
 
-  // Find the active (non-terminal) run and the latest sessionId
   let sessionId: string | null = null;
-  let activeRunId: string | null = null;
-  let activeRunPrompt: string | null = null;
+  const savedRunIds = new Set<string>();
 
   for (const run of runs) {
-    if (!TERMINAL_STATUSES.has(run.status) && !activeRunId) {
-      activeRunId = run.runId;
-      activeRunPrompt = run.prompt;
-    }
-    if (!sessionId && hasAgentSessionId(run.result)) {
+    if (hasAgentSessionId(run.result)) {
       sessionId = run.result.agentSessionId;
+      savedRunIds.add(run.runId);
     }
     if (!sessionId && run.continuedFromSessionId) {
       sessionId = run.continuedFromSessionId;
     }
   }
 
-  if (!sessionId) {
-    return {
-      chatMessages: [],
-      latestSessionId: null,
-      activeRunId,
-      activeRunPrompt,
-    };
-  }
-
   // Load messages from the session
-  const [session] = await globalThis.services.db
-    .select({ chatMessages: agentSessions.chatMessages })
-    .from(agentSessions)
-    .where(
-      and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
-    )
-    .limit(1);
-
   type StoredMessage = {
     role: "user" | "assistant";
     content: string;
     runId?: string;
     createdAt: string;
   };
+  let messages: StoredMessage[] = [];
 
-  const messages = (session?.chatMessages ?? []) as StoredMessage[];
+  if (sessionId) {
+    const [session] = await globalThis.services.db
+      .select({ chatMessages: agentSessions.chatMessages })
+      .from(agentSessions)
+      .where(
+        and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
+      )
+      .limit(1);
+    messages = (session?.chatMessages ?? []) as StoredMessage[];
+
+    // Mark runs that have messages in the session
+    for (const msg of messages) {
+      if (msg.runId) {
+        savedRunIds.add(msg.runId);
+      }
+    }
+  }
+
+  // Collect runs not reflected in chatMessages (active, failed, pending, etc.)
+  const unsavedRuns: UnsavedRun[] = runs
+    .filter((r) => !savedRunIds.has(r.runId))
+    .map((r) => ({
+      runId: r.runId,
+      status: r.status,
+      prompt: r.prompt,
+      error: r.error,
+    }));
 
   return {
     chatMessages: messages,
     latestSessionId: sessionId,
-    activeRunId,
-    activeRunPrompt,
+    unsavedRuns,
   };
 }

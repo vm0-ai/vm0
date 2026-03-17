@@ -52,6 +52,7 @@ describe("createRun()", () => {
       userId: user.userId,
       agentComposeVersionId: versionId,
       prompt: "Hello, world!",
+      orgId: user.orgId,
       ...overrides,
     };
   }
@@ -228,6 +229,7 @@ describe("createRun()", () => {
         userId: otherUser.userId,
         agentComposeVersionId: otherCompose.versionId,
         prompt: "Org 2 run",
+        orgId: otherUser.orgId,
       });
       expect(result.status).toBe("pending");
     });

@@ -75,7 +75,7 @@ function createMockSchedules() {
 async function setup() {
   await setupPage({
     context,
-    path: "/zero/schedule",
+    path: "/schedule",
     withoutRender: true,
   });
 }

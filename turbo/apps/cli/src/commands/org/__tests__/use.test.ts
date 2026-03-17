@@ -54,21 +54,11 @@ describe("org use command", () => {
     expect(logCalls).toContain("my-org");
   });
 
-  it("should switch to personal org with --personal flag", async () => {
-    await useCommand.parseAsync(["node", "cli", "--personal"]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("personal org");
-  });
-
-  it("should require slug argument without --personal", async () => {
+  it("should require slug argument", async () => {
     await expect(async () => {
       await useCommand.parseAsync(["node", "cli"]);
     }).rejects.toThrow("process.exit called");
 
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Organization slug is required"),
-    );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

@@ -19,14 +19,20 @@ const storedChatMessageSchema = z.object({
   createdAt: z.string(),
 });
 
+const unsavedRunSchema = z.object({
+  runId: z.string(),
+  status: z.string(),
+  prompt: z.string(),
+  error: z.string().nullable(),
+});
+
 const chatThreadDetailSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   agentComposeId: z.string(),
   chatMessages: z.array(storedChatMessageSchema),
   latestSessionId: z.string().nullable(),
-  activeRunId: z.string().nullable(),
-  activeRunPrompt: z.string().nullable(),
+  unsavedRuns: z.array(unsavedRunSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

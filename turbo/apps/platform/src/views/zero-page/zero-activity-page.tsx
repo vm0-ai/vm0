@@ -128,7 +128,7 @@ export function ZeroActivityPage() {
     });
   }
 
-  // URL-driven detail: /zero/activity/:logId
+  // URL-driven detail: /activity/:logId
   const sub = useGet(zeroTabSub$);
   const syncSub = useSet(syncZeroActivitySub$);
   syncSub();
@@ -146,9 +146,6 @@ export function ZeroActivityPage() {
       ? dataLoadable.data.pagination.totalPages
       : undefined;
   const isLoading = dataLoadable.state === "loading";
-
-  // Build name → displayName lookup from org agents
-  const nameToDisplay = new Map(orgAgents.map((a) => [a.name, a.displayName]));
 
   // Agent filter options: show display names, map back to compose name
   const agentOptions = [
@@ -264,10 +261,8 @@ export function ZeroActivityPage() {
                 <ActivityRow
                   key={entry.id}
                   entry={entry}
-                  href={`/zero/activity/${entry.id}`}
-                  agentName={
-                    nameToDisplay.get(entry.agentName) ?? entry.agentName
-                  }
+                  href={`/activity/${entry.id}`}
+                  agentName={entry.displayName ?? entry.agentName}
                 />
               ))
             )}

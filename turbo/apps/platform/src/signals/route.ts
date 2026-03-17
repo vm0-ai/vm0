@@ -174,9 +174,11 @@ export const navigateInReact$ = command(
   },
 );
 
-type ExtractParams<T extends string> = T extends `/${string}/:${infer Param}`
+type ExtractParams<T extends string> = T extends `/:${infer Param}`
   ? Record<Param, string>
-  : undefined;
+  : T extends `/${string}/:${infer Param}`
+    ? Record<Param, string>
+    : undefined;
 
 export const generateRouterPath = <T extends RoutePath>(
   path: T,

@@ -31,7 +31,9 @@ describe("GET /api/onboarding/status", () => {
 
   it("should return needsOnboarding=true when user has no org", async () => {
     const userId = `no-org-user-${Date.now()}`;
-    mockClerk({ userId, clerkOrgs: [] });
+    // Use a non-existent orgId so resolveOrg throws NotFoundError (caught by route)
+    // rather than BadRequestError (which would propagate as 500)
+    mockClerk({ userId, clerkOrgs: [], orgId: "org_nonexistent" });
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { eq, desc } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
@@ -7,7 +8,8 @@ import {
   resolveTestUserId,
   isTestVariant,
 } from "../../../../../src/lib/auth/test-user";
-import { resolveOrgOrNull } from "../../../../../src/lib/org/resolve-org";
+import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
+import { getOrgDataOrNull } from "../../../../../src/lib/org/resolve-org";
 import { env } from "../../../../../src/env";
 
 const bodySchema = z.object({
@@ -91,7 +93,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Test user not found" }, { status: 500 });
   }
 
-  const org = await resolveOrgOrNull(userId);
+  // Look up test user's org from org_members_cache (populated by test-token endpoint)
+  const [cached] = await globalThis.services.db
+    .select({ orgId: orgMembersCache.orgId })
+    .from(orgMembersCache)
+    .where(eq(orgMembersCache.userId, userId))
+    .orderBy(desc(orgMembersCache.cachedAt))
+    .limit(1);
+
+  const org = cached ? await getOrgDataOrNull(cached.orgId) : null;
   if (!org) {
     return NextResponse.json(
       { error: "Test user has no org — run test-token first" },

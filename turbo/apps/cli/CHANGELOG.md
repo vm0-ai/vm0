@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.63.1](https://github.com/vm0-ai/vm0/compare/cli-v9.63.0...cli-v9.63.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* remove personal org concept from org leave and use commands ([#5147](https://github.com/vm0-ai/vm0/issues/5147)) ([314540b](https://github.com/vm0-ai/vm0/commit/314540bcf03897975c0cd1e830b627f8fce13aec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.75.0
+
 ## [9.63.0](https://github.com/vm0-ai/vm0/compare/cli-v9.62.7...cli-v9.63.0) (2026-03-17)
 
 

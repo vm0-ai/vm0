@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.120.0](https://github.com/vm0-ai/vm0/compare/web-v12.119.1...web-v12.120.0) (2026-03-17)
+
+
+### Features
+
+* add user settings ui for gdpr data export ([#5152](https://github.com/vm0-ai/vm0/issues/5152)) ([46c8c96](https://github.com/vm0-ai/vm0/commit/46c8c960ad1ab6969ba04b11fa61d1f914ea12d5))
+* **platform:** add talk route for url-driven agent chat selection ([#5098](https://github.com/vm0-ai/vm0/issues/5098)) ([34b6800](https://github.com/vm0-ai/vm0/commit/34b68005429fcfbede85fed2d55e8f54fd7a9ae1))
+
+
+### Refactoring
+
+* remove default org fallback from resolveOrg ([#5121](https://github.com/vm0-ai/vm0/issues/5121)) ([28e56f5](https://github.com/vm0-ai/vm0/commit/28e56f5c603e9c7c5ac28ee684fb291d325c1ba0))
+* return display name from logs api instead of frontend mapping ([#5150](https://github.com/vm0-ai/vm0/issues/5150)) ([92d7877](https://github.com/vm0-ai/vm0/commit/92d787709fabc58b557a807749cf9d261bac707b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.75.0
+
 ## [12.119.1](https://github.com/vm0-ai/vm0/compare/web-v12.119.0...web-v12.119.1) (2026-03-17)
 
 

@@ -58,12 +58,12 @@ describe("route", () => {
     it("should update pathname without reloading the route", () => {
       const { store, signal } = context;
       const pushStateMock = createPushStateMock(signal);
-      mockLocation({ pathname: "/zero", search: "" }, signal);
+      mockLocation({ pathname: "/", search: "" }, signal);
 
-      store.set(updatePathname$, "/zero/team");
+      store.set(updatePathname$, "/team");
 
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/zero/team");
-      expect(store.get(pathname$)).toBe("/zero/team");
+      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/team");
+      expect(store.get(pathname$)).toBe("/team");
     });
   });
 

@@ -66,7 +66,7 @@ export function ZeroJobsPage({
           {/* Zero — full width */}
           {rawAgentName ? (
             <Link
-              pathname="/zero/team/:name"
+              pathname="/team/:name"
               options={{ pathParams: { name: rawAgentName } }}
               className="block no-underline text-inherit"
             >
@@ -154,7 +154,7 @@ export function ZeroJobsPage({
               <CardContent className="px-6 py-6 text-center space-y-3">
                 <p className="text-sm text-destructive">{error}</p>
                 <Link
-                  pathname="/zero"
+                  pathname="/"
                   className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
                 >
                   Retry
@@ -188,7 +188,7 @@ export function ZeroJobsPage({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {/* Create teammate — col-span-full */}
               <Link
-                pathname="/zero"
+                pathname="/"
                 className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] px-4 py-3.5 transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group col-span-full"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
@@ -206,7 +206,7 @@ export function ZeroJobsPage({
               {agents.map((agent) => (
                 <Link
                   key={agent.name}
-                  pathname="/zero/team/:name"
+                  pathname="/team/:name"
                   options={{ pathParams: { name: agent.name } }}
                   className="block no-underline text-inherit"
                 >

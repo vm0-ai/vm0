@@ -341,6 +341,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         cachedAt: new Date(),
       });
 
+      // Set User B's active org to owner's org (simulates org selection in Clerk)
+      mockClerk({ userId: otherUser.userId, orgId: ownerUser.orgId });
+
       // User B should be able to run the org member agent
       const data = await createTestRun(testComposeId, "Run org member agent");
 
@@ -396,6 +399,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         userId: runnerUser.userId,
         cachedAt: new Date(),
       });
+
+      // Set User B's active org to owner's org (simulates org selection in Clerk)
+      mockClerk({ userId: runnerUser.userId, orgId: ownerUser.orgId });
 
       // User B runs the org member agent — should fail because no model provider in org
       const data = await createTestRun(

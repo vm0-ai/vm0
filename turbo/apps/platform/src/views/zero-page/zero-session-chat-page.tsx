@@ -172,7 +172,7 @@ export function ZeroSessionChatPage({
         </div>
         <div className="flex items-center gap-0.5">
           <Link
-            pathname="/zero/:tab"
+            pathname="/:tab"
             options={{ pathParams: { tab: "team" } }}
             className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
             aria-label="Sub-agents"
@@ -565,7 +565,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <SimpleLink
-                href={`/zero/activity/${message.runId}`}
+                href={`/activity/${message.runId}`}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
                 aria-label="View run logs"
               >
@@ -585,8 +585,8 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
         <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
-            <div className="flex items-start gap-1.5 text-destructive">
-              <IconAlertCircle size={14} className="shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 text-destructive">
+              <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
               <span>{message.error}</span>
             </div>
           </div>
@@ -619,6 +619,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           <RunActivityLine />
         </div>
       </div>
+      {logButton}
     </div>
   );
 }

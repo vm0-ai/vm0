@@ -1,14 +1,6 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { pathname$, updatePathname$ } from "../route.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
 import type { ZeroNavId } from "../../views/zero-page/zero-sidebar.tsx";
-
-const CHAT_AGENT_KEY = "zero.chatAgentId";
-const {
-  get$: storedChatAgentId$,
-  set$: persistChatAgentId$,
-  clear$: clearChatAgentId$,
-} = localStorageSignals(CHAT_AGENT_KEY);
 
 function isValidTab(tab: string): tab is ZeroNavId {
   return (
@@ -23,12 +15,13 @@ function isValidTab(tab: string): tab is ZeroNavId {
 }
 
 /**
- * Active zero nav id, derived from the URL path `/zero/:tab`.
- * `/zero`, `/zero/chat`, and `/zero/chat/:sessionId` all resolve to "chat".
+ * Active zero nav id, derived from the URL path `/:tab`.
+ * `/`, `/chat`, `/chat/:sessionId`, and `/talk/:name`
+ * all resolve to "chat".
  */
 export const zeroActiveId$ = computed((get): ZeroNavId => {
   const path = get(pathname$);
-  const segment = path.replace(/^\/zero\/?/, "").split("/")[0];
+  const segment = path.split("/")[1] ?? "";
   if (segment && isValidTab(segment)) {
     return segment;
   }
@@ -36,74 +29,110 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
 });
 
 /**
- * Whether the user is on a chat page — `/zero/chat` or `/zero/chat/:sessionId`.
+ * Whether the user is on a chat session page — `/chat` or `/chat/:sessionId`.
  */
 export const zeroInChat$ = computed((get): boolean => {
   const path = get(pathname$);
-  return /^\/zero\/chat(\/|$)/.test(path);
+  return /^\/chat(\/|$)/.test(path);
 });
 
 /**
- * Session ID extracted from `/zero/chat/:sessionId`.
- * Returns null when on `/zero` or `/zero/chat` (no active session).
+ * Session ID extracted from `/chat/:sessionId`.
+ * Returns null when on `/`, `/chat`, or `/talk/:name`.
  */
 export const zeroSessionId$ = computed((get): string | null => {
   const path = get(pathname$);
-  const match = /^\/zero\/chat\/([^/]+)$/.exec(path);
+  const match = /^\/chat\/([^/]+)$/.exec(path);
   return match ? match[1] : null;
 });
 
 /**
- * Currently selected chat agent ID, persisted in localStorage.
- * Returns null when chatting with the default/main agent (Zero).
+ * Agent name extracted from `/talk/:name`.
+ * Returns null when chatting with the default agent.
  */
-export const zeroChatAgentId$ = computed((get): string | null => {
-  return get(storedChatAgentId$);
+export const zeroChatAgentName$ = computed((get): string | null => {
+  const path = get(pathname$);
+  const match = /^\/talk\/([^/]+)/.exec(path);
+  return match ? decodeURIComponent(match[1]) : null;
 });
 
 /**
- * Navigate to a zero tab — updates the URL path to `/zero/:tab`.
- * "chat" maps to `/zero` (the default, no suffix needed).
+ * In-memory state tracking the current chat agent ID.
+ * Null means default agent. Set when navigating to a chat route.
+ */
+const internalChatAgentId$ = state<string | null>(null);
+
+/**
+ * Currently selected chat agent ID (in-memory).
+ * Returns null when chatting with the default/main agent.
+ */
+export const zeroChatAgentId$ = computed((get): string | null => {
+  return get(internalChatAgentId$);
+});
+
+/**
+ * Last chat agent name, preserved across non-chat navigation.
+ * Used to maintain recent chat context when visiting schedule/team pages,
+ * and to navigate back from sessions to the correct talk route.
+ */
+const internalLastChatAgentName$ = state<string | null>(null);
+
+/**
+ * Navigate to a zero tab — updates the URL path to `/:tab`.
+ * "chat" maps to `/` (the default, no suffix needed).
  */
 export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
-  const newPath = id === "chat" ? "/zero" : `/zero/${id}`;
+  const newPath = id === "chat" ? "/" : `/${id}`;
   set(updatePathname$, newPath);
 });
 
 /**
- * Set the chat agent ID, persisted in localStorage.
+ * Whether the talk agent has been resolved from the URL.
+ * Set to true after setupZeroPage$ processes the /zero/talk/:name route.
+ */
+const internalTalkAgentResolved$ = state(false);
+export const zeroTalkAgentResolved$ = computed((get) =>
+  get(internalTalkAgentResolved$),
+);
+
+/**
+ * Set the chat agent ID and name (in-memory).
  * Pass null to clear (chat with default agent).
  */
-export const setZeroChatAgentId$ = command(
-  ({ set }, agentId: string | null) => {
-    if (agentId) {
-      set(persistChatAgentId$, agentId);
-    } else {
-      set(clearChatAgentId$);
-    }
+export const setZeroChatAgent$ = command(
+  ({ set }, agent: { id: string; name: string } | null) => {
+    set(internalChatAgentId$, agent?.id ?? null);
+    set(internalLastChatAgentName$, agent?.name ?? null);
+    set(internalTalkAgentResolved$, true);
   },
 );
 
 /**
- * Sub-path segment under the current tab, e.g. `/zero/activity/:sub`.
+ * Sub-path segment under the current tab, e.g. `/activity/:sub`.
  * Returns null when there is no sub-segment.
  */
 export const zeroTabSub$ = computed((get): string | null => {
   const path = get(pathname$);
-  const parts = path.replace(/^\/zero\/?/, "").split("/");
-  return parts[1] || null;
+  const parts = path.split("/");
+  return parts[2] || null;
 });
 
 /**
- * Navigate to a specific chat session — `/zero/chat/:sessionId`.
+ * Navigate to a specific chat session — `/chat/:sessionId`.
  */
 export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
-  set(updatePathname$, `/zero/chat/${sessionId}`);
+  set(updatePathname$, `/chat/${sessionId}`);
 });
 
 /**
- * Navigate back from a chat session to the chat home — `/zero`.
+ * Navigate back from a chat session to the chat home.
+ * Returns to `/talk/:name` if a team agent was selected, otherwise `/`.
  */
-export const navigateFromZeroSession$ = command(({ set }) => {
-  set(updatePathname$, "/zero");
+export const navigateFromZeroSession$ = command(({ get, set }) => {
+  const agentName = get(internalLastChatAgentName$);
+  if (agentName) {
+    set(updatePathname$, `/talk/${encodeURIComponent(agentName)}`);
+  } else {
+    set(updatePathname$, "/");
+  }
 });

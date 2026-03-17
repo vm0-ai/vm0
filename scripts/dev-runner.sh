@@ -91,7 +91,7 @@ cmd_deploy() {
   # Build rootfs + snapshot
   log "Building rootfs and snapshot..."
   BUILD_LOG=$(mktemp)
-  ssh_cmd "$RUNNER_BIN build" | tee "$BUILD_LOG"
+  ssh_cmd "$RUNNER_BIN build --profile vm0/default" | tee "$BUILD_LOG"
   ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
   SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
   rm -f "$BUILD_LOG"
@@ -105,6 +105,7 @@ cmd_deploy() {
   # Generate config
   log "Generating config..."
   ssh_cmd "$RUNNER_BIN config \
+    --profile vm0/default \
     --rootfs-hash $ROOTFS_HASH \
     --snapshot-hash $SNAPSHOT_HASH \
     --name $RUNNER_NAME \

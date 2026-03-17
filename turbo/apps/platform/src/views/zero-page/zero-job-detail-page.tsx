@@ -76,7 +76,7 @@ function Breadcrumb({ currentName }: { currentName?: string }) {
   return (
     <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
       <Link
-        pathname="/zero/:tab"
+        pathname="/:tab"
         options={{ pathParams: { tab: "team" } }}
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
@@ -140,7 +140,7 @@ function DetailError({
               </p>
             </div>
             <Link
-              pathname="/zero/:tab"
+              pathname="/:tab"
               options={{ pathParams: { tab: "team" } }}
               className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
             >
@@ -161,7 +161,7 @@ function DetailError({
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
-                pathname="/zero/team/:name"
+                pathname="/team/:name"
                 options={{ pathParams: { name: agentName } }}
                 className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
@@ -429,7 +429,7 @@ export function ZeroJobDetailPage({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    pathname="/zero/:tab"
+                    pathname="/:tab"
                     options={{ pathParams: { tab: "chat" } }}
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
                   >

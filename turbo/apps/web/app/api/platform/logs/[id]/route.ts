@@ -38,6 +38,7 @@ interface ComposeContent {
       framework?: string;
     }
   >;
+  metadata?: { displayName?: string };
 }
 
 /**
@@ -167,6 +168,10 @@ const router = tsr.router(platformLogsByIdContract, {
         id: run.id,
         sessionId: runResult?.agentSessionId ?? null,
         agentName: compose?.name ?? "unknown",
+        displayName:
+          typeof composeContent?.metadata?.displayName === "string"
+            ? composeContent.metadata.displayName
+            : null,
         framework: extractFramework(composeContent),
         modelProvider: run.modelProvider ?? null,
         status: run.status as

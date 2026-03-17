@@ -75,8 +75,7 @@ describe("GET /api/chat-threads/:id - Get Thread Detail", () => {
     expect(data.agentComposeId).toBe(testComposeId);
     expect(data.chatMessages).toEqual([]);
     expect(data.latestSessionId).toBeNull();
-    expect(data.activeRunId).toBeNull();
-    expect(data.activeRunPrompt).toBeNull();
+    expect(data.unsavedRuns).toEqual([]);
     expect(data.createdAt).toBeDefined();
     expect(data.updatedAt).toBeDefined();
   });

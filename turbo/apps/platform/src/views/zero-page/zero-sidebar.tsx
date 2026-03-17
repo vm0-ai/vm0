@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
-import { useLoadable, useLastLoadable, useGet, useSet } from "ccstate-react";
+import {
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+  useGet,
+  useSet,
+} from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import {
   IconChartLine,
@@ -20,6 +26,7 @@ import {
   IconEdit,
   IconGripVertical,
   IconLayoutSidebarLeftCollapse,
+  IconDatabaseExport,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -37,7 +44,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { ChatThreadListItem } from "@vm0/core";
+import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -70,6 +77,8 @@ import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
 import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatars.ts";
 import { Link, SimpleLink } from "../router/link.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 
 /** Max pinned sub-agents (default agent counts as 1, total slots = 5). */
 const MAX_PINNED = 4;
@@ -162,6 +171,7 @@ interface SessionAccount {
 interface ZeroSidebarProps {
   activeId: ZeroNavId;
   agentName?: string | null;
+  defaultAgentRawName?: string | null;
   zeroAvatarSrc?: string;
   subagents?: SubagentInfo[];
   currentChatAgentId?: string | null;
@@ -174,7 +184,7 @@ interface ZeroSidebarProps {
   recentSessions?: ChatThreadListItem[];
   recentSessionsLoading?: boolean;
   recentSessionsError?: string | null;
-  onNewChat?: (agentId: string | null) => void;
+  onNewChat?: (agent: { id: string; name: string } | null) => void;
   onResetAgent?: () => void;
 }
 
@@ -238,6 +248,9 @@ function AccountDropdown({
   collapsed?: boolean;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
+  const features = useLastResolved(featureSwitch$);
+  const apiBase = useGet(apiBaseForNavigation$);
+  const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const accountName = user?.fullName ?? "User";
   const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
   const accountInitial = accountName.charAt(0).toUpperCase();
@@ -403,6 +416,15 @@ function AccountDropdown({
           <IconUser size={18} stroke={1.5} />
           <span>Manage account</span>
         </DropdownMenuItem>
+        {showExportData && (
+          <DropdownMenuItem
+            onClick={() => window.open(`${apiBase}/export`, "_blank")}
+            className="gap-3 px-3 py-2.5"
+          >
+            <IconDatabaseExport size={18} stroke={1.5} />
+            <span>Export data</span>
+          </DropdownMenuItem>
+        )}
         {onResetAgent && (
           <>
             <DropdownMenuSeparator />
@@ -506,7 +528,7 @@ function RecentChatSection({
       )}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="flex flex-col gap-1">
-          {recentSessionsLoading ? (
+          {recentSessionsLoading && recentSessions.length === 0 ? (
             <div className="flex items-center justify-center py-3">
               <IconLoader2
                 size={14}
@@ -527,7 +549,7 @@ function RecentChatSection({
             filteredSessions.map((session) => (
               <SimpleLink
                 key={session.id}
-                href={`/zero/chat/${session.id}`}
+                href={`/chat/${session.id}`}
                 onClick={(e) => {
                   if (e.metaKey || e.ctrlKey || e.shiftKey) {
                     return;
@@ -784,6 +806,7 @@ function ManagePinnedAgentsDialog({
 export function ZeroSidebar({
   activeId,
   agentName,
+  defaultAgentRawName,
   zeroAvatarSrc = "/zero-avatar.png",
   subagents = [],
   currentChatAgentId = null,
@@ -863,7 +886,7 @@ export function ZeroSidebar({
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>
                     <Link
-                      pathname={id === "chat" ? "/zero" : "/zero/:tab"}
+                      pathname={id === "chat" ? "/" : "/:tab"}
                       options={
                         id === "chat" ? undefined : { pathParams: { tab: id } }
                       }
@@ -941,7 +964,7 @@ export function ZeroSidebar({
               {manageNav.map(({ id, label, icon: Icon }) => (
                 <Link
                   key={id}
-                  pathname="/zero/:tab"
+                  pathname="/:tab"
                   options={{ pathParams: { tab: id } }}
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -971,14 +994,20 @@ export function ZeroSidebar({
               </span>
             </div>
             <div className="flex flex-col gap-0.5">
-              <button
-                type="button"
-                className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                  activeId === "chat" && currentChatAgentId === null
+              <Link
+                pathname={defaultAgentRawName ? "/talk/:name" : "/"}
+                options={
+                  defaultAgentRawName
+                    ? { pathParams: { name: defaultAgentRawName } }
+                    : undefined
+                }
+                className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+                  activeId === "chat" &&
+                  !selectedRecentId &&
+                  currentChatAgentId === null
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
-                onClick={() => onNewChat?.(null)}
               >
                 <img
                   src={zeroAvatarSrc}
@@ -986,17 +1015,19 @@ export function ZeroSidebar({
                   className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
                 />
                 <span className="truncate">{displayName}</span>
-              </button>
+              </Link>
               {pinnedAgents.map((agent) => (
-                <button
+                <Link
                   key={agent.id}
-                  type="button"
-                  className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                    activeId === "chat" && currentChatAgentId === agent.id
+                  pathname="/talk/:name"
+                  options={{ pathParams: { name: agent.name } }}
+                  className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+                    activeId === "chat" &&
+                    !selectedRecentId &&
+                    currentChatAgentId === agent.id
                       ? "bg-sidebar-active text-sidebar-primary font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
-                  onClick={() => onNewChat?.(agent.id)}
                 >
                   <AgentAvatarImg
                     name={agent.name}
@@ -1006,7 +1037,7 @@ export function ZeroSidebar({
                   <span className="truncate">
                     {agent.displayName ?? agent.name}
                   </span>
-                </button>
+                </Link>
               ))}
               <button
                 type="button"
@@ -1038,7 +1069,7 @@ export function ZeroSidebar({
             {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
               <Link
                 key={id}
-                pathname="/zero/:tab"
+                pathname="/:tab"
                 options={{ pathParams: { tab: id } }}
                 onClick={(e) => {
                   if (e.metaKey || e.ctrlKey || e.shiftKey) {

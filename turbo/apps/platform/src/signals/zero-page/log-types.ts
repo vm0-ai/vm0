@@ -9,6 +9,7 @@ export interface LogEntry {
   id: string;
   sessionId: string | null;
   agentName: string;
+  displayName: string | null;
   orgSlug: string | null;
   framework: string | null;
   modelProvider: string | null;
@@ -37,6 +38,7 @@ export interface LogDetail {
   id: string;
   sessionId: string | null;
   agentName: string;
+  displayName: string | null;
   framework: string | null;
   modelProvider: string | null;
   status: LogStatus;
