@@ -100,7 +100,9 @@ export async function GET(request: Request) {
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  const orgSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
+  const composeOrgSlug = compose
+    ? (await getOrgData(compose.orgId)).slug
+    : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -161,7 +163,9 @@ export async function GET(request: Request) {
       id: installation.telegramBotId,
       username: installation.botUsername,
     },
-    agent: compose ? { id: compose.id, name: compose.name, orgSlug } : null,
+    agent: compose
+      ? { id: compose.id, name: compose.name, orgSlug: composeOrgSlug }
+      : null,
     isAdmin,
     isConnected,
     domainConfigured,
