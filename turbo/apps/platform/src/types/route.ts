@@ -5,4 +5,5 @@ export type RoutePath =
   | "/chat/:sessionId"
   | "/team/:name"
   | "/talk/:name"
+  | "/slack/connect"
   | `/projects/${string}`;

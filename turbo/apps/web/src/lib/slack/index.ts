@@ -28,4 +28,8 @@ export function getSlackRedirectBaseUrl(requestUrl?: string): string {
 }
 
 // Slack API client
-export { createSlackClient, exchangeOAuthCode } from "./client";
+export {
+  createSlackClient,
+  exchangeOAuthCode,
+  exchangeOAuthCodeForUser,
+} from "./client";

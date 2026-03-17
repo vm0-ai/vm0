@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
+import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
 import {
   adminConnect,
   memberConnect,
@@ -14,7 +15,10 @@ import {
   createSlackClient,
   postMessage,
 } from "../../../../../src/lib/slack/client";
-import { buildSuccessMessage } from "../../../../../src/lib/slack/blocks";
+import {
+  buildSuccessMessage,
+  buildWelcomeMessage,
+} from "../../../../../src/lib/slack/blocks";
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
@@ -70,8 +74,35 @@ function notifyConnectSuccess(
         ...(threadTs ? { thread_ts: threadTs } : {}),
       });
     } else {
-      // No channel context: DM the user (DMs are already private)
-      await postMessage(client, slackUserId, "You're connected!", { blocks });
+      // No channel context: DM the user, then send welcome in the same thread
+      const connectMsg = await postMessage(
+        client,
+        slackUserId,
+        "You're connected!",
+        { blocks },
+      );
+
+      // Send welcome message as a reply in the same thread
+      if (connectMsg?.ts) {
+        await postMessage(client, slackUserId, "Hi! I'm Zero.", {
+          threadTs: connectMsg.ts,
+          blocks: buildWelcomeMessage(agentName),
+        });
+      }
+
+      // Mark welcome as sent so handleOrgMessagesTabOpened doesn't send again
+      await globalThis.services.db
+        .update(slackOrgConnections)
+        .set({ dmWelcomeSent: true })
+        .where(
+          and(
+            eq(slackOrgConnections.slackUserId, slackUserId),
+            eq(
+              slackOrgConnections.slackWorkspaceId,
+              installation.slackWorkspaceId,
+            ),
+          ),
+        );
     }
 
     await refreshOrgAppHome(client, installation, slackUserId).catch((e) =>
@@ -88,7 +119,7 @@ function notifyConnectSuccess(
  * creates the connection, and redirects to the platform.
  */
 export async function GET(request: Request) {
-  const { userId } = await auth();
+  const { userId, orgId: activeOrgId } = await auth();
 
   if (!userId) {
     const signInUrl = new URL("/sign-in", request.url);
@@ -107,7 +138,7 @@ export async function GET(request: Request) {
 
   if (!workspaceId || !slackUserId) {
     return NextResponse.redirect(
-      `${platformUrl}/zero/works?error=${encodeURIComponent("Invalid connect link.")}`,
+      `${platformUrl}/zero/slack/connect?error=${encodeURIComponent("Invalid connect link.")}`,
     );
   }
 
@@ -119,7 +150,7 @@ export async function GET(request: Request) {
 
   if (!installation) {
     return NextResponse.redirect(
-      `${platformUrl}/zero/works?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
+      `${platformUrl}/zero/slack/connect?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
     );
   }
 
@@ -128,7 +159,7 @@ export async function GET(request: Request) {
 
     if (member.role !== "admin") {
       return NextResponse.redirect(
-        `${platformUrl}/zero/works?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
+        `${platformUrl}/zero/slack/connect?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
       );
     }
 
@@ -152,7 +183,40 @@ export async function GET(request: Request) {
       threadTs,
       org.orgId,
     );
-    return NextResponse.redirect(`${platformUrl}/zero/works?connected=1`);
+    return NextResponse.redirect(
+      `${platformUrl}/zero/slack/connect?status=connected`,
+    );
+  }
+
+  // Verify the user is a member of the workspace's bound org AND their
+  // active org matches. Clerk sessions may differ across subdomains
+  // (platform.vm7.ai vs www.vm7.ai), so we also accept an explicit
+  // orgId query param from the platform as a trusted source.
+  const explicitOrgId = url.searchParams.get("orgId");
+  const effectiveOrgId = explicitOrgId ?? activeOrgId;
+  log.info("Org check", {
+    activeOrgId,
+    explicitOrgId,
+    installationOrgId: installation.orgId,
+    userId,
+  });
+  if (!effectiveOrgId || effectiveOrgId !== installation.orgId) {
+    // Distinguish: is the user a member of the workspace's org at all?
+    let isMember = false;
+    try {
+      await resolveOrg(userId, null, installation.orgId);
+      isMember = true;
+    } catch {
+      // Not a member
+    }
+
+    const message = isMember
+      ? "Your active organization doesn't match this Slack workspace. Please switch to the correct organization in the platform sidebar before connecting."
+      : "You don't have access to the organization this Slack workspace belongs to. Contact the organization admin for an invite.";
+
+    return NextResponse.redirect(
+      `${platformUrl}/zero/slack/connect?error=${encodeURIComponent(message)}`,
+    );
   }
 
   const { org, member } = await resolveOrg(userId, null, installation.orgId);
@@ -187,5 +251,7 @@ export async function GET(request: Request) {
     threadTs,
     org.orgId,
   );
-  return NextResponse.redirect(`${platformUrl}/zero/works?connected=1`);
+  return NextResponse.redirect(
+    `${platformUrl}/zero/slack/connect?status=connected`,
+  );
 }

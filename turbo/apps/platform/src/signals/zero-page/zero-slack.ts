@@ -75,6 +75,7 @@ export const disconnectSlackOrg$ = command(async ({ get, set }) => {
     return;
   }
 
+  toast.success("Disconnected from Slack");
   await set(fetchSlackOrg$);
 });
 

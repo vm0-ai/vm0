@@ -14,10 +14,103 @@ import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
+import { refreshOrgAppHome } from "../../../../../../src/lib/slack-org/handlers/app-home";
+import { env } from "../../../../../../src/env";
+import { decryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
+import {
+  createSlackClient,
+  postMessage,
+} from "../../../../../../src/lib/slack/client";
+import {
+  buildSuccessMessage,
+  buildWelcomeMessage,
+} from "../../../../../../src/lib/slack/blocks";
+import { logger } from "../../../../../../src/lib/logger";
+
+const log = logger("api:slack-org:connect");
+
+/**
+ * Send a Slack DM confirming successful connection and refresh App Home.
+ * Fire-and-forget to avoid delaying the API response.
+ */
+function notifySlackConnectSuccess(
+  installation: typeof slackOrgInstallations.$inferSelect,
+  slackUserId: string,
+  orgId: string,
+  channelId?: string | null,
+  threadTs?: string | null,
+): void {
+  void (async () => {
+    const { SECRETS_ENCRYPTION_KEY } = env();
+    const botToken = decryptSecretValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+    const client = createSlackClient(botToken);
+
+    let agentName: string | undefined;
+    const composeId = await resolveDefaultComposeId(orgId);
+    if (composeId) {
+      const agent = await getWorkspaceAgent(composeId);
+      agentName = agent?.displayName ?? agent?.name;
+    }
+
+    const agentLine = agentName
+      ? `Your workspace agent is *${agentName}*.`
+      : `No workspace agent configured yet.`;
+
+    const blocks = buildSuccessMessage(
+      `You're connected! :tada:\n\n${agentLine}\nMention \`@Zero\` in any channel or send a DM to start chatting with your agent.`,
+    );
+
+    if (channelId) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: slackUserId,
+        text: "You're connected!",
+        blocks,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      });
+    } else {
+      const connectMsg = await postMessage(
+        client,
+        slackUserId,
+        "You're connected!",
+        { blocks },
+      );
+
+      if (connectMsg?.ts) {
+        await postMessage(client, slackUserId, "Hi! I'm Zero.", {
+          threadTs: connectMsg.ts,
+          blocks: buildWelcomeMessage(agentName),
+        });
+      }
+
+      await globalThis.services.db
+        .update(slackOrgConnections)
+        .set({ dmWelcomeSent: true })
+        .where(
+          and(
+            eq(slackOrgConnections.slackUserId, slackUserId),
+            eq(
+              slackOrgConnections.slackWorkspaceId,
+              installation.slackWorkspaceId,
+            ),
+          ),
+        );
+    }
+
+    await refreshOrgAppHome(client, installation, slackUserId);
+  })().catch((err) =>
+    log.warn("Failed to notify connect success", { error: err }),
+  );
+}
 
 const connectBodySchema = z.object({
   workspaceId: z.string().min(1),
   slackUserId: z.string().min(1),
+  channelId: z.string().optional(),
+  threadTs: z.string().optional(),
 });
 
 /**
@@ -118,7 +211,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { workspaceId, slackUserId } = parseResult.data;
+  const { workspaceId, slackUserId, channelId, threadTs } = parseResult.data;
 
   // Resolve org and check membership
   const { org, member } = await resolveOrg(userId);
@@ -164,6 +257,14 @@ export async function POST(request: Request) {
       slackUserId,
     });
 
+    notifySlackConnectSuccess(
+      installation,
+      slackUserId,
+      org.orgId,
+      channelId,
+      threadTs,
+    );
+
     return NextResponse.json({
       success: true,
       connectionId: result.connection.id,
@@ -171,15 +272,23 @@ export async function POST(request: Request) {
     });
   }
 
-  // Already bound — member connect
+  // Already bound — verify org match
   if (installation.orgId !== org.orgId) {
+    // Check if user is a member of the workspace's org but has the wrong active org
+    let isMemberOfTargetOrg = false;
+    try {
+      await resolveOrg(userId, null, installation.orgId);
+      isMemberOfTargetOrg = true;
+    } catch {
+      // Not a member
+    }
+
+    const message = isMemberOfTargetOrg
+      ? "Your active organization doesn't match this Slack workspace. Please switch to the correct organization in the platform sidebar before connecting."
+      : "You don't have access to the organization this Slack workspace belongs to. Contact the organization admin for an invite.";
+
     return NextResponse.json(
-      {
-        error: {
-          message: "This workspace is connected to a different org",
-          code: "FORBIDDEN",
-        },
-      },
+      { error: { message, code: "FORBIDDEN" } },
       { status: 403 },
     );
   }
@@ -190,6 +299,14 @@ export async function POST(request: Request) {
     workspaceId,
     slackUserId,
   });
+
+  notifySlackConnectSuccess(
+    installation,
+    slackUserId,
+    org.orgId,
+    channelId,
+    threadTs,
+  );
 
   return NextResponse.json({
     success: true,

@@ -186,17 +186,18 @@ export function buildOrgConnectUrl(
   channelId: string,
   threadTs?: string,
 ): string {
-  const url = new URL(getPlatformUrl());
-  url.hostname = url.hostname.replace("platform", "www");
+  const platformUrl = getPlatformUrl();
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
-    c: channelId,
   });
+  if (channelId) {
+    params.set("c", channelId);
+  }
   if (threadTs) {
     params.set("t", threadTs);
   }
-  return `${url.origin}/api/slack/org/connect?${params.toString()}`;
+  return `${platformUrl}/zero/slack/connect?${params.toString()}`;
 }
 
 /**

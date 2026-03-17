@@ -94,7 +94,8 @@ export async function GET(request: Request) {
       installUrl = url.toString();
     }
 
-    // Build connect URL when workspace is installed but user not connected
+    // Build connect URL for users who haven't linked their Slack identity yet.
+    // Uses the OAuth connect flow to identify the user's Slack account.
     let connectUrl: string | null = null;
     if (installation && baseUrl) {
       const url = new URL(`${baseUrl}/api/slack/org/oauth/connect`);

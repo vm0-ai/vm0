@@ -7,6 +7,7 @@ import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupZeroPage$ } from "./zero-page/zero-page.ts";
 import { setupZeroJobDetailRoute$ } from "./zero-page/zero-job-detail-route.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
+import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 
 const ROUTE_CONFIG = [
   {
@@ -24,6 +25,10 @@ const ROUTE_CONFIG = [
   {
     path: "/team/:name",
     setup: setupAuthPageWrapper(setupZeroJobDetailRoute$),
+  },
+  {
+    path: "/slack/connect",
+    setup: setupAuthPageWrapper(setupSlackConnectPage$),
   },
   {
     path: "/:tab/:sub",

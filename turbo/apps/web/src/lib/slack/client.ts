@@ -133,6 +133,40 @@ export async function exchangeOAuthCode(
 }
 
 /**
+ * Exchange an OAuth code for user identity only (no bot token).
+ * Used by the connect flow where the app is already installed and we only
+ * need to identify which Slack user authorized.
+ */
+export async function exchangeOAuthCodeForUser(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+): Promise<{
+  teamId: string;
+  authedUserId: string;
+}> {
+  const client = new WebClient();
+  const result = await client.oauth.v2.access({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    redirect_uri: redirectUri,
+  });
+
+  if (!result.ok || !result.authed_user?.id || !result.team?.id) {
+    throw new Error(
+      `OAuth user exchange failed: ${result.error ?? "unknown error"}`,
+    );
+  }
+
+  return {
+    teamId: result.team.id,
+    authedUserId: result.authed_user.id,
+  };
+}
+
+/**
  * Update an existing message in a Slack channel
  *
  * @param client - Slack WebClient
