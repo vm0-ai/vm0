@@ -473,8 +473,7 @@ export const removeZeroAttachment$ = command(({ set }, id: string) => {
 // ---------------------------------------------------------------------------
 
 export const fetchZeroSessionList$ = command(async ({ get, set }) => {
-  // Clear stale data immediately (before any await)
-  set(internalSessionList$, []);
+  // Keep previous list visible while loading (no flash to empty).
   set(internalSessionListLoading$, true);
   set(internalSessionListError$, null);
 

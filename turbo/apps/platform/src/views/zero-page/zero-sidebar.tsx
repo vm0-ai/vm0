@@ -507,7 +507,7 @@ function RecentChatSection({
       )}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="flex flex-col gap-1">
-          {recentSessionsLoading ? (
+          {recentSessionsLoading && recentSessions.length === 0 ? (
             <div className="flex items-center justify-center py-3">
               <IconLoader2
                 size={14}
