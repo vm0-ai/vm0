@@ -196,9 +196,7 @@ export async function handleTelegramDirectMessage(
     }
     const errorDetail =
       response ?? "An unexpected error occurred. Please try again later.";
-    const linkUrl = runId
-      ? buildLogsUrl(runId, agentName)
-      : buildAgentLogsUrl(agentName);
+    const linkUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
     await sendMessage(
       client,
       chatId,

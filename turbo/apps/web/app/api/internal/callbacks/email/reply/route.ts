@@ -149,7 +149,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Get run output
-  const logsUrl = buildLogsUrl(runId, compose.name);
+  const logsUrl = buildLogsUrl(runId);
   const rawOutput =
     status === "completed" ? ((await getRunOutput(runId)) ?? null) : null;
   const output = formatOutput(status, rawOutput, error);

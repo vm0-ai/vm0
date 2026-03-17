@@ -85,7 +85,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, skipped: true });
   }
 
-  const logsUrl = buildLogsUrl(runId, composeName);
+  const logsUrl = buildLogsUrl(runId);
   const unsubscribeUrl = buildUnsubscribeUrl(userId);
   const unsubscribeHeaders = buildUnsubscribeHeaders(unsubscribeUrl);
 
