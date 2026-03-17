@@ -5,9 +5,11 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
+import { zeroSubagents$ } from "./zero-agents.ts";
 import {
   navigateToZeroSession$,
   zeroChatAgentId$,
+  setZeroChatAgent$,
   zeroInChat$,
 } from "./zero-nav.ts";
 import type { ChatThreadListItem } from "@vm0/core";
@@ -498,6 +500,7 @@ export const switchZeroSession$ = command(
       }
 
       const data = (await res.json()) as {
+        agentComposeId?: string;
         chatMessages?: {
           role: "user" | "assistant";
           content: string;
@@ -511,6 +514,22 @@ export const switchZeroSession$ = command(
 
       if (data.latestSessionId) {
         set(internalSessionId$, data.latestSessionId);
+      }
+
+      // Resolve the correct agent from the thread's compose ID
+      if (data.agentComposeId) {
+        const status = await get(zeroOnboardingStatus$);
+        const isDefault = data.agentComposeId === status.defaultAgentComposeId;
+        if (isDefault) {
+          set(setZeroChatAgent$, null);
+        } else {
+          // Sub-agent: set compose ID so sidebar highlights correctly
+          const subagents = await get(zeroSubagents$);
+          const agent = subagents.find((a) => a.id === data.agentComposeId);
+          if (agent) {
+            set(setZeroChatAgent$, { id: agent.id, name: agent.name });
+          }
+        }
       }
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map(
