@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.31.3...runner-rs-v0.32.0) (2026-03-17)
+
+
+### Features
+
+* **runner:** profile-aware discovery, budget reservation, and per-profile factory ([#5224](https://github.com/vm0-ai/vm0/issues/5224)) ([05e3803](https://github.com/vm0-ai/vm0/commit/05e3803c7566ec70be92c1e313fa1c58d2b6c779))
+
 ## [0.31.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.31.2...runner-rs-v0.31.3) (2026-03-17)
 
 

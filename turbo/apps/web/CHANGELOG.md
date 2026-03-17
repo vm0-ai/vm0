@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.124.0](https://github.com/vm0-ai/vm0/compare/web-v12.123.0...web-v12.124.0) (2026-03-17)
+
+
+### Features
+
+* add credit processing service with org-level advisory lock ([#5238](https://github.com/vm0-ai/vm0/issues/5238)) ([861d628](https://github.com/vm0-ai/vm0/commit/861d628ba9fbc152d842ec040748397b8b581742))
+
+
+### Bug Fixes
+
+* remove /zero prefix from audit links in notifications ([#5246](https://github.com/vm0-ai/vm0/issues/5246)) ([e4dadde](https://github.com/vm0-ai/vm0/commit/e4dadde36e06ee290291d1dd8a9029ac69c4896f)), closes [#5245](https://github.com/vm0-ai/vm0/issues/5245)
+
+
+### Refactoring
+
+* reorder token checks to skip auth() for vm0 tokens ([#5222](https://github.com/vm0-ai/vm0/issues/5222)) ([7f91d33](https://github.com/vm0-ai/vm0/commit/7f91d3324e9c3e49ebb5504782d3435b93fc0d5d)), closes [#5215](https://github.com/vm0-ai/vm0/issues/5215)
+
 ## [12.123.0](https://github.com/vm0-ai/vm0/compare/web-v12.122.0...web-v12.123.0) (2026-03-17)
 
 
