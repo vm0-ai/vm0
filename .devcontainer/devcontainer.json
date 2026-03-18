@@ -22,7 +22,8 @@
     "PATH": "/home/vscode/.cache/cargo/bin:/home/vscode/.local/bin:${containerWorkspaceFolder}/bin:${containerEnv:PATH}",
     "VM0_API_URL": "https://www.vm7.ai:8443",
     "AGENT_BROWSER_PROFILE": "/home/vscode/.local/share/agent-browser/profile",
-    "AGENT_BROWSER_ARGS": "--disable-blink-features=AutomationControlled"
+    "AGENT_BROWSER_ARGS": "--disable-blink-features=AutomationControlled",
+    "OP_SERVICE_ACCOUNT_TOKEN": "${localEnv:VM0_DEV_CONTAINER_SERVICE_ACCOUNT_TOKEN}"
   },
   "mounts": [
     "source=config,target=/home/vscode/.config",
