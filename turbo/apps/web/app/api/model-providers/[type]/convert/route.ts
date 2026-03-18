@@ -27,7 +27,7 @@ const router = tsr.router(modelProvidersConvertContract, {
     return createErrorResponse(
       "BAD_REQUEST",
       "Credential conversion is no longer needed. User secrets and model provider secrets are now isolated by type. " +
-        "Simply configure your model provider directly with `vm0 model-provider setup`.",
+        "Simply configure your model provider directly with `vm0 org model-provider setup`.",
     );
   },
 });

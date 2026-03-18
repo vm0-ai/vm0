@@ -569,7 +569,7 @@ export async function upsertMultiAuthModelProvider(
 export async function convertSecretToModelProvider(): Promise<never> {
   throw badRequest(
     "Secret conversion is no longer needed. User secrets and model provider secrets are now isolated by type. " +
-      "Simply configure your model provider directly with `vm0 model-provider setup`.",
+      "Simply configure your model provider directly with `vm0 org model-provider setup`.",
   );
 }
 
