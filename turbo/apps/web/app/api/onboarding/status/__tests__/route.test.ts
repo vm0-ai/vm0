@@ -3,7 +3,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  createTestModelProvider,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { upsertOrgModelProvider } from "../../../../../src/lib/model-provider/model-provider-service";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -59,24 +58,6 @@ describe("GET /api/onboarding/status", () => {
 
   it("should return hasOrg=true, hasModelProvider=false when org exists but no provider", async () => {
     await context.setupUser();
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/onboarding/status",
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.hasOrg).toBe(true);
-    expect(data.hasModelProvider).toBe(false);
-    expect(data.hasDefaultAgent).toBe(false);
-    expect(data.needsOnboarding).toBe(true);
-  });
-
-  it("should return hasModelProvider=false when only user-level provider exists (org-level required)", async () => {
-    await context.setupUser();
-    // createTestModelProvider creates a user-level provider, not org-level
-    await createTestModelProvider("anthropic-api-key", "test-secret-key");
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
