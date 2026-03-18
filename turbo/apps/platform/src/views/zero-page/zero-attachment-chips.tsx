@@ -67,7 +67,7 @@ export function FileAttachmentChip({
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
 
-export function AttachmentChip({
+function AttachmentChip({
   attachment,
   onRemove,
 }: {
