@@ -21,7 +21,8 @@ pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
     Ok(build_claude_command(env::use_mock_claude()))
 }
 
-fn build_claude_command(use_mock: bool) -> Vec<String> {
+/// Build the argument list from explicit parameters (testable).
+fn build_claude_args(resume_id: &str, append_system_prompt: &str, prompt: &str) -> Vec<String> {
     let mut args = vec![
         "--print".to_string(),
         "--verbose".to_string(),
@@ -30,14 +31,30 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
         "--dangerously-skip-permissions".to_string(),
     ];
 
-    let resume = env::resume_session_id();
-    if !resume.is_empty() {
-        log_info!(LOG_TAG, "Resuming session: {resume}");
+    if !resume_id.is_empty() {
+        log_info!(LOG_TAG, "Resuming session: {resume_id}");
         args.push("--resume".to_string());
-        args.push(resume.to_string());
+        args.push(resume_id.to_string());
     } else {
         log_info!(LOG_TAG, "Starting new session");
     }
+
+    if !append_system_prompt.is_empty() {
+        args.push("--append-system-prompt".to_string());
+        args.push(append_system_prompt.to_string());
+    }
+
+    // Prompt must be the last positional argument
+    args.push(prompt.to_string());
+    args
+}
+
+fn build_claude_command(use_mock: bool) -> Vec<String> {
+    let args = build_claude_args(
+        env::resume_session_id(),
+        env::append_system_prompt(),
+        env::prompt(),
+    );
 
     let bin = if use_mock {
         log_info!(LOG_TAG, "Using mock-claude for testing");
@@ -46,10 +63,8 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
         "claude".to_string()
     };
 
-    args.push(env::prompt().to_string());
-
     let mut cmd = vec![bin];
-    cmd.append(&mut args);
+    cmd.extend(args);
     cmd
 }
 
@@ -297,4 +312,59 @@ pub async fn execute_cli(
     event_result?;
 
     Ok((exit_code, stderr_lines))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_claude_args_basic() {
+        let args = build_claude_args("", "", "hello world");
+        assert!(args.contains(&"--print".to_string()));
+        assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
+        assert_eq!(args.last().unwrap(), "hello world");
+        assert!(!args.contains(&"--append-system-prompt".to_string()));
+        assert!(!args.contains(&"--resume".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_with_append_system_prompt() {
+        let args = build_claude_args("", "Your name is Aria.", "analyze this");
+        let asp_idx = args
+            .iter()
+            .position(|a| a == "--append-system-prompt")
+            .unwrap();
+        assert_eq!(args[asp_idx + 1], "Your name is Aria.");
+        // Prompt must be AFTER --append-system-prompt value
+        let prompt_idx = args.iter().position(|a| a == "analyze this").unwrap();
+        assert!(prompt_idx > asp_idx + 1);
+        assert_eq!(args.last().unwrap(), "analyze this");
+    }
+
+    #[test]
+    fn build_claude_args_empty_append_system_prompt_omitted() {
+        let args = build_claude_args("", "", "test");
+        assert!(!args.contains(&"--append-system-prompt".to_string()));
+    }
+
+    #[test]
+    fn build_claude_args_with_resume_and_append() {
+        let args = build_claude_args("sess-123", "Be helpful.", "prompt");
+        assert!(args.contains(&"--resume".to_string()));
+        assert!(args.contains(&"--append-system-prompt".to_string()));
+        assert_eq!(args.last().unwrap(), "prompt");
+    }
+
+    #[test]
+    fn build_claude_command_uses_claude_binary() {
+        let cmd = build_claude_command(false);
+        assert_eq!(cmd[0], "claude");
+    }
+
+    #[test]
+    fn build_claude_command_uses_mock_binary() {
+        let cmd = build_claude_command(true);
+        assert_eq!(cmd[0], "/usr/local/bin/guest-mock-claude");
+    }
 }

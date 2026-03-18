@@ -157,6 +157,7 @@ impl JobProvider for LocalProvider {
         Some(ExecutionContext {
             run_id,
             prompt: req.prompt,
+            append_system_prompt: None,
             agent_compose_version_id: None,
             vars: req.vars,
             checkpoint_id: None,

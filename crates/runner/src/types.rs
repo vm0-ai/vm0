@@ -31,6 +31,8 @@ pub struct Job {
 pub struct ExecutionContext {
     pub run_id: Uuid,
     pub prompt: String,
+    #[serde(default)]
+    pub append_system_prompt: Option<String>,
     // Not yet used by runner — compose version for traceability
     #[allow(dead_code)]
     #[serde(default)]

@@ -16,6 +16,8 @@ static RUN_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_RUN_ID"));
 static API_URL: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_URL"));
 static API_TOKEN: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_TOKEN"));
 static PROMPT: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_PROMPT"));
+static APPEND_SYSTEM_PROMPT: LazyLock<String> =
+    LazyLock::new(|| env_or_empty("VM0_APPEND_SYSTEM_PROMPT"));
 static VERCEL_BYPASS: LazyLock<String> = LazyLock::new(|| env_or_empty("VERCEL_PROTECTION_BYPASS"));
 static RESUME_SESSION_ID: LazyLock<String> =
     LazyLock::new(|| env_or_empty("VM0_RESUME_SESSION_ID"));
@@ -79,6 +81,9 @@ pub fn api_token() -> &'static str {
 }
 pub fn prompt() -> &'static str {
     &PROMPT
+}
+pub fn append_system_prompt() -> &'static str {
+    &APPEND_SYSTEM_PROMPT
 }
 pub fn vercel_bypass() -> &'static str {
     &VERCEL_BYPASS

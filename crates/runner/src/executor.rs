@@ -544,6 +544,11 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     env.insert("VM0_RUN_ID".into(), context.run_id.to_string());
     env.insert("VM0_API_TOKEN".into(), context.sandbox_token.clone());
     env.insert("VM0_PROMPT".into(), context.prompt.clone());
+    if let Some(asp) = &context.append_system_prompt
+        && !asp.is_empty()
+    {
+        env.insert("VM0_APPEND_SYSTEM_PROMPT".into(), asp.clone());
+    }
     env.insert("VM0_WORKING_DIR".into(), context.working_dir.clone());
     env.insert(
         "VM0_API_START_TIME".into(),
@@ -667,6 +672,7 @@ mod tests {
         ExecutionContext {
             run_id: Uuid::nil(),
             prompt: "test prompt".into(),
+            append_system_prompt: None,
             agent_compose_version_id: None,
             vars: None,
             checkpoint_id: None,
@@ -815,6 +821,32 @@ mod tests {
 
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_SECRET_VALUES"));
+    }
+
+    #[test]
+    fn build_env_json_with_append_system_prompt() {
+        let mut ctx = minimal_context();
+        ctx.append_system_prompt = Some("Your name is Aria.".into());
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(
+            env.get("VM0_APPEND_SYSTEM_PROMPT").unwrap(),
+            "Your name is Aria."
+        );
+    }
+
+    #[test]
+    fn build_env_json_without_append_system_prompt() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
+    }
+
+    #[test]
+    fn build_env_json_empty_append_system_prompt_omitted() {
+        let mut ctx = minimal_context();
+        ctx.append_system_prompt = Some("".into());
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     }
 
     #[test]
