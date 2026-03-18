@@ -1,11 +1,11 @@
 /**
  * Formats Lighthouse CI results into a markdown PR comment.
  *
- * Reads manifest.json and links.json from the .lighthouseci/ directory
+ * Reads LHR JSON files and links.json from the .lighthouseci/ directory
  * (created by `lhci collect` + `lhci upload --target=temporary-public-storage`).
  *
  * Usage:
- *   node format-report.cjs <app-name>
+ *   node format-report.cjs <app-name> [lhci-dir]
  *
  * Outputs markdown to stdout.
  */
@@ -20,12 +20,29 @@ if (!appName) {
 }
 
 const lhciDir = path.resolve(process.argv[3] || ".lighthouseci");
-const manifest = JSON.parse(
-  fs.readFileSync(path.join(lhciDir, "manifest.json"), "utf8"),
+
+// Read LHR files to extract scores (lhci collect writes lhr-*.json)
+const lhrFiles = fs
+  .readdirSync(lhciDir)
+  .filter((f) => f.startsWith("lhr-") && f.endsWith(".json"))
+  .sort();
+
+if (lhrFiles.length === 0) {
+  console.error(`No LHR files found in ${lhciDir}`);
+  process.exit(1);
+}
+
+// Use the median run (middle file when sorted by timestamp)
+const medianIndex = Math.floor(lhrFiles.length / 2);
+const lhr = JSON.parse(
+  fs.readFileSync(path.join(lhciDir, lhrFiles[medianIndex]), "utf8"),
 );
-const links = JSON.parse(
-  fs.readFileSync(path.join(lhciDir, "links.json"), "utf8"),
-);
+
+// Read links.json for the report URL (created by lhci upload --target=temporary-public-storage)
+const linksPath = path.join(lhciDir, "links.json");
+const links = fs.existsSync(linksPath)
+  ? JSON.parse(fs.readFileSync(linksPath, "utf8"))
+  : {};
 
 const formatScore = (score) => Math.round(score * 100);
 const emojiScore = (score) =>
@@ -33,21 +50,27 @@ const emojiScore = (score) =>
 const scoreRow = (label, score) =>
   `| ${emojiScore(score)} ${label} | ${formatScore(score)} |`;
 
-// manifest[0] is the representative (median) run
-const { summary } = manifest[0];
-const [[testedUrl, reportUrl]] = Object.entries(links);
+const testedUrl = lhr.requestedUrl || lhr.finalUrl || "unknown";
+const [[, reportUrl] = []] = Object.entries(links);
 
+const categoryMap = lhr.categories;
 const categories = [
-  ["Performance", summary.performance],
-  ["Accessibility", summary.accessibility],
-  ["Best Practices", summary["best-practices"]],
+  ["Performance", categoryMap.performance?.score],
+  ["Accessibility", categoryMap.accessibility?.score],
+  ["Best Practices", categoryMap["best-practices"]?.score],
 ];
 
-if (summary.seo !== undefined) {
-  categories.push(["SEO", summary.seo]);
+if (categoryMap.seo?.score !== undefined) {
+  categories.push(["SEO", categoryMap.seo.score]);
 }
 
-const rows = categories.map(([label, score]) => scoreRow(label, score));
+const rows = categories
+  .filter(([, score]) => score !== undefined)
+  .map(([label, score]) => scoreRow(label, score));
+
+const reportLine = reportUrl
+  ? `*Tested URL: [${testedUrl}](${testedUrl}) · [Full report](${reportUrl})*`
+  : `*Tested URL: [${testedUrl}](${testedUrl})*`;
 
 const comment = `## ⚡ Lighthouse — ${appName}
 
@@ -55,6 +78,6 @@ const comment = `## ⚡ Lighthouse — ${appName}
 | -------- | ----- |
 ${rows.join("\n")}
 
-*Tested URL: [${testedUrl}](${testedUrl}) · [Full report](${reportUrl})*`;
+${reportLine}`;
 
 console.log(comment);

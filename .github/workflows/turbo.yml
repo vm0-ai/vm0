@@ -1489,7 +1489,7 @@ jobs:
         if: always()
         run: |
           for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
-            if [ -f "$d/manifest.json" ]; then
+            if [ -d "$d" ] && ls "$d"/lhr-*.json >/dev/null 2>&1; then
               echo "dir=$d" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -1557,7 +1557,7 @@ jobs:
         if: always()
         run: |
           for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
-            if [ -f "$d/manifest.json" ]; then
+            if [ -d "$d" ] && ls "$d"/lhr-*.json >/dev/null 2>&1; then
               echo "dir=$d" >> "$GITHUB_OUTPUT"
               exit 0
             fi
