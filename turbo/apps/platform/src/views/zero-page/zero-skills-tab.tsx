@@ -215,13 +215,7 @@ export function ZeroSkillsTab({
           onClose={() => setScopeReviewType(null)}
           onReconnect={(type) => {
             setScopeReviewType(null);
-            detach(
-              (async () => {
-                await disconnect(type);
-                await connect(type, signal);
-              })(),
-              Reason.DomCallback,
-            );
+            detach(connect(type, signal), Reason.DomCallback);
           }}
         />
       )}

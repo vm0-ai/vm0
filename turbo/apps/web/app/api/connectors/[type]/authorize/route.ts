@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { connectorTypeSchema } from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-auth-context";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
 import {
   type AuthUrlResult,
   PROVIDER_HANDLERS,
 } from "../../../../../src/lib/connector/provider-registry";
+import { deleteConnector } from "../../../../../src/lib/connector/connector-service";
+import { isNotFound } from "../../../../../src/lib/errors";
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -76,8 +79,9 @@ export async function GET(
   const origin = getOrigin(request);
 
   // Verify user is authenticated
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const authHeader = request.headers.get("authorization") ?? undefined;
+  const authCtx = await getAuthContext(authHeader);
+  if (!authCtx) {
     // Redirect to login page using correct origin (not localhost behind tunnel)
     const loginUrl = new URL("/sign-in", origin);
     const authorizeUrl = new URL(url.pathname + url.search, origin);
@@ -91,6 +95,17 @@ export async function GET(
       { error: "Computer connector does not use OAuth" },
       { status: 400 },
     );
+  }
+
+  // Auto-disconnect existing connector before re-authorizing.
+  // This ensures old provider tokens are revoked during reconnect flows.
+  // For first-time connects, deleteConnector throws NotFound — safe to ignore.
+  const orgSlug = url.searchParams.get("org");
+  const { org } = await resolveOrg(authCtx, orgSlug);
+  try {
+    await deleteConnector(org.orgId, authCtx.userId, connectorType);
+  } catch (e: unknown) {
+    if (!isNotFound(e)) throw e;
   }
 
   // Generate state for CSRF protection

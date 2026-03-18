@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  findTestConnectorTokenExpiresAt,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
@@ -298,6 +301,48 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       expect(location).toContain("code_challenge=");
       expect(location).toContain("code_challenge_method=S256");
       expect(location).toContain("state=");
+    });
+  });
+
+  describe("auto-disconnect on reconnect", () => {
+    it("should delete existing connector before redirecting to OAuth", async () => {
+      const user = await context.setupUser();
+      await context.createConnector(user.orgId, {
+        userId: user.userId,
+        type: "github",
+        authMethod: "oauth",
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/github/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "github" }),
+      });
+
+      expect(response.status).toBe(307);
+
+      // Verify connector was deleted (undefined means no record found)
+      const tokenExpiresAt = await findTestConnectorTokenExpiresAt(
+        user.orgId,
+        "github",
+      );
+      expect(tokenExpiresAt).toBeUndefined();
+    });
+
+    it("should succeed for first-time connect with no existing connector", async () => {
+      await context.setupUser();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/connectors/github/authorize",
+      );
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "github" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("https://github.com/login/oauth/authorize");
     });
   });
 });
