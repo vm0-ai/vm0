@@ -66,7 +66,7 @@ const router = tsr.router(skillsResolveContract, {
     }
 
     // Unresolved = requested but not found (or not yet synced)
-    const unresolved = body.skills.filter((url) => !foundUrls.has(url));
+    const unresolved = body.skills.filter((url: string) => !foundUrls.has(url));
 
     return {
       status: 200 as const,
