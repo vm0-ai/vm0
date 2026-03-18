@@ -16,8 +16,8 @@ interface ComposeJobPayload {
   content: { agents: Record<string, { skills?: string[] }> };
 }
 
-function getComposeContent(payload: Record<string, unknown>) {
-  return (payload as unknown as ComposeJobPayload).content;
+function getComposeContent(payload: ComposeJobPayload) {
+  return payload.content;
 }
 
 function mockComposeApi(content: {
@@ -125,7 +125,7 @@ describe("zeroAddedSkills$", () => {
 
 describe("addZeroSkill$", () => {
   it("should add a skill locally and save to compose", async () => {
-    let postedContent: Record<string, unknown> | null = null;
+    let postedContent: ComposeJobPayload | null = null;
 
     mockComposeApi({
       agents: {
@@ -138,7 +138,7 @@ describe("addZeroSkill$", () => {
 
     server.use(
       http.post("*/api/compose/jobs", async ({ request }) => {
-        postedContent = (await request.json()) as Record<string, unknown>;
+        postedContent = (await request.json()) as ComposeJobPayload;
         return HttpResponse.json({
           jobId: "job-1",
           status: "completed",
@@ -168,7 +168,7 @@ describe("addZeroSkill$", () => {
     // Save triggers the compose job
     await context.store.set(saveZeroSkills$);
 
-    expect(postedContent).toBeTruthy();
+    expect(postedContent).not.toBeNull();
     const content = getComposeContent(postedContent!);
     const agentKey = Object.keys(content.agents)[0];
     expect(content.agents[agentKey].skills).toContain(
