@@ -8,6 +8,7 @@ import {
   completeTestRun,
   createTestCliToken,
   deleteTestCliToken,
+  getOrgCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -806,8 +807,9 @@ describe("GET /api/agent/runs/:id/events", () => {
     });
 
     it("should accept request with valid CLI token", async () => {
+      const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+        `http://localhost:3000/api/agent/runs/${testRunId}/events?org=${orgEntry!.slug}`,
         {
           headers: {
             Authorization: `Bearer ${testCliToken}`,
