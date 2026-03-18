@@ -2,12 +2,19 @@ import { NextResponse } from "next/server";
 import { connectorTypeSchema } from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-auth-context";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
 import {
   type AuthUrlResult,
   PROVIDER_HANDLERS,
 } from "../../../../../src/lib/connector/provider-registry";
+import { deleteConnector } from "../../../../../src/lib/connector/connector-service";
+import { logger } from "../../../../../src/lib/logger";
+import { and, eq } from "drizzle-orm";
+import { connectors } from "../../../../../src/db/schema/connector";
+
+const log = logger("api:connectors:authorize");
 
 /**
  * Connector OAuth Authorize Endpoint
@@ -76,8 +83,9 @@ export async function GET(
   const origin = getOrigin(request);
 
   // Verify user is authenticated
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const authHeader = request.headers.get("authorization") ?? undefined;
+  const authCtx = await getAuthContext(authHeader);
+  if (!authCtx) {
     // Redirect to login page using correct origin (not localhost behind tunnel)
     const loginUrl = new URL("/sign-in", origin);
     const authorizeUrl = new URL(url.pathname + url.search, origin);
@@ -91,6 +99,32 @@ export async function GET(
       { error: "Computer connector does not use OAuth" },
       { status: 400 },
     );
+  }
+
+  // Auto-disconnect existing connector before re-authorizing.
+  // This ensures old provider tokens are revoked during reconnect flows
+  // (both "Connection expired" and "Permissions update" paths).
+  const orgSlug = url.searchParams.get("org");
+  const { org } = await resolveOrg(authCtx, orgSlug);
+
+  const [existing] = await globalThis.services.db
+    .select({ id: connectors.id })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, org.orgId),
+        eq(connectors.userId, authCtx.userId),
+        eq(connectors.type, connectorType),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    log.info("Auto-disconnecting existing connector before re-authorize", {
+      type: connectorType,
+      userId: authCtx.userId,
+    });
+    await deleteConnector(org.orgId, authCtx.userId, connectorType);
   }
 
   // Generate state for CSRF protection
