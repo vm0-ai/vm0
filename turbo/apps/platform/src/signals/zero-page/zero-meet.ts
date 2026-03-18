@@ -218,7 +218,8 @@ const syncSkillsToCompose$ = command(
   async ({ get, set }, skillValues: string[]) => {
     const compose = await get(zeroCompose$);
     if (!compose?.content) {
-      throw new Error("No compose content found");
+      // No compose yet (e.g. during onboarding) — skip silently
+      return;
     }
 
     const agentKey = Object.keys(compose.content.agents)[0];

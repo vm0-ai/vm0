@@ -1,7 +1,7 @@
 import { Component, type ChangeEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import { onRef, detach, Reason } from "../../signals/utils.ts";
+import { onRef, detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   zeroChatAttachments$,
@@ -49,6 +49,10 @@ import {
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
 import { skills$ } from "../../data/skills.ts";
+import {
+  zeroNeedsOnboarding$,
+  zeroNeedsMemberOnboarding$,
+} from "../../signals/zero-page/zero-onboarding.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -158,29 +162,39 @@ const STREAM_DELAY_MS = 1400;
 
 function getTagline(
   agentName: string,
-  userName: string,
+  userName: string | undefined,
   index: number,
 ): string {
-  const taglines = [
-    `Welcome back, ${userName}.`,
-    `${userName}, what's the move?`,
-    `Good to see you, ${userName}.`,
-    `What's on your mind, ${userName}?`,
-    `${userName} + ${agentName}. Let's roll.`,
-    `Another day, another win, ${userName}.`,
-    `Hey ${userName}, ready to build?`,
-    `${userName} has entered the chat.`,
-    `Good to see you, ${userName}.`,
-    `${userName}! I saved your seat.`,
-    `${userName}, let's make today count.`,
-    `Coffee's ready, ${userName}. Let's go.`,
-    `${userName}, I had a feeling you'd come.`,
-    `What's cooking, ${userName}?`,
-    `${userName}. New day, new ideas.`,
-    `Ah, ${userName}. Right on time.`,
-    `${userName}, what are we working on?`,
-    `The usual, ${userName}?`,
-  ];
+  const taglines = userName
+    ? [
+        `Welcome back, ${userName}.`,
+        `${userName}, what's the move?`,
+        `Good to see you, ${userName}.`,
+        `What's on your mind, ${userName}?`,
+        `${userName} + ${agentName}. Let's roll.`,
+        `Another day, another win, ${userName}.`,
+        `Hey ${userName}, ready to build?`,
+        `${userName} has entered the chat.`,
+        `Good to see you, ${userName}.`,
+        `${userName}! I saved your seat.`,
+        `${userName}, let's make today count.`,
+        `Coffee's ready, ${userName}. Let's go.`,
+        `${userName}, I had a feeling you'd come.`,
+        `What's cooking, ${userName}?`,
+        `${userName}. New day, new ideas.`,
+        `Ah, ${userName}. Right on time.`,
+        `${userName}, what are we working on?`,
+        `The usual, ${userName}?`,
+      ]
+    : [
+        `Welcome back.`,
+        `What's the move?`,
+        `Good to see you.`,
+        `What's on your mind?`,
+        `Ready to roll.`,
+        `Let's build something.`,
+        `What are we working on?`,
+      ];
   return taglines[index % taglines.length];
 }
 
@@ -971,6 +985,27 @@ function startConnectorFlow(
   }
 }
 
+type ScenarioItem = Readonly<{
+  id: DemoScenarioId;
+  userMessage: string;
+  assistantMessage: string;
+}>;
+
+function filterScenariosToShow(
+  scenarios: readonly ScenarioItem[],
+  initialScenarioId: DemoScenarioId | undefined,
+  conversationActive: boolean,
+  streamedCount: number,
+): readonly ScenarioItem[] {
+  if (initialScenarioId !== undefined) {
+    return scenarios.filter((s) => s.id === initialScenarioId);
+  }
+  if (conversationActive) {
+    return scenarios.slice(0, streamedCount);
+  }
+  return [];
+}
+
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
@@ -1007,6 +1042,12 @@ export function ZeroChatPage({
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
   const setSelectedConnType = useSet(setSelectedConnectorType$);
+  // Don't show ConnectModal in chat page when onboarding is active
+  const onboardingActive = useLastLoadable(zeroNeedsOnboarding$);
+  const memberOnboardingActive = useLastLoadable(zeroNeedsMemberOnboarding$);
+  const isOnboarding =
+    (onboardingActive.state === "hasData" && onboardingActive.data) ||
+    (memberOnboardingActive.state === "hasData" && memberOnboardingActive.data);
   const allSkills = useGet(skills$);
   const addSkill = useSet(addZeroSkill$);
   const saveSkills = useSet(saveZeroSkills$);
@@ -1073,7 +1114,7 @@ export function ZeroChatPage({
   const showSubAgentList = useGet(showSubAgentList$);
   const taglineIndex$ = useCCState(Math.floor(Math.random() * 18));
   const taglineIndex = useGet(taglineIndex$);
-  const tagline = userName ? getTagline(agentName, userName, taglineIndex) : "";
+  const tagline = getTagline(agentName, userName, taglineIndex);
   // Stream tick — schedules the next streamed message after a delay
   const streamTimeoutId$ = useCCState<number | null>(null);
   const scheduleStreamTick$ = useCommand(({ get, set }) => {
@@ -1130,7 +1171,12 @@ export function ZeroChatPage({
     detach(
       (async () => {
         await addSkill(type);
-        await saveSkills();
+        try {
+          await saveSkills();
+        } catch (error) {
+          throwIfAbort(error);
+          // May fail during onboarding when compose doesn't exist yet — ignore
+        }
         toast.success(`${label} connected`);
       })(),
       Reason.DomCallback,
@@ -1176,11 +1222,12 @@ export function ZeroChatPage({
   };
 
   const streamedScenarios = getStreamedScenarios(agentName);
-  const scenariosToShow = initialScenarioId
-    ? streamedScenarios.filter((s) => s.id === initialScenarioId)
-    : conversationActive
-      ? streamedScenarios.slice(0, streamedCount)
-      : [];
+  const scenariosToShow = filterScenariosToShow(
+    streamedScenarios,
+    initialScenarioId,
+    conversationActive,
+    streamedCount,
+  );
   const showConversation =
     (initialScenarioId !== undefined && scenariosToShow.length > 0) ||
     conversationActive;
@@ -1583,7 +1630,7 @@ export function ZeroChatPage({
         onConnectSuccess={handleConnectSuccess}
         onAdd={handleConnectSuccess}
       />
-      {selectedConnType && (
+      {selectedConnType && !isOnboarding && (
         <ConnectModal
           onClose={() => setSelectedConnType(null)}
           onSuccess={() => {

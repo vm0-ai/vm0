@@ -44,12 +44,14 @@ describe("GET /api/onboarding/status", () => {
     expect(response.status).toBe(200);
     expect(data).toEqual({
       needsOnboarding: true,
+      isAdmin: false,
       hasOrg: false,
       hasModelProvider: false,
       hasDefaultAgent: false,
       defaultAgentName: null,
       defaultAgentComposeId: null,
       defaultAgentMetadata: null,
+      defaultAgentSkills: [],
     });
   });
 
@@ -120,12 +122,14 @@ describe("GET /api/onboarding/status", () => {
     expect(response.status).toBe(200);
     expect(data).toEqual({
       needsOnboarding: false,
+      isAdmin: true,
       hasOrg: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
       defaultAgentComposeId: compose.composeId,
       defaultAgentMetadata: null,
+      defaultAgentSkills: [],
     });
   });
 
@@ -164,12 +168,14 @@ describe("GET /api/onboarding/status", () => {
     expect(response.status).toBe(200);
     expect(data).toEqual({
       needsOnboarding: false,
+      isAdmin: true,
       hasOrg: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
       defaultAgentComposeId: compose.composeId,
       defaultAgentMetadata: { displayName: "My Agent", sound: "friendly" },
+      defaultAgentSkills: [],
     });
   });
 });

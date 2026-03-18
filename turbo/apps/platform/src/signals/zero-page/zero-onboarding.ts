@@ -41,63 +41,33 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
   return onboardingStatusResponseSchema.parse(await resp.json());
 });
 
+/**
+ * Whether the admin onboarding flow should be shown.
+ * Only true for admins when org setup is incomplete (no model provider or agent).
+ */
 export const zeroNeedsOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
-  return status.needsOnboarding;
-});
-
-// ---------------------------------------------------------------------------
-// Member onboarding (simple welcome for non-admin users)
-// ---------------------------------------------------------------------------
-
-const MEMBER_ONBOARDING_KEY = "zero-member-onboarding-done";
-const MEMBER_ONBOARDING_TEST_KEY = "zero-member-onboarding-test";
-
-/**
- * Whether the current user is an org admin.
- * Clerk exposes the active membership role on `clerk.organization.membership`.
- */
-const zeroIsOrgAdmin$ = computed(async (get) => {
-  const clerk = await get(clerk$);
-  const org = clerk.organization as
-    | (typeof clerk.organization & { membership?: { role: string } })
-    | null;
-  const role = org?.membership?.role;
-  if (!role) {
-    return true;
-  }
-  return role === "org:admin";
+  return status.isAdmin && status.needsOnboarding;
 });
 
 /**
  * Whether a member (non-admin) needs to see the welcome screen.
- * True when: org exists, user is a member (not admin), and hasn't dismissed
- * the welcome yet (tracked via localStorage).
+ * True when: org is set up (has default agent), user is not admin,
+ * and the API says needsOnboarding (Clerk membership metadata).
  */
 export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
-  get(internalReload$);
-  // Dev test mode: skip role and status checks when test flag is set
-  const testMode = localStorage.getItem(MEMBER_ONBOARDING_TEST_KEY) === "1";
-
-  if (testMode) {
-    return !localStorage.getItem(MEMBER_ONBOARDING_KEY);
-  }
-
   const status = await get(zeroOnboardingStatus$);
-  if (!status.hasOrg || !status.hasDefaultAgent) {
-    return false;
-  }
-  const isAdmin = await get(zeroIsOrgAdmin$);
-  if (isAdmin) {
-    return false;
-  }
-  return !localStorage.getItem(MEMBER_ONBOARDING_KEY);
+  return !status.isAdmin && status.needsOnboarding;
 });
 
-/** Mark member onboarding as complete. */
-export const completeMemberOnboarding$ = command(({ set }) => {
-  localStorage.setItem(MEMBER_ONBOARDING_KEY, "1");
-  localStorage.removeItem(MEMBER_ONBOARDING_TEST_KEY);
+/**
+ * Mark member onboarding as complete.
+ * Writes to Clerk membership metadata, then reloads onboarding status
+ * so the dialog disappears (server reads Clerk API directly, no JWT needed).
+ */
+export const completeMemberOnboarding$ = command(async ({ get, set }) => {
+  const fetchFn = get(fetch$);
+  await fetchFn("/api/onboarding/complete", { method: "POST" });
   set(internalReload$, (x) => x + 1);
 });
 

@@ -48,13 +48,13 @@ import {
   zeroOnboardingError$,
   clearZeroOnboardingError$,
   completeMemberOnboarding$,
+  zeroOnboardingStatus$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   sendZeroChatMessage$,
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { updatePathname$ } from "../../signals/route.ts";
-import { setZeroActiveId$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -435,7 +435,7 @@ export function ZeroOnboarding({
     detach(
       (async () => {
         await completeOnboarding(controller.signal);
-        navigate("/chat");
+        navigate("/");
         startNewSession();
         detach(
           sendMessage("Who are you and what can you do?"),
@@ -616,12 +616,8 @@ export function ZeroOnboarding({
 
       {selectedConnectorType && (
         <ConnectModal
-          onClose={() => {
-            setSelected(null);
-          }}
-          onSuccess={() => {
-            toggleSkill(selectedConnectorType);
-          }}
+          onClose={() => setSelected(null)}
+          onSuccess={() => toggleSkill(selectedConnectorType)}
         />
       )}
 
@@ -726,27 +722,88 @@ export function MemberWelcome({
   agentName?: string;
   zeroAvatarSrc?: string;
 }) {
-  const step$ = useCCState<"welcome" | "connectors" | "where">("welcome");
+  const step$ = useCCState<"welcome" | "provider" | "connectors" | "where">(
+    "welcome",
+  );
   const step = useGet(step$);
   const setStep = useSet(step$);
   const completeMember = useSet(completeMemberOnboarding$);
-  const setActiveId = useSet(setZeroActiveId$);
+  const navigate = useSet(updatePathname$);
+  const startNewSession = useSet(startNewZeroSession$);
   const sendIntro = useSet(sendZeroChatMessage$);
   const allSkills = useGet(skills$);
-  const selectedSkills = useGet(zeroSelectedSkills$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
-  const toggleSkill = useSet(toggleZeroSkill$);
+  const connectConnectorFn = useSet(connectConnector$);
+  const pageSignal = useGet(pageSignal$);
+
+  // Model provider state
+  const hasModelProviderLoadable = useLastLoadable(zeroHasModelProvider$);
+  const hasModelProvider =
+    hasModelProviderLoadable.state === "hasData" &&
+    hasModelProviderLoadable.data === true;
+  const providerType = useGet(zeroProviderType$);
+  const formValues = useGet(zeroFormValues$);
+  const saving = useGet(zeroSaving$);
+  const canSave = useGet(zeroCanSave$);
+  const setProviderType = useSet(setZeroProviderType$);
+  const setSecret = useSet(setZeroSecret$);
+  const setModel = useSet(setZeroModel$);
+  const setUseDefaultModel = useSet(setZeroUseDefaultModel$);
+  const setAuthMethod = useSet(setZeroAuthMethod$);
+  const setSecretField = useSet(setZeroSecretField$);
+  const saveModelProvider = useSet(saveZeroModelProvider$);
+  const features = useLastResolved(featureSwitch$);
+  const providerPicked$ = useCCState(false);
+  const providerPicked = useGet(providerPicked$);
+  const setProviderPicked = useSet(providerPicked$);
+
+  // Get the default agent's skills from onboarding status
+  const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
+  const defaultAgentSkillUrls = onboardingStatus?.defaultAgentSkills ?? [];
+
+  // Convert skill URLs to values and filter to only connectable skills
+  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const allConnectors =
+    connectorTypesLoadable.state === "hasData"
+      ? connectorTypesLoadable.data
+      : [];
+  const connectorTypeSet = new Set(allConnectors.map((c) => c.type));
+  const connectedSet = new Set(
+    allConnectors.filter((c) => c.connected).map((c) => c.type),
+  );
+
+  // Only show skills that: (1) are in the default agent, (2) have a connector
+  const memberSkills = allSkills.filter((skill) => {
+    const isInAgent = defaultAgentSkillUrls.some((url) =>
+      url.endsWith(`/${skill.value}`),
+    );
+    return isInAgent && connectorTypeSet.has(skill.value as ConnectorType);
+  });
 
   const handleOpenSlack = () => {
-    completeMember();
-    setActiveId("works");
+    detach(
+      (async () => {
+        await completeMember();
+        navigate("/works");
+      })(),
+      Reason.DomCallback,
+    );
   };
 
   const handleContinueWeb = () => {
-    completeMember();
-    setActiveId("chat");
-    detach(sendIntro("Who are you and what can you do?"), Reason.DomCallback);
+    detach(
+      (async () => {
+        await completeMember();
+        navigate("/");
+        startNewSession();
+        detach(
+          sendIntro("Who are you and what can you do?"),
+          Reason.DomCallback,
+        );
+      })(),
+      Reason.DomCallback,
+    );
   };
 
   const dialogBaseClass =
@@ -784,7 +841,15 @@ export function MemberWelcome({
           </div>
           <div className={`${footerClass} justify-end`}>
             <Button
-              onClick={() => setStep("connectors")}
+              onClick={() => {
+                if (!hasModelProvider) {
+                  setStep("provider");
+                } else if (memberSkills.length > 0) {
+                  setStep("connectors");
+                } else {
+                  setStep("where");
+                }
+              }}
               className="rounded-lg min-w-[100px]"
             >
               Next
@@ -793,7 +858,114 @@ export function MemberWelcome({
         </DialogContent>
       </Dialog>
 
-      {/* Step 2: Add connectors */}
+      {/* Step 2: Add model provider */}
+      <Dialog open={step === "provider"}>
+        <DialogContent
+          className={`${dialogBaseClass} zero-onboarding-dialog`}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          aria-describedby={undefined}
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center px-8 pt-8 pb-8">
+            {providerPicked ? (
+              <div className="flex flex-col items-center pt-10">
+                <div className="flex items-center justify-center gap-3 mb-6">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden">
+                    <ProviderIcon type={providerType} size={28} />
+                  </span>
+                  <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                    {getUILabel(providerType)}
+                  </h2>
+                </div>
+                <div className="w-full max-w-md flex flex-col gap-4 text-left">
+                  <ProviderFormFields
+                    providerType={providerType}
+                    formValues={formValues}
+                    onProviderTypeChange={() => {}}
+                    onSecretChange={setSecret}
+                    onModelChange={setModel}
+                    onUseDefaultModelChange={setUseDefaultModel}
+                    onAuthMethodChange={setAuthMethod}
+                    onSecretFieldChange={setSecretField}
+                    isLoading={saving}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center text-center">
+                <DialogHeader className="space-y-2">
+                  <DialogTitle className="text-xl font-semibold tracking-tight">
+                    Add model provider
+                  </DialogTitle>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6 max-w-[400px]">
+                  Bring your own model. We never charge for chat. Pick a
+                  provider below to get started.
+                </p>
+                <div className="w-full flex flex-wrap justify-center gap-3">
+                  {MODEL_PROVIDER_LIST.filter((type) =>
+                    isProviderVisible(type, features ?? {}),
+                  ).map((type) => {
+                    const config = MODEL_PROVIDER_TYPES[type];
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setProviderType(type);
+                          setProviderPicked(true);
+                        }}
+                        className="zero-card flex items-center gap-2 rounded-xl border border-border px-3 py-2 min-w-0 hover:border-primary/30 hover:bg-muted/30 transition-colors text-left"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
+                          <ProviderIcon type={type} size={18} />
+                        </span>
+                        <span className="text-sm font-medium text-foreground whitespace-nowrap">
+                          {config.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className={`${footerClass} justify-between`}>
+            <Button
+              variant="ghost"
+              className="rounded-lg text-muted-foreground"
+              onClick={() => {
+                if (providerPicked) {
+                  setProviderPicked(false);
+                } else {
+                  setStep("welcome");
+                }
+              }}
+              disabled={saving}
+            >
+              Back
+            </Button>
+            <Button
+              onClick={() => {
+                const controller = new AbortController();
+                detach(
+                  (async () => {
+                    await saveModelProvider(controller.signal);
+                    setStep(memberSkills.length > 0 ? "connectors" : "where");
+                  })(),
+                  Reason.DomCallback,
+                );
+              }}
+              className="rounded-lg min-w-[100px]"
+              disabled={!providerPicked || !canSave || saving}
+            >
+              {saving ? "Saving\u2026" : "Next"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 3: Connect your tools */}
       <Dialog open={step === "connectors"}>
         <DialogContent
           className={`${dialogBaseClass} zero-onboarding-dialog`}
@@ -801,16 +973,70 @@ export function MemberWelcome({
           onEscapeKeyDown={(e) => e.preventDefault()}
           aria-describedby={undefined}
         >
-          <OnboardingSkillsStep
-            name={agentName}
-            allSkills={allSkills}
-            selectedSkills={selectedSkills}
-          />
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center text-center px-8 pt-8">
+            <DialogHeader className="space-y-2">
+              <DialogTitle className="text-xl font-semibold tracking-tight">
+                Connect your tools
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6">
+              Your organization uses these tools with {agentName}. Connect the
+              ones you use to get started.
+            </p>
+            {memberSkills.length > 0 ? (
+              <div className="w-full px-4 flex-1 min-h-0">
+                <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
+                  {memberSkills.map((skill) => {
+                    const isConnected = connectedSet.has(
+                      skill.value as ConnectorType,
+                    );
+                    return (
+                      <OnboardingSkillCard
+                        key={skill.value}
+                        label={skill.label}
+                        iconUrl={skill.icon}
+                        isSelected={isConnected}
+                        isPolling={false}
+                        onClick={() => {
+                          if (!isConnected) {
+                            const connector = allConnectors.find(
+                              (c) => c.type === skill.value,
+                            );
+                            if (
+                              connector?.availableAuthMethods.includes(
+                                "api-token",
+                              )
+                            ) {
+                              setSelected(skill.value as ConnectorType);
+                            } else {
+                              detach(
+                                (async () => {
+                                  await connectConnectorFn(
+                                    skill.value as ConnectorType,
+                                    pageSignal,
+                                  );
+                                })(),
+                                Reason.DomCallback,
+                              );
+                            }
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No connectors to set up — you&apos;re all set!
+              </p>
+            )}
+          </div>
           <div className={`${footerClass} justify-between`}>
             <Button
               variant="ghost"
               className="rounded-lg text-muted-foreground"
-              onClick={() => setStep("welcome")}
+              onClick={() => setStep(hasModelProvider ? "welcome" : "provider")}
             >
               Back
             </Button>
@@ -827,7 +1053,9 @@ export function MemberWelcome({
       {selectedConnectorType && (
         <ConnectModal
           onClose={() => setSelected(null)}
-          onSuccess={() => toggleSkill(selectedConnectorType)}
+          onSuccess={() => {
+            /* connector list refreshes automatically */
+          }}
         />
       )}
 
@@ -901,7 +1129,15 @@ export function MemberWelcome({
             <Button
               variant="ghost"
               className="rounded-lg text-muted-foreground"
-              onClick={() => setStep("connectors")}
+              onClick={() => {
+                if (memberSkills.length > 0) {
+                  setStep("connectors");
+                } else if (!hasModelProvider) {
+                  setStep("provider");
+                } else {
+                  setStep("welcome");
+                }
+              }}
             >
               Back
             </Button>

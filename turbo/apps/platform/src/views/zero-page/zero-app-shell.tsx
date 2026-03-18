@@ -20,7 +20,6 @@ import {
   agentDisplayName$,
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { resetDefaultAgent$ } from "../../signals/zero-page/zero-dev-tools.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -420,8 +419,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const resetDefaultAgent = useSet(resetDefaultAgent$);
-
   const sidebarCollapsed$ = useCCState(false);
   const sidebarCollapsed = useGet(sidebarCollapsed$);
   const setSidebarCollapsed = useSet(sidebarCollapsed$);
@@ -457,7 +454,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         recentSessionsLoading={recentSessionsLoading}
         recentSessionsError={recentSessionsError}
         onNewChat={handleNewChat}
-        onResetAgent={() => detach(resetDefaultAgent(), Reason.DomCallback)}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
         {/* TopBarActions (credit & invite) hidden until feature is ready */}

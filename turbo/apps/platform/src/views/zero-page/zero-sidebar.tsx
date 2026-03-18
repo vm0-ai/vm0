@@ -20,7 +20,6 @@ import {
   IconSwitchHorizontal,
   IconSettings,
   IconLoader2,
-  IconRefresh,
   IconSearch,
   IconX,
   IconEdit,
@@ -190,7 +189,6 @@ interface ZeroSidebarProps {
   recentSessionsLoading?: boolean;
   recentSessionsError?: string | null;
   onNewChat?: (agent: { id: string; name: string } | null) => void;
-  onResetAgent?: () => void;
 }
 
 function AccountAvatar({
@@ -245,11 +243,9 @@ function useAccountSessions() {
 
 function AccountDropdown({
   onAccountAction,
-  onResetAgent,
   collapsed = false,
 }: {
   onAccountAction?: (action: ZeroAccountAction) => void;
-  onResetAgent?: () => void;
   collapsed?: boolean;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
@@ -429,29 +425,6 @@ function AccountDropdown({
             <IconDatabaseExport size={18} stroke={1.5} />
             <span>Export data</span>
           </DropdownMenuItem>
-        )}
-        {onResetAgent && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onResetAgent}
-              className="gap-3 px-3 py-2.5 text-amber-500"
-            >
-              <IconRefresh size={18} stroke={1.5} />
-              <span>Reset Default Agent</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                localStorage.removeItem("zero-member-onboarding-done");
-                localStorage.setItem("zero-member-onboarding-test", "1");
-                window.location.reload();
-              }}
-              className="gap-3 px-3 py-2.5 text-amber-500"
-            >
-              <IconRefresh size={18} stroke={1.5} />
-              <span>Test Member Onboarding</span>
-            </DropdownMenuItem>
-          </>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -836,7 +809,6 @@ export function ZeroSidebar({
   recentSessionsLoading = false,
   recentSessionsError = null,
   onNewChat,
-  onResetAgent,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
@@ -882,7 +854,7 @@ export function ZeroSidebar({
   if (collapsed) {
     return (
       <VM0ClerkProvider>
-        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
+        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300">
           {/* Expand button */}
           <div className="shrink-0 flex items-center justify-center pt-3 pb-1">
             <button
@@ -937,11 +909,7 @@ export function ZeroSidebar({
 
           {/* Account avatar */}
           <div className="p-2 flex justify-center">
-            <AccountDropdown
-              onAccountAction={onAccountAction}
-              onResetAgent={onResetAgent}
-              collapsed
-            />
+            <AccountDropdown onAccountAction={onAccountAction} collapsed />
           </div>
         </aside>
       </VM0ClerkProvider>
@@ -950,7 +918,7 @@ export function ZeroSidebar({
 
   return (
     <VM0ClerkProvider>
-      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
+      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300">
         {/* Organization switcher */}
         <div className="shrink-0 px-2 pt-1.5 pb-0">
           <div className="flex items-center justify-between rounded-lg pr-0 py-0.5">
@@ -1115,10 +1083,7 @@ export function ZeroSidebar({
               </Link>
             ))}
             {/* Account dropdown */}
-            <AccountDropdown
-              onAccountAction={onAccountAction}
-              onResetAgent={onResetAgent}
-            />
+            <AccountDropdown onAccountAction={onAccountAction} />
           </div>
         </div>
       </aside>
