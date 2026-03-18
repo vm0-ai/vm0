@@ -194,6 +194,9 @@ export function validateTimeFormat(time: string): boolean | string {
   if (minute < 0 || minute > 59) {
     return "Minute must be 0-59";
   }
+  if (minute % 5 !== 0) {
+    return "Minute must be a multiple of 5 (0, 5, 10, ..., 55)";
+  }
 
   return true;
 }
