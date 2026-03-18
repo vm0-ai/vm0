@@ -97,9 +97,7 @@ export function ZeroSkillCard({
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                 {connector.connector?.externalUsername
                   ? `@${connector.connector.externalUsername}`
-                  : connector.connector?.authMethod === "api-token"
-                    ? "API key"
-                    : "Connected"}
+                  : "Connected"}
               </span>
             ) : (
               <button
@@ -107,10 +105,7 @@ export function ZeroSkillCard({
                 onClick={onConnect}
                 className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
-                {connector.availableAuthMethods.length === 1 &&
-                connector.availableAuthMethods[0] === "api-token"
-                  ? "Add API key"
-                  : "Connect"}
+                Connect
               </button>
             ))}
           {!connector && (
@@ -129,14 +124,15 @@ export function ZeroSkillCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
-            {connector?.connected && (
+            {connector?.connected ? (
               <DropdownMenuItem onClick={onDisconnect}>
                 Disconnect
               </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={onRemove}>
+                Remove connector
+              </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={onRemove}>
-              Remove connector
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

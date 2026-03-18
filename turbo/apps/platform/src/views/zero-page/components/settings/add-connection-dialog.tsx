@@ -59,9 +59,6 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
   if (item.scopeMismatch) {
     return "Permissions update available";
   }
-  if (item.connector?.authMethod === "api-token") {
-    return "Connected via API Token";
-  }
   if (item.connector?.externalUsername) {
     return `Connected as @${item.connector.externalUsername}`;
   }
