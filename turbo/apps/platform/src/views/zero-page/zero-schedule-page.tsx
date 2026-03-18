@@ -5,6 +5,7 @@ import {
   IconList,
   IconLayoutGrid,
   IconTrash,
+  IconPlus,
 } from "@tabler/icons-react";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
@@ -640,6 +641,166 @@ function ScheduleEditDialog(props: ScheduleEditDialogProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Create dialog
+// ---------------------------------------------------------------------------
+
+interface ScheduleCreateDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onSave: (params: ZeroScheduleSaveParams & { composeId: string }) => void;
+  saving: boolean;
+  agents: { id: string; name: string; displayName?: string | null }[];
+  defaultComposeId: string | null;
+}
+
+function ScheduleCreateDialogInner({
+  onClose,
+  onSave,
+  saving,
+  agents,
+  defaultComposeId,
+}: Omit<ScheduleCreateDialogProps, "open">) {
+  const prompt$ = useCCState("");
+  const prompt = useGet(prompt$);
+  const setPrompt = useSet(prompt$);
+  const composeId$ = useCCState(defaultComposeId ?? agents[0]?.id ?? "");
+  const composeId = useGet(composeId$);
+  const setComposeId = useSet(composeId$);
+  const freq$ = useCCState("every_day");
+  const freq = useGet(freq$);
+  const setFreq = useSet(freq$);
+  const date$ = useCCState(new Date().toISOString().slice(0, 10));
+  const date = useGet(date$);
+  const setDate = useSet(date$);
+  const hour$ = useCCState(9);
+  const hour = useGet(hour$);
+  const setHour = useSet(hour$);
+  const minute$ = useCCState(0);
+  const minute = useGet(minute$);
+  const setMinute = useSet(minute$);
+  const timezone$ = useCCState(
+    new Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+  const timezone = useGet(timezone$);
+  const setTimezone = useSet(timezone$);
+  const loopMinutes$ = useCCState(15);
+  const loopMinutes = useGet(loopMinutes$);
+  const setLoopMinutes = useSet(loopMinutes$);
+
+  const handleSave = () => {
+    if (!prompt.trim() || !composeId) {
+      return;
+    }
+    onSave({
+      prompt: prompt.trim(),
+      freq,
+      date,
+      hour,
+      minute,
+      timezone,
+      intervalSeconds: loopMinutes * 60,
+      composeId,
+    });
+  };
+
+  return (
+    <DialogContent className="sm:max-w-md gap-6">
+      <DialogHeader>
+        <DialogTitle>New schedule</DialogTitle>
+      </DialogHeader>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="schedule-create-agent"
+            className="text-sm font-medium text-foreground"
+          >
+            Agent
+          </label>
+          <Select value={composeId} onValueChange={setComposeId}>
+            <SelectTrigger id="schedule-create-agent" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.displayName ?? a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="schedule-create-prompt"
+            className="text-sm font-medium text-foreground"
+          >
+            Prompt
+          </label>
+          <textarea
+            id="schedule-create-prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Describe your task and instruction"
+            rows={3}
+            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[72px]"
+          />
+        </div>
+        <ScheduleEditFields
+          freq={freq}
+          setFreq={setFreq}
+          loopMinutes={loopMinutes}
+          setLoopMinutes={setLoopMinutes}
+          date={date}
+          setDate={setDate}
+          hour={hour}
+          setHour={setHour}
+          minute={minute}
+          setMinute={setMinute}
+          timezone={timezone}
+          setTimezone={setTimezone}
+        />
+      </div>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          className="zero-btn-morandi"
+          onClick={onClose}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          onClick={handleSave}
+          disabled={!prompt.trim() || !composeId || saving}
+        >
+          {saving ? "Creating\u2026" : "Create"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function ScheduleCreateDialog({
+  open,
+  onClose,
+  ...rest
+}: ScheduleCreateDialogProps) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          onClose();
+        }
+      }}
+    >
+      {open && <ScheduleCreateDialogInner onClose={onClose} {...rest} />}
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Skeleton
 // ---------------------------------------------------------------------------
 
@@ -712,11 +873,13 @@ function ScheduleListView({
   onEdit,
   onToggle,
   onDelete,
+  onNew,
 }: {
   combinedSchedule: CombinedEntry[];
   onEdit: (entry: CombinedEntry) => void;
   onToggle: (entry: CombinedEntry, enabled: boolean) => Promise<void>;
   onDelete: (entry: CombinedEntry) => void;
+  onNew?: () => void;
 }) {
   const togglingIds$ = useCCState<Set<string>>(new Set());
   const togglingIds = useGet(togglingIds$);
@@ -738,6 +901,17 @@ function ScheduleListView({
             Set up a schedule and your agents will handle the rest.
           </p>
         </div>
+        {onNew && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi mt-2 h-9 gap-2 rounded-lg border"
+            onClick={onNew}
+          >
+            <IconPlus size={14} stroke={2} />
+            Add schedule
+          </Button>
+        )}
       </div>
     );
   }
@@ -858,6 +1032,9 @@ export function ZeroSchedulePage() {
   const saving$ = useCCState(false);
   const saving = useGet(saving$);
   const setSaving = useSet(saving$);
+  const createOpen$ = useCCState(false);
+  const createOpen = useGet(createOpen$);
+  const setCreateOpen = useSet(createOpen$);
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
@@ -872,6 +1049,22 @@ export function ZeroSchedulePage() {
 
   const openEditSchedule = (entry: CombinedEntry) => {
     setEditingEntry(entry);
+  };
+
+  const handleCreateSave = (
+    params: ZeroScheduleSaveParams & { composeId: string },
+  ) => {
+    setSaving(true);
+    detach(
+      saveSchedule(params)
+        .then(() => {
+          setCreateOpen(false);
+        })
+        .finally(() => {
+          setSaving(false);
+        }),
+      Reason.DomCallback,
+    );
   };
 
   const handleDialogSave = (
@@ -923,28 +1116,41 @@ export function ZeroSchedulePage() {
               Automated tasks scheduled across all agents in your workspace.
             </p>
           </div>
-          <Tabs
-            value={scheduleViewMode}
-            onValueChange={(v) => setScheduleViewMode(v as "list" | "calendar")}
-            className="shrink-0"
-          >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger
-                value="list"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconList size={14} stroke={1.5} />
-                List
-              </TabsTrigger>
-              <TabsTrigger
-                value="calendar"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconLayoutGrid size={14} stroke={1.5} />
-                Calendar
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              onClick={() => setCreateOpen(true)}
+            >
+              <IconPlus size={14} stroke={2} />
+              Add schedule
+            </Button>
+            <Tabs
+              value={scheduleViewMode}
+              onValueChange={(v) =>
+                setScheduleViewMode(v as "list" | "calendar")
+              }
+              className="shrink-0"
+            >
+              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                <TabsTrigger
+                  value="list"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconList size={14} stroke={1.5} />
+                  List
+                </TabsTrigger>
+                <TabsTrigger
+                  value="calendar"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconLayoutGrid size={14} stroke={1.5} />
+                  Calendar
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
       </header>
 
@@ -964,6 +1170,7 @@ export function ZeroSchedulePage() {
                   onEdit={openEditSchedule}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
+                  onNew={() => setCreateOpen(true)}
                 />
               ) : (
                 <ScheduleCalendarView
@@ -982,6 +1189,14 @@ export function ZeroSchedulePage() {
         onClose={() => setEditingEntry(null)}
         onSave={handleDialogSave}
         saving={saving}
+      />
+      <ScheduleCreateDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSave={handleCreateSave}
+        saving={saving}
+        agents={agents}
+        defaultComposeId={defaultComposeId}
       />
     </div>
   );

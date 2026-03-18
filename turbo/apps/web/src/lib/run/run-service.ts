@@ -404,11 +404,12 @@ async function loadCompose(
   };
 }
 
-async function authorizeCompose(
+function authorizeCompose(
   userId: string,
+  orgId: string,
   compose: { id: string; userId: string; orgId: string },
-): Promise<void> {
-  const hasAccess = await canAccessCompose(userId, compose);
+): void {
+  const hasAccess = canAccessCompose(userId, orgId, compose);
   if (!hasAccess) {
     throw forbidden("You do not have permission to access this agent");
   }
@@ -700,7 +701,7 @@ export async function createRun(
     agentComposeVersionId,
     params.composeId,
   );
-  await authorizeCompose(userId, compose);
+  authorizeCompose(userId, params.orgId, compose);
   const authorizeTime = Date.now();
 
   // Step 3: Validate template vars and image access (for new runs only)
@@ -819,7 +820,7 @@ export async function dispatchQueuedRun(
     agentComposeVersionId,
     params.composeId,
   );
-  await authorizeCompose(userId, queuedCompose);
+  authorizeCompose(userId, params.orgId, queuedCompose);
   const authorizeTime = Date.now();
 
   // Validate template vars and image access (for new runs only)

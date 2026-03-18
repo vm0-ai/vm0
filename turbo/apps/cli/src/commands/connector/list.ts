@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
+  hasRequiredScopes,
   isFeatureEnabled,
   type ConnectorType,
 } from "@vm0/core";
@@ -44,16 +45,24 @@ export const listCommand = new Command()
       // Print rows
       for (const type of allTypes) {
         const connector = connectedMap.get(type);
+        const scopeMismatch =
+          connector !== undefined &&
+          connector.authMethod === "oauth" &&
+          !hasRequiredScopes(type, connector.oauthScopes);
         const status = connector
           ? connector.needsReconnect
             ? chalk.yellow("!".padEnd(statusWidth))
-            : chalk.green("✓".padEnd(statusWidth))
+            : scopeMismatch
+              ? chalk.yellow("!".padEnd(statusWidth))
+              : chalk.green("✓".padEnd(statusWidth))
           : chalk.dim("-".padEnd(statusWidth));
         const account = connector?.needsReconnect
           ? chalk.yellow("(reconnect needed)")
-          : connector?.externalUsername
-            ? `@${connector.externalUsername}`
-            : chalk.dim("-");
+          : scopeMismatch
+            ? chalk.yellow("(permissions update available)")
+            : connector?.externalUsername
+              ? `@${connector.externalUsername}`
+              : chalk.dim("-");
 
         const row = [type.padEnd(typeWidth), status, account].join("  ");
         console.log(row);

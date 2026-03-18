@@ -8,14 +8,14 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { platformLogsByIdContract } from "@vm0/core";
+import { logsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
-import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { eq, and } from "drizzle-orm";
@@ -116,7 +116,7 @@ function notFoundResponse() {
   };
 }
 
-const router = tsr.router(platformLogsByIdContract, {
+const router = tsr.router(logsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
     initServices();
 
@@ -228,7 +228,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(platformLogsByIdContract, router, {
+const handler = createHandler(logsByIdContract, router, {
   errorHandler,
 });
 

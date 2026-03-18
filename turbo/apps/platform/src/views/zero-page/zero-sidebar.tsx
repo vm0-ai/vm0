@@ -26,6 +26,7 @@ import {
   IconGripVertical,
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
+  IconCrown,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -137,7 +138,8 @@ export type ZeroNavId =
   | "activity"
   | "works"
   | "settings"
-  | "preferences";
+  | "preferences"
+  | "queue";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MANAGE_NAV = [
@@ -320,7 +322,8 @@ function AccountDropdown({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[240px]"
+        className="w-[240px] rounded-lg"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       >
         {/* Current account header */}
         {current && (
@@ -343,15 +346,39 @@ function AccountDropdown({
                 </div>
               </div>
             </div>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator
+              className="h-0 bg-transparent"
+              style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+            />
           </>
         )}
 
-        {/* Switch account sub-menu or Add account */}
+        {/* Preferences (standalone) */}
+        <DropdownMenuItem
+          onClick={() => handleAccountAction("preferences")}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconAdjustmentsHorizontal
+            size={18}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          <span>Preferences</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator
+          className="h-0 bg-transparent"
+          style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+        />
+
+        {/* Account management group */}
         {hasOthers ? (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5">
-              <IconSwitchHorizontal size={18} stroke={1.5} />
+            <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
+              <IconSwitchHorizontal
+                size={18}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
               <span className="flex-1">Switch account</span>
               <IconChevronRight
                 size={14}
@@ -359,12 +386,15 @@ function AccountDropdown({
                 className="text-muted-foreground"
               />
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-[220px]">
+            <DropdownMenuSubContent
+              className="w-[220px] rounded-lg"
+              style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+            >
               {others.map((account) => (
                 <DropdownMenuItem
                   key={account.sessionId}
                   onClick={() => handleSwitchSession(account.sessionId)}
-                  className="gap-3 px-3 py-2.5"
+                  className="gap-3 px-3 py-2.5 rounded-lg"
                 >
                   <AccountAvatar
                     imageUrl={account.imageUrl}
@@ -381,12 +411,19 @@ function AccountDropdown({
                   </div>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator
+                className="h-0 bg-transparent"
+                style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+              />
               <DropdownMenuItem
                 onClick={handleAddAccount}
-                className="gap-3 px-3 py-2.5"
+                className="gap-3 px-3 py-2.5 rounded-lg"
               >
-                <IconPlus size={18} stroke={1.5} />
+                <IconPlus
+                  size={18}
+                  stroke={1.5}
+                  className="text-muted-foreground"
+                />
                 <span>Add account</span>
               </DropdownMenuItem>
             </DropdownMenuSubContent>
@@ -394,44 +431,46 @@ function AccountDropdown({
         ) : (
           <DropdownMenuItem
             onClick={handleAddAccount}
-            className="gap-3 px-3 py-2.5"
+            className="gap-3 px-3 py-2.5 rounded-lg"
           >
-            <IconPlus size={18} stroke={1.5} />
+            <IconPlus
+              size={18}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
             <span>Add account</span>
           </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
-
-        {/* Actions */}
-        <DropdownMenuItem
-          onClick={() => handleAccountAction("preferences")}
-          className="gap-3 px-3 py-2.5"
-        >
-          <IconAdjustmentsHorizontal size={18} stroke={1.5} />
-          <span>Preferences</span>
-        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => handleAccountAction("manage")}
-          className="gap-3 px-3 py-2.5"
+          className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconUser size={18} stroke={1.5} />
+          <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
           <span>Manage account</span>
         </DropdownMenuItem>
         {showExportData && (
           <DropdownMenuItem
             onClick={() => window.open(`${apiBase}/export`, "_blank")}
-            className="gap-3 px-3 py-2.5"
+            className="gap-3 px-3 py-2.5 rounded-lg"
           >
-            <IconDatabaseExport size={18} stroke={1.5} />
+            <IconDatabaseExport
+              size={18}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
             <span>Export data</span>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => handleAccountAction("signout")}
-          className="gap-3 px-3 py-2.5"
+          className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconLogout size={18} stroke={1.5} />
+          <IconLogout
+            size={18}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
           <span>Sign out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -631,11 +670,25 @@ function ManagePinnedAgentsDialog({
   pinnedIds: string[];
   onPinnedIdsChange: (ids: string[]) => void;
 }) {
-  const orderedPinned = pinnedIds
+  const draftIds$ = useCCState(pinnedIds);
+  const draftIds = useGet(draftIds$);
+  const setDraftIds = useSet(draftIds$);
+
+  const prevOpen$ = useCCState(false);
+  const prevOpen = useGet(prevOpen$);
+  const setPrevOpen = useSet(prevOpen$);
+  if (open && !prevOpen) {
+    setDraftIds(pinnedIds);
+  }
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+  }
+
+  const orderedPinned = draftIds
     .map((id) => subagents.find((a) => a.id === id))
     .filter((a): a is SubagentInfo => a !== undefined);
 
-  const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
+  const unpinned = subagents.filter((a) => !draftIds.includes(a.id));
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -649,23 +702,28 @@ function ManagePinnedAgentsDialog({
     if (!over || active.id === over.id) {
       return;
     }
-    const oldIndex = pinnedIds.indexOf(String(active.id));
-    const newIndex = pinnedIds.indexOf(String(over.id));
+    const oldIndex = draftIds.indexOf(String(active.id));
+    const newIndex = draftIds.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) {
       return;
     }
-    const next = [...pinnedIds];
+    const next = [...draftIds];
     next.splice(oldIndex, 1);
-    next.splice(newIndex, 0, pinnedIds[oldIndex]!);
-    onPinnedIdsChange(next);
+    next.splice(newIndex, 0, draftIds[oldIndex]!);
+    setDraftIds(next);
   };
 
   const togglePin = (agentId: string) => {
-    if (pinnedIds.includes(agentId)) {
-      onPinnedIdsChange(pinnedIds.filter((id) => id !== agentId));
-    } else if (pinnedIds.length < MAX_PINNED) {
-      onPinnedIdsChange([...pinnedIds, agentId]);
+    if (draftIds.includes(agentId)) {
+      setDraftIds(draftIds.filter((id) => id !== agentId));
+    } else if (draftIds.length < MAX_PINNED) {
+      setDraftIds([...draftIds, agentId]);
     }
+  };
+
+  const handleSave = () => {
+    onPinnedIdsChange(draftIds);
+    onOpenChange(false);
   };
 
   return (
@@ -698,7 +756,12 @@ function ManagePinnedAgentsDialog({
             <span className="text-sm font-medium text-foreground flex-1 truncate">
               {displayName}
             </span>
-            <span className="text-[11px] text-muted-foreground/60 mr-0.5">
+            <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium bg-background">
+              <IconCrown
+                size={12}
+                stroke={1.8}
+                className="shrink-0 text-amber-500 dark:text-amber-400"
+              />
               Lead
             </span>
           </div>
@@ -755,12 +818,12 @@ function ManagePinnedAgentsDialog({
                     type="button"
                     className={cn(
                       "transition-colors px-2 py-0.5 rounded-md text-xs font-medium",
-                      pinnedIds.length >= MAX_PINNED
+                      draftIds.length >= MAX_PINNED
                         ? "text-muted-foreground/30 cursor-not-allowed"
                         : "text-primary hover:text-primary/80 hover:bg-primary/10",
                     )}
                     onClick={() => togglePin(agent.id)}
-                    disabled={pinnedIds.length >= MAX_PINNED}
+                    disabled={draftIds.length >= MAX_PINNED}
                   >
                     Pin
                   </button>
@@ -778,12 +841,16 @@ function ManagePinnedAgentsDialog({
           </div>
         )}
 
-        <div className="px-5 pb-5 pt-2">
+        <div className="px-5 pb-5 pt-2 flex justify-end gap-2">
           <Button
-            className="w-full"
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi"
             onClick={() => onOpenChange(false)}
-            disabled={saving}
           >
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </div>

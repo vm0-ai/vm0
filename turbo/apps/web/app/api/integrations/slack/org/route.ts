@@ -6,7 +6,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
-import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
@@ -59,6 +59,8 @@ export async function GET(request: Request) {
   const { org, member } = await resolveOrg(authCtx, orgSlug);
 
   const db = globalThis.services.db;
+
+  log.info("Fetching Slack org status", { orgId: org.orgId, userId });
 
   // Find the workspace installation for this org
   const [orgInstallation] = await db

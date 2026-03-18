@@ -12,7 +12,7 @@ Azure Foundry support is experimental and may change in future releases.
 ## Quick Setup
 
 ```bash
-vm0 model-provider setup --type azure-foundry
+vm0 org model-provider setup --type azure-foundry
 ```
 
 You'll be prompted for:
@@ -30,7 +30,7 @@ You'll be prompted for:
 ## Non-Interactive Setup
 
 ```bash
-vm0 model-provider setup --type azure-foundry \
+vm0 org model-provider setup --type azure-foundry \
   --secret ANTHROPIC_FOUNDRY_API_KEY=your-api-key \
   --secret ANTHROPIC_FOUNDRY_RESOURCE=your-resource-name \
   --model claude-sonnet-4-6

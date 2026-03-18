@@ -33,10 +33,7 @@ import { expandEnvironmentFromCompose } from "./environment";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
-import {
-  getDefaultModelProvider,
-  getOrgDefaultModelProvider,
-} from "../model-provider/model-provider-service";
+import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { connectors } from "../../db/schema/connector";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
@@ -77,7 +74,7 @@ const MODEL_PROVIDER_ENV_VARS = [
  */
 function resolveProviderType(
   framework: string,
-  defaultProvider: Awaited<ReturnType<typeof getDefaultModelProvider>>,
+  defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>,
   explicitModelProvider?: string,
 ): ModelProviderType {
   let providerType: ModelProviderType;
@@ -94,7 +91,7 @@ function resolveProviderType(
   } else {
     throw badRequest(
       "No model provider configured. " +
-        "Run 'vm0 model-provider setup' to configure one, " +
+        "Run 'vm0 org model-provider setup' to configure one, " +
         "or add environment variables to your vm0.yaml.",
     );
   }
@@ -186,7 +183,6 @@ interface ModelProviderSecretResult {
  */
 async function resolveModelProviderSecrets(
   orgId: string,
-  userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   explicitModelProvider?: string,
@@ -198,22 +194,13 @@ async function resolveModelProviderSecrets(
     return { secrets, injectedEnvironment: undefined };
   }
 
-  // Fetch default provider: try user-level first, fall back to org-level
-  const userProvider = await getDefaultModelProvider(
+  // Fetch org-level default provider
+  const defaultProvider = await getOrgDefaultModelProvider(
     orgId,
-    userId,
     framework as ModelProviderFramework,
   );
-  const defaultProvider =
-    userProvider ??
-    (await getOrgDefaultModelProvider(
-      orgId,
-      framework as ModelProviderFramework,
-    ));
 
-  // Secrets must match the provider's ownership scope:
-  // user provider → user secrets, org provider → org secrets
-  const secretUserId = userProvider ? userId : ORG_SENTINEL_USER_ID;
+  const secretUserId = ORG_SENTINEL_USER_ID;
 
   const providerType = resolveProviderType(
     framework,
@@ -621,7 +608,6 @@ async function resolveSecretsAndEnvironment(
       fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
       resolveModelProviderSecrets(
         orgId,
-        userId,
         framework,
         hasExplicitModelProviderConfig,
         modelProvider,

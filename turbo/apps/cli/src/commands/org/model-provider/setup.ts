@@ -22,7 +22,7 @@ import {
   promptForAuthMethod,
   promptForSecrets,
   collectSecrets,
-} from "../../model-provider/shared";
+} from "../../../lib/domain/model-provider/shared";
 
 async function handleInteractiveMode(): Promise<SetupInput | null> {
   if (!isInteractive()) {

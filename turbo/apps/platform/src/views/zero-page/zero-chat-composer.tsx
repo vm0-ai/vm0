@@ -5,6 +5,7 @@ import {
   IconSend,
   IconPaperclip,
   IconLoader2,
+  IconPlayerStop,
   IconPlug,
   IconPlus,
 } from "@tabler/icons-react";
@@ -60,7 +61,7 @@ import {
   zeroAddedSkills$,
   addZeroSkill$,
   saveZeroSkills$,
-} from "../../signals/zero-page/zero-meet.ts";
+} from "../../signals/zero-page/zero-skills.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,8 @@ interface ZeroChatComposerProps {
   onInputChange: (value: string) => void;
   onSend: (message: string, options?: { modelProvider: string }) => void;
   sending?: boolean;
+  /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
+  onCancel?: () => void;
   agentName: string;
   /** Navigate to connectors management page. */
   onManageConnectors?: () => void;
@@ -322,6 +325,7 @@ export function ZeroChatComposer({
   onInputChange,
   onSend,
   sending,
+  onCancel,
   agentName,
   onManageConnectors,
   className,
@@ -505,19 +509,31 @@ export function ZeroChatComposer({
                     ))}
                   </SelectContent>
                 </Select>
-                <Button
-                  size="sm"
-                  className="rounded-lg h-9 w-9 p-0 shrink-0"
-                  onClick={handleSend}
-                  disabled={!input.trim() || sending}
-                  aria-label="Send"
-                >
-                  {sending ? (
-                    <IconLoader2 size={16} className="animate-spin" />
-                  ) : (
-                    <IconSend size={16} stroke={2} />
-                  )}
-                </Button>
+                {sending && onCancel ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="rounded-lg h-9 w-9 p-0 shrink-0"
+                    onClick={onCancel}
+                    aria-label="Stop"
+                  >
+                    <IconPlayerStop size={16} />
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="rounded-lg h-9 w-9 p-0 shrink-0"
+                    onClick={handleSend}
+                    disabled={!input.trim() || sending}
+                    aria-label="Send"
+                  >
+                    {sending ? (
+                      <IconLoader2 size={16} className="animate-spin" />
+                    ) : (
+                      <IconSend size={16} stroke={2} />
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

@@ -8,7 +8,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { sandboxTelemetry } from "../../../../../../src/db/schema/sandbox-telemetry";
 import { eq, and } from "drizzle-orm";
-import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 
 /**

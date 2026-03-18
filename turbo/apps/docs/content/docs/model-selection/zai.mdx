@@ -8,7 +8,7 @@ description: Use GLM models with VM0
 ## Quick Setup
 
 ```bash
-vm0 model-provider setup --type zai-api-key
+vm0 org model-provider setup --type zai-api-key
 ```
 
 You'll be prompted for your API key and model selection.
@@ -29,10 +29,10 @@ Visit the [Z.AI Platform](https://z.ai/model-api) to create and obtain an API ke
 
 ```bash
 # With default model
-vm0 model-provider setup --type zai-api-key --secret "xxx"
+vm0 org model-provider setup --type zai-api-key --secret "xxx"
 
 # With specific model
-vm0 model-provider setup --type zai-api-key --secret "xxx" --model "glm-4.5-air"
+vm0 org model-provider setup --type zai-api-key --secret "xxx" --model "glm-4.5-air"
 ```
 
 ## Run

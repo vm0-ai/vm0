@@ -32,7 +32,7 @@ export const creditUsage = pgTable(
     outputTokens: bigint("output_tokens", { mode: "number" })
       .notNull()
       .default(0),
-    numTurns: integer("num_turns").notNull().default(0),
+    numEvents: integer("num_events").notNull().default(0),
     creditsCharged: bigint("credits_charged", { mode: "number" }),
     status: varchar("status", { length: 20 }).notNull().default("pending"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

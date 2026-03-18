@@ -331,10 +331,14 @@ describe("GET /api/cron/execute-schedules", () => {
       });
       await enableTestSchedule(testComposeId, "queue-test");
 
-      // 3. Create a pending run to block concurrency (default limit is 1)
+      // 3. Advance time close to schedule (within PENDING_RUN_TTL_MS=15min)
+      //    so the blocking run is not considered stale by concurrency check
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:55:00Z"));
+
+      // 4. Create a pending run to block concurrency (default limit is 1)
       await createTestRun(testComposeId, "Blocking run");
 
-      // 4. Advance time to 9:01 AM (schedule is due)
+      // 5. Advance time to 9:01 AM (schedule is due)
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
 
       // 5. Execute cron - run should be queued (not failed)
@@ -365,10 +369,14 @@ describe("GET /api/cron/execute-schedules", () => {
       });
       await enableTestSchedule(testComposeId, "queue-advance-test");
 
-      // 3. Create a blocking run
+      // 3. Advance time close to schedule (within PENDING_RUN_TTL_MS=15min)
+      //    so the blocking run is not considered stale by concurrency check
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:55:00Z"));
+
+      // 4. Create a blocking run
       await createTestRun(testComposeId, "Blocking run");
 
-      // 4. Advance to 9:01 AM and execute cron
+      // 5. Advance to 9:01 AM and execute cron
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
       await GET(authenticatedCronRequest());
 
@@ -394,10 +402,14 @@ describe("GET /api/cron/execute-schedules", () => {
       });
       await enableTestSchedule(testComposeId, "onetime-queue-test");
 
-      // 3. Create a blocking run
+      // 3. Advance time close to schedule (within PENDING_RUN_TTL_MS=15min)
+      //    so the blocking run is not considered stale by concurrency check
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:55:00Z"));
+
+      // 4. Create a blocking run
       await createTestRun(testComposeId, "Blocking run");
 
-      // 4. Advance to 9:01 AM and execute cron
+      // 5. Advance to 9:01 AM and execute cron
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
       await GET(authenticatedCronRequest());
 

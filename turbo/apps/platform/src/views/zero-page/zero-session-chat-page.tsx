@@ -10,6 +10,7 @@ import {
   IconX,
   IconPhoto,
   IconChartLine,
+  IconPlayerStop,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -36,6 +37,7 @@ import {
   zeroChatRunSummaries$,
   zeroChatRunStatus$,
   zeroChatQueuePosition$,
+  cancelActiveRun$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
@@ -72,6 +74,7 @@ export function ZeroSessionChatPage({
   const setInput = useSet(setZeroChatInput$);
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
+  const cancelRun = useSet(cancelActiveRun$);
 
   const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
   const messagesEndEl = useGet(messagesEndEl$);
@@ -181,6 +184,7 @@ export function ZeroSessionChatPage({
             onInputChange={setInput}
             onSend={handleSend}
             sending={sending}
+            onCancel={() => void cancelRun()}
             agentName={agentName}
           />
         </div>
@@ -273,6 +277,9 @@ function isImageFilename(filename: string): boolean {
 
 function UserMessage({ message }: { message: ZeroChatMessage }) {
   const { cleanContent, parsed } = parseInlineAttachments(message.content);
+  // Preserve user-entered line breaks: CommonMark collapses single newlines
+  // into spaces, so convert each \n to a hard line break (two trailing spaces + \n).
+  const displayContent = cleanContent.replace(/\n/g, "  \n");
   const lightboxUrl$ = useCCState<string | null>(null);
   const lightboxUrl = useGet(lightboxUrl$);
   const setLightboxUrl = useSet(lightboxUrl$);
@@ -303,7 +310,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
         <div className="flex flex-col items-end min-w-0">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
             <div className="px-4 py-3">
-              <Markdown source={cleanContent} />
+              <Markdown source={displayContent} />
             </div>
             {allAttachments.length > 0 && (
               <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
@@ -402,7 +409,19 @@ function RunActivityLine() {
           key={label}
           className="text-muted-foreground truncate animate-in fade-in slide-in-from-bottom-1 duration-300"
         >
-          {label}
+          {isQueued ? (
+            <>
+              {label}{" "}
+              <SimpleLink
+                href="/queue"
+                className="underline hover:text-foreground transition-colors"
+              >
+                View queue
+              </SimpleLink>
+            </>
+          ) : (
+            label
+          )}
         </p>
       </div>
     </div>
@@ -479,6 +498,12 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           {avatar}
           <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-4 py-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
             <Markdown source={message.content} />
+            {message.cancelled && (
+              <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">
+                <IconPlayerStop size={12} />
+                <span>Cancelled</span>
+              </div>
+            )}
           </div>
         </div>
         {logButton}

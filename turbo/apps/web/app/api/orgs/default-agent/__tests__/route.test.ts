@@ -48,19 +48,19 @@ describe("PUT /api/orgs/default-agent", () => {
     expect(data.agentComposeId).toBe(compose.composeId);
   });
 
-  it("should allow admin to unset default agent", async () => {
+  it("should return 409 when trying to unset an already-configured default agent", async () => {
     await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
     // Set first
     await putDefaultAgent(undefined, compose.composeId);
 
-    // Then unset
+    // Attempt to unset — blocked by 409 guard
     const response = await putDefaultAgent(undefined, null);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(409);
 
     const data = await response.json();
-    expect(data.agentComposeId).toBeNull();
+    expect(data.error.code).toBe("CONFLICT");
   });
 
   it("should reject non-admin members", async () => {
@@ -101,22 +101,28 @@ describe("PUT /api/orgs/default-agent", () => {
     });
   });
 
-  it("should dual-write null to Clerk org metadata when unsetting", async () => {
+  it("should not update Clerk metadata when 409 conflict prevents unsetting", async () => {
     await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
     await putDefaultAgent(undefined, compose.composeId);
-    await putDefaultAgent(undefined, null);
 
     const client = await vi.mocked(clerkClient)();
+    const callCountAfterSet = vi.mocked(
+      client.organizations.updateOrganizationMetadata,
+    ).mock.calls.length;
+
+    // Attempt to unset — should be rejected with 409
+    const response = await putDefaultAgent(undefined, null);
+    expect(response.status).toBe(409);
+
+    // updateOrganizationMetadata should not have been called again
     expect(
       client.organizations.updateOrganizationMetadata,
-    ).toHaveBeenLastCalledWith(expect.any(String), {
-      publicMetadata: { default_agent_compose_id: null },
-    });
+    ).toHaveBeenCalledTimes(callCountAfterSet);
   });
 
-  it("should return 200 when setting same agent twice", async () => {
+  it("should return 409 when setting default agent twice", async () => {
     await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
@@ -124,11 +130,23 @@ describe("PUT /api/orgs/default-agent", () => {
     const response1 = await putDefaultAgent(undefined, compose.composeId);
     expect(response1.status).toBe(200);
 
-    // Set same default again (idempotent)
+    // Attempt to set again — blocked by 409 guard
     const response2 = await putDefaultAgent(undefined, compose.composeId);
-    expect(response2.status).toBe(200);
+    expect(response2.status).toBe(409);
 
     const data = await response2.json();
+    expect(data.error.code).toBe("CONFLICT");
+  });
+
+  it("should allow setting default agent when none is configured", async () => {
+    await context.setupUser();
+    const compose = await createTestCompose("test-agent");
+
+    // No default agent configured yet — should succeed
+    const response = await putDefaultAgent(undefined, compose.composeId);
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
     expect(data.agentComposeId).toBe(compose.composeId);
   });
 });

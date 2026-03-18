@@ -8,6 +8,7 @@ import {
   IconMessageCircle,
   IconUsers,
   IconMoodSad,
+  IconFlask,
 } from "@tabler/icons-react";
 import {
   Tabs,
@@ -24,6 +25,7 @@ import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
 import { ZeroSkillsTab } from "./zero-skills-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
+import { ZeroExperimentalTab } from "./zero-experimental-tab.tsx";
 import { TONE_OPTIONS, type Tone } from "./zero-tone-constants.ts";
 import type { ScheduleEntry } from "./zero-schedule-card.tsx";
 import {
@@ -53,6 +55,11 @@ import {
   removeZeroJobSkill$,
   saveZeroJobSkills$,
   discardZeroJobSkills$,
+  zeroJobCapabilities$,
+  zeroJobCapabilitiesDirty$,
+  toggleZeroJobCapability$,
+  saveZeroJobCapabilities$,
+  discardZeroJobCapabilities$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { Link } from "../router/link.tsx";
@@ -183,7 +190,8 @@ function isValidTab(tab: string): boolean {
     tab === "connectors" ||
     tab === "schedule" ||
     tab === "profile" ||
-    tab === "instructions"
+    tab === "instructions" ||
+    tab === "experimental"
   );
 }
 
@@ -317,6 +325,26 @@ function JobInstructionsTab() {
   );
 }
 
+function JobExperimentalTab() {
+  const capabilities = useGet(zeroJobCapabilities$);
+  const capabilitiesDirty = useGet(zeroJobCapabilitiesDirty$);
+  const capabilitiesSaving = useGet(zeroJobSettingsSaving$);
+  const toggleCapability = useSet(toggleZeroJobCapability$);
+  const saveCapabilities = useSet(saveZeroJobCapabilities$);
+  const discardCapabilities = useSet(discardZeroJobCapabilities$);
+
+  return (
+    <ZeroExperimentalTab
+      capabilities={capabilities}
+      capabilitiesDirty={capabilitiesDirty}
+      capabilitiesSaving={capabilitiesSaving}
+      onToggleCapability={toggleCapability}
+      onSaveCapabilities={() => detach(saveCapabilities(), Reason.DomCallback)}
+      onDiscardCapabilities={() => discardCapabilities()}
+    />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -423,6 +451,10 @@ export function ZeroJobDetailPage({
                   <IconFileText size={14} stroke={1.5} />
                   Instructions
                 </TabsTrigger>
+                <TabsTrigger value="experimental" className={TAB_TRIGGER_CLASS}>
+                  <IconFlask size={14} stroke={1.5} />
+                  Experimental
+                </TabsTrigger>
               </TabsList>
             </Tabs>
             <TooltipProvider delayDuration={300}>
@@ -466,6 +498,8 @@ export function ZeroJobDetailPage({
         )}
 
         {activeTab === "instructions" && <JobInstructionsTab />}
+
+        {activeTab === "experimental" && <JobExperimentalTab />}
       </main>
     </div>
   );

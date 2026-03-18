@@ -8,7 +8,6 @@ import { setupZeroPage$ } from "./zero-page/zero-page.ts";
 import { setupZeroJobDetailRoute$ } from "./zero-page/zero-job-detail-route.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
-
 const ROUTE_CONFIG = [
   {
     path: "/select-org",
@@ -29,6 +28,10 @@ const ROUTE_CONFIG = [
   {
     path: "/slack/connect",
     setup: setupAuthPageWrapper(setupSlackConnectPage$),
+  },
+  {
+    path: "/queue",
+    setup: setupAuthPageWrapper(setupZeroPage$),
   },
   {
     path: "/:tab/:sub",

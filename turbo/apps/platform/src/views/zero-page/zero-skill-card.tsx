@@ -19,6 +19,7 @@ interface ZeroSkillCardProps {
   onConnect: () => void;
   onDisconnect: () => void;
   onRemove: () => void;
+  onReviewScopes?: () => void;
 }
 
 export function ZeroSkillCard({
@@ -30,6 +31,7 @@ export function ZeroSkillCard({
   onConnect,
   onDisconnect,
   onRemove,
+  onReviewScopes,
 }: ZeroSkillCardProps) {
   const isPolling = pollingType === name;
 
@@ -74,6 +76,20 @@ export function ZeroSkillCard({
                   className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
                 >
                   Reconnect
+                </button>
+              </span>
+            ) : connector.connected && connector.scopeMismatch ? (
+              <span className="flex items-center gap-2 text-xs truncate">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                <span className="text-amber-600 dark:text-amber-400">
+                  Permissions update available
+                </span>
+                <button
+                  type="button"
+                  onClick={onReviewScopes}
+                  className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
+                >
+                  Review
                 </button>
               </span>
             ) : connector.connected ? (

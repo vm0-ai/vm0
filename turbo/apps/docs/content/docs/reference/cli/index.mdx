@@ -35,28 +35,28 @@ Manage third-party service connections.
 | `vm0 connector disconnect <type>` | Disconnect a third-party service | - |
 | `vm0 connector status <type>` | Show detailed status of a connector | - |
 
-## Model Provider Management
+## Organization Model Provider Management
 
-Configure model providers for agent runs.
+Configure model providers for agent runs at the organization level.
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
-| `vm0 model-provider list` | List configured model providers | - |
-| `vm0 model-provider setup` | Configure a model provider | `-t, --type <type>`, `-s, --secret <value>`, `-a, --auth-method <method>`, `-m, --model <model>` |
-| `vm0 model-provider delete <type>` | Delete a model provider | - |
-| `vm0 model-provider set-default <type>` | Set a model provider as default for its framework | - |
+| `vm0 org model-provider list` | List configured model providers | - |
+| `vm0 org model-provider setup` | Configure a model provider | `-t, --type <type>`, `-s, --secret <value>`, `-a, --auth-method <method>`, `-m, --model <model>` |
+| `vm0 org model-provider remove <type>` | Remove a model provider | - |
+| `vm0 org model-provider set-default <type>` | Set a model provider as default for its framework | - |
 
-### `vm0 model-provider setup` Examples
+### `vm0 org model-provider setup` Examples
 
 ```bash
 # Interactive setup
-vm0 model-provider setup
+vm0 org model-provider setup
 
 # Non-interactive setup
-vm0 model-provider setup --type anthropic-api-key --secret "sk-ant-xxx"
+vm0 org model-provider setup --type anthropic-api-key --secret "sk-ant-xxx"
 
 # Non-interactive with auth method and model
-vm0 model-provider setup --type aws-bedrock --auth-method iam --secret "AWS_ACCESS_KEY_ID=xxx" --secret "AWS_SECRET_ACCESS_KEY=yyy" --model claude-sonnet-4-20250514
+vm0 org model-provider setup --type aws-bedrock --auth-method iam --secret "AWS_ACCESS_KEY_ID=xxx" --secret "AWS_SECRET_ACCESS_KEY=yyy" --model claude-sonnet-4-20250514
 ```
 
 ## Secret Management

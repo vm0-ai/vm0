@@ -9,7 +9,7 @@ import {
 
 /**
  * Model-to-credit pricing configuration.
- * Maps each model identifier to its credit cost per 1M tokens and per turn.
+ * Maps each model identifier to its credit cost per 1M tokens.
  */
 export const creditPricing = pgTable(
   "credit_pricing",
@@ -20,7 +20,6 @@ export const creditPricing = pgTable(
     outputTokenPrice: bigint("output_token_price", {
       mode: "number",
     }).notNull(),
-    turnPrice: bigint("turn_price", { mode: "number" }).notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

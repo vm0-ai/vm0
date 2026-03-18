@@ -64,16 +64,14 @@ async function creditAtomic(
       }
 
       // Calculate credits: ceil(inputTokens * inputTokenPrice / 1_000_000) +
-      //                     ceil(outputTokens * outputTokenPrice / 1_000_000) +
-      //                     numTurns * turnPrice
+      //                     ceil(outputTokens * outputTokenPrice / 1_000_000)
       const inputCredits = Math.ceil(
         (record.inputTokens * pricing.inputTokenPrice) / 1_000_000,
       );
       const outputCredits = Math.ceil(
         (record.outputTokens * pricing.outputTokenPrice) / 1_000_000,
       );
-      const turnCredits = record.numTurns * pricing.turnPrice;
-      const creditsCharged = inputCredits + outputCredits + turnCredits;
+      const creditsCharged = inputCredits + outputCredits;
 
       await tx
         .update(creditUsage)

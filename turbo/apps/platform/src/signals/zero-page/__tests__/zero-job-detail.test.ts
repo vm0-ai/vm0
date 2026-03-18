@@ -31,8 +31,14 @@ import {
   removeZeroJobSkill$,
   saveZeroJobSkills$,
   discardZeroJobSkills$,
+  zeroJobCapabilities$,
+  zeroJobCapabilitiesDirty$,
+  toggleZeroJobCapability$,
+  saveZeroJobCapabilities$,
+  discardZeroJobCapabilities$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
+import { injectDefaultCapabilities } from "../compose-job";
 
 const context = testContext();
 
@@ -976,6 +982,260 @@ describe("zero-job-detail signals", () => {
       await context.store.set(saveZeroJobSkills$);
 
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
+    });
+  });
+
+  describe("capabilities management", () => {
+    function mockAgentWithCapabilities(caps?: string[]) {
+      return {
+        id: "compose-1",
+        name: "my-agent",
+        headVersionId: "v1",
+        content: {
+          version: "1",
+          agents: {
+            main: {
+              description: "A test agent",
+              framework: "claude-code",
+              ...(caps ? { experimental_capabilities: caps } : {}),
+            },
+          },
+        },
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-06-15T12:00:00Z",
+      };
+    }
+
+    async function setupWithCapabilities(caps?: string[]) {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentWithCapabilities(caps));
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent");
+    }
+
+    it("should seed capabilities from compose content", async () => {
+      await setupWithCapabilities(["agent:read", "artifact:write"]);
+
+      const caps = context.store.get(zeroJobCapabilities$);
+      expect(caps).toStrictEqual(["agent:read", "artifact:write"]);
+      expect(context.store.get(zeroJobCapabilitiesDirty$)).toBeFalsy();
+    });
+
+    it("should default to empty when not in compose", async () => {
+      await setupWithCapabilities();
+
+      const caps = context.store.get(zeroJobCapabilities$);
+      expect(caps).toStrictEqual([]);
+      expect(context.store.get(zeroJobCapabilitiesDirty$)).toBeFalsy();
+    });
+
+    it("should toggle capability and track dirty state", async () => {
+      await setupWithCapabilities(["agent:read"]);
+
+      context.store.set(toggleZeroJobCapability$, "artifact:write");
+
+      expect(context.store.get(zeroJobCapabilities$)).toStrictEqual([
+        "agent:read",
+        "artifact:write",
+      ]);
+      expect(context.store.get(zeroJobCapabilitiesDirty$)).toBeTruthy();
+
+      // Toggle off
+      context.store.set(toggleZeroJobCapability$, "agent:read");
+
+      expect(context.store.get(zeroJobCapabilities$)).toStrictEqual([
+        "artifact:write",
+      ]);
+    });
+
+    it("should discard capability changes", async () => {
+      await setupWithCapabilities(["agent:read"]);
+
+      context.store.set(toggleZeroJobCapability$, "artifact:write");
+      expect(context.store.get(zeroJobCapabilitiesDirty$)).toBeTruthy();
+
+      context.store.set(discardZeroJobCapabilities$);
+
+      expect(context.store.get(zeroJobCapabilities$)).toStrictEqual([
+        "agent:read",
+      ]);
+      expect(context.store.get(zeroJobCapabilitiesDirty$)).toBeFalsy();
+    });
+
+    it("should save capabilities via compose job", async () => {
+      let capturedJobBody: Record<string, unknown> = {};
+
+      await setupWithCapabilities(["agent:read"]);
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/compose/jobs",
+          async ({ request }) => {
+            capturedJobBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({
+              jobId: "job-1",
+              status: "completed",
+              result: {
+                composeId: "compose-1",
+                composeName: "my-agent",
+                versionId: "v2",
+                warnings: [],
+              },
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(
+            mockAgentWithCapabilities(["agent:read", "artifact:write"]),
+          );
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+      );
+
+      context.store.set(toggleZeroJobCapability$, "artifact:write");
+      await context.store.set(saveZeroJobCapabilities$);
+
+      // Verify capabilities were sent in the compose content
+      const content = capturedJobBody["content"] as Record<string, unknown>;
+      const agents = content["agents"] as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const mainAgent = agents["main"];
+      expect(mainAgent["experimental_capabilities"]).toStrictEqual([
+        "agent:read",
+        "artifact:write",
+      ]);
+
+      // After save, dirty state should be reset
+      expect(context.store.get(zeroJobCapabilitiesDirty$)).toBeFalsy();
+      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
+    });
+
+    it("should save empty capabilities array when all disabled", async () => {
+      let capturedJobBody: Record<string, unknown> = {};
+
+      await setupWithCapabilities(["agent:read"]);
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/compose/jobs",
+          async ({ request }) => {
+            capturedJobBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({
+              jobId: "job-1",
+              status: "completed",
+              result: {
+                composeId: "compose-1",
+                composeName: "my-agent",
+                versionId: "v2",
+                warnings: [],
+              },
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentWithCapabilities([]));
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+      );
+
+      // Toggle off the only capability
+      context.store.set(toggleZeroJobCapability$, "agent:read");
+      await context.store.set(saveZeroJobCapabilities$);
+
+      // Should send empty array, NOT undefined
+      const content = capturedJobBody["content"] as Record<string, unknown>;
+      const agents = content["agents"] as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const mainAgent = agents["main"];
+      expect(mainAgent["experimental_capabilities"]).toStrictEqual([]);
+    });
+  });
+
+  describe("injectDefaultCapabilities", () => {
+    it("should inject all capabilities when none present", () => {
+      const content = {
+        version: "1",
+        agents: { main: { framework: "claude-code" } },
+      };
+      const result = injectDefaultCapabilities(content) as typeof content & {
+        agents: {
+          main: { experimental_capabilities: string[] };
+        };
+      };
+      expect(result.agents.main.experimental_capabilities).toHaveLength(8);
+      expect(result.agents.main.experimental_capabilities).toContain(
+        "agent:read",
+      );
+      expect(result.agents.main.experimental_capabilities).toContain(
+        "schedule:write",
+      );
+    });
+
+    it("should preserve existing capabilities", () => {
+      const content = {
+        version: "1",
+        agents: {
+          main: {
+            framework: "claude-code",
+            experimental_capabilities: ["agent:read"],
+          },
+        },
+      };
+      const result = injectDefaultCapabilities(content);
+      expect(result).toBe(content); // same reference, no modification
+    });
+
+    it("should return content unchanged when no agents key", () => {
+      const content = { version: "1" };
+      const result = injectDefaultCapabilities(content);
+      expect(result).toBe(content);
+    });
+
+    it("should return content unchanged when agents is empty", () => {
+      const content = { version: "1", agents: {} };
+      const result = injectDefaultCapabilities(content);
+      expect(result).toBe(content);
+    });
+
+    it("should preserve empty array (user disabled all capabilities)", () => {
+      const content = {
+        version: "1",
+        agents: {
+          main: {
+            framework: "claude-code",
+            experimental_capabilities: [] as string[],
+          },
+        },
+      };
+      const result = injectDefaultCapabilities(content);
+      expect(result).toBe(content); // same reference, not re-injected
     });
   });
 });
