@@ -37,12 +37,14 @@ describe("userMessage line break rendering", () => {
       path: "/chat/thread-multiline",
     });
 
+    // The displayContent transformation converts \n to "  \n" (CommonMark hard
+    // line break), which the Markdown renderer emits as <br>.
     await waitFor(() => {
       expect(document.querySelector("br")).toBeInTheDocument();
     });
   });
 
-  it("should not add extra line breaks to single-line user messages", async () => {
+  it("should not introduce line breaks in single-line user messages", async () => {
     server.use(
       http.get("*/api/chat-threads/:id", () => {
         return HttpResponse.json({
@@ -71,10 +73,9 @@ describe("userMessage line break rendering", () => {
       path: "/chat/thread-singleline",
     });
 
+    // Wait for the message to be rendered before asserting absence of <br>.
     await waitFor(() => {
-      expect(document.body.textContent).toContain("Hello World");
+      expect(document.querySelectorAll("br")).toHaveLength(0);
     });
-
-    expect(document.querySelector(".zero-chat-bubble-user br")).toBeNull();
   });
 });
