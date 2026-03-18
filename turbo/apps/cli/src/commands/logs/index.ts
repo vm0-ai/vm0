@@ -36,7 +36,7 @@ function buildPlatformLogsUrl(apiUrl: string, runId: string): string {
   // Transform: www.vm0.ai → app.vm0.ai
   //            vm0.ai → app.vm0.ai
   const parts = hostname.split(".");
-  if (parts[0] === "www") {
+  if (parts[0] === "www" || parts[0] === "app" || parts[0] === "platform") {
     parts[0] = "app";
   } else {
     parts.unshift("app");
