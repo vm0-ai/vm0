@@ -252,7 +252,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
   });
 
   describe("DELETE /api/agent/composes/:id", () => {
-    it("sandbox token with agent:write can delete compose", async () => {
+    it("sandbox token with agent:write cannot delete compose", async () => {
       const agentName = `test-sandbox-delete-${Date.now()}`;
       const { composeId } = await createTestCompose(agentName);
 
@@ -270,7 +270,38 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await deleteDELETE(request);
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(403);
+
+      const data = await response.json();
+      expect(data.error.message).toContain("sandbox");
+    });
+
+    it("sandbox token with all capabilities cannot delete compose", async () => {
+      const agentName = `test-sandbox-delete-all-caps-${Date.now()}`;
+      const { composeId } = await createTestCompose(agentName);
+
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-123", [
+        "agent:read",
+        "agent:write",
+        "artifact:read",
+        "artifact:write",
+        "agent-run:read",
+        "agent-run:write",
+        "schedule:read",
+        "schedule:write",
+      ]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/composes/${composeId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      const response = await deleteDELETE(request);
+      expect(response.status).toBe(403);
     });
 
     it("sandbox token without agent:write gets 403", async () => {

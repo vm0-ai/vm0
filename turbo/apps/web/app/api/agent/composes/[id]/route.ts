@@ -16,6 +16,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
+import { isSandboxAuth } from "../../../../../src/lib/auth/capability-check";
 import { canAccessCompose } from "../../../../../src/lib/agent/compose-access";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
@@ -102,7 +103,20 @@ const router = tsr.router(composesByIdContract, {
     if (isAuthError(authResult)) return authResult;
     const { userId } = authResult;
 
-    // 2. Verify ownership (only owner can delete)
+    // 2. Block sandbox tokens — agents cannot delete other agents
+    if (isSandboxAuth(authResult)) {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "Agent deletion is not available from sandbox",
+            code: "FORBIDDEN",
+          },
+        },
+      };
+    }
+
+    // 3. Verify ownership (only owner can delete)
     const [compose] = await globalThis.services.db
       .select()
       .from(agentComposes)
@@ -120,7 +134,7 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    // 3. Check for running/pending runs
+    // 4. Check for running/pending runs
     const runningRuns = await globalThis.services.db
       .select({ id: agentRuns.id })
       .from(agentRuns)
@@ -148,12 +162,12 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    // 4. Delete agent (cascades handle related data)
+    // 5. Delete agent (cascades handle related data)
     await globalThis.services.db
       .delete(agentComposes)
       .where(eq(agentComposes.id, params.id));
 
-    // 5. Clean up agent-instructions volume (DB + S3)
+    // 6. Clean up agent-instructions volume (DB + S3)
     const storageName = getInstructionsStorageName(compose.name);
     const [storage] = await globalThis.services.db
       .select({ id: storages.id, s3Prefix: storages.s3Prefix })

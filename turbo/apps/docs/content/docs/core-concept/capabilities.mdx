@@ -31,7 +31,7 @@ If a request lacks the required capability, the API returns a `403 Forbidden` re
 | Capability | Category | Description |
 |------------|----------|-------------|
 | `agent:read` | Agent resources | Read agent composes and volumes |
-| `agent:write` | Agent resources | Create, update, and delete agent composes and volumes |
+| `agent:write` | Agent resources | Create and update agent composes and volumes |
 | `artifact:read` | Runtime resources | Read artifacts and memories |
 | `artifact:write` | Runtime resources | Write artifacts and memories |
 | `agent-run:read` | Operational | List and view agent runs |
@@ -42,6 +42,10 @@ If a request lacks the required capability, the API returns a `403 Forbidden` re
 All capabilities follow the `{resource}:{action}` format where action is either `read` or `write`.
 
 [Artifacts](/docs/core-concept/artifact) and [memories](/docs/core-concept/memory) are both runtime dynamic resources, so they share the `artifact:*` capability. Similarly, agent composes and [volumes](/docs/core-concept/volume) are agent static resources sharing the `agent:*` capability.
+
+<Callout type="info">
+Agent deletion is not available from sandbox. Deleting agents requires the CLI or web UI.
+</Callout>
 
 ## Configuration
 
