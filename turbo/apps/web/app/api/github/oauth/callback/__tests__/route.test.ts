@@ -79,7 +79,7 @@ describe("/api/github/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("Location");
-    expect(location).toContain("zero/works");
+    expect(location).toContain("works");
     expect(location).toContain("error=");
     expect(location).toContain("Missing%20installation%20ID");
   });
@@ -109,7 +109,7 @@ describe("/api/github/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("Location");
-    expect(location).toContain("zero/works");
+    expect(location).toContain("works");
     expect(location).not.toContain("error=");
   });
 
@@ -159,7 +159,7 @@ describe("/api/github/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("Location");
-    expect(location).toContain("zero/works");
+    expect(location).toContain("works");
     expect(location).not.toContain("error=");
 
     const installations = await findTestGitHubInstallations(installationId);
@@ -187,7 +187,7 @@ describe("/api/github/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("Location");
-    expect(location).toContain("zero/works");
+    expect(location).toContain("works");
     expect(location).toContain("pending=true");
     expect(location).not.toContain("error=");
 
@@ -210,7 +210,7 @@ describe("/api/github/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     const location = response.headers.get("Location");
-    expect(location).toContain("zero/works");
+    expect(location).toContain("works");
     expect(location).toContain("error=");
     expect(location).toContain("Invalid%20OAuth%20state");
   });
@@ -237,7 +237,7 @@ describe("/api/github/oauth/callback", () => {
 
     expect(response2.status).toBe(307);
     const location = response2.headers.get("Location");
-    expect(location).toContain("zero/works");
+    expect(location).toContain("works");
     expect(location).not.toContain("error=");
 
     const installations = await findTestGitHubInstallations(installationId);

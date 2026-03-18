@@ -10,7 +10,7 @@ import { IconArrowRight } from "@tabler/icons-react";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { getPlatformUrl } from "../../src/lib/url";
+import { getAppUrl } from "../../src/lib/url";
 import { isBlogEnabled } from "../../src/env";
 
 export default function Navbar() {
@@ -128,7 +128,7 @@ export default function Navbar() {
                   Sign out
                 </button>
                 <a
-                  href={getPlatformUrl()}
+                  href={getAppUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-get-access nav-desktop group"
@@ -230,7 +230,7 @@ export default function Navbar() {
                   Sign out
                 </button>
                 <a
-                  href={getPlatformUrl()}
+                  href={getAppUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mobile-menu-link group"

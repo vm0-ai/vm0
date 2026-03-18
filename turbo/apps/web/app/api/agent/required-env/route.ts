@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getUserId } from "../../../../src/lib/auth/get-auth-context";
 import { logger } from "../../../../src/lib/logger";
 import { extractAndGroupVariables } from "@vm0/core";
 import {

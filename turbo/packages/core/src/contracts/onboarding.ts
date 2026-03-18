@@ -9,6 +9,7 @@ const c = initContract();
  */
 export const onboardingStatusResponseSchema = z.object({
   needsOnboarding: z.boolean(),
+  isAdmin: z.boolean(),
   hasOrg: z.boolean(),
   hasModelProvider: z.boolean(),
   hasDefaultAgent: z.boolean(),
@@ -21,6 +22,7 @@ export const onboardingStatusResponseSchema = z.object({
       sound: z.string().optional(),
     })
     .nullable(),
+  defaultAgentSkills: z.array(z.string()),
 });
 
 export type OnboardingStatusResponse = z.infer<

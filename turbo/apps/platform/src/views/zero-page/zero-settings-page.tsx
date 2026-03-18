@@ -14,23 +14,28 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 import {
-  addProviderDialogOpen$,
-  setAddProviderDialogOpen$,
-  configuredProviders$,
-  defaultProvider$,
-  setDefaultProvider$,
-  openEditDialog$,
-  openDeleteDialog$,
-} from "../../signals/zero-page/settings/model-providers.ts";
+  orgAddProviderDialogOpen$,
+  setOrgAddProviderDialogOpen$,
+  orgConfiguredProviders$,
+  orgDefaultProvider$,
+  orgSetDefaultProvider$,
+  orgOpenEditDialog$,
+  orgOpenDeleteDialog$,
+} from "../../signals/zero-page/settings/org-model-providers.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
 import { getUILabel } from "./components/settings/provider-ui-config.ts";
 import { ProviderIcon } from "./components/settings/provider-icons.tsx";
-import { AddProviderDialog } from "./components/settings/add-provider-dialog.tsx";
-import { ProviderDialog } from "./components/settings/provider-dialog.tsx";
-import { DeleteProviderDialog } from "./components/settings/delete-provider-dialog.tsx";
+import { OrgAddProviderDialog } from "./components/settings/org-add-provider-dialog.tsx";
+import { OrgProviderDialog } from "./components/settings/org-provider-dialog.tsx";
+import { OrgDeleteProviderDialog } from "./components/settings/org-delete-provider-dialog.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 
 export function ZeroSettingsPage() {
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
@@ -48,43 +53,25 @@ export function ZeroSettingsPage() {
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-8">
-          <ZeroDefaultProvider />
-          <ZeroProviderList />
+          {isAdmin && <ZeroOrgDefaultProvider />}
+          <ZeroOrgProviderList isAdmin={isAdmin} />
         </div>
       </main>
 
-      <DeleteProviderDialog />
-      <ProviderDialog />
+      <OrgDeleteProviderDialog />
+      <OrgProviderDialog />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Skeleton card — matches the real card dimensions
+// Org default provider selector (admin only)
 // ---------------------------------------------------------------------------
 
-function SkeletonCard() {
-  return (
-    <div className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse">
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50" />
-        <span className="h-4 w-24 rounded bg-muted/50" />
-      </div>
-      <div className="flex h-11 items-center border-t border-border/30 px-5">
-        <span className="h-3 w-16 rounded bg-muted/30" />
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Default provider selector
-// ---------------------------------------------------------------------------
-
-function ZeroDefaultProvider() {
-  const providersLoadable = useLoadable(configuredProviders$);
-  const defaultProviderLoadable = useLoadable(defaultProvider$);
-  const setDefault = useSet(setDefaultProvider$);
+function ZeroOrgDefaultProvider() {
+  const providersLoadable = useLoadable(orgConfiguredProviders$);
+  const defaultProviderLoadable = useLoadable(orgDefaultProvider$);
+  const setDefault = useSet(orgSetDefaultProvider$);
   const pageSignal = useGet(pageSignal$);
 
   const isLoading =
@@ -124,7 +111,7 @@ function ZeroDefaultProvider() {
               Default provider
             </span>
             <span className="text-sm text-muted-foreground">
-              The provider used by default when running agents.
+              The default provider used by all members in this organization.
             </span>
           </div>
           {isLoading ? (
@@ -157,15 +144,15 @@ function ZeroDefaultProvider() {
 }
 
 // ---------------------------------------------------------------------------
-// Provider list
+// Org provider list
 // ---------------------------------------------------------------------------
 
-function ZeroProviderList() {
-  const providersLoadable = useLoadable(configuredProviders$);
-  const addDialogOpen = useGet(addProviderDialogOpen$);
-  const setAddDialogOpen = useSet(setAddProviderDialogOpen$);
-  const openEdit = useSet(openEditDialog$);
-  const openDelete = useSet(openDeleteDialog$);
+function ZeroOrgProviderList({ isAdmin }: { isAdmin: boolean }) {
+  const providersLoadable = useLoadable(orgConfiguredProviders$);
+  const addDialogOpen = useGet(orgAddProviderDialogOpen$);
+  const setAddDialogOpen = useSet(setOrgAddProviderDialogOpen$);
+  const openEdit = useSet(orgOpenEditDialog$);
+  const openDelete = useSet(orgOpenDeleteDialog$);
 
   const isLoading = providersLoadable.state === "loading";
   const providers =
@@ -180,8 +167,8 @@ function ZeroProviderList() {
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* Add provider — hidden when all types are configured */}
-        {!allConfigured && (
+        {/* Add provider — only for admins, hidden when all types configured */}
+        {isAdmin && !allConfigured && (
           <button
             type="button"
             onClick={() => setAddDialogOpen(true)}
@@ -221,16 +208,20 @@ function ZeroProviderList() {
           providers.map((p) => (
             <div
               key={p.type}
-              role="button"
-              tabIndex={0}
-              onClick={() => openEdit(p)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openEdit(p);
-                }
-              }}
-              className="zero-card cursor-pointer"
+              role={isAdmin ? "button" : undefined}
+              tabIndex={isAdmin ? 0 : undefined}
+              onClick={isAdmin ? () => openEdit(p) : undefined}
+              onKeyDown={
+                isAdmin
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openEdit(p);
+                      }
+                    }
+                  : undefined
+              }
+              className={`zero-card ${isAdmin ? "cursor-pointer" : ""}`}
             >
               <div className="flex h-14 items-center gap-2.5 px-5">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center">
@@ -243,41 +234,76 @@ function ZeroProviderList() {
 
               <div
                 className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2"
-                onClick={(e) => e.stopPropagation()}
+                onClick={isAdmin ? (e) => e.stopPropagation() : undefined}
               >
                 <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                   Configured
                 </span>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                      aria-label="More options"
-                    >
-                      <IconDotsVertical size={14} stroke={1.5} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40">
-                    <DropdownMenuItem onClick={() => openEdit(p)}>
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => openDelete(p.type)}
-                    >
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {isAdmin && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                        aria-label="More options"
+                      >
+                        <IconDotsVertical size={14} stroke={1.5} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={() => openEdit(p)}>
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => openDelete(p.type)}
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </div>
           ))}
+
+        {/* Empty state for members */}
+        {!isLoading && !isAdmin && providers.length === 0 && (
+          <div className="col-span-full text-center py-8">
+            <p className="text-sm text-muted-foreground">
+              No organization providers have been configured yet. Contact your
+              admin to set up model providers.
+            </p>
+          </div>
+        )}
       </div>
 
-      <AddProviderDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
+      {isAdmin && (
+        <OrgAddProviderDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton card — matches the real card dimensions
+// ---------------------------------------------------------------------------
+
+function SkeletonCard() {
+  return (
+    <div className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse">
+      <div className="flex h-14 items-center gap-2.5 px-5">
+        <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50" />
+        <span className="h-4 w-24 rounded bg-muted/50" />
+      </div>
+      <div className="flex h-11 items-center border-t border-border/30 px-5">
+        <span className="h-3 w-16 rounded bg-muted/30" />
+      </div>
     </div>
   );
 }

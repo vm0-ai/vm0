@@ -181,7 +181,7 @@ impl FirecrackerSandbox {
         })
     }
 
-    /// Start using a fresh boot with `--config-file --no-api`.
+    /// Start using a fresh boot with `--config-file --api-sock`.
     async fn start_fresh(&mut self) -> sandbox::Result<()> {
         let config = self.build_config();
         let config_json = serde_json::to_string_pretty(&config)
@@ -192,8 +192,8 @@ impl FirecrackerSandbox {
             .map_err(|e| SandboxError::StartFailed(format!("write config: {e}")))?;
 
         let username = current_username()?;
+        let api_sock = self.sock_paths.api_sock();
 
-        // sudo ip netns exec {ns} sudo -u {user} firecracker --config-file {path} --no-api
         let mut child = tokio::process::Command::new("sudo")
             .arg("ip")
             .arg("netns")
@@ -205,7 +205,8 @@ impl FirecrackerSandbox {
             .arg(&self.factory_config.binary_path)
             .arg("--config-file")
             .arg(self.sandbox_paths.config())
-            .arg("--no-api")
+            .arg("--api-sock")
+            .arg(&api_sock)
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -223,6 +224,25 @@ impl FirecrackerSandbox {
             Arc::clone(&self.crash_notify),
         );
         self.process = Some(child);
+
+        // Wait for API socket readiness so the balloon controller can connect.
+        let client = ApiClient::new(&api_sock);
+        let crash = Arc::clone(&self.crash_notify);
+        tokio::select! {
+            result = client.wait_for_ready(API_READY_TIMEOUT) => {
+                result.map_err(|e| SandboxError::StartFailed(format!(
+                    "API not ready: {e} (api_sock={})",
+                    api_sock.display()
+                )))?;
+            }
+            () = crash.notified() => {
+                return Err(SandboxError::StartFailed(format!(
+                    "firecracker process exited before API became ready (api_sock={})",
+                    api_sock.display()
+                )));
+            }
+        }
+
         info!(id = %self.id, "firecracker started (fresh boot)");
         Ok(())
     }
@@ -511,14 +531,11 @@ impl Sandbox for FirecrackerSandbox {
         ));
 
         // Spawn balloon controller to reclaim unused guest memory.
-        // Only in snapshot mode — fresh boot uses --no-api so no API socket exists.
-        if self.factory_config.snapshot.is_some() {
-            self.balloon_controller = Some(balloon::spawn(
-                self.sock_paths.api_sock().to_owned(),
-                self.config.resources.memory_mb,
-                Arc::clone(&self.crash_notify),
-            ));
-        }
+        self.balloon_controller = Some(balloon::spawn(
+            self.sock_paths.api_sock().to_owned(),
+            self.config.resources.memory_mb,
+            Arc::clone(&self.crash_notify),
+        ));
 
         info!(id = %self.id, "sandbox started");
         Ok(())

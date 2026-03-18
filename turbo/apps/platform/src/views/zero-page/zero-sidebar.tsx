@@ -20,7 +20,6 @@ import {
   IconSwitchHorizontal,
   IconSettings,
   IconLoader2,
-  IconRefresh,
   IconSearch,
   IconX,
   IconEdit,
@@ -66,6 +65,11 @@ import {
   Button,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
+import avatar1Img from "./assets/avatar-1.png";
+import avatar2Img from "./assets/avatar-2.png";
+import avatar3Img from "./assets/avatar-3.png";
+import avatar4Img from "./assets/avatar-4.png";
+import zeroAvatarImg from "./assets/zero-avatar.png";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -84,10 +88,10 @@ import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 const MAX_PINNED = 4;
 
 export const AGENT_AVATARS = [
-  "/avatars/avatar-1.png",
-  "/avatars/avatar-2.png",
-  "/avatars/avatar-3.png",
-  "/avatars/avatar-4.png",
+  avatar1Img,
+  avatar2Img,
+  avatar3Img,
+  avatar4Img,
 ] as const;
 
 function getAgentAvatar(name: string): string {
@@ -133,7 +137,8 @@ export type ZeroNavId =
   | "activity"
   | "works"
   | "settings"
-  | "preferences";
+  | "preferences"
+  | "queue";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MANAGE_NAV = [
@@ -185,7 +190,6 @@ interface ZeroSidebarProps {
   recentSessionsLoading?: boolean;
   recentSessionsError?: string | null;
   onNewChat?: (agent: { id: string; name: string } | null) => void;
-  onResetAgent?: () => void;
 }
 
 function AccountAvatar({
@@ -240,11 +244,9 @@ function useAccountSessions() {
 
 function AccountDropdown({
   onAccountAction,
-  onResetAgent,
   collapsed = false,
 }: {
   onAccountAction?: (action: ZeroAccountAction) => void;
-  onResetAgent?: () => void;
   collapsed?: boolean;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
@@ -458,15 +460,7 @@ function AccountDropdown({
             <span>Export data</span>
           </DropdownMenuItem>
         )}
-        {onResetAgent && (
-          <DropdownMenuItem
-            onClick={onResetAgent}
-            className="gap-3 px-3 py-2.5 rounded-lg text-amber-500"
-          >
-            <IconRefresh size={18} stroke={1.5} />
-            <span>Reset Default Agent</span>
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => handleAccountAction("signout")}
           className="gap-3 px-3 py-2.5 rounded-lg"
@@ -840,7 +834,7 @@ export function ZeroSidebar({
   activeId,
   agentName,
   defaultAgentRawName,
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   subagents = [],
   currentChatAgentId = null,
   collapsed = false,
@@ -853,7 +847,6 @@ export function ZeroSidebar({
   recentSessionsLoading = false,
   recentSessionsError = null,
   onNewChat,
-  onResetAgent,
 }: ZeroSidebarProps) {
   const displayName = agentName || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
@@ -899,7 +892,7 @@ export function ZeroSidebar({
   if (collapsed) {
     return (
       <VM0ClerkProvider>
-        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
+        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300">
           {/* Expand button */}
           <div className="shrink-0 flex items-center justify-center pt-3 pb-1">
             <button
@@ -954,11 +947,7 @@ export function ZeroSidebar({
 
           {/* Account avatar */}
           <div className="p-2 flex justify-center">
-            <AccountDropdown
-              onAccountAction={onAccountAction}
-              onResetAgent={onResetAgent}
-              collapsed
-            />
+            <AccountDropdown onAccountAction={onAccountAction} collapsed />
           </div>
         </aside>
       </VM0ClerkProvider>
@@ -967,7 +956,7 @@ export function ZeroSidebar({
 
   return (
     <VM0ClerkProvider>
-      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar overflow-hidden transition-all duration-300">
+      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300">
         {/* Organization switcher */}
         <div className="shrink-0 px-2 pt-1.5 pb-0">
           <div className="flex items-center justify-between rounded-lg pr-0 py-0.5">
@@ -1132,10 +1121,7 @@ export function ZeroSidebar({
               </Link>
             ))}
             {/* Account dropdown */}
-            <AccountDropdown
-              onAccountAction={onAccountAction}
-              onResetAgent={onResetAgent}
-            />
+            <AccountDropdown onAccountAction={onAccountAction} />
           </div>
         </div>
       </aside>

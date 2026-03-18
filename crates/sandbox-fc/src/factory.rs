@@ -106,14 +106,20 @@ pub struct FirecrackerFactory {
     config: FirecrackerConfig,
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
-    netns_pool: Option<tokio::sync::Mutex<NetnsPool>>,
+    netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
     overlay_pool: Option<tokio::sync::Mutex<OverlayPool>>,
 }
 
 impl FirecrackerFactory {
     /// Create a new factory without allocating system resources.
     /// Call `startup()` to initialize pools before use.
-    pub async fn new(config: FirecrackerConfig) -> Result<Self, SandboxError> {
+    ///
+    /// When `netns_pool` is provided, the factory shares it instead of
+    /// creating a new one in `startup()` (used for multi-profile runners).
+    pub async fn new(
+        config: FirecrackerConfig,
+        netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
+    ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
             binary_path: &config.binary_path,
@@ -134,15 +140,20 @@ impl FirecrackerFactory {
             config,
             factory_paths,
             runtime_paths,
-            netns_pool: None,
+            netns_pool,
             overlay_pool: None,
         })
+    }
+
+    /// Whether this factory uses snapshot restore (vs fresh boot).
+    pub fn has_snapshot(&self) -> bool {
+        self.config.snapshot.is_some()
     }
 
     /// # Panics
     /// Panics if called before `startup()` — this is a programming error.
     #[allow(clippy::expect_used)]
-    fn netns_pool(&self) -> &tokio::sync::Mutex<NetnsPool> {
+    fn netns_pool(&self) -> &std::sync::Arc<tokio::sync::Mutex<NetnsPool>> {
         self.netns_pool.as_ref().expect("factory not started")
     }
 
@@ -165,23 +176,28 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn startup(&mut self) -> sandbox::Result<()> {
-        // Both pools are always set together, so checking one is sufficient.
-        if self.netns_pool.is_some() {
+        // Overlay pool signals startup completion — check it, not netns
+        // (netns may already be set via new_with_netns).
+        if self.overlay_pool.is_some() {
             return Err(SandboxError::CreationFailed(
                 "factory already started".into(),
             ));
         }
 
-        let t = std::time::Instant::now();
-        let mut netns_pool = NetnsPool::create(NetnsPoolConfig {
-            proxy_port: self.config.proxy_port,
-        })
-        .await
-        .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
-        info!(
-            elapsed_ms = t.elapsed().as_millis() as u64,
-            "netns pool created"
-        );
+        // Create netns pool only if not provided externally (shared pool case).
+        if self.netns_pool.is_none() {
+            let t = std::time::Instant::now();
+            let netns_pool = NetnsPool::create(NetnsPoolConfig {
+                proxy_port: self.config.proxy_port,
+            })
+            .await
+            .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
+            info!(
+                elapsed_ms = t.elapsed().as_millis() as u64,
+                "netns pool created"
+            );
+            self.netns_pool = Some(std::sync::Arc::new(tokio::sync::Mutex::new(netns_pool)));
+        }
 
         let overlay_creator: Box<dyn OverlayCreator> = match &self.config.snapshot {
             Some(snapshot) => Box::new(SnapshotCopyCreator::new(snapshot.overlay_path.clone())),
@@ -197,8 +213,13 @@ impl SandboxFactory for FirecrackerFactory {
         {
             Ok(pool) => pool,
             Err(e) => {
-                if let Err(cleanup_err) = netns_pool.cleanup().await {
-                    warn!(error = %cleanup_err, "failed to cleanup netns pool during rollback");
+                // Roll back: clean up netns pool if we created it ourselves.
+                // For shared pools (new_with_netns), the caller manages cleanup.
+                if let Some(Ok(mutex)) = self.netns_pool.take().map(std::sync::Arc::try_unwrap) {
+                    let mut pool = mutex.into_inner();
+                    if let Err(cleanup_err) = pool.cleanup().await {
+                        warn!(error = %cleanup_err, "failed to cleanup netns pool during rollback");
+                    }
                 }
                 return Err(SandboxError::CreationFailed(format!("overlay pool: {e}")));
             }
@@ -208,7 +229,6 @@ impl SandboxFactory for FirecrackerFactory {
             "overlay pool created"
         );
 
-        self.netns_pool = Some(tokio::sync::Mutex::new(netns_pool));
         self.overlay_pool = Some(tokio::sync::Mutex::new(overlay_pool));
 
         let mode = if self.config.snapshot.is_some() {
@@ -330,8 +350,10 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn shutdown(&mut self) {
-        if let Some(netns_pool) = self.netns_pool.take() {
-            let mut pool = netns_pool.into_inner();
+        // Clean up netns pool only if we hold the last reference.
+        // When shared across multiple factories, the caller manages cleanup.
+        if let Some(Ok(mutex)) = self.netns_pool.take().map(std::sync::Arc::try_unwrap) {
+            let mut pool = mutex.into_inner();
             if let Err(e) = pool.cleanup().await {
                 warn!(error = %e, "failed to cleanup netns pool");
             }

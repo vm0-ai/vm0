@@ -18,6 +18,7 @@ import {
 } from "../../../../../../src/lib/run/run-status";
 import { drainOrgQueue } from "../../../../../../src/lib/run/run-queue-service";
 import { dispatchQueuedRun } from "../../../../../../src/lib/run/run-service";
+import { processOrgCredits } from "../../../../../../src/lib/credit/credit-service";
 import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
@@ -55,7 +56,7 @@ const router = tsr.router(runsCancelContract, {
       orgId = (await getOrgData(sandboxRun.orgId)).orgId;
     } else {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       orgId = org.orgId;
     }
 
@@ -135,6 +136,9 @@ const router = tsr.router(runsCancelContract, {
           ? () => drainOrgQueue(run.orgId, dispatchQueuedRun)
           : undefined,
       );
+      if (shouldDrain) {
+        await processOrgCredits(run.orgId);
+      }
     });
 
     log.debug(

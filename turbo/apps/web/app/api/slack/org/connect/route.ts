@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import {
@@ -9,7 +9,7 @@ import {
   memberConnect,
   notifyConnectSuccess,
 } from "../../../../../src/lib/slack-org/connect-service";
-import { getPlatformUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/url";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("slack-org:connect");
@@ -22,13 +22,14 @@ const log = logger("slack-org:connect");
  * creates the connection, and redirects to the platform.
  */
 export async function GET(request: Request) {
-  const { userId, orgId: activeOrgId } = await auth();
-
-  if (!userId) {
+  // This route uses Clerk session cookies (no Bearer token) for browser-based flow
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
     const signInUrl = new URL("/sign-in", request.url);
     signInUrl.searchParams.set("redirect_url", request.url);
     return NextResponse.redirect(signInUrl.toString());
   }
+  const { userId } = authCtx;
 
   initServices();
 
@@ -37,11 +38,11 @@ export async function GET(request: Request) {
   const slackUserId = url.searchParams.get("u");
   const channelId = url.searchParams.get("c");
   const threadTs = url.searchParams.get("t");
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
 
   if (!workspaceId || !slackUserId) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("Invalid connect link.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("Invalid connect link.")}`,
     );
   }
 
@@ -53,16 +54,17 @@ export async function GET(request: Request) {
 
   if (!installation) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
     );
   }
 
   if (!installation.orgId) {
-    const { org, member } = await resolveOrg(userId);
+    const orgSlug = url.searchParams.get("org");
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     if (member.role !== "admin") {
       return NextResponse.redirect(
-        `${platformUrl}/slack/connect?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
+        `${appUrl}/slack/connect?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
       );
     }
 
@@ -86,19 +88,17 @@ export async function GET(request: Request) {
       channelId,
       threadTs,
     }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
-    return NextResponse.redirect(
-      `${platformUrl}/slack/connect?status=connected`,
-    );
+    return NextResponse.redirect(`${appUrl}/slack/connect?status=connected`);
   }
 
   // Verify the user is a member of the workspace's bound org AND their
   // active org matches. Clerk sessions may differ across subdomains
-  // (platform.vm7.ai vs www.vm7.ai), so we also accept an explicit
-  // orgId query param from the platform as a trusted source.
+  // (app.vm7.ai vs www.vm7.ai), so we also accept an explicit
+  // orgId query param from the app as a trusted source.
   const explicitOrgId = url.searchParams.get("orgId");
-  const effectiveOrgId = explicitOrgId ?? activeOrgId;
+  const effectiveOrgId = explicitOrgId ?? authCtx.orgId;
   log.info("Org check", {
-    activeOrgId,
+    activeOrgId: authCtx.orgId,
     explicitOrgId,
     installationOrgId: installation.orgId,
     userId,
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
     // Distinguish: is the user a member of the workspace's org at all?
     let isMember = false;
     try {
-      await resolveOrg(userId, null, installation.orgId);
+      await resolveOrg(authCtx, null, installation.orgId);
       isMember = true;
     } catch {
       // Not a member
@@ -118,11 +118,11 @@ export async function GET(request: Request) {
       : "You don't have access to the organization this Slack workspace belongs to. Contact the organization admin for an invite.";
 
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent(message)}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent(message)}`,
     );
   }
 
-  const { org, member } = await resolveOrg(userId, null, installation.orgId);
+  const { org, member } = await resolveOrg(authCtx, null, installation.orgId);
 
   if (member.role === "admin") {
     await adminConnect({
@@ -154,5 +154,5 @@ export async function GET(request: Request) {
     channelId,
     threadTs,
   }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
-  return NextResponse.redirect(`${platformUrl}/slack/connect?status=connected`);
+  return NextResponse.redirect(`${appUrl}/slack/connect?status=connected`);
 }

@@ -229,7 +229,7 @@ export const zeroActivityDetail$ = computed(async (get) => {
   }
 
   const fetchFn = get(fetch$);
-  const response = await fetchFn(`/api/platform/logs/${logId}`);
+  const response = await fetchFn(`/api/app/logs/${logId}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch log detail: ${response.statusText}`);
   }

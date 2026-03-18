@@ -74,15 +74,14 @@ export {
   deleteVariable,
 } from "./domains/variables";
 
-// Domain modules - Model Providers
+// Domain modules - Org Model Providers
 export {
-  listModelProviders,
-  upsertModelProvider,
-  checkModelProviderSecret,
-  deleteModelProvider,
-  setModelProviderDefault,
-  updateModelProviderModel,
-} from "./domains/model-providers";
+  listOrgModelProviders,
+  upsertOrgModelProvider,
+  deleteOrgModelProvider,
+  setOrgModelProviderDefault,
+  updateOrgModelProviderModel,
+} from "./domains/org-model-providers";
 
 // Domain modules - Connectors
 export {
@@ -99,6 +98,20 @@ export {
   getUserPreferences,
   updateUserPreferences,
 } from "./domains/user-preferences";
+
+// Domain modules - Org Secrets
+export {
+  listOrgSecrets,
+  setOrgSecret,
+  deleteOrgSecret,
+} from "./domains/org-secrets";
+
+// Domain modules - Org Variables
+export {
+  listOrgVariables,
+  setOrgVariable,
+  deleteOrgVariable,
+} from "./domains/org-variables";
 
 // Domain modules - Skills
 export { resolveSkills } from "./domains/skills";

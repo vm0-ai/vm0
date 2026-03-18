@@ -33,6 +33,8 @@ pub(crate) struct JobRequest {
     pub(crate) environment: Option<HashMap<String, String>>,
     #[serde(default)]
     pub(crate) user_timezone: Option<String>,
+    #[serde(default)]
+    pub(crate) profile: Option<String>,
 }
 
 /// Job response written by the runner as a `{job_id}.result` file.
@@ -61,7 +63,8 @@ impl LocalProvider {
     }
 
     /// Find the first `.job` file that has no corresponding `.claim` file.
-    fn find_unclaimed_job(&self) -> Option<Uuid> {
+    /// Reads the job file to extract the profile (defaults to `DEFAULT_PROFILE`).
+    fn find_unclaimed_job(&self) -> Option<(Uuid, String)> {
         let entries = match std::fs::read_dir(&self.group_dir) {
             Ok(e) => e,
             Err(e) => {
@@ -82,7 +85,21 @@ impl LocalProvider {
             };
             let claim_path = self.group_dir.join(format!("{job_id}.claim"));
             if !claim_path.exists() {
-                return Some(job_id);
+                let profile = match std::fs::read(&path) {
+                    Ok(buf) => match serde_json::from_slice::<JobRequest>(&buf) {
+                        Ok(req) => req.profile,
+                        Err(e) => {
+                            warn!(run_id = %job_id, error = %e, "local: failed to parse job file, using default profile");
+                            None
+                        }
+                    },
+                    Err(e) => {
+                        warn!(run_id = %job_id, error = %e, "local: failed to read job file, using default profile");
+                        None
+                    }
+                }
+                .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
+                return Some((job_id, profile));
             }
         }
         None
@@ -91,14 +108,14 @@ impl LocalProvider {
 
 #[async_trait::async_trait]
 impl JobProvider for LocalProvider {
-    async fn discover(&self) -> Option<Uuid> {
+    async fn discover(&self) -> Option<(Uuid, String)> {
         loop {
             if self.cancel.is_cancelled() {
                 return None;
             }
-            if let Some(job_id) = self.find_unclaimed_job() {
-                info!(run_id = %job_id, "local: job discovered");
-                return Some(job_id);
+            if let Some((job_id, profile)) = self.find_unclaimed_job() {
+                info!(run_id = %job_id, %profile, "local: job discovered");
+                return Some((job_id, profile));
             }
             tokio::select! {
                 () = self.cancel.cancelled() => return None,
@@ -160,7 +177,7 @@ impl JobProvider for LocalProvider {
             memory_name: None,
             experimental_firewalls: None,
             experimental_capabilities: None,
-            experimental_profile: None,
+            experimental_profile: req.profile,
         })
     }
 
@@ -199,6 +216,16 @@ mod tests {
 
     /// Write a job file into the group directory.
     fn write_job(dir: &std::path::Path, job_id: Uuid, prompt: &str) {
+        write_job_with_profile(dir, job_id, prompt, None);
+    }
+
+    /// Write a job file with an optional profile.
+    fn write_job_with_profile(
+        dir: &std::path::Path,
+        job_id: Uuid,
+        prompt: &str,
+        profile: Option<&str>,
+    ) {
         let req = JobRequest {
             job_id,
             prompt: prompt.into(),
@@ -207,6 +234,7 @@ mod tests {
             vars: None,
             environment: None,
             user_timezone: None,
+            profile: profile.map(String::from),
         };
         let json = serde_json::to_vec(&req).unwrap();
         std::fs::write(dir.join(format!("{job_id}.job")), &json).unwrap();
@@ -228,8 +256,9 @@ mod tests {
         let job_id = Uuid::new_v4();
         write_job(dir.path(), job_id, "hello world");
 
-        let run_id = provider.discover().await.unwrap();
+        let (run_id, profile) = provider.discover().await.unwrap();
         assert_eq!(run_id, job_id);
+        assert_eq!(profile, crate::profile::DEFAULT_PROFILE);
 
         let ctx = provider.claim(run_id).await.unwrap();
         assert_eq!(ctx.run_id, run_id);
@@ -265,7 +294,7 @@ mod tests {
         write_job(dir.path(), job2, "available");
         std::fs::write(dir.path().join(format!("{job1}.claim")), b"").unwrap();
 
-        let run_id = provider.discover().await.unwrap();
+        let (run_id, _) = provider.discover().await.unwrap();
         assert_eq!(run_id, job2);
     }
 
@@ -279,13 +308,13 @@ mod tests {
         let job2 = Uuid::new_v4();
         write_job(dir.path(), job1, "job1");
 
-        let run_id1 = provider.discover().await.unwrap();
+        let (run_id1, _) = provider.discover().await.unwrap();
         let ctx1 = provider.claim(run_id1).await.unwrap();
         assert_eq!(ctx1.prompt, "job1");
 
         write_job(dir.path(), job2, "job2");
 
-        let run_id2 = provider.discover().await.unwrap();
+        let (run_id2, _) = provider.discover().await.unwrap();
         let ctx2 = provider.claim(run_id2).await.unwrap();
         assert_eq!(ctx2.prompt, "job2");
         assert_ne!(run_id1, run_id2);
@@ -313,8 +342,8 @@ mod tests {
         let job_id = Uuid::new_v4();
         write_job(dir.path(), job_id, "shared");
 
-        let id_a = provider_a.discover().await.unwrap();
-        let id_b = provider_b.discover().await.unwrap();
+        let (id_a, _) = provider_a.discover().await.unwrap();
+        let (id_b, _) = provider_b.discover().await.unwrap();
         assert_eq!(id_a, job_id);
         assert_eq!(id_b, job_id);
 
@@ -325,5 +354,36 @@ mod tests {
             claim_a.is_some() ^ claim_b.is_some(),
             "exactly one runner should win the claim"
         );
+    }
+
+    #[tokio::test]
+    async fn discover_returns_profile_from_job() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel);
+
+        let job_id = Uuid::new_v4();
+        write_job_with_profile(dir.path(), job_id, "browser job", Some("vm0/browser"));
+
+        let (run_id, profile) = provider.discover().await.unwrap();
+        assert_eq!(run_id, job_id);
+        assert_eq!(profile, "vm0/browser");
+
+        let ctx = provider.claim(run_id).await.unwrap();
+        assert_eq!(ctx.experimental_profile.as_deref(), Some("vm0/browser"));
+    }
+
+    #[tokio::test]
+    async fn discover_defaults_profile_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = LocalProvider::new(dir.path().to_path_buf(), cancel);
+
+        let job_id = Uuid::new_v4();
+        write_job(dir.path(), job_id, "default job");
+
+        let (run_id, profile) = provider.discover().await.unwrap();
+        assert_eq!(run_id, job_id);
+        assert_eq!(profile, crate::profile::DEFAULT_PROFILE);
     }
 }

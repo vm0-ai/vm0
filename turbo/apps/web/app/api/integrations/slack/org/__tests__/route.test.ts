@@ -42,7 +42,6 @@ async function givenOrgSlackSetup(
     const connection = await createTestSlackOrgConnection({
       slackWorkspaceId,
       vm0UserId: user.userId,
-      orgId: org.id,
     });
     slackUserId = connection.slackUserId;
   }

@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
@@ -200,7 +200,8 @@ export async function GET(
     // when the code adds new scopes and prompt users to re-authorize.
     // Note: do not read "scope" from the callback URL — OAuth providers (e.g., Monday.com)
     // may append OAuth scopes as ?scope=... which would be mistaken for an app scope slug.
-    const { org } = await resolveOrg(userId);
+    const orgSlug = url.searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const { created } = await upsertOAuthConnector(
       org.orgId,
       userId,

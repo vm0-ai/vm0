@@ -30,12 +30,23 @@ pub struct SubmitArgs {
     /// Agent type
     #[arg(long, default_value = "claude-code")]
     cli_agent_type: String,
+    /// VM profile to use (e.g. "vm0/default", "vm0/browser")
+    #[arg(long)]
+    profile: Option<String>,
     /// Timeout in seconds waiting for a runner to complete the job
     #[arg(long, default_value_t = 300)]
     timeout: u64,
 }
 
 pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
+    if let Some(ref profile) = args.profile
+        && !crate::profile::validate_name(profile)
+    {
+        return Err(RunnerError::Config(format!(
+            "invalid profile name: {profile} (must be org/name format, lowercase alphanumeric + hyphens)"
+        )));
+    }
+
     let home = HomePaths::new()?;
     let group_dir = home.groups_dir().join(&args.group);
 
@@ -52,6 +63,7 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         vars: None,
         environment: None,
         user_timezone: None,
+        profile: args.profile,
     };
 
     let json = serde_json::to_vec(&request)
@@ -104,5 +116,44 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         Ok(ExitCode::SUCCESS)
     } else {
         Ok(ExitCode::FAILURE)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn rejects_invalid_profile_name() {
+        let args = SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            working_dir: "/workspace".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: Some("bad-name".into()),
+            timeout: 1,
+        };
+        let err = run_submit(args).await.unwrap_err();
+        assert!(
+            err.to_string().contains("invalid profile name"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn accepts_valid_profile_name() {
+        let args = SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            working_dir: "/workspace".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: Some("vm0/browser".into()),
+            timeout: 1,
+        };
+        // Should pass validation and fail later (HomePaths or timeout), not on profile.
+        let result = run_submit(args).await;
+        if let Err(e) = &result {
+            assert!(!e.to_string().contains("invalid profile name"), "got: {e}");
+        }
     }
 }

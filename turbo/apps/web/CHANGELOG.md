@@ -1,5 +1,132 @@
 # Changelog
 
+## [12.126.0](https://github.com/vm0-ai/vm0/compare/web-v12.125.1...web-v12.126.0) (2026-03-18)
+
+
+### Features
+
+* add organization-wide run queue web interface ([#4988](https://github.com/vm0-ai/vm0/issues/4988)) ([2da3dfd](https://github.com/vm0-ai/vm0/commit/2da3dfd5f6e8b0eced19135ad86333c8146d9f7e))
+* **docs:** update model provider references from user-level to org-level commands ([#5325](https://github.com/vm0-ai/vm0/issues/5325)) ([d3afc0e](https://github.com/vm0-ai/vm0/commit/d3afc0e145539f679a7a39d2bb550c34d223a50b)), closes [#5323](https://github.com/vm0-ai/vm0/issues/5323)
+* insert credit_usage records via events webhook ([#5307](https://github.com/vm0-ai/vm0/issues/5307)) ([4ea1555](https://github.com/vm0-ai/vm0/commit/4ea1555e49b6345f104ff78347b03dec0520190b))
+* prompt users to review and approve oauth scope changes ([#5312](https://github.com/vm0-ai/vm0/issues/5312)) ([6cd80bf](https://github.com/vm0-ai/vm0/commit/6cd80bfeee99e0e13935222cb1081837ac31ed05))
+
+
+### Bug Fixes
+
+* check org-level model provider in onboarding status ([#5322](https://github.com/vm0-ai/vm0/issues/5322)) ([5120652](https://github.com/vm0-ai/vm0/commit/512065207583be28883cae5acd32007101ccda66))
+* **web:** trigger release for slack org_id column fix ([#5288](https://github.com/vm0-ai/vm0/issues/5288)) ([#5315](https://github.com/vm0-ai/vm0/issues/5315)) ([f596950](https://github.com/vm0-ai/vm0/commit/f5969500ae17542849c97d2a5cc42cf5b872925a))
+
+
+### Refactoring
+
+* **auth:** rename get-user-id to get-auth-context and centralize session claims ([#5321](https://github.com/vm0-ai/vm0/issues/5321)) ([cfd5dc3](https://github.com/vm0-ai/vm0/commit/cfd5dc38ab0174331e7abbd9c763b99cd3636696))
+* scope compose access checks to caller's active org ([#5308](https://github.com/vm0-ai/vm0/issues/5308)) ([5e75650](https://github.com/vm0-ai/vm0/commit/5e756504380e95815bf5a7aaa84b1d04525353e6))
+* simplify build-context to org-only model provider resolution ([#5297](https://github.com/vm0-ai/vm0/issues/5297)) ([a6425c1](https://github.com/vm0-ai/vm0/commit/a6425c11283b39d8f0a6cbb2c0cbedd40359c83a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.0
+
+## [12.125.1](https://github.com/vm0-ai/vm0/compare/web-v12.125.0...web-v12.125.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* remove secrets/vars validation when deploying a schedule ([#5310](https://github.com/vm0-ai/vm0/issues/5310)) ([1a6b8dc](https://github.com/vm0-ai/vm0/commit/1a6b8dc32a4f74b9327a5c0fd7cf7ebb39ac9a4b)), closes [#5179](https://github.com/vm0-ai/vm0/issues/5179)
+
+## [12.125.0](https://github.com/vm0-ai/vm0/compare/web-v12.124.1...web-v12.125.0) (2026-03-18)
+
+
+### Features
+
+* **platform:** add member onboarding flow and welcome animation ([#5060](https://github.com/vm0-ai/vm0/issues/5060)) ([de6b1e1](https://github.com/vm0-ai/vm0/commit/de6b1e1cf9467bf1171fd67b5ebbc560373322a2))
+
+
+### Bug Fixes
+
+* correct display name extraction path in platform logs api ([#5289](https://github.com/vm0-ai/vm0/issues/5289)) ([ce4b44b](https://github.com/vm0-ai/vm0/commit/ce4b44bd44d98cbd20bc7ef8f4e4ab2d91727aa1))
+
+
+### Refactoring
+
+* enforce mandatory org context in telemetry routes ([#5264](https://github.com/vm0-ai/vm0/issues/5264)) ([9f25118](https://github.com/vm0-ai/vm0/commit/9f25118b9a12525e79471195e5e6e62d9c9edc62))
+* pass AuthContext to resolveOrg instead of calling auth() internally ([#5262](https://github.com/vm0-ai/vm0/issues/5262)) ([6cbd955](https://github.com/vm0-ai/vm0/commit/6cbd955ccefc43f9418ff85d90d500bc27661e7d))
+* platform to app comprehensive rename (phase 2) ([#5275](https://github.com/vm0-ai/vm0/issues/5275)) ([73e8a5f](https://github.com/vm0-ai/vm0/commit/73e8a5f0edfac2a0b73a9f4d86812fd747de98db))
+* remove redundant org-id from slack org tables ([#5288](https://github.com/vm0-ai/vm0/issues/5288)) ([c503e53](https://github.com/vm0-ai/vm0/commit/c503e53f2ad17cc1159c9c8c9ba69b33942ab57b)), closes [#5239](https://github.com/vm0-ai/vm0/issues/5239)
+* remove server-level openrouter api key env var ([#5282](https://github.com/vm0-ai/vm0/issues/5282)) ([50ca446](https://github.com/vm0-ai/vm0/commit/50ca4465ce849fea2132b1cfcefaee1267cc447b))
+* rename get-platform-url to get-app-url across web app ([#5279](https://github.com/vm0-ai/vm0/issues/5279)) ([066a5a7](https://github.com/vm0-ai/vm0/commit/066a5a7bc5a02160db50cce72e42f34b48ab52e8)), closes [#5271](https://github.com/vm0-ai/vm0/issues/5271)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.78.0
+
+## [12.124.1](https://github.com/vm0-ai/vm0/compare/web-v12.124.0...web-v12.124.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* add org-scoped filtering to /api/logs/search ([#5236](https://github.com/vm0-ai/vm0/issues/5236)) ([d751c19](https://github.com/vm0-ai/vm0/commit/d751c19469a6c330f3396ebaf92aeb3f339dd736))
+* add org-scoped filtering to /api/usage ([#5240](https://github.com/vm0-ai/vm0/issues/5240)) ([fe83b0c](https://github.com/vm0-ai/vm0/commit/fe83b0c489304914647543f7739e3ceb9af1d3ec))
+* revert merged provider list to return only user providers ([#5261](https://github.com/vm0-ai/vm0/issues/5261)) ([a5783c7](https://github.com/vm0-ai/vm0/commit/a5783c7376dc7b6584c189d55a31269ccaf5aabd)), closes [#5259](https://github.com/vm0-ai/vm0/issues/5259)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.77.1
+
+## [12.124.0](https://github.com/vm0-ai/vm0/compare/web-v12.123.0...web-v12.124.0) (2026-03-17)
+
+
+### Features
+
+* add credit processing service with org-level advisory lock ([#5238](https://github.com/vm0-ai/vm0/issues/5238)) ([861d628](https://github.com/vm0-ai/vm0/commit/861d628ba9fbc152d842ec040748397b8b581742))
+
+
+### Bug Fixes
+
+* remove /zero prefix from audit links in notifications ([#5246](https://github.com/vm0-ai/vm0/issues/5246)) ([e4dadde](https://github.com/vm0-ai/vm0/commit/e4dadde36e06ee290291d1dd8a9029ac69c4896f)), closes [#5245](https://github.com/vm0-ai/vm0/issues/5245)
+
+
+### Refactoring
+
+* reorder token checks to skip auth() for vm0 tokens ([#5222](https://github.com/vm0-ai/vm0/issues/5222)) ([7f91d33](https://github.com/vm0-ai/vm0/commit/7f91d3324e9c3e49ebb5504782d3435b93fc0d5d)), closes [#5215](https://github.com/vm0-ai/vm0/issues/5215)
+
+## [12.123.0](https://github.com/vm0-ai/vm0/compare/web-v12.122.0...web-v12.123.0) (2026-03-17)
+
+
+### Features
+
+* add credits billing storage layer ([#5221](https://github.com/vm0-ai/vm0/issues/5221)) ([0daf4e5](https://github.com/vm0-ai/vm0/commit/0daf4e5a3a7b9f807baa7e7aa88df4633656f100))
+* add org secret and variable api routes and cli commands ([#5213](https://github.com/vm0-ai/vm0/issues/5213)) ([01b3662](https://github.com/vm0-ai/vm0/commit/01b3662aeaea0e7f32faacb1148e9722d45ef981)), closes [#5200](https://github.com/vm0-ai/vm0/issues/5200)
+* add org/personal tabs for model provider settings ([#5214](https://github.com/vm0-ai/vm0/issues/5214)) ([d035f1d](https://github.com/vm0-ai/vm0/commit/d035f1d7b372f07c6054e27fd71b2ac437f8bb26))
+
+
+### Bug Fixes
+
+* remove re-created compose org access helper and add org filter to run sub-routes ([#5220](https://github.com/vm0-ai/vm0/issues/5220)) ([782a50f](https://github.com/vm0-ai/vm0/commit/782a50f8f9580c56281dd2d8ccc63074f5407566))
+* use standard oauth with team param instead of oidc for slack connect ([#5201](https://github.com/vm0-ai/vm0/issues/5201)) ([87ab998](https://github.com/vm0-ai/vm0/commit/87ab99861f9abff3d0ed4aaac39ab6ad9f773eb2))
+
+
+### Refactoring
+
+* add explicit org slug to all resolve-org calls without org parameter ([#5219](https://github.com/vm0-ai/vm0/issues/5219)) ([1efaad5](https://github.com/vm0-ai/vm0/commit/1efaad55373336645081db5ef82444c20b3f0dd4))
+* add vm0_sandbox_ prefix for stable token type identification ([#5146](https://github.com/vm0-ai/vm0/issues/5146)) ([525e8d6](https://github.com/vm0-ai/vm0/commit/525e8d646014ea8f68b9bb294609a6e13be64087))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.77.0
+
 ## [12.122.0](https://github.com/vm0-ai/vm0/compare/web-v12.121.0...web-v12.122.0) (2026-03-17)
 
 

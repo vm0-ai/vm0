@@ -98,6 +98,9 @@ async function getCachedMemberPreferences(
     sendMode: parseSendMode(meta?.send_mode),
   };
 
+  const onboardingDone =
+    typeof meta?.onboarding_done === "boolean" ? meta.onboarding_done : false;
+
   // 3. Upsert cache
   const now = new Date();
   await db
@@ -110,6 +113,7 @@ async function getCachedMemberPreferences(
       notifySlack: prefs.notifySlack,
       pinnedAgentIds: prefs.pinnedAgentIds,
       sendMode: prefs.sendMode,
+      onboardingDone,
       cachedAt: now,
     })
     .onConflictDoUpdate({
@@ -120,6 +124,7 @@ async function getCachedMemberPreferences(
         notifySlack: prefs.notifySlack,
         pinnedAgentIds: prefs.pinnedAgentIds,
         sendMode: prefs.sendMode,
+        onboardingDone,
         cachedAt: now,
       },
     });

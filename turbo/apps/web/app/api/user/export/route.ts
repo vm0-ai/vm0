@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { eq, and, gt, inArray, desc } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { exportJobs } from "../../../../src/db/schema/export-job";
 import { executeExportJob } from "../../../../src/lib/export/export-service";
@@ -29,7 +29,8 @@ export async function POST(request: Request) {
   const { userId } = ctx;
 
   // Resolve orgId via resolveOrg (works for both Clerk sessions and CLI tokens)
-  const { org } = await resolveOrg(userId);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org } = await resolveOrg(ctx, orgSlug);
   const resolvedOrgId = org.orgId;
 
   const db = globalThis.services.db;

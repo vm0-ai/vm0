@@ -1648,7 +1648,7 @@ describe("POST /api/webhooks/email/inbound", () => {
   });
 
   describe("Email Trigger (agent@domain, auto-detect org)", () => {
-    it("should dispatch agent run for agent-only email (auto-detect org)", async () => {
+    it("should send error reply for agent-only email without org context", async () => {
       const user = await context.setupUser({ prefix: "auto-org" });
       const agentName = uniqueId("auto-agent");
       await createTestCompose(agentName);
@@ -1656,7 +1656,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
-      // Send to agentname@domain (no org, no plus sign)
+      // Send to agentname@domain (no org, no plus sign) — no org context
       const payload = JSON.stringify({
         type: "email.received",
         data: {
@@ -1674,27 +1674,12 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      // Verify: agent run was created
+      // Without org context, the handler sends an error reply
       const runs = await findTestRunsByUserAndPromptContaining(
         user.userId,
-        "Auto Org Test\n\nHello from email",
+        "Auto Org Test",
       );
-      expect(runs).toHaveLength(1);
-
-      // Verify: trigger callback was registered
-      const callbacks = await findTestCallbacksByRunId(runs[0]!.id);
-      const triggerCallback = callbacks.find((c) =>
-        c.url.includes("/callbacks/email/trigger"),
-      );
-      expect(triggerCallback).toBeDefined();
-      expect(triggerCallback!.payload).toMatchObject({
-        senderEmail,
-        userId: user.userId,
-        inboundEmailId: "auto-org-email",
-        inboundMessageId: "<default-msg-id@example.com>",
-        subject: "Auto Org Test",
-        triggerLocalPart: agentName,
-      });
+      expect(runs).toHaveLength(0);
     });
 
     it("should send error reply for agent-only email from unregistered sender", async () => {

@@ -62,6 +62,7 @@ import {
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
+import emptyScheduleImg from "./assets/empty-schedule.png";
 
 type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -725,7 +726,7 @@ function ScheduleListView({
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3">
         <img
-          src="/images/empty-schedule.png"
+          src={emptyScheduleImg}
           alt="No schedules"
           className="h-20 w-20 object-contain opacity-80"
         />

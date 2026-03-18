@@ -209,6 +209,20 @@ impl RunnerConfig {
         home: &HomePaths,
         proxy_port: Option<u16>,
     ) -> sandbox_fc::FirecrackerConfig {
+        Self::build_firecracker_config(&self.firecracker, &self.base_dir, profile, home, proxy_port)
+    }
+
+    /// Build a `sandbox_fc::FirecrackerConfig` from components.
+    ///
+    /// Static variant of [`firecracker_config`](Self::firecracker_config) for
+    /// use after `RunnerConfig` has been destructured.
+    pub fn build_firecracker_config(
+        firecracker: &FirecrackerConfig,
+        base_dir: &Path,
+        profile: &ProfileConfig,
+        home: &HomePaths,
+        proxy_port: Option<u16>,
+    ) -> sandbox_fc::FirecrackerConfig {
         let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
         let snapshot = profile.snapshot_hash.as_ref().map(|hash| {
             let snapshot_output =
@@ -216,10 +230,10 @@ impl RunnerConfig {
             snapshot_output.snapshot_config(hash)
         });
         sandbox_fc::FirecrackerConfig {
-            binary_path: self.firecracker.binary.clone(),
-            kernel_path: self.firecracker.kernel.clone(),
+            binary_path: firecracker.binary.clone(),
+            kernel_path: firecracker.kernel.clone(),
             rootfs_path: rootfs_paths.rootfs(),
-            base_dir: self.base_dir.clone(),
+            base_dir: base_dir.to_path_buf(),
             proxy_port,
             snapshot,
         }

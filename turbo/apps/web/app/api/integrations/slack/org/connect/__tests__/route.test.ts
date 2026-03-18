@@ -94,12 +94,11 @@ describe("/api/integrations/slack/org/connect", () => {
     });
 
     it("returns isConnected=true with workspace info when connected", async () => {
-      const { user, org, workspaceId } = await givenBoundWorkspace();
+      const { user, workspaceId } = await givenBoundWorkspace();
 
       await createTestSlackOrgConnection({
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
-        orgId: org.id,
       });
 
       const request = new Request(
@@ -221,7 +220,7 @@ describe("/api/integrations/slack/org/connect", () => {
     });
 
     it("member connects successfully to a bound workspace", async () => {
-      const { user, org, workspaceId } = await givenBoundWorkspace({
+      const { user, workspaceId } = await givenBoundWorkspace({
         isAdmin: false,
       });
       const slackUserId = `U-${uniqueId("slack")}`;
@@ -251,7 +250,7 @@ describe("/api/integrations/slack/org/connect", () => {
       );
       expect(connection).toBeDefined();
       expect(connection!.vm0UserId).toBe(user.userId);
-      expect(connection!.orgId).toBe(org.id);
+      expect(connection!.slackWorkspaceId).toBe(workspaceId);
     });
 
     it("admin connects successfully to a bound workspace", async () => {

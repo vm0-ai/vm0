@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
+import { bigint, pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
 
 /**
  * org_cache — DB-backed cache for Clerk org data.
@@ -11,6 +11,7 @@ export const orgCache = pgTable(
     orgId: text("org_id").primaryKey(),
     slug: text("slug").notNull(),
     tier: text("tier").notNull().default("free"),
+    credits: bigint("credits", { mode: "number" }).notNull().default(0),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
   },
   (table) => [index("idx_org_cache_slug").on(table.slug)],

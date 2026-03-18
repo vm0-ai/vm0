@@ -19,7 +19,7 @@ describe("resolveOrgOrNull", () => {
     const userId = uniqueId("no-org-user");
     mockClerk({ userId, orgId: null, clerkOrgs: [] });
 
-    const result = await resolveOrgOrNull(userId);
+    const result = await resolveOrgOrNull({ userId });
 
     expect(result).toBeNull();
   });
@@ -37,7 +37,7 @@ describe("resolveOrgOrNull", () => {
     // Pre-populate org_cache
     await insertOrgCacheEntry({ orgId, slug, tier: "free" });
 
-    const result = await resolveOrgOrNull(userId);
+    const result = await resolveOrgOrNull({ userId, orgId, orgRole: "admin" });
 
     expect(result).not.toBeNull();
     expect(result!.orgId).toBe(orgId);

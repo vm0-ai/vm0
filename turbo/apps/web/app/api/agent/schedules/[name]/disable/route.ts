@@ -52,7 +52,7 @@ export async function POST(
   const orgSlug = new URL(request.url).searchParams.get("org");
   const {
     org: { orgId },
-  } = await resolveOrg(userId, orgSlug);
+  } = await resolveOrg(authCtx, orgSlug);
 
   log.debug(`Disabling schedule ${name} for compose ${body.composeId}`);
 

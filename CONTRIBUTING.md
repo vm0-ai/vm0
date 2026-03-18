@@ -74,7 +74,7 @@ Then edit the `.env.local` files:
    ```bash
    openssl rand -hex 32
    ```
-3. For `PLATFORM_URL`, use `https://vm7.ai:8443`
+3. For `APP_URL`, use `https://vm7.ai:8443`
 4. Leave optional `op://...` values empty if you don't need those integrations
 
 ### Running Tests

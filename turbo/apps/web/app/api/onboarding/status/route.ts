@@ -1,7 +1,7 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { onboardingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isBadRequest, isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
@@ -9,16 +9,51 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
+import { ORG_SENTINEL_USER_ID } from "../../../../src/lib/org/org-sentinel";
 import { agentComposeApiContentSchema } from "@vm0/core";
-import { auth } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
+import { orgMembersCache } from "../../../../src/db/schema/org-members-cache";
+import { z } from "zod";
+
+const memberPublicMetadataSchema = z
+  .object({ onboarding_done: z.boolean().optional() })
+  .optional();
+
+async function isMemberOnboardingDone(
+  orgId: string,
+  userId: string,
+): Promise<boolean> {
+  const [cached] = await globalThis.services.db
+    .select({ onboardingDone: orgMembersCache.onboardingDone })
+    .from(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
+    )
+    .limit(1);
+
+  if (cached) {
+    return cached.onboardingDone;
+  }
+
+  // Cache miss — read from Clerk API
+  const client = await clerkClient();
+  const memberships = await client.organizations.getOrganizationMembershipList({
+    organizationId: orgId,
+  });
+  const membership = memberships.data.find(
+    (m) => m.publicUserData?.userId === userId,
+  );
+  const metadata = memberPublicMetadataSchema.parse(membership?.publicMetadata);
+  return metadata?.onboarding_done === true;
+}
 
 const router = tsr.router(onboardingStatusContract, {
-  getStatus: async ({ headers }) => {
+  getStatus: async ({ headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -29,6 +64,7 @@ const router = tsr.router(onboardingStatusContract, {
 
     // Check if org exists
     let hasOrg = false;
+    let resolvedOrgId: string | null = null;
     let hasModelProvider = false;
     let hasDefaultAgent = false;
     let defaultAgentName: string | null = null;
@@ -38,24 +74,37 @@ const router = tsr.router(onboardingStatusContract, {
       description?: string;
       sound?: string;
     } | null = null;
+    let defaultAgentSkills: string[] = [];
 
+    let isAdmin = false;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId);
+      const { org: resolvedOrg, member } = await resolveOrg(authCtx, orgSlug);
       hasOrg = true;
+      resolvedOrgId = resolvedOrg.orgId;
+      isAdmin = member.role === "admin";
 
-      // Check model provider
+      // Check model provider for this user or org-level (matches runtime fallback in build-context.ts)
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
-        .where(eq(modelProviders.orgId, resolvedOrg.orgId))
+        .where(
+          and(
+            eq(modelProviders.orgId, resolvedOrg.orgId),
+            or(
+              eq(modelProviders.userId, authCtx.userId),
+              eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+            ),
+          ),
+        )
         .limit(1);
 
       hasModelProvider = provider !== undefined;
 
       // Read default agent compose ID from Clerk JWT session claims
-      const authResult = await auth();
       const claimAgentComposeId =
-        authResult.sessionClaims?.org_default_agent_compose_id ?? null;
+        authCtx.sessionClaims?.org_default_agent_compose_id ?? null;
 
       if (claimAgentComposeId) {
         const [compose] = await globalThis.services.db
@@ -88,6 +137,7 @@ const router = tsr.router(onboardingStatusContract, {
               : undefined;
             if (agentDef) {
               defaultAgentMetadata = agentDef.metadata ?? null;
+              defaultAgentSkills = agentDef.skills ?? [];
             }
           }
         }
@@ -99,18 +149,39 @@ const router = tsr.router(onboardingStatusContract, {
       // Org not found or no explicit org context — all flags stay false
     }
 
-    const needsOnboarding = !hasOrg || !hasModelProvider || !hasDefaultAgent;
+    // Admins need onboarding when org setup is incomplete.
+    // Members need onboarding when they haven't completed the member welcome flow
+    // (tracked via Clerk membership metadata `onboarding_done`).
+    let needsOnboarding: boolean;
+    if (!hasOrg) {
+      needsOnboarding = true;
+    } else if (isAdmin) {
+      needsOnboarding = !hasModelProvider || !hasDefaultAgent;
+    } else {
+      // resolvedOrgId is set whenever hasOrg is true (both come from the same try block)
+      if (!resolvedOrgId) {
+        throw new Error("resolvedOrgId is null despite hasOrg being true");
+      }
+      // Read onboarding_done from org_members_cache first, fall back to Clerk API.
+      const onboardingDone = await isMemberOnboardingDone(
+        resolvedOrgId,
+        authCtx.userId,
+      );
+      needsOnboarding = !onboardingDone;
+    }
 
     return {
       status: 200 as const,
       body: {
         needsOnboarding,
+        isAdmin,
         hasOrg,
         hasModelProvider,
         hasDefaultAgent,
         defaultAgentName,
         defaultAgentComposeId,
         defaultAgentMetadata,
+        defaultAgentSkills,
       },
     };
   },

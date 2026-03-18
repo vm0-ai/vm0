@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
@@ -44,19 +44,31 @@ export async function GET(request: Request) {
   }
 
   const { userId } = authCtx;
-  const { org, member } = await resolveOrg(userId);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org, member } = await resolveOrg(authCtx, orgSlug);
 
-  // Find user's connection in any workspace bound to this org
-  const [connection] = await globalThis.services.db
+  // Find installation for this org, then find user's connection via workspace
+  const [orgInstallation] = await globalThis.services.db
     .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.vm0UserId, userId),
-        eq(slackOrgConnections.orgId, org.orgId),
-      ),
-    )
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, org.orgId))
     .limit(1);
+
+  const [connection] = orgInstallation
+    ? await globalThis.services.db
+        .select()
+        .from(slackOrgConnections)
+        .where(
+          and(
+            eq(slackOrgConnections.vm0UserId, userId),
+            eq(
+              slackOrgConnections.slackWorkspaceId,
+              orgInstallation.slackWorkspaceId,
+            ),
+          ),
+        )
+        .limit(1)
+    : [];
 
   if (!connection) {
     return NextResponse.json({
@@ -64,15 +76,6 @@ export async function GET(request: Request) {
       isAdmin: member.role === "admin",
     });
   }
-
-  // Get workspace info
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackOrgInstallations)
-    .where(
-      eq(slackOrgInstallations.slackWorkspaceId, connection.slackWorkspaceId),
-    )
-    .limit(1);
 
   // Get default agent name
   let defaultAgentName: string | null = null;
@@ -84,7 +87,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     isConnected: true,
-    workspaceName: installation?.slackWorkspaceName ?? null,
+    workspaceName: orgInstallation?.slackWorkspaceName ?? null,
     isAdmin: member.role === "admin",
     defaultAgentName,
   });
@@ -127,7 +130,8 @@ export async function POST(request: Request) {
   const { workspaceId, slackUserId, channelId, threadTs } = parseResult.data;
 
   // Resolve org and check membership
-  const { org, member } = await resolveOrg(userId);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org, member } = await resolveOrg(authCtx, orgSlug);
 
   // Check installation exists
   const [installation] = await globalThis.services.db
@@ -192,7 +196,7 @@ export async function POST(request: Request) {
     // Check if user is a member of the workspace's org but has the wrong active org
     let isMemberOfTargetOrg = false;
     try {
-      await resolveOrg(userId, null, installation.orgId);
+      await resolveOrg(authCtx, null, installation.orgId);
       isMemberOfTargetOrg = true;
     } catch {
       // Not a member

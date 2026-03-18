@@ -1,5 +1,5 @@
 /**
- * Helper for triggering and polling compose jobs from the platform UI.
+ * Helper for triggering and polling compose jobs from the app UI.
  */
 import { delay } from "signal-timers";
 

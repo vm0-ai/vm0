@@ -12,12 +12,14 @@ export const apiOnboardingHandlers = [
   http.get("/api/onboarding/status", () => {
     return HttpResponse.json({
       needsOnboarding: false,
+      isAdmin: true,
       hasOrg: true,
       hasModelProvider: true,
       hasDefaultAgent: true,
       defaultAgentName: "zero",
       defaultAgentComposeId: "mock-compose-id",
       defaultAgentMetadata: null,
+      defaultAgentSkills: [],
     });
   }),
 ];

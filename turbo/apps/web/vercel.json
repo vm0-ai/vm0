@@ -26,6 +26,10 @@
     {
       "path": "/api/cron/sync-skills",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/process-credits",
+      "schedule": "* * * * *"
     }
   ]
 }

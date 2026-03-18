@@ -22,6 +22,7 @@ import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
 import { dispatchQueuedRun } from "../../../../../src/lib/run/run-service";
+import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
 import {
   queryAxiom,
@@ -91,6 +92,7 @@ function scheduleTerminalSideEffects(
     await dispatchTerminalSideEffects(runId, status, errorMsg, () =>
       drainOrgQueue(orgId, dispatchQueuedRun),
     );
+    await processOrgCredits(orgId);
   });
 }
 

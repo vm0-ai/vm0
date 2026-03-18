@@ -80,7 +80,6 @@ export async function adminConnect(params: {
       slackUserId,
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,
-      orgId,
     })
     .onConflictDoNothing({
       target: [
@@ -161,7 +160,6 @@ export async function memberConnect(params: {
       slackUserId,
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,
-      orgId,
     })
     .onConflictDoNothing({
       target: [

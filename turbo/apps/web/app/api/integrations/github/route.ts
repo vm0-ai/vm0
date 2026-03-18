@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { getApiUrl } from "../../../../src/lib/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../src/db/schema/github-user-link";
@@ -101,7 +101,9 @@ export async function GET(request: Request) {
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  const orgSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
+  const composeOrgSlug = compose
+    ? (await getOrgData(compose.orgId)).slug
+    : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -123,7 +125,8 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's org for resource queries
-  const { org } = await resolveOrg(userId);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org } = await resolveOrg(authCtx, orgSlug);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
@@ -157,7 +160,9 @@ export async function GET(request: Request) {
       targetType: installation.targetType,
       isAdmin,
     },
-    agent: compose ? { id: compose.id, name: compose.name, orgSlug } : null,
+    agent: compose
+      ? { id: compose.id, name: compose.name, orgSlug: composeOrgSlug }
+      : null,
     environment: {
       requiredSecrets,
       requiredVars,
@@ -344,7 +349,8 @@ export async function PATCH(request: Request) {
     }
     targetOrgId = targetOrg.orgId;
   } else {
-    const { org } = await resolveOrg(userId);
+    const urlOrgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, urlOrgSlug);
     targetOrgId = org.orgId;
   }
 

@@ -1,6 +1,9 @@
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { initServices } from "../../../../../../src/lib/init-services";
 import { env } from "../../../../../../src/env";
 import { getSlackRedirectBaseUrl } from "../../../../../../src/lib/slack";
+import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 
 /**
  * Org-aware Slack OAuth Connect Endpoint
@@ -14,12 +17,11 @@ import { getSlackRedirectBaseUrl } from "../../../../../../src/lib/slack";
  * Unlike the install flow, no bot scopes are requested — the app is already
  * installed.  We only need Slack to authenticate the user.
  *
- * Uses Slack's OpenID Connect endpoint instead of the standard OAuth v2
- * endpoint so we can pass `prompt=consent` to force the authorization screen
- * every time (OAuth v2 silently auto-approves previously granted scopes).
+ * The `team` parameter is set to the org's workspace ID so the user
+ * authenticates against the correct workspace.
  */
 
-const SLACK_OIDC_URL = "https://slack.com/openid/connect/authorize";
+const SLACK_OAUTH_URL = "https://slack.com/oauth/v2/authorize";
 
 export async function GET(request: Request) {
   const { SLACK_CLIENT_ID } = env();
@@ -42,23 +44,33 @@ export async function GET(request: Request) {
     );
   }
 
+  initServices();
+
+  // Look up the workspace bound to this org so we can lock the team parameter.
+  const [installation] = await globalThis.services.db
+    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, orgId))
+    .limit(1);
+
+  if (!installation) {
+    return NextResponse.json(
+      { error: "No Slack workspace installed for this organization" },
+      { status: 404 },
+    );
+  }
+
   const baseUrl = getSlackRedirectBaseUrl(request.url);
   const redirectUri = `${baseUrl}/api/slack/org/oauth/callback`;
 
   const state = JSON.stringify({ orgId, vm0UserId, flow: "connect" });
 
-  const authUrl = new URL(SLACK_OIDC_URL);
+  const authUrl = new URL(SLACK_OAUTH_URL);
   authUrl.searchParams.set("client_id", SLACK_CLIENT_ID);
-  authUrl.searchParams.set("response_type", "code");
-  // openid is required for the OIDC endpoint; identity.basic gives us the
-  // authed_user.id via oauth.v2.access which the callback already uses.
-  authUrl.searchParams.set("scope", "openid");
   authUrl.searchParams.set("user_scope", "identity.basic");
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("state", state);
-  // Force Slack to always show the consent screen instead of silently
-  // auto-approving previously granted scopes.
-  authUrl.searchParams.set("prompt", "consent");
+  authUrl.searchParams.set("team", installation.slackWorkspaceId);
 
   return NextResponse.redirect(authUrl.toString(), {
     headers: { "Cache-Control": "no-store" },

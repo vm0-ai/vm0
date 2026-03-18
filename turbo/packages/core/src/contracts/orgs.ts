@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
+import { orgRoleSchema } from "./org-members";
 
 const c = initContract();
 
@@ -33,6 +34,7 @@ export const orgResponseSchema = z.object({
   id: z.string(),
   slug: z.string(),
   tier: z.string().optional(),
+  role: orgRoleSchema.optional(),
 });
 
 export type OrgResponse = z.infer<typeof orgResponseSchema>;

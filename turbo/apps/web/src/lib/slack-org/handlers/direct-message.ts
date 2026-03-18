@@ -26,7 +26,7 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
 } from "./shared";
-import { getPlatformUrl } from "../../url";
+import { getAppUrl } from "../../url";
 import { logger } from "../../logger";
 
 const log = logger("slack-org:dm");
@@ -170,7 +170,6 @@ export async function handleOrgDirectMessage(
     threadTs,
     messageTs: context.messageTs,
     connectionId: connection.id,
-    orgId,
     agentName,
     composeId,
     existingSessionId,
@@ -183,21 +182,39 @@ export async function handleOrgDirectMessage(
     prompt: messageContent,
     threadContext: executionContext,
     userId: connection.vm0UserId,
-    orgId,
     callbackContext,
   });
 
   if (status === "queued") {
+    const queueUrl = `${getAppUrl()}/queue`;
     await client.chat.postEphemeral({
       channel: context.channelId,
       user: context.userId,
       thread_ts: threadTs,
-      text: "⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+      text: `⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available. <${queueUrl}|View queue>`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `:warning: *Run queued*\n\nConcurrency limit reached. Will start automatically when a slot is available.`,
+          },
+        },
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: `<${queueUrl}|View queue>`,
+            },
+          ],
+        },
+      ],
     });
   } else if (status === "failed") {
     const errorText = response ?? "Sorry, an error occurred. Please try again.";
     const logsUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
-    const deepLinks = detectDeepLinks(errorText, getPlatformUrl(), agentName);
+    const deepLinks = detectDeepLinks(errorText, getAppUrl(), agentName);
     await postMessage(client, context.channelId, errorText, {
       threadTs,
       blocks: buildAgentResponseMessage(errorText, logsUrl, deepLinks),

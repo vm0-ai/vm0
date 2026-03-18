@@ -9,7 +9,9 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use crate::config;
+use std::collections::BTreeMap;
+
+use crate::config::{self, ProfileConfig};
 use crate::deps;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
@@ -18,7 +20,6 @@ use crate::http::HttpClient;
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::profile;
 use crate::provider::{ApiProvider, JobProvider, LocalProvider};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
@@ -134,18 +135,20 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         }
     }
 
-    // Use the default profile for vcpu/memory (used for budget and pool sizing).
-    let default_profile = runner_config
+    // Compute the smallest profile resources for budget pre-check.
+    // When budget is exhausted for all profiles, we wait instead of polling.
+    let min_vcpu = runner_config
         .profiles
-        .get(profile::DEFAULT_PROFILE)
-        .ok_or_else(|| {
-            RunnerError::Config(format!(
-                "profile '{}' not found in config",
-                profile::DEFAULT_PROFILE
-            ))
-        })?;
-    let vcpu = default_profile.vcpu;
-    let memory_mb = default_profile.memory_mb;
+        .values()
+        .map(|p| p.vcpu)
+        .min()
+        .unwrap_or(1);
+    let min_memory_mb = runner_config
+        .profiles
+        .values()
+        .map(|p| p.memory_mb)
+        .min()
+        .unwrap_or(1);
 
     // Start proxy before factory so proxy_port is available for netns pool.
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
@@ -179,27 +182,20 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     info!(
         host_cpus,
         host_memory_mb,
-        vcpu,
-        memory_mb,
         concurrency_factor,
         max_concurrent,
         effective_vcpu = budget.effective_vcpu(),
         effective_memory_mb = budget.effective_memory_mb(),
+        profiles = runner_config.profiles.len(),
         "resource budget initialized"
     );
 
-    // Build firecracker config with all parameters resolved.
-    let fc_config = runner_config.firecracker_config(default_profile, &home, Some(mitm.port()));
-    let is_snapshot = fc_config.snapshot.is_some();
-
-    // Estimated capacity: theoretical max concurrent VMs from resource budget.
-    // Used for status reporting only — actual admission is controlled by ResourceBudget.
-    assert!(vcpu > 0, "profile vcpu must be > 0");
-    assert!(memory_mb > 0, "profile memory_mb must be > 0");
+    // Estimated capacity for status reporting.
+    // Derived from the smallest profile to cover the worst case.
     let estimated_capacity = {
         let resource_limit = std::cmp::min(
-            budget.effective_vcpu() as usize / vcpu as usize,
-            budget.effective_memory_mb() as usize / memory_mb as usize,
+            budget.effective_vcpu() as usize / min_vcpu as usize,
+            budget.effective_memory_mb() as usize / min_memory_mb as usize,
         )
         .max(1);
         if max_concurrent > 0 {
@@ -208,6 +204,15 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
             resource_limit
         }
     };
+
+    // Build per-profile netns pool (shared).
+    let netns_pool = sandbox_fc::NetnsPool::create(sandbox_fc::NetnsPoolConfig {
+        proxy_port: Some(mitm.port()),
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("netns pool: {e}")))?;
+    let shared_netns = Arc::new(tokio::sync::Mutex::new(netns_pool));
+
     let mut status = StatusTracker::new(paths.status(), estimated_capacity);
     status.set_proxy_port(mitm.port()).await;
     let status = Arc::new(status);
@@ -232,9 +237,6 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     let exec_config = Arc::new(ExecutorConfig {
         api_url: server.url,
-        vcpu,
-        memory_mb,
-        is_snapshot,
         registry: registry_handle,
         http,
         log_paths,
@@ -243,7 +245,10 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     let config = RunConfig {
         name,
         group: group_name,
-        fc_config,
+        profiles: runner_config.profiles,
+        shared_netns,
+        home,
+        proxy_port: mitm.port(),
         budget,
         status,
         mitm,
@@ -251,6 +256,10 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         provider,
         cancel,
         exec_config,
+        firecracker: runner_config.firecracker,
+        base_dir: runner_config.base_dir,
+        min_vcpu,
+        min_memory_mb,
     };
 
     run(config).await
@@ -259,7 +268,10 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 struct RunConfig {
     name: String,
     group: String,
-    fc_config: sandbox_fc::FirecrackerConfig,
+    profiles: std::collections::BTreeMap<String, ProfileConfig>,
+    shared_netns: Arc<tokio::sync::Mutex<sandbox_fc::NetnsPool>>,
+    home: HomePaths,
+    proxy_port: u16,
     budget: Arc<ResourceBudget>,
     status: Arc<StatusTracker>,
     mitm: proxy::MitmProxy,
@@ -267,6 +279,10 @@ struct RunConfig {
     provider: Arc<dyn JobProvider>,
     cancel: CancellationToken,
     exec_config: Arc<ExecutorConfig>,
+    firecracker: config::FirecrackerConfig,
+    base_dir: std::path::PathBuf,
+    min_vcpu: u32,
+    min_memory_mb: u32,
 }
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
@@ -275,7 +291,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
         name,
         group,
-        fc_config,
+        profiles,
+        shared_netns,
+        home,
+        proxy_port,
         budget,
         status,
         mut mitm,
@@ -283,14 +302,40 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         provider,
         cancel,
         exec_config,
+        firecracker,
+        base_dir,
+        min_vcpu,
+        min_memory_mb,
     } = config;
 
-    let vcpu = exec_config.vcpu;
-    let memory_mb = exec_config.memory_mb;
-
-    let mut factory = FirecrackerFactory::new(fc_config).await?;
-    factory.startup().await?;
-    let factory = Arc::new(factory);
+    // Build per-profile factories with shared netns pool.
+    let mut factories: BTreeMap<String, Arc<FirecrackerFactory>> = BTreeMap::new();
+    for (profile_name, profile_config) in &profiles {
+        let fc_config = config::RunnerConfig::build_firecracker_config(
+            &firecracker,
+            &base_dir,
+            profile_config,
+            &home,
+            Some(proxy_port),
+        );
+        let factory_result = async {
+            let mut factory =
+                FirecrackerFactory::new(fc_config, Some(Arc::clone(&shared_netns))).await?;
+            factory.startup().await?;
+            Ok::<_, sandbox::SandboxError>(factory)
+        }
+        .await;
+        let factory = match factory_result {
+            Ok(f) => f,
+            Err(e) => {
+                // Clean up already-started factories before propagating.
+                shutdown_factories(&mut factories, &shared_netns).await;
+                return Err(e.into());
+            }
+        };
+        factories.insert(profile_name.clone(), Arc::new(factory));
+        info!(profile = %profile_name, "factory started");
+    }
 
     let mut jobs = JoinSet::new();
 
@@ -359,8 +404,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         // Spawn background restart task when timer fires
         maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
-        // If budget is exhausted, wait for a job to finish or mode change
-        if !budget.can_afford(vcpu, memory_mb) {
+        // If budget is exhausted for all profiles, wait for a job to finish
+        if !budget.can_afford(min_vcpu, min_memory_mb) {
             tokio::select! {
                 _ = mode_rx.changed() => {}
                 result = jobs.join_next() => {
@@ -384,22 +429,40 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Job discovery via provider (Ably push + poll).
             // discover() has no server-side side effects — safe to cancel.
             discovered = provider.discover() => {
-                let Some(run_id) = discovered else { break }; // provider shutdown
+                let Some((run_id, profile_name)) = discovered else { break };
+                // Look up profile config for resource requirements.
+                let Some(profile_config) = profiles.get(&profile_name) else {
+                    warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
+                    continue;
+                };
+                let job_vcpu = profile_config.vcpu;
+                let job_memory = profile_config.memory_mb;
+                // Look up factory for this profile.
+                let Some(factory) = factories.get(&profile_name) else {
+                    warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
+                    continue;
+                };
                 // Reserve resources before claiming so we don't waste a job
                 // that another runner could handle.
-                if !budget.try_reserve(vcpu, memory_mb) {
+                if !budget.try_reserve(job_vcpu, job_memory) {
                     continue;
                 }
                 // claim() runs in the branch handler — non-interruptible,
                 // so a successful claim is always paired with complete().
                 let Some(context) = provider.claim(run_id).await else {
-                    budget.release(vcpu, memory_mb); // rollback on 409
+                    budget.release(job_vcpu, job_memory); // rollback on 409
                     continue;
                 };
-                info!(run_id = %run_id, "job claimed, spawning executor");
+                info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
                 status.add_run(run_id).await;
+                let job_profile = JobProfile {
+                    vcpu: job_vcpu,
+                    memory_mb: job_memory,
+                    use_snapshot: factory.has_snapshot(),
+                    factory: Arc::clone(factory),
+                };
                 spawn_job(
-                    context, &provider, &factory, &exec_config,
+                    context, job_profile, &provider, &exec_config,
                     &budget, &mut jobs, &status,
                 );
             }
@@ -451,10 +514,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         h.abort();
     }
 
-    info!("shutting down factory");
-    let mut factory = Arc::try_unwrap(factory)
-        .map_err(|_| RunnerError::Internal("factory still referenced at shutdown".into()))?;
-    factory.shutdown().await;
+    info!("shutting down factories");
+    shutdown_factories(&mut factories, &shared_netns).await;
 
     // Stop proxy after all jobs have drained and factory is shut down.
     if let Err(e) = mitm.stop().await {
@@ -467,6 +528,34 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     Ok(())
 }
 
+/// Per-job profile parameters resolved from the profile config.
+struct JobProfile {
+    vcpu: u32,
+    memory_mb: u32,
+    use_snapshot: bool,
+    factory: Arc<FirecrackerFactory>,
+}
+
+/// Shut down all factories and clean up the shared netns pool.
+async fn shutdown_factories(
+    factories: &mut BTreeMap<String, Arc<FirecrackerFactory>>,
+    shared_netns: &Arc<tokio::sync::Mutex<sandbox_fc::NetnsPool>>,
+) {
+    for (name, factory) in std::mem::take(factories) {
+        match Arc::try_unwrap(factory) {
+            Ok(mut f) => f.shutdown().await,
+            Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
+        }
+    }
+    // Clean up shared netns pool after all factories released their references.
+    // Cannot try_unwrap here because the caller still holds a reference;
+    // lock and clean up in-place instead.
+    let mut pool = shared_netns.lock().await;
+    if let Err(e) = pool.cleanup().await {
+        warn!(error = %e, "failed to cleanup shared netns pool");
+    }
+}
+
 /// Spawn a job executor task.
 ///
 /// The provider has already claimed the job and the caller has reserved
@@ -474,19 +563,24 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 /// completion via the provider, and releases the budget when done.
 fn spawn_job(
     context: ExecutionContext,
+    job_profile: JobProfile,
     provider: &Arc<dyn JobProvider>,
-    factory: &Arc<FirecrackerFactory>,
     exec_config: &Arc<ExecutorConfig>,
     budget: &Arc<ResourceBudget>,
     jobs: &mut JoinSet<()>,
     status: &Arc<StatusTracker>,
 ) {
     let run_id = context.run_id;
-    let vcpu = exec_config.vcpu;
-    let memory_mb = exec_config.memory_mb;
+    let vcpu = job_profile.vcpu;
+    let memory_mb = job_profile.memory_mb;
+    let factory = job_profile.factory;
+    let params = executor::JobParams {
+        vcpu,
+        memory_mb,
+        use_snapshot: job_profile.use_snapshot,
+    };
 
     let provider = Arc::clone(provider);
-    let factory = Arc::clone(factory);
     let exec_config = Arc::clone(exec_config);
     let budget = Arc::clone(budget);
     let status = Arc::clone(status);
@@ -495,7 +589,7 @@ fn spawn_job(
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and releases budget.
         let inner = tokio::spawn(async move {
-            executor::execute_job(factory.as_ref(), context, &exec_config).await
+            executor::execute_job(factory.as_ref(), context, &exec_config, &params).await
         });
 
         let (exit_code, err) = match inner.await {

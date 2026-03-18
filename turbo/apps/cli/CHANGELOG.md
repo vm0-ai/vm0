@@ -1,5 +1,72 @@
 # Changelog
 
+## [9.65.0](https://github.com/vm0-ai/vm0/compare/cli-v9.64.2...cli-v9.65.0) (2026-03-18)
+
+
+### Features
+
+* prompt users to review and approve oauth scope changes ([#5312](https://github.com/vm0-ai/vm0/issues/5312)) ([6cd80bf](https://github.com/vm0-ai/vm0/commit/6cd80bfeee99e0e13935222cb1081837ac31ed05))
+
+
+### Refactoring
+
+* remove user-level cli model-provider commands and update onboarding ([#5298](https://github.com/vm0-ai/vm0/issues/5298)) ([cba1eb0](https://github.com/vm0-ai/vm0/commit/cba1eb00f38165def1024409d0c1b5dbc335844a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.0
+
+## [9.64.2](https://github.com/vm0-ai/vm0/compare/cli-v9.64.1...cli-v9.64.2) (2026-03-18)
+
+
+### Refactoring
+
+* enforce mandatory org context in telemetry routes ([#5264](https://github.com/vm0-ai/vm0/issues/5264)) ([9f25118](https://github.com/vm0-ai/vm0/commit/9f25118b9a12525e79471195e5e6e62d9c9edc62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.78.0
+
+## [9.64.1](https://github.com/vm0-ai/vm0/compare/cli-v9.64.0...cli-v9.64.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* add org-scoped filtering to /api/logs/search ([#5236](https://github.com/vm0-ai/vm0/issues/5236)) ([d751c19](https://github.com/vm0-ai/vm0/commit/d751c19469a6c330f3396ebaf92aeb3f339dd736))
+* add org-scoped filtering to /api/usage ([#5240](https://github.com/vm0-ai/vm0/issues/5240)) ([fe83b0c](https://github.com/vm0-ai/vm0/commit/fe83b0c489304914647543f7739e3ceb9af1d3ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.77.1
+
+## [9.64.0](https://github.com/vm0-ai/vm0/compare/cli-v9.63.2...cli-v9.64.0) (2026-03-17)
+
+
+### Features
+
+* add org secret and variable api routes and cli commands ([#5213](https://github.com/vm0-ai/vm0/issues/5213)) ([01b3662](https://github.com/vm0-ai/vm0/commit/01b3662aeaea0e7f32faacb1148e9722d45ef981)), closes [#5200](https://github.com/vm0-ai/vm0/issues/5200)
+
+
+### Bug Fixes
+
+* error when active org is not set instead of silently skipping ([#5216](https://github.com/vm0-ai/vm0/issues/5216)) ([197903a](https://github.com/vm0-ai/vm0/commit/197903a70d792bd329a36ad9031dd710dc195d8a)), closes [#5206](https://github.com/vm0-ai/vm0/issues/5206)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.77.0
+
 ## [9.63.2](https://github.com/vm0-ai/vm0/compare/cli-v9.63.1...cli-v9.63.2) (2026-03-17)
 
 

@@ -6,18 +6,18 @@
  */
 
 import {
-  apiModelProvidersHandlers,
-  resetMockModelProviders,
-} from "./api-model-providers.ts";
-import {
   apiConnectorsHandlers,
   resetMockConnectors,
 } from "./api-connectors.ts";
 import { apiOrgHandlers } from "./api-org.ts";
+import {
+  apiOrgModelProvidersHandlers,
+  resetMockOrgModelProviders,
+} from "./api-org-model-providers.ts";
 import { apiSecretsHandlers, resetMockSecrets } from "./api-secrets.ts";
 import { apiVariablesHandlers, resetMockVariables } from "./api-variables.ts";
 import { exampleHandlers } from "./example.ts";
-import { platformLogsHandlers } from "./v1-runs.ts";
+import { appLogsHandlers } from "./v1-runs.ts";
 import {
   apiIntegrationsSlackOrgHandlers,
   resetMockSlackOrgIntegration,
@@ -34,13 +34,13 @@ import {
 import { apiOnboardingHandlers } from "./api-onboarding.ts";
 
 export const handlers = [
-  ...apiModelProvidersHandlers,
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
+  ...apiOrgModelProvidersHandlers,
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
   ...exampleHandlers,
-  ...platformLogsHandlers,
+  ...appLogsHandlers,
   ...apiIntegrationsSlackOrgHandlers,
   ...apiIntegrationsTelegramHandlers,
   ...apiAgentsHandlers,
@@ -49,11 +49,11 @@ export const handlers = [
 ];
 
 export function resetAllMockHandlers(): void {
-  resetMockModelProviders();
   resetMockConnectors();
   resetMockSecrets();
   resetMockVariables();
   resetMockSlackOrgIntegration();
   resetMockTelegramIntegration();
   resetMockUserPreferences();
+  resetMockOrgModelProviders();
 }

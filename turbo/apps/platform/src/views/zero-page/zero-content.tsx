@@ -6,9 +6,11 @@ import { ZeroPreferencesPage } from "./zero-account-page.tsx";
 import { ZeroJobsPage } from "./zero-jobs-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
+import { QueuePage } from "../queue-page/queue-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 import { ZeroSettingsPage } from "./zero-settings-page.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import zeroAvatarImg from "./assets/zero-avatar.png";
 
 interface ZeroContentProps {
   sectionId: ZeroNavId;
@@ -44,6 +46,7 @@ function getSectionTitles(
     works: `Where ${agentName} works`,
     settings: "Settings",
     preferences: "Preferences",
+    queue: "Queue",
   };
 }
 
@@ -55,7 +58,7 @@ export function ZeroContent({
   selectedAgentName,
   onNavigateToMeet,
   onBackFromSession,
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
   chatAvatarSrc,
   onChatAvatarClick,
@@ -103,6 +106,9 @@ export function ZeroContent({
   }
   if (sectionId === "works") {
     return <ZeroWorksPage />;
+  }
+  if (sectionId === "queue") {
+    return <QueuePage />;
   }
   if (sectionId === "settings") {
     return <ZeroSettingsPage />;

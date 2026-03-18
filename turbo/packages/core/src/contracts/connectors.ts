@@ -2923,6 +2923,34 @@ export function hasRequiredScopes(
 }
 
 /**
+ * Compute the diff between currently required scopes and stored scopes for a connector.
+ */
+export interface ScopeDiff {
+  addedScopes: string[];
+  removedScopes: string[];
+  currentScopes: string[];
+  storedScopes: string[];
+}
+
+export function getScopeDiff(
+  connectorType: ConnectorType,
+  storedScopes: string[] | null,
+): ScopeDiff {
+  const oauthConfig = getConnectorOAuthConfig(connectorType);
+  const currentScopes = oauthConfig?.scopes ?? [];
+  const stored = storedScopes ?? [];
+  const storedSet = new Set(stored);
+  const currentSet = new Set(currentScopes);
+
+  return {
+    addedScopes: currentScopes.filter((s) => !storedSet.has(s)),
+    removedScopes: stored.filter((s) => !currentSet.has(s)),
+    currentScopes,
+    storedScopes: stored,
+  };
+}
+
+/**
  * Get all secret/variable names managed by connectors across ALL auth methods.
  * Unlike `getConnectorProvidedSecretNames` (which only reads environmentMapping),
  * this function also includes api-token auth method secrets.
@@ -3132,6 +3160,39 @@ export const connectorsByTypeContract = c.router({
 });
 
 export type ConnectorsByTypeContract = typeof connectorsByTypeContract;
+
+/**
+ * Scope diff response schema for /api/connectors/:type/scope-diff
+ */
+export const scopeDiffResponseSchema = z.object({
+  addedScopes: z.array(z.string()),
+  removedScopes: z.array(z.string()),
+  currentScopes: z.array(z.string()),
+  storedScopes: z.array(z.string()),
+});
+
+export type ScopeDiffResponse = z.infer<typeof scopeDiffResponseSchema>;
+
+/**
+ * Connector scope diff contract for /api/connectors/[type]/scope-diff
+ */
+export const connectorScopeDiffContract = c.router({
+  getScopeDiff: {
+    method: "GET",
+    path: "/api/connectors/:type/scope-diff",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    responses: {
+      200: scopeDiffResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get scope diff for a connector",
+  },
+});
+
+export type ConnectorScopeDiffContract = typeof connectorScopeDiffContract;
 
 /**
  * Connector session status enum

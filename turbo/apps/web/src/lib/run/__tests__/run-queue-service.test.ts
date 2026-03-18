@@ -303,13 +303,17 @@ describe("run-queue-service", () => {
     });
 
     it("should not affect non-expired entries", async () => {
-      // Clean any pre-existing expired entries from other test suites
+      const result = await enqueueRun(baseParams({ prompt: "Not expired" }));
+
       await cleanupExpiredQueueEntries();
 
-      await enqueueRun(baseParams({ prompt: "Not expired" }));
+      // Non-expired entry should still exist in queue
+      const queueEntry = await findTestQueueEntry(result.runId);
+      expect(queueEntry).toBeDefined();
 
-      const cleaned = await cleanupExpiredQueueEntries();
-      expect(cleaned).toBe(0);
+      // Run should still be queued
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.status).toBe("queued");
     });
 
     it("should skip runs that are no longer queued", async () => {

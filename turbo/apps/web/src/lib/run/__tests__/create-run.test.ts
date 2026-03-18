@@ -12,7 +12,7 @@ import {
   createTestRequest,
   createTestSandboxToken,
   createTestRun,
-  createTestModelProvider,
+  createTestOrgModelProvider,
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
@@ -823,7 +823,7 @@ describe("createRun()", () => {
         skipDefaultApiKey: true,
       });
 
-      await createTestModelProvider("vercel-ai-gateway", "test-gateway-key");
+      await createTestOrgModelProvider("vercel-ai-gateway", "test-gateway-key");
 
       const result = await createRun(
         baseParams({ agentComposeVersionId: noKeyCompose.versionId }),

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   getOrgMembers,
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   try {
     const orgSlug = new URL(request.url).searchParams.get("org");
     if (!orgSlug) throw badRequest("org query parameter is required");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const status = await getOrgMembers(userId, org.orgId, org.slug);
     return NextResponse.json(status);
   } catch (error) {
@@ -91,7 +91,7 @@ export async function DELETE(request: Request) {
   try {
     const orgSlug = new URL(request.url).searchParams.get("org");
     if (!orgSlug) throw badRequest("org query parameter is required");
-    const { org, member } = await resolveOrg(userId, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
     await removeMember(userId, org.orgId, member.role, body.email);
     return NextResponse.json({
       message: `Removed ${body.email} from org`,

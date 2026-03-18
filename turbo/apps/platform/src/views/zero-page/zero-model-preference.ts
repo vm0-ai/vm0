@@ -1,7 +1,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import { MODEL_PROVIDER_TYPES } from "@vm0/core";
-import { modelProviders$ } from "../../signals/external/model-providers.ts";
+import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 
 function readModelPreference(key: string): string {
   if (typeof window === "undefined") {
@@ -23,7 +23,7 @@ function writeModelPreference(key: string, value: string) {
  * Returns the current selected model, a setter, and a handler to persist on send.
  */
 export function useModelSelection(agentName: string) {
-  const modelProvidersLoadable = useLastLoadable(modelProviders$);
+  const modelProvidersLoadable = useLastLoadable(orgModelProviders$);
   const configuredProviders =
     modelProvidersLoadable.state === "hasData"
       ? modelProvidersLoadable.data.modelProviders

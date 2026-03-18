@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getUserId } from "../../../../src/lib/auth/get-auth-context";
 import {
   uploadS3Buffer,
   generatePresignedUrl,

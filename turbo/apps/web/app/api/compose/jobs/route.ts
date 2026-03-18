@@ -8,7 +8,7 @@ import { composeJobsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { composeJobs } from "../../../../src/db/schema/compose-job";
 import { eq, and, inArray } from "drizzle-orm";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { logger } from "../../../../src/lib/logger";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";
@@ -45,7 +45,7 @@ function formatJobResponse(job: {
 }
 
 const router = tsr.router(composeJobsMainContract, {
-  create: async ({ body, headers }) => {
+  create: async ({ body, headers }, { request }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -60,7 +60,8 @@ const router = tsr.router(composeJobsMainContract, {
     const { userId } = authCtx;
 
     // Resolve the caller's org
-    const { org } = await resolveOrg(userId);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Dispatch based on input type: GitHub URL or platform content
     const isGitHubInput = "githubUrl" in body;

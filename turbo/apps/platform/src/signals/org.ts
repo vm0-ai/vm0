@@ -13,6 +13,7 @@ export interface Org {
   slug: string;
   createdAt: string;
   updatedAt: string;
+  role?: "admin" | "member";
 }
 
 /**
@@ -46,4 +47,21 @@ export const org$ = computed(async (get) => {
 export const hasOrg$ = computed(async (get) => {
   const org = await get(org$);
   return org !== undefined;
+});
+
+/**
+ * Current user's role in their org.
+ * Defaults to "member" if org is not available.
+ */
+export const orgRole$ = computed(async (get) => {
+  const org = await get(org$);
+  return org?.role ?? "member";
+});
+
+/**
+ * Whether the current user is an admin of their org.
+ */
+export const isOrgAdmin$ = computed(async (get) => {
+  const role = await get(orgRole$);
+  return role === "admin";
 });

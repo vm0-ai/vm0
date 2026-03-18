@@ -169,7 +169,6 @@ export const MODEL_PROVIDER_TYPES = {
     label: "Vercel AI Gateway",
     secretLabel: "API key",
     helpText: "Get your API key from the Vercel AI Gateway dashboard",
-    featureFlag: FeatureSwitchKey.VercelAiGateway,
     environmentMapping: {
       ANTHROPIC_AUTH_TOKEN: "$secret",
       ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
@@ -449,10 +448,10 @@ export function allowsCustomModel(type: ModelProviderType): boolean {
  * Returns undefined for providers without feature gating.
  */
 export function getProviderFeatureFlag(
-  type: ModelProviderType,
+  _type: ModelProviderType,
 ): FeatureSwitchKey | undefined {
-  const config = MODEL_PROVIDER_TYPES[type];
-  return "featureFlag" in config ? config.featureFlag : undefined;
+  void _type;
+  return undefined;
 }
 
 /**
@@ -492,7 +491,6 @@ export const modelProviderResponseSchema = z.object({
   secretNames: z.array(z.string()).nullable(), // For multi-auth providers
   isDefault: z.boolean(),
   selectedModel: z.string().nullable(),
-  scope: z.enum(["org", "user"]).optional(), // Optional for backward compat
   createdAt: z.string(),
   updatedAt: z.string(),
 });

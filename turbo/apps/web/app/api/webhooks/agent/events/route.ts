@@ -14,6 +14,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/axiom";
+import { upsertCreditUsage } from "../../../../../src/lib/credit/credit-usage-service";
 const log = logger("webhook:events");
 
 const router = tsr.router(webhookEventsContract, {
@@ -84,6 +85,18 @@ const router = tsr.router(webhookEventsContract, {
     log.debug(
       `Ingested events ${firstSequence}-${lastSequence} to Axiom for run ${body.runId}`,
     );
+
+    // Upsert credit_usage record for billing.
+    // Errors are caught so the webhook still returns 200 after Axiom ingestion
+    // succeeds. Missed credit records are picked up by processStaleCredits cron.
+    try {
+      await upsertCreditUsage(body.runId, run.orgId, userId, body.events);
+    } catch (err) {
+      log.error("Failed to upsert credit usage", {
+        runId: body.runId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     return {
       status: 200 as const,

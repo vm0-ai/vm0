@@ -14,19 +14,19 @@ This document describes how to set up the Vercel project for the `turbo/apps/pla
 3. Import from GitHub repository
 4. Configure the following settings:
 
-| Setting          | Value                                           |
-| ---------------- | ----------------------------------------------- |
-| Framework Preset | Vite                                            |
-| Root Directory   | `turbo/apps/platform`                           |
-| Build Command    | `cd ../.. && pnpm build --filter=@vm0/platform` |
-| Output Directory | `dist`                                          |
-| Install Command  | `cd ../.. && pnpm install`                      |
+| Setting          | Value                                      |
+| ---------------- | ------------------------------------------ |
+| Framework Preset | Vite                                       |
+| Root Directory   | `turbo/apps/platform`                      |
+| Build Command    | `cd ../.. && pnpm build --filter=@vm0/app` |
+| Output Directory | `dist`                                     |
+| Install Command  | `cd ../.. && pnpm install`                 |
 
 ## Step 2: Configure GitHub Repository Variable
 
 1. Go to GitHub repository Settings > Secrets and variables > Actions > Variables
 2. Add new repository variable:
-   - Name: `VERCEL_PROJECT_ID_PLATFORM`
+   - Name: `VERCEL_PROJECT_ID_APP`
    - Value: (copy from Vercel project settings)
 
 To find the Vercel Project ID:
@@ -71,7 +71,7 @@ For future features, these variables may be needed:
 
 ### Preview URL Not Posted
 
-- Verify `VERCEL_PROJECT_ID_PLATFORM` is set correctly
+- Verify `VERCEL_PROJECT_ID_APP` is set correctly
 - Check `VERCEL_TOKEN` and `VERCEL_TEAM_ID` secrets/variables exist
 
 ### 404 on Client-Side Routes

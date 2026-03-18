@@ -9,7 +9,7 @@ import {
   ApiError,
 } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
-import { getAuthContext } from "../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import {
   listVariables,
@@ -34,7 +34,7 @@ const router = tsr.router(variablesMainContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const vars = await listVariables(org.orgId, userId);
 
     return {
@@ -70,7 +70,7 @@ const router = tsr.router(variablesMainContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       const variable = await setVariable(
         org.orgId,
         userId,

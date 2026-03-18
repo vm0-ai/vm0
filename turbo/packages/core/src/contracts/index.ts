@@ -105,10 +105,12 @@ export {
   type LogsSearchResponse,
   runsQueueContract,
   queueEntrySchema,
+  runningTaskSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
   type RunsQueueContract,
   type QueueEntry,
+  type RunningTask,
   type ConcurrencyInfo,
   type QueueResponse,
 } from "./runs";
@@ -420,6 +422,12 @@ export {
   getConnectorTypeForSecretName,
   getConnectorOAuthConfig,
   hasRequiredScopes,
+  getScopeDiff,
+  scopeDiffResponseSchema,
+  connectorScopeDiffContract,
+  type ScopeDiff,
+  type ScopeDiffResponse,
+  type ConnectorScopeDiffContract,
   getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
@@ -521,3 +529,15 @@ export {
   type OrgModelProvidersSetDefaultContract,
   type OrgModelProvidersUpdateModelContract,
 } from "./org-model-providers";
+export {
+  orgSecretsMainContract,
+  orgSecretsByNameContract,
+  type OrgSecretsMainContract,
+  type OrgSecretsByNameContract,
+} from "./org-secrets";
+export {
+  orgVariablesMainContract,
+  orgVariablesByNameContract,
+  type OrgVariablesMainContract,
+  type OrgVariablesByNameContract,
+} from "./org-variables";

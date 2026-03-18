@@ -11,7 +11,7 @@ CERT_DIR="$PROJECT_ROOT/.certs"
 
 # --- Certificate check (silent, auto-regenerate if missing) ---
 if [ ! -f "$CERT_DIR/www.vm7.ai.pem" ] || \
-   [ ! -f "$CERT_DIR/platform.vm7.ai.pem" ] || \
+   [ ! -f "$CERT_DIR/app.vm7.ai.pem" ] || \
    [ ! -f "$CERT_DIR/docs.vm7.ai.pem" ] || \
    [ ! -f "$CERT_DIR/vm7.ai.pem" ]; then
   bash "$PROJECT_ROOT/scripts/generate-certs.sh" >&2
@@ -29,5 +29,5 @@ check_port() {
 }
 
 check_port "Web:      https://www.vm7.ai:8443"      "https://www.vm7.ai:8443/"
-check_port "Platform: https://platform.vm7.ai:8443"  "https://platform.vm7.ai:8443/"
+check_port "App:      https://app.vm7.ai:8443"  "https://app.vm7.ai:8443/"
 check_port "Docs:     https://docs.vm7.ai:8443"      "https://docs.vm7.ai:8443/"

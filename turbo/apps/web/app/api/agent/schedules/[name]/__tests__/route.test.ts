@@ -260,13 +260,14 @@ describe("GET /api/agent/schedules/:name - Sandbox Token Auth", () => {
       orgId: user.orgId,
       userId: user.userId,
     });
+    const orgSlug = `org-${user.userId.slice(-8)}`;
     mockClerk({ userId: null, orgId: user.orgId });
     const token = await generateSandboxToken(user.userId, "run-123", [
       "schedule:read",
     ]);
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/schedules/sandbox-get-test?composeId=${testComposeId}`,
+      `http://localhost:3000/api/agent/schedules/sandbox-get-test?composeId=${testComposeId}&org=${orgSlug}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       },
@@ -320,13 +321,14 @@ describe("DELETE /api/agent/schedules/:name - Sandbox Token Auth", () => {
       orgId: user.orgId,
       userId: user.userId,
     });
+    const orgSlug = `org-${user.userId.slice(-8)}`;
     mockClerk({ userId: null, orgId: user.orgId });
     const token = await generateSandboxToken(user.userId, "run-123", [
       "schedule:write",
     ]);
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/schedules/sandbox-delete-test?composeId=${testComposeId}`,
+      `http://localhost:3000/api/agent/schedules/sandbox-delete-test?composeId=${testComposeId}&org=${orgSlug}`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },

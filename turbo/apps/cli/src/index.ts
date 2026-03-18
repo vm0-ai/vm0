@@ -20,7 +20,7 @@ import { scheduleCommand } from "./commands/schedule";
 import { usageCommand } from "./commands/usage";
 import { secretCommand } from "./commands/secret";
 import { variableCommand } from "./commands/variable";
-import { modelProviderCommand } from "./commands/model-provider";
+
 import { connectorCommand } from "./commands/connector";
 import { onboardCommand } from "./commands/onboard";
 import { setupClaudeCommand } from "./commands/setup-claude";
@@ -55,7 +55,6 @@ program.addCommand(scheduleCommand);
 program.addCommand(usageCommand);
 program.addCommand(secretCommand);
 program.addCommand(variableCommand);
-program.addCommand(modelProviderCommand);
 program.addCommand(connectorCommand);
 program.addCommand(onboardCommand);
 program.addCommand(setupClaudeCommand);

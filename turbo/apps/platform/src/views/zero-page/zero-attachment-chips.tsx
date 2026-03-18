@@ -1,5 +1,8 @@
 import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/zero-page/zero-chat.ts";
+import docPdfIcon from "./assets/doc-pdf.svg";
+import docDocIcon from "./assets/doc-doc.svg";
+import docCsvIcon from "./assets/doc-csv.svg";
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
@@ -8,7 +11,7 @@ function getFileTypeIcon(filename: string): string | null {
   const ext = filename.split(".").pop()?.toLowerCase();
   switch (ext) {
     case "pdf": {
-      return "/doc-types/PDF.svg";
+      return docPdfIcon;
     }
     case "doc":
     case "docx":
@@ -16,10 +19,10 @@ function getFileTypeIcon(filename: string): string | null {
     case "txt":
     case "json":
     case "html": {
-      return "/doc-types/DOC.svg";
+      return docDocIcon;
     }
     case "csv": {
-      return "/doc-types/CSV.svg";
+      return docCsvIcon;
     }
     default: {
       return null;

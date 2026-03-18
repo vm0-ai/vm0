@@ -39,8 +39,8 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
   try {
     const fetchFn = get(fetch$);
 
-    // Fetch agents from platform team endpoint (uses Clerk active org)
-    const agentsResponse = await fetchFn("/api/platform/team");
+    // Fetch agents from app team endpoint (uses Clerk active org)
+    const agentsResponse = await fetchFn("/api/app/team");
 
     if (!agentsResponse.ok) {
       throw new Error(`Failed to fetch agents: ${agentsResponse.statusText}`);

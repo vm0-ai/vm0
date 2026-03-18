@@ -5,7 +5,7 @@ import {
   hasAuthMethods,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   listOrgModelProviders,
@@ -29,10 +29,9 @@ const router = tsr.router(orgModelProvidersMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const providers = await listOrgModelProviders(org.orgId);
 
     return {
@@ -65,10 +64,9 @@ const router = tsr.router(orgModelProvidersMainContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(userId, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     if (member.role !== "admin") {
       return createErrorResponse(

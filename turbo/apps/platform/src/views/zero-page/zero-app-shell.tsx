@@ -10,14 +10,16 @@ import {
 import { Button } from "@vm0/ui";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { ZeroContent } from "./zero-content.tsx";
-import { ZeroOnboarding } from "./zero-onboarding.tsx";
+import { ZeroOnboarding, MemberWelcome } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
-import { zeroNeedsOnboarding$ } from "../../signals/zero-page/zero-onboarding.ts";
+import {
+  zeroNeedsOnboarding$,
+  zeroNeedsMemberOnboarding$,
+} from "../../signals/zero-page/zero-onboarding.ts";
 import {
   agentDisplayName$,
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { resetDefaultAgent$ } from "../../signals/zero-page/zero-dev-tools.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -42,12 +44,18 @@ import {
   sendZeroChatMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 
+import zeroAvatarImg from "./assets/zero-avatar.png";
+import avatar1Img from "./assets/avatar-1.png";
+import avatar2Img from "./assets/avatar-2.png";
+import avatar3Img from "./assets/avatar-3.png";
+import avatar4Img from "./assets/avatar-4.png";
+
 const ZERO_AVATARS = [
-  "/zero-avatar.png",
-  "/avatars/avatar-1.png",
-  "/avatars/avatar-2.png",
-  "/avatars/avatar-3.png",
-  "/avatars/avatar-4.png",
+  zeroAvatarImg,
+  avatar1Img,
+  avatar2Img,
+  avatar3Img,
+  avatar4Img,
 ] as const;
 
 function ZeroAppSkeleton({ visible }: { visible: boolean }) {
@@ -279,11 +287,17 @@ function useZeroLoadables() {
           displayName: a.displayName,
         }))
       : [];
+  const memberOnboarding = useLastLoadable(zeroNeedsMemberOnboarding$);
+  const showMemberWelcome =
+    isLoggedIn &&
+    memberOnboarding.state === "hasData" &&
+    memberOnboarding.data === true;
   return {
     isLoggedIn,
     onboardingReady,
     needsOnboarding,
     showOnboarding: isLoggedIn && needsOnboarding,
+    showMemberWelcome,
     agentNameReady,
     agentDisplayName,
     defaultRawName,
@@ -300,6 +314,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     isLoggedIn,
     onboardingReady,
     showOnboarding,
+    showMemberWelcome,
     agentNameReady,
     agentDisplayName,
     defaultRawName,
@@ -404,8 +419,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const resetDefaultAgent = useSet(resetDefaultAgent$);
-
   const sidebarCollapsed$ = useCCState(false);
   const sidebarCollapsed = useGet(sidebarCollapsed$);
   const setSidebarCollapsed = useSet(sidebarCollapsed$);
@@ -418,6 +431,12 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     <div className="zero-app flex h-dvh w-full bg-background">
       <ZeroAppSkeleton visible={showSkeleton} />
       {showOnboarding && <ZeroOnboarding zeroAvatarSrc={zeroAvatarSrc} />}
+      {showMemberWelcome && (
+        <MemberWelcome
+          agentName={agentDisplayName}
+          zeroAvatarSrc={zeroAvatarSrc}
+        />
+      )}
       <ZeroSidebar
         activeId={activeId}
         agentName={agentDisplayName}
@@ -435,7 +454,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         recentSessionsLoading={recentSessionsLoading}
         recentSessionsError={recentSessionsError}
         onNewChat={handleNewChat}
-        onResetAgent={() => detach(resetDefaultAgent(), Reason.DomCallback)}
       />
       <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
         {/* TopBarActions (credit & invite) hidden until feature is ready */}

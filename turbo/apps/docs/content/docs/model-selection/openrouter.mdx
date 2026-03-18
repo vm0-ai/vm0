@@ -8,7 +8,7 @@ description: Use Claude models through OpenRouter
 ## Quick Setup
 
 ```bash
-vm0 model-provider setup --type openrouter-api-key
+vm0 org model-provider setup --type openrouter-api-key
 ```
 
 You'll be prompted for your API key and model selection.
@@ -35,10 +35,10 @@ If no model is specified during setup, Claude Code uses its built-in default mod
 
 ```bash
 # With recommended model
-vm0 model-provider setup --type openrouter-api-key --secret "sk-or-xxx" --model "anthropic/claude-sonnet-4.5"
+vm0 org model-provider setup --type openrouter-api-key --secret "sk-or-xxx" --model "anthropic/claude-sonnet-4.5"
 
 # Without model (Claude Code uses its built-in default)
-vm0 model-provider setup --type openrouter-api-key --secret "sk-or-xxx"
+vm0 org model-provider setup --type openrouter-api-key --secret "sk-or-xxx"
 ```
 
 ## Run

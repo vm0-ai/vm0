@@ -24,6 +24,7 @@ vi.mock("@e2b/code-interpreter", () => ({
 const context = testContext();
 
 let testCliToken: string;
+let testOrgSlug: string;
 
 function makeContent(overrides: Record<string, unknown> = {}) {
   return {
@@ -38,9 +39,14 @@ function makeContent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function postComposeJob(body: Record<string, unknown>, token: string) {
+function postComposeJob(
+  body: Record<string, unknown>,
+  token: string,
+  orgSlug?: string,
+) {
+  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return POST(
-    createTestRequest("http://localhost:3000/api/compose/jobs", {
+    createTestRequest(`http://localhost:3000/api/compose/jobs${orgParam}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -51,12 +57,16 @@ function postComposeJob(body: Record<string, unknown>, token: string) {
   );
 }
 
-function getComposeByName(name: string, token: string) {
+function getComposeByName(name: string, token: string, orgSlug?: string) {
+  const orgParam = orgSlug ? `&org=${orgSlug}` : "";
   return getCompose(
-    createTestRequest(`http://localhost:3000/api/agent/composes?name=${name}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+    createTestRequest(
+      `http://localhost:3000/api/agent/composes?name=${name}${orgParam}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    ),
   );
 }
 
@@ -66,6 +76,7 @@ describe("Server-side compose", () => {
     await clearSkillsData();
     const user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
+    testOrgSlug = `org-${user.userId.slice(-8)}`;
     vi.mocked(Sandbox.create).mockClear();
   });
 
@@ -87,6 +98,7 @@ describe("Server-side compose", () => {
       const response = await postComposeJob(
         { content, instructions: "# My Instructions" },
         testCliToken,
+        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -106,6 +118,7 @@ describe("Server-side compose", () => {
       const composeResponse = await getComposeByName(
         "test-agent",
         testCliToken,
+        testOrgSlug,
       );
       expect(composeResponse.status).toBe(200);
       const compose = await composeResponse.json();
@@ -115,7 +128,11 @@ describe("Server-side compose", () => {
 
     it("should complete synchronously when agent has no skills", async () => {
       const content = makeContent();
-      const response = await postComposeJob({ content }, testCliToken);
+      const response = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -131,7 +148,11 @@ describe("Server-side compose", () => {
       const content = makeContent({
         skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/uncached"],
       });
-      const response = await postComposeJob({ content }, testCliToken);
+      const response = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -145,6 +166,7 @@ describe("Server-side compose", () => {
       const response = await postComposeJob(
         { githubUrl: "https://github.com/owner/repo" },
         testCliToken,
+        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -160,7 +182,11 @@ describe("Server-side compose", () => {
       const content = makeContent({
         skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/uncached"],
       });
-      const response1 = await postComposeJob({ content }, testCliToken);
+      const response1 = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
       expect(response1.status).toBe(201);
       const data1 = await response1.json();
       expect(data1.status).toBe("pending");
@@ -170,6 +196,7 @@ describe("Server-side compose", () => {
       const response2 = await postComposeJob(
         { content: content2 },
         testCliToken,
+        testOrgSlug,
       );
       expect(response2.status).toBe(200);
       const data2 = await response2.json();
@@ -194,7 +221,11 @@ describe("Server-side compose", () => {
         skills: ["slack"],
         environment: { EXISTING_VAR: "keep-me" },
       });
-      const response = await postComposeJob({ content }, testCliToken);
+      const response = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -204,6 +235,7 @@ describe("Server-side compose", () => {
       const composeResponse = await getComposeByName(
         "test-agent",
         testCliToken,
+        testOrgSlug,
       );
       const compose = await composeResponse.json();
       const agentEnv =
@@ -231,7 +263,11 @@ describe("Server-side compose", () => {
         skills: ["slack"],
         environment: { SLACK_BOT_TOKEN: "my-custom-value" },
       });
-      const response = await postComposeJob({ content }, testCliToken);
+      const response = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -240,6 +276,7 @@ describe("Server-side compose", () => {
       const composeResponse = await getComposeByName(
         "test-agent",
         testCliToken,
+        testOrgSlug,
       );
       const compose = await composeResponse.json();
       expect(
@@ -256,6 +293,7 @@ describe("Server-side compose", () => {
       const response = await postComposeJob(
         { content, instructions: "# Be helpful" },
         testCliToken,
+        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -268,7 +306,11 @@ describe("Server-side compose", () => {
 
     it("should succeed without instructions", async () => {
       const content = makeContent();
-      const response = await postComposeJob({ content }, testCliToken);
+      const response = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -281,7 +323,11 @@ describe("Server-side compose", () => {
       const content = makeContent({
         environment: { UNIQUE_KEY: `test-${Date.now()}` },
       });
-      const response = await postComposeJob({ content }, testCliToken);
+      const response = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -291,6 +337,7 @@ describe("Server-side compose", () => {
       const composeResponse = await getComposeByName(
         "test-agent",
         testCliToken,
+        testOrgSlug,
       );
       expect(composeResponse.status).toBe(200);
       const compose = await composeResponse.json();
@@ -304,7 +351,11 @@ describe("Server-side compose", () => {
       const content = makeContent();
 
       // First compose
-      const response1 = await postComposeJob({ content }, testCliToken);
+      const response1 = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
       expect(response1.status).toBe(201);
       const data1 = await response1.json();
 
@@ -313,6 +364,7 @@ describe("Server-side compose", () => {
       const response2 = await postComposeJob(
         { content: content2 },
         testCliToken,
+        testOrgSlug,
       );
       expect(response2.status).toBe(201);
       const data2 = await response2.json();

@@ -8,7 +8,7 @@
 #
 # If git email is @vm0.ai, creates a named tunnel with fixed domain:
 #   tunnel-<username>-<hostname>-<service>.vm7.ai
-# Port-to-service mapping: 3000=web, 3001=docs, 3002=platform
+# Port-to-service mapping: 3000=web, 3001=docs, 3002=app
 # Otherwise, creates an anonymous quick tunnel:
 #   <random>.trycloudflare.com
 
@@ -54,7 +54,7 @@ else
     case "$PORT" in
       3000) SERVICE="www" ;;
       3001) SERVICE="docs" ;;
-      3002) SERVICE="platform" ;;
+      3002) SERVICE="app" ;;
       *)    SERVICE="$PORT" ;;
     esac
 

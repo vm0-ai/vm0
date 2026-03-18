@@ -41,6 +41,7 @@ import {
 import { zeroTabSub$ } from "../../signals/zero-page/zero-nav.ts";
 import { SimpleLink } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
+import emptyActivityImg from "./assets/empty-activity.png";
 
 const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "all", label: "All status" },
@@ -239,7 +240,7 @@ export function ZeroActivityPage() {
             ) : logs.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
                 <img
-                  src="/images/empty-activity.png"
+                  src={emptyActivityImg}
                   alt=""
                   className="h-20 w-20 object-contain opacity-80"
                 />

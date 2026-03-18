@@ -25,6 +25,7 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { canAccessCompose } from "../../../../../../src/lib/agent/compose-access";
+import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import {
   downloadManifest,
   downloadS3Buffer,
@@ -80,8 +81,13 @@ export async function GET(
     );
   }
 
-  // Check access (owner or org member)
-  const hasAccess = await canAccessCompose(userId, result);
+  // Check access (owner or org member).
+  // Sandbox tokens (with capabilities) are already authorized via requireAuth;
+  // use the compose's orgId since sandbox tokens lack org context.
+  const orgId = authResult.capabilities
+    ? result.orgId
+    : (await resolveOrg(authResult)).org.orgId;
+  const hasAccess = canAccessCompose(userId, orgId, result);
   if (!hasAccess) {
     return NextResponse.json(
       { error: { message: "Agent compose not found", code: "NOT_FOUND" } },
