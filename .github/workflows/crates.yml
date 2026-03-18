@@ -321,7 +321,7 @@ jobs:
           ssh $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             --profile vm0/browser \
-            'agent-browser open https://httpbin.org/get && agent-browser get title && agent-browser close'"
+            'agent-browser open http://httpbin.org/get && agent-browser get title && agent-browser close'"
 
   runner-exec:
     runs-on: ubuntu-latest
