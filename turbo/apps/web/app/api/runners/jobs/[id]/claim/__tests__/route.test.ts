@@ -309,6 +309,70 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       expect(data.agentName).toBeUndefined();
       expect(data.agentOrgSlug).toBeUndefined();
     });
+
+    it("should return appendSystemPrompt in claim response", async () => {
+      const { composeId, versionId } = await createTestCompose("test-asp");
+      const composeInfo = await findTestComposeWithOrg(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+        undefined,
+        { appendSystemPrompt: "Your name is Aria." },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.appendSystemPrompt).toBe("Your name is Aria.");
+    });
+
+    it("should return null appendSystemPrompt when not set", async () => {
+      const { composeId, versionId } = await createTestCompose("test-asp-null");
+      const composeInfo = await findTestComposeWithOrg(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.appendSystemPrompt).toBeNull();
+    });
   });
 
   describe("Claim flow - capabilities in sandbox token", () => {
