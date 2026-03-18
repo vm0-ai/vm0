@@ -131,6 +131,40 @@ describe("GET /api/app/logs/[id]", () => {
     expect(data.sessionId).toBeDefined();
   });
 
+  it("should return displayName from agent metadata", async () => {
+    const agentName = `display-name-id-${randomUUID().slice(0, 8)}`;
+    const { composeId } = await createTestCompose(agentName, {
+      metadata: { displayName: "Agent Display Name" },
+    });
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await completeTestRun(user.userId, runId);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/platform/logs/${runId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe(runId);
+    expect(data.displayName).toBe("Agent Display Name");
+  });
+
+  it("should return null displayName when agent metadata has none", async () => {
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    await completeTestRun(user.userId, runId);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/platform/logs/${runId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe(runId);
+    expect(data.displayName).toBeNull();
+  });
+
   it("should handle pending run status", async () => {
     // Create run but don't complete it (stays in pending status)
     const { runId, status } = await createTestRun(testComposeId, "Test prompt");

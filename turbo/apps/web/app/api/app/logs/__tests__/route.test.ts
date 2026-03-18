@@ -329,6 +329,44 @@ describe("GET /api/app/logs", () => {
     });
   });
 
+  it("should return displayName from agent metadata", async () => {
+    const agentName = `display-name-test-${randomUUID().slice(0, 8)}`;
+    const { composeId } = await createTestCompose(agentName, {
+      metadata: { displayName: "My Display Name" },
+    });
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await completeTestRun(user.userId, runId);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/platform/logs",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const run = data.data.find((r: { id: string }) => r.id === runId);
+    expect(run).toBeDefined();
+    expect(run.displayName).toBe("My Display Name");
+  });
+
+  it("should return null displayName when agent metadata has none", async () => {
+    const agentName = `no-display-name-${randomUUID().slice(0, 8)}`;
+    const { composeId } = await createTestCompose(agentName);
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await completeTestRun(user.userId, runId);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/platform/logs",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const run = data.data.find((r: { id: string }) => r.id === runId);
+    expect(run).toBeDefined();
+    expect(run.displayName).toBeNull();
+  });
+
   it("should return 400 for invalid limit", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/app/logs?limit=0",
