@@ -1,12 +1,15 @@
 #!/bin/bash
 # Start the noVNC stack (Xvfb + openbox + x11vnc + websockify) and launch Chrome.
 #
+# The script stays in the foreground. Ctrl-C (or SIGTERM) cleanly shuts down
+# all child processes. This makes it safe to run via `run_in_background` in
+# Claude Code — when the task is stopped the whole VNC stack goes away.
+#
 # If CF_ACCESS_TOKEN is set, also creates a Cloudflare Tunnel with Access
 # protection (only your email can access). Otherwise, noVNC is local-only
 # (use `dcvnc <vm>` to open it from the host).
 #
 # Outputs the access URL to stdout. All other messages go to stderr.
-# Idempotent — safe to call multiple times; skips already-running processes.
 #
 # Usage: scripts/start-vnc.sh
 #
@@ -29,6 +32,22 @@ SCREEN_RES="${SCREEN_RES:-1344x840x24}"
 
 log() { echo -e "[vnc] $1" >&2; }
 
+# Track child PIDs for cleanup
+PIDS=()
+
+cleanup() {
+  log "Shutting down VNC stack..."
+  for pid in "${PIDS[@]}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+  # Also kill any Chrome we started (matched by CDP port)
+  pkill -f "chrome.*--remote-debugging-port=${CDP_PORT:-9222}" 2>/dev/null || true
+  wait 2>/dev/null || true
+  log "All processes stopped."
+}
+
+trap cleanup EXIT INT TERM
+
 # --- Install dependencies if missing ---
 MISSING=()
 command -v x11vnc >/dev/null 2>&1 || MISSING+=(x11vnc)
@@ -42,54 +61,45 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
   sudo apt-get install -y -qq "${MISSING[@]}"
 fi
 
+# --- Kill any leftover processes from previous runs ---
+pkill -x Xvfb 2>/dev/null || true
+pkill -x openbox 2>/dev/null || true
+pkill -x x11vnc 2>/dev/null || true
+pkill -f websockify 2>/dev/null || true
+pkill -f "chrome.*--remote-debugging-port=${CDP_PORT:-9222}" 2>/dev/null || true
+sleep 1
+
 # --- Start Xvfb ---
-if pgrep -x Xvfb >/dev/null; then
-  log "Xvfb already running"
-else
-  log "Starting Xvfb on ${DISPLAY} (${SCREEN_RES})"
-  Xvfb "$DISPLAY" -screen 0 "$SCREEN_RES" >/dev/null 2>&1 &
-  sleep 1
-fi
+log "Starting Xvfb on ${DISPLAY} (${SCREEN_RES})"
+Xvfb "$DISPLAY" -screen 0 "$SCREEN_RES" >/dev/null 2>&1 &
+PIDS+=($!)
+sleep 1
 
 # --- Start openbox (window manager) ---
-if pgrep -x openbox >/dev/null; then
-  log "openbox already running"
-else
-  log "Starting openbox"
-  DISPLAY="$DISPLAY" openbox >/dev/null 2>&1 &
-  sleep 1
-fi
+log "Starting openbox"
+DISPLAY="$DISPLAY" openbox >/dev/null 2>&1 &
+PIDS+=($!)
+sleep 1
 
 # --- Start x11vnc ---
-if pgrep -x x11vnc >/dev/null; then
-  log "x11vnc already running"
-else
-  log "Starting x11vnc on port ${VNC_PORT}"
-  x11vnc -display "$DISPLAY" -nopw -forever -shared -rfbport "$VNC_PORT" >/dev/null 2>&1 &
-  sleep 1
-fi
+log "Starting x11vnc on port ${VNC_PORT}"
+x11vnc -display "$DISPLAY" -nopw -forever -shared -rfbport "$VNC_PORT" >/dev/null 2>&1 &
+PIDS+=($!)
+sleep 1
 
 # --- Start websockify (noVNC) ---
-if pgrep -f websockify >/dev/null; then
-  log "websockify already running"
-else
-  log "Starting websockify on 0.0.0.0:${NOVNC_PORT} -> localhost:${VNC_PORT}"
-  websockify --web /usr/share/novnc/ "0.0.0.0:${NOVNC_PORT}" "localhost:${VNC_PORT}" >/dev/null 2>&1 &
-  sleep 1
-fi
+log "Starting websockify on 0.0.0.0:${NOVNC_PORT} -> localhost:${VNC_PORT}"
+websockify --web /usr/share/novnc/ "0.0.0.0:${NOVNC_PORT}" "localhost:${VNC_PORT}" >/dev/null 2>&1 &
+PIDS+=($!)
+sleep 1
 
 # --- Launch Chrome with CDP (remote debugging) ---
-# Chrome is started with --remote-debugging-port so that agent-browser can
-# connect to the same instance via --cdp. This ensures the user watching
-# noVNC and the agent share the exact same browser.
 CDP_PORT="${CDP_PORT:-9222}"
 CHROME_BIN=$(find "$HOME/.cache/ms-playwright" -name chrome -type f 2>/dev/null | head -1)
 CHROME_PROFILE="${AGENT_BROWSER_PROFILE:-$HOME/.local/share/agent-browser/profile}"
 
 if [[ -z "$CHROME_BIN" ]]; then
   log "Warning: Chrome not found in Playwright cache, skipping"
-elif pgrep -f "chrome.*--remote-debugging-port=${CDP_PORT}" >/dev/null 2>&1; then
-  log "Chrome already running (CDP port ${CDP_PORT})"
 else
   # Clear stale profile locks from other VMs
   rm -f "${CHROME_PROFILE}/SingletonLock" "${CHROME_PROFILE}/SingletonCookie" "${CHROME_PROFILE}/SingletonSocket" 2>/dev/null
@@ -102,6 +112,7 @@ else
     --disable-blink-features=AutomationControlled \
     --start-maximized \
     >/dev/null 2>&1 &
+  PIDS+=($!)
   sleep 2
 fi
 
@@ -119,8 +130,6 @@ log "noVNC stack ready — local viewer at http://localhost:${NOVNC_PORT}/vnc.ht
 
 # --- Cloudflare Tunnel + Access (only when CF_ACCESS_TOKEN is set) ---
 if [[ -n "${CF_ACCESS_TOKEN:-}" ]]; then
-  # Compute tunnel hostname for VNC
-  # Format: <username>-<hostname>.vnc.vm7.ai (e.g., ethan-vm04.vnc.vm7.ai)
   if [[ -z "${TUNNEL_HOSTNAME:-}" ]]; then
     EMAIL=$(git config user.email 2>/dev/null || true)
     DOMAIN="${EMAIL##*@}"
@@ -139,7 +148,6 @@ if [[ -n "${CF_ACCESS_TOKEN:-}" ]]; then
     TUNNEL_URL=$(TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME:-}" "${SCRIPT_DIR}/tunnel.sh" "$NOVNC_PORT")
   fi
 
-  # Apply Cloudflare Access protection
   if [[ -n "${TUNNEL_HOSTNAME:-}" ]]; then
     "${SCRIPT_DIR}/tunnel-access.sh" "$TUNNEL_HOSTNAME"
   fi
@@ -151,3 +159,7 @@ else
   log "Use 'dcvnc $(hostname)' from the host to open noVNC"
   echo "http://localhost:${NOVNC_PORT}"
 fi
+
+# --- Stay in foreground until signalled ---
+log "Press Ctrl-C to stop."
+wait

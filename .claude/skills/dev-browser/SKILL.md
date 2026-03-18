@@ -21,34 +21,66 @@ Use the `/dev-start` skill to start the dev server if not already running. Wait 
 
 ### Step 2: Start VNC + Chrome
 
-Run the VNC startup script to launch the headed Chrome browser:
+Start the VNC stack in the background using Bash `run_in_background`. The script stays alive and all child processes (Xvfb, Chrome, etc.) are cleaned up when the task is stopped.
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT" && VNC_URL=$(scripts/start-vnc.sh) && echo "$VNC_URL"
+cd "$PROJECT_ROOT" && scripts/start-vnc.sh
 ```
 
-After VNC starts, verify Chrome is reachable via CDP:
+Run this command with `run_in_background: true`. It will output the noVNC URL.
+
+After starting, wait a few seconds then verify Chrome is reachable via CDP:
 
 ```bash
 curl -sf http://localhost:9222/json/version > /dev/null || { echo "❌ CDP not ready"; exit 1; }
 ```
 
-If CDP is not ready, Playwright Chromium may not be installed. Install it and re-run the VNC script:
+If CDP is not ready, Playwright Chromium may not be installed. Install it and restart the VNC task:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT/e2e" && pnpm exec playwright install chromium
-cd "$PROJECT_ROOT" && scripts/start-vnc.sh
 ```
+
+Then stop and re-run the VNC background task.
 
 Tell the user the noVNC URL so they can watch:
 
 > The browser is running in headed mode with noVNC. Open this URL to view and interact:
 >
-> `<vnc-url>/vnc.html`
+> `http://localhost:6080/vnc.html`
 
-### Step 3: Start Video Recording
+### Step 3: Authenticate Browser
+
+Use the e2e auth automation script to log in to the platform app via CDP. This reuses the same Clerk login flow that CI verifies.
+
+Build the test email from `git config user.email` prefix + hostname:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+GIT_EMAIL_PREFIX=$(git config user.email | sed 's/@.*//')
+HOSTNAME=$(hostname)
+TEST_EMAIL="${GIT_EMAIL_PREFIX}-${HOSTNAME}+clerk_test@vm0.ai"
+
+cd "$PROJECT_ROOT/e2e" && npx tsx cli-auth-automation.ts --cdp "https://app.vm7.ai:8443" --port 9222 --email "$TEST_EMAIL"
+```
+
+This will:
+- Connect to the existing Chrome via CDP port 9222
+- Navigate to the Clerk sign-in page
+- Authenticate using the test email and OTP code `424242`
+- Skip login if the browser is already authenticated
+- Leave the browser open for agent-browser to use
+
+If the script fails with a database error (e.g., missing `org_cache` table), run migrations first:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT/turbo" && pnpm --filter web db:migrate
+```
+
+### Step 4: Start Video Recording
 
 Before performing any browser actions, start recording the session. Use the task name (a short English description of what you're doing) and a timestamp for the filename:
 

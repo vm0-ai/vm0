@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { spawn, ChildProcess } from "child_process";
 import * as dotenv from "dotenv";
 import * as os from "os";
@@ -7,6 +7,87 @@ import * as path from "path";
 
 // Load environment variables
 dotenv.config({ path: ".env.local" });
+
+// ---------------------------------------------------------------------------
+// Shared: Clerk sign-in flow (used by both CLI auth and CDP browser login)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign in to a VM0 app via Clerk email + OTP.
+ *
+ * Steps:
+ * 1. Navigate to /sign-in
+ * 2. Enter email → Continue
+ * 3. "Use another method" → "Email code"
+ * 4. Enter OTP 424242 (Clerk dev mode test code)
+ * 5. Wait for redirect away from /sign-in
+ *
+ * This function is shared between `automateCliAuth` (CI e2e-auth job)
+ * and `browserLogin` (local agent-browser CDP login), so its correctness
+ * is continuously verified by CI.
+ */
+export async function clerkLogin(page: Page, baseUrl: string, email: string) {
+  const OTP = "424242";
+
+  // If Vercel bypass secret is available, set bypass cookie
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    const bypassUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
+    console.log("🔓 Setting Vercel bypass cookie via query parameter");
+    await page.goto(bypassUrl);
+  }
+
+  // Navigate to sign-in page
+  await page.goto(`${baseUrl}/sign-in`);
+  await page.waitForLoadState("domcontentloaded");
+
+  // Wait for Clerk to render sign-in form (or skip if already signed in)
+  const emailInput = page.locator('input[name="identifier"]');
+  const hasSignIn = await emailInput.isVisible({ timeout: 10000 }).catch(() => false);
+  if (!hasSignIn) {
+    console.log(`✅ Already signed in (current URL: ${page.url()})`);
+    return;
+  }
+
+  // Enter email address
+  await emailInput.fill(email);
+  console.log(`📧 Using test email: ${email}`);
+
+  // Click Continue button
+  await page.locator('.cl-formButtonPrimary').click();
+  console.log("➡️ Clicked Continue");
+
+  // Clerk shows password by default; switch to email code method
+  const useAnotherMethod = page.locator('a:has-text("Use another method"), button:has-text("Use another method")');
+  await useAnotherMethod.waitFor({ state: "visible", timeout: 10000 });
+  await useAnotherMethod.click();
+  console.log("🔄 Clicked 'Use another method'");
+
+  // Select email code option
+  const emailCodeOption = page.locator('button:has-text("Email code")');
+  await emailCodeOption.waitFor({ state: "visible", timeout: 10000 });
+  await emailCodeOption.click();
+  console.log("📧 Selected 'Email code'");
+
+  // Wait for OTP input to appear and Clerk to finish sending the code
+  const otpInput = page.locator('input[data-input-otp="true"]');
+  await otpInput.waitFor({ state: "attached", timeout: 10000 });
+  // Wait for Clerk to complete the "prepare" step (sending the email)
+  await page.waitForTimeout(2000);
+
+  // Enter test OTP code 424242 (Clerk accepts this in development mode)
+  await otpInput.focus();
+  await page.keyboard.type(OTP);
+  console.log("🔢 Entered OTP code");
+
+  // Wait for Clerk to complete authentication (should redirect away from /sign-in)
+  await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
+  console.log(`✅ Clerk login successful (redirected to ${page.url()})`);
+}
+
+// ---------------------------------------------------------------------------
+// Mode 1: CLI device-code authentication (used by CI e2e-auth job)
+// ---------------------------------------------------------------------------
 
 /**
  * Automate CLI authentication flow
@@ -23,7 +104,7 @@ dotenv.config({ path: ".env.local" });
  */
 export async function automateCliAuth(apiHost?: string) {
   let cliProcess: ChildProcess | null = null;
-  let browser = null;
+  let browser: Browser | null = null;
 
   try {
     console.log("🚀 Starting CLI authentication flow...");
@@ -132,64 +213,13 @@ export async function automateCliAuth(apiHost?: string) {
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    // Step 4: Login via Clerk email + OTP code
-    const baseUrl = apiUrl;
-
-    // If Vercel bypass secret is available, set bypass cookie via query parameter
-    // This avoids CORS issues that occur when using HTTP headers
-    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-    if (bypassSecret) {
-      const bypassUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
-      console.log("🔓 Setting Vercel bypass cookie via query parameter");
-      await page.goto(bypassUrl);
-    }
-
-    // Navigate to sign-in page
-    await page.goto(`${baseUrl}/sign-in`);
-    await page.waitForLoadState("domcontentloaded");
-
-    // Enter email address
-    const emailInput = page.locator('input[name="identifier"]');
-    await emailInput.waitFor({ state: "visible", timeout: 10000 });
+    // Step 4: Login via Clerk
     const testEmail = "e2e+clerk_test@vm0.ai";
-    await emailInput.fill(testEmail);
-    console.log(`📧 Using test email: ${testEmail}`);
-    console.log("📧 Entered email address");
-
-    // Click Continue button
-    await page.locator('.cl-formButtonPrimary').click();
-    console.log("➡️ Clicked Continue");
-
-    // Clerk shows password by default; switch to email code method
-    const useAnotherMethod = page.locator('a:has-text("Use another method"), button:has-text("Use another method")');
-    await useAnotherMethod.waitFor({ state: "visible", timeout: 10000 });
-    await useAnotherMethod.click();
-    console.log("🔄 Clicked 'Use another method'");
-
-    // Select email code option
-    const emailCodeOption = page.locator('button:has-text("Email code")');
-    await emailCodeOption.waitFor({ state: "visible", timeout: 10000 });
-    await emailCodeOption.click();
-    console.log("📧 Selected 'Email code'");
-
-    // Wait for OTP input to appear and Clerk to finish sending the code
-    const otpInput = page.locator('input[data-input-otp="true"]');
-    await otpInput.waitFor({ state: "attached", timeout: 10000 });
-    // Wait for Clerk to complete the "prepare" step (sending the email)
-    await page.waitForTimeout(2000);
-
-    // Enter test OTP code 424242 (Clerk accepts this in development mode)
-    await otpInput.focus();
-    await page.keyboard.type("424242");
-    console.log("🔢 Entered OTP code");
-
-    // Wait for Clerk to complete authentication (should redirect away from /sign-in)
-    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 15000 });
-    console.log(`✅ Clerk login successful (redirected to ${page.url()})`);
-    console.log(`🔗 Visiting auth page: ${baseUrl}/cli-auth`);
+    await clerkLogin(page, apiUrl, testEmail);
+    console.log(`🔗 Visiting auth page: ${apiUrl}/cli-auth`);
 
     // Step 6: Visit CLI auth page
-    await page.goto(`${baseUrl}/cli-auth`);
+    await page.goto(`${apiUrl}/cli-auth`);
     await page.waitForLoadState("domcontentloaded");
 
     // Step 7: Enter device code
@@ -307,18 +337,91 @@ export async function automateCliAuth(apiHost?: string) {
   }
 }
 
-// If running this script directly
-if (require.main === module) {
-  // Can specify VM0_API_URL via command line argument or environment variable
-  const apiHost = process.argv[2] || process.env.VM0_API_URL;
+// ---------------------------------------------------------------------------
+// Mode 2: CDP browser login (for agent-browser / local dev)
+// ---------------------------------------------------------------------------
 
-  automateCliAuth(apiHost)
-    .then(() => {
-      console.log("✅ Automated authentication completed successfully");
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error("❌ Automated authentication failed:", error);
-      process.exit(1);
-    });
+/**
+ * Login to a VM0 app via an already-running Chrome instance (CDP).
+ *
+ * Connects to the Chrome started by scripts/start-vnc.sh and runs the
+ * same Clerk sign-in flow used by the CI e2e-auth job.
+ *
+ * NOTE: Playwright's connectOverCDP may not see Clerk-rendered DOM in
+ * headed Chrome (known issue with shared CDP sessions). If login fails,
+ * fall back to manual agent-browser commands.
+ *
+ * Usage:
+ *   npx tsx e2e/cli-auth-automation.ts --cdp [base-url] [--port 9222] [--email user@example.com]
+ */
+export async function browserLogin(opts: {
+  baseUrl: string;
+  cdpPort: number;
+  email: string;
+}) {
+  const cdpUrl = `http://localhost:${opts.cdpPort}`;
+  console.log(`🔗 Connecting to CDP at ${cdpUrl}`);
+  const browser = await chromium.connectOverCDP(cdpUrl);
+
+  const contexts = browser.contexts();
+  const context = contexts[0] ?? await browser.newContext();
+  const page = context.pages()[0] ?? await context.newPage();
+
+  try {
+    await clerkLogin(page, opts.baseUrl, opts.email);
+  } finally {
+    // Disconnect without killing — browser stays open for agent-browser
+    await browser.close();
+    console.log("🔌 Disconnected from CDP (browser stays open)");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
+
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  const isCdpMode = args.includes("--cdp");
+
+  if (isCdpMode) {
+    // --cdp mode: connect to existing Chrome and login
+    const filtered = args.filter(a => a !== "--cdp");
+    let baseUrl = "https://app.vm7.ai:8443";
+    let cdpPort = 9222;
+    let email = `${os.hostname()}+clerk_test@vm0.ai`;
+
+    for (let i = 0; i < filtered.length; i++) {
+      if (filtered[i] === "--port" && filtered[i + 1]) {
+        cdpPort = parseInt(filtered[++i], 10);
+      } else if (filtered[i] === "--email" && filtered[i + 1]) {
+        email = filtered[++i];
+      } else if (!filtered[i].startsWith("--")) {
+        baseUrl = filtered[i];
+      }
+    }
+
+    browserLogin({ baseUrl, cdpPort, email })
+      .then(() => {
+        console.log("✅ Browser login complete");
+        process.exit(0);
+      })
+      .catch((error) => {
+        console.error("❌ Browser login failed:", error);
+        process.exit(1);
+      });
+  } else {
+    // Default mode: CLI device-code auth
+    const apiHost = args[0] || process.env.VM0_API_URL;
+
+    automateCliAuth(apiHost)
+      .then(() => {
+        console.log("✅ Automated authentication completed successfully");
+        process.exit(0);
+      })
+      .catch((error) => {
+        console.error("❌ Automated authentication failed:", error);
+        process.exit(1);
+      });
+  }
 }
