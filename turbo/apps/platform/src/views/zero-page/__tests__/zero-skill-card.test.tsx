@@ -171,14 +171,14 @@ describe("zero skill card status display", () => {
     });
   });
 
-  it("shows Add API key button for not-connected API-token-only connector", async () => {
+  it("shows Connect button for not-connected API-token-only connector", async () => {
     mockConnectors([]);
 
     await renderTeamPage(["axiom"]);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Add API key" }),
+        screen.getByRole("button", { name: "Connect" }),
       ).toBeInTheDocument();
     });
   });
@@ -230,15 +230,15 @@ describe("zero skill card button clicks", () => {
     });
   });
 
-  it("opens ConnectModal when Add API key is clicked", async () => {
+  it("opens ConnectModal when Connect is clicked for API-token connector", async () => {
     mockConnectors([]);
     await renderTeamPage(["axiom"]);
 
-    const addApiKeyButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Add API key" }),
+    const connectButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Connect" }),
     );
 
-    fireEvent.click(addApiKeyButton);
+    fireEvent.click(connectButton);
 
     // ConnectModal should open showing the connector's dialog
     await waitFor(() => {
