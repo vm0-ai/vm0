@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { verifyUnsubscribeToken } from "../../../../src/lib/email/handlers/shared";
 import { unsubscribeUser } from "../../../../src/lib/email/unsubscribe-service";
-import { getPlatformUrl } from "../../../../src/lib/url";
+import { getAppUrl } from "../../../../src/lib/url";
 
 /**
  * Email Unsubscribe Endpoint
@@ -52,7 +52,7 @@ export async function GET(request: Request): Promise<Response> {
 
   await unsubscribeUser(userId);
 
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
 
   const html = `<!DOCTYPE html>
 <html>
@@ -72,7 +72,7 @@ export async function GET(request: Request): Promise<Response> {
   <div class="card">
     <h1>You have been unsubscribed</h1>
     <p>You will no longer receive system-initiated email notifications from VM0.</p>
-    <p><a href="${platformUrl}/settings">Manage notification preferences</a></p>
+    <p><a href="${appUrl}/settings">Manage notification preferences</a></p>
   </div>
 </body>
 </html>`;

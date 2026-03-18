@@ -3,7 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
-import { getPlatformUrl } from "../../url";
+import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
 import { ensureStorageExists } from "../../storage/storage-service";
 
@@ -186,7 +186,7 @@ export function buildOrgConnectUrl(
   channelId: string,
   threadTs?: string,
 ): string {
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
   const params = new URLSearchParams({
     w: workspaceId,
     u: slackUserId,
@@ -197,7 +197,7 @@ export function buildOrgConnectUrl(
   if (threadTs) {
     params.set("t", threadTs);
   }
-  return `${platformUrl}/slack/connect?${params.toString()}`;
+  return `${appUrl}/slack/connect?${params.toString()}`;
 }
 
 /**
@@ -224,12 +224,12 @@ export {
  * Build the logs URL for a run in the org flow.
  */
 export function buildLogsUrl(runId: string): string {
-  return `${getPlatformUrl()}/activity/${encodeURIComponent(runId)}`;
+  return `${getAppUrl()}/activity/${encodeURIComponent(runId)}`;
 }
 
 /**
  * Build the agent-level activity URL (no specific run).
  */
 export function buildAgentLogsUrl(): string {
-  return `${getPlatformUrl()}/activity`;
+  return `${getAppUrl()}/activity`;
 }

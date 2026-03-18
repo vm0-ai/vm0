@@ -112,60 +112,54 @@ describe("buildSuccessMessage", () => {
 });
 
 describe("detectDeepLinks", () => {
-  const platformUrl = "https://platform.vm0.ai";
+  const appUrl = "https://app.vm0.ai";
 
   it("should return empty array when no keywords match", () => {
-    const links = detectDeepLinks(
-      "Hello, everything is working fine!",
-      platformUrl,
-    );
+    const links = detectDeepLinks("Hello, everything is working fine!", appUrl);
     expect(links).toEqual([]);
   });
 
   it("should detect provider-related keywords", () => {
     const links = detectDeepLinks(
       "The model provider is not configured",
-      platformUrl,
+      appUrl,
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
       emoji: "🔑",
       label: "Configure model providers",
-      url: `${platformUrl}/settings`,
+      url: `${appUrl}/settings`,
     });
   });
 
   it("should route connector links to team page with agent name", () => {
     const links = detectDeepLinks(
       "Error: missing variable DATABASE_URL",
-      platformUrl,
+      appUrl,
       "my-agent",
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/team/my-agent?tab=connectors`,
+      url: `${appUrl}/team/my-agent?tab=connectors`,
     });
   });
 
   it("should route connector links to generic team page without agent name", () => {
-    const links = detectDeepLinks(
-      "The MCP server connection failed",
-      platformUrl,
-    );
+    const links = detectDeepLinks("The MCP server connection failed", appUrl);
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
       emoji: "🔌",
       label: "Configure connectors",
-      url: `${platformUrl}/team`,
+      url: `${appUrl}/team`,
     });
   });
 
   it("should match case-insensitively", () => {
     const links = detectDeepLinks(
       "API_KEY is not configured",
-      platformUrl,
+      appUrl,
       "test-agent",
     );
     expect(links).toHaveLength(1);
@@ -175,34 +169,34 @@ describe("detectDeepLinks", () => {
   it("should deduplicate by path", () => {
     const links = detectDeepLinks(
       "The api key is missing and the secret is not configured and the apikey is invalid",
-      platformUrl,
+      appUrl,
       "my-agent",
     );
     expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(`${platformUrl}/team/my-agent?tab=connectors`);
+    expect(links[0]?.url).toBe(`${appUrl}/team/my-agent?tab=connectors`);
   });
 
   it("should return multiple links for different destinations", () => {
     const links = detectDeepLinks(
       "The model provider is missing. Also the api key is not set and the MCP server is down.",
-      platformUrl,
+      appUrl,
       "my-agent",
     );
     expect(links).toHaveLength(2);
     const urls = links.map((l) => l.url);
-    expect(urls).toContain(`${platformUrl}/settings`);
-    expect(urls).toContain(`${platformUrl}/team/my-agent?tab=connectors`);
+    expect(urls).toContain(`${appUrl}/settings`);
+    expect(urls).toContain(`${appUrl}/team/my-agent?tab=connectors`);
   });
 
   it("should encode special characters in agent name", () => {
     const links = detectDeepLinks(
       "connector not found",
-      platformUrl,
+      appUrl,
       "agent with spaces",
     );
     expect(links).toHaveLength(1);
     expect(links[0]?.url).toBe(
-      `${platformUrl}/team/agent%20with%20spaces?tab=connectors`,
+      `${appUrl}/team/agent%20with%20spaces?tab=connectors`,
     );
   });
 });

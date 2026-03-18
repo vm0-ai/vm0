@@ -9,7 +9,7 @@ import {
   memberConnect,
   notifyConnectSuccess,
 } from "../../../../../src/lib/slack-org/connect-service";
-import { getPlatformUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/url";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("slack-org:connect");
@@ -37,11 +37,11 @@ export async function GET(request: Request) {
   const slackUserId = url.searchParams.get("u");
   const channelId = url.searchParams.get("c");
   const threadTs = url.searchParams.get("t");
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
 
   if (!workspaceId || !slackUserId) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("Invalid connect link.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("Invalid connect link.")}`,
     );
   }
 
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
   if (!installation) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("Workspace not found. Please install the Slack app first.")}`,
     );
   }
 
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
 
     if (member.role !== "admin") {
       return NextResponse.redirect(
-        `${platformUrl}/slack/connect?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
+        `${appUrl}/slack/connect?error=${encodeURIComponent("Ask your org admin to connect first.")}`,
       );
     }
 
@@ -87,9 +87,7 @@ export async function GET(request: Request) {
       channelId,
       threadTs,
     }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
-    return NextResponse.redirect(
-      `${platformUrl}/slack/connect?status=connected`,
-    );
+    return NextResponse.redirect(`${appUrl}/slack/connect?status=connected`);
   }
 
   // Verify the user is a member of the workspace's bound org AND their
@@ -119,7 +117,7 @@ export async function GET(request: Request) {
       : "You don't have access to the organization this Slack workspace belongs to. Contact the organization admin for an invite.";
 
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent(message)}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent(message)}`,
     );
   }
 
@@ -155,5 +153,5 @@ export async function GET(request: Request) {
     channelId,
     threadTs,
   }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
-  return NextResponse.redirect(`${platformUrl}/slack/connect?status=connected`);
+  return NextResponse.redirect(`${appUrl}/slack/connect?status=connected`);
 }

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getApiUrl } from "../../../../../src/lib/callback";
-import { getPlatformUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/url";
 import { encryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import {
@@ -153,7 +153,7 @@ async function tryLinkFromLocalRecord(
       .where(eq(githubInstallations.id, existing.id));
   }
 
-  return `${getPlatformUrl()}/settings?tab=integrations`;
+  return `${getAppUrl()}/settings?tab=integrations`;
 }
 
 /**
@@ -186,7 +186,7 @@ async function tryLinkFromGitHubApi(
   }
 
   const db = globalThis.services.db;
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
 
   // Check if any GitHub installation is already tracked locally
   for (const ghInstall of installations) {
@@ -201,7 +201,7 @@ async function tryLinkFromGitHubApi(
     if (existing) {
       const linked = await linkVm0User(db, existing.id, vm0UserId);
       if (linked) {
-        return `${platformUrl}/settings?tab=integrations`;
+        return `${appUrl}/settings?tab=integrations`;
       }
       // Link failed — fall through to GitHub redirect
       return null;
@@ -255,5 +255,5 @@ async function tryLinkFromGitHubApi(
 
   await linkVm0User(db, newInstall.id, vm0UserId, adminGithubUserId);
 
-  return `${platformUrl}/settings?tab=integrations`;
+  return `${appUrl}/settings?tab=integrations`;
 }

@@ -11,7 +11,7 @@ import {
   getInstallationAccessToken,
   getInstallationInfo,
 } from "../../../../../src/lib/github/github-app";
-import { getPlatformUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/url";
 import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compose/resolve-default";
 
 /**
@@ -59,11 +59,11 @@ export async function GET(request: Request) {
   const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, SECRETS_ENCRYPTION_KEY } =
     env();
 
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
 
   if (!GITHUB_APP_ID || !GITHUB_APP_PRIVATE_KEY) {
     return NextResponse.redirect(
-      `${platformUrl}/works?error=${encodeURIComponent("GitHub App integration is not configured")}`,
+      `${appUrl}/works?error=${encodeURIComponent("GitHub App integration is not configured")}`,
     );
   }
 
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
 
   // Handle update action (permission changes) — no state needed
   if (setupAction === "update") {
-    return NextResponse.redirect(`${platformUrl}/works`);
+    return NextResponse.redirect(`${appUrl}/works`);
   }
 
   let state: OAuthState;
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
     state = parseOAuthState(url.searchParams.get("state"));
   } catch {
     return NextResponse.redirect(
-      `${platformUrl}/works?error=${encodeURIComponent("Invalid OAuth state. Please try installing again from the Platform.")}`,
+      `${appUrl}/works?error=${encodeURIComponent("Invalid OAuth state. Please try installing again from the Platform.")}`,
     );
   }
 
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
 
     if (!sigValid) {
       return NextResponse.redirect(
-        `${platformUrl}/works?error=${encodeURIComponent("Invalid state signature. Please try installing again from the Platform.")}`,
+        `${appUrl}/works?error=${encodeURIComponent("Invalid state signature. Please try installing again from the Platform.")}`,
       );
     }
   }
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
 
   if (!composeId) {
     return NextResponse.redirect(
-      `${platformUrl}/works?error=${encodeURIComponent("Missing default agent. Please set VM0_DEFAULT_AGENT or select an agent before connecting GitHub.")}`,
+      `${appUrl}/works?error=${encodeURIComponent("Missing default agent. Please set VM0_DEFAULT_AGENT or select an agent before connecting GitHub.")}`,
     );
   }
 
@@ -131,13 +131,13 @@ export async function GET(request: Request) {
       defaultComposeId: composeId,
     });
 
-    return NextResponse.redirect(`${platformUrl}/works?pending=true`);
+    return NextResponse.redirect(`${appUrl}/works?pending=true`);
   }
 
   // For install action, installation_id is required
   if (!installationId) {
     return NextResponse.redirect(
-      `${platformUrl}/works?error=${encodeURIComponent("Missing installation ID from GitHub")}`,
+      `${appUrl}/works?error=${encodeURIComponent("Missing installation ID from GitHub")}`,
     );
   }
 
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
     if (state.vm0UserId) {
       await linkVm0User(db, existing.id, state.vm0UserId);
     }
-    return NextResponse.redirect(`${platformUrl}/works`);
+    return NextResponse.redirect(`${appUrl}/works`);
   }
 
   // Get installation info from GitHub API (target type, ID, name)
@@ -235,7 +235,7 @@ export async function GET(request: Request) {
     await linkVm0User(db, installRecordId, state.vm0UserId, adminGithubUserId);
   }
 
-  return NextResponse.redirect(`${platformUrl}/works`);
+  return NextResponse.redirect(`${appUrl}/works`);
 }
 
 /**

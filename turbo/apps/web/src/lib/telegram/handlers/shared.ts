@@ -3,7 +3,7 @@ import { telegramThreadSessions } from "../../../db/schema/telegram-thread-sessi
 import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { getPlatformUrl } from "../../url";
+import { getAppUrl } from "../../url";
 import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../run";
 import { ensureStorageExists } from "../../storage/storage-service";
@@ -168,14 +168,14 @@ export async function storeTelegramMessage(
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
 export function buildLogsUrl(runId: string): string {
-  return `${getPlatformUrl()}/activity/${encodeURIComponent(runId)}`;
+  return `${getAppUrl()}/activity/${encodeURIComponent(runId)}`;
 }
 
 /**
  * Build the agent logs page URL (no specific run).
  */
 export function buildAgentLogsUrl(): string {
-  return `${getPlatformUrl()}/activity`;
+  return `${getAppUrl()}/activity`;
 }
 
 /**
@@ -297,10 +297,10 @@ export function buildConnectUrl(
   telegramUserId: string,
   botToken: string,
 ): string {
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
   const ts = Math.floor(Date.now() / 1000);
   const sig = signConnectParams(installationId, telegramUserId, ts, botToken);
-  return `${platformUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
+  return `${appUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
 }
 
 /**

@@ -12,7 +12,7 @@ import {
   removeCommentReaction,
 } from "../../../../../../src/lib/github/api";
 import { getRunResultData } from "../../../../../../src/lib/slack/handlers/run-agent";
-import { getPlatformUrl } from "../../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../../src/lib/url";
 import { detectDeepLinks } from "../../../../../../src/lib/deep-links";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
@@ -83,8 +83,8 @@ function formatGitHubComment(opts: {
   triggerCommentBody?: string;
 }): string {
   const { status, agentName, runId, output, error, triggerCommentBody } = opts;
-  const platformUrl = getPlatformUrl();
-  const logsUrl = `${platformUrl}/activity/${encodeURIComponent(runId)}`;
+  const appUrl = getAppUrl();
+  const logsUrl = `${appUrl}/activity/${encodeURIComponent(runId)}`;
   const content =
     status === "completed"
       ? (output ?? "Task completed successfully.")
@@ -104,7 +104,7 @@ function formatGitHubComment(opts: {
   parts.push(`<sub>🤖 **${agentName}**</sub>`, "", content, "");
 
   // Detect deep links for missing connectors, model providers, etc.
-  const deepLinks = detectDeepLinks(content, platformUrl, agentName);
+  const deepLinks = detectDeepLinks(content, appUrl, agentName);
   if (deepLinks.length > 0) {
     const linkText = deepLinks
       .map((link) => `${link.emoji} [${link.label}](${link.url})`)

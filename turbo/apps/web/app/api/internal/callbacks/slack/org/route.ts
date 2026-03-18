@@ -26,7 +26,7 @@ import {
   saveThreadSession,
   buildLogsUrl,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
-import { getPlatformUrl } from "../../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 import type { WebClient } from "@slack/web-api";
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const logsUrl = buildLogsUrl(runId);
     const deepLinks = detectDeepLinks(
       responseText,
-      getPlatformUrl(),
+      getAppUrl(),
       payload.agentName,
     );
     await postMessage(client, payload.channelId, responseText, {
