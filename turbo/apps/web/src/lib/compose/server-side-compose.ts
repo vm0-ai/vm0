@@ -221,12 +221,14 @@ export async function serverSideCompose(params: {
     string,
     Record<string, unknown>
   >;
+  const agentDef = { ...agentsCopy[agentName]! };
+  delete agentDef.metadata;
   const resolvedContent = {
     ...contentCopy,
     version: contentCopy.version as string,
     agents: {
       [normalizedName]: {
-        ...agentsCopy[agentName],
+        ...agentDef,
         environment,
       },
     },
