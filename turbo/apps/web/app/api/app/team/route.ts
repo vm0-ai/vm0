@@ -61,6 +61,7 @@ export async function GET() {
       updatedAt: agentComposes.updatedAt,
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
+      sound: zeroAgents.sound,
     })
     .from(agentComposes)
     .leftJoin(
@@ -79,6 +80,7 @@ export async function GET() {
       name: c.name,
       displayName: c.displayName ?? null,
       description: c.description ?? null,
+      sound: c.sound ?? null,
       headVersionId: c.headVersionId,
       updatedAt: c.updatedAt.toISOString(),
       isOwner: true,

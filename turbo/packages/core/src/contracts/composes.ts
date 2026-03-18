@@ -392,6 +392,7 @@ const composeListItemSchema = z.object({
   name: z.string(),
   displayName: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
+  sound: z.string().nullable().optional(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
 });

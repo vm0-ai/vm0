@@ -59,6 +59,7 @@ import { Link } from "../router/link.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
+import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -209,16 +210,23 @@ function syncTabToUrl(tab: string) {
   window.history.replaceState(null, "", url.toString());
 }
 
-function extractAgentFields(detail: AgentDetail | null, fallbackName: string) {
+function extractAgentFields(
+  detail: AgentDetail | null,
+  fallbackName: string,
+  listItem?: {
+    displayName?: string | null;
+    description?: string | null;
+    sound?: string | null;
+  },
+) {
   const agentDef = detail?.content
     ? Object.values(detail.content.agents)[0]
     : null;
   return {
-    description: agentDef?.metadata?.description ?? agentDef?.description ?? "",
+    description: listItem?.description ?? agentDef?.description ?? "",
     framework: agentDef?.framework ?? null,
-    sound: agentDef?.metadata?.sound ?? "professional",
-    displayName:
-      agentDef?.metadata?.displayName ?? detail?.name ?? fallbackName,
+    sound: listItem?.sound ?? "professional",
+    displayName: listItem?.displayName ?? detail?.name ?? fallbackName,
   };
 }
 
@@ -329,10 +337,13 @@ export function ZeroJobDetailPage({
   const detail = useGet(zeroJobDetail$);
   const loading = useGet(zeroJobDetailLoading$);
   const error = useGet(zeroJobDetailError$);
+  const agents = useGet(agentsList$);
+  const listItem = agents.find((a) => a.name === agentName);
 
   const { description, displayName, sound } = extractAgentFields(
     detail,
     agentName,
+    listItem,
   );
   const resolvedSound: Tone = (TONE_OPTIONS as readonly string[]).includes(
     sound,

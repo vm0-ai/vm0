@@ -57,6 +57,7 @@ const router = tsr.router(composesListContract, {
         updatedAt: agentComposes.updatedAt,
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
+        sound: zeroAgents.sound,
       })
       .from(agentComposes)
       .leftJoin(
@@ -74,6 +75,7 @@ const router = tsr.router(composesListContract, {
       name: c.name,
       displayName: c.displayName ?? null,
       description: c.description ?? null,
+      sound: c.sound ?? null,
       headVersionId: c.headVersionId,
       updatedAt: c.updatedAt.toISOString(),
     }));
