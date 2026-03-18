@@ -36,6 +36,8 @@ export async function createRun(body: {
   debugNoMockClaude?: boolean;
   // Environment validation flag - when true, validates secrets/vars before running
   checkEnv?: boolean;
+  // Append text to the agent's system prompt
+  appendSystemPrompt?: string;
   // Required
   prompt: string;
 }): Promise<CreateRunResponse> {

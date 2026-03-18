@@ -69,6 +69,10 @@ export const mainRunCommand = new Command()
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
+  .option(
+    "--append-system-prompt <text>",
+    "Append text to the agent's system prompt",
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -88,6 +92,7 @@ export const mainRunCommand = new Command()
           volumeVersion: Record<string, string>;
           conversation?: string;
           modelProvider?: string;
+          appendSystemPrompt?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -171,6 +176,7 @@ export const mainRunCommand = new Command()
               : undefined,
           conversationId: options.conversation,
           modelProvider: options.modelProvider,
+          appendSystemPrompt: options.appendSystemPrompt,
           checkEnv: options.checkEnv || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });

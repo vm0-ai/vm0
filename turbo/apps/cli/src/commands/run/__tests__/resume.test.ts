@@ -177,6 +177,35 @@ describe("run resume command", () => {
       );
     });
 
+    it("should pass append-system-prompt to API", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await resumeCommand.parseAsync([
+        "node",
+        "cli",
+        testCheckpointId,
+        "test prompt",
+        "--append-system-prompt",
+        "Your name is Aria.",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          appendSystemPrompt: "Your name is Aria.",
+        }),
+      );
+    });
+
     it("should pass model provider option to API", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 

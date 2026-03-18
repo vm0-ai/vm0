@@ -37,6 +37,10 @@ export const continueCommand = new Command()
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
+  .option(
+    "--append-system-prompt <text>",
+    "Append text to the agent's system prompt",
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -50,6 +54,7 @@ export const continueCommand = new Command()
           vars: Record<string, string>;
           secrets: Record<string, string>;
           modelProvider?: string;
+          appendSystemPrompt?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -63,6 +68,7 @@ export const continueCommand = new Command()
           vars: Record<string, string>;
           secrets: Record<string, string>;
           modelProvider?: string;
+          appendSystemPrompt?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -97,6 +103,8 @@ export const continueCommand = new Command()
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
           modelProvider: options.modelProvider || allOpts.modelProvider,
+          appendSystemPrompt:
+            options.appendSystemPrompt || allOpts.appendSystemPrompt,
           checkEnv: options.checkEnv || allOpts.checkEnv || undefined,
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
