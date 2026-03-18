@@ -41,7 +41,6 @@ import {
   zeroChatRunSummaries$,
   zeroChatRunStatus$,
   zeroChatQueuePosition$,
-  cancelActiveRun$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
