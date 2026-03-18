@@ -49,32 +49,10 @@ teardown() {
 }
 
 # ============================================
-# Image Field Deprecation Tests
+# Compose Tests
 # ============================================
 
-@test "vm0 compose with deprecated image field shows warning but succeeds" {
-    # Create a test config with deprecated image field
-    TEST_DIR="$(mktemp -d)"
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  test-agent:
-    framework: claude-code
-    image: "some-image"
-EOF
-
-    # Should succeed with deprecation warning
-    # Server now resolves image based on framework, ignoring the image field
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-    # Should show deprecation warning
-    assert_output --partial "deprecated"
-
-    rm -rf "$TEST_DIR"
-}
-
-@test "vm0 compose without image field succeeds" {
+@test "vm0 compose succeeds with minimal config" {
     TEST_DIR="$(mktemp -d)"
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
