@@ -1,9 +1,10 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
-import { screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { mockedWindowOpen } from "../../../__tests__/mock-window-open.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorResponse,
@@ -12,10 +13,6 @@ import {
 } from "@vm0/core";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 function makeConnector(
   overrides: Partial<ConnectorResponse> & { type: ConnectorType },
@@ -189,10 +186,6 @@ describe("zero skill card status display", () => {
 
 describe("zero skill card button clicks", () => {
   it("calls window.open with authorize URL when Connect is clicked", async () => {
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as Window);
-
     mockConnectors([]);
     await renderTeamPage(["github"]);
 
@@ -200,12 +193,10 @@ describe("zero skill card button clicks", () => {
       screen.getByRole("button", { name: "Connect" }),
     );
 
-    await act(() => {
-      fireEvent.click(connectButton);
-    });
+    fireEvent.click(connectButton);
 
     await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
+      expect(mockedWindowOpen).toHaveBeenCalledWith(
         expect.stringContaining("/api/connectors/github/authorize"),
         "_blank",
         "width=600,height=700",
@@ -214,10 +205,6 @@ describe("zero skill card button clicks", () => {
   });
 
   it("calls window.open when Reconnect is clicked on expired connector", async () => {
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as Window);
-
     mockConnectors([
       makeConnector({
         type: "github",
@@ -232,12 +219,10 @@ describe("zero skill card button clicks", () => {
       screen.getByRole("button", { name: "Reconnect" }),
     );
 
-    await act(() => {
-      fireEvent.click(reconnectButton);
-    });
+    fireEvent.click(reconnectButton);
 
     await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
+      expect(mockedWindowOpen).toHaveBeenCalledWith(
         expect.stringContaining("/api/connectors/github/authorize"),
         "_blank",
         "width=600,height=700",
@@ -253,9 +238,7 @@ describe("zero skill card button clicks", () => {
       screen.getByRole("button", { name: "Add API key" }),
     );
 
-    await act(() => {
-      fireEvent.click(addApiKeyButton);
-    });
+    fireEvent.click(addApiKeyButton);
 
     // ConnectModal should open showing the connector's dialog
     await waitFor(() => {
@@ -290,9 +273,7 @@ describe("zero skill card scope review modal", () => {
       screen.getByRole("button", { name: "Review" }),
     );
 
-    await act(() => {
-      fireEvent.click(reviewButton);
-    });
+    fireEvent.click(reviewButton);
 
     // ScopeReviewModal should open as a dialog
     await waitFor(() => {
@@ -306,10 +287,6 @@ describe("zero skill card scope review modal", () => {
   });
 
   it("calls window.open when Reconnect is clicked in ScopeReviewModal", async () => {
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as Window);
-
     mockConnectors([
       makeConnector({
         type: "github",
@@ -334,9 +311,7 @@ describe("zero skill card scope review modal", () => {
       screen.getByRole("button", { name: "Review" }),
     );
 
-    await act(() => {
-      fireEvent.click(reviewButton);
-    });
+    fireEvent.click(reviewButton);
 
     // Wait for modal to appear
     await waitFor(() => {
@@ -345,12 +320,10 @@ describe("zero skill card scope review modal", () => {
 
     // Click Reconnect in the modal
     const reconnectButton = screen.getByRole("button", { name: "Reconnect" });
-    await act(() => {
-      fireEvent.click(reconnectButton);
-    });
+    fireEvent.click(reconnectButton);
 
     await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith(
+      expect(mockedWindowOpen).toHaveBeenCalledWith(
         expect.stringContaining("/api/connectors/github/authorize"),
         "_blank",
         "width=600,height=700",
