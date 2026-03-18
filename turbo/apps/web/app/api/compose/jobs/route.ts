@@ -68,29 +68,11 @@ const router = tsr.router(composeJobsMainContract, {
 
     // Try server-side compose for platform mode (bypasses E2B sandbox)
     if (!isGitHubInput) {
-      // Check for existing active job first (preserve idempotency)
-      const [existingActiveJob] = await globalThis.services.db
-        .select()
-        .from(composeJobs)
-        .where(
-          and(
-            eq(composeJobs.userId, userId),
-            inArray(composeJobs.status, ["pending", "running"]),
-          ),
-        )
-        .limit(1);
-
-      if (existingActiveJob) {
-        log.debug(
-          `Returning existing active job ${existingActiveJob.id} for user ${userId}`,
-        );
-        return {
-          status: 200 as const,
-          body: formatJobResponse(existingActiveJob),
-        };
-      }
-
-      // Attempt server-side compose — returns null if fallback needed
+      // Attempt server-side compose first — synchronous, no sandbox resources needed.
+      // This runs before the active-job check because server-side compose creates
+      // "completed" records directly, which don't conflict with the partial unique
+      // index (pending/running only). A running sandbox job should not block the
+      // fast path.
       const serverResult = await serverSideCompose({
         userId,
         orgId: org.orgId,
@@ -140,7 +122,30 @@ const router = tsr.router(composeJobsMainContract, {
         };
       }
 
-      // Server-side compose not possible — fall back to sandbox
+      // Server-side compose not possible — check for active sandbox job before
+      // falling back. This preserves the per-user sandbox concurrency limit.
+      const [existingActiveJob] = await globalThis.services.db
+        .select()
+        .from(composeJobs)
+        .where(
+          and(
+            eq(composeJobs.userId, userId),
+            inArray(composeJobs.status, ["pending", "running"]),
+          ),
+        )
+        .limit(1);
+
+      if (existingActiveJob) {
+        log.debug(
+          `Returning existing active job ${existingActiveJob.id} for user ${userId}`,
+        );
+        return {
+          status: 200 as const,
+          body: formatJobResponse(existingActiveJob),
+        };
+      }
+
+      // Fall through to sandbox path
       log.info(
         `Server-side compose not possible for user ${userId}, falling back to sandbox`,
       );

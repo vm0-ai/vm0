@@ -177,7 +177,7 @@ describe("Server-side compose", () => {
   });
 
   describe("idempotency", () => {
-    it("should return existing active job instead of creating server-side compose", async () => {
+    it("should complete server-side compose even when a sandbox job is running", async () => {
       // Create a sandbox job first (uncached skill triggers sandbox)
       const content = makeContent({
         skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/uncached"],
@@ -191,10 +191,36 @@ describe("Server-side compose", () => {
       const data1 = await response1.json();
       expect(data1.status).toBe("pending");
 
-      // Second request should return existing job, even though we could do server-side
+      // Second request with no skills (server-side eligible) — should NOT be blocked
       const content2 = makeContent();
       const response2 = await postComposeJob(
         { content: content2 },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response2.status).toBe(201);
+      const data2 = await response2.json();
+      expect(data2.status).toBe("completed");
+      expect(data2.jobId).not.toBe(data1.jobId);
+    });
+
+    it("should return existing sandbox job when falling back to sandbox", async () => {
+      // Create a sandbox job first (uncached skill triggers sandbox)
+      const content = makeContent({
+        skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/uncached"],
+      });
+      const response1 = await postComposeJob(
+        { content },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response1.status).toBe(201);
+      const data1 = await response1.json();
+      expect(data1.status).toBe("pending");
+
+      // Second sandbox-eligible request — should return existing job
+      const response2 = await postComposeJob(
+        { content },
         testCliToken,
         testOrgSlug,
       );

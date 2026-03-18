@@ -217,8 +217,21 @@ describe("POST /api/compose/jobs", () => {
       expect(data.source).toBe("platform");
     });
 
-    it("should return existing platform job for idempotency", async () => {
-      // Create first platform job
+    it("should return existing platform sandbox job for idempotency", async () => {
+      // Create first platform job (uncached skill forces sandbox path)
+      const sandboxContent = {
+        version: "1",
+        agents: {
+          "my-agent": {
+            framework: "claude-code",
+            description: "A test agent",
+            skills: [
+              "https://github.com/vm0-ai/vm0-skills/tree/main/uncached-for-test",
+            ],
+          },
+        },
+      };
+
       const request1 = createTestRequest(
         `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
@@ -227,15 +240,16 @@ describe("POST /api/compose/jobs", () => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${testCliToken}`,
           },
-          body: JSON.stringify({ content: testContent }),
+          body: JSON.stringify({ content: sandboxContent }),
         },
       );
 
       const response1 = await POST(request1);
       expect(response1.status).toBe(201);
       const data1 = await response1.json();
+      expect(data1.status).toBe("pending");
 
-      // Second request should return same job
+      // Second sandbox request should return same job
       const request2 = createTestRequest(
         `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
@@ -244,12 +258,7 @@ describe("POST /api/compose/jobs", () => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${testCliToken}`,
           },
-          body: JSON.stringify({
-            content: {
-              version: "1",
-              agents: { other: { framework: "claude-code" } },
-            },
-          }),
+          body: JSON.stringify({ content: sandboxContent }),
         },
       );
 
