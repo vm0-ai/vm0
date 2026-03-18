@@ -41,6 +41,7 @@ import {
   zeroChatRunSummaries$,
   zeroChatRunStatus$,
   zeroChatQueuePosition$,
+  cancelActiveRun$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
@@ -664,7 +665,8 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           </TooltipProvider>
         )}
       </div>
-    ) : null;
+    </div>
+  ) : null;
 
   if (message.error) {
     const isNoModelProvider = message.error.includes(
