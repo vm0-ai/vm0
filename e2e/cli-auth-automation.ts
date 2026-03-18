@@ -43,7 +43,10 @@ export async function clerkLogin(page: Page, baseUrl: string, email: string) {
 
   // Wait for Clerk to render sign-in form (or skip if already signed in)
   const emailInput = page.locator('input[name="identifier"]');
-  const hasSignIn = await emailInput.isVisible({ timeout: 10000 }).catch(() => false);
+  const hasSignIn = await emailInput
+    .waitFor({ state: "visible", timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
   if (!hasSignIn) {
     console.log(`✅ Already signed in (current URL: ${page.url()})`);
     return;
