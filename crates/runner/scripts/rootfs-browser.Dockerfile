@@ -46,9 +46,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # root CAs. Replacing it with p11-kit's module makes NSS read from the same
 # store as OpenSSL (/etc/ssl/certs/), so proxy CA certs injected via
 # update-ca-certificates are trusted by all applications.
-RUN MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
-    && ln -sf /usr/lib/${MULTIARCH}/pkcs11/p11-kit-trust.so \
-              /usr/lib/${MULTIARCH}/nss/libnssckbi.so
+RUN ARCH=$(dpkg --print-architecture) \
+    && ln -sf /usr/lib/${ARCH}-linux-gnu/pkcs11/p11-kit-trust.so \
+              /usr/lib/${ARCH}-linux-gnu/nss/libnssckbi.so
 
 # Install Claude Code CLI as a standalone Bun-compiled binary.
 # The binary bundles Bun runtime (JSC) + application code into a single executable,
