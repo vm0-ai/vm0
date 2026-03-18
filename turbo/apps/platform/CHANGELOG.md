@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.123.1](https://github.com/vm0-ai/vm0/compare/app-v0.123.0...app-v0.123.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* use active chat agent compose for skills in zero-meet ([#5317](https://github.com/vm0-ai/vm0/issues/5317)) ([f36048a](https://github.com/vm0-ai/vm0/commit/f36048ae97c73feb81c447e8ed4926141ba57b0d))
+
 ## [0.123.0](https://github.com/vm0-ai/vm0/compare/app-v0.122.0...app-v0.123.0) (2026-03-18)
 
 

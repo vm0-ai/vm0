@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.126.1](https://github.com/vm0-ai/vm0/compare/web-v12.126.0...web-v12.126.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* **web:** skip clerk middleware for sandbox token requests ([#5330](https://github.com/vm0-ai/vm0/issues/5330)) ([83194ae](https://github.com/vm0-ai/vm0/commit/83194aeff94c341b191f8853606f5b40213b9d59))
+
+
+### Refactoring
+
+* remove user-level model provider API routes ([#5301](https://github.com/vm0-ai/vm0/issues/5301)) ([c77178c](https://github.com/vm0-ai/vm0/commit/c77178c7ea3d7b4efaa5c62767044df1ac44eb50))
+
 ## [12.126.0](https://github.com/vm0-ai/vm0/compare/web-v12.125.1...web-v12.126.0) (2026-03-18)
 
 
