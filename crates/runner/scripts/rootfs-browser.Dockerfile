@@ -1,14 +1,8 @@
-# Firecracker VM rootfs image
-# Based on Node.js 24 with Python 3.11+, guest-init, and agent CLIs
+# Firecracker VM rootfs image — browser profile
+# Based on the default profile (Node.js 24, Python 3.11+, Claude Code, GitHub CLI)
+# with Chromium and agent-browser for browser automation.
 #
-# Included CLIs:
-# - Claude Code CLI (@anthropic-ai/claude-code)
-# - GitHub CLI (gh) for apps: [github]
-#
-# This mirrors the e2b template configurations for consistency.
-# See: turbo/scripts/e2b/vm0-*/template.ts
-#
-# Build: docker build -t vm0-rootfs .
+# Build: docker build -t vm0-rootfs-browser .
 # Export: See build-rootfs.sh
 
 FROM node:24-bookworm-slim
@@ -88,3 +82,9 @@ RUN userdel -r node 2>/dev/null || true \
 RUN mkdir -p /rom /rw /mnt/root
 
 ENV LANG=C.UTF-8
+
+# === Browser profile: Chromium + agent-browser ===
+
+# Install agent-browser CLI, Chrome, and system deps (requires root for apt).
+RUN npm install -g agent-browser \
+    && agent-browser install --with-deps

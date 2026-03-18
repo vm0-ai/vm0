@@ -23,8 +23,6 @@
   vars:
     runner_name: "v{{ runner_version }}"
     runner_group: vm0/production
-    vcpu: 2
-    memory_mb: 2048
     home_dir: "{{ ansible_facts['env']['HOME'] }}"
     bin_dir: "{{ home_dir }}/.vm0-runner/bin/{{ runner_name }}"
     runner_dir: "{{ home_dir }}/.vm0-runner/runners/{{ runner_name }}"
@@ -51,16 +49,27 @@
     - name: Download dependencies (Firecracker, kernel, mitmproxy)
       command: "{{ bin_dir }}/runner setup"
 
-    - name: Build rootfs and snapshot
+    - name: Build default rootfs and snapshot
       command: >
         {{ bin_dir }}/runner build
         --profile vm0/default
-      register: build_output
+      register: default_build_output
 
-    - name: Parse build hashes
+    - name: Parse default build hashes
       set_fact:
-        rootfs_hash: "{{ build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
-        snapshot_hash: "{{ build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
+        default_rootfs_hash: "{{ default_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
+        default_snapshot_hash: "{{ default_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
+
+    - name: Build browser rootfs and snapshot
+      command: >
+        {{ bin_dir }}/runner build
+        --profile vm0/browser
+      register: browser_build_output
+
+    - name: Parse browser build hashes
+      set_fact:
+        browser_rootfs_hash: "{{ browser_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
+        browser_snapshot_hash: "{{ browser_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
 
     # ========================================
     # Phase 3: Configure + Install
@@ -69,8 +78,11 @@
       command: >
         {{ bin_dir }}/runner config
         --profile vm0/default
-        --rootfs-hash {{ rootfs_hash }}
-        --snapshot-hash {{ snapshot_hash }}
+        --rootfs-hash {{ default_rootfs_hash }}
+        --snapshot-hash {{ default_snapshot_hash }}
+        --profile vm0/browser
+        --rootfs-hash {{ browser_rootfs_hash }}
+        --snapshot-hash {{ browser_snapshot_hash }}
         --name {{ runner_name }}
         --group {{ runner_group }}
         --runner-dirname {{ runner_name }}
