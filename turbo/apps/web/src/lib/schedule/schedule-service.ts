@@ -1,24 +1,14 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
-import {
-  extractAndGroupVariables,
-  getConnectorProvidedSecretNames,
-  orgTierSchema,
-} from "@vm0/core";
+import { orgTierSchema } from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../db/schema/agent-compose";
+import { agentComposes } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
-import { connectors } from "../../db/schema/connector";
 import { decryptSecretsMap } from "../crypto";
 import { getOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createRun } from "../run/run-service";
-import { getSecretValues } from "../secret/secret-service";
-import { getVariableValues } from "../variable/variable-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 
@@ -98,46 +88,6 @@ function isValidTimezone(timezone: string): boolean {
   } catch {
     return false;
   }
-}
-
-/**
- * Extract required configuration from compose content
- */
-function extractRequiredConfiguration(composeContent: unknown): {
-  secrets: string[];
-  vars: string[];
-} {
-  const result = {
-    secrets: [] as string[],
-    vars: [] as string[],
-  };
-  if (!composeContent) return result;
-
-  const grouped = extractAndGroupVariables(composeContent);
-
-  result.secrets = grouped.secrets.map((r) => r.name);
-  result.vars = grouped.vars.map((r) => r.name);
-
-  return result;
-}
-
-/**
- * Build error message for missing configuration
- */
-function buildMissingConfigError(missing: {
-  secrets: string[];
-  vars: string[];
-}): string {
-  const parts: string[] = [];
-
-  if (missing.secrets.length > 0) {
-    parts.push(`Secrets: ${missing.secrets.join(", ")}`);
-  }
-  if (missing.vars.length > 0) {
-    parts.push(`Vars: ${missing.vars.join(", ")}`);
-  }
-
-  return `Missing required configuration:\n  ${parts.join("\n  ")}`;
 }
 
 /**
@@ -263,67 +213,6 @@ async function verifyScheduleOwnership(
   const orgSlug = await getOrgSlug(orgId);
 
   return { schedule, compose, orgSlug };
-}
-
-/**
- * Validate that all required secrets/vars are available in platform tables.
- * Uses the schedule's orgId + userId (not compose's) for cross-org support.
- */
-async function validateRequiredConfig(
-  compose: typeof agentComposes.$inferSelect,
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  if (!compose.headVersionId) return;
-
-  const [version] = await globalThis.services.db
-    .select()
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, compose.headVersionId))
-    .limit(1);
-
-  if (!version) return;
-
-  const required = extractRequiredConfiguration(version.content);
-
-  // Fetch platform-managed secrets and vars from schedule's org + user
-  const platformSecrets = await getSecretValues(orgId, userId, "user");
-  const platformSecretNames = Object.keys(platformSecrets);
-  log.debug(
-    `Fetched ${platformSecretNames.length} platform secret(s) for validation`,
-  );
-
-  const platformVars = await getVariableValues(orgId, userId);
-  const platformVarNames = Object.keys(platformVars);
-  log.debug(
-    `Fetched ${platformVarNames.length} platform variable(s) for validation`,
-  );
-
-  // Query connected connectors to exclude their provided secrets
-  const userConnectors = await globalThis.services.db
-    .select({ type: connectors.type })
-    .from(connectors)
-    .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
-  const connectorProvidedNames = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
-  );
-
-  const missingSecrets = required.secrets.filter(
-    (name) =>
-      !platformSecretNames.includes(name) && !connectorProvidedNames.has(name),
-  );
-  const missingVars = required.vars.filter(
-    (name) => !platformVarNames.includes(name),
-  );
-
-  if (missingSecrets.length > 0 || missingVars.length > 0) {
-    throw badRequest(
-      buildMissingConfigError({
-        secrets: missingSecrets,
-        vars: missingVars,
-      }),
-    );
-  }
 }
 
 /**
@@ -489,9 +378,6 @@ export async function deploySchedule(
       ),
     )
     .limit(1);
-
-  // Validate required secrets/vars against schedule's org + user
-  await validateRequiredConfig(compose, orgId, userId);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
 
