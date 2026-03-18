@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.125.0](https://github.com/vm0-ai/vm0/compare/app-v0.124.0...app-v0.125.0) (2026-03-18)
+
+
+### Features
+
+* change schedule minute picker to 5-minute step intervals ([#5358](https://github.com/vm0-ai/vm0/issues/5358)) ([4f7a9b5](https://github.com/vm0-ai/vm0/commit/4f7a9b5dd15a34eb396a673f7c783d2891013085)), closes [#5355](https://github.com/vm0-ai/vm0/issues/5355)
+
+
+### Bug Fixes
+
+* add image paste and drag-and-drop upload to chat input ([#5337](https://github.com/vm0-ai/vm0/issues/5337)) ([802ca42](https://github.com/vm0-ai/vm0/commit/802ca428693e9eed6c7dfabe5ed4494a61a65c7a))
+* drop residual zero prefix from queue session link and stale comment ([#5362](https://github.com/vm0-ai/vm0/issues/5362)) ([4b4ca17](https://github.com/vm0-ai/vm0/commit/4b4ca1737b32ae5477e947bd608f1d608bbe9a7e)), closes [#5356](https://github.com/vm0-ai/vm0/issues/5356)
+* use browser history.back() for chat session back navigation ([#5339](https://github.com/vm0-ai/vm0/issues/5339)) ([715f6c8](https://github.com/vm0-ai/vm0/commit/715f6c8bcfa881b13e2d26830c152dd9742b0e0a))
+
+
+### Refactoring
+
+* **platform:** derive capability groups from valid capabilities constant ([#5367](https://github.com/vm0-ai/vm0/issues/5367)) ([90cc985](https://github.com/vm0-ai/vm0/commit/90cc985f5d7345e88dc17ca6c402406c22a37120)), closes [#5364](https://github.com/vm0-ai/vm0/issues/5364)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.2
+
 ## [0.124.0](https://github.com/vm0-ai/vm0/compare/app-v0.123.1...app-v0.124.0) (2026-03-18)
 
 

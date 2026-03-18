@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.66.0](https://github.com/vm0-ai/vm0/compare/cli-v9.65.1...cli-v9.66.0) (2026-03-18)
+
+
+### Features
+
+* change schedule minute picker to 5-minute step intervals ([#5358](https://github.com/vm0-ai/vm0/issues/5358)) ([4f7a9b5](https://github.com/vm0-ai/vm0/commit/4f7a9b5dd15a34eb396a673f7c783d2891013085)), closes [#5355](https://github.com/vm0-ai/vm0/issues/5355)
+
+
+### Refactoring
+
+* remove deprecated image and working_dir fields from compose ([#5352](https://github.com/vm0-ai/vm0/issues/5352)) ([4768f00](https://github.com/vm0-ai/vm0/commit/4768f009118889681bb5c8b86a822ea0a4266eeb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.2
+
 ## [9.65.1](https://github.com/vm0-ai/vm0/compare/cli-v9.65.0...cli-v9.65.1) (2026-03-18)
 
 

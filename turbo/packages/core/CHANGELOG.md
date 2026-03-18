@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.79.2](https://github.com/vm0-ai/vm0/compare/core-v8.79.1...core-v8.79.2) (2026-03-18)
+
+
+### Refactoring
+
+* **platform:** derive capability groups from valid capabilities constant ([#5367](https://github.com/vm0-ai/vm0/issues/5367)) ([90cc985](https://github.com/vm0-ai/vm0/commit/90cc985f5d7345e88dc17ca6c402406c22a37120)), closes [#5364](https://github.com/vm0-ai/vm0/issues/5364)
+* remove deprecated image and working_dir fields from compose ([#5352](https://github.com/vm0-ai/vm0/issues/5352)) ([4768f00](https://github.com/vm0-ai/vm0/commit/4768f009118889681bb5c8b86a822ea0a4266eeb))
+* remove unused user-level model provider exports ([#5349](https://github.com/vm0-ai/vm0/issues/5349)) ([53716e0](https://github.com/vm0-ai/vm0/commit/53716e0b57bb7a826786c71738e7800db9a8ad03))
+
 ## [8.79.1](https://github.com/vm0-ai/vm0/compare/core-v8.79.0...core-v8.79.1) (2026-03-18)
 
 

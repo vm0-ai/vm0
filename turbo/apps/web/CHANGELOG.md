@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.128.0](https://github.com/vm0-ai/vm0/compare/web-v12.127.0...web-v12.128.0) (2026-03-18)
+
+
+### Features
+
+* add model provider tracking to credit_usage and credit_pricing ([#5360](https://github.com/vm0-ai/vm0/issues/5360)) ([d5b00c1](https://github.com/vm0-ai/vm0/commit/d5b00c1ba3f6fd06a72f0cc2acb9e4eda76d4be8))
+
+
+### Bug Fixes
+
+* drop residual zero prefix from queue session link and stale comment ([#5362](https://github.com/vm0-ai/vm0/issues/5362)) ([4b4ca17](https://github.com/vm0-ai/vm0/commit/4b4ca1737b32ae5477e947bd608f1d608bbe9a7e)), closes [#5356](https://github.com/vm0-ai/vm0/issues/5356)
+* **web:** adjust hero section to full viewport height ([#5357](https://github.com/vm0-ai/vm0/issues/5357)) ([852f5e0](https://github.com/vm0-ai/vm0/commit/852f5e050eaac5cdb346e64460b35c8e9a3d8f66))
+* **web:** fix blog page styles and navbar positioning ([#5369](https://github.com/vm0-ai/vm0/issues/5369)) ([0acbc42](https://github.com/vm0-ai/vm0/commit/0acbc429e04cd07ba116fd9e2571c1e9380ab81c))
+
+
+### Refactoring
+
+* migrate admin user-level model providers to org-level and clean up ([#5346](https://github.com/vm0-ai/vm0/issues/5346)) ([d7c5429](https://github.com/vm0-ai/vm0/commit/d7c5429b57efc5fe0655b23681e7603ef1e85472))
+* remove deprecated image and working_dir fields from compose ([#5352](https://github.com/vm0-ai/vm0/issues/5352)) ([4768f00](https://github.com/vm0-ai/vm0/commit/4768f009118889681bb5c8b86a822ea0a4266eeb))
+* remove legacy working_dir fallback from extract-working-dir ([#5365](https://github.com/vm0-ai/vm0/issues/5365)) ([58b8b41](https://github.com/vm0-ai/vm0/commit/58b8b41c8c7815d71d9db074487be20b6f433a5f))
+* remove unused user-level model provider exports ([#5349](https://github.com/vm0-ai/vm0/issues/5349)) ([53716e0](https://github.com/vm0-ai/vm0/commit/53716e0b57bb7a826786c71738e7800db9a8ad03))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.2
+
 ## [12.127.0](https://github.com/vm0-ai/vm0/compare/web-v12.126.1...web-v12.127.0) (2026-03-18)
 
 
