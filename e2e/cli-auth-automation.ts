@@ -387,7 +387,7 @@ if (require.main === module) {
   if (isCdpMode) {
     // --cdp mode: connect to existing Chrome and login
     const filtered = args.filter(a => a !== "--cdp");
-    let baseUrl = "https://app.vm7.ai:8443";
+    let baseUrl = "https://www.vm7.ai:8443";
     let cdpPort = 9222;
     let email = `${os.hostname()}+clerk_test@vm0.ai`;
 

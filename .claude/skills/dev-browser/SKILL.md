@@ -63,12 +63,14 @@ GIT_EMAIL_PREFIX=$(git config user.email | sed 's/@.*//')
 HOSTNAME=$(hostname)
 TEST_EMAIL="${GIT_EMAIL_PREFIX}-${HOSTNAME}+clerk_test@vm0.ai"
 
-cd "$PROJECT_ROOT/e2e" && npx tsx cli-auth-automation.ts --cdp "https://app.vm7.ai:8443" --port 9222 --email "$TEST_EMAIL"
+cd "$PROJECT_ROOT/e2e" && npx tsx cli-auth-automation.ts --cdp "https://www.vm7.ai:8443" --port 9222 --email "$TEST_EMAIL"
 ```
+
+**Important:** Use `www.vm7.ai:8443` (not `app.vm7.ai:8443`). The Clerk sign-in page lives on the www domain. Using the app domain causes a cross-domain redirect that Playwright over CDP cannot follow.
 
 This will:
 - Connect to the existing Chrome via CDP port 9222
-- Navigate to the Clerk sign-in page
+- Navigate to the Clerk sign-in page on www.vm7.ai
 - Authenticate using the test email and OTP code `424242`
 - Skip login if the browser is already authenticated
 - Leave the browser open for agent-browser to use
