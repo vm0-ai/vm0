@@ -15,7 +15,7 @@ function resolveWebOrigin(): string {
     return "";
   }
   const url = new URL(origin);
-  url.hostname = url.hostname.replace(/^(platform|app)\./, "www.");
+  url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
   return url.origin;
 }
 

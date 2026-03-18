@@ -31,7 +31,7 @@ export const apiBaseForNavigation$ = computed(() => {
     return base.endsWith("/") ? base.slice(0, -1) : base;
   }
   const url = new URL(location.origin);
-  url.hostname = url.hostname.replace(/^(platform|app)\./, "www.");
+  url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
   return url.origin;
 });
 
@@ -45,7 +45,7 @@ function resolveApiBase(): string {
   if (CONFIGURED_API_URL === "http://localhost:3000") {
     const currentOrigin = location.origin;
     const url = new URL(currentOrigin);
-    url.hostname = url.hostname.replace(/^(platform|app)\./, "www.");
+    url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
     return url.origin;
   }
   return CONFIGURED_API_URL;
