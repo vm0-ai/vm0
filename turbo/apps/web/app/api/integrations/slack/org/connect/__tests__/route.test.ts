@@ -99,7 +99,6 @@ describe("/api/integrations/slack/org/connect", () => {
       await createTestSlackOrgConnection({
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
-        orgId: org.id,
       });
 
       const request = new Request(

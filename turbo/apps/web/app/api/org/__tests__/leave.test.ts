@@ -91,7 +91,6 @@ describe("POST /api/org/leave - Leave Org", () => {
     const { slackUserId } = await createTestSlackOrgConnection({
       slackWorkspaceId,
       vm0UserId: memberUserId,
-      orgId,
     });
 
     // Verify both rows exist before leaving

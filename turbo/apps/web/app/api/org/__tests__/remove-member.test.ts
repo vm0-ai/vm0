@@ -169,7 +169,6 @@ describe("DELETE /api/org/members - Remove Member", () => {
     const { slackUserId, connectionId } = await createTestSlackOrgConnection({
       slackWorkspaceId,
       vm0UserId: memberUserId,
-      orgId,
     });
 
     // Verify both rows exist before removal
