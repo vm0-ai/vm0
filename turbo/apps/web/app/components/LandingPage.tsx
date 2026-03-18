@@ -67,7 +67,7 @@ export default function LandingPage() {
       </div>
 
       <main>
-        <section className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-4 pt-[var(--total-header-height)] sm:px-6">
+        <section className="relative flex min-h-svh flex-col items-center overflow-hidden px-4 pt-[var(--total-header-height)] sm:px-6">
           {/* Paper texture background */}
           <div
             className="pointer-events-none absolute inset-0 z-0"
@@ -100,7 +100,7 @@ export default function LandingPage() {
             }}
           />
 
-          <div className="relative z-10 flex flex-col items-center gap-10 -mt-[18vh]">
+          <div className="relative z-10 mt-[15vh] flex flex-col items-center gap-10">
             <h1 className="drop-shadow-[0_0_40px_rgba(249,249,249,0.8)] text-center text-[36px] font-normal leading-[1.6] tracking-tight sm:text-[48px] md:text-[56px]">
               {lines.map((line, i) => {
                 if (i > lineIndex) return null;
