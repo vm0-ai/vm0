@@ -33,7 +33,7 @@ const router = tsr.router(runsQueueContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const orgTier = orgTierSchema.parse(org.tier);
 
     const limit = getEffectiveConcurrencyLimit(orgTier);

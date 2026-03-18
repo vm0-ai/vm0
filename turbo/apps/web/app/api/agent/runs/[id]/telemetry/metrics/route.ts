@@ -6,8 +6,9 @@ import {
 import { runMetricsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
-import { eq } from "drizzle-orm";
-import { getUserId } from "../../../../../../../src/lib/auth/get-user-id";
+import { eq, and } from "drizzle-orm";
+import { getAuthContext } from "../../../../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,
   getDatasetName,
@@ -25,13 +26,13 @@ interface AxiomMetricEvent {
 }
 
 const router = tsr.router(runMetricsContract, {
-  getMetrics: async ({ params, query, headers }) => {
+  getMetrics: async ({ params, query, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization, {
+    const authCtx = await getAuthContext(headers.authorization, {
       requiredCapability: "agent-run:read",
     });
-    if (!userId) {
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -39,15 +40,25 @@ const router = tsr.router(runMetricsContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
-    // Verify run exists and belongs to user
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+
+    // Verify run exists and belongs to user+org
     const [run] = await globalThis.services.db
       .select()
       .from(agentRuns)
-      .where(eq(agentRuns.id, params.id))
+      .where(
+        and(
+          eq(agentRuns.id, params.id),
+          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, org.orgId),
+        ),
+      )
       .limit(1);
 
-    if (!run || run.userId !== userId) {
+    if (!run) {
       return {
         status: 404 as const,
         body: {

@@ -10,10 +10,10 @@ const log = logger("telegram:check-domain");
  */
 export async function checkTelegramDomain(
   telegramBotId: string,
-  platformUrl: string,
+  appUrl: string,
 ): Promise<boolean> {
   try {
-    const probeOrigin = encodeURIComponent(platformUrl);
+    const probeOrigin = encodeURIComponent(appUrl);
     const probeUrl = `${TELEGRAM_OAUTH_BASE_URL}?bot_id=${telegramBotId}&origin=${probeOrigin}`;
     const probeResp = await fetch(probeUrl, {
       method: "HEAD",

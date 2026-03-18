@@ -96,12 +96,12 @@ const platformLogDetailSchema = z.object({
 
 /**
  * Platform logs list contract
- * GET /api/platform/logs
+ * GET /api/app/logs
  */
 export const platformLogsListContract = c.router({
   list: {
     method: "GET",
-    path: "/api/platform/logs",
+    path: "/api/app/logs",
     query: listQuerySchema.extend({
       search: z.string().optional(),
       agent: z.string().optional(),
@@ -119,12 +119,12 @@ export const platformLogsListContract = c.router({
 
 /**
  * Platform logs by ID contract
- * GET /api/platform/logs/:id
+ * GET /api/app/logs/:id
  */
 export const platformLogsByIdContract = c.router({
   getById: {
     method: "GET",
-    path: "/api/platform/logs/:id",
+    path: "/api/app/logs/:id",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().uuid("Invalid log ID"),
@@ -148,13 +148,13 @@ const artifactDownloadResponseSchema = z.object({
 
 /**
  * Platform artifact download contract
- * GET /api/platform/artifacts/download
+ * GET /api/app/artifacts/download
  * Returns a presigned URL for downloading the artifact
  */
 export const platformArtifactDownloadContract = c.router({
   getDownloadUrl: {
     method: "GET",
-    path: "/api/platform/artifacts/download",
+    path: "/api/app/artifacts/download",
     query: z.object({
       name: z.string().min(1, "Artifact name is required"),
       version: z.string().optional(),

@@ -26,7 +26,7 @@ import {
   saveThreadSession,
   buildLogsUrl,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
-import { getPlatformUrl } from "../../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 import type { WebClient } from "@slack/web-api";
@@ -40,7 +40,6 @@ interface CallbackPayload {
   threadTs: string;
   messageTs: string;
   connectionId: string;
-  orgId: string;
   agentName: string;
   composeId: string;
   existingSessionId?: string;
@@ -55,7 +54,6 @@ function parsePayload(payload: unknown): CallbackPayload | null {
     typeof p.threadTs !== "string" ||
     typeof p.messageTs !== "string" ||
     typeof p.connectionId !== "string" ||
-    typeof p.orgId !== "string" ||
     typeof p.agentName !== "string" ||
     typeof p.composeId !== "string"
   ) {
@@ -119,7 +117,6 @@ async function postAskUserInteractiveCard(
       slackChannelId: payload.channelId,
       slackThreadTs: payload.threadTs,
       connectionId: payload.connectionId,
-      orgId: payload.orgId,
       composeId: payload.composeId,
       agentName: payload.agentName,
       sessionId: resolvedSessionId,
@@ -297,7 +294,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const logsUrl = buildLogsUrl(runId);
     const deepLinks = detectDeepLinks(
       responseText,
-      getPlatformUrl(),
+      getAppUrl(),
       payload.agentName,
     );
     await postMessage(client, payload.channelId, responseText, {

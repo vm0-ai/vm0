@@ -55,10 +55,16 @@ export async function givenGitHubInstallation(
   const orgId = uniqueId("org");
   await globalThis.services.db
     .insert(orgCache)
-    .values({ orgId, slug: orgSlug, tier: "free", cachedAt: new Date() })
+    .values({
+      orgId,
+      slug: orgSlug,
+      tier: "free",
+      credits: 0,
+      cachedAt: new Date(),
+    })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
+      set: { slug: orgSlug, tier: "free", credits: 0, cachedAt: new Date() },
     });
 
   // Create compose

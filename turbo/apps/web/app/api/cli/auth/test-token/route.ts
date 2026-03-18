@@ -91,7 +91,13 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   const slug = "test-org";
   await globalThis.services.db
     .insert(orgCache)
-    .values({ orgId: sentinelOrgId, slug, tier: "free", cachedAt: farFuture })
+    .values({
+      orgId: sentinelOrgId,
+      slug,
+      tier: "free",
+      credits: 0,
+      cachedAt: farFuture,
+    })
     .onConflictDoNothing();
   await globalThis.services.db
     .insert(orgMembersCache)

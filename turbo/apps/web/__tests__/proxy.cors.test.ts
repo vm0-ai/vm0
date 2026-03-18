@@ -50,16 +50,16 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", async () => {
+    it("should accept *.vm0.ai subdomain: https://app.vm0.ai", async () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
-        headers: { origin: "https://platform.vm0.ai" },
+        headers: { origin: "https://app.vm0.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm0.ai",
+        "https://app.vm0.ai",
       );
     });
 
@@ -124,16 +124,16 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept *.vm0.ai subdomain: https://platform.vm0.ai", async () => {
+    it("should accept *.vm0.ai subdomain: https://app.vm0.ai", async () => {
       const handleCors = await getHandleCors("preview");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
-        headers: { origin: "https://platform.vm0.ai" },
+        headers: { origin: "https://app.vm0.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm0.ai",
+        "https://app.vm0.ai",
       );
     });
 
@@ -200,16 +200,16 @@ describe("handleCors", () => {
       );
     });
 
-    it("should accept local dev domain: https://platform.vm7.ai", async () => {
+    it("should accept local dev domain: https://app.vm7.ai", async () => {
       const handleCors = await getHandleCors("development");
       const request = new NextRequest("https://www.vm7.ai:8443/api/runs", {
-        headers: { origin: "https://platform.vm7.ai:8443" },
+        headers: { origin: "https://app.vm7.ai:8443" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm7.ai:8443",
+        "https://app.vm7.ai:8443",
       );
     });
 
@@ -294,13 +294,13 @@ describe("handleCors", () => {
     it("should accept *.vm0.ai subdomain", async () => {
       const handleCors = await getHandleCors(undefined);
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
-        headers: { origin: "https://platform.vm0.ai" },
+        headers: { origin: "https://app.vm0.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm0.ai",
+        "https://app.vm0.ai",
       );
     });
   });
@@ -340,26 +340,26 @@ describe("handleCors", () => {
     it("should handle origin with unusual port", async () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
-        headers: { origin: "https://platform.vm0.ai:8443" },
+        headers: { origin: "https://app.vm0.ai:8443" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm0.ai:8443",
+        "https://app.vm0.ai:8443",
       );
     });
 
     it("should handle HTTP vs HTTPS correctly", async () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
-        headers: { origin: "http://platform.vm0.ai" },
+        headers: { origin: "http://app.vm0.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "http://platform.vm0.ai",
+        "http://app.vm0.ai",
       );
     });
 
@@ -384,14 +384,14 @@ describe("handleCors", () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "OPTIONS",
-        headers: { origin: "https://platform.vm0.ai" },
+        headers: { origin: "https://app.vm0.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.status).toBe(200);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm0.ai",
+        "https://app.vm0.ai",
       );
       expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
         "true",
@@ -456,13 +456,13 @@ describe("handleCors", () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "GET",
-        headers: { origin: "https://platform.vm0.ai" },
+        headers: { origin: "https://app.vm0.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm0.ai",
+        "https://app.vm0.ai",
       );
       expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
         "true",
@@ -473,7 +473,7 @@ describe("handleCors", () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "GET",
-        headers: { origin: "https://platform.vm0.ai" },
+        headers: { origin: "https://app.vm0.ai" },
       });
 
       const response = handleCors(request);
@@ -490,13 +490,13 @@ describe("handleCors", () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
         method: "POST",
-        headers: { origin: "https://platform.vm0.ai" },
+        headers: { origin: "https://app.vm0.ai" },
       });
 
       const response = handleCors(request);
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://platform.vm0.ai",
+        "https://app.vm0.ai",
       );
       expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
         "true",

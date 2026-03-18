@@ -5,8 +5,8 @@ import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 const reload$ = state(0);
 
 /**
- * Resolve the web app origin from the current platform origin.
- * Replaces "platform" with "www" in the hostname so sign-in/sign-out
+ * Resolve the web app origin from the current app origin.
+ * Replaces "platform" or "app" with "www" in the hostname so sign-in/sign-out
  * redirects land on the web app where auth pages live.
  */
 function resolveWebOrigin(): string {
@@ -15,7 +15,7 @@ function resolveWebOrigin(): string {
     return "";
   }
   const url = new URL(origin);
-  url.hostname = url.hostname.replace("platform", "www");
+  url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
   return url.origin;
 }
 

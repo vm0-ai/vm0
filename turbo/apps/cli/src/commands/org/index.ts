@@ -9,6 +9,7 @@ import { removeCommand } from "./remove";
 import { leaveCommand } from "./leave";
 import { orgSecretCommand } from "./secret";
 import { orgVariableCommand } from "./variable";
+import { modelProviderCommand } from "./model-provider";
 
 export const orgCommand = new Command()
   .name("org")
@@ -22,4 +23,5 @@ export const orgCommand = new Command()
   .addCommand(removeCommand)
   .addCommand(leaveCommand)
   .addCommand(orgSecretCommand)
-  .addCommand(orgVariableCommand);
+  .addCommand(orgVariableCommand)
+  .addCommand(modelProviderCommand);

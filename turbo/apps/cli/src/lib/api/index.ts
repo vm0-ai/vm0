@@ -84,6 +84,15 @@ export {
   updateModelProviderModel,
 } from "./domains/model-providers";
 
+// Domain modules - Org Model Providers
+export {
+  listOrgModelProviders,
+  upsertOrgModelProvider,
+  deleteOrgModelProvider,
+  setOrgModelProviderDefault,
+  updateOrgModelProviderModel,
+} from "./domains/org-model-providers";
+
 // Domain modules - Connectors
 export {
   listConnectors,

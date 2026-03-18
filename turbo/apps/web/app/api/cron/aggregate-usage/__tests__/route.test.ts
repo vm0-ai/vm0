@@ -36,6 +36,7 @@ function yesterdayDate(): { date: Date; dateStr: string } {
 describe("GET /api/cron/aggregate-usage", () => {
   let composeVersionId: string;
   let userId: string;
+  let orgId: string;
 
   beforeEach(async () => {
     context.setupMocks();
@@ -43,6 +44,7 @@ describe("GET /api/cron/aggregate-usage", () => {
     reloadEnv();
     const user = await context.setupUser();
     userId = user.userId;
+    orgId = user.orgId;
     const { versionId } = await createTestCompose(uniqueId("usage-agent"));
     composeVersionId = versionId;
   });
@@ -70,7 +72,7 @@ describe("GET /api/cron/aggregate-usage", () => {
     expect(response.status).toBe(200);
     expect(body.date).toBe(yesterdayDate().dateStr);
 
-    const usage = await findUsageDaily(userId, yesterdayDate().dateStr);
+    const usage = await findUsageDaily(userId, orgId, yesterdayDate().dateStr);
     expect(usage).toBeUndefined();
   });
 
@@ -99,7 +101,7 @@ describe("GET /api/cron/aggregate-usage", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const usage = await findUsageDaily(userId, dateStr);
+    const usage = await findUsageDaily(userId, orgId, dateStr);
     expect(usage).toBeDefined();
     expect(usage!.runCount).toBe(2);
     expect(usage!.runTimeMs).toBe(13000);
@@ -123,7 +125,7 @@ describe("GET /api/cron/aggregate-usage", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const usage = await findUsageDaily(userId, dateStr);
+    const usage = await findUsageDaily(userId, orgId, dateStr);
     expect(usage!.runCount).toBe(1);
     expect(usage!.runTimeMs).toBe(5000);
   });

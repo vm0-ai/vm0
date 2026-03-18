@@ -332,7 +332,11 @@ describe("GET /api/usage", () => {
 
       // Verify cache was written to usage_daily
       const fourDaysAgoStr = fourDaysAgo.toISOString().split("T")[0]!;
-      const cached = await findUsageDaily(user.userId, fourDaysAgoStr);
+      const cached = await findUsageDaily(
+        user.userId,
+        user.orgId,
+        fourDaysAgoStr,
+      );
       expect(cached).toBeDefined();
       expect(cached!.runCount).toBe(1);
       expect(cached!.runTimeMs).toBe(6000);
@@ -344,6 +348,48 @@ describe("GET /api/usage", () => {
       expect(data2.summary.total_run_time_ms).toBe(
         data1.summary.total_run_time_ms,
       );
+    });
+  });
+
+  describe("org isolation", () => {
+    it("should only return usage for the resolved org", async () => {
+      const now = new Date();
+      const runTime = new Date(now.getTime() - 3600000);
+
+      // Create run in default user's org
+      await createCompletedTestRun({
+        composeVersionId: testVersionId,
+        userId: user.userId,
+        createdAt: runTime,
+        startedAt: runTime,
+        completedAt: new Date(runTime.getTime() + 5000),
+      });
+
+      // Create a second user with a different org, create a compose + run there
+      const otherUser = await context.setupUser({ prefix: "other-user" });
+      mockClerk({ userId: otherUser.userId, orgId: otherUser.orgId });
+      const { versionId: otherVersionId } = await createTestCompose(
+        uniqueId("other-usage"),
+      );
+      await createCompletedTestRun({
+        composeVersionId: otherVersionId,
+        userId: otherUser.userId,
+        createdAt: runTime,
+        startedAt: runTime,
+        completedAt: new Date(runTime.getTime() + 8000),
+      });
+
+      // Switch back to original user
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Query with default org context — should only see the original user's org run
+      const request = createTestRequest("http://localhost:3000/api/usage");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.summary.total_runs).toBe(1);
+      expect(data.summary.total_run_time_ms).toBe(5000);
     });
   });
 });

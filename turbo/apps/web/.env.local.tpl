@@ -138,8 +138,8 @@ STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GA
 NGROK_API_KEY=op://Development/ngrok/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
 
-# Required: Platform UI URL (for settings page links in error messages)
-PLATFORM_URL=op://Development/vm0/PLATFORM_URL
+# Required: App UI URL (for settings page links in error messages)
+APP_URL=https://app.vm7.ai:8443
 
 # Optional: Blog Configuration
 BLOG_BASE_URL=

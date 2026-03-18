@@ -20,7 +20,7 @@ import {
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/telegram/format";
 import { detectDeepLinks } from "../../../../../src/lib/deep-links";
-import { getPlatformUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/url";
 import { getRunOutput } from "../../../../../src/lib/slack/handlers/run-agent";
 import {
   saveTelegramThreadSession,
@@ -153,11 +153,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   let responseText: string | undefined;
   if (status === "completed") {
     responseText = output ?? "Task completed successfully.";
-    const deepLinks = detectDeepLinks(
-      responseText,
-      getPlatformUrl(),
-      agentName,
-    );
+    const deepLinks = detectDeepLinks(responseText, getAppUrl(), agentName);
     htmlOutput = buildTelegramResponse(
       responseText,
       agentName,

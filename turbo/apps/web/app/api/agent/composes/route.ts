@@ -65,7 +65,7 @@ const router = tsr.router(composesMainContract, {
       }
       orgId = orgData.orgId;
     } else {
-      const { org: resolvedOrg } = await resolveOrg(userId);
+      const { org: resolvedOrg } = await resolveOrg(authCtx);
       orgId = resolvedOrg.orgId;
     }
 
@@ -252,7 +252,7 @@ const router = tsr.router(composesMainContract, {
 
     // Get user's org (required for compose creation)
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

@@ -1,7 +1,7 @@
 /**
- * Platform Logs API Handlers
+ * App Logs API Handlers
  *
- * Mock handlers for /api/platform/logs endpoints
+ * Mock handlers for /api/app/logs endpoints
  */
 
 import { http, HttpResponse } from "msw";
@@ -50,9 +50,9 @@ const mockLogDetails: LogDetail[] = [
   },
 ];
 
-export const platformLogsHandlers = [
-  // GET /api/platform/logs - List logs with basic fields
-  http.get("*/api/platform/logs", ({ request }) => {
+export const appLogsHandlers = [
+  // GET /api/app/logs - List logs with basic fields
+  http.get("*/api/app/logs", ({ request }) => {
     const url = new URL(request.url);
     const cursor = url.searchParams.get("cursor");
     const limit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
@@ -90,8 +90,8 @@ export const platformLogsHandlers = [
     return HttpResponse.json(response);
   }),
 
-  // GET /api/platform/logs/:id - Get log detail
-  http.get("*/api/platform/logs/:id", ({ params }) => {
+  // GET /api/app/logs/:id - Get log detail
+  http.get("*/api/app/logs/:id", ({ params }) => {
     const { id } = params;
     const logDetail = mockLogDetails.find((log) => log.id === id);
 

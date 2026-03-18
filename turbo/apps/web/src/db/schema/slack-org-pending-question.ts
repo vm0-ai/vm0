@@ -2,7 +2,6 @@ import {
   pgTable,
   uuid,
   varchar,
-  text,
   jsonb,
   timestamp,
   index,
@@ -29,7 +28,6 @@ export const slackOrgPendingQuestions = pgTable(
     connectionId: uuid("connection_id")
       .notNull()
       .references(() => slackOrgConnections.id),
-    orgId: text("org_id").notNull(),
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id),

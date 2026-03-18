@@ -45,8 +45,8 @@ const nextConfig = {
     // Clerk authentication
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.CLERK_PUBLISHABLE_KEY,
 
-    // Platform URLs
-    NEXT_PUBLIC_PLATFORM_URL: process.env.PLATFORM_URL,
+    // App URLs
+    NEXT_PUBLIC_APP_URL: process.env.APP_URL,
 
     // Blog configuration
     NEXT_PUBLIC_BASE_URL: process.env.BLOG_BASE_URL,

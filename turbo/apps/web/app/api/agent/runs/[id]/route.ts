@@ -20,7 +20,7 @@ const router = tsr.router(runsByIdContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Query run from database - filter by userId and orgId for security
     const [run] = await globalThis.services.db

@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  createTestRunInDb,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -234,5 +235,62 @@ describe("GET /api/logs/search", () => {
     const data = await response.json();
     expect(data.results).toHaveLength(2);
     expect(data.hasMore).toBe(true);
+  });
+
+  it("should not return runs from a different org", async () => {
+    const user = await context.setupUser();
+
+    // Create a compose + run in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+    const { runId: otherOrgRunId } = await createTestRunInDb(
+      user.userId,
+      otherOrg.id,
+    );
+
+    // Mock Axiom to return events for the default org run only
+    // (in production, the APL runId filter would exclude other-org runs)
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      createAxiomAgentEvent(testRunId, 1, "Default org event"),
+    ]);
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/logs/search?keyword=event",
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].runId).toBe(testRunId);
+
+    // Verify the Axiom APL query only contains the default org's run ID
+    const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
+    expect(aplQuery).toContain(testRunId);
+    expect(aplQuery).not.toContain(otherOrgRunId);
+  });
+
+  it("should return empty when searching by runId from a different org", async () => {
+    const user = await context.setupUser();
+
+    // Create a run in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+    const { runId: otherOrgRunId } = await createTestRunInDb(
+      user.userId,
+      otherOrg.id,
+    );
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/logs/search?keyword=test&runId=${otherOrgRunId}`,
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toEqual([]);
+    expect(data.hasMore).toBe(false);
+    // Axiom should not be called since the run doesn't belong to the active org
+    expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
   });
 });

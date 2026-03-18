@@ -1,4 +1,4 @@
-// API response types (matching platform API contracts)
+// API response types (matching app API contracts)
 import type { PlatformLogStatus } from "@vm0/core";
 
 // Re-export from core contract to stay in sync with the API schema

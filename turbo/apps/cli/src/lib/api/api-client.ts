@@ -30,7 +30,7 @@ import {
 } from "@vm0/core";
 import type { z } from "zod";
 import { getApiUrl, getActiveToken } from "./config";
-import { handleError } from "./core/client-factory";
+import { getClientConfig, handleError } from "./core/client-factory";
 
 // Import types from @vm0/core contracts
 import type {
@@ -313,15 +313,10 @@ class ApiClient {
     runId: string,
     options?: { since?: number; limit?: number },
   ): Promise<GetEventsResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    // Create ts-rest client with config
-    const client = initClient(runEventsContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    // Create ts-rest client with config (includes org context)
+    const client = initClient(runEventsContract, config);
 
     const result = await client.getEvents({
       params: { id: runId },
@@ -346,15 +341,10 @@ class ApiClient {
     runId: string,
     options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetSystemLogResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    // Create ts-rest client with config
-    const client = initClient(runSystemLogContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    // Create ts-rest client with config (includes org context)
+    const client = initClient(runSystemLogContract, config);
 
     const result = await client.getSystemLog({
       params: { id: runId },
@@ -380,15 +370,10 @@ class ApiClient {
     runId: string,
     options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetMetricsResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    // Create ts-rest client with config
-    const client = initClient(runMetricsContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    // Create ts-rest client with config (includes org context)
+    const client = initClient(runMetricsContract, config);
 
     const result = await client.getMetrics({
       params: { id: runId },
@@ -414,15 +399,10 @@ class ApiClient {
     runId: string,
     options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetAgentEventsResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    // Create ts-rest client with config
-    const client = initClient(runAgentEventsContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    // Create ts-rest client with config (includes org context)
+    const client = initClient(runAgentEventsContract, config);
 
     const result = await client.getAgentEvents({
       params: { id: runId },
@@ -448,15 +428,10 @@ class ApiClient {
     runId: string,
     options?: { since?: number; limit?: number; order?: "asc" | "desc" },
   ): Promise<GetNetworkLogsResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    // Create ts-rest client with config
-    const client = initClient(runNetworkLogsContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    // Create ts-rest client with config (includes org context)
+    const client = initClient(runNetworkLogsContract, config);
 
     const result = await client.getNetworkLogs({
       params: { id: runId },
@@ -571,15 +546,10 @@ class ApiClient {
    * Used by run resume to fetch checkpoint info including secretNames
    */
   async getCheckpoint(checkpointId: string): Promise<GetCheckpointResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    // Create ts-rest client with config
-    const client = initClient(checkpointsByIdContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    // Create ts-rest client with config (includes org context)
+    const client = initClient(checkpointsByIdContract, config);
 
     const result = await client.getById({
       params: { id: checkpointId },
@@ -1095,14 +1065,9 @@ class ApiClient {
     before?: number;
     after?: number;
   }): Promise<LogsSearchResponse> {
-    const baseUrl = await this.getBaseUrl();
-    const headers = await this.getHeaders();
+    const config = await getClientConfig();
 
-    const client = initClient(logsSearchContract, {
-      baseUrl,
-      baseHeaders: headers,
-      jsonQuery: false,
-    });
+    const client = initClient(logsSearchContract, config);
 
     const result = await client.searchLogs({
       query: {

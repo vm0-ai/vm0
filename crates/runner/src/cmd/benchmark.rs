@@ -89,7 +89,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     let fc_config = runner_config.firecracker_config(&default_profile, &home, Some(mitm.port()));
 
     let t = Instant::now();
-    let mut factory = FirecrackerFactory::new(fc_config).await?;
+    let mut factory = FirecrackerFactory::new(fc_config, None).await?;
     factory.startup().await?;
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");

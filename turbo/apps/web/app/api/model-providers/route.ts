@@ -9,7 +9,6 @@ import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import {
   listModelProviders,
-  listOrgModelProviders,
   upsertModelProvider,
   upsertMultiAuthModelProvider,
 } from "../../../src/lib/model-provider/model-provider-service";
@@ -32,34 +31,24 @@ const router = tsr.router(modelProvidersMainContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
-    const userProviders = await listModelProviders(org.orgId, userId);
-    const orgProviders = await listOrgModelProviders(org.orgId);
-
-    const mapProvider = (
-      p: (typeof userProviders)[number],
-      scope: "org" | "user",
-    ) => ({
-      id: p.id,
-      type: p.type,
-      framework: p.framework,
-      secretName: p.secretName,
-      authMethod: p.authMethod ?? null,
-      secretNames: p.secretNames ?? null,
-      isDefault: p.isDefault,
-      selectedModel: p.selectedModel,
-      scope,
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
-    });
+    const { org } = await resolveOrg(authCtx, orgSlug);
+    const providers = await listModelProviders(org.orgId, userId);
 
     return {
       status: 200 as const,
       body: {
-        modelProviders: [
-          ...orgProviders.map((p) => mapProvider(p, "org")),
-          ...userProviders.map((p) => mapProvider(p, "user")),
-        ],
+        modelProviders: providers.map((p) => ({
+          id: p.id,
+          type: p.type,
+          framework: p.framework,
+          secretName: p.secretName,
+          authMethod: p.authMethod ?? null,
+          secretNames: p.secretNames ?? null,
+          isDefault: p.isDefault,
+          selectedModel: p.selectedModel,
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+        })),
       },
     };
   },
@@ -82,7 +71,7 @@ const router = tsr.router(modelProvidersMainContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
 
       // Determine if this is a multi-auth provider or legacy provider
       const isMultiAuth = hasAuthMethods(type);
@@ -139,7 +128,6 @@ const router = tsr.router(modelProvidersMainContract, {
             secretNames: provider.secretNames ?? null,
             isDefault: provider.isDefault,
             selectedModel: provider.selectedModel,
-            scope: "user" as const,
             createdAt: provider.createdAt.toISOString(),
             updatedAt: provider.updatedAt.toISOString(),
           },

@@ -5,6 +5,7 @@ import {
   createTestCompose,
   createTestRun,
   completeTestRun,
+  getOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -64,7 +65,7 @@ describe("GET /api/agent/checkpoints/:id", () => {
     expect(data.error.message).toContain("Checkpoint not found");
   });
 
-  it("should return 403 when accessing another user's checkpoint", async () => {
+  it("should return 404 when accessing another user's checkpoint", async () => {
     // Create another user with their own compose and run
     const otherUser = await context.setupUser({ prefix: "other" });
     const { composeId: otherComposeId } = await createTestCompose(
@@ -89,8 +90,51 @@ describe("GET /api/agent/checkpoints/:id", () => {
     const response = await GET(request);
     const data = await response.json();
 
-    expect(response.status).toBe(403);
-    expect(data.error.code).toBe("FORBIDDEN");
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
+  });
+
+  it("should return 404 for checkpoint from a different org", async () => {
+    // Create compose in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+    const otherOrgEntry = await getOrgCacheEntry(otherOrg.orgId);
+
+    // Switch to the other org and create compose + run there
+    mockClerk({
+      userId: user.userId,
+      orgId: otherOrg.orgId,
+      orgSlug: otherOrgEntry!.slug,
+      clerkOrgs: [
+        {
+          id: otherOrg.orgId,
+          slug: otherOrgEntry!.slug,
+          name: otherOrgEntry!.slug,
+        },
+      ],
+    });
+    const { composeId: otherComposeId } = await createTestCompose(
+      `other-org-checkpoint-${Date.now()}`,
+    );
+    const { runId: otherRunId } = await createTestRun(
+      otherComposeId,
+      "Other org run",
+    );
+    const { checkpointId: otherCheckpointId } = await completeTestRun(
+      user.userId,
+      otherRunId,
+    );
+
+    // Switch back to default org
+    mockClerk({ userId: user.userId });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/agent/checkpoints/${otherCheckpointId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
   });
 
   it("should return 401 when not authenticated", async () => {

@@ -3,18 +3,24 @@ import { GET, POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  getOrgCacheEntry,
 } from "../../../../src/__tests__/api-test-helpers";
-import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+  type UserContext,
+} from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
 describe("POST /api/chat-threads - Create Thread", () => {
+  let user: UserContext;
   let testComposeId: string;
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    user = await context.setupUser();
 
     const { composeId } = await createTestCompose(uniqueId("chat-thread"));
     testComposeId = composeId;
@@ -61,6 +67,47 @@ describe("POST /api/chat-threads - Create Thread", () => {
     expect(data.createdAt).toBeDefined();
   });
 
+  it("should return 404 for compose from a different org", async () => {
+    // Create compose in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+    const otherOrgEntry = await getOrgCacheEntry(otherOrg.orgId);
+
+    // Switch to the other org and create a compose there
+    mockClerk({
+      userId: user.userId,
+      orgId: otherOrg.orgId,
+      orgSlug: otherOrgEntry!.slug,
+      clerkOrgs: [
+        {
+          id: otherOrg.orgId,
+          slug: otherOrgEntry!.slug,
+          name: otherOrgEntry!.slug,
+        },
+      ],
+    });
+    const { composeId: otherComposeId } = await createTestCompose(
+      uniqueId("other-org-chat"),
+    );
+
+    // Switch back to default org
+    mockClerk({ userId: user.userId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: otherComposeId,
+          title: "Cross-org thread",
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(404);
+  });
+
   it("should return 404 for non-existent compose", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/chat-threads",
@@ -80,11 +127,12 @@ describe("POST /api/chat-threads - Create Thread", () => {
 });
 
 describe("GET /api/chat-threads - List Threads", () => {
+  let user: UserContext;
   let testComposeId: string;
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    user = await context.setupUser();
 
     const { composeId } = await createTestCompose(uniqueId("chat-thread"));
     testComposeId = composeId;
@@ -101,6 +149,39 @@ describe("GET /api/chat-threads - List Threads", () => {
 
     expect(response.status).toBe(401);
     expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should return 404 for compose from a different org", async () => {
+    // Create compose in a different org
+    const otherOrg = await context.createAgentCompose(user.userId);
+    const otherOrgEntry = await getOrgCacheEntry(otherOrg.orgId);
+
+    // Switch to the other org and create a compose there
+    mockClerk({
+      userId: user.userId,
+      orgId: otherOrg.orgId,
+      orgSlug: otherOrgEntry!.slug,
+      clerkOrgs: [
+        {
+          id: otherOrg.orgId,
+          slug: otherOrgEntry!.slug,
+          name: otherOrgEntry!.slug,
+        },
+      ],
+    });
+    const { composeId: otherComposeId } = await createTestCompose(
+      uniqueId("other-org-chat"),
+    );
+
+    // Switch back to default org
+    mockClerk({ userId: user.userId });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/chat-threads?agentComposeId=${otherComposeId}`,
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(404);
   });
 
   it("should return empty array when no threads exist", async () => {

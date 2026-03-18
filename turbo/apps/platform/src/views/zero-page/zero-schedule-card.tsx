@@ -38,6 +38,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
+import emptyScheduleImg from "./assets/empty-schedule.png";
 import {
   COMMON_TIMEZONES,
   getTodayDateLocal,
@@ -672,7 +673,7 @@ export function ZeroScheduleCard({
             {scheduleList.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 gap-3">
                 <img
-                  src="/images/empty-schedule.png"
+                  src={emptyScheduleImg}
                   alt="No entries"
                   className="h-20 w-20 object-contain opacity-80"
                 />

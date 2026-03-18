@@ -7,8 +7,9 @@ import { runAgentEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
-import { getUserId } from "../../../../../../../src/lib/auth/get-user-id";
+import { eq, and } from "drizzle-orm";
+import { getAuthContext } from "../../../../../../../src/lib/auth/get-user-id";
+import { resolveOrg } from "../../../../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,
   getDatasetName,
@@ -24,13 +25,13 @@ interface AxiomAgentEvent {
 }
 
 const router = tsr.router(runAgentEventsContract, {
-  getAgentEvents: async ({ params, query, headers }) => {
+  getAgentEvents: async ({ params, query, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization, {
+    const authCtx = await getAuthContext(headers.authorization, {
       requiredCapability: "agent-run:read",
     });
-    if (!userId) {
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -38,12 +39,15 @@ const router = tsr.router(runAgentEventsContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
-    // Verify run exists and belongs to user, join with compose version to get framework
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+
+    // Verify run exists and belongs to user+org, join with compose version to get framework
     const [runWithCompose] = await globalThis.services.db
       .select({
         id: agentRuns.id,
-        userId: agentRuns.userId,
         composeContent: agentComposeVersions.content,
       })
       .from(agentRuns)
@@ -51,10 +55,16 @@ const router = tsr.router(runAgentEventsContract, {
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
-      .where(eq(agentRuns.id, params.id))
+      .where(
+        and(
+          eq(agentRuns.id, params.id),
+          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, org.orgId),
+        ),
+      )
       .limit(1);
 
-    if (!runWithCompose || runWithCompose.userId !== userId) {
+    if (!runWithCompose) {
       return {
         status: 404 as const,
         body: {

@@ -62,7 +62,7 @@ test("sign-in flow", async ({ page, baseURL }) => {
   // checking for either: redirect to platform URL, or the Platform button in navbar.
   await expect(async () => {
     const url = page.url();
-    const onPlatform = /platform/.test(url);
+    const onPlatform = /\b(platform|app)\./.test(url);
     const onWebApp = !onPlatform;
     if (onWebApp) {
       // Still on web app — the Platform button should be visible for authenticated users

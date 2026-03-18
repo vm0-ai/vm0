@@ -22,7 +22,7 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
 } from "./shared";
-import { getPlatformUrl } from "../../url";
+import { getAppUrl } from "../../url";
 import { logger } from "../../logger";
 
 const log = logger("slack-org:mention");
@@ -161,14 +161,13 @@ export async function handleOrgMention(
     context.messageTs,
   );
 
-  // 8. Dispatch agent run with explicit orgId
+  // 8. Dispatch agent run
   const callbackContext: SlackOrgCallbackContext = {
     workspaceId: context.workspaceId,
     channelId: context.channelId,
     threadTs,
     messageTs: context.messageTs,
     connectionId: connection.id,
-    orgId,
     agentName,
     composeId,
     existingSessionId,
@@ -181,7 +180,6 @@ export async function handleOrgMention(
     prompt: messageContent,
     threadContext: executionContext,
     userId: connection.vm0UserId,
-    orgId,
     callbackContext,
   });
 
@@ -196,7 +194,7 @@ export async function handleOrgMention(
     log.error("Failed to dispatch agent run", { response });
     const errorText = response ?? "Sorry, an error occurred. Please try again.";
     const logsUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
-    const deepLinks = detectDeepLinks(errorText, getPlatformUrl(), agentName);
+    const deepLinks = detectDeepLinks(errorText, getAppUrl(), agentName);
     await client.chat.postMessage({
       channel: context.channelId,
       thread_ts: threadTs,

@@ -17,8 +17,6 @@ pub struct PollResponse {
 #[serde(rename_all = "camelCase")]
 pub struct Job {
     pub run_id: Uuid,
-    // Not yet used by runner — profile for resource-aware claiming
-    #[allow(dead_code)]
     #[serde(default)]
     pub experimental_profile: Option<String>,
 }
@@ -83,7 +81,6 @@ pub struct ExecutionContext {
     pub experimental_firewalls: Option<Vec<Firewall>>,
     #[serde(default)]
     pub experimental_capabilities: Option<Vec<String>>,
-    // Not yet used by runner — VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
     #[allow(dead_code)]
     #[serde(default)]
     pub experimental_profile: Option<String>,

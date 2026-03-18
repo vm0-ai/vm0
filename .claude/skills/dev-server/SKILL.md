@@ -69,7 +69,7 @@ Once the server is confirmed running, display the URLs:
 ✅ Dev server started in background
 
 - Web:      https://www.vm7.ai:8443
-- Platform: https://platform.vm7.ai:8443
+- App:      https://app.vm7.ai:8443
 - Docs:     https://docs.vm7.ai:8443
 
 Next steps:

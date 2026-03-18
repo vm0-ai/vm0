@@ -21,9 +21,9 @@ docs.vm7.ai:8443 {
   reverse_proxy localhost:3001
 }
 
-# Platform application (app)
-platform.vm7.ai:8443 {
-  tls ../../../.certs/platform.vm7.ai.pem ../../../.certs/platform.vm7.ai-key.pem
+# App application
+app.vm7.ai:8443 {
+  tls ../../../.certs/app.vm7.ai.pem ../../../.certs/app.vm7.ai-key.pem
   reverse_proxy localhost:3002
 }
 
@@ -40,7 +40,7 @@ http://docs.vm7.ai:8080 {
   redir https://docs.vm7.ai:8443{uri} permanent
 }
 
-http://platform.vm7.ai:8080 {
-  redir https://platform.vm7.ai:8443{uri} permanent
+http://app.vm7.ai:8080 {
+  redir https://app.vm7.ai:8443{uri} permanent
 }
 

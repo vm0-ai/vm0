@@ -26,7 +26,7 @@ const router = tsr.router(modelProvidersByTypeContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       await deleteModelProvider(org.orgId, userId, params.type);
 
       return {

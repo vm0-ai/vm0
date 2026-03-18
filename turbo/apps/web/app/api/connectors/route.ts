@@ -24,7 +24,7 @@ const router = tsr.router(connectorsMainContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const connectorList = await listConnectors(org.orgId, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,

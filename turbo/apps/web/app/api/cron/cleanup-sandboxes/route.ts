@@ -20,6 +20,7 @@ import {
   drainOrgQueue,
 } from "../../../../src/lib/run/run-queue-service";
 import { dispatchQueuedRun } from "../../../../src/lib/run/run-service";
+import { processOrgCredits } from "../../../../src/lib/credit/credit-service";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";
 
@@ -238,6 +239,8 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             timeoutReason,
             () => drainOrgQueue(run.orgId, dispatchQueuedRun),
           );
+
+          await processOrgCredits(run.orgId);
 
           const isDebug =
             run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;

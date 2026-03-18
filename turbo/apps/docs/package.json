@@ -1,6 +1,6 @@
 {
   "name": "docs",
-  "version": "2.24.0",
+  "version": "2.25.0",
   "type": "module",
   "private": true,
   "scripts": {
@@ -16,7 +16,7 @@
     "fumadocs-mdx": "14.2.9",
     "fumadocs-ui": "16.6.16",
     "mermaid": "^11.12.2",
-    "next": "^16.1.6",
+    "next": "^16.1.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

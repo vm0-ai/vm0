@@ -29,10 +29,9 @@ const router = tsr.router(orgSecretsByNameContract, {
     if (!authCtx) {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
-    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(userId, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     if (member.role !== "admin") {
       return createErrorResponse(

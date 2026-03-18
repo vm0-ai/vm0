@@ -29,7 +29,7 @@ const router = tsr.router(computerConnectorContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       const result = await createComputerConnector(org.orgId, userId);
       return { status: 200 as const, body: result };
     } catch (error) {
@@ -56,7 +56,7 @@ const router = tsr.router(computerConnectorContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const connector = await getConnector(org.orgId, userId, "computer");
     if (!connector) {
       return createErrorResponse("NOT_FOUND", "Computer connector not found");
@@ -79,7 +79,7 @@ const router = tsr.router(computerConnectorContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       await deleteComputerConnector(org.orgId, userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {

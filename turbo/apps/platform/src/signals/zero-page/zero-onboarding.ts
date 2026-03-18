@@ -41,9 +41,34 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
   return onboardingStatusResponseSchema.parse(await resp.json());
 });
 
+/**
+ * Whether the admin onboarding flow should be shown.
+ * Only true for admins when org setup is incomplete (no model provider or agent).
+ */
 export const zeroNeedsOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
-  return status.needsOnboarding;
+  return status.isAdmin && status.needsOnboarding;
+});
+
+/**
+ * Whether a member (non-admin) needs to see the welcome screen.
+ * True when: org is set up (has default agent), user is not admin,
+ * and the API says needsOnboarding (Clerk membership metadata).
+ */
+export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
+  const status = await get(zeroOnboardingStatus$);
+  return !status.isAdmin && status.needsOnboarding;
+});
+
+/**
+ * Mark member onboarding as complete.
+ * Writes to Clerk membership metadata, then reloads onboarding status
+ * so the dialog disappears (server reads Clerk API directly, no JWT needed).
+ */
+export const completeMemberOnboarding$ = command(async ({ get, set }) => {
+  const fetchFn = get(fetch$);
+  await fetchFn("/api/onboarding/complete", { method: "POST" });
+  set(internalReload$, (x) => x + 1);
 });
 
 export const zeroHasModelProvider$ = computed(async (get) => {

@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.78.0](https://github.com/vm0-ai/vm0/compare/core-v8.77.1...core-v8.78.0) (2026-03-18)
+
+
+### Features
+
+* **platform:** add member onboarding flow and welcome animation ([#5060](https://github.com/vm0-ai/vm0/issues/5060)) ([de6b1e1](https://github.com/vm0-ai/vm0/commit/de6b1e1cf9467bf1171fd67b5ebbc560373322a2))
+
+
+### Refactoring
+
+* platform to app comprehensive rename (phase 2) ([#5275](https://github.com/vm0-ai/vm0/issues/5275)) ([73e8a5f](https://github.com/vm0-ai/vm0/commit/73e8a5f0edfac2a0b73a9f4d86812fd747de98db))
+
+## [8.77.1](https://github.com/vm0-ai/vm0/compare/core-v8.77.0...core-v8.77.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* revert merged provider list to return only user providers ([#5261](https://github.com/vm0-ai/vm0/issues/5261)) ([a5783c7](https://github.com/vm0-ai/vm0/commit/a5783c7376dc7b6584c189d55a31269ccaf5aabd)), closes [#5259](https://github.com/vm0-ai/vm0/issues/5259)
+
+## [8.77.0](https://github.com/vm0-ai/vm0/compare/core-v8.76.0...core-v8.77.0) (2026-03-17)
+
+
+### Features
+
+* add org secret and variable api routes and cli commands ([#5213](https://github.com/vm0-ai/vm0/issues/5213)) ([01b3662](https://github.com/vm0-ai/vm0/commit/01b3662aeaea0e7f32faacb1148e9722d45ef981)), closes [#5200](https://github.com/vm0-ai/vm0/issues/5200)
+* add org/personal tabs for model provider settings ([#5214](https://github.com/vm0-ai/vm0/issues/5214)) ([d035f1d](https://github.com/vm0-ai/vm0/commit/d035f1d7b372f07c6054e27fd71b2ac437f8bb26))
+* remove vercel ai gateway feature flag ([#5211](https://github.com/vm0-ai/vm0/issues/5211)) ([15f9a11](https://github.com/vm0-ai/vm0/commit/15f9a1108009d12a5c5e32f6c9bfd592afc4d590))
+
 ## [8.76.0](https://github.com/vm0-ai/vm0/compare/core-v8.75.0...core-v8.76.0) (2026-03-17)
 
 

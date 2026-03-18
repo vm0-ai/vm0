@@ -100,7 +100,9 @@ export async function GET(request: Request) {
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
 
-  const orgSlug = compose ? (await getOrgData(compose.orgId)).slug : null;
+  const composeOrgSlug = compose
+    ? (await getOrgData(compose.orgId)).slug
+    : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -122,7 +124,8 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's default org and get existing secrets, vars, connectors
-  const { org } = await resolveOrg(userId);
+  const orgSlug = new URL(request.url).searchParams.get("org");
+  const { org } = await resolveOrg(authCtx, orgSlug);
   const [userSecrets, userVars, userConnectors] = await Promise.all([
     listSecrets(org.orgId, userId),
     listVariables(org.orgId, userId),
@@ -148,10 +151,10 @@ export async function GET(request: Request) {
   const isAdmin = installation.adminUserId === userId;
   const isConnected = !!userLink;
 
-  const { NEXT_PUBLIC_PLATFORM_URL } = env();
+  const { NEXT_PUBLIC_APP_URL } = env();
   const domainConfigured = await checkTelegramDomain(
     installation.telegramBotId,
-    NEXT_PUBLIC_PLATFORM_URL,
+    NEXT_PUBLIC_APP_URL,
   );
 
   return NextResponse.json({
@@ -160,7 +163,9 @@ export async function GET(request: Request) {
       id: installation.telegramBotId,
       username: installation.botUsername,
     },
-    agent: compose ? { id: compose.id, name: compose.name, orgSlug } : null,
+    agent: compose
+      ? { id: compose.id, name: compose.name, orgSlug: composeOrgSlug }
+      : null,
     isAdmin,
     isConnected,
     domainConfigured,
@@ -267,7 +272,8 @@ export async function PATCH(request: Request) {
     targetOrg = resolved;
   } else {
     try {
-      ({ org: targetOrg } = await resolveOrg(userId));
+      const urlOrgSlug = new URL(request.url).searchParams.get("org");
+      ({ org: targetOrg } = await resolveOrg(authCtx, urlOrgSlug));
     } catch (error) {
       if (isNotFound(error)) {
         return NextResponse.json(

@@ -70,12 +70,11 @@ const router = tsr.router(composesListContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
-    const { userId } = authCtx;
 
     // Resolve org: use ?org= query param or default org
     let orgId: string;
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId, query.org);
+      const { org: resolvedOrg } = await resolveOrg(authCtx, query.org);
       orgId = resolvedOrg.orgId;
     } catch (error) {
       if (isNotFound(error)) {

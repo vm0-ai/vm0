@@ -83,14 +83,14 @@ else
   GENERATED_COUNT=$((GENERATED_COUNT + 1))
 fi
 
-# Platform app
-if [ -f "platform.vm7.ai.pem" ] && [ -f "platform.vm7.ai-key.pem" ]; then
-  echo -e "  - platform.vm7.ai ${YELLOW}(skipped - already exists)${NC}"
+# App
+if [ -f "app.vm7.ai.pem" ] && [ -f "app.vm7.ai-key.pem" ]; then
+  echo -e "  - app.vm7.ai ${YELLOW}(skipped - already exists)${NC}"
   SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
 else
-  echo "  - platform.vm7.ai"
-  mkcert -cert-file platform.vm7.ai.pem -key-file platform.vm7.ai-key.pem \
-    "platform.vm7.ai" "localhost" "127.0.0.1" "::1"
+  echo "  - app.vm7.ai"
+  mkcert -cert-file app.vm7.ai.pem -key-file app.vm7.ai-key.pem \
+    "app.vm7.ai" "localhost" "127.0.0.1" "::1"
   GENERATED_COUNT=$((GENERATED_COUNT + 1))
 fi
 

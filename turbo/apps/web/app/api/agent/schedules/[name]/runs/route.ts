@@ -34,7 +34,7 @@ const router = tsr.router(scheduleRunsContract, {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(userId, orgSlug);
+      } = await resolveOrg(authCtx, orgSlug);
 
       const runs = await getScheduleRecentRuns(
         userId,

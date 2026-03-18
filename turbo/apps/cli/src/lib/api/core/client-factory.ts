@@ -59,23 +59,24 @@ export async function getClientConfig() {
   const baseHeaders = await getHeaders();
 
   const activeOrg = await getActiveOrg();
-
-  if (activeOrg) {
-    return {
-      baseUrl,
-      baseHeaders,
-      jsonQuery: false as const,
-      api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
-        const separator = args.path.includes("?") ? "&" : "?";
-        if (!args.path.includes("org=")) {
-          args.path = `${args.path}${separator}org=${encodeURIComponent(activeOrg)}`;
-        }
-        return tsRestFetchApi(args);
-      },
-    };
+  if (!activeOrg) {
+    throw new Error(
+      "No active organization configured. Run: vm0 org use <slug>",
+    );
   }
 
-  return { baseUrl, baseHeaders, jsonQuery: false as const };
+  return {
+    baseUrl,
+    baseHeaders,
+    jsonQuery: false as const,
+    api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
+      const separator = args.path.includes("?") ? "&" : "?";
+      if (!args.path.includes("org=")) {
+        args.path = `${args.path}${separator}org=${encodeURIComponent(activeOrg)}`;
+      }
+      return tsRestFetchApi(args);
+    },
+  };
 }
 
 /**

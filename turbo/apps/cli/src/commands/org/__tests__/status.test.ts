@@ -39,6 +39,22 @@ describe("org status command", () => {
     });
   });
 
+  describe("no active organization", () => {
+    it("should exit with error if no active org configured", async () => {
+      vi.stubEnv("VM0_ACTIVE_ORG", "");
+      vi.stubEnv("HOME", "/tmp/test-no-org-config");
+
+      await expect(async () => {
+        await statusCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No active organization configured"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("no organization configured", () => {
     it("should show helpful message when user has no organization", async () => {
       server.use(

@@ -215,7 +215,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/platform/logs/:runId", () => {
+        http.get("*/api/app/logs/:runId", () => {
           pollCount++;
           return HttpResponse.json({
             id: "run-old",
@@ -321,7 +321,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/platform/logs/:runId", () => {
+        http.get("*/api/app/logs/:runId", () => {
           pollCount++;
           return HttpResponse.json({
             id: "run-poll",
@@ -389,7 +389,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/platform/logs/:runId", () => {
+        http.get("*/api/app/logs/:runId", () => {
           return HttpResponse.json({
             id: "run-123",
             status: "completed",
@@ -515,7 +515,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/platform/logs/:runId", () => {
+        http.get("*/api/app/logs/:runId", () => {
           return HttpResponse.json({
             id: "run-456",
             status: "completed",

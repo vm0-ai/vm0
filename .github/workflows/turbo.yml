@@ -25,7 +25,7 @@ jobs:
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
-      platform-preview-url: ${{ steps.preview-urls.outputs.platform-url }}
+      app-preview-url: ${{ steps.preview-urls.outputs.app-url }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
       docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
@@ -167,11 +167,11 @@ jobs:
 
           if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
             echo "web-url=https://${JOB_REF}-www.${PREVIEW_DOMAIN}" >> $GITHUB_OUTPUT
-            echo "platform-url=https://${JOB_REF}-platform.${PREVIEW_DOMAIN}" >> $GITHUB_OUTPUT
+            echo "app-url=https://${JOB_REF}-app.${PREVIEW_DOMAIN}" >> $GITHUB_OUTPUT
             echo "Preview URL set to: https://${JOB_REF}-www.${PREVIEW_DOMAIN}"
           else
             echo "web-url=" >> $GITHUB_OUTPUT
-            echo "platform-url=" >> $GITHUB_OUTPUT
+            echo "app-url=" >> $GITHUB_OUTPUT
             echo "Preview URL not set (PREVIEW_DOMAIN or job-ref is empty)"
           fi
 
@@ -335,16 +335,16 @@ jobs:
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/cli
 
-  test-platform:
+  test-app:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Test Platform
+      - name: Test App
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/platform
+        run: pnpm vitest run --project=@vm0/app
 
   test-other:
     runs-on: ubuntu-latest
@@ -492,7 +492,7 @@ jobs:
           STRIPE_OAUTH_CLIENT_SECRET: ${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
           NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
           NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
-          PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
+          APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
           RESEND_FROM_DOMAIN: ${{ vars.RESEND_FROM_DOMAIN }}
@@ -683,7 +683,7 @@ jobs:
             STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
-            PLATFORM_URL=${{ needs.prepare.outputs.platform-preview-url }}
+            APP_URL=${{ needs.prepare.outputs.app-preview-url }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
@@ -784,8 +784,8 @@ jobs:
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
-  # Deploy platform (Vite SPA)
-  deploy-platform:
+  # Deploy app (Vite SPA)
+  deploy-app:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260310
@@ -800,22 +800,22 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
-      - name: Deploy Platform to Vercel
+      - name: Deploy App to Vercel
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_PLATFORM }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
           environment: preview
-          deployment-env: platform
+          deployment-env: app
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
-            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_PLATFORM }}
+            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_PLATFORM }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
@@ -827,7 +827,7 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
-          app-name: platform
+          app-name: app
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
@@ -907,7 +907,7 @@ jobs:
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
       - name: Install CLI production dependencies
-        run: cd turbo/apps/cli/dist && npm install --production
+        run: cd turbo/apps/cli/dist && npm install --omit=dev
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
@@ -929,7 +929,7 @@ jobs:
         lint-knip,
         test-web,
         test-cli,
-        test-platform,
+        test-app,
         test-other,
       ]
     if: |
@@ -1274,8 +1274,8 @@ jobs:
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-            # Stop any existing service from a previous run (e.g., re-run after test failure
-            # where cleanup-runner preserved the runner). Ignore errors if not running.
+            # Stop any existing service from a previous run (e.g., re-run after test failure).
+            # Ignore errors if not running.
             ssh $REMOTE "${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" 2>/dev/null || true
 
             # Start as systemd transient service
@@ -1428,61 +1428,6 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
-  # Stop runner service and clean up after tests complete.
-  # When tests fail/cancel, this job fails WITHOUT cleaning up so that
-  # "Re-run failed jobs" includes it — on successful retry it will clean up.
-  # cleanup.yml (pull_request_target:closed) is the safety net.
-  cleanup-runner:
-    runs-on: ubuntu-latest
-    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner]
-    if: |
-      always() &&
-      github.event_name != 'push' &&
-      needs.deploy-runner-prepare.outputs.bin-dir != ''
-    steps:
-      # Guard: if any test/deploy job didn't succeed, fail this job WITHOUT
-      # cleaning up. This makes "Re-run failed jobs" include cleanup-runner,
-      # so on successful retry the cleanup runs automatically.
-      #
-      # - deploy-runner-start != success (not just failure/cancelled):
-      #   covers deploy-web failure → start is "skipped" but binaries exist
-      # - cli-e2e-03-runner failure/cancelled:
-      #   the main re-run scenario — keep runner alive for E2E retry
-      - name: Fail if tests failed (keep runner for re-run)
-        if: |
-          needs.deploy-runner-start.result != 'success' ||
-          needs.cli-e2e-03-runner.result == 'failure' ||
-          needs.cli-e2e-03-runner.result == 'cancelled'
-        run: |
-          echo "::error::Tests failed or cancelled — keeping runner alive for re-run"
-          exit 1
-
-      - uses: actions/checkout@v6
-
-      - name: Install Ansible
-        run: pip3 install ansible-core
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Cleanup runner on all metal hosts
-        env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          cd ansible
-          ansible-playbook \
-            -i "${METAL_HOSTS}," \
-            playbooks/cleanup-turbo-runner.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -e "job_ref=${JOB_REF}" \
-            -v || true
-
   # Build E2B templates (development account)
   # Uses repository-level E2B_API_KEY secret
   build-e2b-template:
@@ -1574,10 +1519,10 @@ jobs:
           header: lighthouse-web
           message: ${{ steps.lighthouse-comment-web.outputs.body }}
 
-  # Lighthouse CI audit for platform homepage (failure blocks merge, skip is allowed)
-  lighthouse-platform:
+  # Lighthouse CI audit for app homepage (failure blocks merge, skip is allowed)
+  lighthouse-app:
     runs-on: ubuntu-latest
-    needs: [prepare, deploy-web, deploy-platform]
+    needs: [prepare, deploy-web, deploy-app]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
@@ -1595,20 +1540,20 @@ jobs:
         run: npx puppeteer browsers install chrome
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
-      - name: Run Lighthouse CI (platform)
+      - name: Run Lighthouse CI (app)
         working-directory: e2e/lighthouse
         run: |
           lhci collect \
-            --config=lighthouserc-platform.json \
-            --url="${PLATFORM_URL}" &&
+            --config=lighthouserc-app.json \
+            --url="${APP_URL}" &&
           lhci upload \
-            --config=lighthouserc-platform.json
+            --config=lighthouserc-app.json
         env:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          PLATFORM_URL: ${{ needs.prepare.outputs.platform-preview-url }}
+          APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Locate LHCI output (platform)
-        id: lhci-dir-platform
+      - name: Locate LHCI output (app)
+        id: lhci-dir-app
         if: always()
         run: |
           for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
@@ -1618,29 +1563,29 @@ jobs:
             fi
           done
           echo "dir=" >> "$GITHUB_OUTPUT"
-      - name: Upload Lighthouse report (platform)
-        if: always() && steps.lhci-dir-platform.outputs.dir != ''
+      - name: Upload Lighthouse report (app)
+        if: always() && steps.lhci-dir-app.outputs.dir != ''
         uses: actions/upload-artifact@v4
         with:
-          name: lighthouse-report-platform
-          path: ${{ steps.lhci-dir-platform.outputs.dir }}/
+          name: lighthouse-report-app
+          path: ${{ steps.lhci-dir-app.outputs.dir }}/
           retention-days: 7
-      - name: Format Lighthouse comment (platform)
-        if: success() && github.event_name == 'pull_request' && steps.lhci-dir-platform.outputs.dir != ''
-        id: lighthouse-comment-platform
+      - name: Format Lighthouse comment (app)
+        if: success() && github.event_name == 'pull_request' && steps.lhci-dir-app.outputs.dir != ''
+        id: lighthouse-comment-app
         run: |
-          comment=$(node e2e/lighthouse/format-report.cjs "Platform" "${{ steps.lhci-dir-platform.outputs.dir }}")
+          comment=$(node e2e/lighthouse/format-report.cjs "App" "${{ steps.lhci-dir-app.outputs.dir }}")
           {
             echo "body<<LIGHTHOUSE_EOF"
             echo "$comment"
             echo "LIGHTHOUSE_EOF"
           } >> "$GITHUB_OUTPUT"
-      - name: Post Lighthouse comment (platform)
-        if: steps.lighthouse-comment-platform.outcome == 'success'
+      - name: Post Lighthouse comment (app)
+        if: steps.lighthouse-comment-app.outcome == 'success'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: lighthouse-platform
-          message: ${{ steps.lighthouse-comment-platform.outputs.body }}
+          header: lighthouse-app
+          message: ${{ steps.lighthouse-comment-app.outputs.body }}
 
   # CI Gate: single required check for merge queue
   # Aggregates all job results — must ALWAYS run to report explicit success/failure.
@@ -1648,8 +1593,7 @@ jobs:
   # dependencies fail, and GitHub treats "skipped" as passing — defeating the purpose.
   ci-gate:
     runs-on: ubuntu-latest
-    # Note: cleanup-runner is intentionally excluded — it's a post-test
-    # side-effect job, not a quality gate.
+    # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
       - prepare
       - file-size-check
@@ -1660,11 +1604,11 @@ jobs:
       - test-web
       - test-migrate
       - test-cli
-      - test-platform
+      - test-app
       - test-other
       - deploy-web
       - deploy-docs
-      - deploy-platform
+      - deploy-app
       - build-cli
       - build-e2b-template
       - e2e-auth
@@ -1673,7 +1617,7 @@ jobs:
       - deploy-runner-start
       - cli-e2e-03-runner
       - lighthouse-web
-      - lighthouse-platform
+      - lighthouse-app
     # Always run so the gate reports an explicit result (not "skipped").
     # Skip on release-please commits — GitHub treats "skipped" as passing.
     if: >-
@@ -1712,14 +1656,14 @@ jobs:
           check_result "lint-knip" "${{ needs.lint-knip.result }}" ""
           check_result "test-web" "${{ needs.test-web.result }}" ""
           check_result "test-cli" "${{ needs.test-cli.result }}" ""
-          check_result "test-platform" "${{ needs.test-platform.result }}" ""
+          check_result "test-app" "${{ needs.test-app.result }}" ""
           check_result "test-other" "${{ needs.test-other.result }}" ""
 
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
           check_result "deploy-web" "${{ needs.deploy-web.result }}" "true"
           check_result "deploy-docs" "${{ needs.deploy-docs.result }}" "true"
-          check_result "deploy-platform" "${{ needs.deploy-platform.result }}" "true"
+          check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
           check_result "e2e-auth" "${{ needs.e2e-auth.result }}" "true"
@@ -1729,7 +1673,7 @@ jobs:
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "true"
           # Informational: any result is acceptable (not a merge blocker)
           check_result "lighthouse-web" "${{ needs.lighthouse-web.result }}" "informational"
-          check_result "lighthouse-platform" "${{ needs.lighthouse-platform.result }}" "informational"
+          check_result "lighthouse-app" "${{ needs.lighthouse-app.result }}" "informational"
 
           echo "::endgroup::"
           exit $FAILED

@@ -1003,9 +1003,10 @@ describe("POST /api/agent/schedules - Sandbox Token Auth", () => {
     const token = await generateSandboxToken(user.userId, "run-123", [
       "schedule:write",
     ]);
+    const orgSlug = `org-${user.userId.slice(-8)}`;
 
     const request = createTestRequest(
-      "http://localhost:3000/api/agent/schedules",
+      `http://localhost:3000/api/agent/schedules?org=${orgSlug}`,
       {
         method: "POST",
         headers: {

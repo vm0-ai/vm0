@@ -35,7 +35,7 @@ const router = tsr.router(schedulesByNameContract, {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(userId, orgSlug);
+      } = await resolveOrg(authCtx, orgSlug);
 
       const schedule = await getScheduleByName(
         userId,
@@ -78,7 +78,7 @@ const router = tsr.router(schedulesByNameContract, {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(userId, orgSlug);
+      } = await resolveOrg(authCtx, orgSlug);
 
       await deleteSchedule(userId, orgId, query.composeId, params.name);
 
