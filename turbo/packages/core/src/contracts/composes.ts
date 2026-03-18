@@ -43,6 +43,37 @@ export const VALID_CAPABILITIES = [
   "schedule:write",
 ] as const;
 
+/** Inferred union type of all valid capability strings. */
+export type ValidCapability = (typeof VALID_CAPABILITIES)[number];
+
+/** Metadata for a single capability — group label and human-readable label. */
+export interface CapabilityMeta {
+  group: string;
+  label: string;
+}
+
+/**
+ * Exhaustive mapping from every valid capability to its UI group and label.
+ * Adding a new capability to VALID_CAPABILITIES without updating this record
+ * will produce a TypeScript compile error.
+ */
+export const CAPABILITY_META: Record<ValidCapability, CapabilityMeta> = {
+  "agent:read": { group: "Agent Resources", label: "Read agents & volumes" },
+  "agent:write": { group: "Agent Resources", label: "Write agents & volumes" },
+  "artifact:read": {
+    group: "Artifacts & Memories",
+    label: "Read artifacts & memories",
+  },
+  "artifact:write": {
+    group: "Artifacts & Memories",
+    label: "Write artifacts & memories",
+  },
+  "agent-run:read": { group: "Operations", label: "View agent runs" },
+  "agent-run:write": { group: "Operations", label: "Create & cancel runs" },
+  "schedule:read": { group: "Operations", label: "View schedules" },
+  "schedule:write": { group: "Operations", label: "Manage schedules" },
+};
+
 /**
  * Agent name validation schema
  * - Must be 3-64 characters

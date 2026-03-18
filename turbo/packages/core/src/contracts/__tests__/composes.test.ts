@@ -3,6 +3,7 @@ import {
   agentDefinitionSchema,
   agentComposeApiContentSchema,
   VALID_CAPABILITIES,
+  CAPABILITY_META,
 } from "../composes";
 
 const baseAgent = {
@@ -26,6 +27,16 @@ describe("VALID_CAPABILITIES", () => {
   it("all follow resource:action format", () => {
     for (const cap of VALID_CAPABILITIES) {
       expect(cap).toMatch(/^[a-z-]+:(read|write)$/);
+    }
+  });
+});
+
+describe("CAPABILITY_META", () => {
+  it("has an entry for every VALID_CAPABILITIES member", () => {
+    for (const cap of VALID_CAPABILITIES) {
+      expect(CAPABILITY_META[cap]).toBeDefined();
+      expect(CAPABILITY_META[cap].group).toBeTruthy();
+      expect(CAPABILITY_META[cap].label).toBeTruthy();
     }
   });
 });

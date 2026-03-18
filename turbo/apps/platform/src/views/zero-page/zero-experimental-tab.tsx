@@ -1,3 +1,4 @@
+import { VALID_CAPABILITIES, CAPABILITY_META } from "@vm0/core";
 import { Card, CardContent } from "@vm0/ui";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -11,6 +12,24 @@ interface ZeroExperimentalTabProps {
   onDiscardCapabilities: () => void;
 }
 
+// Derive groups from VALID_CAPABILITIES, preserving declaration order
+function buildCapabilityGroups() {
+  const groups: {
+    label: string;
+    capabilities: { key: string; label: string }[];
+  }[] = [];
+  for (const key of VALID_CAPABILITIES) {
+    const meta = CAPABILITY_META[key];
+    let group = groups.find((g) => g.label === meta.group);
+    if (!group) {
+      group = { label: meta.group, capabilities: [] };
+      groups.push(group);
+    }
+    group.capabilities.push({ key, label: meta.label });
+  }
+  return groups;
+}
+
 export function ZeroExperimentalTab({
   capabilities,
   capabilitiesDirty,
@@ -19,31 +38,7 @@ export function ZeroExperimentalTab({
   onSaveCapabilities,
   onDiscardCapabilities,
 }: ZeroExperimentalTabProps) {
-  const capabilityGroups = [
-    {
-      label: "Agent Resources",
-      capabilities: [
-        { key: "agent:read", label: "Read agents & volumes" },
-        { key: "agent:write", label: "Write agents & volumes" },
-      ],
-    },
-    {
-      label: "Artifacts & Memories",
-      capabilities: [
-        { key: "artifact:read", label: "Read artifacts & memories" },
-        { key: "artifact:write", label: "Write artifacts & memories" },
-      ],
-    },
-    {
-      label: "Operations",
-      capabilities: [
-        { key: "agent-run:read", label: "View agent runs" },
-        { key: "agent-run:write", label: "Create & cancel runs" },
-        { key: "schedule:read", label: "View schedules" },
-        { key: "schedule:write", label: "Manage schedules" },
-      ],
-    },
-  ];
+  const capabilityGroups = buildCapabilityGroups();
 
   return (
     <>

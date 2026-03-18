@@ -37,6 +37,9 @@ export {
   composeResponseSchema,
   composeListItemSchema,
   VALID_CAPABILITIES,
+  CAPABILITY_META,
+  type ValidCapability,
+  type CapabilityMeta,
   // Inferred types
   type ComposeResponse,
   type ComposeListItem,
