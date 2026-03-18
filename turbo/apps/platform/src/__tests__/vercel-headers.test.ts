@@ -22,7 +22,7 @@ function findHeader(headers: HeaderPair[], name: string): string | undefined {
   return headers.find((h) => h.key === name)?.value;
 }
 
-describe("platform vercel.json headers", () => {
+describe("app vercel.json headers", () => {
   it("should set immutable cache headers for hashed assets", () => {
     const assetEntry = findHeaderEntry("/assets/(.*)");
 

@@ -5,7 +5,7 @@ import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 const reload$ = state(0);
 
 /**
- * Resolve the web app origin from the current platform origin.
+ * Resolve the web app origin from the current app origin.
  * Replaces "platform" or "app" with "www" in the hostname so sign-in/sign-out
  * redirects land on the web app where auth pages live.
  */

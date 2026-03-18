@@ -4,8 +4,8 @@
 ### Node ###
 # Logs
 logs
-# Exception for platform logs API folder
-!**/app/api/platform/logs/
+# Exception for app logs API folder
+!**/app/api/app/logs/
 # Exception for logs search API folder
 !**/app/api/logs/
 # Exception for CLI logs command

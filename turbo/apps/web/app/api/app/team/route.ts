@@ -1,7 +1,7 @@
 /**
- * Platform API - Team Endpoint
+ * App API - Team Endpoint
  *
- * GET /api/platform/team - List all agents in the user's active Clerk org.
+ * GET /api/app/team - List all agents in the user's active Clerk org.
  * Unlike /api/agent/composes/list, this endpoint strictly uses the Clerk
  * session orgId and does not fall through to heuristic org resolution.
  */

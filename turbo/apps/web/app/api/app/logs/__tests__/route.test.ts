@@ -15,7 +15,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("GET /api/platform/logs", () => {
+describe("GET /api/app/logs", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -26,9 +26,7 @@ describe("GET /api/platform/logs", () => {
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const request = createTestRequest(
-      "http://localhost:3000/api/platform/logs",
-    );
+    const request = createTestRequest("http://localhost:3000/api/app/logs");
     const response = await GET(request);
     const data = await response.json();
 
@@ -37,9 +35,7 @@ describe("GET /api/platform/logs", () => {
   });
 
   it("should return empty list when user has no runs", async () => {
-    const request = createTestRequest(
-      "http://localhost:3000/api/platform/logs",
-    );
+    const request = createTestRequest("http://localhost:3000/api/app/logs");
     const response = await GET(request);
     const data = await response.json();
 
@@ -74,9 +70,7 @@ describe("GET /api/platform/logs", () => {
     });
 
     it("should return list of run IDs ordered by createdAt DESC", async () => {
-      const request = createTestRequest(
-        "http://localhost:3000/api/platform/logs",
-      );
+      const request = createTestRequest("http://localhost:3000/api/app/logs");
       const response = await GET(request);
       const data = await response.json();
 
@@ -93,7 +87,7 @@ describe("GET /api/platform/logs", () => {
     it("should paginate correctly with limit and cursor", async () => {
       // Request with limit=2
       const request1 = createTestRequest(
-        "http://localhost:3000/api/platform/logs?limit=2",
+        "http://localhost:3000/api/app/logs?limit=2",
       );
       const response1 = await GET(request1);
       const data1 = await response1.json();
@@ -105,7 +99,7 @@ describe("GET /api/platform/logs", () => {
 
       // Request second page using cursor
       const request2 = createTestRequest(
-        `http://localhost:3000/api/platform/logs?limit=2&cursor=${encodeURIComponent(data1.pagination.nextCursor)}`,
+        `http://localhost:3000/api/app/logs?limit=2&cursor=${encodeURIComponent(data1.pagination.nextCursor)}`,
       );
       const response2 = await GET(request2);
       const data2 = await response2.json();
@@ -145,7 +139,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should filter by agent name with fuzzy search", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/platform/logs?search=alpha",
+        "http://localhost:3000/api/app/logs?search=alpha",
       );
       const response = await GET(request);
       const data = await response.json();
@@ -156,7 +150,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should return empty list when search has no matches", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/platform/logs?search=nonexistent-agent-xyz",
+        "http://localhost:3000/api/app/logs?search=nonexistent-agent-xyz",
       );
       const response = await GET(request);
       const data = await response.json();
@@ -168,7 +162,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should be case-insensitive for search", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/platform/logs?search=ALPHA",
+        "http://localhost:3000/api/app/logs?search=ALPHA",
       );
       const response = await GET(request);
       const data = await response.json();
@@ -198,7 +192,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should filter by exact agent name", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/platform/logs?agent=${alphaName}`,
+        `http://localhost:3000/api/app/logs?agent=${alphaName}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -210,7 +204,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should return empty list when agent has no runs", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/platform/logs?agent=nonexistent-agent",
+        "http://localhost:3000/api/app/logs?agent=nonexistent-agent",
       );
       const response = await GET(request);
       const data = await response.json();
@@ -222,7 +216,7 @@ describe("GET /api/platform/logs", () => {
     it("should use exact match, not fuzzy", async () => {
       // Search for partial name should return nothing with agent filter
       const request = createTestRequest(
-        `http://localhost:3000/api/platform/logs?agent=agent-alpha`,
+        `http://localhost:3000/api/app/logs?agent=agent-alpha`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -233,7 +227,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should take precedence over search param", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/platform/logs?agent=${alphaName}&search=beta`,
+        `http://localhost:3000/api/app/logs?agent=${alphaName}&search=beta`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -265,9 +259,7 @@ describe("GET /api/platform/logs", () => {
 
     // Switch back to original user and list runs
     mockClerk({ userId: user.userId });
-    const request = createTestRequest(
-      "http://localhost:3000/api/platform/logs",
-    );
+    const request = createTestRequest("http://localhost:3000/api/app/logs");
     const response = await GET(request);
     const data = await response.json();
 
@@ -290,7 +282,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should filter by name param", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/platform/logs?name=${agentName}`,
+        `http://localhost:3000/api/app/logs?name=${agentName}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -302,7 +294,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should return empty when name matches but org does not", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/platform/logs?name=${agentName}&org=nonexistent-org`,
+        `http://localhost:3000/api/app/logs?name=${agentName}&org=nonexistent-org`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -313,7 +305,7 @@ describe("GET /api/platform/logs", () => {
 
     it("should include orgSlug in response", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/platform/logs?name=${agentName}`,
+        `http://localhost:3000/api/app/logs?name=${agentName}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -326,7 +318,7 @@ describe("GET /api/platform/logs", () => {
 
     it("name param should take precedence over agent param", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/platform/logs?name=${agentName}&agent=nonexistent`,
+        `http://localhost:3000/api/app/logs?name=${agentName}&agent=nonexistent`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -339,7 +331,7 @@ describe("GET /api/platform/logs", () => {
 
   it("should return 400 for invalid limit", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/platform/logs?limit=0",
+      "http://localhost:3000/api/app/logs?limit=0",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -350,7 +342,7 @@ describe("GET /api/platform/logs", () => {
 
   it("should return 400 for limit exceeding maximum", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/platform/logs?limit=101",
+      "http://localhost:3000/api/app/logs?limit=101",
     );
     const response = await GET(request);
     const data = await response.json();

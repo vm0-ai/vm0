@@ -281,7 +281,7 @@ scripts/sync-env.sh
 
 > **Note**: This script can only be executed by the user directly as it requires interactive 1Password authentication.
 
-### Problem: SSL Certificate Errors (e.g., "platform.vm7.ai.pem - MISSING")
+### Problem: SSL Certificate Errors (e.g., "app.vm7.ai.pem - MISSING")
 
 **Cause**: SSL certificates not generated for local development
 

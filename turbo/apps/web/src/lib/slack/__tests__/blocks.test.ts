@@ -112,7 +112,7 @@ describe("buildSuccessMessage", () => {
 });
 
 describe("detectDeepLinks", () => {
-  const platformUrl = "https://platform.vm0.ai";
+  const platformUrl = "https://app.vm0.ai";
 
   it("should return empty array when no keywords match", () => {
     const links = detectDeepLinks(

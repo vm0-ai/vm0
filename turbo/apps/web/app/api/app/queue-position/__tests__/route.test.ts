@@ -16,7 +16,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("GET /api/platform/queue-position", () => {
+describe("GET /api/app/queue-position", () => {
   let user: UserContext;
   let testComposeId: string;
 
@@ -32,7 +32,7 @@ describe("GET /api/platform/queue-position", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/queue-position?runId=${randomUUID()}`,
+      `http://localhost:3000/api/app/queue-position?runId=${randomUUID()}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -43,7 +43,7 @@ describe("GET /api/platform/queue-position", () => {
 
   it("should return 400 when runId is missing", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/platform/queue-position",
+      "http://localhost:3000/api/app/queue-position",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -54,7 +54,7 @@ describe("GET /api/platform/queue-position", () => {
 
   it("should return 404 when run does not belong to user", async () => {
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/queue-position?runId=${randomUUID()}`,
+      `http://localhost:3000/api/app/queue-position?runId=${randomUUID()}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -69,7 +69,7 @@ describe("GET /api/platform/queue-position", () => {
     });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/queue-position?runId=${runId}`,
+      `http://localhost:3000/api/app/queue-position?runId=${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -90,7 +90,7 @@ describe("GET /api/platform/queue-position", () => {
 
     // Access with default org context — the run belongs to otherOrg
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/queue-position?runId=${runId}`,
+      `http://localhost:3000/api/app/queue-position?runId=${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -112,7 +112,7 @@ describe("GET /api/platform/queue-position", () => {
     });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/queue-position?runId=${runId}`,
+      `http://localhost:3000/api/app/queue-position?runId=${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();

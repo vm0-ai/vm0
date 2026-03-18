@@ -200,8 +200,8 @@ function initEnv() {
       NEXT_PUBLIC_BASE_URL: z.url().optional(),
       NEXT_PUBLIC_DATA_SOURCE: z.string().optional(),
       NEXT_PUBLIC_STRAPI_URL: z.url().optional(),
-      // Platform UI URL (for settings page links, Navbar, LandingPage)
-      NEXT_PUBLIC_PLATFORM_URL: z.url(),
+      // App UI URL (for settings page links, Navbar, LandingPage)
+      NEXT_PUBLIC_APP_URL: z.url(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
@@ -316,7 +316,7 @@ function initEnv() {
       NGROK_API_KEY: process.env.NGROK_API_KEY,
       NGROK_COMPUTER_CONNECTOR_DOMAIN:
         process.env.NGROK_COMPUTER_CONNECTOR_DOMAIN,
-      NEXT_PUBLIC_PLATFORM_URL: process.env.NEXT_PUBLIC_PLATFORM_URL,
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
       RESEND_FROM_DOMAIN: process.env.RESEND_FROM_DOMAIN,

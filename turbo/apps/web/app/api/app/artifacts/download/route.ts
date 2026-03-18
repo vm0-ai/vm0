@@ -1,7 +1,7 @@
 /**
- * Platform API - Artifact Download Endpoint
+ * App API - Artifact Download Endpoint
  *
- * GET /api/platform/artifacts/download - Get presigned URL for artifact download
+ * GET /api/app/artifacts/download - Get presigned URL for artifact download
  */
 import {
   createHandler,

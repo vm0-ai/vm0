@@ -94,8 +94,8 @@ export async function GET(request: Request) {
 
   // Verify the user is a member of the workspace's bound org AND their
   // active org matches. Clerk sessions may differ across subdomains
-  // (platform.vm7.ai vs www.vm7.ai), so we also accept an explicit
-  // orgId query param from the platform as a trusted source.
+  // (app.vm7.ai vs www.vm7.ai), so we also accept an explicit
+  // orgId query param from the app as a trusted source.
   const explicitOrgId = url.searchParams.get("orgId");
   const effectiveOrgId = explicitOrgId ?? activeOrgId;
   log.info("Org check", {

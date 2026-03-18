@@ -10,7 +10,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("GET /api/platform/team", () => {
+describe("GET /api/app/team", () => {
   let user: UserContext;
 
   beforeEach(async () => {

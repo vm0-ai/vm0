@@ -12,7 +12,7 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("GET /api/platform/artifacts/download", () => {
+describe("GET /api/app/artifacts/download", () => {
   let user: UserContext;
   let testArtifactName: string;
   let testVersionId: string;
@@ -31,7 +31,7 @@ describe("GET /api/platform/artifacts/download", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/artifacts/download?name=${testArtifactName}`,
+      `http://localhost:3000/api/app/artifacts/download?name=${testArtifactName}`,
     );
 
     const response = await GET(request);
@@ -43,7 +43,7 @@ describe("GET /api/platform/artifacts/download", () => {
 
   it("should return 404 when artifact not found", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/platform/artifacts/download?name=non-existent-artifact",
+      "http://localhost:3000/api/app/artifacts/download?name=non-existent-artifact",
     );
 
     const response = await GET(request);
@@ -56,7 +56,7 @@ describe("GET /api/platform/artifacts/download", () => {
 
   it("should generate presigned URL for artifact download", async () => {
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/artifacts/download?name=${testArtifactName}`,
+      `http://localhost:3000/api/app/artifacts/download?name=${testArtifactName}`,
     );
 
     const response = await GET(request);
@@ -74,7 +74,7 @@ describe("GET /api/platform/artifacts/download", () => {
 
   it("should generate presigned URL with version-specific filename when version is provided", async () => {
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/artifacts/download?name=${testArtifactName}&version=${testVersionId}`,
+      `http://localhost:3000/api/app/artifacts/download?name=${testArtifactName}&version=${testVersionId}`,
     );
 
     const response = await GET(request);
@@ -95,7 +95,7 @@ describe("GET /api/platform/artifacts/download", () => {
     await createTestArtifact(emptyArtifactName, { skipCommit: true });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/artifacts/download?name=${emptyArtifactName}`,
+      `http://localhost:3000/api/app/artifacts/download?name=${emptyArtifactName}`,
     );
 
     const response = await GET(request);
@@ -111,7 +111,7 @@ describe("GET /api/platform/artifacts/download", () => {
     await createTestArtifact(emptyVersionArtifactName, { empty: true });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/artifacts/download?name=${emptyVersionArtifactName}`,
+      `http://localhost:3000/api/app/artifacts/download?name=${emptyVersionArtifactName}`,
     );
 
     const response = await GET(request);
@@ -134,7 +134,7 @@ describe("GET /api/platform/artifacts/download", () => {
 
     // Try to access other user's artifact
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/artifacts/download?name=${otherArtifactName}`,
+      `http://localhost:3000/api/app/artifacts/download?name=${otherArtifactName}`,
     );
 
     const response = await GET(request);

@@ -49,8 +49,8 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/default");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
-    // Platform UI URL
-    vi.stubEnv("NEXT_PUBLIC_PLATFORM_URL", "http://localhost:3001");
+    // App UI URL
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3001");
     // Email integration (Resend)
     vi.stubEnv("RESEND_API_KEY", "re_test_api_key");
     vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test_webhook_secret");

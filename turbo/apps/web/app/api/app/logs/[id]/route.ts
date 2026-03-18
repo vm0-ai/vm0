@@ -1,7 +1,7 @@
 /**
- * Platform API - Log Detail Endpoint
+ * App API - Log Detail Endpoint
  *
- * GET /api/platform/logs/:id - Get agent run log details
+ * GET /api/app/logs/:id - Get agent run log details
  */
 import {
   createHandler,

@@ -67,7 +67,7 @@ agent-browser record restart "$PROJECT_ROOT/tmp/${TASK_NAME}-${TIMESTAMP}.webm"
 | Service  | URL                              |
 |----------|----------------------------------|
 | Web      | `https://www.vm7.ai:8443`       |
-| Platform | `https://platform.vm7.ai:8443`  |
+| App      | `https://app.vm7.ai:8443`       |
 | Docs     | `https://docs.vm7.ai:8443`      |
 
 **DO NOT use:**

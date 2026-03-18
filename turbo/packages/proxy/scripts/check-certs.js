@@ -12,8 +12,8 @@ const requiredCerts = [
   "www.vm7.ai-key.pem",
   "docs.vm7.ai.pem",
   "docs.vm7.ai-key.pem",
-  "platform.vm7.ai.pem",
-  "platform.vm7.ai-key.pem",
+  "app.vm7.ai.pem",
+  "app.vm7.ai-key.pem",
 ];
 
 console.log("🔍 Checking SSL certificates...\n");

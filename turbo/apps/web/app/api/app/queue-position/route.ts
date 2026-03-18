@@ -1,7 +1,7 @@
 /**
- * Platform API - Queue Position Endpoint
+ * App API - Queue Position Endpoint
  *
- * GET /api/platform/queue-position?runId={runId}
+ * GET /api/app/queue-position?runId={runId}
  * Returns the position of a queued run within its org queue.
  */
 import { NextResponse } from "next/server";

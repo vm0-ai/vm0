@@ -25,7 +25,7 @@ Scan the current conversation for traces of the following 7 dev server operation
 | Operation | What to look for |
 |-----------|-----------------|
 | `pnpm dev` startup | `cd turbo && pnpm dev` via `run_in_background`, build failures, port conflicts, missing deps |
-| Health check | `pnpm dev:status`, curl to `https://www.vm7.ai:8443` / `platform.vm7.ai:8443` / `docs.vm7.ai:8443` |
+| Health check | `pnpm dev:status`, curl to `https://www.vm7.ai:8443` / `app.vm7.ai:8443` / `docs.vm7.ai:8443` |
 | Database migration | `pnpm db:migrate` (Drizzle ORM + PostgreSQL), connection failures, migration errors |
 | Log viewing | `TaskOutput` reads, `/dev-logs` invocations, runtime errors in output |
 | SSL certificates | `scripts/generate-certs.sh` (mkcert), `check-certs.js`, cert generation failures |

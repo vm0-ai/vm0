@@ -8,8 +8,8 @@
 import { http, HttpResponse } from "msw";
 
 export const apiAgentsHandlers = [
-  // GET /api/platform/team
-  http.get("/api/platform/team", () => {
+  // GET /api/app/team
+  http.get("/api/app/team", () => {
     return HttpResponse.json({
       composes: [
         {

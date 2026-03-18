@@ -151,10 +151,10 @@ export async function GET(request: Request) {
   const isAdmin = installation.adminUserId === userId;
   const isConnected = !!userLink;
 
-  const { NEXT_PUBLIC_PLATFORM_URL } = env();
+  const { NEXT_PUBLIC_APP_URL } = env();
   const domainConfigured = await checkTelegramDomain(
     installation.telegramBotId,
-    NEXT_PUBLIC_PLATFORM_URL,
+    NEXT_PUBLIC_APP_URL,
   );
 
   return NextResponse.json({

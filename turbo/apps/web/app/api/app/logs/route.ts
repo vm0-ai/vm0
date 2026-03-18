@@ -1,7 +1,7 @@
 /**
- * Platform API - Logs List Endpoint
+ * App API - Logs List Endpoint
  *
- * GET /api/platform/logs - List agent run logs with pagination and search
+ * GET /api/app/logs - List agent run logs with pagination and search
  */
 import {
   createHandler,

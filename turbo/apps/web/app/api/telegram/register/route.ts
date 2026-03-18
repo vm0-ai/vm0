@@ -203,10 +203,10 @@ export async function POST(request: Request) {
   });
 
   // Check if domain is configured for Telegram OAuth
-  const { NEXT_PUBLIC_PLATFORM_URL } = env();
+  const { NEXT_PUBLIC_APP_URL } = env();
   const domainConfigured = await checkTelegramDomain(
     telegramBotId,
-    NEXT_PUBLIC_PLATFORM_URL,
+    NEXT_PUBLIC_APP_URL,
   );
 
   return NextResponse.json(

@@ -53,7 +53,7 @@ async function fetchQueuePosition(
   runId: string,
 ): Promise<number> {
   const resp = await fetchFn(
-    `/api/platform/queue-position?runId=${encodeURIComponent(runId)}`,
+    `/api/app/queue-position?runId=${encodeURIComponent(runId)}`,
   );
   if (!resp.ok) {
     return 0;

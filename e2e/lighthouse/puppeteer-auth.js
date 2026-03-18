@@ -9,7 +9,7 @@
  *
  * Environment variables:
  *   WEB_URL                          – Web app origin (for sign-in flow)
- *   PLATFORM_URL                     – Platform app origin (audit target)
+ *   APP_URL                          – App origin (audit target)
  *   VERCEL_AUTOMATION_BYPASS_SECRET  – Vercel protection bypass token
  */
 
@@ -37,12 +37,12 @@ async function clickByText(page, selector, text) {
 
 module.exports = async (browser, context) => {
   const webUrl = process.env.WEB_URL;
-  const platformUrl = process.env.PLATFORM_URL;
+  const platformUrl = process.env.APP_URL;
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
   if (!webUrl) throw new Error("WEB_URL environment variable is required");
   if (!platformUrl)
-    throw new Error("PLATFORM_URL environment variable is required");
+    throw new Error("APP_URL environment variable is required");
 
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(60000);

@@ -1,5 +1,5 @@
 {
-  "name": "@vm0/platform",
+  "name": "@vm0/app",
   "version": "0.121.1",
   "private": true,
   "type": "module",

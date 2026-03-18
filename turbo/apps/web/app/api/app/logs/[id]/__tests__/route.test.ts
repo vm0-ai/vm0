@@ -28,7 +28,7 @@ vi.mock("@e2b/code-interpreter", () => ({
 
 const context = testContext();
 
-describe("GET /api/platform/logs/[id]", () => {
+describe("GET /api/app/logs/[id]", () => {
   let user: UserContext;
   let testComposeId: string;
 
@@ -51,7 +51,7 @@ describe("GET /api/platform/logs/[id]", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${runId}`,
+      `http://localhost:3000/api/app/logs/${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -62,7 +62,7 @@ describe("GET /api/platform/logs/[id]", () => {
 
   it("should return 400 for invalid UUID format", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/platform/logs/invalid-uuid",
+      "http://localhost:3000/api/app/logs/invalid-uuid",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -74,7 +74,7 @@ describe("GET /api/platform/logs/[id]", () => {
   it("should return 404 for non-existent run", async () => {
     const nonExistentId = randomUUID();
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${nonExistentId}`,
+      `http://localhost:3000/api/app/logs/${nonExistentId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -98,7 +98,7 @@ describe("GET /api/platform/logs/[id]", () => {
 
     // Try to access other user's run
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${otherRun.runId}`,
+      `http://localhost:3000/api/app/logs/${otherRun.runId}`,
     );
 
     const response = await GET(request);
@@ -114,7 +114,7 @@ describe("GET /api/platform/logs/[id]", () => {
     await completeTestRun(user.userId, runId);
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${runId}`,
+      `http://localhost:3000/api/app/logs/${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -139,7 +139,7 @@ describe("GET /api/platform/logs/[id]", () => {
     expect(status).toBe("pending");
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${runId}`,
+      `http://localhost:3000/api/app/logs/${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -157,7 +157,7 @@ describe("GET /api/platform/logs/[id]", () => {
     await failTestRun(user.userId, runId, "Sandbox creation failed");
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${runId}`,
+      `http://localhost:3000/api/app/logs/${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -173,7 +173,7 @@ describe("GET /api/platform/logs/[id]", () => {
     });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${runId}`,
+      `http://localhost:3000/api/app/logs/${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();

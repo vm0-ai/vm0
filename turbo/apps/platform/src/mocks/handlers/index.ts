@@ -21,7 +21,7 @@ import {
 import { apiSecretsHandlers, resetMockSecrets } from "./api-secrets.ts";
 import { apiVariablesHandlers, resetMockVariables } from "./api-variables.ts";
 import { exampleHandlers } from "./example.ts";
-import { platformLogsHandlers } from "./v1-runs.ts";
+import { appLogsHandlers } from "./v1-runs.ts";
 import {
   apiIntegrationsSlackOrgHandlers,
   resetMockSlackOrgIntegration,
@@ -45,7 +45,7 @@ export const handlers = [
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
   ...exampleHandlers,
-  ...platformLogsHandlers,
+  ...appLogsHandlers,
   ...apiIntegrationsSlackOrgHandlers,
   ...apiIntegrationsTelegramHandlers,
   ...apiAgentsHandlers,
