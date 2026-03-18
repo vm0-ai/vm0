@@ -7,6 +7,19 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
+/**
+ * Returns the first <p> element in the document whose textContent
+ * includes the given substring (case-sensitive, un-normalized).
+ */
+function findParagraphWithText(text: string): HTMLElement | null {
+  for (const el of document.querySelectorAll("p")) {
+    if ((el.textContent ?? "").includes(text)) {
+      return el as HTMLElement;
+    }
+  }
+  return null;
+}
+
 describe("userMessage line break rendering", () => {
   it("should preserve newlines between words in user messages", async () => {
     server.use(
@@ -38,13 +51,15 @@ describe("userMessage line break rendering", () => {
     });
 
     // Without the fix, CommonMark collapses \n into a space so the message
-    // renders as "Hello World". With the fix the words appear on separate lines
-    // (not joined by a space).
+    // renders as "Hello World". With the fix, a hard line break separates
+    // them, so the paragraph's raw textContent does not contain "Hello World"
+    // (no space between the two words).
     await waitFor(() => {
-      expect(document.body.textContent).toContain("Hello");
-      expect(document.body.textContent).toContain("World");
+      const paragraph = findParagraphWithText("Hello");
+      expect(paragraph).not.toBeNull();
+      expect(paragraph?.textContent).toContain("World");
+      expect(paragraph?.textContent).not.toContain("Hello World");
     });
-    expect(document.body.textContent).not.toContain("Hello World");
   });
 
   it("should not alter single-line user messages", async () => {
@@ -76,9 +91,11 @@ describe("userMessage line break rendering", () => {
       path: "/chat/thread-singleline",
     });
 
-    // Single-line messages with no \n should render as-is.
+    // Single-line messages with no \n should render with the words on one line,
+    // meaning the paragraph's raw textContent contains "Hello World".
     await waitFor(() => {
-      expect(document.body.textContent).toContain("Hello World");
+      const paragraph = findParagraphWithText("Hello World");
+      expect(paragraph).not.toBeNull();
     });
   });
 });
