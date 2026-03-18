@@ -61,7 +61,6 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { PUT as upsertOrgModelProviderRoute } from "../../app/api/org/model-providers/route";
-import { upsertModelProvider } from "../lib/model-provider/model-provider-service";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
 import {
@@ -90,7 +89,7 @@ import {
   encryptSecretValue,
   decryptSecretValue,
 } from "../lib/crypto/secrets-encryption";
-import type { ConnectorType, ModelProviderType } from "@vm0/core";
+import type { ConnectorType } from "@vm0/core";
 import {
   agentSessions,
   type StoredChatMessage,
@@ -378,36 +377,6 @@ export async function createTestCompose(
     );
   }
   return response.json();
-}
-
-/**
- * Create a test user-level model provider via service function.
- *
- * @param type - The provider type
- * @param secretValue - The secret value
- * @param selectedModel - Optional selected model for providers with model selection
- * @returns The created provider with id and type
- */
-export async function createTestModelProvider(
-  type: string,
-  secretValue: string,
-  selectedModel?: string,
-): Promise<{ id: string; type: string; selectedModel: string | null }> {
-  initServices();
-  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
-  const orgId = `org_mock_${userId}`;
-  const { provider } = await upsertModelProvider(
-    orgId,
-    userId!,
-    type as ModelProviderType,
-    secretValue,
-    selectedModel,
-  );
-  return {
-    id: provider.id,
-    type: provider.type,
-    selectedModel: provider.selectedModel,
-  };
 }
 
 /**
