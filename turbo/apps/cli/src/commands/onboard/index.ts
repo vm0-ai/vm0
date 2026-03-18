@@ -19,6 +19,7 @@ import {
 import {
   isAuthenticated,
   runAuthFlow,
+  checkIsOrgAdmin,
   checkModelProviderStatus,
   getProviderChoices,
   setupModelProvider,
@@ -83,6 +84,16 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
     const providerStatus = await checkModelProviderStatus();
     if (providerStatus.hasProvider) {
       return;
+    }
+
+    const isAdmin = await checkIsOrgAdmin();
+
+    if (!isAdmin) {
+      throw new Error("No model provider configured", {
+        cause: new Error(
+          "Contact your org admin to configure a model provider",
+        ),
+      });
     }
 
     if (!ctx.interactive) {

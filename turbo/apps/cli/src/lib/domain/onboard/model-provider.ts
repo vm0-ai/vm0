@@ -6,6 +6,11 @@ import {
   type ModelProviderResponse,
   type UpsertModelProviderResponse,
 } from "@vm0/core";
+import {
+  listOrgModelProviders,
+  upsertOrgModelProvider,
+} from "../../api/domains/org-model-providers.js";
+import { getOrg } from "../../api/domains/orgs.js";
 
 /**
  * Provider types available in onboard flow.
@@ -20,10 +25,6 @@ const ONBOARD_PROVIDER_TYPES: ModelProviderType[] = [
   "minimax-api-key",
   "deepseek-api-key",
 ];
-import {
-  listOrgModelProviders,
-  upsertOrgModelProvider,
-} from "../../api/domains/org-model-providers.js";
 
 interface ModelProviderStatus {
   hasProvider: boolean;
@@ -44,6 +45,14 @@ interface SetupResult {
   created: boolean;
   isDefault: boolean;
   framework: string;
+}
+
+/**
+ * Check if user is an org admin
+ */
+export async function checkIsOrgAdmin(): Promise<boolean> {
+  const org = await getOrg();
+  return org.role === "admin";
 }
 
 /**
