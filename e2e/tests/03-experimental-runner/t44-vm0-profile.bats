@@ -66,7 +66,8 @@ EOF
 
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "agent-browser --version && (which chromium || which chrome || which google-chrome || ls /root/.cache/puppeteer/chrome/*/chrome-linux64/chrome)"
+        "agent-browser --version && chromium --version"
     assert_success
     assert_output --partial "agent-browser"
+    assert_output --partial "Chromium"
 }
