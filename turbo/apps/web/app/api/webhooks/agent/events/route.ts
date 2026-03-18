@@ -90,7 +90,13 @@ const router = tsr.router(webhookEventsContract, {
     // Errors are caught so the webhook still returns 200 after Axiom ingestion
     // succeeds. Missed credit records are picked up by processStaleCredits cron.
     try {
-      await upsertCreditUsage(body.runId, run.orgId, userId, body.events);
+      await upsertCreditUsage(
+        body.runId,
+        run.orgId,
+        userId,
+        body.events,
+        run.modelProvider,
+      );
     } catch (err) {
       log.error("Failed to upsert credit usage", {
         runId: body.runId,

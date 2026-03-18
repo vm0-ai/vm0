@@ -13,6 +13,7 @@ import {
   createTestRun,
   createTestSandboxToken,
   findTestCreditUsageByRunId,
+  setTestRunModelProvider,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -717,6 +718,43 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(record).toBeDefined();
       expect(record!.inputTokens).toBe(15000);
       expect(record!.outputTokens).toBe(3000);
+    });
+
+    it("should store modelProvider from agent run in credit_usage", async () => {
+      // Set modelProvider on the existing test run
+      await setTestRunModelProvider(testRunId, "anthropic-api-key");
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "system",
+                subtype: "init",
+                model: "claude-sonnet-4-20250514",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const record = await findTestCreditUsageByRunId(testRunId);
+      expect(record).toBeDefined();
+      expect(record!.model).toBe("claude-sonnet-4-20250514");
+      expect(record!.modelProvider).toBe("anthropic-api-key");
     });
 
     it("should use 'unknown' model when no init event in batch", async () => {

@@ -156,23 +156,78 @@ describe("credit-service", () => {
       expect(client.organizations.getOrganization).not.toHaveBeenCalled();
     });
 
-    it("skips records with missing pricing and leaves them as pending", async () => {
-      // No pricing for "unknown-model"
+    it("marks records with no matching pricing as processed with zero charge", async () => {
+      // No pricing for "unknown-model" — simulates user's own provider
       const usageId = await insertTestCreditUsage(user.orgId, {
         userId: user.userId,
         model: "unknown-model",
       });
 
+      const client = await clerkClient();
+      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
+        id: user.orgId,
+        privateMetadata: { credits: 10000 },
+      } as unknown as ClerkOrg);
+
       await processOrgCredits(user.orgId);
 
-      // Record should still be pending
+      // Record should be processed with zero credits
       const record = await findTestCreditUsage(usageId);
-      expect(record!.status).toBe("pending");
-      expect(record!.creditsCharged).toBeNull();
+      expect(record!.status).toBe("processed");
+      expect(record!.creditsCharged).toBe(0);
+      expect(record!.processedAt).toBeInstanceOf(Date);
+    });
 
-      // No Clerk calls since nothing was actually processed
+    it("charges only when model+provider matches pricing", async () => {
+      // Set up pricing for gpt-4 with anthropic-api-key provider
+      await insertTestCreditPricing("gpt-4", {
+        inputTokenPrice: 1_000_000,
+        outputTokenPrice: 1_000_000,
+        modelProvider: "anthropic-api-key",
+      });
+
+      // Insert usage with matching provider — should be charged
+      const chargedId = await insertTestCreditUsage(user.orgId, {
+        userId: user.userId,
+        model: "gpt-4",
+        modelProvider: "anthropic-api-key",
+        inputTokens: 100,
+        outputTokens: 100,
+        numEvents: 1,
+      });
+
+      // Insert usage with different provider — no charge
+      const freeId = await insertTestCreditUsage(user.orgId, {
+        userId: user.userId,
+        model: "gpt-4",
+        modelProvider: "user-own-key",
+        inputTokens: 100,
+        outputTokens: 100,
+        numEvents: 1,
+      });
+
       const client = await clerkClient();
-      expect(client.organizations.getOrganization).not.toHaveBeenCalled();
+      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
+        id: user.orgId,
+        privateMetadata: { credits: 50000 },
+      } as unknown as ClerkOrg);
+
+      await processOrgCredits(user.orgId);
+
+      const charged = await findTestCreditUsage(chargedId);
+      expect(charged!.status).toBe("processed");
+      expect(charged!.creditsCharged).toBe(200);
+
+      const free = await findTestCreditUsage(freeId);
+      expect(free!.status).toBe("processed");
+      expect(free!.creditsCharged).toBe(0);
+
+      // Clerk deduction should only include the charged record (200 credits)
+      expect(
+        client.organizations.updateOrganizationMetadata,
+      ).toHaveBeenCalledWith(user.orgId, {
+        privateMetadata: { credits: 50000 - 200 },
+      });
     });
 
     it("concurrent calls serialize via advisory lock (no double-processing)", async () => {

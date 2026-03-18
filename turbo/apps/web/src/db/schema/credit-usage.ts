@@ -26,6 +26,7 @@ export const creditUsage = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     model: varchar("model", { length: 255 }).notNull(),
+    modelProvider: varchar("model_provider", { length: 100 }),
     inputTokens: bigint("input_tokens", { mode: "number" })
       .notNull()
       .default(0),

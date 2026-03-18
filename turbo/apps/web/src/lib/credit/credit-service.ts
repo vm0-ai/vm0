@@ -45,20 +45,37 @@ async function creditAtomic(
       return undefined;
     }
 
-    // Fetch all pricing records and build lookup map
+    // Fetch all pricing records and build lookup map keyed by "model|modelProvider"
     const pricingRecords = await tx.select().from(creditPricing);
-    const pricingByModel = new Map(pricingRecords.map((p) => [p.model, p]));
+    const pricingByKey = new Map(
+      pricingRecords.map((p) => [`${p.model}|${p.modelProvider ?? ""}`, p]),
+    );
 
     let totalCredits = 0;
     let processedCount = 0;
 
     for (const record of pendingRecords) {
-      const pricing = pricingByModel.get(record.model);
+      const pricing = pricingByKey.get(
+        `${record.model}|${record.modelProvider ?? ""}`,
+      );
       if (!pricing) {
-        // Skip records with missing pricing — cron retries next minute
-        log.debug("Skipping credit record with missing pricing", {
+        // No matching pricing for this model+provider combo — no charge
+        // (user's own provider or unconfigured provider)
+        await tx
+          .update(creditUsage)
+          .set({
+            creditsCharged: 0,
+            status: "processed",
+            processedAt: new Date(),
+          })
+          .where(eq(creditUsage.id, record.id));
+
+        processedCount++;
+
+        log.debug("No matching pricing — zero charge", {
           recordId: record.id,
           model: record.model,
+          modelProvider: record.modelProvider,
         });
         continue;
       }

@@ -16,6 +16,7 @@ export const creditPricing = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     model: varchar("model", { length: 255 }).notNull(),
+    modelProvider: varchar("model_provider", { length: 100 }),
     inputTokenPrice: bigint("input_token_price", { mode: "number" }).notNull(),
     outputTokenPrice: bigint("output_token_price", {
       mode: "number",
@@ -23,5 +24,10 @@ export const creditPricing = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("uq_credit_pricing_model").on(table.model)],
+  (table) => [
+    uniqueIndex("uq_credit_pricing_model_provider").on(
+      table.model,
+      table.modelProvider,
+    ),
+  ],
 );
