@@ -314,6 +314,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let fc_config = config::RunnerConfig::build_firecracker_config(
             &firecracker,
             &base_dir,
+            profile_name,
             profile_config,
             &home,
             Some(proxy_port),
