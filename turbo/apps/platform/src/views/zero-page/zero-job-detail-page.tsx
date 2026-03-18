@@ -1,4 +1,4 @@
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import {
   IconFileText,
@@ -47,6 +47,7 @@ import {
   zeroJobBuildError$,
   zeroJobUpdateSettings$,
   zeroJobSettingsSaving$,
+  deleteZeroJobAgent$,
   zeroJobAddedSkills$,
   zeroJobSkillsDirty$,
   addZeroJobSkill$,
@@ -55,7 +56,9 @@ import {
   discardZeroJobSkills$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
+import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
+import { navigateInReact$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
@@ -341,6 +344,19 @@ export function ZeroJobDetailPage({
     : "professional";
 
   const saving = useGet(zeroJobSettingsSaving$);
+  const deleteAgent = useSet(deleteZeroJobAgent$);
+  const nav = useSet(navigateInReact$);
+
+  const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
+  const isDefaultAgent =
+    statusLoadable.state === "hasData" &&
+    (statusLoadable.data.defaultAgentName === agentName ||
+      statusLoadable.data.defaultAgentComposeId === detail?.id);
+
+  const handleDelete = async () => {
+    await deleteAgent();
+    nav("/:tab", { pathParams: { tab: "team" } });
+  };
 
   const activeTab$ = useCCState(getInitialTab());
   const activeTab = useGet(activeTab$);
@@ -462,6 +478,8 @@ export function ZeroJobDetailPage({
             saving={saving}
             updateSettings$={zeroJobUpdateSettings$}
             inputId="job-agent-name"
+            isDefaultAgent={isDefaultAgent}
+            onDelete={handleDelete}
           />
         )}
 

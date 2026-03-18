@@ -773,6 +773,38 @@ export const deleteZeroJobSchedule$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Delete agent
+// ---------------------------------------------------------------------------
+
+export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
+  const detail = get(zeroJobDetail$);
+  if (!detail) {
+    throw new Error("No agent detail loaded");
+  }
+
+  const fetchFn = get(fetch$);
+  const response = await fetchFn(`/api/agent/composes/${detail.id}`, {
+    method: "DELETE",
+  });
+
+  if (response.status === 409) {
+    throw new Error("Cannot delete agent while it is running");
+  }
+
+  if (!response.ok && response.status !== 204) {
+    const errorData = (await response.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    throw new Error(
+      errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
+    );
+  }
+
+  toast.success("Agent deleted");
+  await set(fetchAgentsList$);
+});
+
+// ---------------------------------------------------------------------------
 // Combined fetch — loads detail, then instructions + schedule in parallel
 // ---------------------------------------------------------------------------
 
