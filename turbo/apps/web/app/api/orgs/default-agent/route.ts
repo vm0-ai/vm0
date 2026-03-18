@@ -45,16 +45,29 @@ const router = tsr.router(orgDefaultAgentContract, {
     const existingComposeId = (
       clerkOrg.publicMetadata as Record<string, unknown>
     )?.default_agent_compose_id;
-    if (existingComposeId) {
-      return {
-        status: 409 as const,
-        body: {
-          error: {
-            message: "A default agent is already configured for this org",
-            code: "CONFLICT",
+    if (typeof existingComposeId === "string" && existingComposeId) {
+      // Verify the existing compose still exists — if it was deleted, allow re-setting.
+      const [existing] = await globalThis.services.db
+        .select({ id: agentComposes.id })
+        .from(agentComposes)
+        .where(
+          and(
+            eq(agentComposes.id, existingComposeId),
+            eq(agentComposes.orgId, org.orgId),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        return {
+          status: 409 as const,
+          body: {
+            error: {
+              message: "A default agent is already configured for this org",
+              code: "CONFLICT",
+            },
           },
-        },
-      };
+        };
+      }
     }
 
     if (agentComposeId !== null) {
