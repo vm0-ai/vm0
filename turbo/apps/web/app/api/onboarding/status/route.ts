@@ -13,6 +13,11 @@ import { eq, and } from "drizzle-orm";
 import { agentComposeApiContentSchema } from "@vm0/core";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { orgMembersCache } from "../../../../src/db/schema/org-members-cache";
+import { z } from "zod";
+
+const memberPublicMetadataSchema = z
+  .object({ onboarding_done: z.boolean().optional() })
+  .optional();
 
 async function isMemberOnboardingDone(
   orgId: string,
@@ -38,10 +43,8 @@ async function isMemberOnboardingDone(
   const membership = memberships.data.find(
     (m) => m.publicUserData?.userId === userId,
   );
-  return (
-    (membership?.publicMetadata as { onboarding_done?: boolean } | undefined)
-      ?.onboarding_done === true
-  );
+  const metadata = memberPublicMetadataSchema.parse(membership?.publicMetadata);
+  return metadata?.onboarding_done === true;
 }
 
 const router = tsr.router(onboardingStatusContract, {
@@ -151,15 +154,10 @@ const router = tsr.router(onboardingStatusContract, {
       needsOnboarding = !hasModelProvider || !hasDefaultAgent;
     } else {
       // Read onboarding_done from org_members_cache first, fall back to Clerk API.
-      let onboardingDone = false;
-      try {
-        onboardingDone = await isMemberOnboardingDone(
-          authResult.orgId!,
-          authCtx.userId,
-        );
-      } catch {
-        // Fall back to needing onboarding if lookup fails
-      }
+      const onboardingDone = await isMemberOnboardingDone(
+        authResult.orgId!,
+        authCtx.userId,
+      );
       needsOnboarding = !onboardingDone;
     }
 

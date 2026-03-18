@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   }
 
   const { userId } = authCtx;
-  const { org } = await resolveOrg(userId);
+  const { org } = await resolveOrg(authCtx);
 
   // Write to Clerk membership metadata (source of truth)
   const client = await clerkClient();
