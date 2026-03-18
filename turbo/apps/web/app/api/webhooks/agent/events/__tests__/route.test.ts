@@ -700,9 +700,15 @@ describe("POST /api/webhooks/agent/events", () => {
                 type: "result",
                 sequenceNumber: 0,
                 timestamp: Date.now(),
+                total_cost_usd: 0.11752625,
                 usage: {
                   input_tokens: 15000,
                   output_tokens: 3000,
+                  cache_read_input_tokens: 6285,
+                  cache_creation_input_tokens: 18247,
+                  server_tool_use: {
+                    web_search_requests: 2,
+                  },
                 },
                 data: {},
               },
@@ -718,6 +724,10 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(record).toBeDefined();
       expect(record!.inputTokens).toBe(15000);
       expect(record!.outputTokens).toBe(3000);
+      expect(record!.cacheReadInputTokens).toBe(6285);
+      expect(record!.cacheCreationInputTokens).toBe(18247);
+      expect(record!.webSearchRequests).toBe(2);
+      expect(record!.costUsd).toBe("0.11752625");
     });
 
     it("should store modelProvider from agent run in credit_usage", async () => {

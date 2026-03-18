@@ -23,6 +23,16 @@ export const creditPricing = pgTable(
     outputTokenPrice: bigint("output_token_price", {
       mode: "number",
     }).notNull(),
+    cacheReadTokenPrice: bigint("cache_read_token_price", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    cacheCreationTokenPrice: bigint("cache_creation_token_price", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
