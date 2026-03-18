@@ -472,128 +472,6 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Capabilities management
-// ---------------------------------------------------------------------------
-
-const internalCapabilities$ = state<string[] | null>(null);
-
-const seededCapabilities$ = computed((get) => {
-  const detail = get(zeroJobDetail$);
-  if (!detail?.content) {
-    return [];
-  }
-  const agentKey = Object.keys(detail.content.agents)[0];
-  if (!agentKey) {
-    return [];
-  }
-  return detail.content.agents[agentKey]?.experimental_capabilities ?? [];
-});
-
-export const zeroJobCapabilities$ = computed((get) => {
-  const local = get(internalCapabilities$);
-  if (local !== null) {
-    return local;
-  }
-  return get(seededCapabilities$);
-});
-
-export const zeroJobCapabilitiesDirty$ = computed((get) => {
-  const local = get(internalCapabilities$);
-  if (local === null) {
-    return false;
-  }
-  const seeded = get(seededCapabilities$);
-  if (local.length !== seeded.length) {
-    return true;
-  }
-  const sorted = [...local].sort();
-  const seededSorted = [...seeded].sort();
-  return sorted.some((s, i) => s !== seededSorted[i]);
-});
-
-export const toggleZeroJobCapability$ = command(
-  ({ get, set }, capability: string) => {
-    if (get(internalCapabilities$) === null) {
-      set(internalCapabilities$, get(seededCapabilities$));
-    }
-    set(internalCapabilities$, (prev) => {
-      const list = prev ?? [];
-      return list.includes(capability)
-        ? list.filter((c) => c !== capability)
-        : [...list, capability];
-    });
-  },
-);
-
-export const discardZeroJobCapabilities$ = command(({ set }) => {
-  set(internalCapabilities$, null);
-});
-
-export const saveZeroJobCapabilities$ = command(async ({ get, set }) => {
-  const detail = get(zeroJobDetail$);
-  if (!detail?.content) {
-    throw new Error("No compose content found");
-  }
-
-  const agentKey = Object.keys(detail.content.agents)[0];
-  if (!agentKey) {
-    throw new Error("No agent found in compose");
-  }
-
-  set(internalSaving$, true);
-  try {
-    const newCapabilities = get(internalCapabilities$) ?? [];
-    const agent = detail.content.agents[agentKey];
-    const newContent = {
-      ...detail.content,
-      agents: {
-        [agentKey]: {
-          ...agent,
-          experimental_capabilities: newCapabilities,
-        },
-      },
-    };
-
-    const fetchFn = get(fetch$);
-    const instructions = await resolveExistingInstructions(
-      get,
-      fetchFn,
-      detail.id,
-    );
-
-    // Ensure instructions field
-    const updatedAgent = newContent.agents[agentKey];
-    if (updatedAgent && !("instructions" in updatedAgent)) {
-      newContent.agents[agentKey] = {
-        ...updatedAgent,
-        instructions: getInstructionsFilename(updatedAgent.framework),
-      };
-    }
-
-    const job = await triggerAndPollComposeJob(
-      fetchFn,
-      newContent,
-      instructions ?? "",
-    );
-    if (!job.result) {
-      throw new Error("Build completed without result");
-    }
-
-    set(internalCapabilities$, null);
-    await set(fetchZeroJobDetail$);
-    toast.success("Capabilities saved");
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to save capabilities:", error);
-    toast.error(
-      error instanceof Error ? error.message : "Failed to save capabilities",
-    );
-  } finally {
-    set(internalSaving$, false);
-  }
-});
-
-// ---------------------------------------------------------------------------
 // Agent schedule
 // ---------------------------------------------------------------------------
 
@@ -905,7 +783,6 @@ export const fetchZeroJobData$ = command(async ({ set }, agentName: string) => {
   set(scheduleState$, { schedules: [], error: null });
   set(editedContent$, null);
   set(internalAddedSkills$, null);
-  set(internalCapabilities$, null);
   set(internalBuildError$, null);
   set(jobBuilding$, false);
   set(internalSaving$, false);
