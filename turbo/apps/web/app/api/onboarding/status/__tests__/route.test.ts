@@ -2,14 +2,13 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
 import {
   createTestRequest,
-  createTestModelProvider,
   createTestCompose,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { upsertOrgModelProvider } from "../../../../../src/lib/model-provider/model-provider-service";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { PUT as setDefaultAgent } from "../../../../api/orgs/default-agent/route";
 import { POST as completeOnboarding } from "../../complete/route";
-import { PUT as upsertOrgModelProvider } from "../../../../api/org/model-providers/route";
 
 const context = testContext();
 
@@ -74,8 +73,12 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return hasModelProvider=true, hasDefaultAgent=false when provider exists but no default agent", async () => {
-    await context.setupUser();
-    await createTestModelProvider("anthropic-api-key", "test-secret-key");
+    const user = await context.setupUser();
+    await upsertOrgModelProvider(
+      user.orgId,
+      "anthropic-api-key",
+      "test-secret-key",
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
@@ -91,24 +94,14 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return hasModelProvider=true when org-level provider exists", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
 
-    // Create org-level model provider (not user-level)
-    const orgProviderRequest = createTestRequest(
-      "http://localhost:3000/api/org/model-providers",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "anthropic-api-key",
-          secret: "test-org-secret-key",
-        }),
-      },
+    // Create org-level model provider
+    await upsertOrgModelProvider(
+      user.orgId,
+      "anthropic-api-key",
+      "test-org-secret-key",
     );
-    const orgProviderResponse =
-      await upsertOrgModelProvider(orgProviderRequest);
-    expect(orgProviderResponse.status).toBeGreaterThanOrEqual(200);
-    expect(orgProviderResponse.status).toBeLessThan(300);
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
@@ -125,7 +118,11 @@ describe("GET /api/onboarding/status", () => {
 
   it("should return needsOnboarding=false when all conditions met", async () => {
     const user = await context.setupUser();
-    await createTestModelProvider("anthropic-api-key", "test-secret-key");
+    await upsertOrgModelProvider(
+      user.orgId,
+      "anthropic-api-key",
+      "test-secret-key",
+    );
 
     // Create a compose and set as default via API
     const compose = await createTestCompose("test-agent");
@@ -170,7 +167,11 @@ describe("GET /api/onboarding/status", () => {
 
   it("should return defaultAgentMetadata when compose has metadata", async () => {
     const user = await context.setupUser();
-    await createTestModelProvider("anthropic-api-key", "test-secret-key");
+    await upsertOrgModelProvider(
+      user.orgId,
+      "anthropic-api-key",
+      "test-secret-key",
+    );
 
     // Create a compose with metadata
     const compose = await createTestCompose("test-agent", {

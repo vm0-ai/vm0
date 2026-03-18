@@ -61,10 +61,7 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { PUT as upsertOrgModelProviderRoute } from "../../app/api/org/model-providers/route";
-import {
-  upsertModelProvider,
-  upsertMultiAuthModelProvider,
-} from "../lib/model-provider/model-provider-service";
+import { upsertModelProvider } from "../lib/model-provider/model-provider-service";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
 import {
@@ -397,9 +394,7 @@ export async function createTestModelProvider(
   selectedModel?: string,
 ): Promise<{ id: string; type: string; selectedModel: string | null }> {
   initServices();
-  const { userId } = await import("@clerk/nextjs/server").then((m) =>
-    m.auth(),
-  );
+  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
   const orgId = `org_mock_${userId}`;
   const { provider } = await upsertModelProvider(
     orgId,
@@ -408,48 +403,9 @@ export async function createTestModelProvider(
     secretValue,
     selectedModel,
   );
-  return { id: provider.id, type: provider.type, selectedModel: provider.selectedModel };
-}
-
-/**
- * Create a test user-level multi-auth model provider via service function.
- *
- * @param type - The provider type (e.g., "aws-bedrock")
- * @param authMethod - The auth method (e.g., "api-key", "access-keys")
- * @param secrets - Map of secret names to values
- * @param selectedModel - Optional selected model
- * @returns The created provider with id and type
- */
-export async function createTestMultiAuthModelProvider(
-  type: string,
-  authMethod: string,
-  secrets: Record<string, string>,
-  selectedModel?: string,
-): Promise<{
-  id: string;
-  type: string;
-  authMethod?: string | null;
-  secretNames?: string[] | null;
-  selectedModel: string | null;
-}> {
-  initServices();
-  const { userId } = await import("@clerk/nextjs/server").then((m) =>
-    m.auth(),
-  );
-  const orgId = `org_mock_${userId}`;
-  const { provider } = await upsertMultiAuthModelProvider(
-    orgId,
-    userId!,
-    type as ModelProviderType,
-    authMethod,
-    secrets,
-    selectedModel,
-  );
   return {
     id: provider.id,
     type: provider.type,
-    authMethod: provider.authMethod ?? null,
-    secretNames: provider.secretNames ?? null,
     selectedModel: provider.selectedModel,
   };
 }
