@@ -1,4 +1,9 @@
-import { Component, type ChangeEvent } from "react";
+import {
+  Component,
+  type ChangeEvent,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { onRef, detach, Reason, throwIfAbort } from "../../signals/utils.ts";
@@ -70,6 +75,7 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
+import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
 import { Link } from "../router/link.tsx";
 import chatFolderImg from "./assets/chat-folder.png";
 import chatCoffeeImg from "./assets/chat-coffee.png";
@@ -785,6 +791,37 @@ function ConnectorTriggerIcons({
   );
 }
 
+function ComposerCard({
+  dragOver,
+  onDrop,
+  onDragOver,
+  onDragLeave,
+  className,
+  children,
+}: {
+  dragOver: boolean;
+  onDrop: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
+  onDragLeave: (e: DragEvent<HTMLDivElement>) => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card
+      className={cn(
+        "zero-composer overflow-hidden transition-colors duration-200",
+        className,
+        dragOver && "ring-2 ring-primary",
+      )}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+    >
+      {children}
+    </Card>
+  );
+}
+
 function ConnectorsPopoverButton({
   connectors,
   onOpenAddDialog,
@@ -1086,6 +1123,8 @@ export function ZeroChatPage({
   const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
   const fileInputEl = useGet(fileInputEl$);
   const setFileInputEl = useSet(fileInputEl$);
+  const { dragOver, handlePaste, handleDrop, handleDragOver, handleDragLeave } =
+    useFileUploadHandlers();
   const conversationActive$ = useCCState(false);
   const conversationActive = useGet(conversationActive$);
   const setConversationActive = useSet(conversationActive$);
@@ -1411,7 +1450,13 @@ export function ZeroChatPage({
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
           <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
             <div className="w-9 shrink-0" />
-            <Card className="zero-composer w-full min-w-0 overflow-hidden transition-colors duration-200">
+            <ComposerCard
+              className="w-full min-w-0"
+              dragOver={dragOver}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+            >
               <CardContent className="p-0">
                 <div className="flex flex-col">
                   {attachments.length > 0 && (
@@ -1427,6 +1472,7 @@ export function ZeroChatPage({
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
                   />
                   <div className="flex items-center justify-between gap-2 px-4 py-3">
                     <div className="flex items-center gap-1 text-muted-foreground">
@@ -1481,7 +1527,7 @@ export function ZeroChatPage({
                   </div>
                 </div>
               </CardContent>
-            </Card>
+            </ComposerCard>
           </div>
         </footer>
       </div>
@@ -1516,7 +1562,13 @@ export function ZeroChatPage({
           </div>
 
           {/* Composer */}
-          <Card className="zero-composer w-full overflow-hidden transition-colors duration-200">
+          <ComposerCard
+            className="w-full"
+            dragOver={dragOver}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+          >
             <CardContent className="p-0">
               <div className="flex flex-col">
                 {attachments.length > 0 && (
@@ -1586,7 +1638,7 @@ export function ZeroChatPage({
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </ComposerCard>
 
           {/* Suggested prompts */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">

@@ -54,6 +54,7 @@ import {
 } from "../../signals/zero-page/zero-chat.ts";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
+import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
 import { Link, SimpleLink } from "../router/link.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.png";
 
@@ -94,6 +95,8 @@ export function ZeroSessionChatPage({
   const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
   const fileInputEl = useGet(fileInputEl$);
   const setFileInputEl = useSet(fileInputEl$);
+  const { dragOver, handlePaste, handleDrop, handleDragOver, handleDragLeave } =
+    useFileUploadHandlers();
 
   // Model provider selector (shared logic)
   const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
@@ -228,7 +231,12 @@ export function ZeroSessionChatPage({
       <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
           <div className="w-9 shrink-0" />
-          <Card className="zero-composer w-full min-w-0 overflow-hidden transition-colors duration-200">
+          <Card
+            className={`zero-composer w-full min-w-0 overflow-hidden transition-colors duration-200${dragOver ? " ring-2 ring-primary" : ""}`}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+          >
             <CardContent className="p-0">
               <div className="flex flex-col">
                 {attachments.length > 0 && (
@@ -249,6 +257,7 @@ export function ZeroSessionChatPage({
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
                   disabled={sending}
                 />
                 <div className="flex items-center justify-between gap-2 px-4 py-3">
