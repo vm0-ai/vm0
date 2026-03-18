@@ -855,9 +855,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cli-dist
-          path: turbo/apps/cli/dist
+          path: /tmp/cli-deploy
       - name: Link CLI globally
-        run: cd turbo/apps/cli/dist && sudo npm link
+        run: cd /tmp/cli-deploy && sudo npm link
       - name: Install E2E dependencies
         run: cd e2e && npm install
       - name: Install Playwright system dependencies
@@ -906,13 +906,13 @@ jobs:
         run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
-      - name: Install CLI production dependencies
-        run: cd turbo/apps/cli/dist && npm install --omit=dev
+      - name: Deploy CLI with production dependencies
+        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy /tmp/cli-deploy
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
           name: cli-dist
-          path: turbo/apps/cli/dist
+          path: /tmp/cli-deploy
           retention-days: 1
 
   # Run CLI E2E tests - Phase 1: Serial tests (org/provider CRUD)
@@ -953,9 +953,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cli-dist
-          path: turbo/apps/cli/dist
+          path: /tmp/cli-deploy
       - name: Link CLI globally
-        run: cd turbo/apps/cli/dist && sudo npm link
+        run: cd /tmp/cli-deploy && sudo npm link
       - name: Download E2E test tokens
         uses: actions/download-artifact@v4
         with:
@@ -1367,9 +1367,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cli-dist
-          path: turbo/apps/cli/dist
+          path: /tmp/cli-deploy
       - name: Link CLI globally
-        run: cd turbo/apps/cli/dist && sudo npm link
+        run: cd /tmp/cli-deploy && sudo npm link
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
