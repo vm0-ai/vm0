@@ -24,6 +24,7 @@ import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
 import { ZeroSkillsTab } from "./zero-skills-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
+
 import { TONE_OPTIONS, type Tone } from "./zero-tone-constants.ts";
 import type { ScheduleEntry } from "./zero-schedule-card.tsx";
 import {
@@ -229,7 +230,7 @@ function extractAgentFields(detail: AgentDetail | null, fallbackName: string) {
 // Tab wrappers — resolve signals into shared component props
 // ---------------------------------------------------------------------------
 
-function JobSkillsTab() {
+function JobSkillsTab({ agentName }: { agentName: string }) {
   const addedSkills = useGet(zeroJobAddedSkills$);
   const skillsDirty = useGet(zeroJobSkillsDirty$);
   const skillsSaving = useGet(zeroJobSettingsSaving$);
@@ -244,6 +245,7 @@ function JobSkillsTab() {
       addedSkillsLoading={false}
       skillsDirty={skillsDirty}
       skillsSaving={skillsSaving}
+      agentName={agentName}
       onAddSkill={addSkill}
       onRemoveSkill={removeSkill}
       onSaveSkills={() => detach(saveSkills(), Reason.DomCallback)}
@@ -466,7 +468,7 @@ export function ZeroJobDetailPage({
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        {activeTab === "connectors" && <JobSkillsTab />}
+        {activeTab === "connectors" && <JobSkillsTab agentName={displayName} />}
 
         {activeTab === "schedule" && <JobScheduleTab agentName={displayName} />}
 

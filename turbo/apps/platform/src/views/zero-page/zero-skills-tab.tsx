@@ -35,6 +35,7 @@ interface ZeroSkillsTabProps {
   onRemoveSkill: (name: string) => void;
   onSaveSkills: () => void;
   onDiscardSkills: () => void;
+  agentName?: string;
 }
 
 export function ZeroSkillsTab({
@@ -42,6 +43,7 @@ export function ZeroSkillsTab({
   addedSkillsLoading,
   skillsDirty,
   skillsSaving,
+  agentName,
   onAddSkill,
   onRemoveSkill,
   onSaveSkills,
@@ -196,6 +198,7 @@ export function ZeroSkillsTab({
         excludeTypes={addedSet}
         onConnectSuccess={handleConnectSuccess}
         onAdd={handleConnectSuccess}
+        agentName={agentName}
       />
 
       {selectedType && (
