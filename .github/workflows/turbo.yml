@@ -913,7 +913,7 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          OP_ENV_FILE: .github/ci-secrets.env
+          OP_ENV_FILE: .github/ci-secrets-runner-e2e.env
 
       - name: Start Cron Simulator
         run: |
@@ -1357,7 +1357,7 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          OP_ENV_FILE: .github/ci-secrets.env
+          OP_ENV_FILE: .github/ci-secrets-runner-e2e.env
 
       - name: Bootstrap test account
         run: |
