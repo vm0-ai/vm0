@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.80.0](https://github.com/vm0-ai/vm0/compare/core-v8.79.2...core-v8.80.0) (2026-03-18)
+
+
+### Features
+
+* add append-system-prompt support to runner and guest-agent ([#5384](https://github.com/vm0-ai/vm0/issues/5384)) ([37aaa76](https://github.com/vm0-ai/vm0/commit/37aaa76b7acdf8c24f2928590de54317870c3a21)), closes [#5375](https://github.com/vm0-ai/vm0/issues/5375)
+
 ## [8.79.2](https://github.com/vm0-ai/vm0/compare/core-v8.79.1...core-v8.79.2) (2026-03-18)
 
 

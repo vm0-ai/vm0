@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.67.0](https://github.com/vm0-ai/vm0/compare/cli-v9.66.0...cli-v9.67.0) (2026-03-18)
+
+
+### Features
+
+* **cli:** add --append-system-prompt flag to run commands ([#5382](https://github.com/vm0-ai/vm0/issues/5382)) ([0e0eff2](https://github.com/vm0-ai/vm0/commit/0e0eff2881d7de04632f5d7005c5d6288c1b911b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.80.0
+
 ## [9.66.0](https://github.com/vm0-ai/vm0/compare/cli-v9.65.1...cli-v9.66.0) (2026-03-18)
 
 

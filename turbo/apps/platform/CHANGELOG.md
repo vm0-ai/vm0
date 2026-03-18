@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.125.1](https://github.com/vm0-ai/vm0/compare/app-v0.125.0...app-v0.125.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* **platform:** remove leftover /zero prefix from activity log link ([#5394](https://github.com/vm0-ai/vm0/issues/5394)) ([07a4894](https://github.com/vm0-ai/vm0/commit/07a489451e5126cea709e962b0ef02a58db1f4d0)), closes [#5391](https://github.com/vm0-ai/vm0/issues/5391)
+* **platform:** unify connector status text and simplify dropdown actions ([#5388](https://github.com/vm0-ai/vm0/issues/5388)) ([b3caa66](https://github.com/vm0-ai/vm0/commit/b3caa6623c796ce1cf3149f0eec7ab3f69a25c2d))
+
+
+### Refactoring
+
+* **platform:** remove experimental capabilities tab from agent detail page ([#5381](https://github.com/vm0-ai/vm0/issues/5381)) ([69b2158](https://github.com/vm0-ai/vm0/commit/69b215855079759155bfa92a6e1af534fbb0a482)), closes [#5374](https://github.com/vm0-ai/vm0/issues/5374)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.80.0
+
 ## [0.125.0](https://github.com/vm0-ai/vm0/compare/app-v0.124.0...app-v0.125.0) (2026-03-18)
 
 

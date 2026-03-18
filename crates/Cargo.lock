@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "guest-agent"
-version = "0.16.4"
+version = "0.17.0"
 dependencies = [
  "base64",
  "bytes",
@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",
