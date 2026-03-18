@@ -9,7 +9,8 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
+import { ORG_SENTINEL_USER_ID } from "../../../../src/lib/org/org-sentinel";
 import { agentComposeApiContentSchema } from "@vm0/core";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { orgMembersCache } from "../../../../src/db/schema/org-members-cache";
@@ -85,14 +86,17 @@ const router = tsr.router(onboardingStatusContract, {
       resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
 
-      // Check model provider for this user (not org-wide)
+      // Check model provider for this user or org-level (matches runtime fallback in build-context.ts)
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
         .where(
           and(
             eq(modelProviders.orgId, resolvedOrg.orgId),
-            eq(modelProviders.userId, authCtx.userId),
+            or(
+              eq(modelProviders.userId, authCtx.userId),
+              eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+            ),
           ),
         )
         .limit(1);
