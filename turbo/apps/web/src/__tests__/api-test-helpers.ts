@@ -60,8 +60,11 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 // POST /api/org removed in 5b-5 — org creation is now Clerk's responsibility
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
-import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
 import { PUT as upsertOrgModelProviderRoute } from "../../app/api/org/model-providers/route";
+import {
+  upsertModelProvider,
+  upsertMultiAuthModelProvider,
+} from "../lib/model-provider/model-provider-service";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
 import {
@@ -78,12 +81,7 @@ import { GET as getScheduleRunsRoute } from "../../app/api/agent/schedules/[name
 import type { ScheduleResponse } from "../lib/schedule/schedule-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
-import { DELETE as deleteModelProviderRoute } from "../../app/api/model-providers/[type]/route";
-import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
-import {
-  GET as listSecretsRoute,
-  PUT as setSecretRoute,
-} from "../../app/api/secrets/route";
+import { PUT as setSecretRoute } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
 
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
@@ -95,7 +93,7 @@ import {
   encryptSecretValue,
   decryptSecretValue,
 } from "../lib/crypto/secrets-encryption";
-import type { ConnectorType } from "@vm0/core";
+import type { ConnectorType, ModelProviderType } from "@vm0/core";
 import {
   agentSessions,
   type StoredChatMessage,
@@ -386,7 +384,7 @@ export async function createTestCompose(
 }
 
 /**
- * Create a test model provider via API route handler.
+ * Create a test user-level model provider via service function.
  *
  * @param type - The provider type
  * @param secretValue - The secret value
@@ -398,31 +396,23 @@ export async function createTestModelProvider(
   secretValue: string,
   selectedModel?: string,
 ): Promise<{ id: string; type: string; selectedModel: string | null }> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/model-providers",
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type,
-        secret: secretValue,
-        selectedModel,
-      }),
-    },
+  initServices();
+  const { userId } = await import("@clerk/nextjs/server").then((m) =>
+    m.auth(),
   );
-  const response = await upsertModelProviderRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create model provider: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.provider;
+  const orgId = `org_mock_${userId}`;
+  const { provider } = await upsertModelProvider(
+    orgId,
+    userId!,
+    type as ModelProviderType,
+    secretValue,
+    selectedModel,
+  );
+  return { id: provider.id, type: provider.type, selectedModel: provider.selectedModel };
 }
 
 /**
- * Create a test multi-auth model provider via API route handler.
+ * Create a test user-level multi-auth model provider via service function.
  *
  * @param type - The provider type (e.g., "aws-bedrock")
  * @param authMethod - The auth method (e.g., "api-key", "access-keys")
@@ -438,32 +428,30 @@ export async function createTestMultiAuthModelProvider(
 ): Promise<{
   id: string;
   type: string;
-  authMethod: string | null;
-  secretNames: string[] | null;
+  authMethod?: string | null;
+  secretNames?: string[] | null;
   selectedModel: string | null;
 }> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/model-providers",
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type,
-        authMethod,
-        secrets,
-        selectedModel,
-      }),
-    },
+  initServices();
+  const { userId } = await import("@clerk/nextjs/server").then((m) =>
+    m.auth(),
   );
-  const response = await upsertModelProviderRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create multi-auth model provider: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.provider;
+  const orgId = `org_mock_${userId}`;
+  const { provider } = await upsertMultiAuthModelProvider(
+    orgId,
+    userId!,
+    type as ModelProviderType,
+    authMethod,
+    secrets,
+    selectedModel,
+  );
+  return {
+    id: provider.id,
+    type: provider.type,
+    authMethod: provider.authMethod ?? null,
+    secretNames: provider.secretNames ?? null,
+    selectedModel: provider.selectedModel,
+  };
 }
 
 /**
@@ -1433,60 +1421,6 @@ export async function insertStorageVersion(
 }
 
 // ============================================================================
-// Model Provider Test Helpers
-// ============================================================================
-
-/**
- * Delete a model provider via API route handler.
- *
- * @param type - The provider type to delete
- */
-export async function deleteTestModelProvider(type: string): Promise<void> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/model-providers/${type}`,
-    { method: "DELETE" },
-  );
-  const response = await deleteModelProviderRoute(request);
-  if (!response.ok && response.status !== 204) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to delete model provider: ${error.error?.message || response.status}`,
-    );
-  }
-}
-
-/**
- * List all model providers via API route handler.
- *
- * @returns Array of model provider info
- */
-export async function listTestModelProviders(): Promise<
-  Array<{
-    id: string;
-    type: string;
-    framework: string;
-    secretName: string | null;
-    authMethod: string | null;
-    secretNames: string[] | null;
-    isDefault: boolean;
-    selectedModel: string | null;
-  }>
-> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/model-providers",
-  );
-  const response = await listModelProvidersRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to list model providers: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.modelProviders;
-}
-
-// ============================================================================
 // Secret Test Helpers
 // ============================================================================
 
@@ -1523,33 +1457,6 @@ export async function createTestSecret(
     );
   }
   return response.json();
-}
-
-/**
- * List all secrets via API route handler.
- *
- * @returns Array of secret info
- */
-export async function listTestSecrets(): Promise<
-  Array<{
-    id: string;
-    name: string;
-    description: string | null;
-    type: string;
-    createdAt: string;
-    updatedAt: string;
-  }>
-> {
-  const request = createTestRequest("http://localhost:3000/api/secrets");
-  const response = await listSecretsRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to list secrets: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.secrets;
 }
 
 // Variable Test Helpers
