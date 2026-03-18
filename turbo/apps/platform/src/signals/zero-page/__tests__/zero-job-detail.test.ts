@@ -1129,6 +1129,53 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobCapabilitiesDirty$)).toBeFalsy();
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
+
+    it("should save empty capabilities array when all disabled", async () => {
+      let capturedJobBody: Record<string, unknown> = {};
+
+      await setupWithCapabilities(["agent:read"]);
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/compose/jobs",
+          async ({ request }) => {
+            capturedJobBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({
+              jobId: "job-1",
+              status: "completed",
+              result: {
+                composeId: "compose-1",
+                composeName: "my-agent",
+                versionId: "v2",
+                warnings: [],
+              },
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentWithCapabilities([]));
+        }),
+        http.get(
+          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+      );
+
+      // Toggle off the only capability
+      context.store.set(toggleZeroJobCapability$, "agent:read");
+      await context.store.set(saveZeroJobCapabilities$);
+
+      // Should send empty array, NOT undefined
+      const content = capturedJobBody["content"] as Record<string, unknown>;
+      const agents = content["agents"] as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const mainAgent = agents["main"];
+      expect(mainAgent["experimental_capabilities"]).toStrictEqual([]);
+    });
   });
 
   describe("injectDefaultCapabilities", () => {
@@ -1175,6 +1222,20 @@ describe("zero-job-detail signals", () => {
       const content = { version: "1", agents: {} };
       const result = injectDefaultCapabilities(content);
       expect(result).toBe(content);
+    });
+
+    it("should preserve empty array (user disabled all capabilities)", () => {
+      const content = {
+        version: "1",
+        agents: {
+          main: {
+            framework: "claude-code",
+            experimental_capabilities: [] as string[],
+          },
+        },
+      };
+      const result = injectDefaultCapabilities(content);
+      expect(result).toBe(content); // same reference, not re-injected
     });
   });
 });

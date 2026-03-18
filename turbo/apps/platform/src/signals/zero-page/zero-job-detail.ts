@@ -549,8 +549,7 @@ export const saveZeroJobCapabilities$ = command(async ({ get, set }) => {
       agents: {
         [agentKey]: {
           ...agent,
-          experimental_capabilities:
-            newCapabilities.length > 0 ? newCapabilities : undefined,
+          experimental_capabilities: newCapabilities,
         },
       },
     };
