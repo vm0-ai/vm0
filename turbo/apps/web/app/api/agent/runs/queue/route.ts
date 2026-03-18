@@ -195,7 +195,7 @@ const router = tsr.router(runsQueueContract, {
         triggerSource: isOwner ? inferTriggerSource(run) : null,
         sessionLink:
           isOwner && run.continuedFromSessionId
-            ? `/zero/chat/${run.continuedFromSessionId}`
+            ? `/chat/${run.continuedFromSessionId}`
             : null,
       };
     });

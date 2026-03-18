@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.79.1](https://github.com/vm0-ai/vm0/compare/core-v8.79.0...core-v8.79.1) (2026-03-18)
+
+
+### Refactoring
+
+* remove model provider step from member onboarding flow ([#5326](https://github.com/vm0-ai/vm0/issues/5326)) ([8dc83b4](https://github.com/vm0-ai/vm0/commit/8dc83b48159cb36994734c752d1b46dfd24ce188))
+* remove platform naming remnants from codebase ([#5336](https://github.com/vm0-ai/vm0/issues/5336)) ([a846586](https://github.com/vm0-ai/vm0/commit/a84658654b6b9ae11801aa0c8ac0dd30a3d8fa9f)), closes [#5327](https://github.com/vm0-ai/vm0/issues/5327)
+
 ## [8.79.0](https://github.com/vm0-ai/vm0/compare/core-v8.78.0...core-v8.79.0) (2026-03-18)
 
 

@@ -127,7 +127,7 @@ async function assignDefaultIfFirst(
 /**
  * List all model providers for an org
  */
-export async function listModelProviders(
+async function listModelProviders(
   orgId: string,
   userId: string,
 ): Promise<ModelProviderInfo[]> {
@@ -165,42 +165,6 @@ export async function listModelProviders(
 }
 
 /**
- * Check if model-provider secret exists for a provider type
- * Note: Multi-auth providers (like aws-bedrock) are not supported by this function
- */
-export async function checkSecretExists(
-  orgId: string,
-  userId: string,
-  type: ModelProviderType,
-): Promise<{ exists: boolean }> {
-  // Multi-auth providers don't have a single secretName
-  if (hasAuthMethods(type)) {
-    return { exists: false };
-  }
-
-  const secretName = getSecretNameForType(type);
-  if (!secretName) {
-    return { exists: false };
-  }
-
-  // Only check for model-provider type secrets (user secrets are independent)
-  const [existing] = await globalThis.services.db
-    .select({ id: secrets.id })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.userId, userId),
-        eq(secrets.name, secretName),
-        eq(secrets.type, "model-provider"),
-      ),
-    )
-    .limit(1);
-
-  return { exists: !!existing };
-}
-
-/**
  * Create or update a model provider (legacy single-secret)
  * Uses atomic INSERT ... ON CONFLICT DO UPDATE to handle concurrent requests safely.
  *
@@ -209,7 +173,7 @@ export async function checkSecretExists(
  * Note: Multi-auth providers (like aws-bedrock) should use upsertMultiAuthModelProvider instead
  * Note: User secrets and model-provider secrets are isolated by type, so no conflict detection needed
  */
-export async function upsertModelProvider(
+async function upsertModelProvider(
   orgId: string,
   userId: string,
   type: ModelProviderType,
@@ -402,7 +366,7 @@ async function cleanupOldAuthMethodSecrets(
  * @param secretValues Map of secret names to their values
  * @param selectedModel Optional selected model
  */
-export async function upsertMultiAuthModelProvider(
+async function upsertMultiAuthModelProvider(
   orgId: string,
   userId: string,
   type: ModelProviderType,
@@ -563,20 +527,9 @@ export async function upsertMultiAuthModelProvider(
 }
 
 /**
- * @deprecated Secret conversion is no longer needed since user and model-provider secrets
- * are now isolated by type. Simply configure your model provider directly.
- */
-export async function convertSecretToModelProvider(): Promise<never> {
-  throw badRequest(
-    "Secret conversion is no longer needed. User secrets and model provider secrets are now isolated by type. " +
-      "Simply configure your model provider directly with `vm0 org model-provider setup`.",
-  );
-}
-
-/**
  * Delete a model provider and its secret
  */
-export async function deleteModelProvider(
+async function deleteModelProvider(
   orgId: string,
   userId: string,
   type: ModelProviderType,
@@ -671,7 +624,7 @@ export async function deleteModelProvider(
 /**
  * Set a model provider as default for its framework
  */
-export async function setModelProviderDefault(
+async function setModelProviderDefault(
   orgId: string,
   userId: string,
   type: ModelProviderType,
@@ -758,7 +711,7 @@ export async function setModelProviderDefault(
 /**
  * Update model selection for an existing provider (keeps secret unchanged)
  */
-export async function updateModelProviderModel(
+async function updateModelProviderModel(
   orgId: string,
   userId: string,
   type: ModelProviderType,
@@ -815,7 +768,7 @@ export async function updateModelProviderModel(
  * Get the default model provider for a framework
  * Supports both legacy single-secret and multi-auth providers
  */
-export async function getDefaultModelProvider(
+async function getDefaultModelProvider(
   orgId: string,
   userId: string,
   framework: ModelProviderFramework,

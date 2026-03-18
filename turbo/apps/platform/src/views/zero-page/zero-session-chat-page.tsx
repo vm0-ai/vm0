@@ -1,9 +1,7 @@
-import type { ChangeEvent, MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
-  IconSend,
-  IconPaperclip,
   IconAlertCircle,
   IconLoader2,
   IconArrowLeft,
@@ -16,14 +14,7 @@ import {
 } from "@tabler/icons-react";
 import {
   Button,
-  Card,
-  CardContent,
   Skeleton,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -31,31 +22,24 @@ import {
 } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  FileAttachmentChip,
-  AttachmentChip,
-} from "./zero-attachment-chips.tsx";
+import { FileAttachmentChip } from "./zero-attachment-chips.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroChatMessages$,
   zeroChatSending$,
   zeroChatInput$,
-  zeroChatAttachments$,
   zeroSessionError$,
   zeroSessionSwitching$,
   setZeroChatInput$,
   clearZeroChatInput$,
   sendZeroChatMessage$,
-  uploadZeroAttachment$,
-  removeZeroAttachment$,
   type ZeroChatMessage,
   zeroChatRunSummaries$,
   zeroChatRunStatus$,
   zeroChatQueuePosition$,
   cancelActiveRun$,
 } from "../../signals/zero-page/zero-chat.ts";
-import { useModelSelection } from "./zero-model-preference.ts";
-import { useSendKeyHandler } from "./zero-send-key.ts";
+import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.png";
 
@@ -91,16 +75,6 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-  const attachments = useGet(zeroChatAttachments$);
-  const uploadAttachment = useSet(uploadZeroAttachment$);
-  const removeAttachment = useSet(removeZeroAttachment$);
-  const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
-  const fileInputEl = useGet(fileInputEl$);
-  const setFileInputEl = useSet(fileInputEl$);
-
-  // Model provider selector (shared logic)
-  const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
-    useModelSelection(agentName);
 
   const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
   const messagesEndEl = useGet(messagesEndEl$);
@@ -113,36 +87,9 @@ export function ZeroSessionChatPage({
     });
   }
 
-  const handleSend = () => {
-    const trimmed = input.trim();
-    if (!trimmed || sending) {
-      return;
-    }
+  const handleSend = (text: string, opts?: { modelProvider: string }) => {
     clearInput();
-    persistSelection();
-    const opts =
-      selectedModel !== "default"
-        ? { modelProvider: selectedModel }
-        : undefined;
-    detach(send(trimmed, opts), Reason.DomCallback);
-  };
-
-  const handleKeyDown = useSendKeyHandler(handleSend);
-
-  const handleFileSelect = () => {
-    fileInputEl?.click();
-  };
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) {
-      return;
-    }
-    for (const file of files) {
-      detach(uploadAttachment(file), Reason.DomCallback);
-    }
-    // Reset so same file can be selected again
-    e.target.value = "";
+    detach(send(text, opts), Reason.DomCallback);
   };
 
   return (
@@ -231,94 +178,15 @@ export function ZeroSessionChatPage({
       <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
           <div className="w-9 shrink-0" />
-          <Card className="zero-composer w-full min-w-0 overflow-hidden transition-colors duration-200">
-            <CardContent className="p-0">
-              <div className="flex flex-col">
-                {attachments.length > 0 && (
-                  <div className="flex flex-wrap gap-2 px-5 pt-3">
-                    {attachments.map((a) => (
-                      <AttachmentChip
-                        key={a.id}
-                        attachment={a}
-                        onRemove={() => removeAttachment(a.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
-                  rows={3}
-                  placeholder="Ask me to automate workflows, manage tasks..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={sending}
-                />
-                <div className="flex items-center justify-between gap-2 px-4 py-3">
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <input
-                      ref={setFileInputEl}
-                      type="file"
-                      className="hidden"
-                      accept="image/*,.pdf,.txt,.csv,.md,.json"
-                      multiple
-                      onChange={handleFileChange}
-                    />
-                    <button
-                      type="button"
-                      className="p-2 rounded-lg hover:bg-muted/60 hover:text-foreground transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      aria-label="Attach file"
-                      onClick={handleFileSelect}
-                    >
-                      <IconPaperclip size={18} stroke={1.5} />
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={selectedModel}
-                      onValueChange={setSelectedModel}
-                    >
-                      <SelectTrigger className="h-9 min-w-[140px] rounded-lg border-border bg-transparent text-sm text-foreground">
-                        <SelectValue placeholder="Model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {modelOptions.map((opt) => (
-                          <SelectItem
-                            key={opt.value}
-                            value={opt.value}
-                            className="text-sm"
-                          >
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {sending ? (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={() => void cancelRun()}
-                        aria-label="Stop"
-                      >
-                        <IconPlayerStop size={16} />
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={handleSend}
-                        disabled={!input.trim()}
-                        aria-label="Send"
-                      >
-                        <IconSend size={16} stroke={2} />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <ZeroChatComposer
+            className="w-full min-w-0"
+            input={input}
+            onInputChange={setInput}
+            onSend={handleSend}
+            sending={sending}
+            onCancel={() => void cancelRun()}
+            agentName={agentName}
+          />
         </div>
       </footer>
     </div>

@@ -7,8 +7,6 @@ import {
   deleteOrgModelProvider,
   setOrgModelProviderDefault,
   getOrgDefaultModelProvider,
-  listModelProviders,
-  upsertModelProvider,
 } from "../model-provider-service";
 import type { ModelProviderType } from "@vm0/core";
 
@@ -200,54 +198,6 @@ describe("Org-level model provider service", () => {
           { ANTHROPIC_API_KEY: "test" },
         ),
       ).rejects.toThrow("legacy single-secret provider");
-    });
-  });
-
-  describe("isolation", () => {
-    it("should not return org providers in user provider list", async () => {
-      const user = await context.setupUser();
-      await upsertOrgModelProvider(user.orgId, "anthropic-api-key", "org-key");
-
-      const userProviders = await listModelProviders(user.orgId, user.userId);
-      expect(userProviders).toEqual([]);
-    });
-
-    it("should not return user providers in org provider list", async () => {
-      const user = await context.setupUser();
-      await upsertModelProvider(
-        user.orgId,
-        user.userId,
-        "anthropic-api-key",
-        "user-key",
-      );
-
-      const orgProviders = await listOrgModelProviders(user.orgId);
-      expect(orgProviders).toEqual([]);
-    });
-
-    it("should keep org defaults independent from user defaults", async () => {
-      const user = await context.setupUser();
-
-      // Create user-level provider (auto-defaults)
-      await upsertModelProvider(
-        user.orgId,
-        user.userId,
-        "anthropic-api-key",
-        "user-key",
-      );
-
-      // Create org-level provider (should also auto-default independently)
-      const { provider: orgProvider } = await upsertOrgModelProvider(
-        user.orgId,
-        "claude-code-oauth-token",
-        "org-token",
-      );
-
-      expect(orgProvider.isDefault).toBe(true);
-
-      // Verify user default is unchanged
-      const userProviders = await listModelProviders(user.orgId, user.userId);
-      expect(userProviders[0]?.isDefault).toBe(true);
     });
   });
 });

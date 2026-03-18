@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.127.0](https://github.com/vm0-ai/vm0/compare/web-v12.126.1...web-v12.127.0) (2026-03-18)
+
+
+### Features
+
+* auto-disconnect existing connector in /authorize endpoint ([#5351](https://github.com/vm0-ai/vm0/issues/5351)) ([e65f0d1](https://github.com/vm0-ai/vm0/commit/e65f0d1b1a6ddea1e1f5af826e471bc1f7367297)), closes [#5343](https://github.com/vm0-ai/vm0/issues/5343)
+* **web:** redesign homepage and add security page ([#5338](https://github.com/vm0-ai/vm0/issues/5338)) ([6a1148f](https://github.com/vm0-ai/vm0/commit/6a1148f4713afa4ec8b80321a9fe5239fd1e04c6))
+
+
+### Refactoring
+
+* remove model provider step from member onboarding flow ([#5326](https://github.com/vm0-ai/vm0/issues/5326)) ([8dc83b4](https://github.com/vm0-ai/vm0/commit/8dc83b48159cb36994734c752d1b46dfd24ce188))
+* remove platform naming remnants from codebase ([#5336](https://github.com/vm0-ai/vm0/issues/5336)) ([a846586](https://github.com/vm0-ai/vm0/commit/a84658654b6b9ae11801aa0c8ac0dd30a3d8fa9f)), closes [#5327](https://github.com/vm0-ai/vm0/issues/5327)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.1
+
 ## [12.126.1](https://github.com/vm0-ai/vm0/compare/web-v12.126.0...web-v12.126.1) (2026-03-18)
 
 

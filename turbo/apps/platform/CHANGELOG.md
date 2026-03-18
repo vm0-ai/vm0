@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.124.0](https://github.com/vm0-ai/vm0/compare/app-v0.123.1...app-v0.124.0) (2026-03-18)
+
+
+### Features
+
+* auto-disconnect existing connector in /authorize endpoint ([#5351](https://github.com/vm0-ai/vm0/issues/5351)) ([e65f0d1](https://github.com/vm0-ai/vm0/commit/e65f0d1b1a6ddea1e1f5af826e471bc1f7367297)), closes [#5343](https://github.com/vm0-ai/vm0/issues/5343)
+* **platform:** add schedule creation dialog and improve pinned agents ux ([#5202](https://github.com/vm0-ai/vm0/issues/5202)) ([02ec4de](https://github.com/vm0-ai/vm0/commit/02ec4dec2af723095780d1a4c948f068b1246db2))
+
+
+### Bug Fixes
+
+* preserve user line breaks in chat messages ([#5334](https://github.com/vm0-ai/vm0/issues/5334)) ([771697b](https://github.com/vm0-ai/vm0/commit/771697ba9c8c038e2d50087b07647e35d23b5e64))
+
+
+### Refactoring
+
+* remove model provider step from member onboarding flow ([#5326](https://github.com/vm0-ai/vm0/issues/5326)) ([8dc83b4](https://github.com/vm0-ai/vm0/commit/8dc83b48159cb36994734c752d1b46dfd24ce188))
+* remove platform naming remnants from codebase ([#5336](https://github.com/vm0-ai/vm0/issues/5336)) ([a846586](https://github.com/vm0-ai/vm0/commit/a84658654b6b9ae11801aa0c8ac0dd30a3d8fa9f)), closes [#5327](https://github.com/vm0-ai/vm0/issues/5327)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.1
+
 ## [0.123.1](https://github.com/vm0-ai/vm0/compare/app-v0.123.0...app-v0.123.1) (2026-03-18)
 
 

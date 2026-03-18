@@ -2,6 +2,47 @@
  * Helper for triggering and polling compose jobs from the app UI.
  */
 import { delay } from "signal-timers";
+import { VALID_CAPABILITIES } from "@vm0/core";
+
+interface ComposeContent {
+  agents?: Record<
+    string,
+    { experimental_capabilities?: string[]; [key: string]: unknown }
+  >;
+  [key: string]: unknown;
+}
+
+/**
+ * Ensure the first agent in `content` has `experimental_capabilities`.
+ * If already present, the existing value is preserved.
+ */
+export function injectDefaultCapabilities(content: object): object {
+  const c = content as ComposeContent;
+  if (!c.agents) {
+    return content;
+  }
+
+  const agentKey = Object.keys(c.agents)[0];
+  if (!agentKey) {
+    return content;
+  }
+
+  const agent = c.agents[agentKey];
+  if (agent.experimental_capabilities) {
+    return content;
+  }
+
+  return {
+    ...c,
+    agents: {
+      ...c.agents,
+      [agentKey]: {
+        ...agent,
+        experimental_capabilities: [...VALID_CAPABILITIES],
+      },
+    },
+  };
+}
 
 interface ComposeJobResponse {
   jobId: string;
@@ -24,12 +65,17 @@ export async function triggerAndPollComposeJob(
   content: object,
   instructions?: string,
 ): Promise<ComposeJobResponse> {
+  // Ensure capabilities are present for Zero agents
+  const resolvedContent = injectDefaultCapabilities(content);
+
   // Create compose job
   const createResponse = await fetchFn("/api/compose/jobs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(
-      instructions !== undefined ? { content, instructions } : { content },
+      instructions !== undefined
+        ? { content: resolvedContent, instructions }
+        : { content: resolvedContent },
     ),
   });
 

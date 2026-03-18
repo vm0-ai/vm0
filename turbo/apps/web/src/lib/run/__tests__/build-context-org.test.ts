@@ -6,7 +6,6 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestModelProvider,
   createTestSecret,
   createTestVariable,
   findTestRunnerJobEntry,
@@ -64,38 +63,10 @@ describe("Org-Level Runtime Resolution", () => {
       });
     });
 
-    it("should use org provider even when user provider exists", async () => {
-      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
-        skipDefaultApiKey: true,
-      });
-
-      // Create both user and org providers — org should be used
-      await createTestModelProvider("anthropic-api-key", "user-api-key");
-      await upsertOrgModelProvider(
-        user.orgId,
-        "anthropic-api-key",
-        "org-api-key",
-      );
-
-      const result = await createRun(
-        baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
-      );
-
-      const job = await findTestRunnerJobEntry(result.runId);
-      expect(job).toBeDefined();
-      // Org key should be used, not user's
-      expect(job!.executionContext.environment).toMatchObject({
-        ANTHROPIC_API_KEY: "org-api-key",
-      });
-    });
-
     it("should error when no org default provider exists", async () => {
       const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
         skipDefaultApiKey: true,
       });
-
-      // No org provider — should error even if user provider exists
-      await createTestModelProvider("anthropic-api-key", "user-api-key");
 
       await expect(
         createRun(
@@ -302,23 +273,6 @@ describe("Org-Level Runtime Resolution", () => {
       expect(job!.executionContext.environment).toMatchObject({
         MY_VAR: "cli-value",
       });
-    });
-  });
-
-  describe("No Org Resources", () => {
-    it("should error when only user-level provider exists (no org provider)", async () => {
-      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
-        skipDefaultApiKey: true,
-      });
-
-      // Only user-level provider — org-only resolution should error
-      await createTestModelProvider("anthropic-api-key", "user-api-key");
-
-      await expect(
-        createRun(
-          baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
-        ),
-      ).rejects.toSatisfy(isBadRequest);
     });
   });
 });

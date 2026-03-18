@@ -34,7 +34,7 @@ describe("schedule setup utilities", () => {
       expect(generateCronExpression("daily", "09:00")).toBe("0 9 * * *");
       expect(generateCronExpression("daily", "14:30")).toBe("30 14 * * *");
       expect(generateCronExpression("daily", "00:00")).toBe("0 0 * * *");
-      expect(generateCronExpression("daily", "23:59")).toBe("59 23 * * *");
+      expect(generateCronExpression("daily", "23:55")).toBe("55 23 * * *");
     });
 
     it("should generate weekly cron expression", () => {
@@ -81,7 +81,7 @@ describe("schedule setup utilities", () => {
       expect(validateTimeFormat("09:00")).toBe(true);
       expect(validateTimeFormat("9:00")).toBe(true);
       expect(validateTimeFormat("00:00")).toBe(true);
-      expect(validateTimeFormat("23:59")).toBe(true);
+      expect(validateTimeFormat("23:55")).toBe(true);
       expect(validateTimeFormat("12:30")).toBe(true);
     });
 
@@ -108,6 +108,18 @@ describe("schedule setup utilities", () => {
     it("should reject out of range minutes", () => {
       expect(validateTimeFormat("09:60")).toBe("Minute must be 0-59");
       expect(validateTimeFormat("09:99")).toBe("Minute must be 0-59");
+    });
+
+    it("should reject minutes that are not multiples of 5", () => {
+      expect(validateTimeFormat("09:01")).toBe(
+        "Minute must be a multiple of 5 (0, 5, 10, ..., 55)",
+      );
+      expect(validateTimeFormat("09:07")).toBe(
+        "Minute must be a multiple of 5 (0, 5, 10, ..., 55)",
+      );
+      expect(validateTimeFormat("09:59")).toBe(
+        "Minute must be a multiple of 5 (0, 5, 10, ..., 55)",
+      );
     });
   });
 

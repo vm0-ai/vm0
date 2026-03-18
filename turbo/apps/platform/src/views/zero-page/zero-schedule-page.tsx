@@ -45,7 +45,7 @@ import {
   SCHEDULE_FREQUENCY_OPTIONS,
   SCHEDULE_LOOP_MINUTES,
   HOUR_OPTIONS,
-  MINUTE_OPTIONS,
+  getMinuteOptions,
   type ScheduleEntry,
 } from "./zero-schedule-card";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
@@ -450,7 +450,7 @@ function ScheduleEditFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MINUTE_OPTIONS.map((m) => (
+                {getMinuteOptions(minute).map((m) => (
                   <SelectItem key={m} value={String(m)}>
                     {m.toString().padStart(2, "0")}
                   </SelectItem>

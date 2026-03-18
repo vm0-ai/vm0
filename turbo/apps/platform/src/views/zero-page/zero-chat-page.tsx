@@ -1,16 +1,9 @@
-import { Component, type ChangeEvent } from "react";
+import { Component } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import { onRef, detach, Reason, throwIfAbort } from "../../signals/utils.ts";
+import { useGet, useSet, useLoadable } from "ccstate-react";
+import { onRef } from "../../signals/utils.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
-  zeroChatAttachments$,
-  uploadZeroAttachment$,
-  removeZeroAttachment$,
-} from "../../signals/zero-page/zero-chat.ts";
-import {
-  IconSend,
-  IconPaperclip,
   IconPlug,
   IconUser,
   IconUsers,
@@ -19,57 +12,11 @@ import {
   IconArrowUpRight,
   IconChartLine,
   IconCalendar,
-  IconPlus,
 } from "@tabler/icons-react";
-import {
-  Button,
-  Card,
-  CardContent,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  cn,
-} from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { ZERO_TEAM_JOBS } from "./zero-mock-data";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import { AttachmentChips } from "./zero-attachment-chips.tsx";
-import type { ConnectorType } from "@vm0/core";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import {
-  AddConnectionDialog,
-  ConnectModal,
-} from "./components/settings/add-connection-dialog.tsx";
-import { skills$ } from "../../data/skills.ts";
-import {
-  zeroNeedsOnboarding$,
-  zeroNeedsMemberOnboarding$,
-} from "../../signals/zero-page/zero-onboarding.ts";
-import {
-  allConnectorTypes$,
-  connectConnector$,
-  selectedConnectorType$,
-  setSelectedConnectorType$,
-  justConnectedTypes$,
-  clearJustConnectedTypes$,
-} from "../../signals/zero-page/settings/connectors.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import {
-  zeroAddedSkills$,
-  addZeroSkill$,
-  saveZeroSkills$,
-} from "../../signals/zero-page/zero-skills.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { useModelSelection } from "./zero-model-preference.ts";
-import { useSendKeyHandler } from "./zero-send-key.ts";
+import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
 import chatFolderImg from "./assets/chat-folder.png";
 import chatCoffeeImg from "./assets/chat-coffee.png";
@@ -750,239 +697,12 @@ function ChatScenarioAgentOperations({
   );
 }
 
-interface ComposerConnectorItem {
-  type: string;
-  label: string;
-  iconUrl?: string;
-  connected: boolean;
-}
-
-function ConnectorTriggerIcons({
-  connectors,
-}: {
-  connectors: ComposerConnectorItem[];
-}) {
-  const connected = connectors.filter((c) => c.connected).slice(0, 3);
-  if (connected.length === 0) {
-    return <IconPlug size={18} stroke={1.5} />;
-  }
-  return (
-    <span className="flex items-center -space-x-1.5">
-      {connected.map((c) => (
-        <span
-          key={c.type}
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-background"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-        >
-          {c.iconUrl ? (
-            <img src={c.iconUrl} alt="" className="h-4 w-4" />
-          ) : (
-            <ConnectorIcon type={c.type as ConnectorType} size={16} />
-          )}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function ConnectorsPopoverButton({
-  connectors,
-  onOpenAddDialog,
-  onConnect,
-  onManageConnectors,
-  agentName,
-}: {
-  connectors: ComposerConnectorItem[];
-  onOpenAddDialog: () => void;
-  onConnect: (type: string) => void;
-  onManageConnectors?: () => void;
-  agentName: string;
-}) {
-  return (
-    <Popover>
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex shrink-0 items-center justify-center rounded-lg h-9 min-w-9 px-1.5 hover:bg-accent transition-colors"
-              >
-                <ConnectorTriggerIcons connectors={connectors} />
-              </button>
-            </TooltipTrigger>
-          </PopoverTrigger>
-          <TooltipContent side="top" className="text-xs">
-            Connectors
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-64 p-0 rounded-xl">
-        {connectors.length > 0 && (
-          <div className="p-2">
-            <div className="flex flex-col">
-              {connectors.map((item) => (
-                <div
-                  key={item.type}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <span
-                    className={cn(
-                      "flex h-5 w-5 shrink-0 items-center justify-center",
-                      !item.connected && "opacity-40",
-                    )}
-                  >
-                    {item.iconUrl ? (
-                      <img src={item.iconUrl} alt="" className="h-5 w-5" />
-                    ) : (
-                      <ConnectorIcon
-                        type={item.type as ConnectorType}
-                        size={20}
-                      />
-                    )}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-sm flex-1",
-                      item.connected
-                        ? "text-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                  {item.connected ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                  ) : (
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onConnect(item.type);
-                      }}
-                    >
-                      Connect
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div
-          className={cn(
-            "p-2 flex flex-col",
-            connectors.length > 0 && "border-t border-border/50",
-          )}
-        >
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-accent transition-colors"
-            onClick={() => onOpenAddDialog()}
-          >
-            <IconPlus
-              size={20}
-              stroke={1.5}
-              className="shrink-0 text-muted-foreground"
-            />
-            Add connector
-          </button>
-          {onManageConnectors && (
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-accent transition-colors"
-              onClick={onManageConnectors}
-            >
-              <IconPlug
-                size={20}
-                stroke={1.5}
-                className="shrink-0 text-muted-foreground"
-              />
-              Manage connectors in {agentName}
-            </button>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function maybeClearOptimistic(
-  optimistic: Set<string>,
-  connectorMap: Map<ConnectorType, { connected: boolean }>,
-  clear: () => void,
-) {
-  if (optimistic.size === 0) {
-    return;
-  }
-  const allConfirmed = [...optimistic].every(
-    (t) => connectorMap.get(t as ConnectorType)?.connected,
-  );
-  if (allConfirmed) {
-    clear();
-  }
-}
-
-function buildConnectorItem(
-  name: string,
-  skillMap: Map<string, { label: string; icon?: string }>,
-  connectorMap: Map<ConnectorType, { label: string; connected: boolean }>,
-  optimistic: Set<string>,
-): ComposerConnectorItem {
-  const skill = skillMap.get(name);
-  const connector = connectorMap.get(name as ConnectorType);
-  return {
-    type: name,
-    label: skill?.label ?? connector?.label ?? name,
-    iconUrl: skill?.icon,
-    connected: optimistic.has(name) ? true : (connector?.connected ?? false),
-  };
-}
-
 function useUserFirstName(): string | undefined {
   const loadable = useLoadable(user$);
   if (loadable.state !== "hasData") {
     return undefined;
   }
   return loadable.data?.firstName ?? undefined;
-}
-
-function resolveConnectorLabel(
-  type: string,
-  skillMap: Map<string, { label: string }>,
-  connectorMap: Map<ConnectorType, { label: string }>,
-): string {
-  return (
-    skillMap.get(type)?.label ??
-    connectorMap.get(type as ConnectorType)?.label ??
-    type
-  );
-}
-
-function buildModelOpts(model: string): { modelProvider: string } | undefined {
-  return model !== "default" ? { modelProvider: model } : undefined;
-}
-
-function startConnectorFlow(
-  type: string,
-  connectorMap: Map<ConnectorType, { availableAuthMethods: string[] }>,
-  setSelectedType: (t: ConnectorType | null) => void,
-  connect: (t: ConnectorType, signal: AbortSignal) => Promise<boolean>,
-  signal: AbortSignal,
-) {
-  const ct = connectorMap.get(type as ConnectorType);
-  if (!ct) {
-    return;
-  }
-  if (
-    ct.availableAuthMethods.length === 1 &&
-    ct.availableAuthMethods[0] === "api-token"
-  ) {
-    setSelectedType(type as ConnectorType);
-  } else {
-    detach(connect(type as ConnectorType, signal), Reason.DomCallback);
-  }
 }
 
 type ScenarioItem = Readonly<{
@@ -1035,57 +755,9 @@ export function ZeroChatPage({
   const agentName = chatAgentName ?? defaultAgentName;
   const userName = useUserFirstName();
 
-  // Connector signals
-  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const addedSkillsLoadable = useLastLoadable(zeroAddedSkills$);
-  const connectConnector = useSet(connectConnector$);
-  const pageSignal = useGet(pageSignal$);
-  const selectedConnType = useGet(selectedConnectorType$);
-  const setSelectedConnType = useSet(setSelectedConnectorType$);
-  // Don't show ConnectModal in chat page when onboarding is active
-  const onboardingActive = useLastLoadable(zeroNeedsOnboarding$);
-  const memberOnboardingActive = useLastLoadable(zeroNeedsMemberOnboarding$);
-  const isOnboarding =
-    (onboardingActive.state === "hasData" && onboardingActive.data) ||
-    (memberOnboardingActive.state === "hasData" && memberOnboardingActive.data);
-  const allSkills = useGet(skills$);
-  const addSkill = useSet(addZeroSkill$);
-  const saveSkills = useSet(saveZeroSkills$);
-  const optimisticConnected = useGet(justConnectedTypes$);
-  const clearOptimistic = useSet(clearJustConnectedTypes$);
-  const addDialogOpen$ = useCCState(false);
-  const addDialogOpen = useGet(addDialogOpen$);
-  const setAddDialogOpen = useSet(addDialogOpen$);
-
-  const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
-
-  // Clear optimistic state only once fresh data confirms the connection
-  maybeClearOptimistic(optimisticConnected, connectorMap, clearOptimistic);
-  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
-  const addedSkills =
-    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
-  const addedSet = new Set(addedSkills);
-
-  const composerConnectors: ComposerConnectorItem[] = addedSkills
-    .filter((name) => connectorMap.has(name as ConnectorType))
-    .map((name) =>
-      buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
-    );
-
-  // Model provider selector (shared logic)
-  const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
-    useModelSelection(agentName);
   const input$ = useCCState("");
   const input = useGet(input$);
   const setInput = useSet(input$);
-  const attachments = useGet(zeroChatAttachments$);
-  const uploadAttachment = useSet(uploadZeroAttachment$);
-  const removeAttachment = useSet(removeZeroAttachment$);
-  const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
-  const fileInputEl = useGet(fileInputEl$);
-  const setFileInputEl = useSet(fileInputEl$);
   const conversationActive$ = useCCState(false);
   const conversationActive = useGet(conversationActive$);
   const setConversationActive = useSet(conversationActive$);
@@ -1166,59 +838,9 @@ export function ZeroChatPage({
   });
   const toggleSubAgentList = useSet(toggleSubAgentList$);
 
-  const handleConnectSuccess = (type: string) => {
-    const label = resolveConnectorLabel(type, skillMap, connectorMap);
-    detach(
-      (async () => {
-        await addSkill(type);
-        try {
-          await saveSkills();
-        } catch (error) {
-          throwIfAbort(error);
-          // May fail during onboarding when compose doesn't exist yet — ignore
-        }
-        toast.success(`${label} connected`);
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleConnectConnector = (type: string) =>
-    startConnectorFlow(
-      type,
-      connectorMap,
-      setSelectedConnType,
-      connectConnector,
-      pageSignal,
-    );
-
-  const handleSend = (messageOverride?: string) => {
-    const text = (messageOverride ?? input).trim();
-    if (!text) {
-      return;
-    }
-    if (!messageOverride) {
-      setInput("");
-    }
-    persistSelection();
-    onSendMessage?.(text, buildModelOpts(selectedModel));
-  };
-
-  const handleKeyDown = useSendKeyHandler(handleSend);
-
-  const handleFileSelect = () => {
-    fileInputEl?.click();
-  };
-
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) {
-      return;
-    }
-    for (const file of files) {
-      detach(uploadAttachment(file), Reason.DomCallback);
-    }
-    e.target.value = "";
+  const handleSend = (text: string, opts?: { modelProvider: string }) => {
+    setInput("");
+    onSendMessage?.(text, opts);
   };
 
   const streamedScenarios = getStreamedScenarios(agentName);
@@ -1232,17 +854,6 @@ export function ZeroChatPage({
     (initialScenarioId !== undefined && scenariosToShow.length > 0) ||
     conversationActive;
 
-  const fileInput = (
-    <input
-      ref={setFileInputEl}
-      type="file"
-      className="hidden"
-      accept="image/*,.pdf,.txt,.csv,.md,.json"
-      multiple
-      onChange={handleFileChange}
-    />
-  );
-
   if (showConversation && scenariosToShow.length > 0) {
     const isScenarioFromSidebar = initialScenarioId !== undefined;
     return (
@@ -1250,7 +861,6 @@ export function ZeroChatPage({
         ref={streamCleanupRef}
         className="flex flex-1 flex-col min-h-0 bg-transparent"
       >
-        {fileInput}
         <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button
@@ -1411,77 +1021,14 @@ export function ZeroChatPage({
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
           <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
             <div className="w-9 shrink-0" />
-            <Card className="zero-composer w-full min-w-0 overflow-hidden transition-colors duration-200">
-              <CardContent className="p-0">
-                <div className="flex flex-col">
-                  {attachments.length > 0 && (
-                    <AttachmentChips
-                      attachments={attachments}
-                      onRemove={removeAttachment}
-                    />
-                  )}
-                  <textarea
-                    className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
-                    rows={3}
-                    placeholder="Ask me to automate workflows, manage tasks..."
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                  <div className="flex items-center justify-between gap-2 px-4 py-3">
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <button
-                        type="button"
-                        className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
-                        aria-label="Attach"
-                        onClick={handleFileSelect}
-                      >
-                        <IconPaperclip size={18} stroke={1.5} />
-                      </button>
-                      <ConnectorsPopoverButton
-                        connectors={composerConnectors}
-                        onOpenAddDialog={() => setAddDialogOpen(true)}
-                        onConnect={handleConnectConnector}
-                        onManageConnectors={() =>
-                          onNavigateToMeet?.("connectors")
-                        }
-                        agentName={agentName}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={selectedModel}
-                        onValueChange={setSelectedModel}
-                      >
-                        <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-accent transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
-                          <SelectValue placeholder="Model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {modelOptions.map((opt) => (
-                            <SelectItem
-                              key={opt.value}
-                              value={opt.value}
-                              className="text-sm"
-                            >
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={() => handleSend()}
-                        disabled={!input.trim()}
-                        aria-label="Send"
-                      >
-                        <IconSend size={16} stroke={2} />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <ZeroChatComposer
+              className="w-full min-w-0"
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSend}
+              agentName={agentName}
+              onManageConnectors={() => onNavigateToMeet?.("connectors")}
+            />
           </div>
         </footer>
       </div>
@@ -1491,7 +1038,6 @@ export function ZeroChatPage({
   // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
-      {fileInput}
       <header
         className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-2"
         aria-hidden="true"
@@ -1516,77 +1062,14 @@ export function ZeroChatPage({
           </div>
 
           {/* Composer */}
-          <Card className="zero-composer w-full overflow-hidden transition-colors duration-200">
-            <CardContent className="p-0">
-              <div className="flex flex-col">
-                {attachments.length > 0 && (
-                  <AttachmentChips
-                    attachments={attachments}
-                    onRemove={removeAttachment}
-                  />
-                )}
-                <textarea
-                  className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
-                  rows={3}
-                  placeholder="Ask me to automate workflows, manage tasks..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                />
-                <div className="flex items-center justify-between gap-2 px-4 py-3">
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <button
-                      type="button"
-                      className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
-                      aria-label="Attach"
-                      onClick={handleFileSelect}
-                    >
-                      <IconPaperclip size={18} stroke={1.5} />
-                    </button>
-                    <ConnectorsPopoverButton
-                      connectors={composerConnectors}
-                      onOpenAddDialog={() => setAddDialogOpen(true)}
-                      onConnect={handleConnectConnector}
-                      onManageConnectors={() =>
-                        onNavigateToMeet?.("connectors")
-                      }
-                      agentName={agentName}
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={selectedModel}
-                      onValueChange={setSelectedModel}
-                    >
-                      <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-accent transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
-                        <SelectValue placeholder="Model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {modelOptions.map((opt) => (
-                          <SelectItem
-                            key={opt.value}
-                            value={opt.value}
-                            className="text-sm"
-                          >
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="sm"
-                      className="rounded-lg h-9 w-9 p-0 shrink-0"
-                      onClick={() => handleSend()}
-                      disabled={!input.trim()}
-                      aria-label="Send"
-                    >
-                      <IconSend size={16} stroke={2} />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <ZeroChatComposer
+            className="w-full"
+            input={input}
+            onInputChange={setInput}
+            onSend={handleSend}
+            agentName={agentName}
+            onManageConnectors={() => onNavigateToMeet?.("connectors")}
+          />
 
           {/* Suggested prompts */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
@@ -1622,24 +1105,6 @@ export function ZeroChatPage({
           </div>
         </div>
       </main>
-      <AddConnectionDialog
-        open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
-        variant="zero"
-        excludeTypes={addedSet}
-        onConnectSuccess={handleConnectSuccess}
-        onAdd={handleConnectSuccess}
-      />
-      {selectedConnType && !isOnboarding && (
-        <ConnectModal
-          onClose={() => setSelectedConnType(null)}
-          onSuccess={() => {
-            if (selectedConnType && !addedSet.has(selectedConnType)) {
-              handleConnectSuccess(selectedConnType);
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -60,10 +60,22 @@ export const HOUR_OPTIONS: readonly number[] = Array.from(
   { length: 24 },
   (_, i) => i,
 );
-export const MINUTE_OPTIONS: readonly number[] = Array.from(
-  { length: 60 },
-  (_, i) => i,
+const MINUTE_OPTIONS: readonly number[] = Array.from(
+  { length: 12 },
+  (_, i) => i * 5,
 );
+
+/**
+ * Build the minute dropdown options, inserting a non-standard value (e.g. an
+ * existing schedule whose minute is not a multiple of 5) so the schedule
+ * remains editable.
+ */
+export function getMinuteOptions(currentMinute?: number): readonly number[] {
+  if (currentMinute === undefined || MINUTE_OPTIONS.includes(currentMinute)) {
+    return MINUTE_OPTIONS;
+  }
+  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => a - b);
+}
 
 export const WEEKDAY_LABELS = [
   "Mon",
@@ -1102,7 +1114,7 @@ export function ZeroScheduleCard({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {MINUTE_OPTIONS.map((m) => (
+                      {getMinuteOptions(scheduleMinute).map((m) => (
                         <SelectItem key={m} value={String(m)}>
                           {m.toString().padStart(2, "0")}
                         </SelectItem>
