@@ -7,7 +7,7 @@ import {
   TableCell,
 } from "@vm0/ui";
 import type { RunningTask } from "../../signals/queue-page/queue-signals.ts";
-import { Link } from "../router/link.tsx";
+import { SimpleLink } from "../router/link.tsx";
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -66,13 +66,12 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
                 </TableCell>
                 <TableCell className="px-3 py-2 text-sm">
                   {task.isOwner && task.runId ? (
-                    <Link
-                      pathname="/logs/:id"
-                      options={{ pathParams: { id: task.runId } }}
+                    <SimpleLink
+                      href={`/activity/${task.runId}`}
                       className="text-primary hover:underline"
                     >
                       View
-                    </Link>
+                    </SimpleLink>
                   ) : (
                     <span className="text-muted-foreground">--</span>
                   )}

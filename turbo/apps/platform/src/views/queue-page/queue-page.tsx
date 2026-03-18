@@ -1,5 +1,4 @@
 import { useGet } from "ccstate-react";
-import { AppShell } from "../layout/app-shell.tsx";
 import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
 import { QueueOverview } from "./queue-overview.tsx";
 import { QueueRunningTable } from "./queue-running-table.tsx";
@@ -24,24 +23,27 @@ export function QueuePage() {
   const data = useGet(queueData$);
 
   return (
-    <AppShell
-      breadcrumb={["Queue"]}
-      title="Run Queue"
-      subtitle="View organization-wide queue status and running tasks."
-      contentClassName="mx-auto w-full max-w-[1200px]"
-    >
-      {!data ? (
-        <QueueSkeleton />
-      ) : (
-        <div className="flex flex-col gap-6 px-4 sm:px-6 mb-8">
-          <QueueOverview data={data} />
-          <QueueRunningTable tasks={data.runningTasks} />
-          <QueueWaitingTable
-            queue={data.queue}
-            estimatedTimePerRun={data.estimatedTimePerRun}
-          />
+    <div className="flex flex-col min-h-screen bg-background">
+      <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-foreground">Run Queue</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            View organization-wide queue status and running tasks.
+          </p>
         </div>
-      )}
-    </AppShell>
+        {!data ? (
+          <QueueSkeleton />
+        ) : (
+          <div className="flex flex-col gap-6">
+            <QueueOverview data={data} />
+            <QueueRunningTable tasks={data.runningTasks} />
+            <QueueWaitingTable
+              queue={data.queue}
+              estimatedTimePerRun={data.estimatedTimePerRun}
+            />
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

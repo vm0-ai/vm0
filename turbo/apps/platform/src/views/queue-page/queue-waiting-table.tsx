@@ -7,7 +7,7 @@ import {
   TableCell,
 } from "@vm0/ui";
 import type { QueueEntry } from "../../signals/queue-page/queue-signals.ts";
-import { Link } from "../router/link.tsx";
+import { SimpleLink } from "../router/link.tsx";
 
 function formatDuration(ms: number): string {
   if (ms < 60_000) {
@@ -107,7 +107,7 @@ export function QueueWaitingTable({
                     : "--"}
                 </TableCell>
                 <TableCell className="px-3 py-2 text-sm">
-                  {entry.isOwner ? (
+                  {(entry.prompt ?? entry.sessionLink ?? entry.runId) ? (
                     <OwnerDetails entry={entry} />
                   ) : (
                     <span className="text-muted-foreground">--</span>
@@ -137,26 +137,20 @@ function OwnerDetails({ entry }: { entry: QueueEntry }) {
       )}
       <div className="flex gap-2">
         {entry.runId && (
-          <Link
-            pathname="/logs/:id"
-            options={{ pathParams: { id: entry.runId } }}
+          <SimpleLink
+            href={`/activity/${entry.runId}`}
             className="text-xs text-primary hover:underline"
           >
             Run log
-          </Link>
+          </SimpleLink>
         )}
         {entry.sessionLink && (
-          <Link
-            pathname="/zero/chat/:sessionId"
-            options={{
-              pathParams: {
-                sessionId: entry.sessionLink.replace("/zero/chat/", ""),
-              },
-            }}
+          <SimpleLink
+            href={entry.sessionLink}
             className="text-xs text-primary hover:underline"
           >
             Session
-          </Link>
+          </SimpleLink>
         )}
       </div>
     </div>
