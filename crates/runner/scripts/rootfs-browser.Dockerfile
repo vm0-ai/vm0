@@ -98,7 +98,8 @@ ENV LANG=C.UTF-8
 # Install agent-browser CLI and Chrome/Chromium.
 # Chrome for Testing (used by `agent-browser install`) only supports x86_64.
 # On ARM64, fall back to system Chromium from apt.
-RUN npm install -g agent-browser \
+ARG AGENT_BROWSER_VERSION=0.21.0
+RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
     && ARCH=$(dpkg --print-architecture) \
     && if [ "$ARCH" = "arm64" ]; then \
          apt-get update \
