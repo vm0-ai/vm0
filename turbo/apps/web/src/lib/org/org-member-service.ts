@@ -4,6 +4,7 @@ import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
 import type { OrgRole } from "@vm0/core";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
+import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 
@@ -139,32 +140,39 @@ export async function inviteMember(
 async function cleanupOrgMember(userId: string, orgId: string): Promise<void> {
   const db = globalThis.services.db;
 
-  // Find the user's Slack connections for this org
-  const connections = await db
-    .select({ id: slackOrgConnections.id })
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.vm0UserId, userId),
-        eq(slackOrgConnections.orgId, orgId),
-      ),
-    );
+  // Resolve the Slack workspace bound to this org (1:1 relationship)
+  const [installation] = await db
+    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, orgId))
+    .limit(1);
 
-  if (connections.length > 0) {
-    const connectionIds = connections.map((c) => c.id);
-    // Delete pending questions first (no cascade from connection)
-    await db
-      .delete(slackOrgPendingQuestions)
-      .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
-    // Delete connections (cascades to slack_org_thread_sessions)
-    await db
-      .delete(slackOrgConnections)
+  if (installation) {
+    // Find the user's connection in this workspace
+    const connections = await db
+      .select({ id: slackOrgConnections.id })
+      .from(slackOrgConnections)
       .where(
         and(
           eq(slackOrgConnections.vm0UserId, userId),
-          eq(slackOrgConnections.orgId, orgId),
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
         ),
       );
+
+    if (connections.length > 0) {
+      const connectionIds = connections.map((c) => c.id);
+      // Delete pending questions first (no cascade from connection)
+      await db
+        .delete(slackOrgPendingQuestions)
+        .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
+      // Delete connections (cascades to slack_org_thread_sessions)
+      await db
+        .delete(slackOrgConnections)
+        .where(inArray(slackOrgConnections.id, connectionIds));
+    }
   }
 
   // Invalidate membership cache
