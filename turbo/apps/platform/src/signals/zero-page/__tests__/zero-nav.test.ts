@@ -8,7 +8,6 @@ import {
   zeroChatAgentName$,
   zeroChatAgentId$,
   setZeroChatAgent$,
-  navigateFromZeroSession$,
 } from "../zero-nav.ts";
 
 const context = testContext();
@@ -139,48 +138,6 @@ describe("zero-nav", () => {
       });
       context.store.set(setZeroChatAgent$, null);
       expect(context.store.get(zeroChatAgentId$)).toBeNull();
-    });
-  });
-
-  describe("navigateFromZeroSession$", () => {
-    it("should navigate to / when no agent was selected", () => {
-      const pushStateMock = createPushStateMock(context.signal);
-      mockLocation({ pathname: "/chat/session-1", search: "" }, context.signal);
-
-      context.store.set(setZeroChatAgent$, null);
-      context.store.set(navigateFromZeroSession$);
-
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/");
-    });
-
-    it("should navigate to /talk/:name when agent was selected", () => {
-      const pushStateMock = createPushStateMock(context.signal);
-      mockLocation({ pathname: "/chat/session-1", search: "" }, context.signal);
-
-      context.store.set(setZeroChatAgent$, {
-        id: "agent-123",
-        name: "my-agent",
-      });
-      context.store.set(navigateFromZeroSession$);
-
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/talk/my-agent");
-    });
-
-    it("should encode agent names with special characters", () => {
-      const pushStateMock = createPushStateMock(context.signal);
-      mockLocation({ pathname: "/chat/session-1", search: "" }, context.signal);
-
-      context.store.set(setZeroChatAgent$, {
-        id: "agent-456",
-        name: "agent with spaces",
-      });
-      context.store.set(navigateFromZeroSession$);
-
-      expect(pushStateMock).toHaveBeenCalledWith(
-        {},
-        "",
-        "/talk/agent%20with%20spaces",
-      );
     });
   });
 });

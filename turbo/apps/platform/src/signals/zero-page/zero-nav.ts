@@ -72,13 +72,6 @@ export const zeroChatAgentId$ = computed((get): string | null => {
 });
 
 /**
- * Last chat agent name, preserved across non-chat navigation.
- * Used to maintain recent chat context when visiting schedule/team pages,
- * and to navigate back from sessions to the correct talk route.
- */
-const internalLastChatAgentName$ = state<string | null>(null);
-
-/**
  * Navigate to a zero tab — updates the URL path to `/:tab`.
  * "chat" maps to `/` (the default, no suffix needed).
  */
@@ -103,7 +96,6 @@ export const zeroTalkAgentResolved$ = computed((get) =>
 export const setZeroChatAgent$ = command(
   ({ set }, agent: { id: string; name: string } | null) => {
     set(internalChatAgentId$, agent?.id ?? null);
-    set(internalLastChatAgentName$, agent?.name ?? null);
     set(internalTalkAgentResolved$, true);
   },
 );
@@ -126,14 +118,8 @@ export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
 });
 
 /**
- * Navigate back from a chat session to the chat home.
- * Returns to `/talk/:name` if a team agent was selected, otherwise `/`.
+ * Navigate back from a chat session to the previous route in browser history.
  */
-export const navigateFromZeroSession$ = command(({ get, set }) => {
-  const agentName = get(internalLastChatAgentName$);
-  if (agentName) {
-    set(updatePathname$, `/talk/${encodeURIComponent(agentName)}`);
-  } else {
-    set(updatePathname$, "/");
-  }
+export const navigateFromZeroSession$ = command(() => {
+  window.history.back();
 });
