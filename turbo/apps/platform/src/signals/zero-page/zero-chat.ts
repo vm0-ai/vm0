@@ -37,6 +37,7 @@ function cacheSummaries(runId: string, summaries: string[]): void {
     localStorage.setItem(SUMMARIES_CACHE_KEY, JSON.stringify(cache));
   } catch (error) {
     throwIfAbort(error);
+    L.warn("Failed to cache summaries:", error);
   }
 }
 
@@ -50,6 +51,7 @@ function getCachedSummaries(runId: string): string[] | undefined {
     return cache[runId];
   } catch (error) {
     throwIfAbort(error);
+    L.warn("Failed to read cached summaries:", error);
     return undefined;
   }
 }
@@ -142,6 +144,7 @@ async function startAgentRun(
   const body: Record<string, string> = {
     agentComposeId: composeId,
     prompt: prompt.trim(),
+    memoryName: "memory",
   };
   if (sessionId) {
     body.sessionId = sessionId;
@@ -345,12 +348,10 @@ function truncate(text: string, max: number): string {
 }
 
 function domainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch (error) {
-    throwIfAbort(error);
+  if (!URL.canParse(url)) {
     return truncate(url, 30);
   }
+  return new URL(url).hostname.replace(/^www\./, "");
 }
 
 const TOOL_LABELS: Readonly<

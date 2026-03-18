@@ -189,6 +189,7 @@ const router = tsr.router(runnersJobClaimContract, {
       body: {
         runId: run.id,
         prompt: run.prompt,
+        appendSystemPrompt: run.appendSystemPrompt,
         agentComposeVersionId: run.agentComposeVersionId,
         vars: (run.vars as Record<string, string>) ?? null,
         checkpointId: run.resumedFromCheckpointId ?? null,

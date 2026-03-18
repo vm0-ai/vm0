@@ -64,6 +64,7 @@ export async function enqueueRun(
         agentComposeVersionId,
         status: "queued",
         prompt,
+        appendSystemPrompt: params.appendSystemPrompt ?? null,
         vars: params.vars ?? null,
         secretNames: params.secrets ? Object.keys(params.secrets) : null,
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,

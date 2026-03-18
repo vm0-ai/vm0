@@ -15,6 +15,7 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import { fetchAgentsList$ } from "./zero-agents.ts";
+import { reloadZeroCompose$ } from "./zero-skills.ts";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 
 const L = logger("ZeroJobDetail");
@@ -459,6 +460,7 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
 
     set(internalAddedSkills$, null);
     await set(fetchZeroJobDetail$);
+    set(reloadZeroCompose$);
     toast.success("Skills saved");
   } catch (error) {
     throwIfAbort(error);
@@ -771,6 +773,42 @@ export const deleteZeroJobSchedule$ = command(
     await set(fetchZeroJobSchedule$);
   },
 );
+
+// ---------------------------------------------------------------------------
+// Delete agent
+// ---------------------------------------------------------------------------
+
+export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
+  const detail = get(zeroJobDetail$);
+  if (!detail) {
+    throw new Error("No agent detail loaded");
+  }
+
+  const fetchFn = get(fetch$);
+  const response = await fetchFn(`/api/agent/composes/${detail.id}`, {
+    method: "DELETE",
+  });
+
+  if (response.status === 409) {
+    throw new Error("Cannot delete agent while it is running");
+  }
+
+  if (!response.ok && response.status !== 204) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const errorData = (await response.json()) as {
+        error?: { message?: string };
+      };
+      throw new Error(
+        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
+      );
+    }
+    throw new Error(`Delete failed: ${response.statusText}`);
+  }
+
+  toast.success("Agent deleted");
+  await set(fetchAgentsList$);
+});
 
 // ---------------------------------------------------------------------------
 // Combined fetch — loads detail, then instructions + schedule in parallel

@@ -53,6 +53,9 @@ const unifiedRunRequestSchema = z.object({
 
   // Required
   prompt: z.string().min(1, "Missing prompt"),
+
+  // Optional system prompt to append to the agent's system prompt
+  appendSystemPrompt: z.string().optional(),
 });
 
 /**
@@ -76,6 +79,7 @@ const getRunResponseSchema = z.object({
   agentComposeVersionId: z.string().nullable(),
   status: runStatusSchema,
   prompt: z.string(),
+  appendSystemPrompt: z.string().nullable(),
   vars: z.record(z.string(), z.string()).optional(),
   sandboxId: z.string().optional(),
   result: z
@@ -144,6 +148,7 @@ const runListItemSchema = z.object({
   agentName: z.string(),
   status: runStatusSchema,
   prompt: z.string(),
+  appendSystemPrompt: z.string().nullable(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),
 });

@@ -28,6 +28,7 @@ export const runnerGroupSchema = z
 export const jobSchema = z.object({
   runId: z.uuid(),
   prompt: z.string(),
+  appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
@@ -138,8 +139,7 @@ export const storedExecutionContextSchema = z.object({
 export const executionContextSchema = z.object({
   runId: z.uuid(),
   prompt: z.string(),
-  // System prompt appended to agent instructions (passed as --append-system-prompt to Claude CLI)
-  appendSystemPrompt: z.string().optional(),
+  appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),

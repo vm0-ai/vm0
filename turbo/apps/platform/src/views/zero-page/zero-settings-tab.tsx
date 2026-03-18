@@ -1,6 +1,21 @@
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
-import { Card, CardContent, Input, cn } from "@vm0/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  Input,
+  cn,
+} from "@vm0/ui";
+import { IconTrash } from "@tabler/icons-react";
 import {
   type Tone,
   TONE_OPTIONS,
@@ -22,6 +37,10 @@ interface ZeroSettingsTabProps {
     [{ displayName: string; sound: string; description: string }]
   >;
   inputId?: string;
+  /** Whether this is the default agent (cannot be deleted). */
+  isDefaultAgent?: boolean;
+  /** Callback to delete the agent. */
+  onDelete?: () => Promise<void>;
 }
 
 export function ZeroSettingsTab({
@@ -31,6 +50,8 @@ export function ZeroSettingsTab({
   saving,
   updateSettings$,
   inputId = "zero-agent-name",
+  isDefaultAgent = false,
+  onDelete,
 }: ZeroSettingsTabProps) {
   const agentName$ = useCCState(resolvedAgentName);
   const agentName = useGet(agentName$);
@@ -110,6 +131,22 @@ export function ZeroSettingsTab({
     });
   });
   const handleSaveSettings = useSet(handleSaveSettings$);
+
+  const deleting$ = useCCState(false);
+  const deleting = useGet(deleting$);
+  const setDeleting = useSet(deleting$);
+
+  const handleDelete = async () => {
+    if (!onDelete) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <>
@@ -204,6 +241,59 @@ export function ZeroSettingsTab({
             </div>
           </CardContent>
         </Card>
+
+        {!isDefaultAgent && onDelete && (
+          <Card className="zero-card-white mt-6 border-destructive/30">
+            <CardContent className="py-5 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  Delete agent
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Permanently remove this agent and all its data. This action
+                  cannot be undone.
+                </p>
+              </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                  >
+                    <IconTrash size={14} stroke={1.5} />
+                    Delete
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
+                    <DialogDescription>
+                      This will permanently delete the agent, its instructions,
+                      schedules, and all associated data. This action cannot be
+                      undone.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="outline" size="sm">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleting}
+                      onClick={() => detach(handleDelete(), Reason.DomCallback)}
+                    >
+                      {deleting ? "Deleting…" : "Delete agent"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {isSettingsDirty && (

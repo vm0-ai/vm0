@@ -286,6 +286,7 @@ export interface CreateRunParams {
   userId: string;
   agentComposeVersionId: string;
   prompt: string;
+  appendSystemPrompt?: string;
 
   // Optional — caller-resolved compose ID
   // When provided, createRun() uses this to load the compose instead of
@@ -541,7 +542,7 @@ async function buildAndDispatchRun(opts: {
     authorizeTime,
     transactionTime,
   } = opts;
-  const { userId, agentComposeVersionId, prompt } = params;
+  const { userId, agentComposeVersionId, prompt, appendSystemPrompt } = params;
 
   try {
     // Extract capabilities from compose content for sandbox token
@@ -576,6 +577,7 @@ async function buildAndDispatchRun(opts: {
       volumeVersions: params.volumeVersions,
       agentCompose: composeContent,
       prompt,
+      appendSystemPrompt,
       runId,
       sandboxToken,
       userId,
@@ -748,6 +750,7 @@ export async function createRun(
           agentComposeVersionId,
           status: "pending",
           prompt,
+          appendSystemPrompt: params.appendSystemPrompt ?? null,
           vars: params.vars ?? null,
           secretNames: params.secrets ? Object.keys(params.secrets) : null,
           resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,

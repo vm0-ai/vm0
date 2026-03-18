@@ -18,6 +18,7 @@ export interface PreparedContext {
 
   // What to run
   prompt: string;
+  appendSystemPrompt: string | null;
   agentComposeVersionId: string;
   agentCompose: unknown;
   cliAgentType: string;

@@ -4,6 +4,7 @@ import { PUT } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  deleteTestCompose,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -136,6 +137,26 @@ describe("PUT /api/orgs/default-agent", () => {
 
     const data = await response2.json();
     expect(data.error.code).toBe("CONFLICT");
+  });
+
+  it("should allow re-setting default agent when previous compose was deleted", async () => {
+    await context.setupUser();
+    const compose1 = await createTestCompose("agent-1");
+
+    // Set first default agent
+    const response1 = await putDefaultAgent(undefined, compose1.composeId);
+    expect(response1.status).toBe(200);
+
+    // Delete the compose from DB (simulating user deleting the agent)
+    await deleteTestCompose(compose1.composeId);
+
+    // Setting a new default should succeed since the old one no longer exists
+    const compose2 = await createTestCompose("agent-2");
+    const response2 = await putDefaultAgent(undefined, compose2.composeId);
+    expect(response2.status).toBe(200);
+
+    const data = await response2.json();
+    expect(data.agentComposeId).toBe(compose2.composeId);
   });
 
   it("should allow setting default agent when none is configured", async () => {

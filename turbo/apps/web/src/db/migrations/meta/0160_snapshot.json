@@ -1,6 +1,6 @@
 {
-  "id": "f0386fc9-baf2-46fc-b5e7-b8cc852dfdfd",
-  "prevId": "0acf7e69-a81d-471f-a4bb-dcc9874e0ec1",
+  "id": "31f70706-1b03-4bfb-bde9-03ddf0ce98e9",
+  "prevId": "f0386fc9-baf2-46fc-b5e7-b8cc852dfdfd",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -497,6 +497,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "append_system_prompt": {
+          "name": "append_system_prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "resumed_from_checkpoint_id": {
           "name": "resumed_from_checkpoint_id",
           "type": "uuid",
@@ -526,12 +532,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "append_system_prompt": {
-          "name": "append_system_prompt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "vars": {
           "name": "vars",
@@ -5342,6 +5342,107 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.zero_agents": {
+      "name": "zero_agents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(256)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sound": {
+          "name": "sound",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_zero_agents_org_name": {
+          "name": "idx_zero_agents_org_name",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_zero_agents_org": {
+          "name": "idx_zero_agents_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
