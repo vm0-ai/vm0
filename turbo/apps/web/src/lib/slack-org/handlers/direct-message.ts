@@ -197,7 +197,7 @@ export async function handleOrgDirectMessage(
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `:warning: *Run queued*\nConcurrency limit reached. Will start automatically when a slot is available.`,
+            text: `:warning: *Run queued*\n\nConcurrency limit reached. Will start automatically when a slot is available.`,
           },
         },
         {
