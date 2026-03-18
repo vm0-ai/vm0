@@ -47,17 +47,28 @@ export async function GET(request: Request) {
   const orgSlug = new URL(request.url).searchParams.get("org");
   const { org, member } = await resolveOrg(userId, orgSlug);
 
-  // Find user's connection in any workspace bound to this org
-  const [connection] = await globalThis.services.db
+  // Find installation for this org, then find user's connection via workspace
+  const [orgInstallation] = await globalThis.services.db
     .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.vm0UserId, userId),
-        eq(slackOrgConnections.orgId, org.orgId),
-      ),
-    )
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, org.orgId))
     .limit(1);
+
+  const [connection] = orgInstallation
+    ? await globalThis.services.db
+        .select()
+        .from(slackOrgConnections)
+        .where(
+          and(
+            eq(slackOrgConnections.vm0UserId, userId),
+            eq(
+              slackOrgConnections.slackWorkspaceId,
+              orgInstallation.slackWorkspaceId,
+            ),
+          ),
+        )
+        .limit(1)
+    : [];
 
   if (!connection) {
     return NextResponse.json({
@@ -65,15 +76,6 @@ export async function GET(request: Request) {
       isAdmin: member.role === "admin",
     });
   }
-
-  // Get workspace info
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackOrgInstallations)
-    .where(
-      eq(slackOrgInstallations.slackWorkspaceId, connection.slackWorkspaceId),
-    )
-    .limit(1);
 
   // Get default agent name
   let defaultAgentName: string | null = null;
@@ -85,7 +87,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     isConnected: true,
-    workspaceName: installation?.slackWorkspaceName ?? null,
+    workspaceName: orgInstallation?.slackWorkspaceName ?? null,
     isAdmin: member.role === "admin",
     defaultAgentName,
   });

@@ -3223,7 +3223,6 @@ export async function createTestSlackOrgConnection(opts: {
   slackUserId?: string;
   slackWorkspaceId: string;
   vm0UserId: string;
-  orgId: string;
 }): Promise<{ slackUserId: string; connectionId: string }> {
   initServices();
 
@@ -3235,7 +3234,6 @@ export async function createTestSlackOrgConnection(opts: {
       slackUserId,
       slackWorkspaceId: opts.slackWorkspaceId,
       vm0UserId: opts.vm0UserId,
-      orgId: opts.orgId,
     })
     .returning({ id: slackOrgConnections.id });
 

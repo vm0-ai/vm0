@@ -552,7 +552,6 @@ async function finishSubmit(
     threadTs: claimed.slackThreadTs,
     messageTs: claimed.slackThreadTs,
     connectionId: claimed.connectionId,
-    orgId: claimed.orgId,
     agentName: claimed.agentName,
     composeId: claimed.composeId,
     existingSessionId: claimed.sessionId ?? undefined,
@@ -565,7 +564,6 @@ async function finishSubmit(
     prompt: answerPrompt,
     threadContext: "",
     userId: connection.vm0UserId,
-    orgId: claimed.orgId,
     callbackContext,
   });
 

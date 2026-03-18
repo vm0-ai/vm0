@@ -210,7 +210,6 @@ export async function GET(request: Request) {
         slackUserId: oauthResult.authedUserId,
         slackWorkspaceId: oauthResult.teamId,
         vm0UserId,
-        orgId,
       })
       .onConflictDoNothing();
 

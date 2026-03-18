@@ -40,7 +40,6 @@ interface CallbackPayload {
   threadTs: string;
   messageTs: string;
   connectionId: string;
-  orgId: string;
   agentName: string;
   composeId: string;
   existingSessionId?: string;
@@ -55,7 +54,6 @@ function parsePayload(payload: unknown): CallbackPayload | null {
     typeof p.threadTs !== "string" ||
     typeof p.messageTs !== "string" ||
     typeof p.connectionId !== "string" ||
-    typeof p.orgId !== "string" ||
     typeof p.agentName !== "string" ||
     typeof p.composeId !== "string"
   ) {
@@ -119,7 +117,6 @@ async function postAskUserInteractiveCard(
       slackChannelId: payload.channelId,
       slackThreadTs: payload.threadTs,
       connectionId: payload.connectionId,
-      orgId: payload.orgId,
       composeId: payload.composeId,
       agentName: payload.agentName,
       sessionId: resolvedSessionId,

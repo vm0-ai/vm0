@@ -161,14 +161,13 @@ export async function handleOrgMention(
     context.messageTs,
   );
 
-  // 8. Dispatch agent run with explicit orgId
+  // 8. Dispatch agent run
   const callbackContext: SlackOrgCallbackContext = {
     workspaceId: context.workspaceId,
     channelId: context.channelId,
     threadTs,
     messageTs: context.messageTs,
     connectionId: connection.id,
-    orgId,
     agentName,
     composeId,
     existingSessionId,
@@ -181,7 +180,6 @@ export async function handleOrgMention(
     prompt: messageContent,
     threadContext: executionContext,
     userId: connection.vm0UserId,
-    orgId,
     callbackContext,
   });
 

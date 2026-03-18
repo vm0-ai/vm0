@@ -60,25 +60,32 @@ export async function GET(request: Request) {
 
   const db = globalThis.services.db;
 
-  // Find user's connection in any workspace bound to this org
-  const [connection] = await db
+  // Find the workspace installation for this org
+  const [orgInstallation] = await db
     .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.vm0UserId, userId),
-        eq(slackOrgConnections.orgId, org.orgId),
-      ),
-    )
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, org.orgId))
     .limit(1);
 
+  // Find user's connection via workspace
+  const [connection] = orgInstallation
+    ? await db
+        .select()
+        .from(slackOrgConnections)
+        .where(
+          and(
+            eq(slackOrgConnections.vm0UserId, userId),
+            eq(
+              slackOrgConnections.slackWorkspaceId,
+              orgInstallation.slackWorkspaceId,
+            ),
+          ),
+        )
+        .limit(1)
+    : [];
+
   if (!connection) {
-    // Check if a workspace is installed for this org
-    const [installation] = await db
-      .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.orgId, org.orgId))
-      .limit(1);
+    const installation = orgInstallation;
 
     const isAdmin = member.role === "admin";
     const { SLACK_CLIENT_ID } = env();
@@ -114,94 +121,7 @@ export async function GET(request: Request) {
     });
   }
 
-  // Get workspace info
-  const [installation] = await db
-    .select()
-    .from(slackOrgInstallations)
-    .where(
-      eq(slackOrgInstallations.slackWorkspaceId, connection.slackWorkspaceId),
-    )
-    .limit(1);
-
-  // Get default agent info
-  const composeId = await resolveDefaultComposeId(org.orgId);
-  let defaultAgentName: string | null = null;
-  let agentOrgSlug: string | null = null;
-
-  // Extract required secrets/vars from agent compose
-  let requiredSecrets: string[] = [];
-  let requiredVars: string[] = [];
-
-  if (composeId) {
-    const agent = await getWorkspaceAgent(composeId);
-    defaultAgentName = agent?.displayName ?? agent?.name ?? null;
-
-    // Get agent compose details for org slug and environment info
-    const [compose] = await db
-      .select({
-        orgId: agentComposes.orgId,
-        headVersionId: agentComposes.headVersionId,
-      })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, composeId))
-      .limit(1);
-
-    if (compose) {
-      agentOrgSlug = (await getOrgData(compose.orgId)).slug;
-
-      if (compose.headVersionId) {
-        const [version] = await db
-          .select({ content: agentComposeVersions.content })
-          .from(agentComposeVersions)
-          .where(eq(agentComposeVersions.id, compose.headVersionId))
-          .limit(1);
-
-        if (version) {
-          const content = version.content as AgentComposeYaml;
-          const grouped = extractAndGroupVariables(content);
-          requiredSecrets = grouped.secrets.map((s) => s.name);
-          requiredVars = grouped.vars.map((v) => v.name);
-        }
-      }
-    }
-  }
-
-  // Get user's existing secrets, vars, connectors
-  const [userSecrets, userVars, userConnectors] = await Promise.all([
-    listSecrets(org.orgId, userId),
-    listVariables(org.orgId, userId),
-    listConnectors(org.orgId, userId),
-  ]);
-
-  const connectorProvided = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
-  );
-  const existingSecretNames = new Set([
-    ...userSecrets.map((s) => s.name),
-    ...connectorProvided,
-  ]);
-  const existingVarNames = new Set(userVars.map((v) => v.name));
-
-  const missingSecrets = requiredSecrets.filter(
-    (name) => !existingSecretNames.has(name),
-  );
-  const missingVars = requiredVars.filter(
-    (name) => !existingVarNames.has(name),
-  );
-
-  return NextResponse.json({
-    isConnected: true,
-    workspaceName: installation?.slackWorkspaceName ?? null,
-    isAdmin: member.role === "admin",
-    defaultAgentName,
-    agentOrgSlug,
-    environment: {
-      requiredSecrets,
-      requiredVars,
-      missingSecrets,
-      missingVars,
-    },
-  });
+  return getConnectedStatus(org.orgId, userId, member, orgInstallation);
 }
 
 /**
@@ -326,6 +246,91 @@ async function handleUninstall(
   return NextResponse.json({ ok: true });
 }
 
+async function getConnectedStatus(
+  orgId: string,
+  userId: string,
+  member: { role: string },
+  installation: typeof slackOrgInstallations.$inferSelect | undefined,
+): Promise<NextResponse> {
+  const db = globalThis.services.db;
+
+  const composeId = await resolveDefaultComposeId(orgId);
+  let defaultAgentName: string | null = null;
+  let agentOrgSlug: string | null = null;
+
+  let requiredSecrets: string[] = [];
+  let requiredVars: string[] = [];
+
+  if (composeId) {
+    const agent = await getWorkspaceAgent(composeId);
+    defaultAgentName = agent?.displayName ?? agent?.name ?? null;
+
+    const [compose] = await db
+      .select({
+        orgId: agentComposes.orgId,
+        headVersionId: agentComposes.headVersionId,
+      })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, composeId))
+      .limit(1);
+
+    if (compose) {
+      agentOrgSlug = (await getOrgData(compose.orgId)).slug;
+
+      if (compose.headVersionId) {
+        const [version] = await db
+          .select({ content: agentComposeVersions.content })
+          .from(agentComposeVersions)
+          .where(eq(agentComposeVersions.id, compose.headVersionId))
+          .limit(1);
+
+        if (version) {
+          const content = version.content as AgentComposeYaml;
+          const grouped = extractAndGroupVariables(content);
+          requiredSecrets = grouped.secrets.map((s) => s.name);
+          requiredVars = grouped.vars.map((v) => v.name);
+        }
+      }
+    }
+  }
+
+  const [userSecrets, userVars, userConnectors] = await Promise.all([
+    listSecrets(orgId, userId),
+    listVariables(orgId, userId),
+    listConnectors(orgId, userId),
+  ]);
+
+  const connectorProvided = getConnectorProvidedSecretNames(
+    userConnectors.map((c) => c.type),
+  );
+  const existingSecretNames = new Set([
+    ...userSecrets.map((s) => s.name),
+    ...connectorProvided,
+  ]);
+  const existingVarNames = new Set(userVars.map((v) => v.name));
+
+  const missingSecrets = requiredSecrets.filter(
+    (name) => !existingSecretNames.has(name),
+  );
+  const missingVars = requiredVars.filter(
+    (name) => !existingVarNames.has(name),
+  );
+
+  return NextResponse.json({
+    isConnected: true,
+    workspaceName: installation?.slackWorkspaceName ?? null,
+    isAdmin: member.role === "admin",
+    defaultAgentName,
+    agentOrgSlug,
+    environment: {
+      requiredSecrets,
+      requiredVars,
+      missingSecrets,
+      missingVars,
+    },
+  });
+}
+
 async function handleDisconnect(
   authCtx: { userId: string },
   orgSlug: string | null,
@@ -335,17 +340,28 @@ async function handleDisconnect(
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 
-  // Find user's connection
-  const [connection] = await db
+  // Find installation for this org, then find user's connection via workspace
+  const [installation] = await db
     .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.vm0UserId, userId),
-        eq(slackOrgConnections.orgId, org.orgId),
-      ),
-    )
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, org.orgId))
     .limit(1);
+
+  const [connection] = installation
+    ? await db
+        .select()
+        .from(slackOrgConnections)
+        .where(
+          and(
+            eq(slackOrgConnections.vm0UserId, userId),
+            eq(
+              slackOrgConnections.slackWorkspaceId,
+              installation.slackWorkspaceId,
+            ),
+          ),
+        )
+        .limit(1)
+    : [];
 
   if (!connection) {
     return NextResponse.json(
@@ -359,15 +375,7 @@ async function handleDisconnect(
     .delete(slackOrgConnections)
     .where(eq(slackOrgConnections.id, connection.id));
 
-  // Refresh App Home (best-effort)
-  const [installation] = await db
-    .select()
-    .from(slackOrgInstallations)
-    .where(
-      eq(slackOrgInstallations.slackWorkspaceId, connection.slackWorkspaceId),
-    )
-    .limit(1);
-
+  // Refresh App Home (best-effort) — installation already fetched above
   if (installation) {
     const botToken = decryptSecretValue(
       installation.encryptedBotToken,

@@ -13,7 +13,8 @@ import { logger } from "../../logger";
 const log = logger("slack-org:run-agent");
 
 /**
- * Org-aware callback context for Slack
+ * Org-aware callback context for Slack.
+ * orgId is derived from composeId -> agentComposes.orgId at dispatch time.
  */
 export interface SlackOrgCallbackContext {
   workspaceId: string;
@@ -21,7 +22,6 @@ export interface SlackOrgCallbackContext {
   threadTs: string;
   messageTs: string;
   connectionId: string;
-  orgId: string;
   agentName: string;
   composeId: string;
   existingSessionId?: string;
@@ -34,7 +34,6 @@ interface RunAgentParams {
   prompt: string;
   threadContext: string;
   userId: string;
-  orgId: string;
   callbackContext: SlackOrgCallbackContext;
 }
 
@@ -60,15 +59,15 @@ export async function runAgentForSlackOrg(
     prompt,
     threadContext,
     userId,
-    orgId,
     callbackContext,
   } = params;
 
   try {
-    // Get compose and latest version
+    // Get compose and latest version — derive orgId from compose
     const [compose] = await globalThis.services.db
       .select({
         id: agentComposes.id,
+        orgId: agentComposes.orgId,
         headVersionId: agentComposes.headVersionId,
       })
       .from(agentComposes)
@@ -113,11 +112,12 @@ export async function runAgentForSlackOrg(
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack/org`;
     const callbackSecret = generateCallbackSecret();
 
-    // Resolve org context for explicit passing
+    // Resolve org context from compose
+    const orgId = compose.orgId;
     const orgData = await getOrgData(orgId);
     const orgTier = orgTierSchema.parse(orgData.tier);
 
-    // Create run with EXPLICIT org context
+    // Create run with org context derived from compose
     const result = await createRun({
       userId,
       agentComposeVersionId: versionId,

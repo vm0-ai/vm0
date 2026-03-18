@@ -114,7 +114,7 @@ describe("/api/slack/org/oauth/callback", () => {
     );
     expect(connection).toBeDefined();
     expect(connection!.vm0UserId).toBe(adminUserId);
-    expect(connection!.orgId).toBe(orgId);
+    expect(connection!.slackWorkspaceId).toBe(workspaceId);
   });
 
   it("should reject org member who is not an admin", async () => {

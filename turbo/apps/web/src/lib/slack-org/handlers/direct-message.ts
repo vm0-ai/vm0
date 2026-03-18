@@ -170,7 +170,6 @@ export async function handleOrgDirectMessage(
     threadTs,
     messageTs: context.messageTs,
     connectionId: connection.id,
-    orgId,
     agentName,
     composeId,
     existingSessionId,
@@ -183,7 +182,6 @@ export async function handleOrgDirectMessage(
     prompt: messageContent,
     threadContext: executionContext,
     userId: connection.vm0UserId,
-    orgId,
     callbackContext,
   });
 
