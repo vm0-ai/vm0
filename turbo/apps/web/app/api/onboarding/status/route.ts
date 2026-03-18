@@ -5,12 +5,12 @@ import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isBadRequest, isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
+import { ORG_SENTINEL_USER_ID } from "../../../../src/lib/org/org-sentinel";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { eq, and, or } from "drizzle-orm";
-import { ORG_SENTINEL_USER_ID } from "../../../../src/lib/org/org-sentinel";
+import { eq, and } from "drizzle-orm";
 import { agentComposeApiContentSchema } from "@vm0/core";
 import { clerkClient } from "@clerk/nextjs/server";
 import { orgMembersCache } from "../../../../src/db/schema/org-members-cache";
@@ -85,17 +85,14 @@ const router = tsr.router(onboardingStatusContract, {
       resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
 
-      // Check model provider for this user or org-level (matches runtime fallback in build-context.ts)
+      // Check if the org has an org-level model provider configured
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
         .where(
           and(
             eq(modelProviders.orgId, resolvedOrg.orgId),
-            or(
-              eq(modelProviders.userId, authCtx.userId),
-              eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-            ),
+            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
           ),
         )
         .limit(1);
@@ -149,14 +146,14 @@ const router = tsr.router(onboardingStatusContract, {
       // Org not found or no explicit org context — all flags stay false
     }
 
-    // Admins need onboarding when org setup is incomplete.
+    // Admins need onboarding when no default agent is configured.
     // Members need onboarding when they haven't completed the member welcome flow
     // (tracked via Clerk membership metadata `onboarding_done`).
     let needsOnboarding: boolean;
     if (!hasOrg) {
       needsOnboarding = true;
     } else if (isAdmin) {
-      needsOnboarding = !hasModelProvider || !hasDefaultAgent;
+      needsOnboarding = !hasDefaultAgent;
     } else {
       // resolvedOrgId is set whenever hasOrg is true (both come from the same try block)
       if (!resolvedOrgId) {

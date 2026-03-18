@@ -37,6 +37,26 @@ const router = tsr.router(orgDefaultAgentContract, {
 
     const { agentComposeId } = body;
 
+    // Prevent overwriting an existing default agent
+    const client = await clerkClient();
+    const clerkOrg = await client.organizations.getOrganization({
+      organizationId: org.orgId,
+    });
+    const existingComposeId = (
+      clerkOrg.publicMetadata as Record<string, unknown>
+    )?.default_agent_compose_id;
+    if (existingComposeId) {
+      return {
+        status: 409 as const,
+        body: {
+          error: {
+            message: "A default agent is already configured for this org",
+            code: "CONFLICT",
+          },
+        },
+      };
+    }
+
     if (agentComposeId !== null) {
       // Verify agent exists and belongs to this org
       const [compose] = await globalThis.services.db
@@ -63,7 +83,6 @@ const router = tsr.router(orgDefaultAgentContract, {
       }
     }
 
-    const client = await clerkClient();
     await client.organizations.updateOrganizationMetadata(org.orgId, {
       publicMetadata: { default_agent_compose_id: agentComposeId },
     });
