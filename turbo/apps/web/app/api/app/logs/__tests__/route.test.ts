@@ -4,6 +4,7 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestZeroAgent,
   createTestRun,
   completeTestRun,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -331,8 +332,10 @@ describe("GET /api/app/logs", () => {
 
   it("should return displayName from agent metadata", async () => {
     const agentName = `display-name-test-${randomUUID().slice(0, 8)}`;
-    const { composeId } = await createTestCompose(agentName, {
-      metadata: { displayName: "My Display Name" },
+    const { composeId } = await createTestCompose(agentName);
+    // Seed zero_agents with displayName (metadata now lives in this table)
+    await createTestZeroAgent(user.orgId, agentName, {
+      displayName: "My Display Name",
     });
     const { runId } = await createTestRun(composeId, "Test prompt");
     await completeTestRun(user.userId, runId);

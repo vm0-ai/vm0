@@ -15,6 +15,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
@@ -36,20 +37,8 @@ interface ComposeContent {
     string,
     {
       framework?: string;
-      metadata?: { displayName?: string };
     }
   >;
-}
-
-/**
- * Extract display name from compose content agents metadata.
- */
-function extractDisplayName(content: ComposeContent | null): string | null {
-  if (!content?.agents) return null;
-  const firstAgentKey = Object.keys(content.agents)[0];
-  if (!firstAgentKey) return null;
-  const dn = content.agents[firstAgentKey]?.metadata?.displayName;
-  return typeof dn === "string" ? dn : null;
 }
 
 /**
@@ -145,6 +134,7 @@ const router = tsr.router(logsByIdContract, {
         run: agentRuns,
         compose: agentComposes,
         composeVersion: agentComposeVersions,
+        agentDisplayName: zeroAgents.displayName,
       })
       .from(agentRuns)
       .leftJoin(
@@ -154,6 +144,13 @@ const router = tsr.router(logsByIdContract, {
       .leftJoin(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .leftJoin(
+        zeroAgents,
+        and(
+          eq(agentComposes.orgId, zeroAgents.orgId),
+          eq(agentComposes.name, zeroAgents.name),
+        ),
       )
       .where(
         and(
@@ -168,7 +165,7 @@ const router = tsr.router(logsByIdContract, {
       return notFoundResponse();
     }
 
-    const { run, compose, composeVersion } = result;
+    const { run, compose, composeVersion, agentDisplayName } = result;
 
     // Extract data from result
     const runResult = run.result as RunResult | null;
@@ -180,7 +177,7 @@ const router = tsr.router(logsByIdContract, {
         id: run.id,
         sessionId: runResult?.agentSessionId ?? null,
         agentName: compose?.name ?? "unknown",
-        displayName: extractDisplayName(composeContent),
+        displayName: agentDisplayName ?? null,
         framework: extractFramework(composeContent),
         modelProvider: run.modelProvider ?? null,
         status: run.status as

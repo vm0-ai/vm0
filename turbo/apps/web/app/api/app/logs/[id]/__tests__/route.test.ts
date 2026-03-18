@@ -3,6 +3,7 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestZeroAgent,
   createTestRun,
   completeTestRun,
   failTestRun,
@@ -133,8 +134,10 @@ describe("GET /api/app/logs/[id]", () => {
 
   it("should return displayName from agent metadata", async () => {
     const agentName = `display-name-id-${randomUUID().slice(0, 8)}`;
-    const { composeId } = await createTestCompose(agentName, {
-      metadata: { displayName: "Agent Display Name" },
+    const { composeId } = await createTestCompose(agentName);
+    // Seed zero_agents with displayName (metadata now lives in this table)
+    await createTestZeroAgent(user.orgId, agentName, {
+      displayName: "Agent Display Name",
     });
     const { runId } = await createTestRun(composeId, "Test prompt");
     await completeTestRun(user.userId, runId);

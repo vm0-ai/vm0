@@ -42,6 +42,7 @@ import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
+import { zeroAgents } from "../db/schema/zero-agent";
 import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
 import { creditPricing } from "../db/schema/credit-pricing";
@@ -375,6 +376,32 @@ export async function createTestCompose(
     );
   }
   return response.json();
+}
+
+/**
+ * Create a test zero_agents row for agent metadata.
+ *
+ * @param orgId - The org ID
+ * @param name - The agent name (must match compose name)
+ * @param metadata - Agent metadata fields
+ */
+export async function createTestZeroAgent(
+  orgId: string,
+  name: string,
+  metadata: {
+    displayName?: string;
+    description?: string;
+    sound?: string;
+  },
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(zeroAgents).values({
+    orgId,
+    name,
+    displayName: metadata.displayName ?? null,
+    description: metadata.description ?? null,
+    sound: metadata.sound ?? null,
+  });
 }
 
 /**

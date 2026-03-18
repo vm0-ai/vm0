@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { createSlackClient, fetchSlackUserInfo } from "../client";
 import {
   fetchThreadContext,
@@ -8,11 +8,8 @@ import {
   formatCurrentMessageFiles,
   type SlackFile,
 } from "../context";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+import { agentComposes } from "../../../db/schema/agent-compose";
+import { zeroAgents } from "../../../db/schema/zero-agent";
 import { validateAgentSession } from "../../run";
 import { logger } from "../../logger";
 
@@ -78,7 +75,7 @@ export async function fetchConversationContexts(
 
 /**
  * Resolve workspace agent from composeId.
- * Returns id, name, and displayName (extracted from compose version metadata).
+ * Returns id, name, and displayName from the zero_agents table.
  */
 export async function getWorkspaceAgent(
   composeId: string,
@@ -90,7 +87,7 @@ export async function getWorkspaceAgent(
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, composeId))
@@ -98,24 +95,22 @@ export async function getWorkspaceAgent(
 
   if (!compose) return undefined;
 
-  let displayName: string | null = null;
-  if (compose.headVersionId) {
-    const [version] = await db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, compose.headVersionId))
-      .limit(1);
+  const [agent] = await db
+    .select({ displayName: zeroAgents.displayName })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, compose.orgId),
+        eq(zeroAgents.name, compose.name),
+      ),
+    )
+    .limit(1);
 
-    if (version) {
-      const content = version.content as AgentComposeYaml;
-      const agentKey = Object.keys(content.agents ?? {})[0];
-      if (agentKey) {
-        displayName = content.agents[agentKey]?.metadata?.displayName ?? null;
-      }
-    }
-  }
-
-  return { id: compose.id, name: compose.name, displayName };
+  return {
+    id: compose.id,
+    name: compose.name,
+    displayName: agent?.displayName ?? null,
+  };
 }
 
 /**

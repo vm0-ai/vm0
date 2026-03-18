@@ -14,6 +14,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
+import { zeroAgents } from "../../db/schema/zero-agent";
 import { skills } from "../../db/schema/skill";
 import { logger } from "../logger";
 
@@ -231,17 +232,13 @@ export async function serverSideCompose(params: {
     },
   } as AgentComposeYaml;
 
-  // 6. Upload instructions if provided (even empty string triggers metadata injection)
+  // 6. Upload instructions if provided
   if (instructions !== undefined) {
-    const metadata = agent.metadata as
-      | { displayName?: string; sound?: string }
-      | undefined;
     await uploadInstructionsServerSide({
       orgId,
       agentName: normalizedName,
       content: instructions,
       framework,
-      metadata,
     });
   }
 
@@ -254,6 +251,31 @@ export async function serverSideCompose(params: {
     resolvedContent,
     versionId,
   });
+
+  // 8. Upsert agent metadata into zero_agents
+  const metadata = agent.metadata as
+    | { displayName?: string; description?: string; sound?: string }
+    | undefined;
+  if (metadata) {
+    await db
+      .insert(zeroAgents)
+      .values({
+        orgId,
+        name: normalizedName,
+        displayName: metadata.displayName ?? null,
+        description: metadata.description ?? null,
+        sound: metadata.sound ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [zeroAgents.orgId, zeroAgents.name],
+        set: {
+          displayName: metadata.displayName ?? null,
+          description: metadata.description ?? null,
+          sound: metadata.sound ?? null,
+          updatedAt: new Date(),
+        },
+      });
+  }
 
   log.info(
     `Server-side compose completed: ${normalizedName} (${versionId.slice(0, 8)})`,

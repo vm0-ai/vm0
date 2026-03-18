@@ -1,66 +1,15 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { composesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
-
-function extractMetadata(content: unknown): {
-  displayName: string | null;
-  description: string | null;
-} {
-  const empty = { displayName: null, description: null };
-  if (
-    content === null ||
-    content === undefined ||
-    typeof content !== "object"
-  ) {
-    return empty;
-  }
-  const record = content as Record<string, unknown>;
-  const agents = record["agents"];
-  if (agents === null || agents === undefined || typeof agents !== "object") {
-    return empty;
-  }
-  const agentKeys = Object.keys(agents);
-  if (agentKeys.length === 0) return empty;
-  const agentsRecord = agents as Record<string, unknown>;
-  const firstAgent = agentsRecord[agentKeys[0]!];
-  if (
-    firstAgent === null ||
-    firstAgent === undefined ||
-    typeof firstAgent !== "object"
-  ) {
-    return empty;
-  }
-  const agentRecord = firstAgent as Record<string, unknown>;
-  const metadata = agentRecord["metadata"];
-  if (
-    metadata === null ||
-    metadata === undefined ||
-    typeof metadata !== "object"
-  ) {
-    return empty;
-  }
-  const metadataRecord = metadata as Record<string, unknown>;
-  const displayName =
-    typeof metadataRecord["displayName"] === "string"
-      ? metadataRecord["displayName"]
-      : null;
-  const description =
-    typeof metadataRecord["description"] === "string"
-      ? metadataRecord["description"]
-      : null;
-  return { displayName, description };
-}
 
 const router = tsr.router(composesListContract, {
   list: async ({ query, headers }) => {
@@ -99,34 +48,35 @@ const router = tsr.router(composesListContract, {
       throw error;
     }
 
-    // Query own composes for this org (join head version for displayName)
+    // Query composes with metadata from zero_agents
     const ownComposes = await globalThis.services.db
       .select({
         id: agentComposes.id,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
         updatedAt: agentComposes.updatedAt,
-        headContent: agentComposeVersions.content,
+        displayName: zeroAgents.displayName,
+        description: zeroAgents.description,
       })
       .from(agentComposes)
       .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
+        zeroAgents,
+        and(
+          eq(agentComposes.orgId, zeroAgents.orgId),
+          eq(agentComposes.name, zeroAgents.name),
+        ),
       )
       .where(eq(agentComposes.orgId, orgId))
       .orderBy(desc(agentComposes.updatedAt));
 
-    const allComposes = ownComposes.map((c) => {
-      const meta = extractMetadata(c.headContent);
-      return {
-        id: c.id,
-        name: c.name,
-        displayName: meta.displayName,
-        description: meta.description,
-        headVersionId: c.headVersionId,
-        updatedAt: c.updatedAt.toISOString(),
-      };
-    });
+    const allComposes = ownComposes.map((c) => ({
+      id: c.id,
+      name: c.name,
+      displayName: c.displayName ?? null,
+      description: c.description ?? null,
+      headVersionId: c.headVersionId,
+      updatedAt: c.updatedAt.toISOString(),
+    }));
 
     return {
       status: 200 as const,

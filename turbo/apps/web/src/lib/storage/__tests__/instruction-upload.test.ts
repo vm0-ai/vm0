@@ -57,17 +57,16 @@ describe("uploadInstructionsServerSide", () => {
     expect(manifestBody.files[0].size).toBeGreaterThan(0);
   });
 
-  it("should inject metadata frontmatter into archive", async () => {
+  it("should store raw content without metadata injection", async () => {
     const result = await uploadInstructionsServerSide({
       orgId,
       agentName: "meta-agent",
       content: "# Instructions",
-      metadata: { displayName: "Test Agent" },
     });
 
     expect(result.storageName).toBe("agent-instructions@meta-agent");
 
-    // Extract the archive content and verify metadata
+    // Extract the archive content and verify no metadata was injected
     const archiveCall = context.mocks.s3.putS3Object.mock.calls.find(
       (c) => typeof c[1] === "string" && c[1].endsWith("/archive.tar.gz"),
     );
@@ -79,8 +78,8 @@ describe("uploadInstructionsServerSide", () => {
     expect(fileContent).not.toBeNull();
 
     const text = fileContent!.toString("utf-8");
-    expect(text).toContain("[AGENT_PROFILE]");
-    expect(text).toContain("Test Agent");
+    expect(text).not.toContain("[AGENT_PROFILE]");
+    expect(text).toBe("# Instructions");
   });
 
   it("should deduplicate when same content is uploaded twice", async () => {

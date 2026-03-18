@@ -15,6 +15,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { conversations } from "../../../../src/db/schema/conversation";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
@@ -22,7 +23,6 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
-import { extractDisplayName } from "../../../../src/lib/agent-compose/extract-display-name";
 
 const log = logger("api:app:logs");
 
@@ -188,6 +188,7 @@ const router = tsr.router(logsListContract, {
         orgId: agentComposes.orgId,
         sessionId: conversations.cliAgentSessionId,
         composeContent: agentComposeVersions.content,
+        displayName: zeroAgents.displayName,
       })
       .from(agentRuns)
       .leftJoin(
@@ -197,6 +198,13 @@ const router = tsr.router(logsListContract, {
       .leftJoin(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .leftJoin(
+        zeroAgents,
+        and(
+          eq(agentComposes.orgId, zeroAgents.orgId),
+          eq(agentComposes.name, zeroAgents.name),
+        ),
       )
       .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
       .where(and(...conditions))
@@ -243,7 +251,7 @@ const router = tsr.router(logsListContract, {
           id: run.id,
           sessionId: run.sessionId ?? null,
           agentName: run.composeName ?? "unknown",
-          displayName: extractDisplayName(run.composeContent),
+          displayName: run.displayName ?? null,
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
           modelProvider: run.modelProvider ?? null,

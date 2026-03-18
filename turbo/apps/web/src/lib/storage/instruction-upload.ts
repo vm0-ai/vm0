@@ -3,7 +3,6 @@ import { eq, and } from "drizzle-orm";
 import {
   getInstructionsFilename,
   getInstructionsStorageName,
-  injectMetadataFrontmatter,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core";
 import { storages, storageVersions } from "../../db/schema/storage";
@@ -29,9 +28,8 @@ export async function uploadInstructionsServerSide(params: {
   agentName: string;
   content: string;
   framework?: string;
-  metadata?: { displayName?: string; sound?: string };
 }): Promise<{ storageName: string; versionId: string }> {
-  const { orgId, agentName, content, framework, metadata } = params;
+  const { orgId, agentName, content, framework } = params;
 
   // 1. Resolve org slug for S3 prefix
   const orgData = await getOrgData(orgId);
@@ -41,11 +39,8 @@ export async function uploadInstructionsServerSide(params: {
   const filename = getInstructionsFilename(framework);
   const storageName = getInstructionsStorageName(agentName.toLowerCase());
 
-  // 3. Inject metadata frontmatter
-  const processedContent = injectMetadataFrontmatter(content, metadata);
-
-  // 4. Create tar.gz archive
-  const contentBuffer = Buffer.from(processedContent, "utf-8");
+  // 3. Create tar.gz archive
+  const contentBuffer = Buffer.from(content, "utf-8");
   const tarBuffer = createSingleFileTar(filename, contentBuffer);
   const archiveBuffer = gzipSync(tarBuffer);
 

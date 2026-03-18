@@ -41,6 +41,7 @@ import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as creditUsageSchema from "./schema/credit-usage";
 import * as creditPricingSchema from "./schema/credit-pricing";
+import * as zeroAgentSchema from "./schema/zero-agent";
 
 export const schema = {
   ...userSchema,
@@ -86,4 +87,5 @@ export const schema = {
   ...skillSchema,
   ...creditUsageSchema,
   ...creditPricingSchema,
+  ...zeroAgentSchema,
 };

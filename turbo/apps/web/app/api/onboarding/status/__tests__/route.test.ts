@@ -3,6 +3,7 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestZeroAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { upsertOrgModelProvider } from "../../../../../src/lib/model-provider/model-provider-service";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -142,9 +143,13 @@ describe("GET /api/onboarding/status", () => {
   it("should return defaultAgentMetadata when compose has metadata", async () => {
     const user = await context.setupUser();
 
-    // Create a compose with metadata
-    const compose = await createTestCompose("test-agent", {
-      metadata: { displayName: "My Agent", sound: "friendly" },
+    // Create a compose
+    const compose = await createTestCompose("test-agent");
+
+    // Seed zero_agents with metadata (metadata now lives in this table)
+    await createTestZeroAgent(user.orgId, "test-agent", {
+      displayName: "My Agent",
+      sound: "friendly",
     });
 
     const setDefaultRequest = createTestRequest(
