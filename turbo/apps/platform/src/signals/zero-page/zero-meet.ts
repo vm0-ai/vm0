@@ -11,6 +11,7 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
+import { zeroChatAgentId$ } from "./zero-nav.ts";
 
 const L = logger("ZeroMeet");
 
@@ -35,6 +36,10 @@ const instructionsState$ = state<InstructionsState>({
 // ---------------------------------------------------------------------------
 
 const zeroComposeId$ = computed(async (get) => {
+  const chatAgentId = get(zeroChatAgentId$);
+  if (chatAgentId !== null) {
+    return chatAgentId;
+  }
   const status = await get(zeroOnboardingStatus$);
   return status.defaultAgentComposeId;
 });

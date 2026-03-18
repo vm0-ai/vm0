@@ -8,6 +8,7 @@ import {
   addZeroSkill$,
   saveZeroSkills$,
 } from "../zero-meet.ts";
+import { setZeroChatAgent$ } from "../zero-nav.ts";
 
 const context = testContext();
 
@@ -70,6 +71,55 @@ describe("zeroAddedSkills$", () => {
 
     const skills = await context.store.get(zeroAddedSkills$);
     expect(skills).toStrictEqual([]);
+  });
+
+  it("should seed skills from sub-agent compose when chat agent is set", async () => {
+    const subAgentComposeId = "sub-agent-compose-id";
+
+    // Default agent has slack only
+    mockComposeApi({
+      agents: {
+        zero: {
+          framework: "claude-code",
+          skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/slack"],
+        },
+      },
+    });
+
+    // Sub-agent has github only
+    server.use(
+      http.get(`*/api/agent/composes/${subAgentComposeId}`, () => {
+        return HttpResponse.json({
+          id: subAgentComposeId,
+          name: "cycling-coach",
+          headVersionId: "v1",
+          content: {
+            version: "1",
+            agents: {
+              "cycling-coach": {
+                framework: "claude-code",
+                skills: [
+                  "https://github.com/vm0-ai/vm0-skills/tree/main/github",
+                ],
+              },
+            },
+          },
+        });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/talk/cycling-coach",
+      withoutRender: true,
+    });
+    await context.store.set(setZeroChatAgent$, {
+      id: subAgentComposeId,
+      name: "cycling-coach",
+    });
+
+    const skills = await context.store.get(zeroAddedSkills$);
+    expect(skills).toStrictEqual(["github"]);
   });
 });
 
