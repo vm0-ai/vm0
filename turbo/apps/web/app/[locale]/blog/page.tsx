@@ -69,7 +69,9 @@ export default async function BlogPage({ params }: BlogPageProps) {
 
   return (
     <>
-      <Navbar />
+      <div className="header-container">
+        <Navbar />
+      </div>
       <Suspense
         fallback={
           <div

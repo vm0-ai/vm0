@@ -111,7 +111,9 @@ export default async function BlogPostPage({ params }: PageProps) {
 
   return (
     <>
-      <Navbar />
+      <div className="header-container">
+        <Navbar />
+      </div>
       <Particles />
 
       {/* Post Header */}
