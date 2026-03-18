@@ -792,12 +792,16 @@ export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
   }
 
   if (!response.ok && response.status !== 204) {
-    const errorData = (await response.json().catch(() => null)) as {
-      error?: { message?: string };
-    } | null;
-    throw new Error(
-      errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
-    );
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const errorData = (await response.json()) as {
+        error?: { message?: string };
+      };
+      throw new Error(
+        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
+      );
+    }
+    throw new Error(`Delete failed: ${response.statusText}`);
   }
 
   toast.success("Agent deleted");
