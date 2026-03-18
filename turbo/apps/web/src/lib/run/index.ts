@@ -6,6 +6,7 @@
 export {
   validateCheckpoint,
   validateAgentSession,
+  startRun,
   createRun,
   isRunDispatchError,
   type RunDispatchError,

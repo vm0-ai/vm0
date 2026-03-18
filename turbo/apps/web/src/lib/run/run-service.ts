@@ -34,7 +34,8 @@ import { canAccessCompose } from "../agent/compose-access";
 import { getVariableValues } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
-import { type OrgTier } from "@vm0/core";
+import { type OrgTier, orgTierSchema } from "@vm0/core";
+import { getOrgData } from "../org/org-cache-service";
 
 const log = logger("service:run");
 
@@ -316,6 +317,21 @@ export interface CreateRunParams {
   orgId: string;
   // Caller-resolved org tier for concurrency limit derivation.
   orgTier?: OrgTier;
+}
+
+/**
+ * Simplified run params — callers provide composeId and the function
+ * resolves version + org internally.
+ */
+interface StartRunParams {
+  userId: string;
+  composeId: string;
+  prompt: string;
+  sessionId?: string;
+  modelProvider?: string;
+  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
+  artifactName?: string;
+  memoryName?: string;
 }
 
 export interface CreateRunResult {
@@ -671,10 +687,61 @@ async function buildAndDispatchRun(opts: {
 }
 
 /**
- * Unified run creation pipeline
+ * High-level run entry point.
+ *
+ * Resolves compose version + org context from composeId, then delegates
+ * to createRun(). Callers only need composeId — no manual DB queries.
+ *
+ * @throws NotFoundError - compose not found or has no versions
+ */
+export async function startRun(
+  params: StartRunParams,
+): Promise<CreateRunResult> {
+  const { userId, composeId, prompt } = params;
+
+  const [compose] = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      orgId: agentComposes.orgId,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+
+  if (!compose) {
+    throw notFound("Agent compose not found");
+  }
+  if (!compose.headVersionId) {
+    throw badRequest("Agent compose has no versions. Run 'vm0 build' first.");
+  }
+
+  const orgData = await getOrgData(compose.orgId);
+  const orgTier = orgTierSchema.parse(orgData.tier);
+
+  return createRun({
+    userId,
+    agentComposeVersionId: compose.headVersionId,
+    prompt,
+    composeId: compose.id,
+    agentName: compose.name,
+    orgId: compose.orgId,
+    orgSlug: orgData.slug,
+    orgTier,
+    sessionId: params.sessionId,
+    modelProvider: params.modelProvider,
+    callbacks: params.callbacks,
+    artifactName: params.artifactName ?? "artifact",
+    memoryName: params.memoryName ?? "memory",
+  });
+}
+
+/**
+ * Low-level run creation pipeline (requires pre-resolved version + org).
  *
  * Validates, creates, and dispatches a run in a single call.
- * All callers (API Route, Schedule, Slack) should use this.
+ * Prefer startRun() unless you need checkpoint/session resume or custom params.
  *
  * Pipeline:
  * 1. Load compose version content + compose metadata
