@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.33.0...runner-rs-v0.34.0) (2026-03-18)
+
+
+### Features
+
+* **runner:** add minimum age protection to runner gc ([#5347](https://github.com/vm0-ai/vm0/issues/5347)) ([e7cc167](https://github.com/vm0-ai/vm0/commit/e7cc167f44b64dc3b866c8de78b7e36fae1e503b)), closes [#5345](https://github.com/vm0-ai/vm0/issues/5345)
+
 ## [0.33.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.32.0...runner-rs-v0.33.0) (2026-03-18)
 
 
