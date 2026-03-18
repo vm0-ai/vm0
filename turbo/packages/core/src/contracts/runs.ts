@@ -575,6 +575,7 @@ const queueEntrySchema = z.object({
   agentDisplayName: z.string().nullable(),
   userEmail: z.string().nullable(),
   createdAt: z.string(),
+  isOwner: z.boolean(),
   runId: z.string().nullable(),
   prompt: z.string().nullable(),
   triggerSource: z.enum(["schedule", "chat", "api"]).nullable(),

@@ -181,9 +181,9 @@ const router = tsr.router(runsQueueContract, {
       const isOwner = run.runUserId === userId;
       return {
         position: index + 1,
-        agentName: run.agentName ?? "unknown",
-        agentDisplayName: extractDisplayName(run.agentContent),
-        userEmail: userMap.get(run.runUserId) ?? "unknown",
+        agentName: isOwner ? (run.agentName ?? "unknown") : null,
+        agentDisplayName: isOwner ? extractDisplayName(run.agentContent) : null,
+        userEmail: isOwner ? (userMap.get(run.runUserId) ?? "unknown") : null,
         createdAt: run.createdAt.toISOString(),
         isOwner,
         runId: isOwner ? run.id : null,
