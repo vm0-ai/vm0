@@ -6,10 +6,6 @@
  */
 
 import {
-  apiModelProvidersHandlers,
-  resetMockModelProviders,
-} from "./api-model-providers.ts";
-import {
   apiConnectorsHandlers,
   resetMockConnectors,
 } from "./api-connectors.ts";
@@ -38,7 +34,6 @@ import {
 import { apiOnboardingHandlers } from "./api-onboarding.ts";
 
 export const handlers = [
-  ...apiModelProvidersHandlers,
   ...apiConnectorsHandlers,
   ...apiOrgHandlers,
   ...apiOrgModelProvidersHandlers,
@@ -54,7 +49,6 @@ export const handlers = [
 ];
 
 export function resetAllMockHandlers(): void {
-  resetMockModelProviders();
   resetMockConnectors();
   resetMockSecrets();
   resetMockVariables();

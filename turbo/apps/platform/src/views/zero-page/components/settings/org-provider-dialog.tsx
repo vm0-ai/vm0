@@ -29,7 +29,7 @@ import {
   OAuthFields,
   ApiKeyFields,
   MultiAuthFields,
-} from "./provider-dialog.tsx";
+} from "./provider-dialog-fields.tsx";
 
 export function OrgProviderDialog() {
   const dialog = useGet(orgDialogState$);
