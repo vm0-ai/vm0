@@ -146,13 +146,21 @@ BLOG_BASE_URL=
 BLOG_DATA_SOURCE=strapi
 STRAPI_URL=
 
+# Optional: Email (Resend)
+RESEND_API_KEY=op://Development/ci/RESEND_API_KEY
+RESEND_WEBHOOK_SECRET=op://Development/ci/RESEND_WEBHOOK_SECRET
+RESEND_FROM_DOMAIN=op://Development/ci/RESEND_FROM_DOMAIN
+
+# Optional: Cron
+CRON_SECRET=op://Development/ci/CRON_SECRET
+
 # Optional: Error Tracking (Sentry)
 # Sentry DSN (used by both server and client)
-SENTRY_DSN_WEB=
+SENTRY_DSN_WEB=op://Development/ci/SENTRY_DSN_WEB
 # Sentry build configuration
-SENTRY_AUTH_TOKEN=
-SENTRY_ORG=
-SENTRY_PROJECT=
+SENTRY_AUTH_TOKEN=op://Development/ci/SENTRY_AUTH_TOKEN
+SENTRY_ORG=op://Development/ci/SENTRY_ORG
+SENTRY_PROJECT=op://Development/ci/SENTRY_PROJECT_WEB
 
 # Optional: Github App for Integration
 GITHUB_APP_CLIENT_ID=op://Development/github/GITHUB_APP_CLIENT_ID

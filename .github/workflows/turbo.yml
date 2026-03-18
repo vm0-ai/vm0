@@ -40,6 +40,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          PREVIEW_DOMAIN: op://Development/ci/PREVIEW_DOMAIN
+
       - name: Configure Git safe directory
         run: git config --global --add safe.directory /__w/vm0/vm0
 
@@ -163,7 +171,7 @@ jobs:
         id: preview-urls
         run: |
           JOB_REF="${{ steps.set-job-ref.outputs.job-ref }}"
-          PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
+          PREVIEW_DOMAIN="${PREVIEW_DOMAIN}"
 
           if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
             echo "web-url=https://${JOB_REF}-www.${PREVIEW_DOMAIN}" >> $GITHUB_OUTPUT
@@ -387,123 +395,151 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          # Vercel CI
+          VERCEL_TOKEN: op://Development/ci/VERCEL_TOKEN
+          VERCEL_TEAM_ID: op://Development/ci/VERCEL_TEAM_ID
+          VERCEL_PROJECT_ID_WEB: op://Development/ci/VERCEL_PROJECT_ID_WEB
+          VERCEL_AUTOMATION_BYPASS_SECRET: op://Development/ci/VERCEL_AUTOMATION_BYPASS_SECRET
+          PREVIEW_DOMAIN: op://Development/ci/PREVIEW_DOMAIN
+          # Neon
+          NEON_API_KEY: op://Development/ci/NEON_API_KEY
+          NEON_PROJECT_ID: op://Development/ci/NEON_PROJECT_ID
+          # Clerk
+          CLERK_PUBLISHABLE_KEY: op://Development/clerk/CLERK_PUBLISHABLE_KEY
+          CLERK_SECRET_KEY: op://Development/clerk/CLERK_SECRET_KEY
+          # E2B
+          E2B_API_KEY: op://Development/e2b/E2B_API_KEY
+          # Cloudflare R2
+          R2_ACCOUNT_ID: op://Development/cloudflare/R2_ACCOUNT_ID
+          R2_ACCESS_KEY_ID: op://Development/cloudflare/R2_ACCESS_KEY_ID
+          R2_SECRET_ACCESS_KEY: op://Development/cloudflare/R2_SECRET_ACCESS_KEY
+          R2_USER_STORAGES_BUCKET_NAME: op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
+          # VM0
+          SECRETS_ENCRYPTION_KEY: op://Development/vm0/SECRETS_ENCRYPTION_KEY
+          OFFICIAL_RUNNER_SECRET: op://Development/ci/OFFICIAL_RUNNER_SECRET
+          VM0_DEFAULT_AGENT: op://Development/vm0/VM0_DEFAULT_AGENT
+          # Axiom
+          AXIOM_TOKEN_SESSIONS: op://Development/axiom/AXIOM_TOKEN_SESSIONS
+          AXIOM_TOKEN_TELEMETRY: op://Development/axiom/AXIOM_TOKEN_TELEMETRY
+          # Ably
+          ABLY_API_KEY: op://Development/ably/ABLY_API_KEY
+          # Cron
+          CRON_SECRET: op://Development/ci/CRON_SECRET
+          # Claude Code
+          CLAUDE_CODE_VERSION_URL: op://Development/ci/CLAUDE_CODE_VERSION_URL
+          # Slack
+          SLACK_CLIENT_ID: op://Development/slack/SLACK_CLIENT_ID
+          SLACK_CLIENT_SECRET: op://Development/slack/SLACK_CLIENT_SECRET
+          SLACK_SIGNING_SECRET: op://Development/slack/SLACK_SIGNING_SECRET
+          # Sentry
+          SENTRY_DSN_WEB: op://Development/ci/SENTRY_DSN_WEB
+          SENTRY_AUTH_TOKEN: op://Development/ci/SENTRY_AUTH_TOKEN
+          SENTRY_ORG: op://Development/ci/SENTRY_ORG
+          SENTRY_PROJECT_WEB: op://Development/ci/SENTRY_PROJECT_WEB
+          # OAuth connectors
+          GH_OAUTH_CLIENT_ID: op://Development/github/GH_OAUTH_CLIENT_ID
+          GH_OAUTH_CLIENT_SECRET: op://Development/github/GH_OAUTH_CLIENT_SECRET
+          NOTION_OAUTH_CLIENT_ID: op://Development/notion/NOTION_OAUTH_CLIENT_ID
+          NOTION_OAUTH_CLIENT_SECRET: op://Development/notion/NOTION_OAUTH_CLIENT_SECRET
+          GOOGLE_OAUTH_CLIENT_ID: op://Development/google/GOOGLE_OAUTH_CLIENT_ID
+          GOOGLE_OAUTH_CLIENT_SECRET: op://Development/google/GOOGLE_OAUTH_CLIENT_SECRET
+          MICROSOFT_OAUTH_CLIENT_ID: op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_ID
+          MICROSOFT_OAUTH_CLIENT_SECRET: op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_SECRET
+          LINEAR_OAUTH_CLIENT_ID: op://Development/linear/LINEAR_OAUTH_CLIENT_ID
+          LINEAR_OAUTH_CLIENT_SECRET: op://Development/linear/LINEAR_OAUTH_CLIENT_SECRET
+          FIGMA_OAUTH_CLIENT_ID: op://Development/figma/FIGMA_OAUTH_CLIENT_ID
+          FIGMA_OAUTH_CLIENT_SECRET: op://Development/figma/FIGMA_OAUTH_CLIENT_SECRET
+          DEEL_OAUTH_CLIENT_ID: op://Development/deel/DEEL_OAUTH_CLIENT_ID
+          DEEL_OAUTH_CLIENT_SECRET: op://Development/deel/DEEL_OAUTH_CLIENT_SECRET
+          DOCUSIGN_OAUTH_CLIENT_ID: op://Development/docusign/DOCUSIGN_OAUTH_CLIENT_ID
+          DOCUSIGN_OAUTH_CLIENT_SECRET: op://Development/docusign/DOCUSIGN_OAUTH_CLIENT_SECRET
+          DROPBOX_OAUTH_CLIENT_ID: op://Development/dropbox/DROPBOX_OAUTH_CLIENT_ID
+          DROPBOX_OAUTH_CLIENT_SECRET: op://Development/dropbox/DROPBOX_OAUTH_CLIENT_SECRET
+          NEON_OAUTH_CLIENT_ID: op://Development/neon/NEON_OAUTH_CLIENT_ID
+          NEON_OAUTH_CLIENT_SECRET: op://Development/neon/NEON_OAUTH_CLIENT_SECRET
+          REDDIT_OAUTH_CLIENT_ID: op://Development/reddit/REDDIT_OAUTH_CLIENT_ID
+          REDDIT_OAUTH_CLIENT_SECRET: op://Development/reddit/REDDIT_OAUTH_CLIENT_SECRET
+          X_OAUTH_CLIENT_ID: op://Development/x/X_OAUTH_CLIENT_ID
+          X_OAUTH_CLIENT_SECRET: op://Development/x/X_OAUTH_CLIENT_SECRET
+          VERCEL_OAUTH_CLIENT_ID: op://Development/vercel/VERCEL_OAUTH_CLIENT_ID
+          VERCEL_OAUTH_CLIENT_SECRET: op://Development/vercel/VERCEL_OAUTH_CLIENT_SECRET
+          VERCEL_INTEGRATION_SLUG: op://Development/vercel/VERCEL_INTEGRATION_SLUG
+          SENTRY_OAUTH_CLIENT_ID: op://Development/sentry/SENTRY_OAUTH_CLIENT_ID
+          SENTRY_OAUTH_CLIENT_SECRET: op://Development/sentry/SENTRY_OAUTH_CLIENT_SECRET
+          INTERVALS_ICU_OAUTH_CLIENT_ID: op://Development/intervals-icu/INTERVALS_ICU_OAUTH_CLIENT_ID
+          INTERVALS_ICU_OAUTH_CLIENT_SECRET: op://Development/intervals-icu/INTERVALS_ICU_OAUTH_CLIENT_SECRET
+          XERO_OAUTH_CLIENT_ID: op://Development/xero/XERO_OAUTH_CLIENT_ID
+          XERO_OAUTH_CLIENT_SECRET: op://Development/xero/XERO_OAUTH_CLIENT_SECRET
+          MONDAY_OAUTH_CLIENT_ID: op://Development/monday/MONDAY_OAUTH_CLIENT_ID
+          MONDAY_OAUTH_CLIENT_SECRET: op://Development/monday/MONDAY_OAUTH_CLIENT_SECRET
+          MONDAY_OAUTH_APP_ID: op://Development/monday/MONDAY_OAUTH_APP_ID
+          WEBFLOW_OAUTH_CLIENT_ID: op://Development/webflow/WEBFLOW_OAUTH_CLIENT_ID
+          WEBFLOW_OAUTH_CLIENT_SECRET: op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
+          CANVA_OAUTH_CLIENT_ID: op://Development/canva/CANVA_OAUTH_CLIENT_ID
+          CANVA_OAUTH_CLIENT_SECRET: op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
+          SUPABASE_OAUTH_CLIENT_ID: op://Development/supabase/SUPABASE_OAUTH_CLIENT_ID
+          SUPABASE_OAUTH_CLIENT_SECRET: op://Development/supabase/SUPABASE_OAUTH_CLIENT_SECRET
+          HUBSPOT_OAUTH_CLIENT_ID: op://Development/hubspot/HUBSPOT_OAUTH_CLIENT_ID
+          HUBSPOT_OAUTH_CLIENT_SECRET: op://Development/hubspot/HUBSPOT_OAUTH_CLIENT_SECRET
+          CLOSE_OAUTH_CLIENT_ID: op://Development/close/CLOSE_OAUTH_CLIENT_ID
+          CLOSE_OAUTH_CLIENT_SECRET: op://Development/close/CLOSE_OAUTH_CLIENT_SECRET
+          META_ADS_OAUTH_CLIENT_ID: op://Development/meta-ads/META_ADS_OAUTH_CLIENT_ID
+          META_ADS_OAUTH_CLIENT_SECRET: op://Development/meta-ads/META_ADS_OAUTH_CLIENT_SECRET
+          AHREFS_OAUTH_CLIENT_ID: op://Development/ahrefs/AHREFS_OAUTH_CLIENT_ID
+          AHREFS_OAUTH_CLIENT_SECRET: op://Development/ahrefs/AHREFS_OAUTH_CLIENT_SECRET
+          AIRTABLE_OAUTH_CLIENT_ID: op://Development/airtable/AIRTABLE_OAUTH_CLIENT_ID
+          AIRTABLE_OAUTH_CLIENT_SECRET: op://Development/airtable/AIRTABLE_OAUTH_CLIENT_SECRET
+          TODOIST_OAUTH_CLIENT_ID: op://Development/todoist/TODOIST_OAUTH_CLIENT_ID
+          TODOIST_OAUTH_CLIENT_SECRET: op://Development/todoist/TODOIST_OAUTH_CLIENT_SECRET
+          ASANA_OAUTH_CLIENT_ID: op://Development/asana/ASANA_OAUTH_CLIENT_ID
+          ASANA_OAUTH_CLIENT_SECRET: op://Development/asana/ASANA_OAUTH_CLIENT_SECRET
+          POSTHOG_OAUTH_CLIENT_ID: op://Development/posthog/POSTHOG_OAUTH_CLIENT_ID
+          POSTHOG_OAUTH_CLIENT_SECRET: op://Development/posthog/POSTHOG_OAUTH_CLIENT_SECRET
+          STRIPE_OAUTH_CLIENT_ID: op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
+          STRIPE_OAUTH_CLIENT_SECRET: op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
+          NGROK_API_KEY: op://Development/ngrok/NGROK_API_KEY
+          NGROK_COMPUTER_CONNECTOR_DOMAIN: op://Development/ci/NGROK_COMPUTER_CONNECTOR_DOMAIN
+          # Resend
+          RESEND_API_KEY: op://Development/ci/RESEND_API_KEY
+          RESEND_WEBHOOK_SECRET: op://Development/ci/RESEND_WEBHOOK_SECRET
+          RESEND_FROM_DOMAIN: op://Development/ci/RESEND_FROM_DOMAIN
+          # Blog
+          STRAPI_URL: op://Development/ci/STRAPI_URL
+          # GitHub App
+          GITHUB_APP_SLUG: op://Development/github/GITHUB_APP_SLUG
+          GITHUB_APP_ID: op://Development/github/GITHUB_APP_ID
+          GITHUB_APP_CLIENT_ID: op://Development/github/GITHUB_APP_CLIENT_ID
+          GITHUB_APP_CLIENT_SECRET: op://Development/github/GITHUB_APP_CLIENT_SECRET
+          GITHUB_APP_WEBHOOK_SECRET: op://Development/github/GITHUB_APP_WEBHOOK_SECRET
+          GITHUB_APP_PRIVATE_KEY: op://Development/github/GITHUB_APP_PRIVATE_KEY
+
       # Step 1: Setup Vercel CLI and project config (needed by build)
       - name: Setup Vercel
         uses: ./.github/actions/vercel-setup
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
+          vercel-token: ${{ env.VERCEL_TOKEN }}
+          vercel-org-id: ${{ env.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ env.VERCEL_PROJECT_ID_WEB }}
 
       # Step 2: Create Neon branch + Build web in parallel
       - name: Create Neon Branch and Build Web
         id: neon
         env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           BLOG_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-          SECRETS_ENCRYPTION_KEY: ${{ secrets.SECRETS_ENCRYPTION_KEY }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           RUNNER_DEFAULT_GROUP: vm0/development-${{ needs.prepare.outputs.job-ref }}
-          AXIOM_TOKEN_SESSIONS: ${{ secrets.AXIOM_TOKEN_SESSIONS }}
-          AXIOM_TOKEN_TELEMETRY: ${{ secrets.AXIOM_TOKEN_TELEMETRY }}
           AXIOM_DATASET_SUFFIX: dev
           USE_MOCK_CLAUDE: "true"
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
           CONCURRENT_RUN_LIMIT_CAP: "0"
           VM0_DEBUG: "*"
-          CLAUDE_CODE_VERSION_URL: ${{ vars.CLAUDE_CODE_VERSION_URL }}
-          SLACK_CLIENT_ID: ${{ vars.SLACK_CLIENT_ID }}
-          SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
-          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
           SLACK_REDIRECT_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
-          SENTRY_DSN_WEB: ${{ secrets.SENTRY_DSN_WEB }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_WEB }}
-          GH_OAUTH_CLIENT_ID: ${{ vars.GH_OAUTH_CLIENT_ID }}
-          GH_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
-          NOTION_OAUTH_CLIENT_ID: ${{ vars.NOTION_OAUTH_CLIENT_ID }}
-          NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-          GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
-          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-          MICROSOFT_OAUTH_CLIENT_ID: ${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
-          MICROSOFT_OAUTH_CLIENT_SECRET: ${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
-          LINEAR_OAUTH_CLIENT_ID: ${{ vars.LINEAR_OAUTH_CLIENT_ID }}
-          LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
-          FIGMA_OAUTH_CLIENT_ID: ${{ vars.FIGMA_OAUTH_CLIENT_ID }}
-          FIGMA_OAUTH_CLIENT_SECRET: ${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
-          DEEL_OAUTH_CLIENT_ID: ${{ vars.DEEL_OAUTH_CLIENT_ID }}
-          DEEL_OAUTH_CLIENT_SECRET: ${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
-          DOCUSIGN_OAUTH_CLIENT_ID: ${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
-          DOCUSIGN_OAUTH_CLIENT_SECRET: ${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
-          DROPBOX_OAUTH_CLIENT_ID: ${{ vars.DROPBOX_OAUTH_CLIENT_ID }}
-          DROPBOX_OAUTH_CLIENT_SECRET: ${{ secrets.DROPBOX_OAUTH_CLIENT_SECRET }}
-          NEON_OAUTH_CLIENT_ID: ${{ vars.NEON_OAUTH_CLIENT_ID }}
-          NEON_OAUTH_CLIENT_SECRET: ${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
-          REDDIT_OAUTH_CLIENT_ID: ${{ vars.REDDIT_OAUTH_CLIENT_ID }}
-          REDDIT_OAUTH_CLIENT_SECRET: ${{ secrets.REDDIT_OAUTH_CLIENT_SECRET }}
-          X_OAUTH_CLIENT_ID: ${{ vars.X_OAUTH_CLIENT_ID }}
-          X_OAUTH_CLIENT_SECRET: ${{ secrets.X_OAUTH_CLIENT_SECRET }}
-          VERCEL_OAUTH_CLIENT_ID: ${{ vars.VERCEL_OAUTH_CLIENT_ID }}
-          VERCEL_OAUTH_CLIENT_SECRET: ${{ secrets.VERCEL_OAUTH_CLIENT_SECRET }}
-          VERCEL_INTEGRATION_SLUG: ${{ vars.VERCEL_INTEGRATION_SLUG }}
-          SENTRY_OAUTH_CLIENT_ID: ${{ vars.SENTRY_OAUTH_CLIENT_ID }}
-          SENTRY_OAUTH_CLIENT_SECRET: ${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
-          INTERVALS_ICU_OAUTH_CLIENT_ID: ${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
-          INTERVALS_ICU_OAUTH_CLIENT_SECRET: ${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
-          XERO_OAUTH_CLIENT_ID: ${{ vars.XERO_OAUTH_CLIENT_ID }}
-          MONDAY_OAUTH_CLIENT_ID: ${{ vars.MONDAY_OAUTH_CLIENT_ID }}
-          MONDAY_OAUTH_APP_ID: ${{ vars.MONDAY_OAUTH_APP_ID }}
-          XERO_OAUTH_CLIENT_SECRET: ${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
-          MONDAY_OAUTH_CLIENT_SECRET: ${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
-          WEBFLOW_OAUTH_CLIENT_ID: ${{ vars.WEBFLOW_OAUTH_CLIENT_ID }}
-          WEBFLOW_OAUTH_CLIENT_SECRET: ${{ secrets.WEBFLOW_OAUTH_CLIENT_SECRET }}
-          CANVA_OAUTH_CLIENT_ID: ${{ vars.CANVA_OAUTH_CLIENT_ID }}
-          CANVA_OAUTH_CLIENT_SECRET: ${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
-          SUPABASE_OAUTH_CLIENT_ID: ${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
-          SUPABASE_OAUTH_CLIENT_SECRET: ${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
-          HUBSPOT_OAUTH_CLIENT_ID: ${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
-          HUBSPOT_OAUTH_CLIENT_SECRET: ${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
-          CLOSE_OAUTH_CLIENT_ID: ${{ vars.CLOSE_OAUTH_CLIENT_ID }}
-          CLOSE_OAUTH_CLIENT_SECRET: ${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
-          META_ADS_OAUTH_CLIENT_ID: ${{ vars.META_ADS_OAUTH_CLIENT_ID }}
-          META_ADS_OAUTH_CLIENT_SECRET: ${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
-          AHREFS_OAUTH_CLIENT_ID: ${{ vars.AHREFS_OAUTH_CLIENT_ID }}
-          AHREFS_OAUTH_CLIENT_SECRET: ${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
-          AIRTABLE_OAUTH_CLIENT_ID: ${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
-          AIRTABLE_OAUTH_CLIENT_SECRET: ${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
-          TODOIST_OAUTH_CLIENT_ID: ${{ vars.TODOIST_OAUTH_CLIENT_ID }}
-          TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
-          ASANA_OAUTH_CLIENT_ID: ${{ vars.ASANA_OAUTH_CLIENT_ID }}
-          ASANA_OAUTH_CLIENT_SECRET: ${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
-          POSTHOG_OAUTH_CLIENT_ID: ${{ vars.POSTHOG_OAUTH_CLIENT_ID }}
-          POSTHOG_OAUTH_CLIENT_SECRET: ${{ secrets.POSTHOG_OAUTH_CLIENT_SECRET }}
-          STRIPE_OAUTH_CLIENT_ID: ${{ vars.STRIPE_OAUTH_CLIENT_ID }}
-          STRIPE_OAUTH_CLIENT_SECRET: ${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
-          NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
-          NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
+          SENTRY_PROJECT: ${{ env.SENTRY_PROJECT_WEB }}
           APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
-          RESEND_FROM_DOMAIN: ${{ vars.RESEND_FROM_DOMAIN }}
-          VM0_DEFAULT_AGENT: ${{ vars.VM0_DEFAULT_AGENT }}
-          STRAPI_URL: ${{ vars.STRAPI_URL }}
-          GITHUB_APP_SLUG: ${{ vars.VM0_GITHUB_APP_SLUG }}
-          GITHUB_APP_ID: ${{ vars.VM0_GITHUB_APP_ID }}
-          GITHUB_APP_CLIENT_ID: ${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
-          GITHUB_APP_CLIENT_SECRET: ${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
-          GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
         run: |
           # --- Start Neon branch creation in background ---
           (
@@ -590,115 +626,114 @@ jobs:
           echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
           echo "Deployment URL: $DEPLOYMENT_URL"
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           META_BRANCH: ${{ github.head_ref || github.ref_name }}
           META_PR: ${{ needs.prepare.outputs.job-ref }}
           ENV_VARS: |
             DATABASE_URL=${{ steps.neon.outputs.database-url }}
             BLOG_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
-            CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
-            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
-            E2B_API_KEY=${{ secrets.E2B_API_KEY }}
-            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
-            R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}
-            R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}
-            R2_USER_STORAGES_BUCKET_NAME=${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
-            SECRETS_ENCRYPTION_KEY=${{ secrets.SECRETS_ENCRYPTION_KEY }}
-            OFFICIAL_RUNNER_SECRET=${{ secrets.OFFICIAL_RUNNER_SECRET }}
+            CLERK_PUBLISHABLE_KEY=${{ env.CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ env.CLERK_SECRET_KEY }}
+            E2B_API_KEY=${{ env.E2B_API_KEY }}
+            R2_ACCOUNT_ID=${{ env.R2_ACCOUNT_ID }}
+            R2_ACCESS_KEY_ID=${{ env.R2_ACCESS_KEY_ID }}
+            R2_SECRET_ACCESS_KEY=${{ env.R2_SECRET_ACCESS_KEY }}
+            R2_USER_STORAGES_BUCKET_NAME=${{ env.R2_USER_STORAGES_BUCKET_NAME }}
+            SECRETS_ENCRYPTION_KEY=${{ env.SECRETS_ENCRYPTION_KEY }}
+            OFFICIAL_RUNNER_SECRET=${{ env.OFFICIAL_RUNNER_SECRET }}
             RUNNER_DEFAULT_GROUP=vm0/development-${{ needs.prepare.outputs.job-ref }}
-            AXIOM_TOKEN_SESSIONS=${{ secrets.AXIOM_TOKEN_SESSIONS }}
-            AXIOM_TOKEN_TELEMETRY=${{ secrets.AXIOM_TOKEN_TELEMETRY }}
+            AXIOM_TOKEN_SESSIONS=${{ env.AXIOM_TOKEN_SESSIONS }}
+            AXIOM_TOKEN_TELEMETRY=${{ env.AXIOM_TOKEN_TELEMETRY }}
             AXIOM_DATASET_SUFFIX=dev
             USE_MOCK_CLAUDE=true
-            CRON_SECRET=${{ secrets.CRON_SECRET }}
-            ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
+            CRON_SECRET=${{ env.CRON_SECRET }}
+            ABLY_API_KEY=${{ env.ABLY_API_KEY }}
             CONCURRENT_RUN_LIMIT_CAP=0
             VM0_DEBUG=*
-            CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
-            SLACK_CLIENT_ID=${{ vars.SLACK_CLIENT_ID }}
-            SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
-            SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
+            CLAUDE_CODE_VERSION_URL=${{ env.CLAUDE_CODE_VERSION_URL }}
+            SLACK_CLIENT_ID=${{ env.SLACK_CLIENT_ID }}
+            SLACK_CLIENT_SECRET=${{ env.SLACK_CLIENT_SECRET }}
+            SLACK_SIGNING_SECRET=${{ env.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
-            SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_WEB }}
-            GH_OAUTH_CLIENT_ID=${{ vars.GH_OAUTH_CLIENT_ID }}
-            GH_OAUTH_CLIENT_SECRET=${{ secrets.GH_OAUTH_CLIENT_SECRET }}
-            NOTION_OAUTH_CLIENT_ID=${{ vars.NOTION_OAUTH_CLIENT_ID }}
-            NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-            GOOGLE_OAUTH_CLIENT_ID=${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
-            GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-            MICROSOFT_OAUTH_CLIENT_ID=${{ vars.MICROSOFT_OAUTH_CLIENT_ID }}
-            MICROSOFT_OAUTH_CLIENT_SECRET=${{ secrets.MICROSOFT_OAUTH_CLIENT_SECRET }}
-            LINEAR_OAUTH_CLIENT_ID=${{ vars.LINEAR_OAUTH_CLIENT_ID }}
-            LINEAR_OAUTH_CLIENT_SECRET=${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
-            FIGMA_OAUTH_CLIENT_ID=${{ vars.FIGMA_OAUTH_CLIENT_ID }}
-            FIGMA_OAUTH_CLIENT_SECRET=${{ secrets.FIGMA_OAUTH_CLIENT_SECRET }}
-            DEEL_OAUTH_CLIENT_ID=${{ vars.DEEL_OAUTH_CLIENT_ID }}
-            DEEL_OAUTH_CLIENT_SECRET=${{ secrets.DEEL_OAUTH_CLIENT_SECRET }}
-            DOCUSIGN_OAUTH_CLIENT_ID=${{ vars.DOCUSIGN_OAUTH_CLIENT_ID }}
-            DOCUSIGN_OAUTH_CLIENT_SECRET=${{ secrets.DOCUSIGN_OAUTH_CLIENT_SECRET }}
-            DROPBOX_OAUTH_CLIENT_ID=${{ vars.DROPBOX_OAUTH_CLIENT_ID }}
-            DROPBOX_OAUTH_CLIENT_SECRET=${{ secrets.DROPBOX_OAUTH_CLIENT_SECRET }}
-            NEON_OAUTH_CLIENT_ID=${{ vars.NEON_OAUTH_CLIENT_ID }}
-            NEON_OAUTH_CLIENT_SECRET=${{ secrets.NEON_OAUTH_CLIENT_SECRET }}
-            REDDIT_OAUTH_CLIENT_ID=${{ vars.REDDIT_OAUTH_CLIENT_ID }}
-            REDDIT_OAUTH_CLIENT_SECRET=${{ secrets.REDDIT_OAUTH_CLIENT_SECRET }}
-            X_OAUTH_CLIENT_ID=${{ vars.X_OAUTH_CLIENT_ID }}
-            X_OAUTH_CLIENT_SECRET=${{ secrets.X_OAUTH_CLIENT_SECRET }}
-            VERCEL_OAUTH_CLIENT_ID=${{ vars.VERCEL_OAUTH_CLIENT_ID }}
-            VERCEL_OAUTH_CLIENT_SECRET=${{ secrets.VERCEL_OAUTH_CLIENT_SECRET }}
-            VERCEL_INTEGRATION_SLUG=${{ vars.VERCEL_INTEGRATION_SLUG }}
-            SENTRY_OAUTH_CLIENT_ID=${{ vars.SENTRY_OAUTH_CLIENT_ID }}
-            SENTRY_OAUTH_CLIENT_SECRET=${{ secrets.SENTRY_OAUTH_CLIENT_SECRET }}
-            INTERVALS_ICU_OAUTH_CLIENT_ID=${{ vars.INTERVALS_ICU_OAUTH_CLIENT_ID }}
-            INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ secrets.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
-            SUPABASE_OAUTH_CLIENT_ID=${{ vars.SUPABASE_OAUTH_CLIENT_ID }}
-            SUPABASE_OAUTH_CLIENT_SECRET=${{ secrets.SUPABASE_OAUTH_CLIENT_SECRET }}
-            XERO_OAUTH_CLIENT_ID=${{ vars.XERO_OAUTH_CLIENT_ID }}
-            MONDAY_OAUTH_CLIENT_ID=${{ vars.MONDAY_OAUTH_CLIENT_ID }}
-            MONDAY_OAUTH_APP_ID=${{ vars.MONDAY_OAUTH_APP_ID }}
-            XERO_OAUTH_CLIENT_SECRET=${{ secrets.XERO_OAUTH_CLIENT_SECRET }}
-            MONDAY_OAUTH_CLIENT_SECRET=${{ secrets.MONDAY_OAUTH_CLIENT_SECRET }}
-            WEBFLOW_OAUTH_CLIENT_ID=${{ vars.WEBFLOW_OAUTH_CLIENT_ID }}
-            WEBFLOW_OAUTH_CLIENT_SECRET=${{ secrets.WEBFLOW_OAUTH_CLIENT_SECRET }}
-            CANVA_OAUTH_CLIENT_ID=${{ vars.CANVA_OAUTH_CLIENT_ID }}
-            CANVA_OAUTH_CLIENT_SECRET=${{ secrets.CANVA_OAUTH_CLIENT_SECRET }}
-            HUBSPOT_OAUTH_CLIENT_ID=${{ vars.HUBSPOT_OAUTH_CLIENT_ID }}
-            HUBSPOT_OAUTH_CLIENT_SECRET=${{ secrets.HUBSPOT_OAUTH_CLIENT_SECRET }}
-            CLOSE_OAUTH_CLIENT_ID=${{ vars.CLOSE_OAUTH_CLIENT_ID }}
-            CLOSE_OAUTH_CLIENT_SECRET=${{ secrets.CLOSE_OAUTH_CLIENT_SECRET }}
-            META_ADS_OAUTH_CLIENT_ID=${{ vars.META_ADS_OAUTH_CLIENT_ID }}
-            META_ADS_OAUTH_CLIENT_SECRET=${{ secrets.META_ADS_OAUTH_CLIENT_SECRET }}
-            AHREFS_OAUTH_CLIENT_ID=${{ vars.AHREFS_OAUTH_CLIENT_ID }}
-            AHREFS_OAUTH_CLIENT_SECRET=${{ secrets.AHREFS_OAUTH_CLIENT_SECRET }}
-            AIRTABLE_OAUTH_CLIENT_ID=${{ vars.AIRTABLE_OAUTH_CLIENT_ID }}
-            AIRTABLE_OAUTH_CLIENT_SECRET=${{ secrets.AIRTABLE_OAUTH_CLIENT_SECRET }}
-            TODOIST_OAUTH_CLIENT_ID=${{ vars.TODOIST_OAUTH_CLIENT_ID }}
-            TODOIST_OAUTH_CLIENT_SECRET=${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
-            ASANA_OAUTH_CLIENT_ID=${{ vars.ASANA_OAUTH_CLIENT_ID }}
-            ASANA_OAUTH_CLIENT_SECRET=${{ secrets.ASANA_OAUTH_CLIENT_SECRET }}
-            STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
-            STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
-            NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
-            NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
+            SENTRY_DSN_WEB=${{ env.SENTRY_DSN_WEB }}
+            SENTRY_AUTH_TOKEN=${{ env.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ env.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ env.SENTRY_PROJECT_WEB }}
+            GH_OAUTH_CLIENT_ID=${{ env.GH_OAUTH_CLIENT_ID }}
+            GH_OAUTH_CLIENT_SECRET=${{ env.GH_OAUTH_CLIENT_SECRET }}
+            NOTION_OAUTH_CLIENT_ID=${{ env.NOTION_OAUTH_CLIENT_ID }}
+            NOTION_OAUTH_CLIENT_SECRET=${{ env.NOTION_OAUTH_CLIENT_SECRET }}
+            GOOGLE_OAUTH_CLIENT_ID=${{ env.GOOGLE_OAUTH_CLIENT_ID }}
+            GOOGLE_OAUTH_CLIENT_SECRET=${{ env.GOOGLE_OAUTH_CLIENT_SECRET }}
+            MICROSOFT_OAUTH_CLIENT_ID=${{ env.MICROSOFT_OAUTH_CLIENT_ID }}
+            MICROSOFT_OAUTH_CLIENT_SECRET=${{ env.MICROSOFT_OAUTH_CLIENT_SECRET }}
+            LINEAR_OAUTH_CLIENT_ID=${{ env.LINEAR_OAUTH_CLIENT_ID }}
+            LINEAR_OAUTH_CLIENT_SECRET=${{ env.LINEAR_OAUTH_CLIENT_SECRET }}
+            FIGMA_OAUTH_CLIENT_ID=${{ env.FIGMA_OAUTH_CLIENT_ID }}
+            FIGMA_OAUTH_CLIENT_SECRET=${{ env.FIGMA_OAUTH_CLIENT_SECRET }}
+            DEEL_OAUTH_CLIENT_ID=${{ env.DEEL_OAUTH_CLIENT_ID }}
+            DEEL_OAUTH_CLIENT_SECRET=${{ env.DEEL_OAUTH_CLIENT_SECRET }}
+            DOCUSIGN_OAUTH_CLIENT_ID=${{ env.DOCUSIGN_OAUTH_CLIENT_ID }}
+            DOCUSIGN_OAUTH_CLIENT_SECRET=${{ env.DOCUSIGN_OAUTH_CLIENT_SECRET }}
+            DROPBOX_OAUTH_CLIENT_ID=${{ env.DROPBOX_OAUTH_CLIENT_ID }}
+            DROPBOX_OAUTH_CLIENT_SECRET=${{ env.DROPBOX_OAUTH_CLIENT_SECRET }}
+            NEON_OAUTH_CLIENT_ID=${{ env.NEON_OAUTH_CLIENT_ID }}
+            NEON_OAUTH_CLIENT_SECRET=${{ env.NEON_OAUTH_CLIENT_SECRET }}
+            REDDIT_OAUTH_CLIENT_ID=${{ env.REDDIT_OAUTH_CLIENT_ID }}
+            REDDIT_OAUTH_CLIENT_SECRET=${{ env.REDDIT_OAUTH_CLIENT_SECRET }}
+            X_OAUTH_CLIENT_ID=${{ env.X_OAUTH_CLIENT_ID }}
+            X_OAUTH_CLIENT_SECRET=${{ env.X_OAUTH_CLIENT_SECRET }}
+            VERCEL_OAUTH_CLIENT_ID=${{ env.VERCEL_OAUTH_CLIENT_ID }}
+            VERCEL_OAUTH_CLIENT_SECRET=${{ env.VERCEL_OAUTH_CLIENT_SECRET }}
+            VERCEL_INTEGRATION_SLUG=${{ env.VERCEL_INTEGRATION_SLUG }}
+            SENTRY_OAUTH_CLIENT_ID=${{ env.SENTRY_OAUTH_CLIENT_ID }}
+            SENTRY_OAUTH_CLIENT_SECRET=${{ env.SENTRY_OAUTH_CLIENT_SECRET }}
+            INTERVALS_ICU_OAUTH_CLIENT_ID=${{ env.INTERVALS_ICU_OAUTH_CLIENT_ID }}
+            INTERVALS_ICU_OAUTH_CLIENT_SECRET=${{ env.INTERVALS_ICU_OAUTH_CLIENT_SECRET }}
+            SUPABASE_OAUTH_CLIENT_ID=${{ env.SUPABASE_OAUTH_CLIENT_ID }}
+            SUPABASE_OAUTH_CLIENT_SECRET=${{ env.SUPABASE_OAUTH_CLIENT_SECRET }}
+            XERO_OAUTH_CLIENT_ID=${{ env.XERO_OAUTH_CLIENT_ID }}
+            MONDAY_OAUTH_CLIENT_ID=${{ env.MONDAY_OAUTH_CLIENT_ID }}
+            MONDAY_OAUTH_APP_ID=${{ env.MONDAY_OAUTH_APP_ID }}
+            XERO_OAUTH_CLIENT_SECRET=${{ env.XERO_OAUTH_CLIENT_SECRET }}
+            MONDAY_OAUTH_CLIENT_SECRET=${{ env.MONDAY_OAUTH_CLIENT_SECRET }}
+            WEBFLOW_OAUTH_CLIENT_ID=${{ env.WEBFLOW_OAUTH_CLIENT_ID }}
+            WEBFLOW_OAUTH_CLIENT_SECRET=${{ env.WEBFLOW_OAUTH_CLIENT_SECRET }}
+            CANVA_OAUTH_CLIENT_ID=${{ env.CANVA_OAUTH_CLIENT_ID }}
+            CANVA_OAUTH_CLIENT_SECRET=${{ env.CANVA_OAUTH_CLIENT_SECRET }}
+            HUBSPOT_OAUTH_CLIENT_ID=${{ env.HUBSPOT_OAUTH_CLIENT_ID }}
+            HUBSPOT_OAUTH_CLIENT_SECRET=${{ env.HUBSPOT_OAUTH_CLIENT_SECRET }}
+            CLOSE_OAUTH_CLIENT_ID=${{ env.CLOSE_OAUTH_CLIENT_ID }}
+            CLOSE_OAUTH_CLIENT_SECRET=${{ env.CLOSE_OAUTH_CLIENT_SECRET }}
+            META_ADS_OAUTH_CLIENT_ID=${{ env.META_ADS_OAUTH_CLIENT_ID }}
+            META_ADS_OAUTH_CLIENT_SECRET=${{ env.META_ADS_OAUTH_CLIENT_SECRET }}
+            AHREFS_OAUTH_CLIENT_ID=${{ env.AHREFS_OAUTH_CLIENT_ID }}
+            AHREFS_OAUTH_CLIENT_SECRET=${{ env.AHREFS_OAUTH_CLIENT_SECRET }}
+            AIRTABLE_OAUTH_CLIENT_ID=${{ env.AIRTABLE_OAUTH_CLIENT_ID }}
+            AIRTABLE_OAUTH_CLIENT_SECRET=${{ env.AIRTABLE_OAUTH_CLIENT_SECRET }}
+            TODOIST_OAUTH_CLIENT_ID=${{ env.TODOIST_OAUTH_CLIENT_ID }}
+            TODOIST_OAUTH_CLIENT_SECRET=${{ env.TODOIST_OAUTH_CLIENT_SECRET }}
+            ASANA_OAUTH_CLIENT_ID=${{ env.ASANA_OAUTH_CLIENT_ID }}
+            ASANA_OAUTH_CLIENT_SECRET=${{ env.ASANA_OAUTH_CLIENT_SECRET }}
+            STRIPE_OAUTH_CLIENT_ID=${{ env.STRIPE_OAUTH_CLIENT_ID }}
+            STRIPE_OAUTH_CLIENT_SECRET=${{ env.STRIPE_OAUTH_CLIENT_SECRET }}
+            NGROK_API_KEY=${{ env.NGROK_API_KEY }}
+            NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ env.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             APP_URL=${{ needs.prepare.outputs.app-preview-url }}
-            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-            RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
-            RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}
-            VM0_DEFAULT_AGENT=${{ vars.VM0_DEFAULT_AGENT }}
-            STRAPI_URL=${{ vars.STRAPI_URL }}
-            GITHUB_APP_SLUG=${{ vars.VM0_GITHUB_APP_SLUG }}
-            GITHUB_APP_ID=${{ vars.VM0_GITHUB_APP_ID }}
-            GITHUB_APP_CLIENT_ID=${{ vars.VM0_GITHUB_APP_CLIENT_ID }}
-            GITHUB_APP_CLIENT_SECRET=${{ secrets.VM0_GITHUB_APP_CLIENT_SECRET }}
-            GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
-            GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+            RESEND_API_KEY=${{ env.RESEND_API_KEY }}
+            RESEND_WEBHOOK_SECRET=${{ env.RESEND_WEBHOOK_SECRET }}
+            RESEND_FROM_DOMAIN=${{ env.RESEND_FROM_DOMAIN }}
+            VM0_DEFAULT_AGENT=${{ env.VM0_DEFAULT_AGENT }}
+            STRAPI_URL=${{ env.STRAPI_URL }}
+            GITHUB_APP_SLUG=${{ env.GITHUB_APP_SLUG }}
+            GITHUB_APP_ID=${{ env.GITHUB_APP_ID }}
+            GITHUB_APP_CLIENT_ID=${{ env.GITHUB_APP_CLIENT_ID }}
+            GITHUB_APP_CLIENT_SECRET=${{ env.GITHUB_APP_CLIENT_SECRET }}
+            GITHUB_APP_WEBHOOK_SECRET=${{ env.GITHUB_APP_WEBHOOK_SECRET }}
+            GITHUB_APP_PRIVATE_KEY=${{ env.GITHUB_APP_PRIVATE_KEY }}
 
       - name: Finish deployment
         uses: bobheadxi/deployments@v1
-        if: always() && !(github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '')
+        if: always() && !(github.event_name == 'pull_request' && env.PREVIEW_DOMAIN != '')
         with:
           step: finish
           token: ${{ github.token }}
@@ -710,15 +745,15 @@ jobs:
       # Step 5: Create stable preview URL alias (when PREVIEW_DOMAIN is configured)
       - name: Create Vercel Alias
         id: alias
-        if: vars.PREVIEW_DOMAIN != ''
+        if: env.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-token: ${{ env.VERCEL_TOKEN }}
+          vercel-org-id: ${{ env.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: www
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          preview-domain: ${{ env.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deployment.outputs.deployment_id }}
           deployment-env: ${{ steps.deployment.outputs.env }}
 
@@ -731,7 +766,6 @@ jobs:
           done
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Upload E2E test tokens
         uses: actions/upload-artifact@v4
@@ -758,29 +792,40 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_TOKEN: op://Development/ci/VERCEL_TOKEN
+          VERCEL_TEAM_ID: op://Development/ci/VERCEL_TEAM_ID
+          VERCEL_PROJECT_ID_DOCS: op://Development/ci/VERCEL_PROJECT_ID_DOCS
+          PREVIEW_DOMAIN: op://Development/ci/PREVIEW_DOMAIN
+
       - name: Deploy Docs to Vercel
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
+          vercel-token: ${{ env.VERCEL_TOKEN }}
+          vercel-org-id: ${{ env.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ env.VERCEL_PROJECT_ID_DOCS }}
           environment: preview
           deployment-env: docs
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
+          skip-finish: ${{ github.event_name == 'pull_request' && env.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
-        if: vars.PREVIEW_DOMAIN != ''
+        if: env.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-token: ${{ env.VERCEL_TOKEN }}
+          vercel-org-id: ${{ env.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: docs
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          preview-domain: ${{ env.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
@@ -800,36 +845,52 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_TOKEN: op://Development/ci/VERCEL_TOKEN
+          VERCEL_TEAM_ID: op://Development/ci/VERCEL_TEAM_ID
+          VERCEL_PROJECT_ID_APP: op://Development/ci/VERCEL_PROJECT_ID_APP
+          PREVIEW_DOMAIN: op://Development/ci/PREVIEW_DOMAIN
+          CLERK_PUBLISHABLE_KEY: op://Development/clerk/CLERK_PUBLISHABLE_KEY
+          SENTRY_DSN_APP: op://Development/ci/SENTRY_DSN_APP
+          SENTRY_AUTH_TOKEN: op://Development/ci/SENTRY_AUTH_TOKEN
+          SENTRY_ORG: op://Development/ci/SENTRY_ORG
+          SENTRY_PROJECT_APP: op://Development/ci/SENTRY_PROJECT_APP
+
       - name: Deploy App to Vercel
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
+          vercel-token: ${{ env.VERCEL_TOKEN }}
+          vercel-org-id: ${{ env.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ env.VERCEL_PROJECT_ID_APP }}
           environment: preview
           deployment-env: app
           environment-variables: |
-            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            VITE_CLERK_PUBLISHABLE_KEY=${{ env.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
-            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ vars.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
+            VITE_SENTRY_DSN=${{ env.SENTRY_DSN_APP }}
+            SENTRY_AUTH_TOKEN=${{ env.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ env.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ env.SENTRY_PROJECT_APP }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
+          skip-finish: ${{ github.event_name == 'pull_request' && env.PREVIEW_DOMAIN != '' }}
 
       - name: Create Vercel Alias
-        if: vars.PREVIEW_DOMAIN != ''
+        if: env.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-token: ${{ env.VERCEL_TOKEN }}
+          vercel-org-id: ${{ env.VERCEL_TEAM_ID }}
           deployment-url: ${{ steps.deploy.outputs.url }}
           app-name: app
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          preview-domain: ${{ env.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
@@ -865,23 +926,27 @@ jobs:
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLERK_PUBLISHABLE_KEY: op://Development/clerk/CLERK_PUBLISHABLE_KEY
+          CLERK_SECRET_KEY: op://Development/clerk/CLERK_SECRET_KEY
+          VERCEL_AUTOMATION_BYPASS_SECRET: op://Development/ci/VERCEL_AUTOMATION_BYPASS_SECRET
+
       - name: Verify device flow authentication
         run: |
           echo "Verifying device flow with ${{ needs.deploy-web.outputs.preview-url }}"
           cd e2e && npm run auth
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Verify sign-in flow
         run: cd e2e && npx playwright test sign-in.spec.ts
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   # Build CLI once and share via artifact — e2e jobs download instead of rebuilding
   build-cli:
@@ -964,6 +1029,15 @@ jobs:
       - name: Setup test token
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-serial.json ~/.vm0/config.json
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CRON_SECRET: op://Development/ci/CRON_SECRET
+          VERCEL_AUTOMATION_BYPASS_SECRET: op://Development/ci/VERCEL_AUTOMATION_BYPASS_SECRET
+
       - name: Start Cron Simulator
         run: |
           chmod +x ./e2e/scripts/cron-simulator.sh
@@ -971,8 +1045,6 @@ jobs:
           echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Run Serial E2E Tests
         run: |
@@ -981,7 +1053,6 @@ jobs:
           echo "✅ Serial tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
 
       - name: Stop Cron Simulator
@@ -1025,6 +1096,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          AWS_METAL_RUNNER_SSH_KEY: op://Development/ci/AWS_METAL_RUNNER_SSH_KEY
+          AWS_METAL_RUNNER_HOSTS: op://Development/ci/AWS_METAL_RUNNER_HOSTS
+          AWS_METAL_RUNNER_USER: op://Development/ci/AWS_METAL_RUNNER_USER
+          CF_ACCESS_CLIENT_ID: op://Development/ci/CF_ACCESS_CLIENT_ID
+          CF_ACCESS_CLIENT_SECRET: op://Development/ci/CF_ACCESS_CLIENT_SECRET
+          GRAFANA_CLOUD_PROMETHEUS_URL: op://Development/ci/GRAFANA_CLOUD_PROMETHEUS_URL
+          GRAFANA_CLOUD_PROMETHEUS_USER: op://Development/ci/GRAFANA_CLOUD_PROMETHEUS_USER
+          GRAFANA_CLOUD_API_KEY: op://Development/ci/GRAFANA_CLOUD_API_KEY
+          OFFICIAL_RUNNER_SECRET: op://Development/ci/OFFICIAL_RUNNER_SECRET
+
       - name: Install mold linker
         env:
           MOLD_VERSION: "2.40.4"
@@ -1059,23 +1146,23 @@ jobs:
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          ssh-key: ${{ env.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ env.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ env.CF_ACCESS_CLIENT_SECRET }}
 
       - name: Provision metal hosts
         uses: ./.github/actions/provision
         with:
-          hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          metal-user: ${{ vars.AWS_METAL_RUNNER_USER }}
-          grafana-cloud-prometheus-url: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
-          grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
-          grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          hosts: ${{ env.AWS_METAL_RUNNER_HOSTS }}
+          metal-user: ${{ env.AWS_METAL_RUNNER_USER }}
+          grafana-cloud-prometheus-url: ${{ env.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          grafana-cloud-prometheus-user: ${{ env.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          grafana-cloud-api-key: ${{ env.GRAFANA_CLOUD_API_KEY }}
 
       - name: Resolve metal hosts
         id: host
         env:
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_HOSTS: ${{ env.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
           echo "bin-dir=~/.vm0-runner/bin/${JOB_REF}" >> "$GITHUB_OUTPUT"
@@ -1139,9 +1226,8 @@ jobs:
         id: deploy
         shell: bash
         env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ env.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ env.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ steps.host.outputs.bin-dir }}
           RUNNER_DIR: ${{ steps.host.outputs.runner-dir }}
@@ -1227,27 +1313,40 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          AWS_METAL_RUNNER_SSH_KEY: op://Development/ci/AWS_METAL_RUNNER_SSH_KEY
+          AWS_METAL_RUNNER_HOSTS: op://Development/ci/AWS_METAL_RUNNER_HOSTS
+          AWS_METAL_RUNNER_USER: op://Development/ci/AWS_METAL_RUNNER_USER
+          CF_ACCESS_CLIENT_ID: op://Development/ci/CF_ACCESS_CLIENT_ID
+          CF_ACCESS_CLIENT_SECRET: op://Development/ci/CF_ACCESS_CLIENT_SECRET
+          OFFICIAL_RUNNER_SECRET: op://Development/ci/OFFICIAL_RUNNER_SECRET
+          VERCEL_AUTOMATION_BYPASS_SECRET: op://Development/ci/VERCEL_AUTOMATION_BYPASS_SECRET
+
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
         with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          ssh-key: ${{ env.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ env.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ env.CF_ACCESS_CLIENT_SECRET }}
 
-      # Read METAL_HOSTS from secret directly — GitHub Actions masks secret values in job outputs
+      # Read METAL_HOSTS from 1Password env — GitHub Actions masks secret values in job outputs
       - name: Rebuild config and start runner service on all hosts
         id: start
         env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ env.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ env.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           ROOTFS_HASH: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash }}
           SNAPSHOT_HASH: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_BYPASS: ${{ env.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           start_on_host() {
             local HOST=$1
@@ -1380,13 +1479,23 @@ jobs:
       - name: Setup test token
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: op://Development/ci/VERCEL_AUTOMATION_BYPASS_SECRET
+          CRON_SECRET: op://Development/ci/CRON_SECRET
+          ANTHROPIC_API_KEY: op://Development/ci/CI_ANTHROPIC_API_KEY
+          OFFICIAL_RUNNER_SECRET: op://Development/ci/OFFICIAL_RUNNER_SECRET
+
       - name: Bootstrap test account
         run: |
           vm0 org set "e2e-runner" --force
           vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |
@@ -1395,8 +1504,6 @@ jobs:
           echo "CRON_SIMULATOR_PID=$!" >> $GITHUB_ENV
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Run Runner E2E Tests (Chunk ${{ matrix.index }})
         run: |
@@ -1414,10 +1521,7 @@ jobs:
           RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
           RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
-          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
 
       - name: Stop Cron Simulator
@@ -1429,7 +1533,6 @@ jobs:
           fi
 
   # Build E2B templates (development account)
-  # Uses repository-level E2B_API_KEY secret
   build-e2b-template:
     runs-on: ubuntu-latest
     container:
@@ -1443,10 +1546,16 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          E2B_API_KEY: op://Development/e2b/E2B_API_KEY
+
       - name: Build E2B templates
         working-directory: turbo
-        env:
-          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: |
           pnpm e2b:cli:build
 
@@ -1473,6 +1582,13 @@ jobs:
         run: npx puppeteer browsers install chrome
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: op://Development/ci/VERCEL_AUTOMATION_BYPASS_SECRET
       - name: Run Lighthouse CI (web)
         working-directory: e2e/lighthouse
         run: |
@@ -1483,7 +1599,6 @@ jobs:
             --config=lighthouserc-web.json
         env:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Locate LHCI output (web)
         id: lhci-dir-web
         if: always()
@@ -1540,6 +1655,13 @@ jobs:
         run: npx puppeteer browsers install chrome
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: op://Development/ci/VERCEL_AUTOMATION_BYPASS_SECRET
       - name: Run Lighthouse CI (app)
         working-directory: e2e/lighthouse
         run: |
@@ -1551,7 +1673,6 @@ jobs:
         env:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Locate LHCI output (app)
         id: lhci-dir-app
         if: always()
