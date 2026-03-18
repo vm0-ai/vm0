@@ -29,24 +29,29 @@ dotenv.config({ path: ".env.local" });
 export async function clerkLogin(page: Page, baseUrl: string, email: string) {
   const OTP = "424242";
 
-  // If Vercel bypass secret is available, set bypass cookie
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    const bypassUrl = `${baseUrl}?x-vercel-set-bypass-cookie=samesitenone&x-vercel-protection-bypass=${bypassSecret}`;
-    console.log("🔓 Setting Vercel bypass cookie via query parameter");
-    await page.goto(bypassUrl);
-  }
+  // Navigate to www main site first, then to sign-in
+  console.log(`🌐 Navigating to ${baseUrl}`);
+  await page.goto(baseUrl);
+  await page.waitForLoadState("domcontentloaded");
 
-  // Navigate to sign-in page
   await page.goto(`${baseUrl}/sign-in`);
   await page.waitForLoadState("domcontentloaded");
 
-  // Wait for Clerk to render sign-in form (or skip if already signed in)
+  // Wait for Clerk to render sign-in form — if page redirects away from
+  // /sign-in the user is already authenticated; but if the email input
+  // simply hasn't loaded yet we must NOT treat that as "already signed in".
   const emailInput = page.locator('input[name="identifier"]');
-  const hasSignIn = await emailInput.isVisible({ timeout: 10000 }).catch(() => false);
-  if (!hasSignIn) {
-    console.log(`✅ Already signed in (current URL: ${page.url()})`);
-    return;
+  try {
+    await emailInput.waitFor({ state: "visible", timeout: 15000 });
+  } catch {
+    // Input never appeared — check whether we actually left /sign-in
+    if (!page.url().includes("/sign-in")) {
+      console.log(`✅ Already signed in (redirected to ${page.url()})`);
+      return;
+    }
+    throw new Error(
+      `Clerk sign-in form did not render within 15 s (still on ${page.url()})`
+    );
   }
 
   // Enter email address
