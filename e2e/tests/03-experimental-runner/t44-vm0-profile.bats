@@ -66,8 +66,7 @@ EOF
 
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "agent-browser --version && chromium --version"
+        "agent-browser open https://example.com && agent-browser get title && agent-browser close"
     assert_success
-    assert_output --partial "agent-browser"
-    assert_output --partial "Chromium"
+    assert_output --partial "Example Domain"
 }
