@@ -230,8 +230,8 @@ jobs:
           ssh $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
           scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
-          # Clean up old rootfs/snapshots, keep the 3 most recent
-          ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+          # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles)
+          ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 6"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="

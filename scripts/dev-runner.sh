@@ -86,7 +86,7 @@ cmd_deploy() {
   ssh_cmd "$RUNNER_BIN setup"
 
   # Clean up old rootfs/snapshots
-  ssh_cmd "$RUNNER_BIN gc --keep-latest 2"
+  ssh_cmd "$RUNNER_BIN gc --keep-latest 6"
 
   # Build rootfs + snapshot
   log "Building rootfs and snapshot..."
