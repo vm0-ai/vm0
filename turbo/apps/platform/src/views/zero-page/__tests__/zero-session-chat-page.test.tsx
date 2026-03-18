@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { waitFor } from "@testing-library/react";
+import { screen, waitFor, getDefaultNormalizer } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -7,18 +7,11 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
-/**
- * Returns the first <p> element in the document whose textContent
- * includes the given substring (case-sensitive, un-normalized).
- */
-function findParagraphWithText(text: string): HTMLElement | null {
-  for (const el of document.querySelectorAll("p")) {
-    if ((el.textContent ?? "").includes(text)) {
-      return el as HTMLElement;
-    }
-  }
-  return null;
-}
+// Normalizer that preserves whitespace (including newlines) so assertions can
+// distinguish between "Hello World" (soft wrap) and "Hello\nWorld" (hard break).
+const noCollapseNormalizer = getDefaultNormalizer({
+  collapseWhitespace: false,
+});
 
 describe("userMessage line break rendering", () => {
   it("should preserve newlines between words in user messages", async () => {
@@ -51,14 +44,16 @@ describe("userMessage line break rendering", () => {
     });
 
     // Without the fix, CommonMark collapses \n into a space so the message
-    // renders as "Hello World". With the fix, a hard line break separates
-    // them, so the paragraph's raw textContent does not contain "Hello World"
-    // (no space between the two words).
+    // renders as "Hello World". With the fix, a hard line break separates the
+    // two words. Using a non-collapsing normalizer, "Hello World" should not be
+    // found as a single text run anywhere in the rendered tree.
     await waitFor(() => {
-      const paragraph = findParagraphWithText("Hello");
-      expect(paragraph).not.toBeNull();
-      expect(paragraph?.textContent).toContain("World");
-      expect(paragraph?.textContent).not.toContain("Hello World");
+      expect(
+        screen.queryByText("Hello World", { normalizer: noCollapseNormalizer }),
+      ).toBeNull();
+      expect(
+        screen.getByText(/Hello/, { normalizer: noCollapseNormalizer }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -91,11 +86,11 @@ describe("userMessage line break rendering", () => {
       path: "/chat/thread-singleline",
     });
 
-    // Single-line messages with no \n should render with the words on one line,
-    // meaning the paragraph's raw textContent contains "Hello World".
+    // Single-line messages with no \n should render with the words on one line.
     await waitFor(() => {
-      const paragraph = findParagraphWithText("Hello World");
-      expect(paragraph).not.toBeNull();
+      expect(
+        screen.getByText("Hello World", { normalizer: noCollapseNormalizer }),
+      ).toBeInTheDocument();
     });
   });
 });
