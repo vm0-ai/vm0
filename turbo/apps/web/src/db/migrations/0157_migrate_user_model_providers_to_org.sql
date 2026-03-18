@@ -58,7 +58,9 @@ JOIN new_secrets ns ON ns.org_id = s.org_id AND ns.name = s.name AND ns.type = s
 WHERE mp.secret_id IS NOT NULL
 ON CONFLICT (org_id, user_id, type) DO NOTHING;--> statement-breakpoint
 
--- Step 1b: Migrate multi-auth providers (secret_id IS NULL, auth_method IS NOT NULL)
+-- Step 1b+1c: Migrate multi-auth providers and their secrets in a single statement.
+-- Using a single WITH block ensures best_admin is evaluated once BEFORE any inserts,
+-- preventing Step 1c from seeing org-level rows created by Step 1b.
 WITH best_admin AS (
   SELECT DISTINCT ON (mp.org_id)
     mp.org_id,
@@ -73,39 +75,25 @@ WITH best_admin AS (
       WHERE existing.org_id = mp.org_id AND existing.user_id = '__org__'
     )
   ORDER BY mp.org_id, mp.created_at ASC
-)
-INSERT INTO model_providers (id, type, secret_id, auth_method, is_default, selected_model, user_id, org_id, created_at, updated_at)
-SELECT
-  gen_random_uuid(),
-  mp.type,
-  NULL,
-  mp.auth_method,
-  mp.is_default,
-  mp.selected_model,
-  '__org__',
-  mp.org_id,
-  NOW(),
-  NOW()
-FROM model_providers mp
-JOIN best_admin ba ON mp.org_id = ba.org_id AND mp.user_id = ba.user_id
-WHERE mp.secret_id IS NULL AND mp.auth_method IS NOT NULL
-ON CONFLICT (org_id, user_id, type) DO NOTHING;--> statement-breakpoint
-
--- Step 1c: Copy secrets for multi-auth providers
-WITH best_admin AS (
-  SELECT DISTINCT ON (mp.org_id)
+),
+new_multi_auth_providers AS (
+  INSERT INTO model_providers (id, type, secret_id, auth_method, is_default, selected_model, user_id, org_id, created_at, updated_at)
+  SELECT
+    gen_random_uuid(),
+    mp.type,
+    NULL,
+    mp.auth_method,
+    mp.is_default,
+    mp.selected_model,
+    '__org__',
     mp.org_id,
-    mp.user_id
+    NOW(),
+    NOW()
   FROM model_providers mp
-  JOIN org_members_cache omc
-    ON mp.org_id = omc.org_id AND mp.user_id = omc.user_id
-  WHERE omc.role = 'admin'
-    AND mp.user_id != '__org__'
-    AND NOT EXISTS (
-      SELECT 1 FROM model_providers existing
-      WHERE existing.org_id = mp.org_id AND existing.user_id = '__org__'
-    )
-  ORDER BY mp.org_id, mp.created_at ASC
+  JOIN best_admin ba ON mp.org_id = ba.org_id AND mp.user_id = ba.user_id
+  WHERE mp.secret_id IS NULL AND mp.auth_method IS NOT NULL
+  ON CONFLICT (org_id, user_id, type) DO NOTHING
+  RETURNING org_id
 )
 INSERT INTO secrets (id, name, encrypted_value, description, type, user_id, org_id, created_at, updated_at)
 SELECT
