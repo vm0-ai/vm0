@@ -6,6 +6,9 @@ import {
   createTestOrg as createTestOrgHelper,
   insertOrgMembersCacheEntry,
   findOrgMembersCacheEntry,
+  createTestSlackOrgInstallation,
+  createTestSlackOrgConnection,
+  findTestSlackOrgConnection,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -76,16 +79,29 @@ describe("POST /api/org/leave - Leave Org", () => {
       sessionClaims: {},
     } as unknown as Awaited<ReturnType<typeof auth>>);
 
-    // Seed an org members cache row for the member
+    // Seed an org members cache row and a Slack connection for the member
     await insertOrgMembersCacheEntry({
       orgId,
       userId: memberUserId,
       role: "member",
     });
+    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+      orgId,
+    });
+    const { slackUserId } = await createTestSlackOrgConnection({
+      slackWorkspaceId,
+      vm0UserId: memberUserId,
+      orgId,
+    });
 
-    // Verify the cache entry exists before leaving
-    const before = await findOrgMembersCacheEntry(orgId, memberUserId);
-    expect(before).toBeDefined();
+    // Verify both rows exist before leaving
+    const cacheBefore = await findOrgMembersCacheEntry(orgId, memberUserId);
+    expect(cacheBefore).toBeDefined();
+    const connectionBefore = await findTestSlackOrgConnection(
+      slackUserId,
+      slackWorkspaceId,
+    );
+    expect(connectionBefore).toBeDefined();
 
     // Member leaves the org
     const leaveReq = createTestRequest(
@@ -102,9 +118,14 @@ describe("POST /api/org/leave - Leave Org", () => {
     const leaveData = await leaveRes.json();
     expect(leaveData.message).toBeDefined();
 
-    // Verify the cache entry was deleted by cleanupOrgMember
-    const after = await findOrgMembersCacheEntry(orgId, memberUserId);
-    expect(after).toBeUndefined();
+    // Verify both rows were deleted by cleanupOrgMember
+    const cacheAfter = await findOrgMembersCacheEntry(orgId, memberUserId);
+    expect(cacheAfter).toBeUndefined();
+    const connectionAfter = await findTestSlackOrgConnection(
+      slackUserId,
+      slackWorkspaceId,
+    );
+    expect(connectionAfter).toBeUndefined();
   });
 
   it("should prevent admin from leaving", async () => {
