@@ -40,6 +40,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
@@ -394,6 +397,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
+
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
 
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
@@ -792,6 +798,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
@@ -844,6 +853,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
+
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
 
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
@@ -925,6 +937,9 @@ jobs:
         run: cd e2e && sudo npx playwright install-deps chromium
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install chromium
+
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
 
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
@@ -1029,6 +1044,9 @@ jobs:
       - name: Setup test token
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-serial.json ~/.vm0/config.json
 
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
@@ -1095,6 +1113,9 @@ jobs:
       snapshot-hash: ${{ steps.deploy.outputs.snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
+
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
 
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
@@ -1313,6 +1334,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
@@ -1479,6 +1503,9 @@ jobs:
       - name: Setup test token
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
 
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
@@ -1546,6 +1573,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
@@ -1582,6 +1612,9 @@ jobs:
         run: npx puppeteer browsers install chrome
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
@@ -1655,6 +1688,9 @@ jobs:
         run: npx puppeteer browsers install chrome
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
+      - name: Install unzip (required by 1Password action in container)
+        run: which unzip > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq unzip > /dev/null)
+
       - name: Load secrets from 1Password
         uses: 1password/load-secrets-action@v2
         with:
