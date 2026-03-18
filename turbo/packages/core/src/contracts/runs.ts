@@ -572,6 +572,7 @@ export type LogsSearchContract = typeof logsSearchContract;
 const queueEntrySchema = z.object({
   position: z.number(),
   agentName: z.string().nullable(),
+  agentDisplayName: z.string().nullable(),
   userEmail: z.string().nullable(),
   createdAt: z.string(),
   runId: z.string().nullable(),
@@ -586,6 +587,7 @@ const queueEntrySchema = z.object({
 const runningTaskSchema = z.object({
   runId: z.string().nullable(),
   agentName: z.string(),
+  agentDisplayName: z.string().nullable(),
   userEmail: z.string(),
   startedAt: z.string().nullable(),
   isOwner: z.boolean(),

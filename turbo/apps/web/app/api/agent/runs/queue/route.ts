@@ -8,6 +8,7 @@ import {
   PENDING_RUN_TTL_MS,
 } from "../../../../../src/lib/run/run-service";
 import { getCachedUser } from "../../../../../src/lib/auth/user-cache-service";
+import { extractDisplayName } from "../../../../../src/lib/agent-compose/extract-display-name";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   agentComposeVersions,
@@ -89,6 +90,7 @@ const router = tsr.router(runsQueueContract, {
         runUserId: agentRuns.userId,
         createdAt: agentRuns.createdAt,
         agentName: agentComposes.name,
+        agentContent: agentComposeVersions.content,
         prompt: agentRuns.prompt,
         scheduleId: agentRuns.scheduleId,
         continuedFromSessionId: agentRuns.continuedFromSessionId,
@@ -114,6 +116,7 @@ const router = tsr.router(runsQueueContract, {
         runUserId: agentRuns.userId,
         startedAt: agentRuns.startedAt,
         agentName: agentComposes.name,
+        agentContent: agentComposeVersions.content,
       })
       .from(agentRuns)
       .leftJoin(
@@ -179,6 +182,7 @@ const router = tsr.router(runsQueueContract, {
       return {
         position: index + 1,
         agentName: run.agentName ?? "unknown",
+        agentDisplayName: extractDisplayName(run.agentContent),
         userEmail: userMap.get(run.runUserId) ?? "unknown",
         createdAt: run.createdAt.toISOString(),
         isOwner,
@@ -202,6 +206,7 @@ const router = tsr.router(runsQueueContract, {
       return {
         runId: isOwner ? run.id : null,
         agentName: run.agentName ?? "unknown",
+        agentDisplayName: extractDisplayName(run.agentContent),
         userEmail: userMap.get(run.runUserId) ?? "unknown",
         startedAt: run.startedAt?.toISOString() ?? null,
         isOwner,

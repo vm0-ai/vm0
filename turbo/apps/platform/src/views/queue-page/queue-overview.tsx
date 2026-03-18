@@ -1,3 +1,4 @@
+import { IconServer, IconStack2, IconHourglass } from "@tabler/icons-react";
 import type { QueueData } from "../../signals/queue-page/queue-signals.ts";
 
 function formatDuration(ms: number): string {
@@ -14,14 +15,24 @@ interface StatCardProps {
   label: string;
   value: string;
   detail?: string;
+  icon: React.ReactNode;
 }
 
-function StatCard({ label, value, detail }: StatCardProps) {
+function StatCard({ label, value, detail, icon }: StatCardProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
-      {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
+    <div className="zero-card p-4">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-muted-foreground">{icon}</span>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {label}
+        </p>
+      </div>
+      <p className="text-2xl font-semibold tracking-tight text-foreground">
+        {value}
+      </p>
+      {detail && (
+        <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
+      )}
     </div>
   );
 }
@@ -41,11 +52,13 @@ export function QueueOverview({ data }: QueueOverviewProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <StatCard
+        icon={<IconServer size={14} stroke={1.5} />}
         label="Concurrency"
         value={`${concurrency.active} / ${concurrency.limit}`}
         detail={`${concurrency.available} slot${concurrency.available !== 1 ? "s" : ""} available (${concurrency.tier})`}
       />
       <StatCard
+        icon={<IconStack2 size={14} stroke={1.5} />}
         label="Queue Length"
         value={`${queue.length}`}
         detail={
@@ -55,6 +68,7 @@ export function QueueOverview({ data }: QueueOverviewProps) {
         }
       />
       <StatCard
+        icon={<IconHourglass size={14} stroke={1.5} />}
         label="Est. Clear Time"
         value={etaTotal ?? "--"}
         detail={

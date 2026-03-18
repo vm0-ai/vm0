@@ -22,15 +22,13 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
+import { extractDisplayName } from "../../../../src/lib/agent-compose/extract-display-name";
 
 const log = logger("api:platform:logs");
 
-// Minimal type for extracting framework and displayName from compose content
+// Minimal type for extracting framework from compose content
 interface AgentComposeContent {
-  agents: Record<
-    string,
-    { framework: string; metadata?: { displayName?: string } }
-  >;
+  agents: Record<string, { framework: string }>;
 }
 
 interface LogsQuery {
@@ -121,18 +119,6 @@ function extractFramework(composeContent: unknown): string | null {
   const firstAgent =
     agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
   return firstAgent?.framework ?? null;
-}
-
-/**
- * Extract display name from compose content metadata.
- */
-function extractDisplayName(composeContent: unknown): string | null {
-  const content = composeContent as AgentComposeContent | null;
-  const agentNames = content?.agents ? Object.keys(content.agents) : [];
-  const firstAgent =
-    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
-  const displayName = firstAgent?.metadata?.displayName;
-  return typeof displayName === "string" ? displayName : null;
 }
 
 const router = tsr.router(platformLogsListContract, {

@@ -188,7 +188,7 @@ export async function handleOrgMention(
       channel: context.channelId,
       user: context.userId,
       thread_ts: threadTs,
-      text: "⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+      text: `⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available. <${getAppUrl()}/queue|View queue>`,
     });
   } else if (status === "failed") {
     log.error("Failed to dispatch agent run", { response });

@@ -190,7 +190,7 @@ export async function handleOrgDirectMessage(
       channel: context.channelId,
       user: context.userId,
       thread_ts: threadTs,
-      text: "⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available.",
+      text: `⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available. <${getAppUrl()}/queue|View queue>`,
     });
   } else if (status === "failed") {
     const errorText = response ?? "Sorry, an error occurred. Please try again.";

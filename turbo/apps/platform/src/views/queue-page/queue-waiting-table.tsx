@@ -1,13 +1,9 @@
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@vm0/ui";
+import { cn } from "@vm0/ui";
 import type { QueueEntry } from "../../signals/queue-page/queue-signals.ts";
 import { SimpleLink } from "../router/link.tsx";
+
+const ROW_GRID =
+  "grid grid-cols-[2.5rem_1fr_1fr_5rem_5rem_7rem] gap-x-4 items-center";
 
 function formatDuration(ms: number): string {
   if (ms < 60_000) {
@@ -30,20 +26,6 @@ function formatRelativeTime(iso: string): string {
   return `${(diff / 3_600_000).toFixed(1)}h ago`;
 }
 
-function triggerSourceLabel(source: "schedule" | "chat" | "api"): string {
-  switch (source) {
-    case "schedule": {
-      return "Schedule";
-    }
-    case "chat": {
-      return "Chat";
-    }
-    case "api": {
-      return "API";
-    }
-  }
-}
-
 interface QueueWaitingTableProps {
   queue: QueueEntry[];
   estimatedTimePerRun: number | null;
@@ -55,104 +37,69 @@ export function QueueWaitingTable({
 }: QueueWaitingTableProps) {
   return (
     <div>
-      <h3 className="text-sm font-medium text-foreground mb-2">
+      <p className="text-sm font-medium text-muted-foreground mb-2 px-1">
         Waiting ({queue.length})
-      </h3>
+      </p>
       {queue.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+        <div className="zero-card p-6 text-center text-sm text-muted-foreground">
           No tasks in queue.
         </div>
       ) : (
-        <Table>
-          <TableHeader className="bg-muted">
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="h-10 px-3 text-sm font-medium text-foreground w-[50px]">
-                #
-              </TableHead>
-              <TableHead className="h-10 px-3 text-sm font-medium text-foreground">
-                Agent
-              </TableHead>
-              <TableHead className="h-10 px-3 text-sm font-medium text-foreground">
-                User
-              </TableHead>
-              <TableHead className="h-10 px-3 text-sm font-medium text-foreground">
-                Queued
-              </TableHead>
-              <TableHead className="h-10 px-3 text-sm font-medium text-foreground">
-                Est. Wait
-              </TableHead>
-              <TableHead className="h-10 px-3 text-sm font-medium text-foreground">
-                Details
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {queue.map((entry) => (
-              <TableRow key={entry.runId ?? `queue-${entry.position}`}>
-                <TableCell className="px-3 py-2 text-sm text-muted-foreground">
-                  {entry.position}
-                </TableCell>
-                <TableCell className="px-3 py-2 text-sm">
-                  {entry.agentName}
-                </TableCell>
-                <TableCell className="px-3 py-2 text-sm text-muted-foreground">
-                  {entry.userEmail}
-                </TableCell>
-                <TableCell className="px-3 py-2 text-sm text-muted-foreground">
-                  {formatRelativeTime(entry.createdAt)}
-                </TableCell>
-                <TableCell className="px-3 py-2 text-sm text-muted-foreground">
-                  {estimatedTimePerRun
-                    ? formatDuration(estimatedTimePerRun * entry.position)
-                    : "--"}
-                </TableCell>
-                <TableCell className="px-3 py-2 text-sm">
-                  {(entry.prompt ?? entry.sessionLink ?? entry.runId) ? (
-                    <OwnerDetails entry={entry} />
-                  ) : (
-                    <span className="text-muted-foreground">--</span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </div>
-  );
-}
-
-function OwnerDetails({ entry }: { entry: QueueEntry }) {
-  return (
-    <div className="flex flex-col gap-1">
-      {entry.triggerSource && (
-        <span className="text-xs text-muted-foreground">
-          {triggerSourceLabel(entry.triggerSource)}
-        </span>
-      )}
-      {entry.prompt && (
-        <span className="text-xs text-muted-foreground truncate max-w-[200px] block">
-          {entry.prompt}
-        </span>
-      )}
-      <div className="flex gap-2">
-        {entry.runId && (
-          <SimpleLink
-            href={`/activity/${entry.runId}`}
-            className="text-xs text-primary hover:underline"
+        <div className="zero-card overflow-hidden px-6 pb-2">
+          <div
+            className={cn(
+              ROW_GRID,
+              "sticky top-0 z-10 -mx-4 px-4 py-2.5 text-xs font-medium text-muted-foreground bg-card border-b border-border/40",
+            )}
           >
-            Run log
-          </SimpleLink>
-        )}
-        {entry.sessionLink && (
-          <SimpleLink
-            href={entry.sessionLink}
-            className="text-xs text-primary hover:underline"
-          >
-            Session
-          </SimpleLink>
-        )}
-      </div>
+            <div>#</div>
+            <div>Agent</div>
+            <div>User</div>
+            <div>Queued</div>
+            <div>Est. Wait</div>
+            <div>Activity logs</div>
+          </div>
+          {queue.map((entry) => (
+            <div
+              key={entry.runId ?? `queue-${entry.position}`}
+              className={cn(
+                ROW_GRID,
+                "py-2.5 -mx-4 px-4 border-b border-border/40 last:border-b-0",
+              )}
+            >
+              <div className="text-sm font-medium text-muted-foreground tabular-nums">
+                {entry.position}
+              </div>
+              <div className="text-sm font-medium text-foreground truncate">
+                {entry.agentDisplayName ?? entry.agentName}
+              </div>
+              <div className="text-sm text-muted-foreground truncate">
+                {entry.userEmail}
+              </div>
+              <div className="text-sm text-muted-foreground tabular-nums">
+                {formatRelativeTime(entry.createdAt)}
+              </div>
+              <div className="text-sm text-muted-foreground tabular-nums">
+                {estimatedTimePerRun
+                  ? formatDuration(estimatedTimePerRun * entry.position)
+                  : "--"}
+              </div>
+              <div>
+                {entry.runId ? (
+                  <SimpleLink
+                    href={`/activity/${entry.runId}`}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    View logs
+                  </SimpleLink>
+                ) : (
+                  <span className="text-sm text-muted-foreground">--</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

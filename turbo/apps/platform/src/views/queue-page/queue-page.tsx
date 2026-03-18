@@ -1,49 +1,67 @@
-import { useGet } from "ccstate-react";
-import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
+import { command } from "ccstate";
+import { useGet, useSet } from "ccstate-react";
+import {
+  queueData$,
+  startQueuePolling$,
+} from "../../signals/queue-page/queue-signals.ts";
+import { onRef, detach, Reason } from "../../signals/utils.ts";
 import { QueueOverview } from "./queue-overview.tsx";
 import { QueueRunningTable } from "./queue-running-table.tsx";
 import { QueueWaitingTable } from "./queue-waiting-table.tsx";
-import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+
+const startPolling$ = command(
+  ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    detach(set(startQueuePolling$, signal), Reason.DomCallback);
+  },
+);
+const pollingRef$ = onRef(startPolling$);
 
 function QueueSkeleton() {
   return (
-    <div className="flex flex-col gap-6 px-4 sm:px-6 mb-8">
+    <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Skeleton className="h-24 rounded-lg" />
-        <Skeleton className="h-24 rounded-lg" />
-        <Skeleton className="h-24 rounded-lg" />
+        <div className="zero-card p-4 h-24 animate-pulse bg-muted/20" />
+        <div className="zero-card p-4 h-24 animate-pulse bg-muted/20" />
+        <div className="zero-card p-4 h-24 animate-pulse bg-muted/20" />
       </div>
-      <Skeleton className="h-48 rounded-lg" />
-      <Skeleton className="h-48 rounded-lg" />
+      <div className="zero-card h-48 animate-pulse bg-muted/20" />
+      <div className="zero-card h-48 animate-pulse bg-muted/20" />
     </div>
   );
 }
 
 export function QueuePage() {
   const data = useGet(queueData$);
+  const pollingRef = useSet(pollingRef$);
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">Run Queue</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            View organization-wide queue status and running tasks.
+    <div className="flex flex-1 flex-col min-h-0" ref={pollingRef}>
+      <header className="shrink-0 px-4 sm:px-6 pt-10 pb-3">
+        <div className="mx-auto max-w-[900px]">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Run Queue
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Organization-wide queue status and running tasks.
           </p>
         </div>
-        {!data ? (
-          <QueueSkeleton />
-        ) : (
-          <div className="flex flex-col gap-6">
-            <QueueOverview data={data} />
-            <QueueRunningTable tasks={data.runningTasks} />
-            <QueueWaitingTable
-              queue={data.queue}
-              estimatedTimePerRun={data.estimatedTimePerRun}
-            />
-          </div>
-        )}
-      </div>
+      </header>
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
+        <div className="mx-auto max-w-[900px] flex flex-col gap-6">
+          {!data ? (
+            <QueueSkeleton />
+          ) : (
+            <>
+              <QueueOverview data={data} />
+              <QueueRunningTable tasks={data.runningTasks} />
+              <QueueWaitingTable
+                queue={data.queue}
+                estimatedTimePerRun={data.estimatedTimePerRun}
+              />
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

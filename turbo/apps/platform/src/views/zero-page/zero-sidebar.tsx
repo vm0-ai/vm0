@@ -137,7 +137,8 @@ export type ZeroNavId =
   | "activity"
   | "works"
   | "settings"
-  | "preferences";
+  | "preferences"
+  | "queue";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MANAGE_NAV = [
