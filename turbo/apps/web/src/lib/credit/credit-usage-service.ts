@@ -12,7 +12,6 @@ interface EventData {
     input_tokens?: number;
     output_tokens?: number;
   };
-  [key: string]: unknown;
 }
 
 /**
