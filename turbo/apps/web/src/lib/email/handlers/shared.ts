@@ -4,7 +4,7 @@ import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { getOrgBySlug } from "../../org/org-cache-service";
 import { env } from "../../../env";
-import { getPlatformUrl } from "../../url";
+import { getAppUrl } from "../../url";
 import { getApiUrl } from "../../callback/dispatcher";
 import { enqueueEmail } from "../outbox-service";
 
@@ -373,7 +373,7 @@ export function buildFromAddress(localPart: string): string {
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
 export function buildLogsUrl(runId: string): string {
-  return `${getPlatformUrl()}/activity/${encodeURIComponent(runId)}`;
+  return `${getAppUrl()}/activity/${encodeURIComponent(runId)}`;
 }
 
 // ============================================================================

@@ -6,7 +6,7 @@ import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
-import { getPlatformUrl } from "../../url";
+import { getAppUrl } from "../../url";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -210,7 +210,7 @@ export async function handleSettingsCommand(
   }
 
   const isAdmin = userLink.vm0UserId === installation.adminUserId;
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
   const desc = isAdmin
     ? "Configure secrets, variables, and select the workspace agent on the VM0 platform."
     : "Configure your environment variables and secrets on the VM0 platform.";
@@ -218,7 +218,7 @@ export async function handleSettingsCommand(
   await sendMessage(
     client,
     chatId,
-    `⚙️ <b>Settings</b>\n\n${escapeHtml(desc)}\n\n<a href="${escapeHtml(platformUrl)}/works">Open Platform</a>`,
+    `⚙️ <b>Settings</b>\n\n${escapeHtml(desc)}\n\n<a href="${escapeHtml(appUrl)}/works">Open Platform</a>`,
     replyOptions,
   );
 }

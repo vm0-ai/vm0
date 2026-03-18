@@ -16,7 +16,7 @@ import {
   memberConnect,
   notifyConnectSuccess,
 } from "../../../../../../src/lib/slack-org/connect-service";
-import { getPlatformUrl } from "../../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../../src/lib/url";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("slack-org:oauth-callback");
@@ -82,11 +82,11 @@ export async function GET(request: Request) {
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
   const baseUrl = getSlackRedirectBaseUrl(request.url);
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
 
   if (error) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/failed?error=${encodeURIComponent(error)}`,
+      `${appUrl}/slack/failed?error=${encodeURIComponent(error)}`,
     );
   }
 
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
       code,
       redirectUri,
       state,
-      platformUrl,
+      appUrl,
       clientId: SLACK_CLIENT_ID,
       clientSecret: SLACK_CLIENT_SECRET,
     });
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
   } catch (err) {
     log.error("Slack OAuth exchange failed", { error: err });
     return NextResponse.redirect(
-      `${platformUrl}/slack/failed?error=${encodeURIComponent("Failed to complete Slack installation. Please try again.")}`,
+      `${appUrl}/slack/failed?error=${encodeURIComponent("Failed to complete Slack installation. Please try again.")}`,
     );
   }
 
@@ -152,7 +152,7 @@ export async function GET(request: Request) {
         requestedOrgId: state.orgId,
       });
       return NextResponse.redirect(
-        `${platformUrl}/slack/connect?error=${encodeURIComponent("This Slack workspace is already installed by another organization. Please contact the workspace admin to uninstall first.")}`,
+        `${appUrl}/slack/connect?error=${encodeURIComponent("This Slack workspace is already installed by another organization. Please contact the workspace admin to uninstall first.")}`,
       );
     }
 
@@ -199,7 +199,7 @@ export async function GET(request: Request) {
     const member = await requireOrgMember(orgId, vm0UserId);
     if (member.role !== "admin") {
       return NextResponse.redirect(
-        `${platformUrl}/slack/failed?error=${encodeURIComponent("Only org admins can install Slack for an organization.")}`,
+        `${appUrl}/slack/failed?error=${encodeURIComponent("Only org admins can install Slack for an organization.")}`,
       );
     }
 
@@ -233,13 +233,13 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?status=connected&workspace=${encodeURIComponent(oauthResult.teamName)}`,
+      `${appUrl}/slack/connect?status=connected&workspace=${encodeURIComponent(oauthResult.teamName)}`,
     );
   }
 
   // Slack flow: redirect to success page
   return NextResponse.redirect(
-    `${platformUrl}/slack/installed?workspace=${encodeURIComponent(oauthResult.teamName)}`,
+    `${appUrl}/slack/installed?workspace=${encodeURIComponent(oauthResult.teamName)}`,
   );
 }
 
@@ -254,16 +254,15 @@ async function handleConnectCallback(params: {
   code: string;
   redirectUri: string;
   state: OAuthState;
-  platformUrl: string;
+  appUrl: string;
   clientId: string;
   clientSecret: string;
 }): Promise<NextResponse> {
-  const { code, redirectUri, state, platformUrl, clientId, clientSecret } =
-    params;
+  const { code, redirectUri, state, appUrl, clientId, clientSecret } = params;
 
   if (!state.orgId || !state.vm0UserId) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("Invalid connect state.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("Invalid connect state.")}`,
     );
   }
 
@@ -278,7 +277,7 @@ async function handleConnectCallback(params: {
   } catch (err) {
     log.error("Slack OAuth exchange failed (connect flow)", { error: err });
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("Failed to connect Slack account. Please try again.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("Failed to connect Slack account. Please try again.")}`,
     );
   }
 
@@ -293,14 +292,14 @@ async function handleConnectCallback(params: {
 
   if (!installation) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("No Slack workspace installed for this organization.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("No Slack workspace installed for this organization.")}`,
     );
   }
 
   // Verify workspace matches (user must have authed with the right workspace)
   if (userIdentity.teamId !== installation.slackWorkspaceId) {
     return NextResponse.redirect(
-      `${platformUrl}/slack/connect?error=${encodeURIComponent("You authenticated with a different Slack workspace. Please use the workspace connected to your organization.")}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("You authenticated with a different Slack workspace. Please use the workspace connected to your organization.")}`,
     );
   }
 
@@ -339,6 +338,6 @@ async function handleConnectCallback(params: {
   );
 
   return NextResponse.redirect(
-    `${platformUrl}/slack/connect?status=connected&workspace=${encodeURIComponent(installation.slackWorkspaceName ?? "")}`,
+    `${appUrl}/slack/connect?status=connected&workspace=${encodeURIComponent(installation.slackWorkspaceName ?? "")}`,
   );
 }

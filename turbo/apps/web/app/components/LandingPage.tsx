@@ -7,7 +7,7 @@ import { IconChevronDown, IconFile } from "@tabler/icons-react";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import AnnouncementBanner from "./AnnouncementBanner";
-import { getPlatformUrl } from "../../src/lib/url";
+import { getAppUrl } from "../../src/lib/url";
 import { useUser } from "@clerk/nextjs";
 
 const TYPED_TEXT = "Help me build an agent for tech news aggregation";
@@ -220,7 +220,7 @@ function HeroSection({ isSignedIn }: { isSignedIn: boolean }) {
           <div className="w-full max-w-[566px]">
             {isSignedIn ? (
               <a
-                href={getPlatformUrl()}
+                href={getAppUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white w-full px-[24px] py-[12px] rounded-[10px] flex items-center justify-center transition-colors"
@@ -2344,7 +2344,7 @@ function FinalCtaSection({ isSignedIn }: { isSignedIn: boolean }) {
             <div className="flex flex-col sm:flex-row gap-[12px] sm:gap-[20px]">
               {isSignedIn ? (
                 <a
-                  href={getPlatformUrl()}
+                  href={getAppUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="bg-[#ed4e01] hover:bg-[#ff6a1f] !text-white px-[24px] py-[12px] rounded-[10px] font-medium text-[18px] leading-[28px] w-full sm:w-[160px] transition-colors flex items-center justify-center"

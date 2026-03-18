@@ -23,7 +23,7 @@ import {
   buildOrgConnectUrl,
   getWorkspaceAgent,
 } from "../../../../../src/lib/slack-org/handlers/shared";
-import { getPlatformUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/url";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("slack-org:commands");
@@ -148,7 +148,7 @@ async function handleDisconnect(
 }
 
 function buildNotInstalledMessage(detail?: string): unknown[] {
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
   return [
     {
       type: "section",
@@ -165,7 +165,7 @@ function buildNotInstalledMessage(detail?: string): unknown[] {
         {
           type: "button",
           text: { type: "plain_text", text: "Set up on Platform" },
-          url: `${platformUrl}/works`,
+          url: `${appUrl}/works`,
           action_id: "open_platform_setup",
         },
       ],
@@ -176,7 +176,7 @@ function buildNotInstalledMessage(detail?: string): unknown[] {
 async function handleSettings(
   installation: typeof slackOrgInstallations.$inferSelect,
 ): Promise<NextResponse> {
-  const platformUrl = getPlatformUrl();
+  const appUrl = getAppUrl();
   let agentLabel = "Agent";
   let agentName: string | undefined;
   if (installation.orgId) {
@@ -204,7 +204,7 @@ async function handleSettings(
         {
           type: "button",
           text: { type: "plain_text", text: `Configure ${agentLabel}` },
-          url: `${platformUrl}${settingsPath}`,
+          url: `${appUrl}${settingsPath}`,
           action_id: "open_platform_settings",
         },
       ],

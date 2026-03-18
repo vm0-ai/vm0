@@ -67,7 +67,7 @@ function buildPath(category: KeywordCategory, agentName?: string): string {
  */
 export function detectDeepLinks(
   responseText: string,
-  platformUrl: string,
+  appUrl: string,
   agentName?: string,
 ): DeepLink[] {
   const lowerText = responseText.toLowerCase();
@@ -85,7 +85,7 @@ export function detectDeepLinks(
       links.push({
         emoji: mapping.emoji,
         label: mapping.label,
-        url: `${platformUrl}${path}`,
+        url: `${appUrl}${path}`,
       });
     }
   }

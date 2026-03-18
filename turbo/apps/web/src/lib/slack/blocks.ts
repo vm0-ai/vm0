@@ -8,7 +8,7 @@ import type {
   Checkboxes,
   Option,
 } from "@slack/web-api";
-import { getPlatformUrl } from "../url";
+import { getAppUrl } from "../url";
 import type { DeepLink } from "../deep-links";
 
 /**
@@ -63,7 +63,7 @@ export function buildAppHomeView(options: {
               type: "plain_text",
               text: "Open Zero Settings",
             },
-            url: `${getPlatformUrl()}/works`,
+            url: `${getAppUrl()}/works`,
             action_id: "home_open_settings",
             style: "primary",
           },
@@ -143,7 +143,7 @@ export function buildAppHomeView(options: {
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "Settings" },
-        url: `${getPlatformUrl()}/works`,
+        url: `${getAppUrl()}/works`,
         action_id: "home_environment_setup",
       },
     });
