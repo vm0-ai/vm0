@@ -8,12 +8,12 @@ import {
   PENDING_RUN_TTL_MS,
 } from "../../../../../src/lib/run/run-service";
 import { getCachedUser } from "../../../../../src/lib/auth/user-cache-service";
-import { extractDisplayName } from "../../../../../src/lib/agent-compose/extract-display-name";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   agentComposeVersions,
   agentComposes,
 } from "../../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   eq,
   and,
@@ -90,7 +90,7 @@ const router = tsr.router(runsQueueContract, {
         runUserId: agentRuns.userId,
         createdAt: agentRuns.createdAt,
         agentName: agentComposes.name,
-        agentContent: agentComposeVersions.content,
+        agentDisplayName: zeroAgents.displayName,
         prompt: agentRuns.prompt,
         scheduleId: agentRuns.scheduleId,
         continuedFromSessionId: agentRuns.continuedFromSessionId,
@@ -104,6 +104,13 @@ const router = tsr.router(runsQueueContract, {
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
+      .leftJoin(
+        zeroAgents,
+        and(
+          eq(agentComposes.orgId, zeroAgents.orgId),
+          eq(agentComposes.name, zeroAgents.name),
+        ),
+      )
       .where(
         and(eq(agentRuns.orgId, org.orgId), eq(agentRuns.status, "queued")),
       )
@@ -116,7 +123,7 @@ const router = tsr.router(runsQueueContract, {
         runUserId: agentRuns.userId,
         startedAt: agentRuns.startedAt,
         agentName: agentComposes.name,
-        agentContent: agentComposeVersions.content,
+        agentDisplayName: zeroAgents.displayName,
       })
       .from(agentRuns)
       .leftJoin(
@@ -126,6 +133,13 @@ const router = tsr.router(runsQueueContract, {
       .leftJoin(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .leftJoin(
+        zeroAgents,
+        and(
+          eq(agentComposes.orgId, zeroAgents.orgId),
+          eq(agentComposes.name, zeroAgents.name),
+        ),
       )
       .where(
         and(eq(agentRuns.orgId, org.orgId), eq(agentRuns.status, "running")),
@@ -182,7 +196,7 @@ const router = tsr.router(runsQueueContract, {
       return {
         position: index + 1,
         agentName: isOwner ? (run.agentName ?? "unknown") : null,
-        agentDisplayName: isOwner ? extractDisplayName(run.agentContent) : null,
+        agentDisplayName: isOwner ? (run.agentDisplayName ?? null) : null,
         userEmail: isOwner ? (userMap.get(run.runUserId) ?? "unknown") : null,
         createdAt: run.createdAt.toISOString(),
         isOwner,
@@ -206,7 +220,7 @@ const router = tsr.router(runsQueueContract, {
       return {
         runId: isOwner ? run.id : null,
         agentName: run.agentName ?? "unknown",
-        agentDisplayName: extractDisplayName(run.agentContent),
+        agentDisplayName: run.agentDisplayName ?? null,
         userEmail: userMap.get(run.runUserId) ?? "unknown",
         startedAt: run.startedAt?.toISOString() ?? null,
         isOwner,

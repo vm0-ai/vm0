@@ -405,6 +405,37 @@ export async function createTestZeroAgent(
 }
 
 /**
+ * Read a zero_agents row by org + agent name.
+ *
+ * @param orgId - The org ID
+ * @param name - The agent name
+ * @returns The zero_agents row, or undefined if not found
+ */
+export async function getTestZeroAgent(
+  orgId: string,
+  name: string,
+): Promise<
+  | {
+      displayName: string | null;
+      description: string | null;
+      sound: string | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      displayName: zeroAgents.displayName,
+      description: zeroAgents.description,
+      sound: zeroAgents.sound,
+    })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, name)))
+    .limit(1);
+  return row;
+}
+
+/**
  * Create a test org-level model provider via API route handler.
  * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
  *
