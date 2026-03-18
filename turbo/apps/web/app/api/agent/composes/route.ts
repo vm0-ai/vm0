@@ -9,10 +9,6 @@ import {
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
 } from "@vm0/core";
-import {
-  resolveFrameworkImage,
-  resolveFrameworkWorkingDir,
-} from "../../../../src/lib/framework/framework-config";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -220,18 +216,12 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    // Resolve image and working_dir server-side based on framework
-    const resolvedImage = resolveFrameworkImage(framework);
-    const resolvedWorkingDir = resolveFrameworkWorkingDir(framework);
-
-    // Build resolved content with server-determined image and working_dir
+    // Build resolved content with normalized agent name
     const resolvedContent = {
       ...content,
       agents: {
         [normalizedAgentName]: {
           ...agent,
-          image: resolvedImage,
-          working_dir: resolvedWorkingDir,
         },
       },
     };

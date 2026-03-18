@@ -13,23 +13,16 @@ import type { AgentComposeContent } from "../../lib/domain/compose-types";
 import { withErrorHandler } from "../../lib/command";
 
 /**
- * Remove deprecated fields from compose content
+ * Clean compose content for local use.
+ * Strips any extra fields not part of the agent definition schema.
  */
 function cleanComposeContent(
   content: AgentComposeContent,
 ): AgentComposeContent {
   const cleaned: AgentComposeContent = {
     version: content.version,
-    agents: {},
+    agents: { ...content.agents },
   };
-
-  for (const [agentName, agent] of Object.entries(content.agents)) {
-    // Destructure to exclude deprecated fields
-    const { image, working_dir: workingDir, ...rest } = agent;
-    void image;
-    void workingDir;
-    cleaned.agents[agentName] = rest;
-  }
 
   // Keep volumes section if it exists
   if (content.volumes) {

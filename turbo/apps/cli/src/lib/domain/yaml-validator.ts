@@ -21,8 +21,8 @@ const cliAgentNameSchema = z
 /**
  * CLI-extended agent definition schema with skills URL validation
  *
- * Note: Framework validation (image, working_dir) is now handled server-side.
- * The server rejects unsupported frameworks and resolves image/working_dir automatically.
+ * Note: Framework validation is handled server-side.
+ * The server rejects unsupported frameworks.
  */
 const cliAgentDefinitionSchema = agentDefinitionSchema.superRefine(
   (agent, ctx) => {

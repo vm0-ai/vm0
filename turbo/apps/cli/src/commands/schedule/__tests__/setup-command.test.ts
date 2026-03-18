@@ -57,8 +57,6 @@ function createMockCompose(overrides: Record<string, unknown> = {}) {
         "test-agent": {
           description: "Test agent",
           framework: "claude-code",
-          image: "vm0/claude-code:dev",
-          working_dir: "/home/user/workspace",
         },
       },
     },

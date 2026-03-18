@@ -18,9 +18,7 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           "test-agent": {
-            image: "test-image",
             framework: "claude-code",
-            working_dir: "/workspace",
           },
         },
       };
@@ -36,9 +34,7 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           "my-agent": {
-            image: "ubuntu",
             framework: "claude-code",
-            working_dir: "/home",
           },
         },
       };
@@ -47,9 +43,7 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           "my-agent": {
-            image: "ubuntu",
             framework: "claude-code",
-            working_dir: "/home",
           },
         },
       };
@@ -65,9 +59,8 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           agent1: {
-            working_dir: "/workspace",
-            image: "test",
             framework: "claude-code",
+            description: "test",
           },
         },
       } as AgentComposeYaml;
@@ -75,9 +68,8 @@ describe("content-hash", () => {
       const content2 = {
         agents: {
           agent1: {
-            image: "test",
+            description: "test",
             framework: "claude-code",
-            working_dir: "/workspace",
           },
         },
         version: "1.0",
@@ -93,9 +85,8 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           agent1: {
-            image: "image-a",
             framework: "claude-code",
-            working_dir: "/workspace",
+            description: "agent-a",
           },
         },
       };
@@ -104,9 +95,8 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           agent1: {
-            image: "image-b",
             framework: "claude-code",
-            working_dir: "/workspace",
+            description: "agent-b",
           },
         },
       };
@@ -121,9 +111,7 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           agent1: {
-            image: "test",
             framework: "claude-code",
-            working_dir: "/workspace",
             environment: {
               FOO: "bar",
               BAZ: "qux",
@@ -140,9 +128,7 @@ describe("content-hash", () => {
         version: "1.0",
         agents: {
           agent1: {
-            working_dir: "/workspace",
             framework: "claude-code",
-            image: "test",
             environment: {
               BAZ: "qux",
               FOO: "bar",

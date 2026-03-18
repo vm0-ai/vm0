@@ -319,6 +319,7 @@ export async function prepareStorageManifest(
         skipArtifact ? undefined : effectiveArtifactVersion,
         skipArtifact,
         volumeVersionOverrides,
+        resumeArtifactMountPath,
       )
     : { volumes: [], artifact: null, errors: [] };
 

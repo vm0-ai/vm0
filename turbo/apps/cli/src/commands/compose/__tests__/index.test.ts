@@ -174,7 +174,7 @@ describe("compose command", () => {
     it("should read file when it exists", async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code`,
       );
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
@@ -203,7 +203,7 @@ describe("compose command", () => {
     it("should use vm0.yaml by default when no argument provided", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code`,
       );
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
@@ -242,11 +242,11 @@ describe("compose command", () => {
       // Create both files to verify explicit takes precedence
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  default-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  default-agent:\n    framework: claude-code`,
       );
       await fs.writeFile(
         path.join(tempDir, "custom.yaml"),
-        `version: "1.0"\nagents:\n  custom-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  custom-agent:\n    framework: claude-code`,
       );
 
       let capturedBody: unknown;
@@ -301,7 +301,7 @@ describe("compose command", () => {
     it("should parse valid YAML", async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code`,
       );
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
@@ -351,7 +351,7 @@ describe("compose command", () => {
       // Create YAML with invalid agent name (too short)
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  ab:\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  ab:\n    framework: claude-code`,
       );
 
       await expect(async () => {
@@ -367,7 +367,7 @@ describe("compose command", () => {
     it("should proceed with valid compose", async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code`,
       );
       let composeApiCalled = false;
       server.use(
@@ -562,7 +562,7 @@ describe("compose command", () => {
     beforeEach(async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code`,
       );
       server.use(
         http.get("http://localhost:3000/api/org", () => {
@@ -661,7 +661,7 @@ describe("compose command", () => {
     beforeEach(async () => {
       await fs.writeFile(
         path.join(tempDir, "config.yaml"),
-        `version: "1.0"\nagents:\n  test:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test:\n    framework: claude-code`,
       );
     });
 
@@ -773,7 +773,7 @@ agents:
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should accept supported framework without image/working_dir", async () => {
+    it("should accept supported framework", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"
@@ -819,7 +819,6 @@ agents:
 agents:
   test-agent:
     framework: claude-code
-    image: "vm0/claude-code:dev"
     skills:
       - https://example.com/not-a-github-url`,
       );
@@ -841,7 +840,6 @@ agents:
 agents:
   test-agent:
     framework: claude-code
-    image: "vm0/claude-code:dev"
     skills:
       - https://github.com/vm0-ai/vm0-skills/blob/main/github`,
       );
@@ -864,7 +862,6 @@ agents:
 agents:
   test-agent:
     framework: claude-code
-    image: "vm0/claude-code:dev"
     instructions: ""`,
       );
 
@@ -885,7 +882,6 @@ agents:
 agents:
   test-agent:
     framework: claude-code
-    image: "vm0/claude-code:dev"
     instructions: nonexistent-file.md`,
       );
 
@@ -1089,80 +1085,6 @@ agents:
       const runHint = allLogs.find((log) => log.includes("vm0 run"));
       expect(runHint).toBeDefined();
       expect(runHint).toContain(":deadbeef");
-    });
-  });
-
-  describe("deprecation warnings", () => {
-    it("should show deprecation warning when image field is explicitly set", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"
-agents:
-  test-agent:
-    description: "Test agent with explicit image"
-    framework: claude-code
-    image: "vm0/claude-code:dev"`,
-      );
-
-      server.use(
-        http.post("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json({
-            composeId: "cmp-123",
-            name: "test-agent",
-            versionId: "a1b2c3d4e5f6g7h8" + "0".repeat(48),
-            action: "created",
-          });
-        }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
-        }),
-      );
-
-      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-
-      const allLogs = mockConsoleLog.mock.calls.map(
-        (call) => call[0] as string,
-      );
-      const hasDeprecationWarning = allLogs.some(
-        (log) => log.includes("deprecated") && log.includes("image"),
-      );
-      expect(hasDeprecationWarning).toBe(true);
-    });
-
-    it("should still succeed compose even with deprecation warning", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"
-agents:
-  test-agent:
-    description: "Test agent with explicit image"
-    framework: claude-code
-    image: "vm0/claude-code:dev"`,
-      );
-
-      server.use(
-        http.post("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json({
-            composeId: "cmp-123",
-            name: "test-agent",
-            versionId: "a1b2c3d4e5f6g7h8" + "0".repeat(48),
-            action: "created",
-          });
-        }),
-        http.get("http://localhost:3000/api/org", () => {
-          return HttpResponse.json(orgResponse);
-        }),
-      );
-
-      await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
-
-      const allLogs = mockConsoleLog.mock.calls.map(
-        (call) => call[0] as string,
-      );
-      const hasComposeSuccess = allLogs.some((log) =>
-        log.includes("Compose created"),
-      );
-      expect(hasComposeSuccess).toBe(true);
     });
   });
 
@@ -1623,7 +1545,7 @@ agents:
     it("should output JSON result on success", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
       );
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
@@ -1664,7 +1586,7 @@ agents:
     it("should suppress intermediate output in JSON mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
       );
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
@@ -1720,7 +1642,7 @@ agents:
       // by checking that no confirmation prompts appear in JSON output
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
       );
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
@@ -1748,7 +1670,7 @@ agents:
     it("should not call getOrg or checkMissingItems in --json mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
       );
 
       let orgCalled = false;
@@ -1798,7 +1720,7 @@ agents:
     it("should skip auto-update in JSON mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
       );
 
       // Set up a newer version available
@@ -1826,7 +1748,7 @@ agents:
     it("should show deprecation warning for --porcelain", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
       );
       server.use(
         http.post("http://localhost:3000/api/agent/composes", () => {
@@ -2710,7 +2632,6 @@ agents:
           agents: {
             test: {
               framework: "claude-code",
-              working_dir: "/",
               environment: {
                 API_KEY: "${{ secrets.API_KEY }}",
                 DB_URL: "${{ secrets.DB_URL }}",
@@ -2749,7 +2670,6 @@ agents:
           agents: {
             test: {
               framework: "claude-code",
-              working_dir: "/",
               environment: {
                 API_KEY: "${{ secrets.API_KEY }}",
               },
@@ -2792,7 +2712,6 @@ agents:
           agents: {
             test: {
               framework: "claude-code",
-              working_dir: "/",
               environment: {
                 API_KEY: "${{ secrets.API_KEY }}",
                 REGION: "${{ vars.REGION }}",
@@ -2829,7 +2748,6 @@ agents:
           agents: {
             test: {
               framework: "claude-code",
-              working_dir: "/",
               environment: {
                 API_KEY: "${{ secrets.API_KEY }}",
               },
@@ -2866,7 +2784,6 @@ agents:
           agents: {
             test: {
               framework: "claude-code",
-              working_dir: "/",
               environment: {
                 STATIC: "static-value",
               },
@@ -2903,7 +2820,6 @@ agents:
           agents: {
             test: {
               framework: "claude-code",
-              working_dir: "/",
               environment: {
                 EXISTING_KEY: "${{ secrets.EXISTING_KEY }}",
                 MISSING_KEY: "${{ secrets.MISSING_KEY }}",
@@ -2944,7 +2860,6 @@ agents:
           agents: {
             test: {
               framework: "claude-code",
-              working_dir: "/",
               environment: {
                 GH_TOKEN: "${{ secrets.GH_TOKEN }}",
                 OTHER_KEY: "${{ secrets.OTHER_KEY }}",

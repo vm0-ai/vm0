@@ -8,10 +8,6 @@ import {
   type SupportedFramework,
 } from "@vm0/core";
 import type { AgentComposeYaml } from "../../types/agent-compose";
-import {
-  resolveFrameworkImage,
-  resolveFrameworkWorkingDir,
-} from "../framework/framework-config";
 import { uploadInstructionsServerSide } from "../storage/instruction-upload";
 import { computeComposeVersionId } from "../agent-compose/content-hash";
 import {
@@ -219,7 +215,7 @@ export async function serverSideCompose(params: {
   const contentCopy = structuredClone(content);
   await expandFirewallConfigs(contentCopy);
 
-  // 5. Build resolved content with server-determined image and working_dir
+  // 5. Build resolved content with normalized agent name
   const agentsCopy = contentCopy.agents as Record<
     string,
     Record<string, unknown>
@@ -231,8 +227,6 @@ export async function serverSideCompose(params: {
       [normalizedName]: {
         ...agentsCopy[agentName],
         environment,
-        image: resolveFrameworkImage(framework),
-        working_dir: resolveFrameworkWorkingDir(framework),
       },
     },
   } as AgentComposeYaml;

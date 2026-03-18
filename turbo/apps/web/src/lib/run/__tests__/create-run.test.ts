@@ -411,9 +411,7 @@ describe("createRun()", () => {
         version: "1.0",
         agents: {
           [agentName]: {
-            image: "vm0/claude-code:latest",
             framework: "claude-code",
-            working_dir: "/home/user/workspace",
             environment: { ANTHROPIC_API_KEY: "test-api-key" },
             volumes: agentVolumes,
           },

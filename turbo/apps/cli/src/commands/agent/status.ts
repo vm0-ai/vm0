@@ -74,14 +74,6 @@ function formatAgentDetails(
   console.log(`  ${chalk.cyan(agentName)}:`);
   console.log(`    Framework: ${agent.framework}`);
 
-  if (agent.image) {
-    console.log(`    Image:    ${agent.image}`);
-  }
-
-  if (agent.working_dir) {
-    console.log(`    Working Dir: ${agent.working_dir}`);
-  }
-
   formatVolumes(agent.volumes ?? [], volumeConfigs);
   formatListSection("Skills", agent.skills ?? []);
 

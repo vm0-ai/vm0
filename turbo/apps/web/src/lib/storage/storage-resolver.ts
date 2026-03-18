@@ -288,6 +288,7 @@ function resolveInstructionsAndSkills(
  * @param artifactVersion - Optional artifact version (defaults to "latest")
  * @param skipArtifact - Skip artifact resolution (used when resuming from checkpoint)
  * @param volumeVersionOverrides - Optional volume version overrides (volume name -> version)
+ * @param workingDir - Working directory for artifact mount path
  * @returns Resolution result with resolved volumes, artifact, and errors
  */
 export function resolveVolumes(
@@ -297,6 +298,7 @@ export function resolveVolumes(
   artifactVersion?: string,
   skipArtifact?: boolean,
   volumeVersionOverrides?: Record<string, string>,
+  workingDir?: string,
 ): VolumeResolutionResult {
   const volumes: ResolvedVolume[] = [];
   const errors: VolumeError[] = [];
@@ -305,9 +307,6 @@ export function resolveVolumes(
   // Get first agent (currently only support one agent)
   const agentValues = config.agents ? Object.values(config.agents) : [];
   const agent = agentValues[0];
-
-  // Get working_dir from agent config for validation
-  const workingDir = agent?.working_dir;
 
   // Process volume declarations
   if (agent?.volumes && agent.volumes.length > 0) {

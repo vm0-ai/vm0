@@ -18,10 +18,6 @@ export interface AgentDefinition {
   experimental_runner?: {
     group: string;
   };
-  /** @deprecated Server-resolved field */
-  image?: string;
-  /** @deprecated Server-resolved field */
-  working_dir?: string;
 }
 
 /**

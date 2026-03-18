@@ -29,9 +29,7 @@ interface VolumeConfig {
 interface AgentConfig {
   description?: string;
   framework: string;
-  image: string;
   volumes?: string[];
-  working_dir: string;
   environment?: Record<string, string>;
 }
 

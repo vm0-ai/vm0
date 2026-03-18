@@ -5,7 +5,6 @@ import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
 import {
-  getLegacySystemTemplateWarning,
   extractAndGroupVariables,
   resolveSkillRef,
   expandFirewallConfigs,
@@ -133,29 +132,6 @@ function hasVolumes(config: unknown): boolean {
     volumes !== null &&
     Object.keys(volumes).length > 0
   );
-}
-
-/**
- * Check for legacy image format and show deprecation warnings.
- */
-function checkLegacyImageFormat(config: unknown): void {
-  const cfg = config as Record<string, unknown>;
-  const agentsConfig = cfg.agents as Record<string, Record<string, unknown>>;
-
-  for (const [name, agentConfig] of Object.entries(agentsConfig)) {
-    const image = agentConfig.image as string | undefined;
-    if (image) {
-      console.log(
-        chalk.yellow(
-          `⚠ Agent "${name}": 'image' field is deprecated and will be ignored. The server resolves the image based on the framework.`,
-        ),
-      );
-      const warning = getLegacySystemTemplateWarning(image);
-      if (warning) {
-        console.log(chalk.yellow(`  ${warning}`));
-      }
-    }
-  }
 }
 
 /**
@@ -646,11 +622,6 @@ async function handleGitHubCompose(
       });
     }
 
-    // Check for legacy image format (skip in JSON mode)
-    if (!options.json) {
-      checkLegacyImageFormat(config);
-    }
-
     // Upload instructions and skills
     const skillResults = await uploadAssets(
       agentName,
@@ -739,11 +710,6 @@ export const composeCommand = new Command()
             // 1. Load and validate config
             const { config, agentName, agent, basePath } =
               await loadAndValidateConfig(resolvedConfigFile);
-
-            // 2. Check for legacy image format (skip in JSON mode)
-            if (!options.json) {
-              checkLegacyImageFormat(config);
-            }
 
             // 3. Upload instructions and skills
             const skillResults = await uploadAssets(

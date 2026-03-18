@@ -50,8 +50,8 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(data.updatedAt).toBeDefined();
     });
 
-    it("should resolve image and working_dir server-side", async () => {
-      const agentName = `test-server-resolve-${Date.now()}`;
+    it("should store compose content without image or working_dir", async () => {
+      const agentName = `test-no-deprecated-fields-${Date.now()}`;
       const config = {
         version: "1.0",
         agents: {
@@ -75,7 +75,7 @@ describe("Agent Compose Upsert Behavior", () => {
 
       expect(response.status).toBe(201);
 
-      // Get the created compose to verify resolved values
+      // Get the created compose to verify no deprecated fields
       const getRequest = createTestRequest(
         `http://localhost:3000/api/agent/composes/${data.composeId}`,
         { method: "GET" },
@@ -84,10 +84,10 @@ describe("Agent Compose Upsert Behavior", () => {
       const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
-      // Verify server resolved image and working_dir
       const agent = composeData.content.agents[agentName];
-      expect(agent.image).toMatch(/^vm0\/claude-code:/);
-      expect(agent.working_dir).toBe("/home/user/workspace");
+      expect(agent.framework).toBe("claude-code");
+      expect(agent.image).toBeUndefined();
+      expect(agent.working_dir).toBeUndefined();
     });
 
     it("should silently ignore apps field in config", async () => {
@@ -112,32 +112,16 @@ describe("Agent Compose Upsert Behavior", () => {
       );
 
       const response = await POST(request);
-      const data = await response.json();
-
       expect(response.status).toBe(201);
-
-      // Get the created compose to verify resolved values
-      const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${data.composeId}`,
-        { method: "GET" },
-      );
-
-      const getResponse = await GET(getRequest);
-      const composeData = await getResponse.json();
-
-      // apps field is silently ignored — always resolves to base image
-      const agent = composeData.content.agents[agentName];
-      expect(agent.image).toMatch(/^vm0\/claude-code:/);
     });
 
-    it("should ignore deprecated image and working_dir fields from input", async () => {
-      const agentName = `test-ignore-deprecated-${Date.now()}`;
+    it("should strip unknown fields like image and working_dir from input", async () => {
+      const agentName = `test-strip-unknown-${Date.now()}`;
       const config = {
         version: "1.0",
         agents: {
           [agentName]: {
             framework: "claude-code",
-            // These deprecated fields should be ignored
             image: "custom/image:v1",
             working_dir: "/custom/path",
           },
@@ -158,7 +142,7 @@ describe("Agent Compose Upsert Behavior", () => {
 
       expect(response.status).toBe(201);
 
-      // Get the created compose to verify server-resolved values (not user-provided)
+      // Get the created compose to verify unknown fields were stripped
       const getRequest = createTestRequest(
         `http://localhost:3000/api/agent/composes/${data.composeId}`,
         { method: "GET" },
@@ -167,12 +151,10 @@ describe("Agent Compose Upsert Behavior", () => {
       const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
-      // Verify server resolved values, not user-provided deprecated values
       const agent = composeData.content.agents[agentName];
-      expect(agent.image).toMatch(/^vm0\/claude-code:/);
-      expect(agent.image).not.toBe("custom/image:v1");
-      expect(agent.working_dir).toBe("/home/user/workspace");
-      expect(agent.working_dir).not.toBe("/custom/path");
+      expect(agent.framework).toBe("claude-code");
+      expect(agent.image).toBeUndefined();
+      expect(agent.working_dir).toBeUndefined();
     });
 
     it("should update existing compose when name matches", async () => {

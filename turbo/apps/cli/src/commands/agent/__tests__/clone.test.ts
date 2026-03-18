@@ -152,8 +152,6 @@ describe("agent clone command", () => {
                 agents: {
                   "test-agent": {
                     framework: "claude-code",
-                    image: "deprecated-image", // Should be removed
-                    working_dir: "/deprecated", // Should be removed
                     description: "My agent",
                   },
                 },
@@ -173,8 +171,7 @@ describe("agent clone command", () => {
       await cloneCommand.parseAsync(["node", "cli", "test-agent", dest]);
 
       const yamlContent = fs.readFileSync(path.join(dest, "vm0.yaml"), "utf8");
-      expect(yamlContent).not.toContain("image:");
-      expect(yamlContent).not.toContain("working_dir:");
+      expect(yamlContent).toContain("framework: claude-code");
       expect(yamlContent).toContain("description: My agent");
     });
 

@@ -153,9 +153,7 @@ export function createDefaultComposeConfig(
 
   // Build base agent config without environment
   const baseAgent: Record<string, unknown> = {
-    image: "vm0/claude-code:latest",
     framework: "claude-code",
-    working_dir: "/home/user/workspace",
   };
 
   // Add environment unless noEnvironmentBlock is set

@@ -33,7 +33,7 @@ export interface ResolvedVolume {
  */
 export interface ResolvedArtifact {
   driver: StorageDriver;
-  mountPath: string; // Same as working_dir
+  mountPath: string; // Resolved from framework config
   vasStorageName: string;
   vasVersion: string; // Version hash or "latest"
 }
@@ -70,7 +70,6 @@ export interface AgentVolumeConfig {
     {
       framework?: string; // Framework name (e.g., "claude-code") for mount path resolution
       volumes?: string[];
-      working_dir?: string; // Optional when framework supports auto-config
       instructions?: string; // Path to instructions file (stored as agent-instructions@{name} volume)
       skills?: string[]; // GitHub tree URLs (stored as agent-skills@{path} volumes)
     }

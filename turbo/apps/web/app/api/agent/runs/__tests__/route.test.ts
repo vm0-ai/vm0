@@ -1198,9 +1198,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
               version: "1.0",
               agents: {
                 "test-agent": {
-                  image: "vm0/claude-code:latest",
                   framework: "claude-code",
-                  working_dir: "/home/user/workspace",
                   environment: { ANTHROPIC_API_KEY: "test-key" },
                   volumes: ["data:/mnt/data"],
                 },
@@ -1243,9 +1241,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
               version: "1.0",
               agents: {
                 "test-agent": {
-                  image: "vm0/claude-code:latest",
                   framework: "claude-code",
-                  working_dir: "/home/user/workspace",
                   environment: { ANTHROPIC_API_KEY: "test-key" },
                   volumes: ["data:/mnt/data"],
                 },
@@ -1302,9 +1298,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
               version: "1.0",
               agents: {
                 [agentName]: {
-                  image: "vm0/claude-code:latest",
                   framework: "claude-code",
-                  working_dir: "/home/user/workspace",
                   environment: { ANTHROPIC_API_KEY: "test-key" },
                   volumes: ["undefined-vol:/mnt/data"],
                 },

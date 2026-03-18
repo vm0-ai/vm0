@@ -159,7 +159,7 @@ describe("cook command", () => {
     it("should exit with error on invalid agent name", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
-        `version: "1.0"\nagents:\n  ab:\n    framework: claude-code\n    working_dir: /`,
+        `version: "1.0"\nagents:\n  ab:\n    framework: claude-code`,
       );
 
       await expect(async () => {
@@ -313,7 +313,6 @@ describe("cook command", () => {
 agents:
   test-agent:
     framework: claude-code
-    working_dir: /workspace
 `,
       );
 
@@ -359,7 +358,6 @@ agents:
 agents:
   test-agent:
     framework: claude-code
-    working_dir: /workspace
 `,
       );
 
@@ -753,7 +751,6 @@ agents:
 agents:
   test-agent:
     framework: claude-code
-    working_dir: /workspace
     volumes:
       - mydata:/data
 volumes:
@@ -1038,7 +1035,6 @@ Checkpoint ID: checkpoint-ghi789`,
 agents:
   test-agent:
     framework: claude-code
-    working_dir: /workspace
     volumes:
       - nonexistent:/data
 volumes:
@@ -1071,7 +1067,6 @@ volumes:
 agents:
   test-agent:
     framework: claude-code
-    working_dir: /workspace
     volumes:
       - vol1:/data1
       - vol2:/data2
@@ -1117,7 +1112,6 @@ volumes:
 agents:
   test-agent:
     framework: claude-code
-    working_dir: /workspace
 `,
       );
 
@@ -1181,7 +1175,6 @@ agents:
 agents:
   test-agent:
     framework: claude-code
-    working_dir: /workspace
 `,
       );
     });

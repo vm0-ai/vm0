@@ -70,10 +70,6 @@ const volumeConfigSchema = z.object({
 
 /**
  * Agent definition schema
- *
- * Note: `image` and `working_dir` are deprecated fields.
- * The server resolves these values based on the framework.
- * User-provided values are ignored - server always overwrites them.
  */
 const agentDefinitionSchema = z.object({
   description: z.string().optional(),
@@ -159,16 +155,6 @@ const agentDefinitionSchema = z.object({
       sound: z.string().optional(),
     })
     .optional(),
-  /**
-   * @deprecated Server-resolved field. User input is ignored.
-   * @internal
-   */
-  image: z.string().optional(),
-  /**
-   * @deprecated Server-resolved field. User input is ignored.
-   * @internal
-   */
-  working_dir: z.string().optional(),
 });
 
 /**

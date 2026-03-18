@@ -14,10 +14,8 @@ import {
  */
 interface AgentDefinition {
   description?: string;
-  image?: string;
   framework: string;
   volumes?: string[];
-  working_dir?: string;
   environment?: Record<string, string>;
   instructions?: string;
   skills?: string[];
