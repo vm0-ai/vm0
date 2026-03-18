@@ -362,6 +362,31 @@ describe("GET /api/agent/runs/queue", () => {
     expect(data.estimatedTimePerRun).toBe(90000);
   });
 
+  it("produces sessionLink without /zero prefix for own runs with continuedFromSessionId", async () => {
+    const sessionId = crypto.randomUUID();
+
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "queued",
+      continuedFromSessionId: sessionId,
+    });
+
+    await insertUserCacheEntry({
+      userId: user.userId,
+      email: "test@example.com",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.queue).toHaveLength(1);
+    expect(data.queue[0].sessionLink).toBe(`/chat/${sessionId}`);
+    expect(data.queue[0].sessionLink).not.toContain("/zero");
+  });
+
   it("truncates long prompts at 200 characters for own runs", async () => {
     const longPrompt = "a".repeat(250);
 
