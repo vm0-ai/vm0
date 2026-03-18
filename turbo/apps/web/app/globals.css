@@ -151,3 +151,27 @@ a {
     font-size: 11px;
   }
 }
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--gray-300));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--gray-400));
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--gray-300)) transparent;
+}
