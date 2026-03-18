@@ -50,24 +50,24 @@ const jetBrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://vm0.ai"),
   title: {
-    default: "VM0 - Build agents and automate workflows with natural language",
+    default: "VM0 - Your Trustworthy AI Teammate",
     template: "%s | VM0",
   },
   description:
-    "Infrastructure for AI agents, not workflows. VM0's built-in sandbox gives you everything you need to design, run, and iterate on modern agents.",
+    "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
   keywords: [
+    "AI teammate",
     "AI agents",
-    "agent development",
-    "agent runtime",
-    "sandbox environment",
-    "CLI agents",
-    "Claude Code",
-    "agent infrastructure",
-    "natural language agents",
+    "Slack AI",
+    "AI assistant",
+    "team collaboration",
+    "AI automation",
+    "secure AI",
     "VM0",
-    "agent sandbox",
-    "AI runtime",
-    "agent deployment",
+    "Zero AI",
+    "AI for teams",
+    "AI productivity",
+    "workflow automation",
   ],
   authors: [{ name: "VM0", url: "https://vm0.ai" }],
   creator: "VM0",
@@ -92,24 +92,24 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://vm0.ai",
-    title: "VM0 - Build agents and automate workflows with natural language",
+    title: "VM0 - Your Trustworthy AI Teammate",
     description:
-      "Infrastructure for AI agents, not workflows. VM0's built-in sandbox gives you everything you need to design, run, and iterate on modern agents.",
+      "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
     siteName: "VM0",
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "VM0 - Build agents and automate workflows with natural language",
+        alt: "VM0 - Your Trustworthy AI Teammate",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "VM0 - Build agents and automate workflows with natural language",
+    title: "VM0 - Your Trustworthy AI Teammate",
     description:
-      "Infrastructure for AI agents, not workflows. Build and iterate on modern agents with VM0's built-in sandbox.",
+      "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for teams.",
     images: ["/og-image.png"],
     creator: "@vm0_ai",
   },
@@ -196,7 +196,7 @@ export default function RootLayout({
                 url: "https://vm0.ai",
                 logo: "https://vm0.ai/assets/vm0-logo.svg",
                 description:
-                  "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
+                  "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
                 email: "contact@vm0.ai",
                 foundingDate: "2025",
                 sameAs: [
@@ -222,7 +222,7 @@ export default function RootLayout({
                 name: "VM0",
                 url: "https://vm0.ai",
                 description:
-                  "Build agents and automate workflows with natural language",
+                  "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
               }),
             }}
           />
@@ -242,7 +242,7 @@ export default function RootLayout({
                   priceCurrency: "USD",
                 },
                 description:
-                  "Build agents and automate workflows with natural language. Infrastructure for AI agents, not workflows.",
+                  "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
                 url: "https://vm0.ai",
                 image: "https://vm0.ai/og-image.png",
               }),

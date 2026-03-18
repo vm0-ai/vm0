@@ -1,14 +1,14 @@
 {
   "hero": {
-    "title": "Build agents and automate workflows with natural language",
-    "subtitle": "From workflows to real agents. VM0 makes agent building accessible through natural language.",
-    "joinWaitlist": "Join waitlist",
+    "title": "Your trustworthy AI teammate",
+    "subtitle": "Do everything in Slack and on the web, for individuals and team collaboration. Great ideas come from people working together, with each other and with AI.",
+    "joinWaitlist": "Join the beta",
     "github": "GitHub"
   },
   "build": {
-    "title": "Create agents the human way",
-    "description": "Workflow builders are too rigid. Container platforms are too basic. VM0 lets you build real agents with natural language, backed by agent-native infrastructure.",
-    "vm0Tagline": "Build and evolve AI agents, just natural language."
+    "title": "Work together with AI",
+    "description": "Zero works in Slack and on the web, helping individuals and teams get more done. Secure, intelligent, and grows with you and your team.",
+    "vm0Tagline": "Your trustworthy AI teammate."
   },
   "cliAgents": {
     "title": "Riding the LLM wave, VM0 also acts as an agent router",
@@ -35,47 +35,47 @@
     }
   },
   "features": {
-    "title": "Everything you need to build agents",
+    "title": "What makes Zero different",
     "noWorkflows": {
-      "title": "Skip the node editor and workflow canvas, just write your intent",
-      "description": "No drag-and-drop needed — write a prompt or any type of configure files, connect it to VM0, and your agent's core logic is ready."
+      "title": "Secure by design",
+      "description": "Every task runs in a completely isolated environment. Your data stays safe, your credentials stay protected."
     },
     "purposeBuilt": {
-      "title": "Purpose-built for agents, not just code",
-      "description": "Traditional containers run programs. VM0 runs agents, preserving their sessions, memory, and reasoning context. It understands agents as stateful, iterative processes, not one-off scripts."
+      "title": "Memory that persists",
+      "description": "Zero remembers context across conversations. No need to repeat yourself — it learns and grows with your team."
     },
     "observable": {
-      "title": "Observable by design",
-      "description": "Every run is transparent. You can see logs, metrics, and tool calls in real time, no more black-box containers. Debug, replay, and monitor every step of the agent lifecycle."
+      "title": "Full activity logs",
+      "description": "Every action is logged and auditable. See exactly what happened, when, and why. Complete transparency by default."
     },
     "reproducible": {
-      "title": "Reproducible and persistent",
-      "description": "Each run creates a checkpoint you can restore, fork, or optimize. Sessions and artifacts persist across runs and environments. Agents keep their memory. Developers keep control."
+      "title": "100+ connectors",
+      "description": "Connect to Slack, GitHub, Gmail, Notion, Linear, and 100+ more services. Zero works where your team works."
     }
   },
   "infrastructure": {
-    "title": "VM0 is AI infrastructure built for the next paradigm",
+    "title": "Built for trust and collaboration",
     "versionedStorage": {
-      "title": "Versioned artifact storage",
-      "description": "Sync files instantly between your sandbox and cloud storage, prewarmed before runtime."
+      "title": "Works in Slack",
+      "description": "Talk to Zero right where your team communicates. No context switching, no new tools to learn."
     },
     "sessionContinuity": {
-      "title": "Session continuity",
-      "description": "Automatically persists CLI agent sessions and memory, unaffected by container lifetimes."
+      "title": "Proactive assistance",
+      "description": "Zero doesn't just respond — it anticipates what you need and takes initiative to help."
     },
     "structuredObservability": {
-      "title": "Structured observability",
-      "description": "Stream every log, metric, and token trace through a clean API or dashboard, no manual logging needed."
+      "title": "Team collaboration",
+      "description": "Share agents, workflows, and context across your team. Great ideas come from people working together with AI."
     },
     "checkpoint": {
-      "title": "Checkpoint & replay",
-      "description": "Each run creates a checkpoint snapshot. Reattach, replay, or tweak the prompt anytime."
+      "title": "Grows with you",
+      "description": "Start as an individual, scale to your whole team. Zero adapts to how you work."
     }
   },
   "cta": {
-    "title": "Build and evolve AI agents inside their own reality",
-    "subtitle": "// Express your intent. VM0 handles the rest.",
-    "button": "Join waitlist"
+    "title": "Meet your new AI teammate",
+    "subtitle": "// Secure, intelligent, and grows with your team.",
+    "button": "Join the beta"
   },
   "nav": {
     "docs": "Docs",
@@ -273,20 +273,20 @@
   },
   "blog": {
     "title": "Blog",
-    "description": "Insights, tutorials, and updates on agent-native development and the future of AI infrastructure.",
+    "description": "Insights, tutorials, and updates on AI teammates and the future of human-AI collaboration.",
     "allPosts": "All Posts",
     "readMore": "Read more",
     "backToAllPosts": "Back to all posts",
     "relatedArticles": "Related Articles",
     "stayInLoop": "Stay in the loop",
-    "stayInLoopDesc": "// Get the latest insights on agent-native development.",
+    "stayInLoopDesc": "// Get the latest insights on AI teammates and collaboration.",
     "subscribe": "Subscribe",
     "joinDiscord": "Join Discord",
     "shareArticle": "Share this article"
   },
   "banner": {
     "label": "New",
-    "message": "VM0 is now available in public beta.",
-    "link": "View details"
+    "message": "Meet Zero, your AI teammate. Now in public beta.",
+    "link": "Get started"
   }
 }

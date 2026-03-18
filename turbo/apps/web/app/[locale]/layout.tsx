@@ -44,7 +44,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
           url: "/og-image.png",
           width: 1200,
           height: 630,
-          alt: "VM0 - Build agents and automate workflows with natural language",
+          alt: "VM0 - Your Trustworthy AI Teammate",
         },
       ],
     },
