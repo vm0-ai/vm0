@@ -4,11 +4,10 @@ import { PUT } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  deleteTestCompose,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { agentComposes } from "../../../../../src/db/schema/agent-compose";
-import { eq } from "drizzle-orm";
 
 const context = testContext();
 
@@ -149,9 +148,7 @@ describe("PUT /api/orgs/default-agent", () => {
     expect(response1.status).toBe(200);
 
     // Delete the compose from DB (simulating user deleting the agent)
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, compose1.composeId));
+    await deleteTestCompose(compose1.composeId);
 
     // Setting a new default should succeed since the old one no longer exists
     const compose2 = await createTestCompose("agent-2");

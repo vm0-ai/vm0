@@ -3366,3 +3366,14 @@ export async function findTestCreditUsageByRunId(runId: string): Promise<
     .limit(1);
   return record;
 }
+
+/**
+ * Delete a compose from the database.
+ * Used to simulate a user deleting an agent compose.
+ */
+export async function deleteTestCompose(composeId: string): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(agentComposes)
+    .where(eq(agentComposes.id, composeId));
+}
