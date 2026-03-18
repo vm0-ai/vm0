@@ -1,16 +1,16 @@
-CREATE TABLE IF NOT EXISTS "zero_agents" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  "org_id" text NOT NULL,
-  "name" varchar(64) NOT NULL,
-  "display_name" varchar(256),
-  "description" text,
-  "sound" varchar(64),
-  "created_at" timestamp DEFAULT now() NOT NULL,
-  "updated_at" timestamp DEFAULT now() NOT NULL
+CREATE TABLE "zero_agents" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"org_id" text NOT NULL,
+	"name" varchar(64) NOT NULL,
+	"display_name" varchar(256),
+	"description" text,
+	"sound" varchar(64),
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_zero_agents_org_name" ON "zero_agents" ("org_id", "name");
-CREATE INDEX IF NOT EXISTS "idx_zero_agents_org" ON "zero_agents" ("org_id");
+--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_zero_agents_org_name" ON "zero_agents" USING btree ("org_id","name");--> statement-breakpoint
+CREATE INDEX "idx_zero_agents_org" ON "zero_agents" USING btree ("org_id");--> statement-breakpoint
 
 -- Backfill from existing compose content JSONB
 INSERT INTO "zero_agents" ("org_id", "name", "display_name", "description", "sound")
