@@ -190,6 +190,31 @@ describe("GET /api/cron/sync-skills", () => {
       expect(data2.skipped).toBe(0);
       expect(data2.total).toBe(0);
     });
+
+    it("should force re-sync when commit SHA matches but R2 archive is missing", async () => {
+      const tarball = createMockTarball(MOCK_SKILLS);
+      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+
+      // First sync — populates DB and "uploads" to S3
+      const response1 = await GET(cronRequest(cronSecret));
+      expect(response1.status).toBe(200);
+      const data1 = await response1.json();
+      expect(data1.synced).toBe(2);
+
+      // Simulate R2 bucket wipe: s3ObjectExists returns false
+      context.mocks.s3.s3ObjectExists.mockResolvedValueOnce(false);
+
+      // Second sync with same commit SHA — should detect missing R2 and re-sync
+      context.mocks.s3.putS3Object.mockClear();
+      const response2 = await GET(cronRequest(cronSecret));
+      expect(response2.status).toBe(200);
+      const data2 = await response2.json();
+      expect(data2.synced).toBe(2);
+      expect(data2.total).toBe(2);
+
+      // S3 uploads should have happened (2 skills × 2 files = 4)
+      expect(context.mocks.s3.putS3Object).toHaveBeenCalledTimes(4);
+    });
   });
 
   describe("Full sync", () => {

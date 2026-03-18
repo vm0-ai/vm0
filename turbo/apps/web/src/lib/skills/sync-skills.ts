@@ -33,7 +33,7 @@ import {
   computeSystemSkillHash,
   type FileEntryWithHash,
 } from "../storage/content-hash";
-import { putS3Object } from "../s3/s3-client";
+import { putS3Object, s3ObjectExists } from "../s3/s3-client";
 import { skills } from "../../db/schema/skill";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { env } from "../../env";
@@ -69,12 +69,33 @@ export async function syncSkills(): Promise<SyncResult> {
 
   // 2. Check stored commit SHA from any existing skill row
   const [existing] = await db
-    .select({ commitSha: skills.commitSha })
+    .select({ commitSha: skills.commitSha, s3Key: skills.s3Key })
     .from(skills)
     .limit(1);
 
+  let forceReupload = false;
+
   if (existing?.commitSha === headSha) {
-    return { commitSha: headSha, synced: 0, skipped: 0, failed: 0, total: 0 };
+    // Spot-check: verify R2 archives still exist.
+    // When R2 bucket is cleared (common in dev/preview), DB records become stale.
+    if (existing.s3Key) {
+      const archiveKey = `${existing.s3Key}/archive.tar.gz`;
+      const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+      const archiveExists = await s3ObjectExists(bucketName, archiveKey);
+      if (archiveExists) {
+        return {
+          commitSha: headSha,
+          synced: 0,
+          skipped: 0,
+          failed: 0,
+          total: 0,
+        };
+      }
+      log.warn(
+        "R2 archive missing despite matching commit SHA, forcing full re-sync",
+      );
+    }
+    forceReupload = true;
   }
 
   // 3. Download and extract tarball
@@ -87,7 +108,12 @@ export async function syncSkills(): Promise<SyncResult> {
 
   for (const extracted of extractedSkills) {
     try {
-      const wasUpdated = await syncSingleSkill(db, extracted, headSha);
+      const wasUpdated = await syncSingleSkill(
+        db,
+        extracted,
+        headSha,
+        forceReupload,
+      );
       if (wasUpdated) {
         synced++;
       } else {
@@ -129,6 +155,7 @@ async function syncSingleSkill(
   db: typeof globalThis.services.db,
   extracted: ExtractedSkill,
   commitSha: string,
+  forceReupload: boolean,
 ): Promise<boolean> {
   const { skillName, files } = extracted;
   const skillUrl = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`;
@@ -156,7 +183,7 @@ async function syncSingleSkill(
     .where(eq(skills.url, skillUrl))
     .limit(1);
 
-  if (existingSkill?.versionHash === versionHash) {
+  if (!forceReupload && existingSkill?.versionHash === versionHash) {
     // Content unchanged — just update commitSha
     await db
       .update(skills)
