@@ -10,7 +10,7 @@ import {
   createSlackClient,
   postMessage,
 } from "../../../../../../../src/lib/slack/client";
-import { getRunOutput } from "../../../../../../../src/lib/slack/handlers/run-agent";
+import { getRunOutputText } from "../../../../../../../src/lib/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const displayName = agentInfo?.displayName ?? composeName;
 
   if (status === "completed") {
-    const rawOutput = await getRunOutput(runId);
+    const rawOutput = await getRunOutputText(runId);
     const truncatedOutput = rawOutput
       ? rawOutput.length > 2000
         ? `${rawOutput.slice(0, 2000)}…`

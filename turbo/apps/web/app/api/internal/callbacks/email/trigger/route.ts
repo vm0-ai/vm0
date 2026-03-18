@@ -4,7 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
-import { getRunOutput } from "../../../../../../src/lib/slack/handlers/run-agent";
+import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
   buildReplyToAddress,
@@ -152,7 +152,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Get run output and session ID
   const logsUrl = buildLogsUrl(runId);
-  const rawOutput = status === "completed" ? await getRunOutput(runId) : null;
+  const rawOutput =
+    status === "completed" ? await getRunOutputText(runId) : null;
   const output = formatOutput(status, rawOutput, error);
 
   const [run] = await globalThis.services.db

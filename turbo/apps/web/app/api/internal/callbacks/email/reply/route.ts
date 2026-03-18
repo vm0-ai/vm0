@@ -6,7 +6,7 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { emailThreadSessions } from "../../../../../../src/db/schema/email-thread-session";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
-import { getRunOutput } from "../../../../../../src/lib/slack/handlers/run-agent";
+import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
   buildReplyToAddress,
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Get run output
   const logsUrl = buildLogsUrl(runId);
   const rawOutput =
-    status === "completed" ? ((await getRunOutput(runId)) ?? null) : null;
+    status === "completed" ? ((await getRunOutputText(runId)) ?? null) : null;
   const output = formatOutput(status, rawOutput, error);
 
   // Get agentSessionId from run result for session continuity

@@ -11,9 +11,11 @@ import {
   postIssueComment,
   removeCommentReaction,
 } from "../../../../../../src/lib/github/api";
-import { getRunResultData } from "../../../../../../src/lib/slack/handlers/run-agent";
+import {
+  extractRunOutput,
+  buildDeepLinksFromFlags,
+} from "../../../../../../src/lib/run/extract-run-output";
 import { getAppUrl } from "../../../../../../src/lib/url";
-import { detectDeepLinks } from "../../../../../../src/lib/deep-links";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -81,8 +83,17 @@ function formatGitHubComment(opts: {
   output?: string;
   error?: string;
   triggerCommentBody?: string;
+  deepLinks: Array<{ emoji: string; label: string; url: string }>;
 }): string {
-  const { status, agentName, runId, output, error, triggerCommentBody } = opts;
+  const {
+    status,
+    agentName,
+    runId,
+    output,
+    error,
+    triggerCommentBody,
+    deepLinks,
+  } = opts;
   const appUrl = getAppUrl();
   const logsUrl = `${appUrl}/activity/${encodeURIComponent(runId)}`;
   const content =
@@ -102,9 +113,6 @@ function formatGitHubComment(opts: {
   }
 
   parts.push(`<sub>🤖 **${agentName}**</sub>`, "", content, "");
-
-  // Detect deep links for missing connectors, model providers, etc.
-  const deepLinks = detectDeepLinks(content, appUrl, agentName);
   if (deepLinks.length > 0) {
     const linkText = deepLinks
       .map((link) => `${link.emoji} [${link.label}](${link.url})`)
@@ -179,17 +187,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
 
   // Query Axiom for the agent's output
-  const resultData =
-    status === "completed" ? await getRunResultData(runId) : undefined;
+  const resultData = await extractRunOutput(runId, error);
+
+  // Build deep links from structured flags
+  const deepLinks = buildDeepLinksFromFlags(
+    resultData,
+    getAppUrl(),
+    payload.agentName,
+  );
 
   // Format and post comment to GitHub issue
   const commentBody = formatGitHubComment({
     status,
     agentName: payload.agentName,
     runId,
-    output: resultData?.result,
+    output: resultData.result ?? undefined,
     error,
     triggerCommentBody: payload.triggerCommentBody,
+    deepLinks,
   });
   const commentId = await postIssueComment(
     token,

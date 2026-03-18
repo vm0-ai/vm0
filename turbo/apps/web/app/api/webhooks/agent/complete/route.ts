@@ -24,6 +24,7 @@ import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
 import { dispatchQueuedRun } from "../../../../../src/lib/run/run-service";
 import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
+import { extractRunOutput } from "../../../../../src/lib/run/extract-run-output";
 import {
   queryAxiom,
   getDatasetName,
@@ -32,26 +33,6 @@ import {
 import { after } from "next/server";
 
 const log = logger("webhook:complete");
-
-/**
- * Query Axiom for the last "result" event of a run.
- * Returns the result string or null if not found.
- */
-async function extractResultFromAxiom(runId: string): Promise<string | null> {
-  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-  const apl = `['${dataset}']
-| where runId == "${runId}"
-| where eventType == "result"
-| order by sequenceNumber desc
-| limit 1`;
-
-  const events = await queryAxiom<{
-    eventData: { result?: string };
-  }>(apl);
-
-  const result = events[0]?.eventData?.result;
-  return typeof result === "string" ? result : null;
-}
 
 interface AxiomEventContent {
   type: string;
@@ -125,8 +106,8 @@ async function persistChatMessages(
   userId: string,
   prompt: string,
 ): Promise<void> {
-  const [result, summaries] = await Promise.all([
-    extractResultFromAxiom(runId),
+  const [output, summaries] = await Promise.all([
+    extractRunOutput(runId),
     extractSummariesFromAxiom(runId),
   ]);
 
@@ -137,10 +118,10 @@ async function persistChatMessages(
     summaries?: string[];
   }> = [{ role: "user", content: prompt }];
 
-  if (result) {
+  if (output.result) {
     messages.push({
       role: "assistant",
-      content: result,
+      content: output.result,
       runId,
       ...(summaries.length > 0 ? { summaries } : {}),
     });

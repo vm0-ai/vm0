@@ -4,7 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
-import { getRunOutput } from "../../../../../../src/lib/slack/handlers/run-agent";
+import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
   generateReplyToken,
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (status === "completed") {
     // Get agent output
-    const output = await getRunOutput(runId);
+    const output = await getRunOutputText(runId);
     const truncatedOutput = output
       ? output.length > 2000
         ? `${output.slice(0, 2000)}…`

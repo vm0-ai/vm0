@@ -1,0 +1,193 @@
+import { queryAxiom, getDatasetName, DATASETS } from "../axiom";
+import { detectDeepLinks, type DeepLink } from "../deep-links";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface PermissionDenial {
+  tool_name: string;
+  tool_input?: {
+    questions?: Array<{
+      question: string;
+      header?: string;
+      options?: Array<{ label: string; description?: string }>;
+      multiSelect?: boolean;
+    }>;
+  };
+}
+
+interface RunOutput {
+  /** Raw result text from the agent */
+  result: string | null;
+  /** AskUserQuestion permission denials */
+  askUserDenials: PermissionDenial[];
+  /** Whether model provider keywords were detected in the result */
+  modelProviderIssue: boolean;
+  /** Whether connector/secret keywords were detected in the result */
+  connectorIssue: boolean;
+  /** Run error message (if failed) */
+  error: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Axiom query
+// ---------------------------------------------------------------------------
+
+interface ResultEvent {
+  eventData: {
+    result?: string;
+    permission_denials?: PermissionDenial[];
+  };
+}
+
+async function queryResultEvent(
+  runId: string,
+): Promise<ResultEvent | undefined> {
+  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+  const apl = `['${dataset}']
+| where runId == "${runId}"
+| where eventType == "result"
+| order by sequenceNumber desc
+| limit 1`;
+
+  const events = await queryAxiom<ResultEvent>(apl);
+  return events[0];
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract structured run output from Axiom.
+ *
+ * Merges logic previously split across:
+ * - `extractResultFromAxiom` (webhook complete handler)
+ * - `getRunResultData` / `getRunOutput` (Slack handler)
+ *
+ * Single Axiom query for the result event.
+ */
+export async function extractRunOutput(
+  runId: string,
+  error?: string | null,
+): Promise<RunOutput> {
+  const event = await queryResultEvent(runId);
+  const result =
+    typeof event?.eventData?.result === "string"
+      ? event.eventData.result
+      : null;
+
+  const allDenials = event?.eventData?.permission_denials ?? [];
+  const askUserDenials = allDenials.filter(
+    (d) => d.tool_name === "AskUserQuestion",
+  );
+
+  // Detect issue flags from result text using existing keyword mappings
+  const textToScan = result ?? error ?? "";
+  const dummyLinks = textToScan
+    ? detectDeepLinks(textToScan, "https://placeholder")
+    : [];
+  const modelProviderIssue = dummyLinks.some((l) =>
+    l.url.includes("/settings"),
+  );
+  const connectorIssue = dummyLinks.some((l) => l.url.includes("/team"));
+
+  return {
+    result,
+    askUserDenials,
+    modelProviderIssue,
+    connectorIssue,
+    error: error ?? null,
+  };
+}
+
+/**
+ * Build deep links from structured RunOutput flags.
+ *
+ * Replaces raw text keyword scanning in downstream consumers.
+ */
+export function buildDeepLinksFromFlags(
+  output: RunOutput,
+  appUrl: string,
+  agentName?: string,
+): DeepLink[] {
+  const links: DeepLink[] = [];
+
+  if (output.modelProviderIssue) {
+    links.push({
+      emoji: "🔑",
+      label: "Configure model providers",
+      url: `${appUrl}/settings`,
+    });
+  }
+
+  if (output.connectorIssue) {
+    const path = agentName
+      ? `/team/${encodeURIComponent(agentName)}?tab=connectors`
+      : "/team";
+    links.push({
+      emoji: "🔌",
+      label: "Configure connectors",
+      url: `${appUrl}${path}`,
+    });
+  }
+
+  return links;
+}
+
+/**
+ * Format AskUserQuestion denials as plain text.
+ *
+ * Used by non-interactive channels (Slack, Telegram, email) that cannot
+ * render interactive question UIs.
+ */
+export function formatAskUserDenials(
+  denials: PermissionDenial[],
+): string | undefined {
+  const parts: string[] = [];
+
+  for (const denial of denials) {
+    const questions = denial.tool_input?.questions;
+    if (!questions || questions.length === 0) {
+      continue;
+    }
+
+    for (const q of questions) {
+      parts.push(q.question);
+      if (q.options) {
+        for (const opt of q.options) {
+          const desc = opt.description ? ` — ${opt.description}` : "";
+          parts.push(`  • ${opt.label}${desc}`);
+        }
+      }
+    }
+  }
+
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  return `The agent needs your input to proceed:\n\n${parts.join("\n")}`;
+}
+
+/**
+ * Get formatted run output text (result + formatted denials).
+ *
+ * Convenience wrapper for channels that just need a string.
+ * Replaces the old `getRunOutput()` function.
+ */
+export async function getRunOutputText(
+  runId: string,
+): Promise<string | undefined> {
+  const output = await extractRunOutput(runId);
+
+  if (output.askUserDenials.length > 0) {
+    const formatted = formatAskUserDenials(output.askUserDenials);
+    if (formatted) {
+      return output.result ? `${output.result}\n\n${formatted}` : formatted;
+    }
+  }
+
+  return output.result ?? undefined;
+}

@@ -15,13 +15,13 @@ import {
 import {
   buildAgentResponseMessage,
   buildAskUserQuestionBlocks,
-  detectDeepLinks,
 } from "../../../../../../src/lib/slack/blocks";
 import type { AskUserQuestion } from "../../../../../../src/lib/slack/blocks";
 import {
-  getRunResultData,
+  extractRunOutput,
   formatAskUserDenials,
-} from "../../../../../../src/lib/slack/handlers/run-agent";
+  buildDeepLinksFromFlags,
+} from "../../../../../../src/lib/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
@@ -30,7 +30,7 @@ import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 import type { WebClient } from "@slack/web-api";
-import type { PermissionDenial } from "../../../../../../src/lib/slack/handlers/run-agent";
+import type { PermissionDenial } from "../../../../../../src/lib/run/extract-run-output";
 
 const log = logger("callback:slack-org");
 
@@ -150,7 +150,7 @@ async function postAskUserInteractiveCard(
 function buildResponseText(
   status: string,
   error: string | undefined,
-  resultData: Awaited<ReturnType<typeof getRunResultData>>,
+  resultData: Awaited<ReturnType<typeof extractRunOutput>>,
 ): string {
   if (status !== "completed") {
     return `Error: ${error ?? "Agent execution failed."}`;
@@ -281,9 +281,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createSlackClient(botToken);
 
-  const resultData =
-    status === "completed" ? await getRunResultData(runId) : undefined;
-  const hasAskUserDenials = resultData && resultData.askUserDenials.length > 0;
+  const resultData = await extractRunOutput(runId, error);
+  const hasAskUserDenials = resultData.askUserDenials.length > 0;
   const responseText = buildResponseText(status, error, resultData);
 
   // Resolve session before posting interactive card
@@ -292,8 +291,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Post text response
   if (responseText) {
     const logsUrl = buildLogsUrl(runId);
-    const deepLinks = detectDeepLinks(
-      responseText,
+    const deepLinks = buildDeepLinksFromFlags(
+      resultData,
       getAppUrl(),
       payload.agentName,
     );

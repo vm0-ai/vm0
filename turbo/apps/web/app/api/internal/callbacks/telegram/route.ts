@@ -19,9 +19,12 @@ import {
   buildTelegramResponse,
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/telegram/format";
-import { detectDeepLinks } from "../../../../../src/lib/deep-links";
 import { getAppUrl } from "../../../../../src/lib/url";
-import { getRunOutput } from "../../../../../src/lib/slack/handlers/run-agent";
+import {
+  extractRunOutput,
+  buildDeepLinksFromFlags,
+  getRunOutputText,
+} from "../../../../../src/lib/run/extract-run-output";
 import {
   saveTelegramThreadSession,
   storeTelegramMessage,
@@ -145,7 +148,9 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
       error,
     });
   }
-  const output = status === "completed" ? await getRunOutput(runId) : undefined;
+  const runOutput = await extractRunOutput(runId, error);
+  const output =
+    status === "completed" ? await getRunOutputText(runId) : undefined;
 
   // Build response text
   const logsUrl = buildLogsUrl(runId);
@@ -153,7 +158,11 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   let responseText: string | undefined;
   if (status === "completed") {
     responseText = output ?? "Task completed successfully.";
-    const deepLinks = detectDeepLinks(responseText, getAppUrl(), agentName);
+    const deepLinks = buildDeepLinksFromFlags(
+      runOutput,
+      getAppUrl(),
+      agentName,
+    );
     htmlOutput = buildTelegramResponse(
       responseText,
       agentName,
