@@ -58,7 +58,7 @@ describe("proxy middleware: sandbox token handling", () => {
     capturedClerkRequest = undefined;
   });
 
-  it("should strip sandbox token before Clerk and restore it after", async () => {
+  it("should skip Clerk for sandbox tokens and preserve authorization header", async () => {
     const token = "Bearer vm0_sandbox_header.payload.signature";
     const request = new NextRequest("https://www.vm0.ai/api/sandbox/webhook", {
       headers: { authorization: token },
@@ -66,23 +66,11 @@ describe("proxy middleware: sandbox token handling", () => {
 
     const response = await middleware(request, createMockEvent());
 
-    // Clerk should NOT see the Authorization header
-    expect(capturedClerkRequest).toBeDefined();
-    expect(capturedClerkRequest!.headers.get("authorization")).toBeNull();
+    // Clerk should NOT be called for sandbox token requests
+    expect(capturedClerkRequest).toBeUndefined();
 
-    // Clerk should see the original token in x-vm0-authorization
-    expect(capturedClerkRequest!.headers.get("x-vm0-authorization")).toBe(
-      token,
-    );
-
-    // Response should restore the Authorization header for the route handler
+    // Response should be a pass-through (NextResponse.next())
     expect(response).toBeDefined();
-    expect(response!.headers.get("x-middleware-request-authorization")).toBe(
-      token,
-    );
-    expect(
-      response!.headers.get("x-middleware-request-x-vm0-authorization"),
-    ).toBe(token);
   });
 
   it("should pass non-sandbox tokens through to Clerk unchanged", async () => {

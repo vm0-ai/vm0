@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import type { NextFetchEvent } from "next/server";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   runLayers,
   corsLayer,
@@ -97,29 +97,11 @@ export default async function middleware(
     authHeader?.startsWith("Bearer " + SANDBOX_TOKEN_PREFIX) ?? false;
 
   if (hasSandboxToken) {
-    // Clone the request without the Authorization header
-    const headers = new Headers(request.headers);
-    headers.delete("authorization");
-    headers.set("x-vm0-authorization", authHeader!);
-
-    const rewritten = new NextRequest(request.url, {
-      method: request.method,
-      headers,
-      body: request.body,
-      duplex: "half",
-    });
-
-    const response = await clerk(rewritten, event);
-
-    // Restore the original Authorization header for the route handler
-    if (response) {
-      response.headers.set("x-middleware-request-authorization", authHeader!);
-      response.headers.set(
-        "x-middleware-request-x-vm0-authorization",
-        authHeader!,
-      );
-    }
-    return response;
+    // Sandbox tokens are used by webhook endpoints which don't need Clerk auth.
+    // Skip Clerk entirely and pass the request through with the original
+    // Authorization header intact. This avoids relying on x-middleware-request-*
+    // header restoration which doesn't work reliably in Next.js dev mode.
+    return NextResponse.next();
   }
 
   return clerk(request, event);
