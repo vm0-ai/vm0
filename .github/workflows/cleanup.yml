@@ -47,12 +47,14 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          ansible-playbook \
+          if ! ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/cleanup-turbo-runner.yml \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=pr-${PR_NUMBER}" \
-            -v || true
+            -v; then
+            echo "::warning::Turbo runner cleanup failed for PR #${PR_NUMBER} — stale services may remain on metal hosts"
+          fi
 
       - name: Cleanup crates runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
@@ -62,12 +64,14 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          ansible-playbook \
+          if ! ansible-playbook \
             -i "${METAL_HOSTS}," \
             playbooks/cleanup-crates-runner.yml \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=pr-${PR_NUMBER}-test" \
-            -v || true
+            -v; then
+            echo "::warning::Crates runner cleanup failed for PR #${PR_NUMBER} — stale services may remain on metal hosts"
+          fi
 
   cleanup-database:
     runs-on: ubuntu-latest
