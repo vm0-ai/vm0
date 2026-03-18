@@ -429,8 +429,8 @@ export function ZeroJobDetailPage({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    pathname="/:tab"
-                    options={{ pathParams: { tab: "chat" } }}
+                    pathname="/talk/:name"
+                    options={{ pathParams: { name: agentName } }}
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
                   >
                     <IconMessageCircle size={14} stroke={1.5} />
