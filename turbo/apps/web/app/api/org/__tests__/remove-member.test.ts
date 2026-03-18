@@ -5,6 +5,8 @@ import { GET as getMembersRoute } from "../members/route";
 import {
   createTestRequest,
   createTestOrg as createTestOrgHelper,
+  insertOrgMembersCacheEntry,
+  findOrgMembersCacheEntry,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -140,6 +142,55 @@ describe("DELETE /api/org/members - Remove Member", () => {
 
     const removeData = await removeRes.json();
     expect(removeData.message).toContain(memberEmail);
+  });
+
+  it("should clean up org member cache entry after removal", async () => {
+    const adminUserId = uniqueId("admin");
+    const memberEmail = "member-cleanup@example.com";
+    // Clerk mock maps "member-cleanup@example.com" -> "user_member-cleanup"
+    const memberUserId = "user_member-cleanup";
+    const { slug, orgId } = await createTestOrg(adminUserId);
+
+    // Add member via invite API
+    await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
+
+    // Seed an org members cache row for the member
+    await insertOrgMembersCacheEntry({
+      orgId,
+      userId: memberUserId,
+      role: "member",
+    });
+
+    // Verify the cache entry exists before removal
+    const before = await findOrgMembersCacheEntry(orgId, memberUserId);
+    expect(before).toBeDefined();
+
+    // Override getUserList for the removal
+    const client = await clerkClient();
+    vi.mocked(client.users.getUserList).mockResolvedValue({
+      data: [
+        {
+          id: memberUserId,
+          emailAddresses: [{ id: "email_1", emailAddress: memberEmail }],
+          primaryEmailAddressId: "email_1",
+        },
+      ],
+    } as unknown as Awaited<ReturnType<typeof client.users.getUserList>>);
+
+    const removeReq = createTestRequest(
+      `http://localhost:3000/api/org/members?org=${slug}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: memberEmail }),
+      },
+    );
+    const removeRes = await DELETE(removeReq);
+    expect(removeRes.status).toBe(200);
+
+    // Verify the cache entry was deleted by cleanupOrgMember
+    const after = await findOrgMembersCacheEntry(orgId, memberUserId);
+    expect(after).toBeUndefined();
   });
 
   it("should revoke member access after removal", async () => {
