@@ -3244,13 +3244,13 @@ export async function insertTestCreditPricing(
   options?: {
     inputTokenPrice?: number;
     outputTokenPrice?: number;
-    modelProvider?: string | null;
+    modelProvider?: string;
   },
 ): Promise<void> {
   initServices();
   const inputTokenPrice = options?.inputTokenPrice ?? 100;
   const outputTokenPrice = options?.outputTokenPrice ?? 200;
-  const modelProvider = options?.modelProvider ?? null;
+  const modelProvider = options?.modelProvider ?? "";
 
   await globalThis.services.db
     .insert(creditPricing)
@@ -3272,7 +3272,7 @@ export async function insertTestCreditUsage(
   options: {
     userId?: string;
     model?: string;
-    modelProvider?: string | null;
+    modelProvider?: string;
     inputTokens?: number;
     outputTokens?: number;
     numEvents?: number;
@@ -3318,7 +3318,7 @@ export async function insertTestCreditUsage(
       orgId,
       userId,
       model: options.model ?? "gpt-4",
-      modelProvider: options.modelProvider ?? null,
+      modelProvider: options.modelProvider ?? "",
       inputTokens: options.inputTokens ?? 1000,
       outputTokens: options.outputTokens ?? 500,
       numEvents: options.numEvents ?? 2,
@@ -3368,7 +3368,7 @@ export async function findTestCreditUsageByRunId(runId: string): Promise<
       orgId: string;
       userId: string;
       model: string;
-      modelProvider: string | null;
+      modelProvider: string;
       inputTokens: number;
       outputTokens: number;
       numEvents: number;

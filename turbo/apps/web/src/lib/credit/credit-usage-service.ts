@@ -27,7 +27,7 @@ export async function upsertCreditUsage(
   orgId: string,
   userId: string,
   events: EventData[],
-  modelProvider?: string | null,
+  modelProvider?: string,
 ): Promise<void> {
   const db = globalThis.services.db;
 
@@ -58,7 +58,7 @@ export async function upsertCreditUsage(
       orgId,
       userId,
       model: model ?? "unknown",
-      modelProvider: modelProvider ?? null,
+      modelProvider: modelProvider ?? "",
       numEvents: events.length,
       inputTokens: inputTokens ?? 0,
       outputTokens: outputTokens ?? 0,

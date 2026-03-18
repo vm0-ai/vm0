@@ -16,7 +16,9 @@ export const creditPricing = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     model: varchar("model", { length: 255 }).notNull(),
-    modelProvider: varchar("model_provider", { length: 100 }),
+    modelProvider: varchar("model_provider", { length: 100 })
+      .notNull()
+      .default(""),
     inputTokenPrice: bigint("input_token_price", { mode: "number" }).notNull(),
     outputTokenPrice: bigint("output_token_price", {
       mode: "number",

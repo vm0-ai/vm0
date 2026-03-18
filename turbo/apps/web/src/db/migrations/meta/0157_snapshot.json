@@ -2019,7 +2019,8 @@
           "name": "model_provider",
           "type": "varchar(100)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "''"
         },
         "input_token_price": {
           "name": "input_token_price",
@@ -2117,7 +2118,8 @@
           "name": "model_provider",
           "type": "varchar(100)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "''"
         },
         "input_tokens": {
           "name": "input_tokens",

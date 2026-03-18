@@ -19,7 +19,7 @@ interface CreditAtomicResult {
  * 1. Acquire org-level lock (independent from run queue lock)
  * 2. Fetch pending records and pricing
  * 3. Calculate and update each record
- * 4. Skip records with missing pricing (left as pending for retry)
+ * 4. Mark records with no matching pricing as processed with zero charge
  *
  * Returns the total credits charged and count, or undefined if nothing to process.
  */
@@ -48,7 +48,7 @@ async function creditAtomic(
     // Fetch all pricing records and build lookup map keyed by "model|modelProvider"
     const pricingRecords = await tx.select().from(creditPricing);
     const pricingByKey = new Map(
-      pricingRecords.map((p) => [`${p.model}|${p.modelProvider ?? ""}`, p]),
+      pricingRecords.map((p) => [`${p.model}|${p.modelProvider}`, p]),
     );
 
     let totalCredits = 0;
@@ -56,7 +56,7 @@ async function creditAtomic(
 
     for (const record of pendingRecords) {
       const pricing = pricingByKey.get(
-        `${record.model}|${record.modelProvider ?? ""}`,
+        `${record.model}|${record.modelProvider}`,
       );
       if (!pricing) {
         // No matching pricing for this model+provider combo — no charge
@@ -101,10 +101,6 @@ async function creditAtomic(
 
       totalCredits += creditsCharged;
       processedCount++;
-    }
-
-    if (processedCount === 0) {
-      return undefined;
     }
 
     return { totalCredits, processedCount };
