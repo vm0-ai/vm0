@@ -1053,7 +1053,7 @@ describe("logs command", () => {
       expect(logCalls).not.toContain("View on platform:");
     });
 
-    it("should transform www.vm0.ai to platform.vm0.ai", async () => {
+    it("should transform www.vm0.ai to app.vm0.ai", async () => {
       vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
 
       server.use(
@@ -1082,10 +1082,10 @@ describe("logs command", () => {
       await logsCommand.parseAsync(["node", "cli", "run-123"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://platform.vm0.ai/logs/run-123");
+      expect(logCalls).toContain("https://app.vm0.ai/logs/run-123");
     });
 
-    it("should transform vm7.ai:8443 to platform.vm7.ai:8443", async () => {
+    it("should transform vm7.ai:8443 to app.vm7.ai:8443", async () => {
       vi.stubEnv("VM0_API_URL", "https://www.vm7.ai:8443");
 
       server.use(
@@ -1114,7 +1114,7 @@ describe("logs command", () => {
       await logsCommand.parseAsync(["node", "cli", "run-123"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://platform.vm7.ai:8443/logs/run-123");
+      expect(logCalls).toContain("https://app.vm7.ai:8443/logs/run-123");
     });
   });
 

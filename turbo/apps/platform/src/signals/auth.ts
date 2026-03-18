@@ -6,7 +6,7 @@ const reload$ = state(0);
 
 /**
  * Resolve the web app origin from the current platform origin.
- * Replaces "platform" with "www" in the hostname so sign-in/sign-out
+ * Replaces "platform" or "app" with "www" in the hostname so sign-in/sign-out
  * redirects land on the web app where auth pages live.
  */
 function resolveWebOrigin(): string {
@@ -15,7 +15,7 @@ function resolveWebOrigin(): string {
     return "";
   }
   const url = new URL(origin);
-  url.hostname = url.hostname.replace("platform", "www");
+  url.hostname = url.hostname.replace(/^(platform|app)\./, "www.");
   return url.origin;
 }
 
