@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.26.0](https://github.com/vm0-ai/vm0/compare/docs-v2.25.0...docs-v2.26.0) (2026-03-18)
+
+
+### Features
+
+* **docs:** update model provider references from user-level to org-level commands ([#5325](https://github.com/vm0-ai/vm0/issues/5325)) ([d3afc0e](https://github.com/vm0-ai/vm0/commit/d3afc0e145539f679a7a39d2bb550c34d223a50b)), closes [#5323](https://github.com/vm0-ai/vm0/issues/5323)
+
 ## [2.25.0](https://github.com/vm0-ai/vm0/compare/docs-v2.24.0...docs-v2.25.0) (2026-03-18)
 
 

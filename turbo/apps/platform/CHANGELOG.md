@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.123.0](https://github.com/vm0-ai/vm0/compare/app-v0.122.0...app-v0.123.0) (2026-03-18)
+
+
+### Features
+
+* add organization-wide run queue web interface ([#4988](https://github.com/vm0-ai/vm0/issues/4988)) ([2da3dfd](https://github.com/vm0-ai/vm0/commit/2da3dfd5f6e8b0eced19135ad86333c8146d9f7e))
+* prompt users to review and approve oauth scope changes ([#5312](https://github.com/vm0-ai/vm0/issues/5312)) ([6cd80bf](https://github.com/vm0-ai/vm0/commit/6cd80bfeee99e0e13935222cb1081837ac31ed05))
+
+
+### Refactoring
+
+* remove user-level model provider ui ([#5299](https://github.com/vm0-ai/vm0/issues/5299)) ([47ca97e](https://github.com/vm0-ai/vm0/commit/47ca97ed680ddfeefa2ebe980b1cc3ac51059694)), closes [#5293](https://github.com/vm0-ai/vm0/issues/5293)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.0
+
 ## [0.122.0](https://github.com/vm0-ai/vm0/compare/app-v0.121.1...app-v0.122.0) (2026-03-18)
 
 

@@ -1,5 +1,35 @@
 # Changelog
 
+## [12.126.0](https://github.com/vm0-ai/vm0/compare/web-v12.125.1...web-v12.126.0) (2026-03-18)
+
+
+### Features
+
+* add organization-wide run queue web interface ([#4988](https://github.com/vm0-ai/vm0/issues/4988)) ([2da3dfd](https://github.com/vm0-ai/vm0/commit/2da3dfd5f6e8b0eced19135ad86333c8146d9f7e))
+* **docs:** update model provider references from user-level to org-level commands ([#5325](https://github.com/vm0-ai/vm0/issues/5325)) ([d3afc0e](https://github.com/vm0-ai/vm0/commit/d3afc0e145539f679a7a39d2bb550c34d223a50b)), closes [#5323](https://github.com/vm0-ai/vm0/issues/5323)
+* insert credit_usage records via events webhook ([#5307](https://github.com/vm0-ai/vm0/issues/5307)) ([4ea1555](https://github.com/vm0-ai/vm0/commit/4ea1555e49b6345f104ff78347b03dec0520190b))
+* prompt users to review and approve oauth scope changes ([#5312](https://github.com/vm0-ai/vm0/issues/5312)) ([6cd80bf](https://github.com/vm0-ai/vm0/commit/6cd80bfeee99e0e13935222cb1081837ac31ed05))
+
+
+### Bug Fixes
+
+* check org-level model provider in onboarding status ([#5322](https://github.com/vm0-ai/vm0/issues/5322)) ([5120652](https://github.com/vm0-ai/vm0/commit/512065207583be28883cae5acd32007101ccda66))
+* **web:** trigger release for slack org_id column fix ([#5288](https://github.com/vm0-ai/vm0/issues/5288)) ([#5315](https://github.com/vm0-ai/vm0/issues/5315)) ([f596950](https://github.com/vm0-ai/vm0/commit/f5969500ae17542849c97d2a5cc42cf5b872925a))
+
+
+### Refactoring
+
+* **auth:** rename get-user-id to get-auth-context and centralize session claims ([#5321](https://github.com/vm0-ai/vm0/issues/5321)) ([cfd5dc3](https://github.com/vm0-ai/vm0/commit/cfd5dc38ab0174331e7abbd9c763b99cd3636696))
+* scope compose access checks to caller's active org ([#5308](https://github.com/vm0-ai/vm0/issues/5308)) ([5e75650](https://github.com/vm0-ai/vm0/commit/5e756504380e95815bf5a7aaa84b1d04525353e6))
+* simplify build-context to org-only model provider resolution ([#5297](https://github.com/vm0-ai/vm0/issues/5297)) ([a6425c1](https://github.com/vm0-ai/vm0/commit/a6425c11283b39d8f0a6cbb2c0cbedd40359c83a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.0
+
 ## [12.125.1](https://github.com/vm0-ai/vm0/compare/web-v12.125.0...web-v12.125.1) (2026-03-18)
 
 
