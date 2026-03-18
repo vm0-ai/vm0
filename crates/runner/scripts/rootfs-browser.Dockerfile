@@ -36,8 +36,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     ca-certificates \
     sudo \
+    libnss3 \
+    p11-kit-modules \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Make NSS-based applications (Chromium, Firefox) trust the system CA store.
+RUN MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
+    && ln -sf /usr/lib/${MULTIARCH}/pkcs11/p11-kit-trust.so \
+              /usr/lib/${MULTIARCH}/nss/libnssckbi.so
 
 # Install Claude Code CLI as a standalone Bun-compiled binary.
 # The binary bundles Bun runtime (JSC) + application code into a single executable,
