@@ -56,11 +56,8 @@ describe("POST /api/org/leave - Leave Org", () => {
     const adminUserId = uniqueId("leave-admin");
     const memberUserId = uniqueId("leave-member");
     const slug = uniqueId("org");
-    // orgId follows the org_mock_{currentUserId} pattern from createTestOrg
-    const orgId = `org_mock_${memberUserId}`;
     setupClerkOrgMock({
       userId: memberUserId,
-      orgId,
       orgSlug: slug,
       memberships: [
         { userId: adminUserId, role: "org:admin" },
@@ -68,8 +65,8 @@ describe("POST /api/org/leave - Leave Org", () => {
       ],
     });
 
-    // Create org (auth() returns memberUserId, so orgId = org_mock_{memberUserId})
-    await createTestOrgHelper(slug);
+    // Create org — capture the actual orgId from the helper (auth() returns memberUserId)
+    const { id: orgId } = await createTestOrgHelper(slug);
 
     // Override auth to return org:member role so leaveOrg does not throw forbidden
     vi.mocked(auth).mockResolvedValue({
