@@ -2247,6 +2247,7 @@ export async function findTestComposeWithOrg(composeId: string) {
  * @param versionId - The agent compose version ID
  * @param runnerGroup - The runner group (e.g., "org-slug/default")
  * @param contextOverrides - Optional overrides for the stored execution context
+ * @param runOverrides - Optional overrides for the agent run record (e.g., appendSystemPrompt)
  * @returns The created run ID
  */
 export async function createTestRunnerJob(
@@ -2254,6 +2255,7 @@ export async function createTestRunnerJob(
   versionId: string,
   runnerGroup: string,
   contextOverrides?: Partial<StoredExecutionContext>,
+  runOverrides?: { appendSystemPrompt?: string },
 ): Promise<{ runId: string }> {
   const orgId = await getOrgIdFromVersion(versionId);
 
@@ -2265,6 +2267,7 @@ export async function createTestRunnerJob(
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
+      ...runOverrides,
     })
     .returning({ id: agentRuns.id });
 

@@ -93,6 +93,21 @@ describe("createRun()", () => {
       expect(run!.appendSystemPrompt).toBeNull();
     });
 
+    it("should propagate appendSystemPrompt through runner job dispatch", async () => {
+      vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      reloadEnv();
+
+      const result = await createRun(
+        baseParams({ appendSystemPrompt: "Your name is Aria." }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.appendSystemPrompt).toBe("Your name is Aria.");
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+    });
+
     it("should always set lastHeartbeatAt", async () => {
       const result = await createRun(baseParams());
 
