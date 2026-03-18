@@ -188,7 +188,9 @@ export const zeroChatRunStatus$ = computed((get) => get(internalRunStatus$));
 /** Cancel the currently active run. */
 export const cancelActiveRun$ = command(async ({ get, set }) => {
   const runId = get(internalActiveRunId$);
-  if (!runId) return;
+  if (!runId) {
+    return;
+  }
 
   // Abort the polling loop so the UI stops waiting
   const controller = get(pollingAbortController$);
@@ -202,7 +204,9 @@ export const cancelActiveRun$ = command(async ({ get, set }) => {
   const partialContent = await extractResultFromEvents(pages, get);
 
   set(internalMessages$, (prev) => {
-    if (prev.length === 0) return prev;
+    if (prev.length === 0) {
+      return prev;
+    }
     const updated = [...prev];
     updated[updated.length - 1] = {
       ...updated[updated.length - 1],

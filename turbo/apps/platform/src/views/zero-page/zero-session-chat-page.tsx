@@ -298,7 +298,7 @@ export function ZeroSessionChatPage({
                         size="sm"
                         variant="destructive"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={() => cancelRun()}
+                        onClick={() => void cancelRun()}
                         aria-label="Stop"
                       >
                         <IconPlayerStop size={16} />

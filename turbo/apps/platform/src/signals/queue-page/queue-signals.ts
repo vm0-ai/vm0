@@ -1,7 +1,7 @@
 import { command, state, computed } from "ccstate";
 import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort } from "../utils.ts";
+import { throwIfAbort, onRef, detach, Reason } from "../utils.ts";
 import {
   queueResponseSchema,
   type QueueResponse,
@@ -28,23 +28,29 @@ const fetchQueueData$ = command(async ({ get, set }) => {
   set(internalQueueData$, data);
 });
 
-export const startQueuePolling$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    // Initial fetch
-    await set(fetchQueueData$);
-    signal.throwIfAborted();
+const startQueuePolling$ = command(async ({ set }, signal: AbortSignal) => {
+  // Initial fetch
+  await set(fetchQueueData$);
+  signal.throwIfAborted();
 
-    // Polling loop
-    while (!signal.aborted) {
-      try {
-        await delay(POLL_INTERVAL, { signal });
-        signal.throwIfAborted();
-        await set(fetchQueueData$);
-        signal.throwIfAborted();
-      } catch (error) {
-        throwIfAbort(error);
-        // Swallow non-abort errors and continue polling
-      }
+  // Polling loop
+  while (!signal.aborted) {
+    try {
+      await delay(POLL_INTERVAL, { signal });
+      signal.throwIfAborted();
+      await set(fetchQueueData$);
+      signal.throwIfAborted();
+    } catch (error) {
+      throwIfAbort(error);
+      // Swallow non-abort errors and continue polling
     }
+  }
+});
+
+const startPolling$ = command(
+  ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    detach(set(startQueuePolling$, signal), Reason.DomCallback);
   },
 );
+
+export const queuePollingRef$ = onRef(startPolling$);

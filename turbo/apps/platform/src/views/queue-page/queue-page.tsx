@@ -1,20 +1,11 @@
-import { command } from "ccstate";
 import { useGet, useSet } from "ccstate-react";
 import {
   queueData$,
-  startQueuePolling$,
+  queuePollingRef$,
 } from "../../signals/queue-page/queue-signals.ts";
-import { onRef, detach, Reason } from "../../signals/utils.ts";
 import { QueueOverview } from "./queue-overview.tsx";
 import { QueueRunningTable } from "./queue-running-table.tsx";
 import { QueueWaitingTable } from "./queue-waiting-table.tsx";
-
-const startPolling$ = command(
-  ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-    detach(set(startQueuePolling$, signal), Reason.DomCallback);
-  },
-);
-const pollingRef$ = onRef(startPolling$);
 
 function QueueSkeleton() {
   return (
@@ -32,7 +23,7 @@ function QueueSkeleton() {
 
 export function QueuePage() {
   const data = useGet(queueData$);
-  const pollingRef = useSet(pollingRef$);
+  const pollingRef = useSet(queuePollingRef$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0" ref={pollingRef}>
