@@ -35,7 +35,7 @@ EOF
     assert_output --partial "Compose"
 }
 
-@test "vm0 run with browser profile has agent-browser installed" {
+@test "vm0 run with browser profile has agent-browser and chromium" {
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -57,33 +57,7 @@ EOF
 
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "agent-browser --version"
+        "agent-browser --version && (which chromium || which chrome || which google-chrome || ls /root/.cache/puppeteer/chrome/*/chrome-linux64/chrome)"
     assert_success
     assert_output --partial "agent-browser"
-}
-
-@test "vm0 run with browser profile has chromium available" {
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
-version: "1.0"
-
-agents:
-  $AGENT_NAME:
-    description: "Test agent with browser profile"
-    framework: claude-code
-    experimental_profile: vm0/browser
-EOF
-
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
-    assert_success
-
-    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
-    cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
-    assert_success
-
-    run $CLI_COMMAND run "$AGENT_NAME" \
-        --artifact-name "$ARTIFACT_NAME" \
-        "which chromium || which chrome || which google-chrome || ls /root/.cache/puppeteer/chrome/*/chrome-linux64/chrome"
-    assert_success
 }
