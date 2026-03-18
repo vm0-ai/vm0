@@ -7,7 +7,7 @@ import {
   zeroAddedSkills$,
   addZeroSkill$,
   saveZeroSkills$,
-} from "../zero-meet.ts";
+} from "../zero-skills.ts";
 import { setZeroChatAgent$ } from "../zero-nav.ts";
 
 const context = testContext();

@@ -13,7 +13,7 @@ import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 import { zeroChatAgentId$ } from "./zero-nav.ts";
 
-const L = logger("ZeroMeet");
+const L = logger("ZeroSkills");
 
 // ---------------------------------------------------------------------------
 // Instructions state (read-only, used by syncSkillsToCompose$)
