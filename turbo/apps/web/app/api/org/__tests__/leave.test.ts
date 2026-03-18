@@ -131,10 +131,8 @@ describe("POST /api/org/leave - Leave Org", () => {
   it("should prevent admin from leaving", async () => {
     const userId = uniqueId("leave-admin");
     const slug = uniqueId("org");
-    const orgId = `org_${userId}`;
     setupClerkOrgMock({
       userId,
-      orgId,
       orgSlug: slug,
       memberships: [{ userId, role: "org:admin" }],
     });
