@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.64.2](https://github.com/vm0-ai/vm0/compare/cli-v9.64.1...cli-v9.64.2) (2026-03-18)
+
+
+### Refactoring
+
+* enforce mandatory org context in telemetry routes ([#5264](https://github.com/vm0-ai/vm0/issues/5264)) ([9f25118](https://github.com/vm0-ai/vm0/commit/9f25118b9a12525e79471195e5e6e62d9c9edc62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.78.0
+
 ## [9.64.1](https://github.com/vm0-ai/vm0/compare/cli-v9.64.0...cli-v9.64.1) (2026-03-17)
 
 

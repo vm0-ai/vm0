@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.125.0](https://github.com/vm0-ai/vm0/compare/web-v12.124.1...web-v12.125.0) (2026-03-18)
+
+
+### Features
+
+* **platform:** add member onboarding flow and welcome animation ([#5060](https://github.com/vm0-ai/vm0/issues/5060)) ([de6b1e1](https://github.com/vm0-ai/vm0/commit/de6b1e1cf9467bf1171fd67b5ebbc560373322a2))
+
+
+### Bug Fixes
+
+* correct display name extraction path in platform logs api ([#5289](https://github.com/vm0-ai/vm0/issues/5289)) ([ce4b44b](https://github.com/vm0-ai/vm0/commit/ce4b44bd44d98cbd20bc7ef8f4e4ab2d91727aa1))
+
+
+### Refactoring
+
+* enforce mandatory org context in telemetry routes ([#5264](https://github.com/vm0-ai/vm0/issues/5264)) ([9f25118](https://github.com/vm0-ai/vm0/commit/9f25118b9a12525e79471195e5e6e62d9c9edc62))
+* pass AuthContext to resolveOrg instead of calling auth() internally ([#5262](https://github.com/vm0-ai/vm0/issues/5262)) ([6cbd955](https://github.com/vm0-ai/vm0/commit/6cbd955ccefc43f9418ff85d90d500bc27661e7d))
+* platform to app comprehensive rename (phase 2) ([#5275](https://github.com/vm0-ai/vm0/issues/5275)) ([73e8a5f](https://github.com/vm0-ai/vm0/commit/73e8a5f0edfac2a0b73a9f4d86812fd747de98db))
+* remove redundant org-id from slack org tables ([#5288](https://github.com/vm0-ai/vm0/issues/5288)) ([c503e53](https://github.com/vm0-ai/vm0/commit/c503e53f2ad17cc1159c9c8c9ba69b33942ab57b)), closes [#5239](https://github.com/vm0-ai/vm0/issues/5239)
+* remove server-level openrouter api key env var ([#5282](https://github.com/vm0-ai/vm0/issues/5282)) ([50ca446](https://github.com/vm0-ai/vm0/commit/50ca4465ce849fea2132b1cfcefaee1267cc447b))
+* rename get-platform-url to get-app-url across web app ([#5279](https://github.com/vm0-ai/vm0/issues/5279)) ([066a5a7](https://github.com/vm0-ai/vm0/commit/066a5a7bc5a02160db50cce72e42f34b48ab52e8)), closes [#5271](https://github.com/vm0-ai/vm0/issues/5271)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.78.0
+
 ## [12.124.1](https://github.com/vm0-ai/vm0/compare/web-v12.124.0...web-v12.124.1) (2026-03-17)
 
 

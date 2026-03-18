@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.12.0...sandbox-fc-v0.12.1) (2026-03-18)
+
+
+### Refactoring
+
+* **sandbox-fc:** enable api socket in fresh boot mode for balloon support ([#5237](https://github.com/vm0-ai/vm0/issues/5237)) ([d485d28](https://github.com/vm0-ai/vm0/commit/d485d284041ec7f17311b1aab3eaaa28aec596df))
+
 ## [0.12.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.11.6...sandbox-fc-v0.12.0) (2026-03-17)
 
 

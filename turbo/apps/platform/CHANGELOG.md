@@ -1,5 +1,107 @@
 # Changelog
 
+## [0.122.0](https://github.com/vm0-ai/vm0/compare/app-v0.121.1...app-v0.122.0) (2026-03-18)
+
+
+### Features
+
+* add chat threads for instant sidebar and stable url routing ([#5102](https://github.com/vm0-ai/vm0/issues/5102)) ([c902c8c](https://github.com/vm0-ai/vm0/commit/c902c8c892f93e3496c94a5fda0e835b1957086d))
+* add explorium api-token connector ([#4404](https://github.com/vm0-ai/vm0/issues/4404)) ([27113d0](https://github.com/vm0-ai/vm0/commit/27113d0908d2c2d2608307e06b7d69d8a9e1853c))
+* add fireflies api-token connector ([#4378](https://github.com/vm0-ai/vm0/issues/4378)) ([c3f0156](https://github.com/vm0-ai/vm0/commit/c3f01564303aea49597df043e8582ee466a249a8))
+* add granola api-token connector ([#4413](https://github.com/vm0-ai/vm0/issues/4413)) ([28b8605](https://github.com/vm0-ai/vm0/commit/28b8605983b604539f05877634eb06f29b365fda))
+* add hume api-token connector ([#4366](https://github.com/vm0-ai/vm0/issues/4366)) ([23d14f1](https://github.com/vm0-ai/vm0/commit/23d14f1f7446cd2b9a0f4a6a5c07fc5b65cfcd61))
+* add jam api-token connector ([#4421](https://github.com/vm0-ai/vm0/issues/4421)) ([73b8a98](https://github.com/vm0-ai/vm0/commit/73b8a98912ca3c7ce65c698d4d1a928f8fc600a0))
+* add jotform api-token connector ([#4387](https://github.com/vm0-ai/vm0/issues/4387)) ([72407b5](https://github.com/vm0-ai/vm0/commit/72407b562785cdaa238c23feed05e0235ea5f619))
+* add metabase api-token connector ([#4399](https://github.com/vm0-ai/vm0/issues/4399)) ([29061c6](https://github.com/vm0-ai/vm0/commit/29061c676f0816b1322fe386250878f74787ebe4))
+* add model provider tracking and org-scoped logs/schedules ([#4909](https://github.com/vm0-ai/vm0/issues/4909)) ([dc0de67](https://github.com/vm0-ai/vm0/commit/dc0de673b2e78eec803a3051148f1947dc292945))
+* add needs-reconnect flag for connector token refresh failures ([#5128](https://github.com/vm0-ai/vm0/issues/5128)) ([5da9c4e](https://github.com/vm0-ai/vm0/commit/5da9c4e15385589a41a49007dfc2b0009f58bbe8))
+* add org/personal tabs for model provider settings ([#5214](https://github.com/vm0-ai/vm0/issues/5214)) ([d035f1d](https://github.com/vm0-ai/vm0/commit/d035f1d7b372f07c6054e27fd71b2ac437f8bb26))
+* add per-schedule notification control ([#4885](https://github.com/vm0-ai/vm0/issues/4885)) ([904cdfb](https://github.com/vm0-ai/vm0/commit/904cdfb0fd6f8ce241420b288cc43860ba1c55f0))
+* add prisma-postgres api-token connector ([#4375](https://github.com/vm0-ai/vm0/issues/4375)) ([86fd6e6](https://github.com/vm0-ai/vm0/commit/86fd6e6d2b7dc63a99f1bdcbad17bc79c8335900))
+* add revenuecat api-token connector ([#4368](https://github.com/vm0-ai/vm0/issues/4368)) ([8eddaa5](https://github.com/vm0-ai/vm0/commit/8eddaa5678095b03896c42d750049fe882fc207c))
+* add scope field to merged model provider list endpoint ([#5182](https://github.com/vm0-ai/vm0/issues/5182)) ([2b3d4ef](https://github.com/vm0-ai/vm0/commit/2b3d4ef87af7ba9831ffb34ba2a207d1114decc6))
+* add tldv api-token connector ([#4383](https://github.com/vm0-ai/vm0/issues/4383)) ([fb67e47](https://github.com/vm0-ai/vm0/commit/fb67e475455dfdb2527bbaaba945b031920980bb))
+* add user settings ui for gdpr data export ([#5152](https://github.com/vm0-ai/vm0/issues/5152)) ([46c8c96](https://github.com/vm0-ai/vm0/commit/46c8c960ad1ab6969ba04b11fa61d1f914ea12d5))
+* add vercel ai gateway as staff-only model provider ([#5032](https://github.com/vm0-ai/vm0/issues/5032)) ([53b5845](https://github.com/vm0-ai/vm0/commit/53b5845a8903721ea0d6dbafcd2815641552f254)), closes [#5029](https://github.com/vm0-ai/vm0/issues/5029)
+* add zapier api-token connector ([#4401](https://github.com/vm0-ai/vm0/issues/4401)) ([b1a7f52](https://github.com/vm0-ai/vm0/commit/b1a7f52da40763510e4b64014fd6f21025608387))
+* configurable send mode preference (enter vs cmd+enter) ([#4953](https://github.com/vm0-ai/vm0/issues/4953)) ([d8a43b8](https://github.com/vm0-ai/vm0/commit/d8a43b846595cf4beec259e50400e3d3ccd04a62))
+* enable multi-account switching in production ([#4868](https://github.com/vm0-ai/vm0/issues/4868)) ([4ee375d](https://github.com/vm0-ai/vm0/commit/4ee375d3f6f5ac66385154a6bf1cc2c2ea8d234c))
+* fix agent connections page to handle api-token connectors and unify layout ([#4480](https://github.com/vm0-ai/vm0/issues/4480)) ([9b55546](https://github.com/vm0-ai/vm0/commit/9b55546c85671b811130010c5cb32b7bc878cf3b))
+* improve zero page with markdown theming, avatar overrides, and navigation ([#5065](https://github.com/vm0-ai/vm0/issues/5065)) ([5ca5a04](https://github.com/vm0-ai/vm0/commit/5ca5a0441b1019516b7a64baa8ca695863581686))
+* inject agent metadata into instructions as frontmatter during compose ([#4382](https://github.com/vm0-ai/vm0/issues/4382)) ([c9e4c02](https://github.com/vm0-ai/vm0/commit/c9e4c02ce0bea2182f14269856f21222a5b0d94f))
+* integrate lighthouse ci audits for web and platform homepages ([#5139](https://github.com/vm0-ai/vm0/issues/5139)) ([dd9f570](https://github.com/vm0-ai/vm0/commit/dd9f570eafda6b8a740c51a95db3fa9ecf7ab077))
+* **platform:** add agent metadata and improve meet settings ([#4351](https://github.com/vm0-ai/vm0/issues/4351)) ([8e6a34c](https://github.com/vm0-ai/vm0/commit/8e6a34cbf5efecf52b94a4f495a174f2aa5f27ac))
+* **platform:** add member onboarding flow and welcome animation ([#5060](https://github.com/vm0-ai/vm0/issues/5060)) ([de6b1e1](https://github.com/vm0-ai/vm0/commit/de6b1e1cf9467bf1171fd67b5ebbc560373322a2))
+* **platform:** add talk route for url-driven agent chat selection ([#5098](https://github.com/vm0-ai/vm0/issues/5098)) ([34b6800](https://github.com/vm0-ai/vm0/commit/34b68005429fcfbede85fed2d55e8f54fd7a9ae1))
+* **platform:** improve zero activity, schedule, and meet pages ([#4616](https://github.com/vm0-ai/vm0/issues/4616)) ([90da3a5](https://github.com/vm0-ai/vm0/commit/90da3a5cdd8661e2b8359e965cdb84161ab20b51))
+* **platform:** refactor preferences into standalone zero route with loading states ([#4651](https://github.com/vm0-ai/vm0/issues/4651)) ([55b851b](https://github.com/vm0-ai/vm0/commit/55b851b944587887e9453906313b46ba8c025e14))
+* **platform:** unify border styling and refine ui consistency across zero app ([#4863](https://github.com/vm0-ai/vm0/issues/4863)) ([f232a8b](https://github.com/vm0-ai/vm0/commit/f232a8bad9e20f1ebb02217d7db325f8476e39ab))
+* **platform:** upgrade vite from v6 to v7 ([#4728](https://github.com/vm0-ai/vm0/issues/4728)) ([9dd617e](https://github.com/vm0-ai/vm0/commit/9dd617e27990ea52a93c5502b8ed9e946941e3e9)), closes [#4716](https://github.com/vm0-ai/vm0/issues/4716)
+* **platform:** wire zero schedule page to real api calls ([#4589](https://github.com/vm0-ai/vm0/issues/4589)) ([b1cb54c](https://github.com/vm0-ai/vm0/commit/b1cb54c765b6d2c8ebde756e89608615555e0785))
+* **platform:** zero app v4 ui overhaul ([#4820](https://github.com/vm0-ai/vm0/issues/4820)) ([f219ec6](https://github.com/vm0-ai/vm0/commit/f219ec6d4a664ffef660e060647d1e577bd5212a))
+* **platform:** zero app v4 ui polish and refinements ([#4995](https://github.com/vm0-ai/vm0/issues/4995)) ([a8cd2dc](https://github.com/vm0-ai/vm0/commit/a8cd2dcec8678d25090df5b155446f612e4a3868))
+* **platform:** zero ui polish and sidebar improvements ([#5082](https://github.com/vm0-ai/vm0/issues/5082)) ([d9d464a](https://github.com/vm0-ai/vm0/commit/d9d464a7a36e75516303bffee933044475fa6413))
+* redirect to login page on 401 response ([#5025](https://github.com/vm0-ai/vm0/issues/5025)) ([6dbe891](https://github.com/vm0-ai/vm0/commit/6dbe891501690b73f99f136a9c84ee30912f535a))
+* **slack:** add platform ui for org-aware slack integration ([#4715](https://github.com/vm0-ai/vm0/issues/4715)) ([deb9179](https://github.com/vm0-ai/vm0/commit/deb9179480bd318d4b91e8b7a87354ffbaa89564))
+* support app subdomain alongside platform subdomain ([#5267](https://github.com/vm0-ai/vm0/issues/5267)) ([dacd3b2](https://github.com/vm0-ai/vm0/commit/dacd3b2bd9be68cb34ee4f539d54fcb349f3ba59)), closes [#5266](https://github.com/vm0-ai/vm0/issues/5266)
+* **zero:** add pinned agents, agent switching, and per-agent sessions ([#4727](https://github.com/vm0-ai/vm0/issues/4727)) ([d3ee3af](https://github.com/vm0-ai/vm0/commit/d3ee3af19e34c583efc8f9b6b4da1bf48de9f0fb))
+* **zero:** add recent chat sidebar, file attachments, and session switching ([#4582](https://github.com/vm0-ai/vm0/issues/4582)) ([d460861](https://github.com/vm0-ai/vm0/commit/d4608610fa4eda2ffa8ff53663187f430987283c))
+* **zero:** add settings page, deferred skill saving, and onboarding improvements ([#4511](https://github.com/vm0-ai/vm0/issues/4511)) ([7452cd8](https://github.com/vm0-ai/vm0/commit/7452cd8e6c99f66765e6346eface7305a25b6b5f))
+* **zero:** enhance schedule management with toggle, calendar, and multi-day support ([#4374](https://github.com/vm0-ai/vm0/issues/4374)) ([75b1539](https://github.com/vm0-ai/vm0/commit/75b1539e929a2d83b858d88e77f7cf05df97c197))
+* **zero:** implement chat with real agent run pipeline ([#4384](https://github.com/vm0-ai/vm0/issues/4384)) ([d832baf](https://github.com/vm0-ai/vm0/commit/d832baf5e6b54dc7855d45a157050fde71837cb2))
+* **zero:** implement team page with real subagent list and detail navigation ([#4310](https://github.com/vm0-ai/vm0/issues/4310)) ([c48f45e](https://github.com/vm0-ai/vm0/commit/c48f45ed92a8f8dc6677cf220570e52be89f5651))
+* **zero:** wire activities page with real logs api ([#4358](https://github.com/vm0-ai/vm0/issues/4358)) ([cbeec6b](https://github.com/vm0-ai/vm0/commit/cbeec6b48ea91832c1af8f2c8f98484765a9a7b1))
+
+
+### Bug Fixes
+
+* abort in-flight polling when switching or starting new zero session ([#5087](https://github.com/vm0-ai/vm0/issues/5087)) ([286df7f](https://github.com/vm0-ai/vm0/commit/286df7f6f73770d01e7eb8a18ac8a2245d4b6807))
+* activity detail auth alignment and platform team endpoint ([#4933](https://github.com/vm0-ai/vm0/issues/4933)) ([fbfdb1d](https://github.com/vm0-ai/vm0/commit/fbfdb1dff690271bdfb6927d4deca852439cf624))
+* add cache and security headers to platform vercel.json ([#5218](https://github.com/vm0-ai/vm0/issues/5218)) ([6aae552](https://github.com/vm0-ai/vm0/commit/6aae55282c1a8e797f25d7b2a3d6a04f3230f0b2)), closes [#5208](https://github.com/vm0-ai/vm0/issues/5208)
+* address semgrep sast findings for casa tier 2 compliance ([#4487](https://github.com/vm0-ai/vm0/issues/4487)) ([e900299](https://github.com/vm0-ai/vm0/commit/e9002997cf58e7424344f6c494cac25faee07641)), closes [#4422](https://github.com/vm0-ai/vm0/issues/4422)
+* **app:** resolve web origin correctly for preview environment hostnames ([#5296](https://github.com/vm0-ai/vm0/issues/5296)) ([913581f](https://github.com/vm0-ai/vm0/commit/913581f14d374706509e19f1680c3b165cb96d43))
+* compare with zeroChatThreadId$ and add loading guard. ([c902c8c](https://github.com/vm0-ai/vm0/commit/c902c8c892f93e3496c94a5fda0e835b1957086d))
+* hide connector-managed secrets from custom api section ([#4367](https://github.com/vm0-ai/vm0/issues/4367)) ([147c144](https://github.com/vm0-ai/vm0/commit/147c1449c3ec459f20ddd7bdb278a7f4e34b5920))
+* hide credit and invite buttons from chat page ([#4954](https://github.com/vm0-ai/vm0/issues/4954)) ([459eeb7](https://github.com/vm0-ai/vm0/commit/459eeb789bd648120e584768faa21a6a377384d9))
+* improve slack connect flow with loading state, install DM, and org check ([#5153](https://github.com/vm0-ai/vm0/issues/5153)) ([6f4f1f5](https://github.com/vm0-ai/vm0/commit/6f4f1f57214216477ebdb4b53d01de4cca0c924c))
+* model provider auto-default, onboarding, profile save, and slack install flow ([#4967](https://github.com/vm0-ai/vm0/issues/4967)) ([5d6c132](https://github.com/vm0-ai/vm0/commit/5d6c1327f8f4f41fa44bf5753030db67867d0a75))
+* **platform:** increase compose job polling timeout and handle onboarding errors ([#4655](https://github.com/vm0-ai/vm0/issues/4655)) ([215bfe1](https://github.com/vm0-ai/vm0/commit/215bfe19a82d001f897239a4af959782f0f9dcc5)), closes [#4654](https://github.com/vm0-ai/vm0/issues/4654)
+* **platform:** make activity logs icon a proper link for middle-click support ([#5103](https://github.com/vm0-ai/vm0/issues/5103)) ([cadb761](https://github.com/vm0-ai/vm0/commit/cadb76143495730a6ab41a2b66311f5daf6c15b1))
+* **platform:** navigate to /zero on org switch instead of reloading ([#5090](https://github.com/vm0-ai/vm0/issues/5090)) ([f85fbbb](https://github.com/vm0-ai/vm0/commit/f85fbbb008aac047eb9d663afe6629615bc81f65))
+* revert merged provider list to return only user providers ([#5261](https://github.com/vm0-ai/vm0/issues/5261)) ([a5783c7](https://github.com/vm0-ai/vm0/commit/a5783c7376dc7b6584c189d55a31269ccaf5aabd)), closes [#5259](https://github.com/vm0-ai/vm0/issues/5259)
+* update platform to send ?org= and clean up remaining scope references ([#4690](https://github.com/vm0-ai/vm0/issues/4690)) ([3788240](https://github.com/vm0-ai/vm0/commit/37882409b710bea326429c5bf3cf5f2d944abfd2))
+* use last-loadable pattern, filter orphan connectors, and flex run result schema ([#4943](https://github.com/vm0-ai/vm0/issues/4943)) ([f5c6234](https://github.com/vm0-ai/vm0/commit/f5c623434401b0265912b325ebb44afc25d92027))
+
+
+### Refactoring
+
+* add extract-and-group-variables convenience function ([#4517](https://github.com/vm0-ai/vm0/issues/4517)) ([fe13128](https://github.com/vm0-ai/vm0/commit/fe13128c1a0b0e619c9a585867c3d3f5f81e2f9b))
+* eliminate remaining scope references ([#4703](https://github.com/vm0-ai/vm0/issues/4703)) ([fd85a3b](https://github.com/vm0-ai/vm0/commit/fd85a3b6b4f4fe10eb0ff36a1f5140888d9a57f1))
+* eliminate scope references in web, platform, and tests ([#4700](https://github.com/vm0-ai/vm0/issues/4700)) ([7451fc6](https://github.com/vm0-ai/vm0/commit/7451fc6bcb062d1163179667fff656cc55c182e9)), closes [#4693](https://github.com/vm0-ai/vm0/issues/4693)
+* improve zero onboarding post-completion navigation ([#4908](https://github.com/vm0-ai/vm0/issues/4908)) ([c3d95b8](https://github.com/vm0-ai/vm0/commit/c3d95b884fcece0a3a73d8128469e6f81a7cc650))
+* move platform public assets to colocated imports and remove unused files ([#5225](https://github.com/vm0-ai/vm0/issues/5225)) ([07ade10](https://github.com/vm0-ai/vm0/commit/07ade10d4beab290e3c3d9985f2fbfdba2d3554f)), closes [#5223](https://github.com/vm0-ai/vm0/issues/5223)
+* platform to app comprehensive rename (phase 2) ([#5275](https://github.com/vm0-ai/vm0/issues/5275)) ([73e8a5f](https://github.com/vm0-ai/vm0/commit/73e8a5f0edfac2a0b73a9f4d86812fd747de98db))
+* **platform:** remove /zero prefix from all platform routes ([#5155](https://github.com/vm0-ai/vm0/issues/5155)) ([228b4dd](https://github.com/vm0-ai/vm0/commit/228b4dd81efe36be51606f695057bf20c4aba034))
+* **platform:** rename internal scope variables and signals to org ([#4644](https://github.com/vm0-ai/vm0/issues/4644)) ([f8abd64](https://github.com/vm0-ai/vm0/commit/f8abd64f563dab3f36f63e09a7b361ca0c1e2d9e))
+* remove all non-zero platform pages and feature flag ([#5095](https://github.com/vm0-ai/vm0/issues/5095)) ([fa7f011](https://github.com/vm0-ai/vm0/commit/fa7f01187b84d7046b150f46f217c191d5ad5670))
+* remove dead org creation and slug generation code ([#4653](https://github.com/vm0-ai/vm0/issues/4653)) ([2361d6c](https://github.com/vm0-ai/vm0/commit/2361d6c8c322bee6f08602d4f93a437036e2c1a1))
+* remove leftover "shared agent" terminology from tests and comments ([#4950](https://github.com/vm0-ai/vm0/issues/4950)) ([f9a01ff](https://github.com/vm0-ai/vm0/commit/f9a01ffcfda2dc5edec86733e7a3db4ca5a070a3))
+* remove server-side acl permission system and shared agent ui ([#4881](https://github.com/vm0-ai/vm0/issues/4881)) ([123c1cf](https://github.com/vm0-ai/vm0/commit/123c1cf5dd28cb7e9b5980ad1dfc97d052b4ce8f))
+* rename scope to org in platform frontend signals and mocks ([#4618](https://github.com/vm0-ai/vm0/issues/4618)) ([f84f3c7](https://github.com/vm0-ai/vm0/commit/f84f3c73b4319593ac9a2bf83a98823c8e9bf5c9))
+* rename scope wire format to org across all packages ([#4656](https://github.com/vm0-ai/vm0/issues/4656)) ([43ac1f3](https://github.com/vm0-ai/vm0/commit/43ac1f30220a0d285b639f35cacaac842bccd5ff))
+* return display name from logs api instead of frontend mapping ([#5150](https://github.com/vm0-ai/vm0/issues/5150)) ([92d7877](https://github.com/vm0-ai/vm0/commit/92d787709fabc58b557a807749cf9d261bac707b))
+* reuse grouped message components in zero activity detail ([#4525](https://github.com/vm0-ai/vm0/issues/4525)) ([a6b4f1e](https://github.com/vm0-ai/vm0/commit/a6b4f1ec48f38b2156900d869cab3b5b24a42b39))
+* route connector deep links to /zero/team/:name instead of /zero/meet ([#5023](https://github.com/vm0-ai/vm0/issues/5023)) ([42f5c63](https://github.com/vm0-ai/vm0/commit/42f5c63f7402081c7821597acb802820f4abb98b))
+* standardize connector secret names to use token convention ([#4385](https://github.com/vm0-ai/vm0/issues/4385)) ([470101f](https://github.com/vm0-ai/vm0/commit/470101f7612e95e8826653b33df819cf0de49b26))
+* use link components instead of buttons in zero pages ([#5062](https://github.com/vm0-ai/vm0/issues/5062)) ([cf093ad](https://github.com/vm0-ai/vm0/commit/cf093adcaf66844fb9a5f1926c43e9d6fc8478c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.78.0
+
 ## [0.121.1](https://github.com/vm0-ai/vm0/compare/platform-v0.121.0...platform-v0.121.1) (2026-03-17)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.25.0](https://github.com/vm0-ai/vm0/compare/docs-v2.24.0...docs-v2.25.0) (2026-03-18)
+
+
+### Features
+
+* **platform:** add member onboarding flow and welcome animation ([#5060](https://github.com/vm0-ai/vm0/issues/5060)) ([de6b1e1](https://github.com/vm0-ai/vm0/commit/de6b1e1cf9467bf1171fd67b5ebbc560373322a2))
+
 ## [2.24.0](https://github.com/vm0-ai/vm0/compare/docs-v2.23.0...docs-v2.24.0) (2026-03-17)
 
 

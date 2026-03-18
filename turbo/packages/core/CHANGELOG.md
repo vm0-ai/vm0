@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.78.0](https://github.com/vm0-ai/vm0/compare/core-v8.77.1...core-v8.78.0) (2026-03-18)
+
+
+### Features
+
+* **platform:** add member onboarding flow and welcome animation ([#5060](https://github.com/vm0-ai/vm0/issues/5060)) ([de6b1e1](https://github.com/vm0-ai/vm0/commit/de6b1e1cf9467bf1171fd67b5ebbc560373322a2))
+
+
+### Refactoring
+
+* platform to app comprehensive rename (phase 2) ([#5275](https://github.com/vm0-ai/vm0/issues/5275)) ([73e8a5f](https://github.com/vm0-ai/vm0/commit/73e8a5f0edfac2a0b73a9f4d86812fd747de98db))
+
 ## [8.77.1](https://github.com/vm0-ai/vm0/compare/core-v8.77.0...core-v8.77.1) (2026-03-17)
 
 

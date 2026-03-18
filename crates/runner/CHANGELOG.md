@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.32.0...runner-rs-v0.33.0) (2026-03-18)
+
+
+### Features
+
+* **runner:** add profile support to local provider and submit command ([#5234](https://github.com/vm0-ai/vm0/issues/5234)) ([296dc94](https://github.com/vm0-ai/vm0/commit/296dc94707b5de7ca8113893b48c445765d69e37))
+
 ## [0.32.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.31.3...runner-rs-v0.32.0) (2026-03-17)
 
 
