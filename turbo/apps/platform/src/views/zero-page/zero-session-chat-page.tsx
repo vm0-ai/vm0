@@ -14,6 +14,7 @@ import {
   IconChevronDown,
   IconCopy,
   IconCheck,
+  IconSettings,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -78,7 +79,6 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-
   const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
   const messagesEndEl = useGet(messagesEndEl$);
   const setMessagesEndEl = useSet(messagesEndEl$);
@@ -623,65 +623,88 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
     window.setTimeout(() => setCopied(false), 2000);
   };
 
-  const logButton =
-    hasSummaries && message.runId ? (
-      <div className="grid grid-cols-[36px_1fr] gap-2.5">
-        <div />
-        <div className="flex py-2 gap-1">
+  const logButton = message.runId ? (
+    <div className="grid grid-cols-[36px_1fr] gap-2.5">
+      <div />
+      <div className="flex py-2 gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SimpleLink
+                href={`/zero/activity/${message.runId}`}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                aria-label="View run logs"
+              >
+                <IconChartLine size={18} stroke={1.5} />
+              </SimpleLink>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">View activity logs</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        {message.content && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <SimpleLink
-                  href={`/zero/activity/${message.runId}`}
+                <button
+                  type="button"
+                  onClick={handleCopy}
                   className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
-                  aria-label="View run logs"
+                  aria-label="Copy message"
                 >
-                  <IconChartLine size={18} stroke={1.5} />
-                </SimpleLink>
+                  {copied ? (
+                    <IconCheck size={18} stroke={1.5} />
+                  ) : (
+                    <IconCopy size={18} stroke={1.5} />
+                  )}
+                </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">View activity logs</TooltipContent>
+              <TooltipContent side="bottom">
+                {copied ? "Copied!" : "Copy message"}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          {message.content && (
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
-                    aria-label="Copy message"
-                  >
-                    {copied ? (
-                      <IconCheck size={18} stroke={1.5} />
-                    ) : (
-                      <IconCopy size={18} stroke={1.5} />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {copied ? "Copied!" : "Copy message"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
+        )}
       </div>
-    ) : null;
+    </div>
+  ) : null;
 
   if (message.error) {
+    const isNoModelProvider = message.error.includes(
+      "No model provider configured",
+    );
     return (
-      <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
             {hasSummaries && (
               <CollapsibleTimeline summaries={message.summaries!} />
             )}
-            <div className="flex items-start gap-2 text-destructive">
-              <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
-              <span>{message.error}</span>
-            </div>
+            {isNoModelProvider ? (
+              <div className="flex items-start gap-2 text-foreground">
+                <IconAlertCircle
+                  size={16}
+                  className="shrink-0 mt-[3px] text-amber-500"
+                />
+                <span>
+                  No model provider configured yet.{" "}
+                  <Link
+                    pathname="/:tab"
+                    options={{ pathParams: { tab: "settings" } }}
+                    className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+                  >
+                    Set one up in Settings
+                    <IconSettings size={13} />
+                  </Link>{" "}
+                  to get started.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 text-destructive">
+                <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
+                <span>{message.error}</span>
+              </div>
+            )}
           </div>
         </div>
         {logButton}
@@ -691,7 +714,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
 
   if (message.content) {
     return (
-      <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
