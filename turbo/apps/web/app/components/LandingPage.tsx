@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import NextLink from "next/link";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 
@@ -28,7 +29,7 @@ function useTypewriterLines(
     if (!started) return;
     if (lineIndex >= lines.length) return;
 
-    const currentLine = lines[lineIndex];
+    const currentLine = lines[lineIndex] ?? "";
     if (charIndex < currentLine.length) {
       const t = setTimeout(() => setCharIndex((c) => c + 1), speed);
       return () => clearTimeout(t);
@@ -53,12 +54,10 @@ function useTypewriterLines(
 }
 
 export default function LandingPage() {
-  const [lines] = useState(
-    () =>
-      TYPEWRITER_VARIANTS[
-        Math.floor(Math.random() * TYPEWRITER_VARIANTS.length)
-      ],
-  );
+  const [lines] = useState<string[]>(() => {
+    const idx = Math.floor(Math.random() * TYPEWRITER_VARIANTS.length);
+    return TYPEWRITER_VARIANTS[idx] ?? TYPEWRITER_VARIANTS[0] ?? [];
+  });
   const { lineIndex, charIndex, done } = useTypewriterLines(lines);
 
   return (
@@ -200,7 +199,7 @@ export default function LandingPage() {
                   filter: "url(#sketchy)",
                 }}
               />
-              <a
+              <NextLink
                 href="/sign-up"
                 className="relative inline-flex items-center justify-center rounded-[10px] bg-[hsl(var(--card))] text-sm font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-50))]"
                 style={{
@@ -209,7 +208,7 @@ export default function LandingPage() {
                 }}
               >
                 Join the beta
-              </a>
+              </NextLink>
             </div>
           </div>
         </section>
