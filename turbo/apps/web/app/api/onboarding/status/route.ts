@@ -64,59 +64,53 @@ async function resolveDefaultAgent(
   orgId: string,
   composeId: string,
 ): Promise<DefaultAgentInfo | null> {
-  const [compose] = await globalThis.services.db
+  // Single query: JOIN compose + zero_agents + head version
+  const [row] = await globalThis.services.db
     .select({
       name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose) {
-    return null;
-  }
-
-  // Read metadata from zero_agents table
-  const [agent] = await globalThis.services.db
-    .select({
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
+      content: agentComposeVersions.content,
     })
-    .from(zeroAgents)
-    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, compose.name)))
+    .from(agentComposes)
+    .leftJoin(
+      zeroAgents,
+      and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, agentComposes.name)),
+    )
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentComposes.headVersionId, agentComposeVersions.id),
+    )
+    .where(eq(agentComposes.id, composeId))
     .limit(1);
 
-  const metadata = agent
-    ? {
-        displayName: agent.displayName ?? undefined,
-        description: agent.description ?? undefined,
-        sound: agent.sound ?? undefined,
-      }
-    : null;
+  if (!row) {
+    return null;
+  }
 
-  // Extract skills from compose content (still in JSONB)
-  let skills: string[] = [];
-  if (compose.headVersionId) {
-    const [version] = await globalThis.services.db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, compose.headVersionId))
-      .limit(1);
-    if (version) {
-      const parsed = agentComposeApiContentSchema.safeParse(version.content);
-      if (parsed.success) {
-        const agentKey = Object.keys(parsed.data.agents)[0];
-        const agentDef = agentKey ? parsed.data.agents[agentKey] : undefined;
-        if (agentDef) {
-          skills = agentDef.skills ?? [];
+  const metadata =
+    (row.displayName ?? row.description ?? row.sound)
+      ? {
+          displayName: row.displayName ?? undefined,
+          description: row.description ?? undefined,
+          sound: row.sound ?? undefined,
         }
+      : null;
+
+  let skills: string[] = [];
+  if (row.content) {
+    const parsed = agentComposeApiContentSchema.safeParse(row.content);
+    if (parsed.success) {
+      const agentKey = Object.keys(parsed.data.agents)[0];
+      const agentDef = agentKey ? parsed.data.agents[agentKey] : undefined;
+      if (agentDef) {
+        skills = agentDef.skills ?? [];
       }
     }
   }
 
-  return { name: compose.name, composeId, metadata, skills };
+  return { name: row.name, composeId, metadata, skills };
 }
 
 const router = tsr.router(onboardingStatusContract, {

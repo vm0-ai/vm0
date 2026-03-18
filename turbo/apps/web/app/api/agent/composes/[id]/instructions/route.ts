@@ -35,6 +35,7 @@ import {
   getInstructionsStorageName,
   getInstructionsFilename,
   stripMetadataFrontmatter,
+  agentComposeApiContentSchema,
 } from "@vm0/core";
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 
@@ -94,16 +95,14 @@ export async function GET(
   }
 
   // Extract instructions filename from compose content
-  const content = result.content as {
-    agents?: Record<string, { instructions?: string; framework?: string }>;
-  } | null;
-  if (!content?.agents) {
+  const parsed = agentComposeApiContentSchema.safeParse(result.content);
+  if (!parsed.success) {
     return NextResponse.json({ content: null, filename: null });
   }
 
-  const agentKeys = Object.keys(content.agents);
+  const agentKeys = Object.keys(parsed.data.agents);
   const firstKey = agentKeys[0];
-  const agentDef = firstKey ? content.agents[firstKey] : null;
+  const agentDef = firstKey ? parsed.data.agents[firstKey] : undefined;
   // Use the explicit instructions filename from YAML, or fall back to the
   // framework-canonical name (e.g. CLAUDE.md for claude-code).  The CLI may
   // upload instructions without setting the `instructions` field in the YAML.

@@ -4,6 +4,7 @@ import {
   AGENT_NAME_REGEX,
   isSupportedFramework,
   expandFirewallConfigs,
+  agentDefinitionSchema,
   type SkillFrontmatter,
   type SupportedFramework,
 } from "@vm0/core";
@@ -255,9 +256,10 @@ export async function serverSideCompose(params: {
   });
 
   // 8. Upsert agent metadata into zero_agents
-  const metadata = agent.metadata as
-    | { displayName?: string; description?: string; sound?: string }
-    | undefined;
+  const metadataResult = agentDefinitionSchema.shape.metadata.safeParse(
+    agent.metadata,
+  );
+  const metadata = metadataResult.success ? metadataResult.data : undefined;
   if (metadata) {
     await db
       .insert(zeroAgents)
