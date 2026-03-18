@@ -1274,8 +1274,8 @@ jobs:
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-            # Stop any existing service from a previous run (e.g., re-run after test failure
-            # where cleanup-runner preserved the runner). Ignore errors if not running.
+            # Stop any existing service from a previous run (e.g., re-run after test failure).
+            # Ignore errors if not running.
             ssh $REMOTE "${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" 2>/dev/null || true
 
             # Start as systemd transient service
@@ -1427,61 +1427,6 @@ jobs:
             kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
             echo "Cron simulator stopped"
           fi
-
-  # Stop runner service and clean up after tests complete.
-  # When tests fail/cancel, this job fails WITHOUT cleaning up so that
-  # "Re-run failed jobs" includes it — on successful retry it will clean up.
-  # cleanup.yml (pull_request_target:closed) is the safety net.
-  cleanup-runner:
-    runs-on: ubuntu-latest
-    needs: [prepare, deploy-runner-prepare, deploy-runner-start, cli-e2e-03-runner]
-    if: |
-      always() &&
-      github.event_name != 'push' &&
-      needs.deploy-runner-prepare.outputs.bin-dir != ''
-    steps:
-      # Guard: if any test/deploy job didn't succeed, fail this job WITHOUT
-      # cleaning up. This makes "Re-run failed jobs" include cleanup-runner,
-      # so on successful retry the cleanup runs automatically.
-      #
-      # - deploy-runner-start != success (not just failure/cancelled):
-      #   covers deploy-web failure → start is "skipped" but binaries exist
-      # - cli-e2e-03-runner failure/cancelled:
-      #   the main re-run scenario — keep runner alive for E2E retry
-      - name: Fail if tests failed (keep runner for re-run)
-        if: |
-          needs.deploy-runner-start.result != 'success' ||
-          needs.cli-e2e-03-runner.result == 'failure' ||
-          needs.cli-e2e-03-runner.result == 'cancelled'
-        run: |
-          echo "::error::Tests failed or cancelled — keeping runner alive for re-run"
-          exit 1
-
-      - uses: actions/checkout@v6
-
-      - name: Install Ansible
-        run: pip3 install ansible-core
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Cleanup runner on all metal hosts
-        env:
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          cd ansible
-          ansible-playbook \
-            -i "${METAL_HOSTS}," \
-            playbooks/cleanup-turbo-runner.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -e "job_ref=${JOB_REF}" \
-            -v || true
 
   # Build E2B templates (development account)
   # Uses repository-level E2B_API_KEY secret
@@ -1648,8 +1593,7 @@ jobs:
   # dependencies fail, and GitHub treats "skipped" as passing — defeating the purpose.
   ci-gate:
     runs-on: ubuntu-latest
-    # Note: cleanup-runner is intentionally excluded — it's a post-test
-    # side-effect job, not a quality gate.
+    # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
       - prepare
       - file-size-check
