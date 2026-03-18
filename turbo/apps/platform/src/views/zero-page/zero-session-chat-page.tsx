@@ -398,6 +398,9 @@ function isImageFilename(filename: string): boolean {
 
 function UserMessage({ message }: { message: ZeroChatMessage }) {
   const { cleanContent, parsed } = parseInlineAttachments(message.content);
+  // Preserve user-entered line breaks: CommonMark collapses single newlines
+  // into spaces, so convert each \n to a hard line break (two trailing spaces + \n).
+  const displayContent = cleanContent.replace(/\n/g, "  \n");
   const lightboxUrl$ = useCCState<string | null>(null);
   const lightboxUrl = useGet(lightboxUrl$);
   const setLightboxUrl = useSet(lightboxUrl$);
@@ -428,7 +431,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
         <div className="flex flex-col items-end min-w-0">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
             <div className="px-4 py-3">
-              <Markdown source={cleanContent} />
+              <Markdown source={displayContent} />
             </div>
             {allAttachments.length > 0 && (
               <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
