@@ -61,6 +61,7 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
+import { PUT as upsertOrgModelProviderRoute } from "../../app/api/org/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
 import {
@@ -459,6 +460,89 @@ export async function createTestMultiAuthModelProvider(
     const error = await response.json();
     throw new Error(
       `Failed to create multi-auth model provider: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.provider;
+}
+
+/**
+ * Create a test org-level model provider via API route handler.
+ * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
+ *
+ * @param type - The provider type
+ * @param secretValue - The secret value
+ * @param selectedModel - Optional selected model for providers with model selection
+ * @returns The created provider with id and type
+ */
+export async function createTestOrgModelProvider(
+  type: string,
+  secretValue: string,
+  selectedModel?: string,
+): Promise<{ id: string; type: string; selectedModel: string | null }> {
+  const request = createTestRequest(
+    "http://localhost:3000/api/org/model-providers",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type,
+        secret: secretValue,
+        selectedModel,
+      }),
+    },
+  );
+  const response = await upsertOrgModelProviderRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create org model provider: ${error.error?.message || response.status}`,
+    );
+  }
+  const data = await response.json();
+  return data.provider;
+}
+
+/**
+ * Create a test org-level multi-auth model provider via API route handler.
+ * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
+ *
+ * @param type - The provider type (e.g., "aws-bedrock")
+ * @param authMethod - The auth method (e.g., "api-key", "access-keys")
+ * @param secrets - Map of secret names to values
+ * @param selectedModel - Optional selected model
+ * @returns The created provider with id and type
+ */
+export async function createTestOrgMultiAuthModelProvider(
+  type: string,
+  authMethod: string,
+  secrets: Record<string, string>,
+  selectedModel?: string,
+): Promise<{
+  id: string;
+  type: string;
+  authMethod: string | null;
+  secretNames: string[] | null;
+  selectedModel: string | null;
+}> {
+  const request = createTestRequest(
+    "http://localhost:3000/api/org/model-providers",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type,
+        authMethod,
+        secrets,
+        selectedModel,
+      }),
+    },
+  );
+  const response = await upsertOrgModelProviderRoute(request);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Failed to create org multi-auth model provider: ${error.error?.message || response.status}`,
     );
   }
   const data = await response.json();
