@@ -231,7 +231,9 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         (provider, group)
     } else {
         let group_name = group.clone();
-        let provider = ApiProvider::new(http.clone(), server.token, group, cancel.clone()).await;
+        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        let provider =
+            ApiProvider::new(http.clone(), server.token, group, profiles, cancel.clone()).await;
         (provider, group_name)
     };
 
