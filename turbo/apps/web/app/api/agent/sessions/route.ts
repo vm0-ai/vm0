@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { sessionsContract } from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { listAgentSessions } from "../../../../src/lib/agent-session";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { resolveCallerOrgId } from "../../../../src/lib/org/resolve-org";
@@ -11,8 +11,8 @@ const router = tsr.router(sessionsContract, {
   list: async ({ query, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -20,6 +20,7 @@ const router = tsr.router(sessionsContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     // Verify the requested compose belongs to the caller's active org
     const [compose] = await globalThis.services.db
@@ -37,7 +38,7 @@ const router = tsr.router(sessionsContract, {
       };
     }
 
-    const callerOrgId = await resolveCallerOrgId(userId, request);
+    const callerOrgId = await resolveCallerOrgId(authCtx, request);
     if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,

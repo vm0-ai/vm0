@@ -1,6 +1,6 @@
 import { eq, and, gt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
-import type { VALID_CAPABILITIES } from "@vm0/core";
+import type { VALID_CAPABILITIES, OrgRole } from "@vm0/core";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import { isSandboxToken, verifySandboxToken } from "./sandbox-token";
 import { logger } from "../logger";
@@ -14,6 +14,9 @@ const log = logger("auth:user");
  */
 export type AuthContext = {
   userId: string;
+  orgId?: string;
+  orgRole?: OrgRole;
+  orgTier?: string;
   capabilities?: readonly Capability[];
   runId?: string;
 };
@@ -118,12 +121,29 @@ export async function getAuthContext(
   }
 
   // Fall back to Clerk session auth
-  const { userId } = await auth();
-  if (userId) {
-    return { userId };
-  }
+  return getClerkSessionAuth();
+}
 
-  return null;
+/** Extract AuthContext from Clerk session, or null if not authenticated. */
+async function getClerkSessionAuth(): Promise<AuthContext | null> {
+  const authResult = await auth();
+  if (!authResult.userId) return null;
+
+  const claims = authResult.sessionClaims as
+    | Record<string, unknown>
+    | null
+    | undefined;
+
+  return {
+    userId: authResult.userId,
+    orgId: authResult.orgId ?? undefined,
+    orgRole: authResult.orgRole
+      ? authResult.orgRole === "org:admin"
+        ? "admin"
+        : "member"
+      : undefined,
+    orgTier: (claims?.org_tier as string) ?? undefined,
+  };
 }
 
 /**

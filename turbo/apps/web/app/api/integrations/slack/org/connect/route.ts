@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 
   const { userId } = authCtx;
   const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org, member } = await resolveOrg(userId, orgSlug);
+  const { org, member } = await resolveOrg(authCtx, orgSlug);
 
   // Find user's connection in any workspace bound to this org
   const [connection] = await globalThis.services.db
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
 
   // Resolve org and check membership
   const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org, member } = await resolveOrg(userId, orgSlug);
+  const { org, member } = await resolveOrg(authCtx, orgSlug);
 
   // Check installation exists
   const [installation] = await globalThis.services.db
@@ -194,7 +194,7 @@ export async function POST(request: Request) {
     // Check if user is a member of the workspace's org but has the wrong active org
     let isMemberOfTargetOrg = false;
     try {
-      await resolveOrg(userId, null, installation.orgId);
+      await resolveOrg(authCtx, null, installation.orgId);
       isMemberOfTargetOrg = true;
     } catch {
       // Not a member

@@ -178,6 +178,70 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
   });
 });
 
+describe("getAuthContext org fields from Clerk session", () => {
+  const mockAuth = vi.mocked(auth);
+
+  it("should populate orgId, orgRole, orgTier from Clerk session", async () => {
+    mockAuth.mockResolvedValue({
+      userId: "user_123",
+      orgId: "org_456",
+      orgRole: "org:admin",
+      sessionClaims: { org_tier: "pro" },
+    } as Awaited<ReturnType<typeof auth>>);
+
+    const result = await getAuthContext();
+
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("user_123");
+    expect(result?.orgId).toBe("org_456");
+    expect(result?.orgRole).toBe("admin");
+    expect(result?.orgTier).toBe("pro");
+  });
+
+  it("should map org:member role to member", async () => {
+    mockAuth.mockResolvedValue({
+      userId: "user_123",
+      orgId: "org_456",
+      orgRole: "org:member",
+      sessionClaims: {},
+    } as Awaited<ReturnType<typeof auth>>);
+
+    const result = await getAuthContext();
+
+    expect(result?.orgRole).toBe("member");
+  });
+
+  it("should leave org fields undefined when not in Clerk session", async () => {
+    mockAuth.mockResolvedValue({
+      userId: "user_123",
+      orgId: null,
+      orgRole: null,
+      sessionClaims: {},
+    } as unknown as Awaited<ReturnType<typeof auth>>);
+
+    const result = await getAuthContext();
+
+    expect(result?.userId).toBe("user_123");
+    expect(result?.orgId).toBeUndefined();
+    expect(result?.orgRole).toBeUndefined();
+    expect(result?.orgTier).toBeUndefined();
+  });
+
+  it("should not populate org fields for sandbox tokens", async () => {
+    const token = await generateSandboxToken("user-123", "run-456", [
+      "artifact:read",
+    ]);
+    const result = await getAuthContext(`Bearer ${token}`, {
+      requiredCapability: "artifact:read",
+    });
+
+    expect(result?.userId).toBe("user-123");
+    expect(result?.orgId).toBeUndefined();
+    expect(result?.orgRole).toBeUndefined();
+    expect(result?.orgTier).toBeUndefined();
+  });
+});
+
 describe("getAuthContext auth() call optimization", () => {
   const mockAuth = vi.mocked(auth);
 

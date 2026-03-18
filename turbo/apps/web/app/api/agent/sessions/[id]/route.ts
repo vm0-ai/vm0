@@ -11,15 +11,15 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
 import { resolveCallerOrgId } from "../../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(sessionsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -27,6 +27,7 @@ const router = tsr.router(sessionsByIdContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     const [session] = await globalThis.services.db
       .select()
@@ -57,7 +58,7 @@ const router = tsr.router(sessionsByIdContract, {
     }
 
     // Verify session belongs to the caller's active organization (runtime org)
-    const callerOrgId = await resolveCallerOrgId(userId, request);
+    const callerOrgId = await resolveCallerOrgId(authCtx, request);
     if (callerOrgId !== session.orgId) {
       return {
         status: 404 as const,

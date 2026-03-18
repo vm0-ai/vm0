@@ -56,7 +56,7 @@ const router = tsr.router(runsCancelContract, {
       orgId = (await getOrgData(sandboxRun.orgId)).orgId;
     } else {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       orgId = org.orgId;
     }
 

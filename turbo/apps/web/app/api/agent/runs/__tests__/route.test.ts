@@ -505,8 +505,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should authenticate with valid CLI token", async () => {
+      const orgSlug = `org-${user.userId.slice(-8)}`;
       const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
+        `http://localhost:3000/api/agent/runs?org=${orgSlug}`,
         {
           method: "POST",
           headers: {

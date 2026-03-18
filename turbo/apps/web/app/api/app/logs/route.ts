@@ -17,7 +17,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { conversations } from "../../../../src/db/schema/conversation";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
-import { getUserId } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
@@ -135,8 +135,8 @@ const router = tsr.router(platformLogsListContract, {
   list: async ({ query }) => {
     initServices();
 
-    const userId = await getUserId();
-    if (!userId) {
+    const authCtx = await getAuthContext();
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -144,13 +144,14 @@ const router = tsr.router(platformLogsListContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     const limit = query.limit ?? 20;
 
     // Resolve active org — always scope logs to the user's current org
     let orgId: string;
     try {
-      const { org } = await resolveOrg(userId, query.org);
+      const { org } = await resolveOrg(authCtx, query.org);
       orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error)) {

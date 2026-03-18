@@ -37,15 +37,19 @@ async function createTestComposeJobViaApi(
 ): Promise<{ jobId: string; token: string }> {
   // Create CLI token for authenticated request
   const cliToken = await createTestCliToken(userId);
+  const orgSlug = `org-${userId.slice(-8)}`;
 
-  const request = createTestRequest("http://localhost:3000/api/compose/jobs", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${cliToken}`,
+  const request = createTestRequest(
+    `http://localhost:3000/api/compose/jobs?org=${orgSlug}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cliToken}`,
+      },
+      body: JSON.stringify({ githubUrl }),
     },
-    body: JSON.stringify({ githubUrl }),
-  });
+  );
   const response = await createComposeJob(request);
   const data = await response.json();
 
@@ -77,9 +81,10 @@ async function getTestComposeJobViaApi(
 }> {
   // Create CLI token for authenticated request
   const cliToken = await createTestCliToken(userId);
+  const orgSlug = `org-${userId.slice(-8)}`;
 
   const request = createTestRequest(
-    `http://localhost:3000/api/compose/jobs/${jobId}`,
+    `http://localhost:3000/api/compose/jobs/${jobId}?org=${orgSlug}`,
     {
       method: "GET",
       headers: {

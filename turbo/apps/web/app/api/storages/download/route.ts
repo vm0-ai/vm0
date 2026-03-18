@@ -60,7 +60,7 @@ const router = tsr.router(storagesDownloadContract, {
       runtimeOrg = await getOrgData(run.orgId);
     } else {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       runtimeOrg = org;
     }
 

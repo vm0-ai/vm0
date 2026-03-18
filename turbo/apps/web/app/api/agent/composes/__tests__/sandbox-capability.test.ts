@@ -38,14 +38,15 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      // Switch to sandbox auth (provide orgId so resolveOrg can find org via JWT)
+      // Switch to sandbox auth
+      const orgSlug = `org-${user.userId.slice(-8)}`;
       mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:read",
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes?name=${agentName}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}&org=${orgSlug}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -90,13 +91,14 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
+      const orgSlug = `org-${user.userId.slice(-8)}`;
       mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:write",
       ]);
 
       const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes",
+        `http://localhost:3000/api/agent/composes?org=${orgSlug}`,
         {
           method: "POST",
           headers: {
@@ -165,13 +167,14 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
+      const orgSlug = `org-${user.userId.slice(-8)}`;
       mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:read",
       ]);
 
       const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes/list",
+        `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },

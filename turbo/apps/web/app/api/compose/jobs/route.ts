@@ -61,7 +61,7 @@ const router = tsr.router(composeJobsMainContract, {
 
     // Resolve the caller's org
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Dispatch based on input type: GitHub URL or platform content
     const isGitHubInput = "githubUrl" in body;

@@ -34,7 +34,7 @@ const router = tsr.router(variablesByNameContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const variable = await getVariable(org.orgId, userId, params.name);
     if (!variable) {
       return createErrorResponse(
@@ -72,7 +72,7 @@ const router = tsr.router(variablesByNameContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       await deleteVariable(org.orgId, userId, params.name);
 
       return {

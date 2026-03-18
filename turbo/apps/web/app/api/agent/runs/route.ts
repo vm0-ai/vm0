@@ -301,7 +301,7 @@ const router = tsr.router(runsMainContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Parse and validate status values
     const statusValues: string[] = query.status
@@ -463,7 +463,7 @@ const router = tsr.router(runsMainContract, {
     // Resolve org for variable/secret resolution.
     // The actual variable fetching happens in build-context.ts.
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Cross-org session access check: session's compose must belong to the resolved org
     if (resolved.composeOrgId && resolved.composeOrgId !== org.orgId) {

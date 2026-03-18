@@ -31,7 +31,7 @@ const router = tsr.router(modelProvidersMainContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const providers = await listModelProviders(org.orgId, userId);
 
     return {
@@ -71,7 +71,7 @@ const router = tsr.router(modelProvidersMainContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
 
       // Determine if this is a multi-auth provider or legacy provider
       const isMultiAuth = hasAuthMethods(type);

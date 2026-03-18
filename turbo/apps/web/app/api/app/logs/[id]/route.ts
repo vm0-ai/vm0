@@ -119,7 +119,7 @@ const router = tsr.router(platformLogsByIdContract, {
     let orgId: string;
     const orgSlug = new URL(request.url).searchParams.get("org");
     try {
-      const { org: resolvedOrg } = await resolveOrg(userId, orgSlug);
+      const { org: resolvedOrg } = await resolveOrg(authCtx, orgSlug);
       orgId = resolvedOrg.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error)) {

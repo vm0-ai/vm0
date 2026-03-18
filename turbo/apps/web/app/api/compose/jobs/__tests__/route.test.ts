@@ -27,6 +27,7 @@ const context = testContext();
 
 // Shared CLI token for authenticated requests
 let testCliToken: string;
+let testOrgSlug: string;
 
 describe("POST /api/compose/jobs", () => {
   beforeEach(async () => {
@@ -34,6 +35,7 @@ describe("POST /api/compose/jobs", () => {
     const user = await context.setupUser();
     // Create CLI token for this user
     testCliToken = await createTestCliToken(user.userId);
+    testOrgSlug = `org-${user.userId.slice(-8)}`;
   });
 
   describe("Authentication", () => {
@@ -63,7 +65,7 @@ describe("POST /api/compose/jobs", () => {
   describe("Validation", () => {
     it("should reject request with empty body", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -83,7 +85,7 @@ describe("POST /api/compose/jobs", () => {
 
     it("should reject request with invalid GitHub URL", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -107,7 +109,7 @@ describe("POST /api/compose/jobs", () => {
   describe("Job Creation (GitHub)", () => {
     it("should create a new compose job", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -133,7 +135,7 @@ describe("POST /api/compose/jobs", () => {
 
     it("should create a job with overwrite option", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -169,7 +171,7 @@ describe("POST /api/compose/jobs", () => {
 
     it("should create a job from platform content", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -192,7 +194,7 @@ describe("POST /api/compose/jobs", () => {
 
     it("should create a job with content and instructions", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -218,7 +220,7 @@ describe("POST /api/compose/jobs", () => {
     it("should return existing platform job for idempotency", async () => {
       // Create first platform job
       const request1 = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -235,7 +237,7 @@ describe("POST /api/compose/jobs", () => {
 
       // Second request should return same job
       const request2 = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -263,7 +265,7 @@ describe("POST /api/compose/jobs", () => {
 
       // Create job
       const createRequest = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=org-${user.userId.slice(-8)}`,
         {
           method: "POST",
           headers: {
@@ -304,8 +306,9 @@ describe("POST /api/compose/jobs", () => {
       await webhookComplete(webhookRequest);
 
       // Verify completed status
+      const userOrgSlug = `org-${user.userId.slice(-8)}`;
       const getRequest = createTestRequest(
-        `http://localhost:3000/api/compose/jobs/${jobId}`,
+        `http://localhost:3000/api/compose/jobs/${jobId}?org=${userOrgSlug}`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${userCliToken}` },
@@ -326,7 +329,7 @@ describe("POST /api/compose/jobs", () => {
     it("should return existing pending job instead of creating new one", async () => {
       // Create first job
       const request1 = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -346,7 +349,7 @@ describe("POST /api/compose/jobs", () => {
 
       // Create second job (should return same job)
       const request2 = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${testOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -373,7 +376,7 @@ describe("POST /api/compose/jobs", () => {
 
       // Create first job
       const request1 = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=org-${user.userId.slice(-8)}`,
         {
           method: "POST",
           headers: {
@@ -418,7 +421,7 @@ describe("POST /api/compose/jobs", () => {
 
       // Create second job (should create new job)
       const request2 = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=org-${user.userId.slice(-8)}`,
         {
           method: "POST",
           headers: {
@@ -444,16 +447,18 @@ describe("GET /api/compose/jobs/:jobId", () => {
   let testJobId: string;
   let testUserId: string;
   let testUserCliToken: string;
+  let testUserOrgSlug: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     testUserId = user.userId;
     testUserCliToken = await createTestCliToken(user.userId);
+    testUserOrgSlug = `org-${user.userId.slice(-8)}`;
 
     // Create a test job
     const request = createTestRequest(
-      "http://localhost:3000/api/compose/jobs",
+      `http://localhost:3000/api/compose/jobs?org=${testUserOrgSlug}`,
       {
         method: "POST",
         headers: {
@@ -491,7 +496,7 @@ describe("GET /api/compose/jobs/:jobId", () => {
   describe("Success", () => {
     it("should return job status", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/jobs/${testJobId}`,
+        `http://localhost:3000/api/compose/jobs/${testJobId}?org=${testUserOrgSlug}`,
         {
           method: "GET",
           headers: {
@@ -539,7 +544,7 @@ describe("GET /api/compose/jobs/:jobId", () => {
       await webhookComplete(webhookRequest);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/jobs/${testJobId}`,
+        `http://localhost:3000/api/compose/jobs/${testJobId}?org=${testUserOrgSlug}`,
         {
           method: "GET",
           headers: {
@@ -583,7 +588,7 @@ describe("GET /api/compose/jobs/:jobId", () => {
       await webhookComplete(webhookRequest);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/jobs/${testJobId}`,
+        `http://localhost:3000/api/compose/jobs/${testJobId}?org=${testUserOrgSlug}`,
         {
           method: "GET",
           headers: {
@@ -606,7 +611,7 @@ describe("GET /api/compose/jobs/:jobId", () => {
       const nonExistentId = randomUUID();
 
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/jobs/${nonExistentId}`,
+        `http://localhost:3000/api/compose/jobs/${nonExistentId}?org=${testUserOrgSlug}`,
         {
           method: "GET",
           headers: {
@@ -628,8 +633,9 @@ describe("GET /api/compose/jobs/:jobId", () => {
       const otherUser = await context.setupUser({ prefix: "other" });
       const otherCliToken = await createTestCliToken(otherUser.userId);
 
+      const otherOrgSlug = `org-${otherUser.userId.slice(-8)}`;
       const otherJobRequest = createTestRequest(
-        "http://localhost:3000/api/compose/jobs",
+        `http://localhost:3000/api/compose/jobs?org=${otherOrgSlug}`,
         {
           method: "POST",
           headers: {
@@ -652,7 +658,7 @@ describe("GET /api/compose/jobs/:jobId", () => {
       // Try to access the other user's job with original user's token
       // Clerk is null, so testUserCliToken will be used for auth
       const request = createTestRequest(
-        `http://localhost:3000/api/compose/jobs/${otherJobId}`,
+        `http://localhost:3000/api/compose/jobs/${otherJobId}?org=${testUserOrgSlug}`,
         {
           method: "GET",
           headers: {
@@ -668,7 +674,7 @@ describe("GET /api/compose/jobs/:jobId", () => {
 
     it("should return 400 for invalid job ID format", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/compose/jobs/invalid-uuid",
+        `http://localhost:3000/api/compose/jobs/invalid-uuid?org=${testUserOrgSlug}`,
         {
           method: "GET",
           headers: {
@@ -854,8 +860,9 @@ describe("Platform session auth (no CLI token)", () => {
 
     // 3. Poll for completed status (use CLI token for GET — platform would use session)
     const userCliToken = await createTestCliToken(user.userId);
+    const userOrgSlug = `org-${user.userId.slice(-8)}`;
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/compose/jobs/${jobId}`,
+      `http://localhost:3000/api/compose/jobs/${jobId}?org=${userOrgSlug}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${userCliToken}` },

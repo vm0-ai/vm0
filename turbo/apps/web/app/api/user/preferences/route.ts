@@ -24,7 +24,7 @@ const router = tsr.router(userPreferencesContract, {
 
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { sessionClaims } = await auth();
-    const { org } = await resolveOrg(ctx.userId, orgSlug);
+    const { org } = await resolveOrg(ctx, orgSlug);
 
     const prefs = await getUserPreferences(
       org.orgId,
@@ -56,7 +56,7 @@ const router = tsr.router(userPreferencesContract, {
     }
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(ctx.userId, orgSlug);
+    const { org } = await resolveOrg(ctx, orgSlug);
 
     try {
       const prefs = await updateUserPreferences(org.orgId, ctx.userId, {

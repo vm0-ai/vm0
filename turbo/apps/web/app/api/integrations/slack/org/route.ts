@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
   const { userId } = authCtx;
   const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org, member } = await resolveOrg(userId, orgSlug);
+  const { org, member } = await resolveOrg(authCtx, orgSlug);
 
   const db = globalThis.services.db;
 
@@ -236,8 +236,7 @@ async function handleUninstall(
   authCtx: { userId: string },
   orgSlug: string | null,
 ) {
-  const { userId } = authCtx;
-  const { org, member } = await resolveOrg(userId, orgSlug);
+  const { org, member } = await resolveOrg(authCtx, orgSlug);
 
   if (member.role !== "admin") {
     return NextResponse.json(
@@ -331,7 +330,7 @@ async function handleDisconnect(
   orgSlug: string | null,
 ) {
   const { userId } = authCtx;
-  const { org } = await resolveOrg(userId, orgSlug);
+  const { org } = await resolveOrg(authCtx, orgSlug);
   const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 

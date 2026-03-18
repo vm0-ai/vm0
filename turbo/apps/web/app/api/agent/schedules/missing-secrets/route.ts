@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 
   // Get user's org to query configured secrets
   const orgSlug = new URL(request.url).searchParams.get("org");
-  const runtimeOrg = await resolveOrgOrNull(userId, orgSlug);
+  const runtimeOrg = await resolveOrgOrNull(authResult, orgSlug);
   if (!runtimeOrg) {
     return NextResponse.json({ agents: [] });
   }

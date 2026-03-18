@@ -34,7 +34,7 @@ const router = tsr.router(secretsByNameContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(userId, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
     const secret = await getSecret(org.orgId, userId, params.name);
     if (!secret) {
       return createErrorResponse(
@@ -72,7 +72,7 @@ const router = tsr.router(secretsByNameContract, {
 
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       await deleteSecret(org.orgId, userId, params.name);
 
       return {

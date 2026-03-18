@@ -1,7 +1,7 @@
 import { createHandler, tsr } from "../../../src/lib/ts-rest-handler";
 import { chatThreadsContract } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
-import { getUserId } from "../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../src/lib/auth/get-user-id";
 import {
   createChatThread,
   listChatThreads,
@@ -14,8 +14,8 @@ const router = tsr.router(chatThreadsContract, {
   create: async ({ body, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -23,6 +23,7 @@ const router = tsr.router(chatThreadsContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     const [compose] = await globalThis.services.db
       .select({ orgId: agentComposes.orgId })
@@ -39,7 +40,7 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const callerOrgId = await resolveCallerOrgId(userId, request);
+    const callerOrgId = await resolveCallerOrgId(authCtx, request);
     if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,
@@ -67,8 +68,8 @@ const router = tsr.router(chatThreadsContract, {
   list: async ({ query, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization);
-    if (!userId) {
+    const authCtx = await getAuthContext(headers.authorization);
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -76,6 +77,7 @@ const router = tsr.router(chatThreadsContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     const [compose] = await globalThis.services.db
       .select({ orgId: agentComposes.orgId })
@@ -92,7 +94,7 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const callerOrgId = await resolveCallerOrgId(userId, request);
+    const callerOrgId = await resolveCallerOrgId(authCtx, request);
     if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,

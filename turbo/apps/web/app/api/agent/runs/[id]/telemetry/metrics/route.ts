@@ -7,7 +7,7 @@ import { runMetricsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
-import { getUserId } from "../../../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../../../src/lib/auth/get-user-id";
 import { resolveOrgOrNull } from "../../../../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,
@@ -29,10 +29,10 @@ const router = tsr.router(runMetricsContract, {
   getMetrics: async ({ params, query, headers }, { request }) => {
     initServices();
 
-    const userId = await getUserId(headers.authorization, {
+    const authCtx = await getAuthContext(headers.authorization, {
       requiredCapability: "agent-run:read",
     });
-    if (!userId) {
+    if (!authCtx) {
       return {
         status: 401 as const,
         body: {
@@ -40,9 +40,10 @@ const router = tsr.router(runMetricsContract, {
         },
       };
     }
+    const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const org = await resolveOrgOrNull(userId, orgSlug);
+    const org = await resolveOrgOrNull(authCtx, orgSlug);
 
     // Verify run exists and belongs to user+org
     const [run] = await globalThis.services.db

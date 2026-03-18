@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   try {
     const orgSlug = new URL(request.url).searchParams.get("org");
     if (!orgSlug) throw badRequest("org query parameter is required");
-    const { org, member } = await resolveOrg(userId, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
     await leaveOrg(userId, org.orgId, member.role);
     return NextResponse.json({ message: "Left org" });
   } catch (error) {

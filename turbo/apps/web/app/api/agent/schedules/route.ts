@@ -39,7 +39,7 @@ const router = tsr.router(schedulesMainContract, {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(userId, orgSlug);
+      } = await resolveOrg(authCtx, orgSlug);
 
       const result = await deploySchedule(userId, orgId, {
         name: body.name,
@@ -106,7 +106,7 @@ const router = tsr.router(schedulesMainContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     let orgId: string;
     try {
-      const { org } = await resolveOrg(userId, orgSlug);
+      const { org } = await resolveOrg(authCtx, orgSlug);
       orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {

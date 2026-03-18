@@ -242,7 +242,7 @@ async function completePendingLink(
  * Ensure org and artifact storage exist for a user.
  */
 export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
-  const org = await resolveOrgOrNull(vm0UserId);
+  const org = await resolveOrgOrNull({ userId: vm0UserId });
   if (!org) return;
 
   await ensureStorageExists(
