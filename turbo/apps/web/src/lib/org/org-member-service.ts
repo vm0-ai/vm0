@@ -1,7 +1,12 @@
+import { eq, and, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
 import type { OrgRole } from "@vm0/core";
+import { slackOrgConnections } from "../../db/schema/slack-org-connection";
+import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
+import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
+import { orgMembersCache } from "../../db/schema/org-members-cache";
 
 const log = logger("service:org-member");
 
@@ -129,6 +134,56 @@ export async function inviteMember(
 }
 
 /**
+ * Clean up org-scoped data when a user leaves or is removed from an org.
+ * Called after Clerk membership is revoked.
+ */
+async function cleanupOrgMember(userId: string, orgId: string): Promise<void> {
+  const db = globalThis.services.db;
+
+  // Resolve the Slack workspace bound to this org (1:1 relationship)
+  const [installation] = await db
+    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, orgId))
+    .limit(1);
+
+  if (installation) {
+    // Find the user's connection in this workspace
+    const connections = await db
+      .select({ id: slackOrgConnections.id })
+      .from(slackOrgConnections)
+      .where(
+        and(
+          eq(slackOrgConnections.vm0UserId, userId),
+          eq(
+            slackOrgConnections.slackWorkspaceId,
+            installation.slackWorkspaceId,
+          ),
+        ),
+      );
+
+    if (connections.length > 0) {
+      const connectionIds = connections.map((c) => c.id);
+      // Delete pending questions first (no cascade from connection)
+      await db
+        .delete(slackOrgPendingQuestions)
+        .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
+      // Delete connections (cascades to slack_org_thread_sessions)
+      await db
+        .delete(slackOrgConnections)
+        .where(inArray(slackOrgConnections.id, connectionIds));
+    }
+  }
+
+  // Invalidate membership cache
+  await db
+    .delete(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.userId, userId), eq(orgMembersCache.orgId, orgId)),
+    );
+}
+
+/**
  * Remove a member from the org.
  * Requires admin role.
  */
@@ -176,6 +231,7 @@ export async function removeMember(
     userId: targetUserId,
   });
 
+  await cleanupOrgMember(targetUserId, orgId);
   log.debug("Member removed", { orgId, targetUserId, email });
 }
 
@@ -197,6 +253,7 @@ export async function leaveOrg(userId: string, orgId: string, role: OrgRole) {
     userId: userId,
   });
 
+  await cleanupOrgMember(userId, orgId);
   log.debug("User left org", { orgId, userId });
 }
 

@@ -3,7 +3,7 @@ import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { createTestOrg } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { resolveOrg } from "../resolve-org";
-import type { AuthContext } from "../../auth/get-user-id";
+import type { AuthContext } from "../../auth/get-auth-context";
 
 const context = testContext();
 
@@ -28,13 +28,13 @@ function authCtx(opts: {
   userId: string;
   orgId?: string | null;
   orgRole?: "admin" | "member";
-  orgTier?: string;
+  sessionClaims?: CustomJwtSessionClaims;
 }): AuthContext {
   return {
     userId: opts.userId,
     orgId: opts.orgId ?? undefined,
     orgRole: opts.orgId ? (opts.orgRole ?? "admin") : undefined,
-    orgTier: opts.orgTier,
+    sessionClaims: opts.sessionClaims,
   };
 }
 
@@ -214,7 +214,11 @@ describe("resolveOrg", () => {
     });
 
     const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug}`, orgTier: "pro" }),
+      authCtx({
+        userId,
+        orgId: `org_mock_${slug}`,
+        sessionClaims: { org_tier: "pro" },
+      }),
     );
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
@@ -222,7 +226,7 @@ describe("resolveOrg", () => {
     expect(result.org.tier).toBe("pro");
   });
 
-  it("falls back to DB tier when AuthContext orgTier is missing", async () => {
+  it("falls back to DB tier when AuthContext sessionClaims.org_tier is missing", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
@@ -230,7 +234,7 @@ describe("resolveOrg", () => {
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
-    // Mock session WITHOUT orgTier
+    // Mock session WITHOUT org_tier in sessionClaims
     mockClerk({
       userId,
       orgId: `org_mock_${slug}`,
@@ -264,7 +268,11 @@ describe("resolveOrg", () => {
     });
 
     const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug2}`, orgTier: "max" }),
+      authCtx({
+        userId,
+        orgId: `org_mock_${slug2}`,
+        sessionClaims: { org_tier: "max" },
+      }),
       slug1,
     );
 

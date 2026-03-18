@@ -1,6 +1,7 @@
 export { isAuthenticated, runAuthFlow } from "./auth.js";
 
 export {
+  checkIsOrgAdmin,
   checkModelProviderStatus,
   getProviderChoices,
   setupModelProvider,

@@ -8,7 +8,7 @@ import { composeJobsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { composeJobs } from "../../../../src/db/schema/compose-job";
 import { eq, and, inArray } from "drizzle-orm";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { logger } from "../../../../src/lib/logger";
 import { triggerComposeJob } from "../../../../src/lib/compose/trigger-compose-job";

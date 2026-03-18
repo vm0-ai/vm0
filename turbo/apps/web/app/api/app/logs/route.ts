@@ -8,7 +8,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { platformLogsListContract, type PlatformLogStatus } from "@vm0/core";
+import { logsListContract, type LogStatus } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -17,20 +17,18 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { conversations } from "../../../../src/db/schema/conversation";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
+import { extractDisplayName } from "../../../../src/lib/agent-compose/extract-display-name";
 
-const log = logger("api:platform:logs");
+const log = logger("api:app:logs");
 
-// Minimal type for extracting framework and displayName from compose content
+// Minimal type for extracting framework from compose content
 interface AgentComposeContent {
-  agents: Record<
-    string,
-    { framework: string; metadata?: { displayName?: string } }
-  >;
+  agents: Record<string, { framework: string }>;
 }
 
 interface LogsQuery {
@@ -38,7 +36,7 @@ interface LogsQuery {
   org?: string;
   agent?: string;
   search?: string;
-  status?: PlatformLogStatus;
+  status?: LogStatus;
   cursor?: string;
   limit?: number;
 }
@@ -123,19 +121,7 @@ function extractFramework(composeContent: unknown): string | null {
   return firstAgent?.framework ?? null;
 }
 
-/**
- * Extract display name from compose content metadata.
- */
-function extractDisplayName(composeContent: unknown): string | null {
-  const content = composeContent as AgentComposeContent | null;
-  const agentNames = content?.agents ? Object.keys(content.agents) : [];
-  const firstAgent =
-    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
-  const displayName = firstAgent?.metadata?.displayName;
-  return typeof displayName === "string" ? displayName : null;
-}
-
-const router = tsr.router(platformLogsListContract, {
+const router = tsr.router(logsListContract, {
   list: async ({ query }) => {
     initServices();
 
@@ -261,7 +247,7 @@ const router = tsr.router(platformLogsListContract, {
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
           modelProvider: run.modelProvider ?? null,
-          status: run.status as PlatformLogStatus,
+          status: run.status as LogStatus,
           createdAt: run.createdAt.toISOString(),
           startedAt: run.startedAt?.toISOString() ?? null,
           completedAt: run.completedAt?.toISOString() ?? null,
@@ -301,7 +287,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(platformLogsListContract, router, {
+const handler = createHandler(logsListContract, router, {
   errorHandler,
 });
 

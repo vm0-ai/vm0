@@ -5,6 +5,11 @@ import { GET as getMembersRoute } from "../members/route";
 import {
   createTestRequest,
   createTestOrg as createTestOrgHelper,
+  insertOrgMembersCacheEntry,
+  findOrgMembersCacheEntry,
+  createTestSlackOrgInstallation,
+  createTestSlackOrgConnection,
+  findTestSlackOrgConnection,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../src/__tests__/clerk-mock";
@@ -18,15 +23,13 @@ const context = testContext();
  */
 async function createTestOrg(userId: string) {
   const slug = uniqueId("org");
-  const orgId = `org_mock_${userId}`;
   setupClerkOrgMock({
     userId,
-    orgId,
     orgSlug: slug,
     memberships: [{ userId, role: "org:admin" }],
   });
 
-  await createTestOrgHelper(slug);
+  const { id: orgId } = await createTestOrgHelper(slug);
 
   return { slug, orgId };
 }
@@ -140,6 +143,75 @@ describe("DELETE /api/org/members - Remove Member", () => {
 
     const removeData = await removeRes.json();
     expect(removeData.message).toContain(memberEmail);
+  });
+
+  it("should clean up org member cache and slack connection after removal", async () => {
+    const adminUserId = uniqueId("admin");
+    const memberEmail = "member-cleanup@example.com";
+    // Clerk mock maps "member-cleanup@example.com" -> "user_member-cleanup"
+    const memberUserId = "user_member-cleanup";
+    const { slug, orgId } = await createTestOrg(adminUserId);
+
+    // Add member via invite API
+    await addMember(adminUserId, memberUserId, memberEmail, slug, orgId);
+
+    // Seed an org members cache row for the member
+    await insertOrgMembersCacheEntry({
+      orgId,
+      userId: memberUserId,
+      role: "member",
+    });
+
+    // Seed a Slack installation and connection for the member
+    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+      orgId,
+    });
+    const { slackUserId, connectionId } = await createTestSlackOrgConnection({
+      slackWorkspaceId,
+      vm0UserId: memberUserId,
+    });
+
+    // Verify both rows exist before removal
+    const cacheBefore = await findOrgMembersCacheEntry(orgId, memberUserId);
+    expect(cacheBefore).toBeDefined();
+    const connectionBefore = await findTestSlackOrgConnection(
+      slackUserId,
+      slackWorkspaceId,
+    );
+    expect(connectionBefore).toBeDefined();
+    expect(connectionBefore!.id).toBe(connectionId);
+
+    // Override getUserList for the removal
+    const client = await clerkClient();
+    vi.mocked(client.users.getUserList).mockResolvedValue({
+      data: [
+        {
+          id: memberUserId,
+          emailAddresses: [{ id: "email_1", emailAddress: memberEmail }],
+          primaryEmailAddressId: "email_1",
+        },
+      ],
+    } as unknown as Awaited<ReturnType<typeof client.users.getUserList>>);
+
+    const removeReq = createTestRequest(
+      `http://localhost:3000/api/org/members?org=${slug}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: memberEmail }),
+      },
+    );
+    const removeRes = await DELETE(removeReq);
+    expect(removeRes.status).toBe(200);
+
+    // Verify both rows were deleted by cleanupOrgMember
+    const cacheAfter = await findOrgMembersCacheEntry(orgId, memberUserId);
+    expect(cacheAfter).toBeUndefined();
+    const connectionAfter = await findTestSlackOrgConnection(
+      slackUserId,
+      slackWorkspaceId,
+    );
+    expect(connectionAfter).toBeUndefined();
   });
 
   it("should revoke member access after removal", async () => {

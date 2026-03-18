@@ -11,7 +11,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { and, eq, inArray, gte } from "drizzle-orm";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   queryAxiom,

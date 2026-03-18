@@ -10,7 +10,7 @@ import {
   getSkillStorageName,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { skills } from "../../../../src/db/schema/skill";
 import { inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -66,7 +66,7 @@ const router = tsr.router(skillsResolveContract, {
     }
 
     // Unresolved = requested but not found (or not yet synced)
-    const unresolved = body.skills.filter((url) => !foundUrls.has(url));
+    const unresolved = body.skills.filter((url: string) => !foundUrls.has(url));
 
     return {
       status: 200 as const,

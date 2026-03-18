@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.65.0](https://github.com/vm0-ai/vm0/compare/cli-v9.64.2...cli-v9.65.0) (2026-03-18)
+
+
+### Features
+
+* prompt users to review and approve oauth scope changes ([#5312](https://github.com/vm0-ai/vm0/issues/5312)) ([6cd80bf](https://github.com/vm0-ai/vm0/commit/6cd80bfeee99e0e13935222cb1081837ac31ed05))
+
+
+### Refactoring
+
+* remove user-level cli model-provider commands and update onboarding ([#5298](https://github.com/vm0-ai/vm0/issues/5298)) ([cba1eb0](https://github.com/vm0-ai/vm0/commit/cba1eb00f38165def1024409d0c1b5dbc335844a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.79.0
+
 ## [9.64.2](https://github.com/vm0-ai/vm0/compare/cli-v9.64.1...cli-v9.64.2) (2026-03-18)
 
 

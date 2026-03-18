@@ -171,7 +171,7 @@ export async function handleInboundEmailTrigger(
   }
 
   // 4. Check permission
-  const hasAccess = await canAccessCompose(userId, {
+  const hasAccess = canAccessCompose(userId, runtimeOrgId, {
     id: compose.composeId,
     userId: compose.userId,
     orgId: compose.orgId,

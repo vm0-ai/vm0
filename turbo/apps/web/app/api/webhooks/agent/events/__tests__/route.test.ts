@@ -12,6 +12,7 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  findTestCreditUsageByRunId,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -557,6 +558,232 @@ describe("POST /api/webhooks/agent/events", () => {
 
       // Axiom ingest returned true, DB fallback should not run
       expect(ingestToAxiomSpy).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================
+  // Credit Usage Tests
+  // ============================================
+
+  describe("Credit Usage", () => {
+    it("should create credit_usage record on init event", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "system",
+                subtype: "init",
+                model: "claude-sonnet-4-20250514",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const record = await findTestCreditUsageByRunId(testRunId);
+      expect(record).toBeDefined();
+      expect(record!.model).toBe("claude-sonnet-4-20250514");
+      expect(record!.numEvents).toBe(1);
+      expect(record!.orgId).toBe(user.orgId);
+      expect(record!.userId).toBe(user.userId);
+      expect(record!.status).toBe("pending");
+    });
+
+    it("should increment numEvents on each webhook call", async () => {
+      // First batch: 3 events
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "system",
+                subtype: "init",
+                model: "gpt-4",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+              {
+                type: "assistant",
+                sequenceNumber: 1,
+                timestamp: Date.now(),
+                data: {},
+              },
+              {
+                type: "user",
+                sequenceNumber: 2,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
+
+      let record = await findTestCreditUsageByRunId(testRunId);
+      expect(record!.numEvents).toBe(3);
+
+      // Second batch: 2 events
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "assistant",
+                sequenceNumber: 3,
+                timestamp: Date.now(),
+                data: {},
+              },
+              {
+                type: "user",
+                sequenceNumber: 4,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+
+      record = await findTestCreditUsageByRunId(testRunId);
+      expect(record!.numEvents).toBe(5);
+    });
+
+    it("should set token data on result event", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "result",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                usage: {
+                  input_tokens: 15000,
+                  output_tokens: 3000,
+                },
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const record = await findTestCreditUsageByRunId(testRunId);
+      expect(record).toBeDefined();
+      expect(record!.inputTokens).toBe(15000);
+      expect(record!.outputTokens).toBe(3000);
+    });
+
+    it("should use 'unknown' model when no init event in batch", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "assistant",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: { text: "Hello" },
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const record = await findTestCreditUsageByRunId(testRunId);
+      expect(record).toBeDefined();
+      expect(record!.model).toBe("unknown");
+    });
+
+    it("should not create duplicate rows on concurrent calls", async () => {
+      const makeRequest = () =>
+        createTestRequest("http://localhost:3000/api/webhooks/agent/events", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "assistant",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+            ],
+          }),
+        });
+
+      // Send two requests concurrently
+      const [response1, response2] = await Promise.all([
+        POST(makeRequest()),
+        POST(makeRequest()),
+      ]);
+
+      expect(response1.status).toBe(200);
+      expect(response2.status).toBe(200);
+
+      // Should have a single record with numEvents = 2
+      const record = await findTestCreditUsageByRunId(testRunId);
+      expect(record).toBeDefined();
+      expect(record!.numEvents).toBe(2);
     });
   });
 });

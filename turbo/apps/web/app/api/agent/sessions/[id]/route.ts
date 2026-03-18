@@ -11,7 +11,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
-import { getAuthContext } from "../../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveCallerOrgId } from "../../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(sessionsByIdContract, {

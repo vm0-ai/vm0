@@ -11,8 +11,6 @@ import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/url";
-import { isBlogEnabled } from "../../src/env";
-
 export default function Navbar() {
   const { theme } = useTheme();
   const t = useTranslations("nav");
@@ -73,24 +71,11 @@ export default function Navbar() {
             className="nav-center nav-desktop"
             style={{ display: "flex", gap: "32px" }}
           >
-            <a
-              href="https://docs.vm0.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="nav-link"
-            >
-              {t("docs")}
-            </a>
-            {isBlogEnabled() && (
-              <Link href="/blog" className="nav-link">
-                {t("blog")}
-              </Link>
-            )}
-            <Link href="/skills" className="nav-link">
-              {t("skills")}
+            <Link href="/security" className="nav-link">
+              Security
             </Link>
-            <Link href="/glossary" className="nav-link">
-              {t("glossary")}
+            <Link href="/blog" className="nav-link">
+              {t("blog")}
             </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
@@ -133,7 +118,7 @@ export default function Navbar() {
                   rel="noopener noreferrer"
                   className="btn-get-access nav-desktop group"
                 >
-                  <span>Platform</span>
+                  <span>Open app</span>
                   <IconArrowRight
                     size={16}
                     className="transition-transform group-hover:translate-x-0.5"
@@ -167,37 +152,19 @@ export default function Navbar() {
       <div className={`mobile-menu ${mobileMenuOpen ? "open" : ""}`}>
         <div className="mobile-menu-content">
           <div className="mobile-menu-links">
-            <a
-              href="https://docs.vm0.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              {t("docs")}
-            </a>
-            {isBlogEnabled() && (
-              <Link
-                href="/blog"
-                className="mobile-menu-link"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {t("blog")}
-              </Link>
-            )}
             <Link
-              href="/skills"
+              href="/security"
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {t("skills")}
+              Security
             </Link>
             <Link
-              href="/glossary"
+              href="/blog"
               className="mobile-menu-link"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {t("glossary")}
+              {t("blog")}
             </Link>
             <a
               href="https://github.com/vm0-ai/vm0"
@@ -237,7 +204,7 @@ export default function Navbar() {
                   onClick={() => setMobileMenuOpen(false)}
                   style={{ display: "flex", alignItems: "center", gap: "8px" }}
                 >
-                  <span>Platform</span>
+                  <span>Open app</span>
                   <IconArrowRight
                     size={16}
                     className="transition-transform group-hover:translate-x-0.5"

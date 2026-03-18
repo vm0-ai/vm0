@@ -580,7 +580,7 @@ interface DeployResult {
 
 /**
  * Build and deploy schedule
- * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
+ * Note: vars and secrets are now managed via server-side tables (vm0 secret set, vm0 var set)
  * Schedule only defines "when" to run, not configuration
  */
 async function buildAndDeploy(params: {
@@ -778,7 +778,7 @@ export const setupCommand = new Command()
     withErrorHandler(async (agentName: string, options: SetupOptions) => {
       // 1. Resolve agent to composeId and get content
       // Note: composeContent is resolved but validation of required secrets/vars
-      // is now done server-side against platform tables
+      // is now done server-side against server-side tables
       const { composeId, scheduleName } = await resolveAgent(
         agentName,
         options.name,

@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
 import {
   createTestRequest,
-  createTestModelProvider,
   createTestCompose,
+  createTestModelProvider,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { upsertOrgModelProvider } from "../../../../../src/lib/model-provider/model-provider-service";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { PUT as setDefaultAgent } from "../../../../api/orgs/default-agent/route";
@@ -72,9 +73,33 @@ describe("GET /api/onboarding/status", () => {
     expect(data.needsOnboarding).toBe(true);
   });
 
-  it("should return hasModelProvider=true, hasDefaultAgent=false when provider exists but no default agent", async () => {
+  it("should return hasModelProvider=false when only user-level provider exists (org-level required)", async () => {
     await context.setupUser();
+    // createTestModelProvider creates a user-level provider, not org-level
     await createTestModelProvider("anthropic-api-key", "test-secret-key");
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/onboarding/status",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.hasOrg).toBe(true);
+    expect(data.hasModelProvider).toBe(false);
+    expect(data.hasDefaultAgent).toBe(false);
+    expect(data.needsOnboarding).toBe(true);
+  });
+
+  it("should return hasModelProvider=true when org-level provider exists", async () => {
+    const user = await context.setupUser();
+
+    // Create org-level model provider
+    await upsertOrgModelProvider(
+      user.orgId,
+      "anthropic-api-key",
+      "test-org-secret-key",
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
@@ -89,9 +114,8 @@ describe("GET /api/onboarding/status", () => {
     expect(data.needsOnboarding).toBe(true);
   });
 
-  it("should return needsOnboarding=false when all conditions met", async () => {
+  it("should return needsOnboarding=false when default agent is configured", async () => {
     const user = await context.setupUser();
-    await createTestModelProvider("anthropic-api-key", "test-secret-key");
 
     // Create a compose and set as default via API
     const compose = await createTestCompose("test-agent");
@@ -125,7 +149,7 @@ describe("GET /api/onboarding/status", () => {
       needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasModelProvider: true,
+      hasModelProvider: false,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
       defaultAgentComposeId: compose.composeId,
@@ -136,7 +160,6 @@ describe("GET /api/onboarding/status", () => {
 
   it("should return defaultAgentMetadata when compose has metadata", async () => {
     const user = await context.setupUser();
-    await createTestModelProvider("anthropic-api-key", "test-secret-key");
 
     // Create a compose with metadata
     const compose = await createTestCompose("test-agent", {
@@ -171,13 +194,49 @@ describe("GET /api/onboarding/status", () => {
       needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasModelProvider: true,
+      hasModelProvider: false,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
       defaultAgentComposeId: compose.composeId,
       defaultAgentMetadata: { displayName: "My Agent", sound: "friendly" },
       defaultAgentSkills: [],
     });
+  });
+
+  it("should return needsOnboarding=false for admin with default agent but no model provider", async () => {
+    const user = await context.setupUser();
+
+    // Create a compose and set as default via API (no model provider created)
+    const compose = await createTestCompose("test-agent");
+
+    const setDefaultRequest = createTestRequest(
+      "http://localhost:3000/api/orgs/default-agent",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentComposeId: compose.composeId }),
+      },
+    );
+    const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
+    expect(setDefaultResponse.status).toBe(200);
+
+    // Re-mock Clerk so the JWT session claim includes the compose ID
+    mockClerk({
+      userId: user.userId,
+      orgDefaultAgentComposeId: compose.composeId,
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/onboarding/status",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.hasOrg).toBe(true);
+    expect(data.hasModelProvider).toBe(false);
+    expect(data.hasDefaultAgent).toBe(true);
+    expect(data.needsOnboarding).toBe(false);
   });
 
   it("should return needsOnboarding=true for non-admin member who has not completed onboarding", async () => {

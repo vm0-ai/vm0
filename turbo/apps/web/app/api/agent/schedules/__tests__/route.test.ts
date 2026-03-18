@@ -863,7 +863,7 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     expect(data.schedule.name).toBe("secret-test-schedule");
   });
 
-  it("should reject schedule when required secrets missing from platform", async () => {
+  it("should allow schedule when required secrets missing from platform", async () => {
     // Create compose with secret reference that doesn't exist in platform
     const { composeId } = await createTestCompose(
       uniqueId("missing-secret-agent"),
@@ -878,7 +878,7 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
 
     // Do NOT create the platform secret
 
-    // Try to create schedule - should fail
+    // Schedule creation should succeed - validation removed per #5179
     const request = createTestRequest(
       "http://localhost:3000/api/agent/schedules",
       {
@@ -897,8 +897,9 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     const response = await POST(request);
     const data = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(data.error.code).toBe("BAD_REQUEST");
+    expect(response.status).toBe(201);
+    expect(data.created).toBe(true);
+    expect(data.schedule.name).toBe("missing-secret-schedule");
   });
 
   it("should accept schedule when required vars exist in platform", async () => {
@@ -937,7 +938,7 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     expect(data.created).toBe(true);
   });
 
-  it("should reject schedule when required vars missing from platform", async () => {
+  it("should allow schedule when required vars missing from platform", async () => {
     // Create compose with var reference that doesn't exist in platform
     const { composeId } = await createTestCompose(
       uniqueId("missing-var-agent"),
@@ -952,7 +953,7 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
 
     // Do NOT create the platform variable
 
-    // Try to create schedule - should fail
+    // Schedule creation should succeed - validation removed per #5179
     const request = createTestRequest(
       "http://localhost:3000/api/agent/schedules",
       {
@@ -971,8 +972,9 @@ describe("POST /api/agent/schedules - Platform Configuration Validation", () => 
     const response = await POST(request);
     const data = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(data.error.code).toBe("BAD_REQUEST");
+    expect(response.status).toBe(201);
+    expect(data.created).toBe(true);
+    expect(data.schedule.name).toBe("missing-var-schedule");
   });
 });
 

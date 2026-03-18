@@ -56,6 +56,9 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
   if (item.needsReconnect) {
     return "Connection expired";
   }
+  if (item.scopeMismatch) {
+    return "Permissions update available";
+  }
   if (item.connector?.authMethod === "api-token") {
     return "Connected via API Token";
   }
@@ -363,7 +366,7 @@ function ConnectorCard({
       <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
         {item.connected ? (
           <span
-            className={`text-xs ${item.needsReconnect ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}
+            className={`text-xs ${item.needsReconnect || item.scopeMismatch ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}
           >
             {connectedStatusText(item)}
           </span>

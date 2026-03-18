@@ -41,38 +41,12 @@ describe("Org-Level Runtime Resolution", () => {
     };
   }
 
-  describe("Model Provider Fallback", () => {
-    it("should use user default provider when user has one", async () => {
+  describe("Model Provider Resolution", () => {
+    it("should use org default provider", async () => {
       const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
         skipDefaultApiKey: true,
       });
 
-      // Create both user and org providers
-      await createTestModelProvider("anthropic-api-key", "user-api-key");
-      await upsertOrgModelProvider(
-        user.orgId,
-        "anthropic-api-key",
-        "org-api-key",
-      );
-
-      const result = await createRun(
-        baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
-      );
-
-      const job = await findTestRunnerJobEntry(result.runId);
-      expect(job).toBeDefined();
-      // User's key should be used, not org's
-      expect(job!.executionContext.environment).toMatchObject({
-        ANTHROPIC_API_KEY: "user-api-key",
-      });
-    });
-
-    it("should fall back to org default provider when user has none", async () => {
-      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
-        skipDefaultApiKey: true,
-      });
-
-      // Only create org provider (no user provider)
       await upsertOrgModelProvider(
         user.orgId,
         "anthropic-api-key",
@@ -90,12 +64,39 @@ describe("Org-Level Runtime Resolution", () => {
       });
     });
 
-    it("should error when neither user nor org has default provider", async () => {
+    it("should use org provider even when user provider exists", async () => {
       const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
         skipDefaultApiKey: true,
       });
 
-      // No providers at all
+      // Create both user and org providers — org should be used
+      await createTestModelProvider("anthropic-api-key", "user-api-key");
+      await upsertOrgModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "org-api-key",
+      );
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
+      );
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // Org key should be used, not user's
+      expect(job!.executionContext.environment).toMatchObject({
+        ANTHROPIC_API_KEY: "org-api-key",
+      });
+    });
+
+    it("should error when no org default provider exists", async () => {
+      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
+        skipDefaultApiKey: true,
+      });
+
+      // No org provider — should error even if user provider exists
+      await createTestModelProvider("anthropic-api-key", "user-api-key");
+
       await expect(
         createRun(
           baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
@@ -304,24 +305,20 @@ describe("Org-Level Runtime Resolution", () => {
     });
   });
 
-  describe("No Org Resources (Regression)", () => {
-    it("should have no behavior change when no org resources exist", async () => {
+  describe("No Org Resources", () => {
+    it("should error when only user-level provider exists (no org provider)", async () => {
       const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
         skipDefaultApiKey: true,
       });
 
-      // Only user-level provider
+      // Only user-level provider — org-only resolution should error
       await createTestModelProvider("anthropic-api-key", "user-api-key");
 
-      const result = await createRun(
-        baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
-      );
-
-      const job = await findTestRunnerJobEntry(result.runId);
-      expect(job).toBeDefined();
-      expect(job!.executionContext.environment).toMatchObject({
-        ANTHROPIC_API_KEY: "user-api-key",
-      });
+      await expect(
+        createRun(
+          baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
+        ),
+      ).rejects.toSatisfy(isBadRequest);
     });
   });
 });

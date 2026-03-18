@@ -287,7 +287,7 @@ jobs:
             STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
-            APP_URL=${{ vars.APP_URL }}
+            APP_URL=https://app.vm0.ai
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_WEBHOOK_SECRET=${{ secrets.RESEND_WEBHOOK_SECRET }}
             RESEND_FROM_DOMAIN=${{ vars.RESEND_FROM_DOMAIN }}

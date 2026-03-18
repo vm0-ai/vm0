@@ -1,5 +1,5 @@
 import type { VALID_CAPABILITIES } from "@vm0/core";
-import { getAuthContext, type AuthContext } from "./get-user-id";
+import { getAuthContext, type AuthContext } from "./get-auth-context";
 import { isSandboxToken, verifySandboxToken } from "./sandbox-token";
 import { missingCapabilityError } from "./capability-check";
 

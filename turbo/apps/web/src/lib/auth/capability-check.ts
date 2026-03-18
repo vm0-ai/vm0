@@ -1,5 +1,5 @@
 import type { VALID_CAPABILITIES } from "@vm0/core";
-import type { AuthContext } from "./get-user-id";
+import type { AuthContext } from "./get-auth-context";
 
 type Capability = (typeof VALID_CAPABILITIES)[number];
 

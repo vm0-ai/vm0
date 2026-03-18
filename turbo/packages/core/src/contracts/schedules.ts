@@ -56,7 +56,7 @@ export const scheduleYamlSchema = z.object({
 /**
  * Deploy schedule request - sent from CLI to API
  * Note: vars and secrets are no longer accepted via API
- * They must be managed via platform tables (vm0 secret set, vm0 var set)
+ * They must be managed via server-side tables (vm0 secret set, vm0 var set)
  */
 const deployScheduleRequestSchema = z
   .object({
@@ -66,7 +66,7 @@ const deployScheduleRequestSchema = z
     intervalSeconds: z.number().int().min(0).optional(),
     timezone: z.string().default("UTC"),
     prompt: z.string().min(1, "Prompt required"),
-    // vars and secrets removed - now managed via platform tables
+    // vars and secrets removed - now managed via server-side tables
     artifactName: z.string().optional(),
     artifactVersion: z.string().optional(),
     volumeVersions: z.record(z.string(), z.string()).optional(),

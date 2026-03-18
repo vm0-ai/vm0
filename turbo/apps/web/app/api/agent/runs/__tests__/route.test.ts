@@ -9,8 +9,8 @@ import {
   createTestCompose,
   createTestCliToken,
   deleteTestCliToken,
-  createTestModelProvider,
-  createTestMultiAuthModelProvider,
+  createTestOrgModelProvider,
+  createTestOrgMultiAuthModelProvider,
   createTestConnector,
   createTestRun,
   createTestRunInDb,
@@ -693,8 +693,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
   describe("Model Provider Injection", () => {
     it("should succeed when model provider is configured and no API key in compose", async () => {
-      // Create model provider
-      await createTestModelProvider("anthropic-api-key", "test-api-key");
+      // Create org-level model provider (build-context resolves org-only)
+      await createTestOrgModelProvider("anthropic-api-key", "test-api-key");
 
       // Create compose without API key
       const { composeId } = await createTestCompose(uniqueId("mp-agent"), {
@@ -734,8 +734,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should use specified model provider when passed", async () => {
-      // Create model provider
-      await createTestModelProvider("anthropic-api-key", "test-api-key");
+      // Create org-level model provider (build-context resolves org-only)
+      await createTestOrgModelProvider("anthropic-api-key", "test-api-key");
 
       // Create compose without API key
       const { composeId } = await createTestCompose(uniqueId("mp-select"), {
@@ -791,8 +791,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should auto-inject model provider when no environment block exists", async () => {
-      // Create model provider
-      await createTestModelProvider(
+      // Create org-level model provider (build-context resolves org-only)
+      await createTestOrgModelProvider(
         "claude-code-oauth-token",
         "test-oauth-token",
       );
@@ -814,8 +814,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should succeed when aws-bedrock provider is configured and no API key in compose", async () => {
-      // Create aws-bedrock provider
-      await createTestMultiAuthModelProvider("aws-bedrock", "api-key", {
+      // Create org-level aws-bedrock provider (build-context resolves org-only)
+      await createTestOrgMultiAuthModelProvider("aws-bedrock", "api-key", {
         AWS_BEARER_TOKEN_BEDROCK: "bedrock-token",
         AWS_REGION: "us-east-1",
       });

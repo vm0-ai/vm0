@@ -164,8 +164,9 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const storageName = getInstructionsStorageName(agentName);
     await createTestVolume(storageName);
 
-    // Switch to the org member user
-    mockClerk({ userId: user.userId });
+    // Switch to the org member user with active org set to the owner's org
+    // (compose access is scoped to the caller's active org)
+    mockClerk({ userId: user.userId, orgId: owner.orgId });
 
     context.mocks.s3.downloadManifest.mockResolvedValueOnce({
       version: "a".repeat(64),

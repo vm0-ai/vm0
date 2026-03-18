@@ -158,15 +158,25 @@ describe("GET /api/agent/runs/queue", () => {
     expect(otherEntry.userEmail).toBeNull();
   });
 
-  it("never exposes prompt in response", async () => {
+  it("exposes prompt only for own runs, hides for others", async () => {
+    const otherUserId = uniqueId("other-user");
+
     await createTestRunInDb(user.userId, testComposeId, {
+      status: "queued",
+      prompt: "my-prompt-content",
+    });
+    await createTestRunInDb(otherUserId, testComposeId, {
       status: "queued",
       prompt: "secret-prompt-content",
     });
 
     await insertUserCacheEntry({
       userId: user.userId,
-      email: "test@example.com",
+      email: "alice@example.com",
+    });
+    await insertUserCacheEntry({
+      userId: otherUserId,
+      email: "bob@example.com",
     });
 
     const request = createTestRequest(
@@ -176,12 +186,26 @@ describe("GET /api/agent/runs/queue", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
+
+    const ownEntry = data.queue.find(
+      (e: { isOwner: boolean }) => e.isOwner === true,
+    );
+    const otherEntry = data.queue.find(
+      (e: { isOwner: boolean }) => e.isOwner === false,
+    );
+
+    // Own run should include prompt
+    expect(ownEntry.prompt).toBe("my-prompt-content");
+    expect(ownEntry.triggerSource).toBe("api");
+
+    // Other user's run should NOT include prompt
+    expect(otherEntry.prompt).toBeNull();
+    expect(otherEntry.triggerSource).toBeNull();
+    expect(otherEntry.sessionLink).toBeNull();
+
+    // Ensure other user's secret prompt is not in the response
     const responseStr = JSON.stringify(data);
     expect(responseStr).not.toContain("secret-prompt-content");
-    // Verify no prompt field exists on queue entries
-    for (const entry of data.queue) {
-      expect(entry).not.toHaveProperty("prompt");
-    }
   });
 
   it("only shows runs from the requested org", async () => {
@@ -245,5 +269,123 @@ describe("GET /api/agent/runs/queue", () => {
 
     expect(response.status).toBe(200);
     expect(data.concurrency.active).toBe(0);
+  });
+
+  it("returns running tasks with privacy filtering", async () => {
+    const otherUserId = uniqueId("other-user");
+
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "running",
+    });
+    await createTestRunInDb(otherUserId, testComposeId, {
+      status: "running",
+    });
+
+    await insertUserCacheEntry({
+      userId: user.userId,
+      email: "alice@example.com",
+    });
+    await insertUserCacheEntry({
+      userId: otherUserId,
+      email: "bob@example.com",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.runningTasks).toHaveLength(2);
+
+    const ownTask = data.runningTasks.find(
+      (t: { isOwner: boolean }) => t.isOwner === true,
+    );
+    const otherTask = data.runningTasks.find(
+      (t: { isOwner: boolean }) => t.isOwner === false,
+    );
+
+    expect(ownTask.runId).toBeTruthy();
+    expect(ownTask.agentName).toBeTruthy();
+    expect(otherTask.runId).toBeNull();
+  });
+
+  it("returns null estimatedTimePerRun when no completed runs exist", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.estimatedTimePerRun).toBeNull();
+  });
+
+  it("returns empty runningTasks and queue arrays when none exist", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.runningTasks).toEqual([]);
+    expect(data.queue).toEqual([]);
+    expect(data.estimatedTimePerRun).toBeNull();
+  });
+
+  it("computes estimatedTimePerRun from completed runs", async () => {
+    const now = Date.now();
+
+    // Create two completed runs with known durations (60s and 120s)
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "completed",
+      startedAt: new Date(now - 120_000),
+      completedAt: new Date(now - 60_000),
+    });
+
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "completed",
+      startedAt: new Date(now - 180_000),
+      completedAt: new Date(now - 60_000),
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    // Run 1: 60s = 60000ms, Run 2: 120s = 120000ms, average = 90000ms
+    expect(data.estimatedTimePerRun).toBe(90000);
+  });
+
+  it("truncates long prompts at 200 characters for own runs", async () => {
+    const longPrompt = "a".repeat(250);
+
+    await createTestRunInDb(user.userId, testComposeId, {
+      status: "queued",
+      prompt: longPrompt,
+    });
+
+    await insertUserCacheEntry({
+      userId: user.userId,
+      email: "test@example.com",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/agent/runs/queue",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.queue).toHaveLength(1);
+    expect(data.queue[0].isOwner).toBe(true);
+    // Should be truncated to 200 chars + "..."
+    expect(data.queue[0].prompt).toBe("a".repeat(200) + "...");
+    expect(data.queue[0].prompt.length).toBe(203);
   });
 });

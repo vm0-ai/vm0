@@ -160,6 +160,7 @@ export interface ZeroChatMessage {
   runId?: string;
   status?: LogStatus;
   error?: string;
+  cancelled?: boolean;
   attachments?: ZeroChatMessageAttachment[];
 }
 
@@ -183,6 +184,46 @@ export const zeroChatSending$ = computed((get) => get(internalSending$));
 
 /** Current run status (queued, pending, running, etc.) */
 export const zeroChatRunStatus$ = computed((get) => get(internalRunStatus$));
+
+/** Cancel the currently active run. */
+export const cancelActiveRun$ = command(async ({ get, set }) => {
+  const runId = get(internalActiveRunId$);
+  if (!runId) {
+    return;
+  }
+
+  // Abort the polling loop so the UI stops waiting
+  const controller = get(pollingAbortController$);
+  if (controller) {
+    controller.abort();
+    set(pollingAbortController$, null);
+  }
+
+  // Try to extract any partial result content from telemetry events so far
+  const pages = get(internalRunEvents$);
+  const partialContent = await extractResultFromEvents(pages, get);
+
+  set(internalMessages$, (prev) => {
+    if (prev.length === 0) {
+      return prev;
+    }
+    const updated = [...prev];
+    updated[updated.length - 1] = {
+      ...updated[updated.length - 1],
+      ...(partialContent
+        ? { content: partialContent, cancelled: true }
+        : { error: "Run cancelled." }),
+    };
+    return updated;
+  });
+
+  set(internalSending$, false);
+  set(internalActiveRunId$, null);
+  set(internalRunStatus$, null);
+
+  const fetchFn = get(fetch$);
+  await fetchFn(`/api/agent/runs/${runId}/cancel`, { method: "POST" });
+});
 
 /** Queue position for the active run (0 = not queued). */
 const internalQueuePosition$ = state(0);
@@ -638,10 +679,9 @@ export const switchZeroSession$ = command(
           content: run.prompt,
         });
 
+        const isCancelled = run.status === "cancelled";
         const isFailed =
-          run.status === "failed" ||
-          run.status === "timeout" ||
-          run.status === "cancelled";
+          run.status === "failed" || run.status === "timeout" || isCancelled;
         if (isFailed) {
           messages.push({
             id: crypto.randomUUID(),
@@ -649,7 +689,9 @@ export const switchZeroSession$ = command(
             content: "",
             runId: run.runId,
             status: "failed",
-            error: "Something went wrong. Check the activity logs for details.",
+            error: isCancelled
+              ? "Run cancelled."
+              : "Something went wrong. Check the activity logs for details.",
           });
         } else {
           // Active/pending/running — show placeholder for polling

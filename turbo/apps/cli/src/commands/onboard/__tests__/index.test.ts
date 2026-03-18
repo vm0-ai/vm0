@@ -91,9 +91,20 @@ describe("onboard command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
 
+    // Default MSW handler for org (admin role)
+    server.use(
+      http.get("http://localhost:3000/api/org", () => {
+        return HttpResponse.json({
+          id: "org-123",
+          slug: "test-org",
+          role: "admin",
+        });
+      }),
+    );
+
     // Default MSW handler for model providers (provider exists)
     server.use(
-      http.get("http://localhost:3000/api/model-providers", () => {
+      http.get("http://localhost:3000/api/org/model-providers", () => {
         return HttpResponse.json({
           modelProviders: [
             {
@@ -132,10 +143,13 @@ describe("onboard command", () => {
 
     // Default MSW handlers for model provider setup
     server.use(
-      http.get("http://localhost:3000/api/model-providers/check/:type", () => {
-        return HttpResponse.json({ exists: false });
-      }),
-      http.put("http://localhost:3000/api/model-providers", () => {
+      http.get(
+        "http://localhost:3000/api/org/model-providers/check/:type",
+        () => {
+          return HttpResponse.json({ exists: false });
+        },
+      ),
+      http.put("http://localhost:3000/api/org/model-providers", () => {
         return HttpResponse.json({
           provider: {
             id: "new-provider-id",
@@ -245,9 +259,9 @@ describe("onboard command", () => {
       );
     });
 
-    it("should show error in non-interactive mode when no providers", async () => {
+    it("should show error in non-interactive mode when no providers and user is admin", async () => {
       server.use(
-        http.get("http://localhost:3000/api/model-providers", () => {
+        http.get("http://localhost:3000/api/org/model-providers", () => {
           return HttpResponse.json({ modelProviders: [] });
         }),
       );
@@ -266,6 +280,38 @@ describe("onboard command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining("No model provider configured"),
+      );
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("vm0 org model-provider setup"),
+      );
+    });
+
+    it("should show friendly message when no providers and user is not admin", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/org/model-providers", () => {
+          return HttpResponse.json({ modelProviders: [] });
+        }),
+        http.get("http://localhost:3000/api/org", () => {
+          return HttpResponse.json({
+            id: "org-123",
+            slug: "test-org",
+            role: "member",
+          });
+        }),
+      );
+
+      await expect(
+        onboardCommand.parseAsync(["node", "cli", "-y"]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining("No model provider configured"),
+      );
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Contact your org admin to configure a model provider",
+        ),
       );
     });
   });

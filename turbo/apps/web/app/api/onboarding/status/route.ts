@@ -1,17 +1,18 @@
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { onboardingStatusContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isBadRequest, isNotFound } from "../../../../src/lib/errors";
 import { modelProviders } from "../../../../src/db/schema/model-provider";
+import { ORG_SENTINEL_USER_ID } from "../../../../src/lib/org/org-sentinel";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { agentComposeApiContentSchema } from "@vm0/core";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { orgMembersCache } from "../../../../src/db/schema/org-members-cache";
 import { z } from "zod";
 
@@ -76,7 +77,6 @@ const router = tsr.router(onboardingStatusContract, {
     let defaultAgentSkills: string[] = [];
 
     let isAdmin = false;
-    const authResult = await auth();
 
     const orgSlug = new URL(request.url).searchParams.get("org");
     try {
@@ -85,14 +85,14 @@ const router = tsr.router(onboardingStatusContract, {
       resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
 
-      // Check model provider for this user (not org-wide)
+      // Check if the org has an org-level model provider configured
       const [provider] = await globalThis.services.db
         .select({ id: modelProviders.id })
         .from(modelProviders)
         .where(
           and(
             eq(modelProviders.orgId, resolvedOrg.orgId),
-            eq(modelProviders.userId, authCtx.userId),
+            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
           ),
         )
         .limit(1);
@@ -101,7 +101,7 @@ const router = tsr.router(onboardingStatusContract, {
 
       // Read default agent compose ID from Clerk JWT session claims
       const claimAgentComposeId =
-        authResult.sessionClaims?.org_default_agent_compose_id ?? null;
+        authCtx.sessionClaims?.org_default_agent_compose_id ?? null;
 
       if (claimAgentComposeId) {
         const [compose] = await globalThis.services.db
@@ -146,14 +146,14 @@ const router = tsr.router(onboardingStatusContract, {
       // Org not found or no explicit org context — all flags stay false
     }
 
-    // Admins need onboarding when org setup is incomplete.
+    // Admins need onboarding when no default agent is configured.
     // Members need onboarding when they haven't completed the member welcome flow
     // (tracked via Clerk membership metadata `onboarding_done`).
     let needsOnboarding: boolean;
     if (!hasOrg) {
       needsOnboarding = true;
     } else if (isAdmin) {
-      needsOnboarding = !hasModelProvider || !hasDefaultAgent;
+      needsOnboarding = !hasDefaultAgent;
     } else {
       // resolvedOrgId is set whenever hasOrg is true (both come from the same try block)
       if (!resolvedOrgId) {

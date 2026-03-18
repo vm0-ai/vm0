@@ -11,7 +11,7 @@ import {
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
-import { createModelProvider$ } from "../external/model-providers.ts";
+import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
 import { getProviderShape } from "../../views/zero-page/components/settings/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
 import { triggerAndPollComposeJob } from "./compose-job.ts";
@@ -288,8 +288,8 @@ export const saveZeroModelProvider$ = command(
       }
 
       await set(
-        createModelProvider$,
-        request as Parameters<typeof createModelProvider$.write>[1],
+        createOrgModelProvider$,
+        request as Parameters<typeof createOrgModelProvider$.write>[1],
       );
       signal.throwIfAborted();
 

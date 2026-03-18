@@ -60,7 +60,8 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 // POST /api/org removed in 5b-5 — org creation is now Clerk's responsibility
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
-import { PUT as upsertModelProviderRoute } from "../../app/api/model-providers/route";
+import { PUT as upsertOrgModelProviderRoute } from "../../app/api/org/model-providers/route";
+import { upsertModelProvider } from "../lib/model-provider/model-provider-service";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
 import {
@@ -77,12 +78,7 @@ import { GET as getScheduleRunsRoute } from "../../app/api/agent/schedules/[name
 import type { ScheduleResponse } from "../lib/schedule/schedule-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
-import { DELETE as deleteModelProviderRoute } from "../../app/api/model-providers/[type]/route";
-import { GET as listModelProvidersRoute } from "../../app/api/model-providers/route";
-import {
-  GET as listSecretsRoute,
-  PUT as setSecretRoute,
-} from "../../app/api/secrets/route";
+import { PUT as setSecretRoute } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
 
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
@@ -94,7 +90,7 @@ import {
   encryptSecretValue,
   decryptSecretValue,
 } from "../lib/crypto/secrets-encryption";
-import type { ConnectorType } from "@vm0/core";
+import type { ConnectorType, ModelProviderType } from "@vm0/core";
 import {
   agentSessions,
   type StoredChatMessage,
@@ -385,7 +381,7 @@ export async function createTestCompose(
 }
 
 /**
- * Create a test model provider via API route handler.
+ * Create a test user-level model provider via service function.
  *
  * @param type - The provider type
  * @param secretValue - The secret value
@@ -397,8 +393,39 @@ export async function createTestModelProvider(
   secretValue: string,
   selectedModel?: string,
 ): Promise<{ id: string; type: string; selectedModel: string | null }> {
+  initServices();
+  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
+  const orgId = `org_mock_${userId}`;
+  const { provider } = await upsertModelProvider(
+    orgId,
+    userId!,
+    type as ModelProviderType,
+    secretValue,
+    selectedModel,
+  );
+  return {
+    id: provider.id,
+    type: provider.type,
+    selectedModel: provider.selectedModel,
+  };
+}
+
+/**
+ * Create a test org-level model provider via API route handler.
+ * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
+ *
+ * @param type - The provider type
+ * @param secretValue - The secret value
+ * @param selectedModel - Optional selected model for providers with model selection
+ * @returns The created provider with id and type
+ */
+export async function createTestOrgModelProvider(
+  type: string,
+  secretValue: string,
+  selectedModel?: string,
+): Promise<{ id: string; type: string; selectedModel: string | null }> {
   const request = createTestRequest(
-    "http://localhost:3000/api/model-providers",
+    "http://localhost:3000/api/org/model-providers",
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -409,11 +436,11 @@ export async function createTestModelProvider(
       }),
     },
   );
-  const response = await upsertModelProviderRoute(request);
+  const response = await upsertOrgModelProviderRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
-      `Failed to create model provider: ${error.error?.message || response.status}`,
+      `Failed to create org model provider: ${error.error?.message || response.status}`,
     );
   }
   const data = await response.json();
@@ -421,7 +448,8 @@ export async function createTestModelProvider(
 }
 
 /**
- * Create a test multi-auth model provider via API route handler.
+ * Create a test org-level multi-auth model provider via API route handler.
+ * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
  *
  * @param type - The provider type (e.g., "aws-bedrock")
  * @param authMethod - The auth method (e.g., "api-key", "access-keys")
@@ -429,7 +457,7 @@ export async function createTestModelProvider(
  * @param selectedModel - Optional selected model
  * @returns The created provider with id and type
  */
-export async function createTestMultiAuthModelProvider(
+export async function createTestOrgMultiAuthModelProvider(
   type: string,
   authMethod: string,
   secrets: Record<string, string>,
@@ -442,7 +470,7 @@ export async function createTestMultiAuthModelProvider(
   selectedModel: string | null;
 }> {
   const request = createTestRequest(
-    "http://localhost:3000/api/model-providers",
+    "http://localhost:3000/api/org/model-providers",
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -454,11 +482,11 @@ export async function createTestMultiAuthModelProvider(
       }),
     },
   );
-  const response = await upsertModelProviderRoute(request);
+  const response = await upsertOrgModelProviderRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
-      `Failed to create multi-auth model provider: ${error.error?.message || response.status}`,
+      `Failed to create org multi-auth model provider: ${error.error?.message || response.status}`,
     );
   }
   const data = await response.json();
@@ -549,6 +577,8 @@ async function createTestRunDirect(
     prompt?: string;
     continuedFromSessionId?: string;
     createdAt?: Date;
+    startedAt?: Date;
+    completedAt?: Date;
   },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
@@ -561,6 +591,8 @@ async function createTestRunDirect(
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
+      ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
+      ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
     })
     .returning({ id: agentRuns.id });
   return run!;
@@ -635,6 +667,8 @@ export async function createTestRunInDb(
     prompt?: string;
     createdAt?: Date;
     orgId?: string;
+    startedAt?: Date;
+    completedAt?: Date;
   },
 ): Promise<{ runId: string }> {
   // Look up orgId from compose
@@ -657,6 +691,8 @@ export async function createTestRunInDb(
       status: options?.status ?? "pending",
       prompt: options?.prompt ?? "test prompt",
       createdAt: options?.createdAt,
+      startedAt: options?.startedAt,
+      completedAt: options?.completedAt,
     },
   );
   return { runId: run.id };
@@ -857,7 +893,7 @@ export async function failTestRun(
  */
 /**
  * Create a test schedule via API route handler.
- * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
+ * Note: vars and secrets are now managed via server-side tables (vm0 secret set, vm0 var set)
  */
 export async function createTestSchedule(
   composeId: string,
@@ -868,7 +904,7 @@ export async function createTestSchedule(
     intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
-    // vars and secrets removed - now managed via platform tables
+    // vars and secrets removed - now managed via server-side tables
   },
 ): Promise<ScheduleResponse> {
   // Default to cron if no trigger specified
@@ -892,7 +928,7 @@ export async function createTestSchedule(
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
         intervalSeconds: options?.intervalSeconds,
-        // vars and secrets no longer sent - managed via platform tables
+        // vars and secrets no longer sent - managed via server-side tables
         ...trigger,
       }),
     },
@@ -1341,60 +1377,6 @@ export async function insertStorageVersion(
 }
 
 // ============================================================================
-// Model Provider Test Helpers
-// ============================================================================
-
-/**
- * Delete a model provider via API route handler.
- *
- * @param type - The provider type to delete
- */
-export async function deleteTestModelProvider(type: string): Promise<void> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/model-providers/${type}`,
-    { method: "DELETE" },
-  );
-  const response = await deleteModelProviderRoute(request);
-  if (!response.ok && response.status !== 204) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to delete model provider: ${error.error?.message || response.status}`,
-    );
-  }
-}
-
-/**
- * List all model providers via API route handler.
- *
- * @returns Array of model provider info
- */
-export async function listTestModelProviders(): Promise<
-  Array<{
-    id: string;
-    type: string;
-    framework: string;
-    secretName: string | null;
-    authMethod: string | null;
-    secretNames: string[] | null;
-    isDefault: boolean;
-    selectedModel: string | null;
-  }>
-> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/model-providers",
-  );
-  const response = await listModelProvidersRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to list model providers: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.modelProviders;
-}
-
-// ============================================================================
 // Secret Test Helpers
 // ============================================================================
 
@@ -1431,33 +1413,6 @@ export async function createTestSecret(
     );
   }
   return response.json();
-}
-
-/**
- * List all secrets via API route handler.
- *
- * @returns Array of secret info
- */
-export async function listTestSecrets(): Promise<
-  Array<{
-    id: string;
-    name: string;
-    description: string | null;
-    type: string;
-    createdAt: string;
-    updatedAt: string;
-  }>
-> {
-  const request = createTestRequest("http://localhost:3000/api/secrets");
-  const response = await listSecretsRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to list secrets: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.secrets;
 }
 
 // Variable Test Helpers
@@ -1817,6 +1772,24 @@ export async function setTestConnectorNeedsReconnect(
   await globalThis.services.db
     .update(connectors)
     .set({ needsReconnect })
+    .where(
+      and(
+        eq(connectors.orgId, orgId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, type),
+      ),
+    );
+}
+
+export async function setTestConnectorOauthScopes(
+  orgId: string,
+  userId: string,
+  type: string,
+  scopes: string[],
+): Promise<void> {
+  await globalThis.services.db
+    .update(connectors)
+    .set({ oauthScopes: JSON.stringify(scopes) })
     .where(
       and(
         eq(connectors.orgId, orgId),
@@ -3228,6 +3201,18 @@ export async function createTestSlackOrgConnection(opts: {
 
   const slackUserId = opts.slackUserId ?? `U-${randomUUID().slice(0, 8)}`;
 
+  const [installation] = await globalThis.services.db
+    .select({ orgId: slackOrgInstallations.orgId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, opts.slackWorkspaceId))
+    .limit(1);
+
+  if (!installation?.orgId) {
+    throw new Error(
+      `No installation with orgId found for workspace ${opts.slackWorkspaceId}`,
+    );
+  }
+
   const [connection] = await globalThis.services.db
     .insert(slackOrgConnections)
     .values({
@@ -3249,20 +3234,18 @@ export async function insertTestCreditPricing(
   options?: {
     inputTokenPrice?: number;
     outputTokenPrice?: number;
-    turnPrice?: number;
   },
 ): Promise<void> {
   initServices();
   const inputTokenPrice = options?.inputTokenPrice ?? 100;
   const outputTokenPrice = options?.outputTokenPrice ?? 200;
-  const turnPrice = options?.turnPrice ?? 50;
 
   await globalThis.services.db
     .insert(creditPricing)
-    .values({ model, inputTokenPrice, outputTokenPrice, turnPrice })
+    .values({ model, inputTokenPrice, outputTokenPrice })
     .onConflictDoUpdate({
       target: creditPricing.model,
-      set: { inputTokenPrice, outputTokenPrice, turnPrice },
+      set: { inputTokenPrice, outputTokenPrice },
     });
 }
 
@@ -3279,7 +3262,7 @@ export async function insertTestCreditUsage(
     model?: string;
     inputTokens?: number;
     outputTokens?: number;
-    numTurns?: number;
+    numEvents?: number;
     status?: string;
     creditsCharged?: number;
   },
@@ -3324,7 +3307,7 @@ export async function insertTestCreditUsage(
       model: options.model ?? "gpt-4",
       inputTokens: options.inputTokens ?? 1000,
       outputTokens: options.outputTokens ?? 500,
-      numTurns: options.numTurns ?? 2,
+      numEvents: options.numEvents ?? 2,
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
     })
@@ -3342,6 +3325,7 @@ export async function findTestCreditUsage(id: string): Promise<
       status: string;
       creditsCharged: number | null;
       processedAt: Date | null;
+      numEvents: number;
     }
   | undefined
 > {
@@ -3352,9 +3336,48 @@ export async function findTestCreditUsage(id: string): Promise<
       status: creditUsage.status,
       creditsCharged: creditUsage.creditsCharged,
       processedAt: creditUsage.processedAt,
+      numEvents: creditUsage.numEvents,
     })
     .from(creditUsage)
     .where(eq(creditUsage.id, id))
+    .limit(1);
+  return record;
+}
+
+/**
+ * Find a credit_usage record by runId.
+ */
+export async function findTestCreditUsageByRunId(runId: string): Promise<
+  | {
+      id: string;
+      runId: string;
+      orgId: string;
+      userId: string;
+      model: string;
+      inputTokens: number;
+      outputTokens: number;
+      numEvents: number;
+      status: string;
+      creditsCharged: number | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [record] = await globalThis.services.db
+    .select({
+      id: creditUsage.id,
+      runId: creditUsage.runId,
+      orgId: creditUsage.orgId,
+      userId: creditUsage.userId,
+      model: creditUsage.model,
+      inputTokens: creditUsage.inputTokens,
+      outputTokens: creditUsage.outputTokens,
+      numEvents: creditUsage.numEvents,
+      status: creditUsage.status,
+      creditsCharged: creditUsage.creditsCharged,
+    })
+    .from(creditUsage)
+    .where(eq(creditUsage.runId, runId))
     .limit(1);
   return record;
 }

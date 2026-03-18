@@ -187,7 +187,7 @@ describe("init command", () => {
 
       expect(mockConsoleLog).toHaveBeenCalledWith("Next steps:");
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 model-provider setup"),
+        expect.stringContaining("vm0 org model-provider setup"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("AGENTS.md"),

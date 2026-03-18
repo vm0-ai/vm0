@@ -66,7 +66,7 @@ import {
   zeroAddedSkills$,
   addZeroSkill$,
   saveZeroSkills$,
-} from "../../signals/zero-page/zero-meet.ts";
+} from "../../signals/zero-page/zero-skills.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";

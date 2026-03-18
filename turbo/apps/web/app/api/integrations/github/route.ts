@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { getApiUrl } from "../../../../src/lib/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../src/db/schema/github-user-link";

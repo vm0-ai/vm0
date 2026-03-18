@@ -1,8 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { userPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   getUserPreferences,
@@ -23,13 +22,12 @@ const router = tsr.router(userPreferencesContract, {
     }
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { sessionClaims } = await auth();
     const { org } = await resolveOrg(ctx, orgSlug);
 
     const prefs = await getUserPreferences(
       org.orgId,
       ctx.userId,
-      sessionClaims ?? undefined,
+      ctx.sessionClaims,
     );
 
     return {

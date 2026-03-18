@@ -1117,8 +1117,8 @@ jobs:
             ssh $REMOTE "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
             scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
-            # Clean up old rootfs/snapshots, keep the 3 most recent
-            ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+            # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles)
+            ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 6"
 
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             ssh $REMOTE "${BIN_DIR}/runner setup"
@@ -1362,7 +1362,7 @@ jobs:
       - name: Bootstrap test account
         run: |
           vm0 org set "e2e-runner" --force
-          vm0 model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+          vm0 org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
 
@@ -1479,7 +1479,7 @@ jobs:
         if: always()
         run: |
           for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
-            if [ -f "$d/manifest.json" ]; then
+            if [ -d "$d" ] && ls "$d"/lhr-*.json >/dev/null 2>&1; then
               echo "dir=$d" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -1556,7 +1556,7 @@ jobs:
         if: always()
         run: |
           for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
-            if [ -f "$d/manifest.json" ]; then
+            if [ -d "$d" ] && ls "$d"/lhr-*.json >/dev/null 2>&1; then
               echo "dir=$d" >> "$GITHUB_OUTPUT"
               exit 0
             fi

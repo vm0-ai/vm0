@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.79.0](https://github.com/vm0-ai/vm0/compare/core-v8.78.0...core-v8.79.0) (2026-03-18)
+
+
+### Features
+
+* add organization-wide run queue web interface ([#4988](https://github.com/vm0-ai/vm0/issues/4988)) ([2da3dfd](https://github.com/vm0-ai/vm0/commit/2da3dfd5f6e8b0eced19135ad86333c8146d9f7e))
+* prompt users to review and approve oauth scope changes ([#5312](https://github.com/vm0-ai/vm0/issues/5312)) ([6cd80bf](https://github.com/vm0-ai/vm0/commit/6cd80bfeee99e0e13935222cb1081837ac31ed05))
+
 ## [8.78.0](https://github.com/vm0-ai/vm0/compare/core-v8.77.1...core-v8.78.0) (2026-03-18)
 
 

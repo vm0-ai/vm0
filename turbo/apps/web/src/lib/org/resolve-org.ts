@@ -8,7 +8,7 @@ import {
 } from "../errors";
 import { getOrgBySlug, getOrgData } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
-import type { AuthContext } from "../auth/get-user-id";
+import type { AuthContext } from "../auth/get-auth-context";
 
 import type { OrgRole } from "@vm0/core";
 
@@ -114,8 +114,9 @@ function applyJwtTier(
   resolved: ResolvedOrg,
   authCtx: AuthContext,
 ): ResolvedOrg {
-  if (resolved.orgId === authCtx.orgId && authCtx.orgTier) {
-    return { ...resolved, tier: authCtx.orgTier };
+  const jwtTier = authCtx.sessionClaims?.org_tier;
+  if (resolved.orgId === authCtx.orgId && jwtTier) {
+    return { ...resolved, tier: jwtTier };
   }
   return resolved;
 }
@@ -132,7 +133,7 @@ function applyJwtTier(
  * 2. orgId (explicit param or AuthContext) -> org_cache lookup, verify membership
  *
  * When the resolved org matches the AuthContext's active org, `tier` is read from
- * authCtx.orgTier (falling back to org_cache value if missing).
+ * authCtx.sessionClaims?.org_tier (falling back to org_cache value if missing).
  *
  * @throws BadRequestError when no explicit org context is available
  */

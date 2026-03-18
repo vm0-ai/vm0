@@ -11,6 +11,11 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths};
 
+/// Artifacts younger than this are unconditionally kept, regardless of lock
+/// status or `--keep-latest`. This prevents races between `runner build`
+/// releasing its lock and `runner start` acquiring a shared lock.
+const GC_MIN_AGE: Duration = Duration::from_secs(10 * 60);
+
 /// Per-job log files older than this are eligible for GC.
 const JOB_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 
@@ -137,6 +142,27 @@ async fn gc_dir(
                 info!("{label}/{hash}: lock probe failed ({e}), skipping");
             }
         }
+    }
+
+    // Protect recently-created artifacts from deletion. This closes the race
+    // window between `runner build` releasing its lock and `runner start`
+    // acquiring a shared lock.
+    let now = SystemTime::now();
+    let mut protected = Vec::new();
+    candidates.retain(|c| {
+        let age = now.duration_since(c.mtime).unwrap_or_default();
+        if age < GC_MIN_AGE {
+            protected.push((c.hash.clone(), age));
+            false
+        } else {
+            true
+        }
+    });
+    for (hash, age) in &protected {
+        info!(
+            "{label}/{hash}: too recent ({}s old), skipping",
+            age.as_secs()
+        );
     }
 
     // Sort by mtime descending (newest first) so keep_latest keeps the most recent.
@@ -551,6 +577,9 @@ mod tests {
 
     #[tokio::test]
     async fn gc_deletes_unused_dir() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
         let dir = tempfile::tempdir().unwrap();
         let locks_dir = dir.path().join("locks");
         std::fs::create_dir_all(&locks_dir).unwrap();
@@ -559,6 +588,12 @@ mod tests {
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
         std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(&hash_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
 
         let freed = gc_dir(
             "rootfs",
@@ -612,6 +647,9 @@ mod tests {
 
     #[tokio::test]
     async fn gc_dry_run_does_not_delete() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
         let dir = tempfile::tempdir().unwrap();
         let locks_dir = dir.path().join("locks");
         std::fs::create_dir_all(&locks_dir).unwrap();
@@ -620,6 +658,12 @@ mod tests {
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
         std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(&hash_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
 
         let freed = gc_dir(
             "rootfs",
@@ -919,5 +963,66 @@ mod tests {
         assert_eq!(removed, 2);
         assert!(!system_log.exists());
         assert!(!metrics_log.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_min_age_preserves_recent_artifact() {
+        let dir = tempfile::tempdir().unwrap();
+        let locks_dir = dir.path().join("locks");
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let artifacts_dir = dir.path().join("rootfs");
+        let recent_dir = artifacts_dir.join("recent_hash");
+        std::fs::create_dir_all(&recent_dir).unwrap();
+        std::fs::write(recent_dir.join("rootfs.squashfs"), b"data").unwrap();
+        // mtime defaults to now — well within GC_MIN_AGE (10 min)
+
+        let freed = gc_dir(
+            "rootfs",
+            &artifacts_dir,
+            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
+            Some(0), // keep_latest=0 would normally delete everything
+            false,
+        )
+        .await
+        .unwrap();
+
+        assert!(recent_dir.exists(), "recent artifact should be protected");
+        assert_eq!(freed, 0);
+    }
+
+    #[tokio::test]
+    async fn gc_min_age_allows_old_artifact_deletion() {
+        use std::fs::FileTimes;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let locks_dir = dir.path().join("locks");
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let artifacts_dir = dir.path().join("rootfs");
+        let old_dir = artifacts_dir.join("old_hash");
+        std::fs::create_dir_all(&old_dir).unwrap();
+        std::fs::write(old_dir.join("rootfs.squashfs"), b"data").unwrap();
+
+        // Set mtime to 1 hour ago — well past GC_MIN_AGE
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(&old_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_dir(
+            "rootfs",
+            &artifacts_dir,
+            |hash| locks_dir.join(format!("rootfs-{hash}.lock")),
+            Some(0),
+            false,
+        )
+        .await
+        .unwrap();
+
+        assert!(!old_dir.exists(), "old artifact should be deleted");
+        assert!(freed > 0 || cfg!(target_os = "macos"));
     }
 }
