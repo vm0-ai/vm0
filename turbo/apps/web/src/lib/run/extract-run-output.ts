@@ -1,5 +1,5 @@
 import { queryAxiom, getDatasetName, DATASETS } from "../axiom";
-import { detectDeepLinks, type DeepLink } from "../deep-links";
+import { detectIssueCategories, type DeepLink } from "../deep-links";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,7 +17,7 @@ export interface PermissionDenial {
   };
 }
 
-interface RunOutput {
+export interface RunOutput {
   /** Raw result text from the agent */
   result: string | null;
   /** AskUserQuestion permission denials */
@@ -83,15 +83,13 @@ export async function extractRunOutput(
     (d) => d.tool_name === "AskUserQuestion",
   );
 
-  // Detect issue flags from result text using existing keyword mappings
+  // Detect issue flags from result text using keyword category matching
   const textToScan = result ?? error ?? "";
-  const dummyLinks = textToScan
-    ? detectDeepLinks(textToScan, "https://placeholder")
-    : [];
-  const modelProviderIssue = dummyLinks.some((l) =>
-    l.url.includes("/settings"),
-  );
-  const connectorIssue = dummyLinks.some((l) => l.url.includes("/team"));
+  const categories = textToScan
+    ? detectIssueCategories(textToScan)
+    : new Set<never>();
+  const modelProviderIssue = categories.has("provider");
+  const connectorIssue = categories.has("connector");
 
   return {
     result,

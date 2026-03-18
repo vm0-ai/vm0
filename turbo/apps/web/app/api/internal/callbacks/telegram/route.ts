@@ -23,7 +23,8 @@ import { getAppUrl } from "../../../../../src/lib/url";
 import {
   extractRunOutput,
   buildDeepLinksFromFlags,
-  getRunOutputText,
+  formatAskUserDenials,
+  type RunOutput,
 } from "../../../../../src/lib/run/extract-run-output";
 import {
   saveTelegramThreadSession,
@@ -101,6 +102,20 @@ async function findNewSessionId(
   return newSession?.id;
 }
 
+/**
+ * Build a plain-text output string from the already-fetched RunOutput,
+ * avoiding a redundant Axiom query.
+ */
+function buildOutputText(output: RunOutput): string | undefined {
+  if (output.askUserDenials.length > 0) {
+    const formatted = formatAskUserDenials(output.askUserDenials);
+    if (formatted) {
+      return output.result ? `${output.result}\n\n${formatted}` : formatted;
+    }
+  }
+  return output.result ?? undefined;
+}
+
 interface CompletionContext {
   client: ReturnType<typeof createTelegramClient>;
   runId: string;
@@ -149,15 +164,13 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
     });
   }
   const runOutput = await extractRunOutput(runId, error);
-  const output =
-    status === "completed" ? await getRunOutputText(runId) : undefined;
 
   // Build response text
   const logsUrl = buildLogsUrl(runId);
   let htmlOutput: string;
   let responseText: string | undefined;
   if (status === "completed") {
-    responseText = output ?? "Task completed successfully.";
+    responseText = buildOutputText(runOutput) ?? "Task completed successfully.";
     const deepLinks = buildDeepLinksFromFlags(
       runOutput,
       getAppUrl(),

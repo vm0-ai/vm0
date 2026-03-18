@@ -92,3 +92,23 @@ export function detectDeepLinks(
 
   return links;
 }
+
+/**
+ * Detect which keyword categories are present in the given text.
+ *
+ * Returns the set of matched categories without generating URLs —
+ * useful when callers only need to know *which* issue types were
+ * detected, not the full deep-link objects.
+ */
+export function detectIssueCategories(text: string): Set<KeywordCategory> {
+  const lowerText = text.toLowerCase();
+  const categories = new Set<KeywordCategory>();
+
+  for (const mapping of KEYWORD_LINK_MAPPINGS) {
+    if (mapping.keywords.some((kw) => lowerText.includes(kw))) {
+      categories.add(mapping.category);
+    }
+  }
+
+  return categories;
+}
