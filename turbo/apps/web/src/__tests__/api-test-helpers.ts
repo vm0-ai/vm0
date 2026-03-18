@@ -1826,6 +1826,24 @@ export async function setTestConnectorNeedsReconnect(
     );
 }
 
+export async function setTestConnectorOauthScopes(
+  orgId: string,
+  userId: string,
+  type: string,
+  scopes: string[],
+): Promise<void> {
+  await globalThis.services.db
+    .update(connectors)
+    .set({ oauthScopes: JSON.stringify(scopes) })
+    .where(
+      and(
+        eq(connectors.orgId, orgId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, type),
+      ),
+    );
+}
+
 export async function findTestConnectorTokenExpiresAt(
   orgId: string,
   type: string,

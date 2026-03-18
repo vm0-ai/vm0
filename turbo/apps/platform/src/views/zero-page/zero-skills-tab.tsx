@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
 import { IconPlus } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/core";
 import { skills$ } from "../../data/skills.ts";
@@ -20,6 +21,7 @@ import {
   AddConnectionDialog,
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
+import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -54,6 +56,10 @@ export function ZeroSkillsTab({
   const setAddDialogOpen = useSet(setAddConnectionDialogOpen$);
   const selectedType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
+
+  const scopeReviewType$ = useCCState<ConnectorType | null>(null);
+  const scopeReviewType = useGet(scopeReviewType$);
+  const setScopeReviewType = useSet(scopeReviewType$);
 
   const allSkills = useGet(skills$);
 
@@ -177,6 +183,7 @@ export function ZeroSkillsTab({
                   toast.success(`${label} disconnected`);
                 }}
                 onRemove={() => handleRemoveSkill(name)}
+                onReviewScopes={() => setScopeReviewType(name as ConnectorType)}
               />
             );
           })}
@@ -198,6 +205,23 @@ export function ZeroSkillsTab({
             if (selectedType && !addedSet.has(selectedType)) {
               handleConnectSuccess(selectedType);
             }
+          }}
+        />
+      )}
+
+      {scopeReviewType && (
+        <ScopeReviewModal
+          connectorType={scopeReviewType}
+          onClose={() => setScopeReviewType(null)}
+          onReconnect={(type) => {
+            setScopeReviewType(null);
+            detach(
+              (async () => {
+                await disconnect(type);
+                await connect(type, signal);
+              })(),
+              Reason.DomCallback,
+            );
           }}
         />
       )}

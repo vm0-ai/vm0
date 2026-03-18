@@ -1,6 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { CONNECTOR_TYPES, connectorTypeSchema } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  connectorTypeSchema,
+  getScopeDiff,
+  hasRequiredScopes,
+} from "@vm0/core";
 import { getConnector } from "../../lib/api";
 import { formatDateTime } from "../../lib/domain/schedule-utils";
 import { withErrorHandler } from "../../lib/command";
@@ -41,6 +46,26 @@ export const statusCommand = new Command()
           console.log(
             `${"OAuth Scopes:".padEnd(LABEL_WIDTH)}${connector.oauthScopes.join(", ")}`,
           );
+        }
+
+        if (
+          connector.authMethod === "oauth" &&
+          !hasRequiredScopes(parseResult.data, connector.oauthScopes)
+        ) {
+          const diff = getScopeDiff(parseResult.data, connector.oauthScopes);
+          console.log(
+            `${"Permissions:".padEnd(LABEL_WIDTH)}${chalk.yellow("update available")}`,
+          );
+          if (diff.addedScopes.length > 0) {
+            console.log(
+              `${"  Added:".padEnd(LABEL_WIDTH)}${diff.addedScopes.join(", ")}`,
+            );
+          }
+          if (diff.removedScopes.length > 0) {
+            console.log(
+              `${"  Removed:".padEnd(LABEL_WIDTH)}${diff.removedScopes.join(", ")}`,
+            );
+          }
         }
 
         console.log(
