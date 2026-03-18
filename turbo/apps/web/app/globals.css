@@ -159,19 +159,19 @@ a {
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: none;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--gray-300));
+  background: hsl(var(--gray-50));
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--gray-400));
+  background: hsl(var(--gray-100));
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--gray-300)) transparent;
+  scrollbar-color: hsl(var(--gray-50)) transparent;
 }
