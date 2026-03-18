@@ -1100,6 +1100,13 @@
       "when": 1774051200000,
       "tag": "0156_replace_turns_with_events",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1773815992372,
+      "tag": "0157_migrate_user_model_providers_to_org",
+      "breakpoints": true
     }
   ]
 }
