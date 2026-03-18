@@ -142,6 +142,7 @@ async function startAgentRun(
   const body: Record<string, string> = {
     agentComposeId: composeId,
     prompt: prompt.trim(),
+    memoryName: "memory",
   };
   if (sessionId) {
     body.sessionId = sessionId;

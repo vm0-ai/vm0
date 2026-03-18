@@ -416,6 +416,7 @@ describe("zero-chat signals", () => {
       expect(capturedRunBody).toBeTruthy();
       expect(capturedRunBody!.agentComposeId).toBe("mock-compose-id");
       expect(capturedRunBody!.prompt).toBe("What can you do?");
+      expect(capturedRunBody!.memoryName).toBe("memory");
 
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
       expect(context.store.get(zeroChatThreadId$)).toBe("thread-new");
