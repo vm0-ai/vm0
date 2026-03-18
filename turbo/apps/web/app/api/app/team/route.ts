@@ -6,14 +6,14 @@
  * session orgId and does not fall through to heuristic org resolution.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { eq, desc } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { getOrgData } from "../../../../src/lib/org/org-cache-service";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 
 function extractMetadata(content: unknown): {
@@ -68,16 +68,16 @@ function extractMetadata(content: unknown): {
 export async function GET() {
   initServices();
 
-  const { userId, orgId } = await auth();
+  const authCtx = await getAuthContext();
 
-  if (!userId) {
+  if (!authCtx) {
     return NextResponse.json(
       { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
       { status: 401 },
     );
   }
 
-  if (!orgId) {
+  if (!authCtx.orgId) {
     return NextResponse.json(
       {
         error: {
@@ -89,11 +89,11 @@ export async function GET() {
     );
   }
 
-  // Verify org exists in our DB
+  // Resolve org via standard path (verifies membership + applies JWT tier)
   let resolvedOrgId: string;
   try {
-    const orgData = await getOrgData(orgId);
-    resolvedOrgId = orgData.orgId;
+    const { org } = await resolveOrg(authCtx);
+    resolvedOrgId = org.orgId;
   } catch (error) {
     if (isNotFound(error) || isForbidden(error)) {
       return NextResponse.json(

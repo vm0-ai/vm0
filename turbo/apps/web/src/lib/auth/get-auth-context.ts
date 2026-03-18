@@ -16,7 +16,7 @@ export type AuthContext = {
   userId: string;
   orgId?: string;
   orgRole?: OrgRole;
-  orgTier?: string;
+  sessionClaims?: CustomJwtSessionClaims;
   capabilities?: readonly Capability[];
   runId?: string;
 };
@@ -129,11 +129,6 @@ async function getClerkSessionAuth(): Promise<AuthContext | null> {
   const authResult = await auth();
   if (!authResult.userId) return null;
 
-  const claims = authResult.sessionClaims as
-    | Record<string, unknown>
-    | null
-    | undefined;
-
   return {
     userId: authResult.userId,
     orgId: authResult.orgId ?? undefined,
@@ -142,7 +137,9 @@ async function getClerkSessionAuth(): Promise<AuthContext | null> {
         ? "admin"
         : "member"
       : undefined,
-    orgTier: (claims?.org_tier as string) ?? undefined,
+    sessionClaims: authResult.sessionClaims as
+      | CustomJwtSessionClaims
+      | undefined,
   };
 }
 

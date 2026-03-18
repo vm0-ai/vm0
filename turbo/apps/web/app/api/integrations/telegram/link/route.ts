@@ -3,7 +3,7 @@ import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import { telegramUserLinks } from "../../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import {

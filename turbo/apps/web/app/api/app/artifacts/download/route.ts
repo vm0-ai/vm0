@@ -10,7 +10,7 @@ import {
 } from "../../../../../src/lib/ts-rest-handler";
 import { platformArtifactDownloadContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserId } from "../../../../../src/lib/auth/get-user-id";
+import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
   storages,
   storageVersions,

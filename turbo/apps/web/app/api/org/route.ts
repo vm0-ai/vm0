@@ -5,7 +5,7 @@ import {
 } from "../../../src/lib/ts-rest-handler";
 import { orgContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
-import { getAuthContext } from "../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
 import { updateOrgSlug } from "../../../src/lib/org/org-service";
 import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import type { ResolvedOrg } from "../../../src/lib/org/resolve-org";

@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { telegramUserLinks } from "../../../../src/db/schema/telegram-user-link";
 import { telegramInstallations } from "../../../../src/db/schema/telegram-installation";
 import {

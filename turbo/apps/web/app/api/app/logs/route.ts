@@ -17,7 +17,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { conversations } from "../../../../src/db/schema/conversation";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
-import { getAuthContext } from "../../../../src/lib/auth/get-user-id";
+import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";

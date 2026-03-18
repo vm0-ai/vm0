@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auth } from "@clerk/nextjs/server";
-import { getAuthContext, getUserId } from "../get-user-id";
+import { getAuthContext, getUserId } from "../get-auth-context";
 import { generateSandboxToken } from "../sandbox-token";
 
 describe("getUserId", () => {
@@ -181,7 +181,7 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
 describe("getAuthContext org fields from Clerk session", () => {
   const mockAuth = vi.mocked(auth);
 
-  it("should populate orgId, orgRole, orgTier from Clerk session", async () => {
+  it("should populate orgId, orgRole, sessionClaims from Clerk session", async () => {
     mockAuth.mockResolvedValue({
       userId: "user_123",
       orgId: "org_456",
@@ -195,7 +195,7 @@ describe("getAuthContext org fields from Clerk session", () => {
     expect(result?.userId).toBe("user_123");
     expect(result?.orgId).toBe("org_456");
     expect(result?.orgRole).toBe("admin");
-    expect(result?.orgTier).toBe("pro");
+    expect(result?.sessionClaims?.org_tier).toBe("pro");
   });
 
   it("should map org:member role to member", async () => {
@@ -224,7 +224,7 @@ describe("getAuthContext org fields from Clerk session", () => {
     expect(result?.userId).toBe("user_123");
     expect(result?.orgId).toBeUndefined();
     expect(result?.orgRole).toBeUndefined();
-    expect(result?.orgTier).toBeUndefined();
+    expect(result?.sessionClaims?.org_tier).toBeUndefined();
   });
 
   it("should not populate org fields for sandbox tokens", async () => {
@@ -238,7 +238,7 @@ describe("getAuthContext org fields from Clerk session", () => {
     expect(result?.userId).toBe("user-123");
     expect(result?.orgId).toBeUndefined();
     expect(result?.orgRole).toBeUndefined();
-    expect(result?.orgTier).toBeUndefined();
+    expect(result?.sessionClaims).toBeUndefined();
   });
 });
 

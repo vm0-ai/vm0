@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { connectorTypeSchema } from "@vm0/core";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-user-id";
+import { getUserIdFromRequest } from "../../../../../src/lib/auth/get-auth-context";
 import { getOrigin } from "../../../../../src/lib/request/get-origin";
 import {
   type AuthUrlResult,
