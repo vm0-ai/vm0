@@ -74,16 +74,6 @@ export {
   deleteVariable,
 } from "./domains/variables";
 
-// Domain modules - Model Providers
-export {
-  listModelProviders,
-  upsertModelProvider,
-  checkModelProviderSecret,
-  deleteModelProvider,
-  setModelProviderDefault,
-  updateModelProviderModel,
-} from "./domains/model-providers";
-
 // Domain modules - Org Model Providers
 export {
   listOrgModelProviders,

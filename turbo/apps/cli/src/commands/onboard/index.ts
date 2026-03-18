@@ -87,7 +87,7 @@ async function handleModelProvider(ctx: OnboardContext): Promise<void> {
 
     if (!ctx.interactive) {
       throw new Error("No model provider configured", {
-        cause: new Error("Run 'vm0 model-provider setup' first"),
+        cause: new Error("Run 'vm0 org model-provider setup' first"),
       });
     }
 

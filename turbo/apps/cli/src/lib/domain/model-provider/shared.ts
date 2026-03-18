@@ -165,7 +165,7 @@ export function handleNonInteractiveMode(options: {
   commandPrefix?: string;
 }): SetupInput {
   const type = validateProviderType(options.type);
-  const cmdPrefix = options.commandPrefix ?? "vm0 model-provider setup";
+  const cmdPrefix = options.commandPrefix ?? "vm0 org model-provider setup";
 
   let selectedModel: string | undefined;
 

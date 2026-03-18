@@ -10,7 +10,7 @@ import {
 /**
  * Provider types available in onboard flow.
  * This is an explicit allowlist - new providers must be added here to appear in onboard.
- * For advanced providers (e.g., aws-bedrock), users should use `vm0 model-provider setup`.
+ * For advanced providers (e.g., aws-bedrock), users should use `vm0 org model-provider setup`.
  */
 const ONBOARD_PROVIDER_TYPES: ModelProviderType[] = [
   "claude-code-oauth-token",
@@ -21,9 +21,9 @@ const ONBOARD_PROVIDER_TYPES: ModelProviderType[] = [
   "deepseek-api-key",
 ];
 import {
-  listModelProviders,
-  upsertModelProvider,
-} from "../../api/domains/model-providers.js";
+  listOrgModelProviders,
+  upsertOrgModelProvider,
+} from "../../api/domains/org-model-providers.js";
 
 interface ModelProviderStatus {
   hasProvider: boolean;
@@ -47,10 +47,10 @@ interface SetupResult {
 }
 
 /**
- * Check if user has any model providers configured
+ * Check if org has any model providers configured
  */
 export async function checkModelProviderStatus(): Promise<ModelProviderStatus> {
-  const response = await listModelProviders();
+  const response = await listOrgModelProviders();
   return {
     hasProvider: response.modelProviders.length > 0,
     providers: response.modelProviders,
@@ -60,7 +60,7 @@ export async function checkModelProviderStatus(): Promise<ModelProviderStatus> {
 /**
  * Get available provider types as choices for onboard selection.
  * Only providers in ONBOARD_PROVIDER_TYPES are shown.
- * For advanced providers, use `vm0 model-provider setup`.
+ * For advanced providers, use `vm0 org model-provider setup`.
  */
 export function getProviderChoices(): ProviderChoice[] {
   return ONBOARD_PROVIDER_TYPES.map((type) => {
@@ -84,7 +84,7 @@ export async function setupModelProvider(
   secret: string,
   options?: { selectedModel?: string },
 ): Promise<SetupResult> {
-  const response: UpsertModelProviderResponse = await upsertModelProvider({
+  const response: UpsertModelProviderResponse = await upsertOrgModelProvider({
     type,
     secret,
     selectedModel: options?.selectedModel,
