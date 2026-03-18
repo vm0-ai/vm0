@@ -151,10 +151,7 @@ function startConnectorFlow(
   if (!ct) {
     return;
   }
-  if (
-    ct.availableAuthMethods.length === 1 &&
-    ct.availableAuthMethods[0] === "api-token"
-  ) {
+  if (ct.availableAuthMethods.includes("api-token")) {
     setSelectedType(type as ConnectorType);
   } else {
     detach(connect(type as ConnectorType, signal), Reason.DomCallback);

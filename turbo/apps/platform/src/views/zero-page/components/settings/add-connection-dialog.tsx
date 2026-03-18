@@ -375,7 +375,7 @@ function ConnectorCard({
             onClick={handleApiKey}
             className={`w-full ${btnClass}`}
           >
-            API key
+            Connect
           </button>
         ) : (
           <button

@@ -676,7 +676,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+          <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline summaries={message.summaries!} />
             )}
@@ -717,7 +717,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant rounded-xl border backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words overflow-hidden">
+          <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline summaries={message.summaries!} />
             )}

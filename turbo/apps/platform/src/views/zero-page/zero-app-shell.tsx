@@ -419,7 +419,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   );
   const handleAccountAction = useSet(handleAccountAction$);
 
-  const sidebarCollapsed$ = useCCState(false);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const sidebarCollapsed$ = useCCState(isMobile);
   const sidebarCollapsed = useGet(sidebarCollapsed$);
   const setSidebarCollapsed = useSet(sidebarCollapsed$);
 
@@ -455,7 +456,14 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         recentSessionsError={recentSessionsError}
         onNewChat={handleNewChat}
       />
-      <div className="flex flex-1 flex-col min-w-0 zero-workspace-bg">
+      {/* Mobile backdrop when sidebar is open */}
+      {!sidebarCollapsed && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
         {/* TopBarActions (credit & invite) hidden until feature is ready */}
         {!isLoggedIn && <GuestNavBar onAbout={() => setShowAboutPage(true)} />}
         {showAboutPage ? (
