@@ -35,7 +35,7 @@ const router = tsr.router(schedulesMainContract, {
 
     try {
       // Note: vars and secrets are no longer accepted via API
-      // They must be managed via platform tables (vm0 secret set, vm0 var set)
+      // They must be managed via server-side tables (vm0 secret set, vm0 var set)
       const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },

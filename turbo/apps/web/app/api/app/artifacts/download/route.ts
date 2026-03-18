@@ -8,7 +8,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { platformArtifactDownloadContract } from "@vm0/core";
+import { artifactDownloadContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
@@ -47,7 +47,7 @@ function notFoundResponse(message: string) {
   };
 }
 
-const router = tsr.router(platformArtifactDownloadContract, {
+const router = tsr.router(artifactDownloadContract, {
   getDownloadUrl: async ({ query }) => {
     initServices();
 
@@ -177,7 +177,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(platformArtifactDownloadContract, router, {
+const handler = createHandler(artifactDownloadContract, router, {
   errorHandler,
 });
 

@@ -357,28 +357,28 @@ export {
 } from "./realtime";
 
 export {
-  platformLogsListContract,
-  platformLogsByIdContract,
-  platformArtifactDownloadContract,
-  platformLogStatusSchema,
-  platformLogEntrySchema,
+  logsListContract,
+  logsByIdContract,
+  artifactDownloadContract,
+  logStatusSchema,
+  logEntrySchema,
   paginationSchema,
-  platformLogsListResponseSchema,
+  logsListResponseSchema,
   artifactSchema,
-  platformLogDetailSchema,
+  logDetailSchema,
   artifactDownloadResponseSchema,
-  type PlatformLogsListContract,
-  type PlatformLogsByIdContract,
-  type PlatformArtifactDownloadContract,
+  type LogsListContract,
+  type LogsByIdContract,
+  type ArtifactDownloadContract,
   // Inferred types
-  type PlatformLogStatus,
-  type PlatformLogEntry,
+  type LogStatus,
+  type LogEntry,
   type Pagination,
-  type PlatformLogsListResponse,
+  type LogsListResponse,
   type Artifact,
-  type PlatformLogDetail,
+  type LogDetail,
   type ArtifactDownloadResponse,
-} from "./platform";
+} from "./logs";
 
 export {
   composeJobsMainContract,

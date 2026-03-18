@@ -111,7 +111,7 @@ describe("schedule setup command", () => {
       expect(output).toContain("--day");
       expect(output).toContain("--timezone");
       expect(output).toContain("--prompt");
-      // --var option removed - vars now managed via platform tables
+      // --var option removed - vars now managed via server-side tables
       expect(output).toContain("--enable");
 
       mockStdoutWrite.mockRestore();

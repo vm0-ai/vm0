@@ -10,7 +10,7 @@ Sentry.init({
   // Set environment (Vercel provides VITE_VERCEL_ENV in builds)
   environment: import.meta.env.VITE_VERCEL_ENV,
 
-  // Set app tag to distinguish from web app
+  // Set app tag to identify this app in Sentry
   initialScope: {
     tags: {
       app: "platform",

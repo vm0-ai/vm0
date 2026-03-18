@@ -59,7 +59,7 @@ interface RunSummary {
 
 /**
  * Deploy schedule request data
- * Note: vars and secrets are no longer accepted - they must be managed via platform tables
+ * Note: vars and secrets are no longer accepted - they must be managed via server-side tables
  */
 interface DeployScheduleRequest {
   name: string;
@@ -72,7 +72,7 @@ interface DeployScheduleRequest {
   enabled?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
-  // vars and secrets removed - now managed via platform tables
+  // vars and secrets removed - now managed via server-side tables
   artifactName?: string;
   artifactVersion?: string;
   volumeVersions?: Record<string, string>;

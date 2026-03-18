@@ -9,7 +9,7 @@ Sentry.init({
   // Set environment (Vercel provides NEXT_PUBLIC_VERCEL_ENV)
   environment: process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.NODE_ENV,
 
-  // Set app tag to distinguish from platform app
+  // Set app tag to identify this app in Sentry
   initialScope: {
     tags: {
       app: "web",

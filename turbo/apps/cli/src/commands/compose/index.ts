@@ -394,11 +394,11 @@ function mergeSkillVariables(
 }
 
 /**
- * Derive the platform URL from the API URL by replacing "www" with "platform" in the hostname.
+ * Derive the app URL from the API URL by replacing "www" with "app" in the hostname.
  */
-function getPlatformUrl(apiUrl: string): string {
+function getAppUrl(apiUrl: string): string {
   const url = new URL(apiUrl);
-  url.hostname = url.hostname.replace("www", "platform");
+  url.hostname = url.hostname.replace("www", "app");
   return url.origin;
 }
 
@@ -454,7 +454,7 @@ async function checkAndPromptMissingItems(
   }
 
   const apiUrl = await getApiUrl();
-  const platformUrl = getPlatformUrl(apiUrl);
+  const appUrl = getAppUrl(apiUrl);
   const params = new URLSearchParams();
   if (missingSecrets.length > 0) {
     params.set("secrets", missingSecrets.join(","));
@@ -462,7 +462,7 @@ async function checkAndPromptMissingItems(
   if (missingVars.length > 0) {
     params.set("vars", missingVars.join(","));
   }
-  const setupUrl = `${platformUrl}/environment-variables-setup?${params.toString()}`;
+  const setupUrl = `${appUrl}/environment-variables-setup?${params.toString()}`;
 
   if (!options.json) {
     console.log();

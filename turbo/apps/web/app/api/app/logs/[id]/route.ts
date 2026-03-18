@@ -8,7 +8,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { platformLogsByIdContract } from "@vm0/core";
+import { logsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
@@ -116,7 +116,7 @@ function notFoundResponse() {
   };
 }
 
-const router = tsr.router(platformLogsByIdContract, {
+const router = tsr.router(logsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
     initServices();
 
@@ -228,7 +228,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(platformLogsByIdContract, router, {
+const handler = createHandler(logsByIdContract, router, {
   errorHandler,
 });
 

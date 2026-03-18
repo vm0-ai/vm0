@@ -1,8 +1,8 @@
 // API response types (matching app API contracts)
-import type { PlatformLogStatus } from "@vm0/core";
+import type { LogStatus } from "@vm0/core";
 
 // Re-export from core contract to stay in sync with the API schema
-export type LogStatus = PlatformLogStatus;
+export type { LogStatus };
 
 // List response - contains basic fields for list display
 export interface LogEntry {

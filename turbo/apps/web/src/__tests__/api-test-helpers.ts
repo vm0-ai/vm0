@@ -893,7 +893,7 @@ export async function failTestRun(
  */
 /**
  * Create a test schedule via API route handler.
- * Note: vars and secrets are now managed via platform tables (vm0 secret set, vm0 var set)
+ * Note: vars and secrets are now managed via server-side tables (vm0 secret set, vm0 var set)
  */
 export async function createTestSchedule(
   composeId: string,
@@ -904,7 +904,7 @@ export async function createTestSchedule(
     intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
-    // vars and secrets removed - now managed via platform tables
+    // vars and secrets removed - now managed via server-side tables
   },
 ): Promise<ScheduleResponse> {
   // Default to cron if no trigger specified
@@ -928,7 +928,7 @@ export async function createTestSchedule(
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
         intervalSeconds: options?.intervalSeconds,
-        // vars and secrets no longer sent - managed via platform tables
+        // vars and secrets no longer sent - managed via server-side tables
         ...trigger,
       }),
     },

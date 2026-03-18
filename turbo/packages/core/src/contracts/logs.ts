@@ -3,11 +3,12 @@ import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 
 /**
- * Cursor-based pagination schema
+ * Cursor-based pagination schema with total pages
  */
 export const paginationSchema = z.object({
   hasMore: z.boolean(),
   nextCursor: z.string().nullable(),
+  totalPages: z.number(),
 });
 
 export type Pagination = z.infer<typeof paginationSchema>;
@@ -23,18 +24,9 @@ const listQuerySchema = z.object({
 const c = initContract();
 
 /**
- * Platform-specific pagination schema with total pages
+ * Run status enum for logs
  */
-const platformPaginationSchema = z.object({
-  hasMore: z.boolean(),
-  nextCursor: z.string().nullable(),
-  totalPages: z.number(),
-});
-
-/**
- * Run status enum for platform logs
- */
-const platformLogStatusSchema = z.enum([
+const logStatusSchema = z.enum([
   "queued",
   "pending",
   "running",
@@ -47,25 +39,25 @@ const platformLogStatusSchema = z.enum([
 /**
  * Log entry in list response - includes basic fields for list display
  */
-const platformLogEntrySchema = z.object({
+const logEntrySchema = z.object({
   id: z.uuid(),
   sessionId: z.string().nullable(),
   agentName: z.string(),
   displayName: z.string().nullable(),
   orgSlug: z.string().nullable(),
   framework: z.string().nullable(),
-  status: platformLogStatusSchema,
+  status: logStatusSchema,
   createdAt: z.string(),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
 });
 
 /**
- * Logs list response schema with platform-specific pagination
+ * Logs list response schema with pagination
  */
-const platformLogsListResponseSchema = z.object({
-  data: z.array(platformLogEntrySchema),
-  pagination: platformPaginationSchema,
+const logsListResponseSchema = z.object({
+  data: z.array(logEntrySchema),
+  pagination: paginationSchema,
 });
 
 /**
@@ -79,13 +71,13 @@ const artifactSchema = z.object({
 /**
  * Log detail response schema
  */
-const platformLogDetailSchema = z.object({
+const logDetailSchema = z.object({
   id: z.uuid(),
   sessionId: z.string().nullable(),
   agentName: z.string(),
   displayName: z.string().nullable(),
   framework: z.string().nullable(),
-  status: platformLogStatusSchema,
+  status: logStatusSchema,
   prompt: z.string(),
   error: z.string().nullable(),
   createdAt: z.string(),
@@ -95,10 +87,10 @@ const platformLogDetailSchema = z.object({
 });
 
 /**
- * Platform logs list contract
+ * Logs list contract
  * GET /api/app/logs
  */
-export const platformLogsListContract = c.router({
+export const logsListContract = c.router({
   list: {
     method: "GET",
     path: "/api/app/logs",
@@ -107,10 +99,10 @@ export const platformLogsListContract = c.router({
       agent: z.string().optional(),
       name: z.string().optional(),
       org: z.string().optional(),
-      status: platformLogStatusSchema.optional(),
+      status: logStatusSchema.optional(),
     }),
     responses: {
-      200: platformLogsListResponseSchema,
+      200: logsListResponseSchema,
       401: apiErrorSchema,
     },
     summary: "List agent run logs with pagination",
@@ -118,10 +110,10 @@ export const platformLogsListContract = c.router({
 });
 
 /**
- * Platform logs by ID contract
+ * Logs by ID contract
  * GET /api/app/logs/:id
  */
-export const platformLogsByIdContract = c.router({
+export const logsByIdContract = c.router({
   getById: {
     method: "GET",
     path: "/api/app/logs/:id",
@@ -130,7 +122,7 @@ export const platformLogsByIdContract = c.router({
       id: z.string().uuid("Invalid log ID"),
     }),
     responses: {
-      200: platformLogDetailSchema,
+      200: logDetailSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -147,11 +139,11 @@ const artifactDownloadResponseSchema = z.object({
 });
 
 /**
- * Platform artifact download contract
+ * Artifact download contract
  * GET /api/app/artifacts/download
  * Returns a presigned URL for downloading the artifact
  */
-export const platformArtifactDownloadContract = c.router({
+export const artifactDownloadContract = c.router({
   getDownloadUrl: {
     method: "GET",
     path: "/api/app/artifacts/download",
@@ -169,29 +161,26 @@ export const platformArtifactDownloadContract = c.router({
 });
 
 // Contract type exports
-export type PlatformLogsListContract = typeof platformLogsListContract;
-export type PlatformLogsByIdContract = typeof platformLogsByIdContract;
-export type PlatformArtifactDownloadContract =
-  typeof platformArtifactDownloadContract;
+export type LogsListContract = typeof logsListContract;
+export type LogsByIdContract = typeof logsByIdContract;
+export type ArtifactDownloadContract = typeof artifactDownloadContract;
 
 // Schema exports for reuse
 export {
-  platformLogStatusSchema,
-  platformLogEntrySchema,
-  platformLogsListResponseSchema,
+  logStatusSchema,
+  logEntrySchema,
+  logsListResponseSchema,
   artifactSchema,
-  platformLogDetailSchema,
+  logDetailSchema,
   artifactDownloadResponseSchema,
 };
 
 // Inferred type exports
-export type PlatformLogStatus = z.infer<typeof platformLogStatusSchema>;
-export type PlatformLogEntry = z.infer<typeof platformLogEntrySchema>;
-export type PlatformLogsListResponse = z.infer<
-  typeof platformLogsListResponseSchema
->;
+export type LogStatus = z.infer<typeof logStatusSchema>;
+export type LogEntry = z.infer<typeof logEntrySchema>;
+export type LogsListResponse = z.infer<typeof logsListResponseSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
-export type PlatformLogDetail = z.infer<typeof platformLogDetailSchema>;
+export type LogDetail = z.infer<typeof logDetailSchema>;
 export type ArtifactDownloadResponse = z.infer<
   typeof artifactDownloadResponseSchema
 >;

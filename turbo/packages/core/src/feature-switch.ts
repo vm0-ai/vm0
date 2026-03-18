@@ -48,19 +48,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: true,
   },
-  [FeatureSwitchKey.PlatformAgents]: {
+  [FeatureSwitchKey.Agents]: {
     maintainer: "ethan@vm0.ai",
     enabled: true,
   },
-  [FeatureSwitchKey.PlatformSecrets]: {
+  [FeatureSwitchKey.Secrets]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-  [FeatureSwitchKey.PlatformArtifacts]: {
+  [FeatureSwitchKey.Artifacts]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
-  [FeatureSwitchKey.PlatformApiKeys]: {
+  [FeatureSwitchKey.ApiKeys]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },

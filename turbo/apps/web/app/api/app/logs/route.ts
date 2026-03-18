@@ -8,7 +8,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { platformLogsListContract, type PlatformLogStatus } from "@vm0/core";
+import { logsListContract, type LogStatus } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -24,7 +24,7 @@ import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
 import { extractDisplayName } from "../../../../src/lib/agent-compose/extract-display-name";
 
-const log = logger("api:platform:logs");
+const log = logger("api:app:logs");
 
 // Minimal type for extracting framework from compose content
 interface AgentComposeContent {
@@ -36,7 +36,7 @@ interface LogsQuery {
   org?: string;
   agent?: string;
   search?: string;
-  status?: PlatformLogStatus;
+  status?: LogStatus;
   cursor?: string;
   limit?: number;
 }
@@ -121,7 +121,7 @@ function extractFramework(composeContent: unknown): string | null {
   return firstAgent?.framework ?? null;
 }
 
-const router = tsr.router(platformLogsListContract, {
+const router = tsr.router(logsListContract, {
   list: async ({ query }) => {
     initServices();
 
@@ -247,7 +247,7 @@ const router = tsr.router(platformLogsListContract, {
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
           modelProvider: run.modelProvider ?? null,
-          status: run.status as PlatformLogStatus,
+          status: run.status as LogStatus,
           createdAt: run.createdAt.toISOString(),
           startedAt: run.startedAt?.toISOString() ?? null,
           completedAt: run.completedAt?.toISOString() ?? null,
@@ -287,7 +287,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(platformLogsListContract, router, {
+const handler = createHandler(logsListContract, router, {
   errorHandler,
 });
 
