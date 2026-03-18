@@ -77,7 +77,7 @@ configure_runner_group() {
 
 # --- SSH key provisioning ---
 provision_ssh_key() {
-  local key_ref="op://Team/vm0-metal-local/private_key"
+  local key_ref="op://Development/vm0-metal-local/private_key"
   local key_path="$PROJECT_ROOT/.certs/vm0-metal-local.pem"
 
   echo ""
