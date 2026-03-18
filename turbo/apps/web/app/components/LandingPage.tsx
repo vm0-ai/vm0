@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import NextLink from "next/link";
+import { useUser } from "@clerk/nextjs";
+import { getAppUrl } from "../../src/lib/url";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 
@@ -59,6 +61,10 @@ export default function LandingPage() {
     return TYPEWRITER_VARIANTS[idx] ?? TYPEWRITER_VARIANTS[0] ?? [];
   });
   const { lineIndex, charIndex, done } = useTypewriterLines(lines);
+  const { isSignedIn } = useUser();
+
+  const ctaText = isSignedIn ? "Open app" : "Join the beta";
+  const ctaHref = isSignedIn ? getAppUrl() : "/sign-up";
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
@@ -67,7 +73,7 @@ export default function LandingPage() {
       </div>
 
       <main>
-        <section className="relative flex min-h-svh flex-col items-center overflow-hidden px-4 pt-[var(--total-header-height)] sm:px-6">
+        <section className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-5 pt-[var(--total-header-height)] sm:px-6">
           {/* Paper texture background */}
           <div
             className="pointer-events-none absolute inset-0 z-0"
@@ -80,10 +86,9 @@ export default function LandingPage() {
           />
           {/* Desk illustration */}
           <div
-            className="pointer-events-none absolute inset-0 z-[1]"
+            className="pointer-events-none absolute inset-0 z-[1] bg-[length:200%_auto] sm:bg-[length:150%_auto] md:bg-[length:120%_auto]"
             style={{
               backgroundImage: "url('/images/landing-bg.png?v=21')",
-              backgroundSize: "120% auto",
               backgroundPosition: "center bottom",
               backgroundRepeat: "no-repeat",
             }}
@@ -100,8 +105,8 @@ export default function LandingPage() {
             }}
           />
 
-          <div className="relative z-10 mt-[15vh] flex flex-col items-center gap-10">
-            <h1 className="drop-shadow-[0_0_40px_rgba(249,249,249,0.8)] text-center text-[36px] font-normal leading-[1.6] tracking-tight sm:text-[48px] md:text-[56px]">
+          <div className="relative z-10 -mt-[20vh] flex flex-col items-center gap-6 sm:-mt-[18vh] sm:gap-10">
+            <h1 className="drop-shadow-[0_0_40px_rgba(249,249,249,0.8)] text-center text-[28px] font-normal leading-[1.6] tracking-tight sm:text-[48px] md:text-[56px]">
               {lines.map((line, i) => {
                 if (i > lineIndex) return null;
                 const text = i < lineIndex ? line : line.slice(0, charIndex);
@@ -110,14 +115,14 @@ export default function LandingPage() {
                   <span key={i} className="block">
                     {text}
                     {showCursor && (
-                      <span className="ml-0.5 inline-block h-10 w-[3px] translate-y-[4px] animate-pulse bg-[hsl(var(--foreground))]" />
+                      <span className="ml-0.5 inline-block h-7 w-[2px] translate-y-[4px] animate-pulse bg-[hsl(var(--foreground))] sm:h-10 sm:w-[3px]" />
                     )}
                   </span>
                 );
               })}
             </h1>
 
-            <p className="-mt-4 max-w-md text-center text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            <p className="max-w-xs text-center text-xs leading-relaxed text-[hsl(var(--muted-foreground))] sm:-mt-4 sm:max-w-md sm:text-sm">
               Do everything in{" "}
               <span className="font-semibold underline decoration-[hsl(var(--primary))] decoration-1 underline-offset-4">
                 Slack
@@ -130,26 +135,26 @@ export default function LandingPage() {
               people working together, with each other and with AI.
             </p>
 
-            <div className="-mt-4 flex items-center justify-center">
+            <div className="flex flex-wrap items-center justify-center gap-y-2 sm:-mt-4 sm:gap-y-2">
               {[
                 "Secure",
                 "Memory",
                 "Activity logs",
-                "On schedule or proactive",
+                "Proactive",
                 "100+ connectors",
               ].map((item, i) => (
                 <div key={item} className="flex items-center">
                   {i > 0 && (
-                    <div className="mx-5 h-3 w-px bg-[hsl(var(--gray-200))]" />
+                    <div className="mx-3 h-3 w-px bg-[hsl(var(--gray-200))] sm:mx-5" />
                   )}
-                  <span className="text-sm text-[hsl(var(--muted-foreground))]">
+                  <span className="text-xs text-[hsl(var(--muted-foreground))] sm:text-sm">
                     {item}
                   </span>
                 </div>
               ))}
             </div>
 
-            <div className="relative mt-4">
+            <div className="relative mt-4 sm:mt-4">
               <svg className="absolute" width="0" height="0">
                 <filter id="sketchy">
                   <feTurbulence
@@ -199,16 +204,25 @@ export default function LandingPage() {
                   filter: "url(#sketchy)",
                 }}
               />
-              <NextLink
-                href="/sign-up"
-                className="relative inline-flex items-center justify-center rounded-[10px] bg-[hsl(var(--card))] text-sm font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-50))]"
-                style={{
-                  width: "300px",
-                  padding: "10px 40px",
-                }}
-              >
-                Join the beta
-              </NextLink>
+              {isSignedIn ? (
+                <a
+                  href={ctaHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative inline-flex w-[260px] items-center justify-center rounded-[10px] bg-[hsl(var(--card))] text-sm font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-50))] sm:w-[300px]"
+                  style={{ padding: "10px 40px" }}
+                >
+                  {ctaText}
+                </a>
+              ) : (
+                <NextLink
+                  href={ctaHref}
+                  className="relative inline-flex w-[260px] items-center justify-center rounded-[10px] bg-[hsl(var(--card))] text-sm font-medium text-[hsl(var(--foreground))] transition-all hover:bg-[hsl(var(--gray-50))] sm:w-[300px]"
+                  style={{ padding: "10px 40px" }}
+                >
+                  {ctaText}
+                </NextLink>
+              )}
             </div>
           </div>
         </section>

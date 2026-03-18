@@ -21,7 +21,7 @@ const SECTIONS = [
   {
     title: "Starts in seconds",
     description:
-      "We've done extensive optimization under the hood so your agent goes from trigger to running in just a few seconds. Fast, because we put in the hard work at the infrastructure level. You just experience the result.",
+      "We've done extensive optimization under the hood so your agent goes from trigger to running in tens of milliseconds. Fast, because we put in the hard work at the infrastructure level. You just experience the result.",
     detail:
       "Overlayfs with shared read-only rootfs for zero-copy boot. VM memory snapshots pre-warm the entire runtime stack, restore instead of cold start.",
   },
