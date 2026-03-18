@@ -393,6 +393,7 @@ export function ZeroChatComposer({
           await saveSkills();
         } catch (error) {
           throwIfAbort(error);
+          // May fail during onboarding when compose doesn't exist yet — ignore
         }
         toast.success(`${label} connected`);
       })(),
