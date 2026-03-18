@@ -907,7 +907,7 @@ jobs:
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
       - name: Deploy CLI with production dependencies
-        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy /tmp/cli-deploy
+        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted /tmp/cli-deploy
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
