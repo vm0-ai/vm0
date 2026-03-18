@@ -37,7 +37,8 @@ const router = tsr.router(orgDefaultAgentContract, {
 
     const { agentComposeId } = body;
 
-    // Prevent overwriting an existing default agent
+    // Prevent overwriting an existing default agent with a different one.
+    // Allow: unsetting (null), or setting the same agent again (idempotent).
     const client = await clerkClient();
     const clerkOrg = await client.organizations.getOrganization({
       organizationId: org.orgId,
@@ -45,7 +46,11 @@ const router = tsr.router(orgDefaultAgentContract, {
     const existingComposeId = (
       clerkOrg.publicMetadata as Record<string, unknown>
     )?.default_agent_compose_id;
-    if (existingComposeId) {
+    if (
+      existingComposeId &&
+      agentComposeId !== null &&
+      existingComposeId !== agentComposeId
+    ) {
       return {
         status: 409 as const,
         body: {
