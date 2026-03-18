@@ -17,9 +17,6 @@ sync_with_1password() {
     exit 1
   fi
 
-  echo "Signing in to 1Password..."
-  eval "$(op signin)"
-
   echo "Syncing all environment templates..."
 
   while IFS= read -r tpl_file; do

@@ -5,4 +5,6 @@ set -eu
 VM0_WORKSPACES="${VM0_WORKSPACES:-$HOME/workspaces}"
 FOLDER="$VM0_WORKSPACES/$1"
 
-npx @devcontainers/cli exec --workspace-folder "$FOLDER" zsh
+npx @devcontainers/cli exec --workspace-folder "$FOLDER" \
+    --remote-env "OP_SERVICE_ACCOUNT_TOKEN=$VM0_DEV_CONTAINER_SERVICE_ACCOUNT_TOKEN" \
+    zsh

@@ -8,5 +8,4 @@ FOLDER="$VM0_WORKSPACES/$1"
 (cd "$FOLDER" && git pull)
 npx @devcontainers/cli up --workspace-folder "$FOLDER" \
     --dotfiles-repository $VM0_DOTFILES \
-    --remote-env "OP_SERVICE_ACCOUNT_TOKEN=$VM0_DEV_CONTAINER_SERVICE_ACCOUNT_TOKEN" \
     --remove-existing-container
