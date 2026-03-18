@@ -63,6 +63,7 @@ const router = tsr.router(onboardingStatusContract, {
 
     // Check if org exists
     let hasOrg = false;
+    let resolvedOrgId: string | null = null;
     let hasModelProvider = false;
     let hasDefaultAgent = false;
     let defaultAgentName: string | null = null;
@@ -81,6 +82,7 @@ const router = tsr.router(onboardingStatusContract, {
     try {
       const { org: resolvedOrg, member } = await resolveOrg(authCtx, orgSlug);
       hasOrg = true;
+      resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
 
       // Check model provider for this user (not org-wide)
@@ -153,9 +155,13 @@ const router = tsr.router(onboardingStatusContract, {
     } else if (isAdmin) {
       needsOnboarding = !hasModelProvider || !hasDefaultAgent;
     } else {
+      // resolvedOrgId is set whenever hasOrg is true (both come from the same try block)
+      if (!resolvedOrgId) {
+        throw new Error("resolvedOrgId is null despite hasOrg being true");
+      }
       // Read onboarding_done from org_members_cache first, fall back to Clerk API.
       const onboardingDone = await isMemberOnboardingDone(
-        authResult.orgId!,
+        resolvedOrgId,
         authCtx.userId,
       );
       needsOnboarding = !onboardingDone;
