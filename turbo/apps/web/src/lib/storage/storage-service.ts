@@ -310,7 +310,9 @@ export async function prepareStorageManifest(
     return { storages: [], artifact: null, memory: null };
   }
 
-  // Resolve volumes from agent config
+  // Resolve volumes from agent config.
+  // resumeArtifactMountPath is the working directory from the previous run's artifact,
+  // used as workingDir for artifact mount path resolution during checkpoint resume.
   const volumeResult = agentConfig
     ? resolveVolumes(
         agentConfig,

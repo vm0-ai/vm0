@@ -1,7 +1,10 @@
 import { isSupportedFramework } from "@vm0/core";
 import { resolveFrameworkWorkingDir } from "../../framework/framework-config";
 import { badRequest } from "../../errors";
+import { logger } from "../../logger";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
+
+const log = logger("extract-working-dir");
 
 /**
  * Extract working directory from agent config.
@@ -29,8 +32,12 @@ export function extractWorkingDir(config: unknown): string {
   }
 
   // Fallback for legacy stored composes that still have working_dir
+  // TODO: Remove after data migration of old composes to use framework field
   const legacy = (agent as unknown as Record<string, unknown>).working_dir;
   if (typeof legacy === "string") {
+    log.warn(
+      "Using deprecated working_dir field from stored compose. Migrate compose to use framework field instead.",
+    );
     return legacy;
   }
 

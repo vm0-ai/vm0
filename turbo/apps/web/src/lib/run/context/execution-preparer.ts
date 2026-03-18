@@ -7,10 +7,10 @@ import {
   ensureStorageExists,
 } from "../../storage/storage-service";
 import type { StorageManifest } from "../../storage/types";
-import { DEFAULT_PROFILE, isSupportedFramework } from "@vm0/core";
-import { resolveFrameworkWorkingDir } from "../../framework/framework-config";
+import { DEFAULT_PROFILE } from "@vm0/core";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
+import { extractWorkingDir } from "../utils/extract-working-dir";
 import {
   agentComposes,
   agentComposeVersions,
@@ -19,36 +19,6 @@ import { getOrgData } from "../../org/org-cache-service";
 import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");
-
-/**
- * Resolve working directory from agent compose config.
- * Resolves from framework at runtime via framework-config.
- * Falls back to legacy working_dir field for old stored composes.
- */
-function extractWorkingDir(agentCompose: unknown): string {
-  const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) {
-    throw badRequest("Agent compose must have agents configured");
-  }
-  const agents = Object.values(compose.agents);
-  const agent = agents[0];
-  if (!agent) {
-    throw badRequest("Agent compose must have at least one agent");
-  }
-
-  // Resolve from framework (primary path)
-  if (agent.framework && isSupportedFramework(agent.framework)) {
-    return resolveFrameworkWorkingDir(agent.framework);
-  }
-
-  // Fallback for legacy stored composes that still have working_dir
-  const legacy = (agent as unknown as Record<string, unknown>).working_dir;
-  if (typeof legacy === "string") {
-    return legacy;
-  }
-
-  throw badRequest("Agent must have a supported framework configured");
-}
 
 /**
  * Resolve runner group from agent compose config
