@@ -907,7 +907,7 @@ jobs:
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
       - name: Install CLI production dependencies
-        run: cd turbo/apps/cli/dist && npm install --production
+        run: cd turbo/apps/cli/dist && npm install --omit=dev
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
