@@ -118,3 +118,42 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         Ok(ExitCode::FAILURE)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn rejects_invalid_profile_name() {
+        let args = SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            working_dir: "/workspace".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: Some("bad-name".into()),
+            timeout: 1,
+        };
+        let err = run_submit(args).await.unwrap_err();
+        assert!(
+            err.to_string().contains("invalid profile name"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn accepts_valid_profile_name() {
+        let args = SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            working_dir: "/workspace".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: Some("vm0/browser".into()),
+            timeout: 1,
+        };
+        // Should pass validation and fail later (HomePaths or timeout), not on profile.
+        let result = run_submit(args).await;
+        if let Err(e) = &result {
+            assert!(!e.to_string().contains("invalid profile name"), "got: {e}");
+        }
+    }
+}
