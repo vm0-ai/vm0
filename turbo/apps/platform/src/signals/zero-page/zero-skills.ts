@@ -64,6 +64,11 @@ interface ZeroCompose {
 
 const internalComposeReload$ = state(0);
 
+/** Bump to force `zeroCompose$` to re-fetch from the API. */
+export const reloadZeroCompose$ = command(({ set }) => {
+  set(internalComposeReload$, (x) => x + 1);
+});
+
 const zeroCompose$ = computed(async (get) => {
   get(internalComposeReload$);
   const composeId = await get(zeroComposeId$);

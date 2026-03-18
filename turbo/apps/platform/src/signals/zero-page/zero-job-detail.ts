@@ -15,6 +15,7 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import { fetchAgentsList$ } from "./zero-agents.ts";
+import { reloadZeroCompose$ } from "./zero-skills.ts";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 
 const L = logger("ZeroJobDetail");
@@ -459,6 +460,7 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
 
     set(internalAddedSkills$, null);
     await set(fetchZeroJobDetail$);
+    set(reloadZeroCompose$);
     toast.success("Skills saved");
   } catch (error) {
     throwIfAbort(error);
