@@ -2624,7 +2624,7 @@ agents:
       return HttpResponse.json(orgResponse);
     });
 
-    it("should show setup URL when secrets are missing", async () => {
+    it("should show missing secrets warning when secrets are missing", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         yaml.stringify({
@@ -2656,13 +2656,11 @@ agents:
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Missing secrets/variables detected");
-      expect(logCalls).toContain("environment-variables-setup");
-      expect(logCalls).toContain("secrets=");
       expect(logCalls).toContain("API_KEY");
       expect(logCalls).toContain("DB_URL");
     });
 
-    it("should not show setup URL when all secrets exist", async () => {
+    it("should not show missing secrets warning when all secrets exist", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         yaml.stringify({
@@ -2701,10 +2699,9 @@ agents:
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("Missing secrets/variables detected");
-      expect(logCalls).not.toContain("environment-variables-setup");
     });
 
-    it("should show setup URL with both secrets and vars when missing", async () => {
+    it("should show missing secrets and vars when both are missing", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         yaml.stringify({
@@ -2736,11 +2733,11 @@ agents:
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Missing secrets/variables detected");
-      expect(logCalls).toContain("secrets=API_KEY");
-      expect(logCalls).toContain("vars=REGION");
+      expect(logCalls).toContain("API_KEY");
+      expect(logCalls).toContain("REGION");
     });
 
-    it("should include setupUrl in JSON output when items are missing", async () => {
+    it("should not include missing items in JSON output", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         yaml.stringify({
@@ -2773,10 +2770,9 @@ agents:
       const result = JSON.parse(jsonOutputCall![0] as string);
       // In --json mode, missing items check is skipped for performance
       expect(result.missingSecrets).toBeUndefined();
-      expect(result.setupUrl).toBeUndefined();
     });
 
-    it("should not include setupUrl in JSON output when no items missing", async () => {
+    it("should not include missing items in JSON output when no items missing", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         yaml.stringify({
@@ -2809,7 +2805,6 @@ agents:
       const result = JSON.parse(jsonOutputCall![0] as string);
       expect(result.missingSecrets).toBeUndefined();
       expect(result.missingVars).toBeUndefined();
-      expect(result.setupUrl).toBeUndefined();
     });
 
     it("should only show missing items, not already configured ones", async () => {
@@ -2849,7 +2844,7 @@ agents:
       // In --json mode, missing items check is skipped for performance
       expect(result.missingSecrets).toBeUndefined();
       expect(result.missingVars).toBeUndefined();
-      expect(result.setupUrl).toBeUndefined();
+      expect(result).not.toHaveProperty("setupUrl");
     });
 
     it("should not include connector or secrets info in JSON output", async () => {
@@ -2886,7 +2881,7 @@ agents:
       const result = JSON.parse(jsonOutputCall![0] as string);
       // In --json mode, missing items check is skipped for performance
       expect(result.missingSecrets).toBeUndefined();
-      expect(result.setupUrl).toBeUndefined();
+      expect(result).not.toHaveProperty("setupUrl");
     });
   });
 });

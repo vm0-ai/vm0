@@ -19,7 +19,6 @@ import {
   listConnectors,
   resolveSkills,
 } from "../../lib/api";
-import { getApiUrl } from "../../lib/api/config";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
 import {
   downloadGitHubDirectory,
@@ -372,16 +371,9 @@ function mergeSkillVariables(
 /**
  * Derive the app URL from the API URL by replacing "www" with "app" in the hostname.
  */
-function getAppUrl(apiUrl: string): string {
-  const url = new URL(apiUrl);
-  url.hostname = url.hostname.replace("www", "app");
-  return url.origin;
-}
-
 interface MissingItemsResult {
   missingSecrets: string[];
   missingVars: string[];
-  setupUrl?: string;
 }
 
 /**
@@ -429,29 +421,19 @@ async function checkAndPromptMissingItems(
     return { missingSecrets: [], missingVars: [] };
   }
 
-  const apiUrl = await getApiUrl();
-  const appUrl = getAppUrl(apiUrl);
-  const params = new URLSearchParams();
-  if (missingSecrets.length > 0) {
-    params.set("secrets", missingSecrets.join(","));
-  }
-  if (missingVars.length > 0) {
-    params.set("vars", missingVars.join(","));
-  }
-  const setupUrl = `${appUrl}/environment-variables-setup?${params.toString()}`;
-
   if (!options.json) {
     console.log();
-    console.log(
-      chalk.yellow(
-        "⚠ Missing secrets/variables detected. Set them up before running your agent:",
-      ),
-    );
-    console.log(chalk.cyan(`  ${setupUrl}`));
+    console.log(chalk.yellow("⚠ Missing secrets/variables detected:"));
+    if (missingSecrets.length > 0) {
+      console.log(chalk.yellow(`  Secrets: ${missingSecrets.join(", ")}`));
+    }
+    if (missingVars.length > 0) {
+      console.log(chalk.yellow(`  Variables: ${missingVars.join(", ")}`));
+    }
     console.log();
   }
 
-  return { missingSecrets, missingVars, setupUrl };
+  return { missingSecrets, missingVars };
 }
 
 /**
@@ -465,7 +447,6 @@ interface ComposeResult {
   displayName: string;
   missingSecrets?: string[];
   missingVars?: string[];
-  setupUrl?: string;
 }
 
 /**
@@ -521,7 +502,6 @@ async function finalizeCompose(
     ) {
       result.missingSecrets = missingItems.missingSecrets;
       result.missingVars = missingItems.missingVars;
-      result.setupUrl = missingItems.setupUrl;
     }
   }
 
