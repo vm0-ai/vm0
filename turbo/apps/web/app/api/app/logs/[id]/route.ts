@@ -36,9 +36,20 @@ interface ComposeContent {
     string,
     {
       framework?: string;
+      metadata?: { displayName?: string };
     }
   >;
-  metadata?: { displayName?: string };
+}
+
+/**
+ * Extract display name from compose content agents metadata.
+ */
+function extractDisplayName(content: ComposeContent | null): string | null {
+  if (!content?.agents) return null;
+  const firstAgentKey = Object.keys(content.agents)[0];
+  if (!firstAgentKey) return null;
+  const dn = content.agents[firstAgentKey]?.metadata?.displayName;
+  return typeof dn === "string" ? dn : null;
 }
 
 /**
@@ -169,10 +180,7 @@ const router = tsr.router(platformLogsByIdContract, {
         id: run.id,
         sessionId: runResult?.agentSessionId ?? null,
         agentName: compose?.name ?? "unknown",
-        displayName:
-          typeof composeContent?.metadata?.displayName === "string"
-            ? composeContent.metadata.displayName
-            : null,
+        displayName: extractDisplayName(composeContent),
         framework: extractFramework(composeContent),
         modelProvider: run.modelProvider ?? null,
         status: run.status as

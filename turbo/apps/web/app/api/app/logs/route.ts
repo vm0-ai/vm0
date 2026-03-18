@@ -27,8 +27,10 @@ const log = logger("api:platform:logs");
 
 // Minimal type for extracting framework and displayName from compose content
 interface AgentComposeContent {
-  agents: Record<string, { framework: string }>;
-  metadata?: { displayName?: string };
+  agents: Record<
+    string,
+    { framework: string; metadata?: { displayName?: string } }
+  >;
 }
 
 interface LogsQuery {
@@ -126,9 +128,11 @@ function extractFramework(composeContent: unknown): string | null {
  */
 function extractDisplayName(composeContent: unknown): string | null {
   const content = composeContent as AgentComposeContent | null;
-  return typeof content?.metadata?.displayName === "string"
-    ? content.metadata.displayName
-    : null;
+  const agentNames = content?.agents ? Object.keys(content.agents) : [];
+  const firstAgent =
+    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
+  const displayName = firstAgent?.metadata?.displayName;
+  return typeof displayName === "string" ? displayName : null;
 }
 
 const router = tsr.router(platformLogsListContract, {
