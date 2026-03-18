@@ -42,6 +42,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
+# By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
+# root CAs. Replacing it with p11-kit's module makes NSS read from the same
+# store as OpenSSL (/etc/ssl/certs/), so proxy CA certs injected via
+# update-ca-certificates are trusted by all applications.
 RUN MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
     && ln -sf /usr/lib/${MULTIARCH}/pkcs11/p11-kit-trust.so \
               /usr/lib/${MULTIARCH}/nss/libnssckbi.so
