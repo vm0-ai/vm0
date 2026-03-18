@@ -58,8 +58,6 @@ function initEnv() {
       SLACK_REDIRECT_BASE_URL: z.url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
       VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new integrations (format: "org/name")
       VM0_TUNNEL_URL: z.url().optional(), // Tunnel URL for local development webhooks
-      // LLM API
-      OPENROUTER_API_KEY: z.string().min(1).optional(), // OpenRouter API key for logged-in users
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       AHREFS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -239,7 +237,6 @@ function initEnv() {
       SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       VM0_TUNNEL_URL: process.env.VM0_TUNNEL_URL,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
       AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,
       AIRTABLE_OAUTH_CLIENT_ID: process.env.AIRTABLE_OAUTH_CLIENT_ID,
