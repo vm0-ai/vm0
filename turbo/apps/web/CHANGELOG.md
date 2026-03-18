@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.125.1](https://github.com/vm0-ai/vm0/compare/web-v12.125.0...web-v12.125.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* remove secrets/vars validation when deploying a schedule ([#5310](https://github.com/vm0-ai/vm0/issues/5310)) ([1a6b8dc](https://github.com/vm0-ai/vm0/commit/1a6b8dc32a4f74b9327a5c0fd7cf7ebb39ac9a4b)), closes [#5179](https://github.com/vm0-ai/vm0/issues/5179)
+
 ## [12.125.0](https://github.com/vm0-ai/vm0/compare/web-v12.124.1...web-v12.125.0) (2026-03-18)
 
 
