@@ -140,7 +140,7 @@ describe("GET /api/app/logs/[id]", () => {
     await completeTestRun(user.userId, runId);
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${runId}`,
+      `http://localhost:3000/api/app/logs/${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -155,7 +155,7 @@ describe("GET /api/app/logs/[id]", () => {
     await completeTestRun(user.userId, runId);
 
     const request = createTestRequest(
-      `http://localhost:3000/api/platform/logs/${runId}`,
+      `http://localhost:3000/api/app/logs/${runId}`,
     );
     const response = await GET(request);
     const data = await response.json();
