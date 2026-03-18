@@ -21,6 +21,7 @@ interface AgentDefinition {
   environment?: Record<string, string>;
   metadata?: { displayName?: string; sound?: string; description?: string };
   experimental_runner?: { group: string };
+  experimental_capabilities?: string[];
 }
 
 interface VolumeConfig {
