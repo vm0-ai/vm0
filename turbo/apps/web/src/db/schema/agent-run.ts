@@ -34,6 +34,7 @@ export const agentRuns = pgTable(
     ),
     status: varchar("status", { length: 20 }).notNull(),
     prompt: text("prompt").notNull(),
+    appendSystemPrompt: text("append_system_prompt"),
     vars: jsonb("vars"),
     // Secret names for validation (values never stored - must be provided at runtime)
     secretNames: jsonb("secret_names").$type<string[]>(),

@@ -54,6 +54,7 @@ export interface ExecutionContext {
   agentComposeVersionId: string;
   agentCompose: unknown;
   prompt: string;
+  appendSystemPrompt?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>; // Decrypted secrets for environment expansion
   secretConnectorMap?: Record<string, string>; // Secret name → connector type for OAuth refresh

@@ -56,6 +56,7 @@ const router = tsr.router(runsByIdContract, {
           | "failed"
           | "timeout",
         prompt: run.prompt,
+        appendSystemPrompt: run.appendSystemPrompt,
         vars: run.vars as Record<string, string> | undefined,
         sandboxId: run.sandboxId || undefined,
         result: run.result as Record<string, unknown> | undefined,

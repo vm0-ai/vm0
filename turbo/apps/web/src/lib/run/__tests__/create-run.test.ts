@@ -75,6 +75,24 @@ describe("createRun()", () => {
       expect(run!.lastHeartbeatAt).toBeDefined();
     });
 
+    it("should store appendSystemPrompt when provided", async () => {
+      const result = await createRun(
+        baseParams({ appendSystemPrompt: "Your name is Aria." }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+
+      expect(run!.appendSystemPrompt).toBe("Your name is Aria.");
+    });
+
+    it("should default appendSystemPrompt to null when not provided", async () => {
+      const result = await createRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+
+      expect(run!.appendSystemPrompt).toBeNull();
+    });
+
     it("should always set lastHeartbeatAt", async () => {
       const result = await createRun(baseParams());
 

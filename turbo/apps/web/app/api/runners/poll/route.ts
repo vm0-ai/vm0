@@ -69,6 +69,7 @@ const router = tsr.router(runnersPollContract, {
       .select({
         runId: runnerJobQueue.runId,
         prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
         vars: agentRuns.vars,
         resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
@@ -87,6 +88,7 @@ const router = tsr.router(runnersPollContract, {
           job: {
             runId: pendingJob.runId,
             prompt: pendingJob.prompt,
+            appendSystemPrompt: pendingJob.appendSystemPrompt,
             agentComposeVersionId: pendingJob.agentComposeVersionId,
             vars: (pendingJob.vars as Record<string, string>) ?? null,
             checkpointId: pendingJob.resumedFromCheckpointId ?? null,

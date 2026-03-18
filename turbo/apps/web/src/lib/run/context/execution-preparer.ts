@@ -211,6 +211,7 @@ function buildPreparedContext(
 
     // What to run
     prompt: context.prompt,
+    appendSystemPrompt: context.appendSystemPrompt ?? null,
     agentComposeVersionId: context.agentComposeVersionId,
     agentCompose: context.agentCompose,
     cliAgentType,

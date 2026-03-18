@@ -506,6 +506,7 @@ interface BuildContextParams {
   agentCompose?: unknown;
   // Required
   prompt: string;
+  appendSystemPrompt?: string;
   runId: string;
   sandboxToken: string;
   userId: string;
@@ -932,6 +933,7 @@ export async function buildExecutionContext(
       agentComposeVersionId,
       agentCompose,
       prompt: params.prompt,
+      appendSystemPrompt: params.appendSystemPrompt,
       vars,
       secrets,
       secretConnectorMap,
