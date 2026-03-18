@@ -67,7 +67,7 @@ export default function LandingPage() {
       </div>
 
       <main>
-        <section className="relative flex min-h-[calc(100svh-70px)] flex-col items-center justify-center overflow-hidden px-4 pt-[var(--total-header-height)] sm:px-6">
+        <section className="relative flex h-[calc(100svh-var(--total-header-height))] flex-col items-center justify-center overflow-hidden px-4 sm:px-6">
           {/* Paper texture background */}
           <div
             className="pointer-events-none absolute inset-0 z-0"
