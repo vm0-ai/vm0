@@ -3249,20 +3249,18 @@ export async function insertTestCreditPricing(
   options?: {
     inputTokenPrice?: number;
     outputTokenPrice?: number;
-    turnPrice?: number;
   },
 ): Promise<void> {
   initServices();
   const inputTokenPrice = options?.inputTokenPrice ?? 100;
   const outputTokenPrice = options?.outputTokenPrice ?? 200;
-  const turnPrice = options?.turnPrice ?? 50;
 
   await globalThis.services.db
     .insert(creditPricing)
-    .values({ model, inputTokenPrice, outputTokenPrice, turnPrice })
+    .values({ model, inputTokenPrice, outputTokenPrice })
     .onConflictDoUpdate({
       target: creditPricing.model,
-      set: { inputTokenPrice, outputTokenPrice, turnPrice },
+      set: { inputTokenPrice, outputTokenPrice },
     });
 }
 
@@ -3279,7 +3277,7 @@ export async function insertTestCreditUsage(
     model?: string;
     inputTokens?: number;
     outputTokens?: number;
-    numTurns?: number;
+    numEvents?: number;
     status?: string;
     creditsCharged?: number;
   },
@@ -3324,7 +3322,7 @@ export async function insertTestCreditUsage(
       model: options.model ?? "gpt-4",
       inputTokens: options.inputTokens ?? 1000,
       outputTokens: options.outputTokens ?? 500,
-      numTurns: options.numTurns ?? 2,
+      numEvents: options.numEvents ?? 2,
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
     })
@@ -3342,6 +3340,7 @@ export async function findTestCreditUsage(id: string): Promise<
       status: string;
       creditsCharged: number | null;
       processedAt: Date | null;
+      numEvents: number;
     }
   | undefined
 > {
@@ -3352,9 +3351,48 @@ export async function findTestCreditUsage(id: string): Promise<
       status: creditUsage.status,
       creditsCharged: creditUsage.creditsCharged,
       processedAt: creditUsage.processedAt,
+      numEvents: creditUsage.numEvents,
     })
     .from(creditUsage)
     .where(eq(creditUsage.id, id))
+    .limit(1);
+  return record;
+}
+
+/**
+ * Find a credit_usage record by runId.
+ */
+export async function findTestCreditUsageByRunId(runId: string): Promise<
+  | {
+      id: string;
+      runId: string;
+      orgId: string;
+      userId: string;
+      model: string;
+      inputTokens: number;
+      outputTokens: number;
+      numEvents: number;
+      status: string;
+      creditsCharged: number | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [record] = await globalThis.services.db
+    .select({
+      id: creditUsage.id,
+      runId: creditUsage.runId,
+      orgId: creditUsage.orgId,
+      userId: creditUsage.userId,
+      model: creditUsage.model,
+      inputTokens: creditUsage.inputTokens,
+      outputTokens: creditUsage.outputTokens,
+      numEvents: creditUsage.numEvents,
+      status: creditUsage.status,
+      creditsCharged: creditUsage.creditsCharged,
+    })
+    .from(creditUsage)
+    .where(eq(creditUsage.runId, runId))
     .limit(1);
   return record;
 }

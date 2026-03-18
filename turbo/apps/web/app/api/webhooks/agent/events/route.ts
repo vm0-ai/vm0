@@ -14,6 +14,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/axiom";
+import { upsertCreditUsage } from "../../../../../src/lib/credit/credit-usage-service";
 const log = logger("webhook:events");
 
 const router = tsr.router(webhookEventsContract, {
@@ -84,6 +85,9 @@ const router = tsr.router(webhookEventsContract, {
     log.debug(
       `Ingested events ${firstSequence}-${lastSequence} to Axiom for run ${body.runId}`,
     );
+
+    // Upsert credit_usage record for billing
+    await upsertCreditUsage(body.runId, run.orgId, userId, body.events);
 
     return {
       status: 200 as const,

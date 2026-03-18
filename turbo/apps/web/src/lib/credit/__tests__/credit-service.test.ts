@@ -40,20 +40,19 @@ describe("credit-service", () => {
     });
 
     it("processes a single pending record with correct calculation", async () => {
-      // Set up pricing: input=100/M, output=200/M, turn=50
+      // Set up pricing: input=100/M, output=200/M
       await insertTestCreditPricing("gpt-4", {
         inputTokenPrice: 100,
         outputTokenPrice: 200,
-        turnPrice: 50,
       });
 
-      // Insert usage: 1000 input, 500 output, 2 turns
+      // Insert usage: 1000 input, 500 output
       const usageId = await insertTestCreditUsage(user.orgId, {
         userId: user.userId,
         model: "gpt-4",
         inputTokens: 1000,
         outputTokens: 500,
-        numTurns: 2,
+        numEvents: 2,
       });
 
       // Mock Clerk to return current balance
@@ -65,21 +64,20 @@ describe("credit-service", () => {
 
       await processOrgCredits(user.orgId);
 
-      // Verify calculation:
+      // Verify calculation (purely token-based):
       // input: ceil(1000 * 100 / 1_000_000) = ceil(0.1) = 1
       // output: ceil(500 * 200 / 1_000_000) = ceil(0.1) = 1
-      // turns: 2 * 50 = 100
-      // total: 1 + 1 + 100 = 102
+      // total: 1 + 1 = 2
       const record = await findTestCreditUsage(usageId);
       expect(record!.status).toBe("processed");
-      expect(record!.creditsCharged).toBe(102);
+      expect(record!.creditsCharged).toBe(2);
       expect(record!.processedAt).toBeInstanceOf(Date);
 
       // Verify Clerk was called with correct balance deduction
       expect(
         client.organizations.updateOrganizationMetadata,
       ).toHaveBeenCalledWith(user.orgId, {
-        privateMetadata: { credits: 10000 - 102 },
+        privateMetadata: { credits: 10000 - 2 },
       });
 
       // Verify org cache was invalidated
@@ -91,7 +89,6 @@ describe("credit-service", () => {
       await insertTestCreditPricing("gpt-4", {
         inputTokenPrice: 1_000_000,
         outputTokenPrice: 1_000_000,
-        turnPrice: 10,
       });
 
       // Insert two usage records
@@ -100,14 +97,14 @@ describe("credit-service", () => {
         model: "gpt-4",
         inputTokens: 100,
         outputTokens: 100,
-        numTurns: 1,
+        numEvents: 1,
       });
       const id2 = await insertTestCreditUsage(user.orgId, {
         userId: user.userId,
         model: "gpt-4",
         inputTokens: 200,
         outputTokens: 200,
-        numTurns: 2,
+        numEvents: 2,
       });
 
       const client = await clerkClient();
@@ -118,21 +115,21 @@ describe("credit-service", () => {
 
       await processOrgCredits(user.orgId);
 
-      // Record 1: ceil(100*1M/1M) + ceil(100*1M/1M) + 1*10 = 100 + 100 + 10 = 210
+      // Record 1: ceil(100*1M/1M) + ceil(100*1M/1M) = 100 + 100 = 200
       const record1 = await findTestCreditUsage(id1);
       expect(record1!.status).toBe("processed");
-      expect(record1!.creditsCharged).toBe(210);
+      expect(record1!.creditsCharged).toBe(200);
 
-      // Record 2: ceil(200*1M/1M) + ceil(200*1M/1M) + 2*10 = 200 + 200 + 20 = 420
+      // Record 2: ceil(200*1M/1M) + ceil(200*1M/1M) = 200 + 200 = 400
       const record2 = await findTestCreditUsage(id2);
       expect(record2!.status).toBe("processed");
-      expect(record2!.creditsCharged).toBe(420);
+      expect(record2!.creditsCharged).toBe(400);
 
-      // Total: 210 + 420 = 630
+      // Total: 200 + 400 = 600
       expect(
         client.organizations.updateOrganizationMetadata,
       ).toHaveBeenCalledWith(user.orgId, {
-        privateMetadata: { credits: 50000 - 630 },
+        privateMetadata: { credits: 50000 - 600 },
       });
     });
 
@@ -182,7 +179,6 @@ describe("credit-service", () => {
       await insertTestCreditPricing("gpt-4", {
         inputTokenPrice: 1_000_000,
         outputTokenPrice: 1_000_000,
-        turnPrice: 0,
       });
 
       const usageId = await insertTestCreditUsage(user.orgId, {
@@ -190,7 +186,7 @@ describe("credit-service", () => {
         model: "gpt-4",
         inputTokens: 100,
         outputTokens: 100,
-        numTurns: 0,
+        numEvents: 0,
       });
 
       const client = await clerkClient();
@@ -222,7 +218,6 @@ describe("credit-service", () => {
       await insertTestCreditPricing("gpt-4", {
         inputTokenPrice: 1_000_000,
         outputTokenPrice: 1_000_000,
-        turnPrice: 0,
       });
 
       // Create a second org
@@ -235,14 +230,14 @@ describe("credit-service", () => {
         model: "gpt-4",
         inputTokens: 100,
         outputTokens: 0,
-        numTurns: 0,
+        numEvents: 0,
       });
       const id2 = await insertTestCreditUsage(org2Id, {
         userId: user.userId,
         model: "gpt-4",
         inputTokens: 200,
         outputTokens: 0,
-        numTurns: 0,
+        numEvents: 0,
       });
 
       const client = await clerkClient();
