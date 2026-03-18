@@ -631,7 +631,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <SimpleLink
-                href={`/zero/activity/${message.runId}`}
+                href={`/activity/${message.runId}`}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
                 aria-label="View run logs"
               >
