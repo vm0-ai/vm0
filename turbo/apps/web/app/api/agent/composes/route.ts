@@ -24,12 +24,13 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import {
-  resolveOrg,
-  getOrgDataOrNull,
-} from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
-import { canAccessCompose } from "../../../../src/lib/agent/compose-access";
+import {
+  isNotFound,
+  isForbidden,
+  isBadRequest,
+} from "../../../../src/lib/errors";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
@@ -40,19 +41,26 @@ const router = tsr.router(composesMainContract, {
       requiredCapability: "agent:read",
     });
     if (isAuthError(authCtx)) return authCtx;
-    const { userId } = authCtx;
 
-    // Resolve org: for cross-org lookups (org member agents), skip membership
-    // check and rely on canAccessCompose for authorization instead.
-    // isCrossOrgLookup is true when an explicit org param is provided,
-    // which requires canAccessCompose authorization below.
-    const isCrossOrgLookup = Boolean(query.org);
+    // Resolve org and verify membership. For cross-org lookups (?org=),
+    // resolveOrg verifies the caller is a member of the target org,
+    // replacing the previous canAccessCompose authorization.
+    // ?org= supports both slug and orgId formats.
     let orgId: string;
-    if (query.org) {
-      // Try slug first, fall back to orgId (callers may pass either via ?org=)
-      const orgData =
-        (await getOrgBySlug(query.org)) ?? (await getOrgDataOrNull(query.org));
-      if (!orgData) {
+    try {
+      if (query.org) {
+        // Try slug first, fall back to orgId (callers may pass either via ?org=)
+        const orgBySlug = await getOrgBySlug(query.org);
+        const { org } = orgBySlug
+          ? await resolveOrg(authCtx, query.org)
+          : await resolveOrg(authCtx, undefined, query.org);
+        orgId = org.orgId;
+      } else {
+        const { org } = await resolveOrg(authCtx);
+        orgId = org.orgId;
+      }
+    } catch (error) {
+      if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {
         return {
           status: 404 as const,
           body: {
@@ -63,10 +71,7 @@ const router = tsr.router(composesMainContract, {
           },
         };
       }
-      orgId = orgData.orgId;
-    } else {
-      const { org: resolvedOrg } = await resolveOrg(authCtx);
-      orgId = resolvedOrg.orgId;
+      throw error;
     }
 
     // JOIN compose + version in a single query
@@ -101,22 +106,6 @@ const router = tsr.router(composesMainContract, {
           },
         },
       };
-    }
-
-    // Check permission to access this compose (for cross-org lookups)
-    if (isCrossOrgLookup) {
-      const hasAccess = await canAccessCompose(userId, result);
-      if (!hasAccess) {
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              message: `Agent compose not found: ${query.name}`,
-              code: "NOT_FOUND",
-            },
-          },
-        };
-      }
     }
 
     return {

@@ -17,6 +17,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { canAccessCompose } from "../../../../../src/lib/agent/compose-access";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
   listS3Objects,
   deleteS3Objects,
@@ -62,8 +63,13 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    // Check permission to access this compose
-    const hasAccess = await canAccessCompose(userId, result);
+    // Check permission to access this compose.
+    // Sandbox tokens (with capabilities) are already authorized via requireAuth;
+    // use the compose's orgId since sandbox tokens lack org context.
+    const orgId = authResult.capabilities
+      ? result.orgId
+      : (await resolveOrg(authResult)).org.orgId;
+    const hasAccess = canAccessCompose(userId, orgId, result);
     if (!hasAccess) {
       return {
         status: 404 as const,
