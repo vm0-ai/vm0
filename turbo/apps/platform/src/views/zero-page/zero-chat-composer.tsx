@@ -225,9 +225,13 @@ function ConnectorsPopoverButton({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-64 p-0 rounded-xl">
+      <PopoverContent
+        side="top"
+        align="start"
+        className="w-64 p-0 rounded-xl flex flex-col max-h-[min(60vh,400px)]"
+      >
         {connectors.length > 0 && (
-          <div className="p-2">
+          <div className="p-2 overflow-y-auto min-h-0">
             <div className="flex flex-col">
               {connectors.map((item) => (
                 <div
@@ -280,7 +284,7 @@ function ConnectorsPopoverButton({
         )}
         <div
           className={cn(
-            "p-2 flex flex-col",
+            "p-2 flex flex-col shrink-0",
             connectors.length > 0 && "border-t border-border/50",
           )}
         >
