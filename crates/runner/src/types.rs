@@ -90,8 +90,6 @@ pub struct ExecutionContext {
     #[allow(dead_code)]
     #[serde(default)]
     pub experimental_profile: Option<String>,
-    #[serde(default)]
-    pub disallowed_tools: Option<Vec<String>>,
 }
 
 /// A single firewall config with its name, ref key, and API entries.
