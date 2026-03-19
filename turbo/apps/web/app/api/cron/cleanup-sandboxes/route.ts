@@ -11,7 +11,6 @@ import {
   agentComposes,
 } from "../../../../src/db/schema/agent-compose";
 import { and, eq, inArray, lt, isNotNull } from "drizzle-orm";
-import { composeJobs } from "../../../../src/db/schema/compose-job";
 import { exportJobs } from "../../../../src/db/schema/export-job";
 import { deleteS3Objects } from "../../../../src/lib/s3/s3-client";
 import {
@@ -32,8 +31,6 @@ const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000;
 const DEBUG_HEARTBEAT_TIMEOUT_MS = 60 * 60 * 1000;
 // Pending timeout: 5 minutes (for runs stuck in pending state)
 const PENDING_TIMEOUT_MS = 5 * 60 * 1000;
-// Compose job timeout: 10 minutes (2x the 5-minute sandbox timeout)
-const COMPOSE_JOB_TIMEOUT_MS = 10 * 60 * 1000;
 // Compose names starting with this prefix use debug timeout
 const DEBUG_COMPOSE_PREFIX = "debug-";
 
@@ -270,61 +267,6 @@ const router = tsr.router(cronCleanupSandboxesContract, {
       }
     }
 
-    // Compose job cleanup: fail stuck compose jobs that exceeded the timeout.
-    // Compose jobs rely on a webhook callback from E2B sandbox to update status.
-    // When the webhook fails, jobs get stuck in pending/running and block the
-    // user from creating new jobs (partial unique index: one active job per user).
-    const composeJobCutoffTime = new Date(now - COMPOSE_JOB_TIMEOUT_MS);
-    const staleComposeJobs = await globalThis.services.db
-      .select({
-        id: composeJobs.id,
-        status: composeJobs.status,
-        createdAt: composeJobs.createdAt,
-      })
-      .from(composeJobs)
-      .where(
-        and(
-          inArray(composeJobs.status, ["pending", "running"]),
-          lt(composeJobs.createdAt, composeJobCutoffTime),
-        ),
-      );
-
-    let composeJobsCleaned = 0;
-    let composeJobErrors = 0;
-    if (staleComposeJobs.length > 0) {
-      log.debug(
-        `Found ${staleComposeJobs.length} stale compose jobs to cleanup`,
-      );
-
-      for (const job of staleComposeJobs) {
-        try {
-          await globalThis.services.db
-            .update(composeJobs)
-            .set({
-              status: "failed",
-              completedAt: new Date(),
-              error: "Compose job timed out (no completion callback received)",
-            })
-            .where(
-              and(
-                eq(composeJobs.id, job.id),
-                inArray(composeJobs.status, ["pending", "running"]),
-              ),
-            );
-
-          log.debug(
-            `Cleaned up stale compose job ${job.id} (status: ${job.status}, created: ${job.createdAt.toISOString()})`,
-          );
-          composeJobsCleaned++;
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          log.error(`Failed to cleanup compose job ${job.id}: ${errorMessage}`);
-          composeJobErrors++;
-        }
-      }
-    }
-
     // Export job cleanup
     const { exportJobsCleaned, exportJobsStuck } = await cleanupExportJobs(now);
 
@@ -334,8 +276,8 @@ const router = tsr.router(cronCleanupSandboxesContract, {
         cleaned: results.filter((r) => r.status === "cleaned").length,
         errors: results.filter((r) => r.status === "error").length,
         results,
-        composeJobsCleaned,
-        composeJobErrors,
+        composeJobsCleaned: 0,
+        composeJobErrors: 0,
         exportJobsCleaned,
         exportJobsStuck,
       },

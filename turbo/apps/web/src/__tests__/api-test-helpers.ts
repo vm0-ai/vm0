@@ -10,10 +10,7 @@ import { vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
-import {
-  generateSandboxToken,
-  generateComposeJobToken,
-} from "../lib/auth/sandbox-token";
+import { generateSandboxToken } from "../lib/auth/sandbox-token";
 import { server } from "../mocks/server";
 import { reloadEnv } from "../env";
 import { randomBytes } from "crypto";
@@ -21,7 +18,6 @@ import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
 import { runnerJobQueue } from "../db/schema/runner-job-queue";
-import { composeJobs } from "../db/schema/compose-job";
 import { exportJobs } from "../db/schema/export-job";
 import { storages, storageVersions } from "../db/schema/storage";
 import { storageVersionLineage } from "../db/schema/storage-version-lineage";
@@ -196,21 +192,6 @@ export async function createTestSandboxToken(
 // ============================================================================
 // CLI Token Test Helpers
 // ============================================================================
-
-/**
- * Create a test compose job JWT token for webhook endpoints
- * This generates a valid JWT that can be used to authenticate compose job sandbox requests
- *
- * @param userId - The user ID to encode in the token
- * @param jobId - The compose job ID to encode in the token
- * @returns A valid JWT token string
- */
-export async function createTestComposeJobToken(
-  userId: string,
-  jobId: string,
-): Promise<string> {
-  return generateComposeJobToken(userId, jobId);
-}
 
 /**
  * Create a test CLI token in the database for authentication testing
@@ -1917,59 +1898,6 @@ export async function createTestConnectorSession(
     .returning();
 
   return session!;
-}
-
-// ============================================================================
-// Compose Job Test Helpers
-// ============================================================================
-
-/**
- * Insert a compose job directly into DB for test setup.
- * Uses direct DB insert because compose jobs are created by internal
- * server logic (sandbox spawn), not by a user-facing API route.
- *
- * @returns The compose job ID
- */
-export async function createTestComposeJob(options: {
-  status: string;
-  createdAt: Date;
-  userId?: string;
-}): Promise<string> {
-  const [row] = await globalThis.services.db
-    .insert(composeJobs)
-    .values({
-      userId: options.userId ?? "test-user",
-      githubUrl: "https://github.com/test/repo",
-      status: options.status,
-      createdAt: options.createdAt,
-    })
-    .returning({ id: composeJobs.id });
-  return row!.id;
-}
-
-/**
- * Look up a compose job's status and error for verification.
- */
-export async function findTestComposeJob(
-  jobId: string,
-): Promise<{ status: string; error: string | null } | undefined> {
-  const [row] = await globalThis.services.db
-    .select({ status: composeJobs.status, error: composeJobs.error })
-    .from(composeJobs)
-    .where(eq(composeJobs.id, jobId));
-  return row;
-}
-
-/**
- * Delete all pending and running compose jobs.
- * Used by cleanup cron tests to ensure test isolation, since the cron
- * route queries all jobs globally regardless of user.
- */
-export async function deleteStaleTestComposeJobs(): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .delete(composeJobs)
-    .where(inArray(composeJobs.status, ["pending", "running"]));
 }
 
 /**

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
 import { GET, PUT } from "../[name]/route";
 import {
@@ -12,17 +12,6 @@ import {
   clearSkillsData,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-
-vi.mock("@e2b/code-interpreter", () => ({
-  Sandbox: {
-    create: vi.fn().mockResolvedValue({
-      sandboxId: "mock-sandbox-id",
-      files: { write: vi.fn().mockResolvedValue(undefined) },
-      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
-    }),
-    connect: vi.fn(),
-  },
-}));
 
 const context = testContext();
 

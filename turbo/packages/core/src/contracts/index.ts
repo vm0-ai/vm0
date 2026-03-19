@@ -378,25 +378,6 @@ export {
 } from "./logs";
 
 export {
-  composeJobsMainContract,
-  composeJobsByIdContract,
-  webhookComposeCompleteContract,
-  composeJobStatusSchema,
-  composeJobResultSchema,
-  composeJobSourceSchema,
-  createComposeJobRequestSchema,
-  composeJobResponseSchema,
-  type ComposeJobsMainContract,
-  type ComposeJobsByIdContract,
-  type WebhookComposeCompleteContract,
-  type ComposeJobStatus,
-  type ComposeJobResult,
-  type ComposeJobSource,
-  type CreateComposeJobRequest,
-  type ComposeJobResponse,
-} from "./compose-jobs";
-
-export {
   connectorsMainContract,
   connectorsByTypeContract,
   connectorSessionsContract,
