@@ -18,7 +18,7 @@ import {
 } from "../../../../../../src/lib/slack/blocks";
 import type { AskUserQuestion } from "../../../../../../src/lib/slack/blocks";
 import {
-  extractRunOutput,
+  extractAllRunOutputs,
   formatAskUserDenials,
   buildDeepLinksFromFlags,
 } from "../../../../../../src/lib/run/extract-run-output";
@@ -30,7 +30,10 @@ import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
 import { logger } from "../../../../../../src/lib/logger";
 import type { WebClient } from "@slack/web-api";
-import type { PermissionDenial } from "../../../../../../src/lib/run/extract-run-output";
+import type {
+  PermissionDenial,
+  RunOutput,
+} from "../../../../../../src/lib/run/extract-run-output";
 
 const log = logger("callback:slack-org");
 
@@ -150,7 +153,7 @@ async function postAskUserInteractiveCard(
 function buildResponseText(
   status: string,
   error: string | undefined,
-  resultData: Awaited<ReturnType<typeof extractRunOutput>>,
+  resultData: RunOutput,
 ): string {
   if (status !== "completed") {
     return `Error: ${error ?? "Agent execution failed."}`;
@@ -281,21 +284,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createSlackClient(botToken);
 
-  const resultData = await extractRunOutput(runId, error);
-  const hasAskUserDenials = resultData.askUserDenials.length > 0;
-  const responseText = buildResponseText(status, error, resultData);
+  const allOutputs = await extractAllRunOutputs(runId, error);
+  const lastOutput = allOutputs[allOutputs.length - 1]!;
+  const hasAskUserDenials = lastOutput.askUserDenials.length > 0;
 
   // Resolve session before posting interactive card
   const resolvedSessionId = await saveOrgThreadSession(payload, runId, status);
 
-  // Post text response
-  if (responseText) {
-    const logsUrl = buildLogsUrl(runId);
-    const deepLinks = buildDeepLinksFromFlags(
-      resultData,
-      getAppUrl(),
-      payload.agentName,
-    );
+  // Post each result as a separate Slack reply (in order)
+  for (let i = 0; i < allOutputs.length; i++) {
+    const output = allOutputs[i]!;
+    const responseText = buildResponseText(status, error, output);
+    if (!responseText) continue;
+
+    const isLast = i === allOutputs.length - 1;
+    const logsUrl = isLast ? buildLogsUrl(runId) : undefined;
+    const deepLinks = isLast
+      ? buildDeepLinksFromFlags(output, getAppUrl(), payload.agentName)
+      : [];
+
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(responseText, logsUrl, deepLinks),
@@ -306,7 +313,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (hasAskUserDenials) {
     await postAskUserInteractiveCard(
       client,
-      resultData,
+      lastOutput,
       payload,
       runId,
       resolvedSessionId,

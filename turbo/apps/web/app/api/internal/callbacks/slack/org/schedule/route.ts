@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
+import type { Block, KnownBlock } from "@slack/web-api";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../../src/lib/callback";
 import { decryptSecretValue } from "../../../../../../../src/lib/crypto/secrets-encryption";
@@ -10,7 +11,7 @@ import {
   createSlackClient,
   postMessage,
 } from "../../../../../../../src/lib/slack/client";
-import { getRunOutputText } from "../../../../../../../src/lib/run/extract-run-output";
+import { getAllRunOutputTexts } from "../../../../../../../src/lib/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
@@ -58,6 +59,81 @@ function extractAgentSessionId(result: unknown): string | undefined {
     return result.agentSessionId;
   }
   return undefined;
+}
+
+/**
+ * Post all result texts as a threaded Slack conversation.
+ *
+ * The first message includes the header; subsequent results are threaded replies.
+ * Only the last message includes the audit link.
+ */
+async function postScheduleResults(
+  client: ReturnType<typeof createSlackClient>,
+  channel: string,
+  displayName: string,
+  texts: string[],
+  logsUrl: string,
+): Promise<{ messageTs: string | undefined; dmChannelId: string | undefined }> {
+  let messageTs: string | undefined;
+  let dmChannelId: string | undefined;
+
+  for (let i = 0; i < texts.length; i++) {
+    const rawOutput = texts[i]!;
+    const truncatedOutput =
+      rawOutput.length > 2000 ? `${rawOutput.slice(0, 2000)}…` : rawOutput;
+
+    const isFirst = i === 0;
+    const isLast = i === texts.length - 1;
+
+    const blocks: (Block | KnownBlock)[] = [];
+
+    if (isFirst) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `:white_check_mark: *Scheduled run for \`${displayName}\` completed*`,
+        },
+      });
+    }
+
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: truncatedOutput },
+    });
+
+    if (isLast) {
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `<${logsUrl}|Audit> · Reply in this thread to continue the conversation`,
+          },
+        ],
+      });
+    }
+
+    const threadTs = messageTs;
+    const result = await postMessage(
+      client,
+      dmChannelId ?? channel,
+      isFirst
+        ? `Scheduled run for "${displayName}" completed`
+        : truncatedOutput,
+      {
+        ...(threadTs ? { threadTs } : {}),
+        blocks,
+      },
+    );
+
+    if (isFirst) {
+      messageTs = result.ts;
+      dmChannelId = result.channel;
+    }
+  }
+
+  return { messageTs, dmChannelId };
 }
 
 /**
@@ -131,44 +207,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const displayName = agentInfo?.displayName ?? composeName;
 
   if (status === "completed") {
-    const rawOutput = await getRunOutputText(runId);
-    const truncatedOutput = rawOutput
-      ? rawOutput.length > 2000
-        ? `${rawOutput.slice(0, 2000)}…`
-        : rawOutput
-      : "Task completed successfully.";
+    const allTexts = await getAllRunOutputTexts(runId);
+    if (allTexts.length === 0) {
+      allTexts.push("Task completed successfully.");
+    }
 
-    const { ts: messageTs, channel: dmChannelId } = await postMessage(
+    const { messageTs, dmChannelId } = await postScheduleResults(
       client,
       connection.slackUserId,
-      `Scheduled run for "${displayName}" completed`,
-      {
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `:white_check_mark: *Scheduled run for \`${displayName}\` completed*`,
-            },
-          },
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: truncatedOutput,
-            },
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `<${logsUrl}|Audit> · Reply in this thread to continue the conversation`,
-              },
-            ],
-          },
-        ],
-      },
+      displayName,
+      allTexts,
+      logsUrl,
     );
 
     // Create thread session so user can reply to continue
