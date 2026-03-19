@@ -4,6 +4,8 @@
 @import "tailwindcss";
 @import "@vm0/ui/styles/globals.css";
 
+@plugin "@tailwindcss/typography";
+
 /* Include @vm0/ui components in Tailwind's content scanning */
 @source "../../../../../packages/ui/src/**/*.tsx";
 
@@ -842,4 +844,17 @@ details[open] > summary > span:first-child {
     transparent 48%
   );
   background-size: 100% 100%;
+}
+
+/* --- Tiptap Instructions Editor ---------------------------------------- */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+}
+
+.tiptap:focus {
+  outline: none;
 }

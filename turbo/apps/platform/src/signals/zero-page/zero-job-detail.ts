@@ -182,7 +182,7 @@ export const zeroJobInstructionsDirty$ = computed((get) => {
   const edited = get(editedContent$);
   const instructions = get(instructionsState$).instructions;
   const savedBody = instructions?.content ?? "";
-  return edited !== null && edited !== savedBody;
+  return edited !== null && edited.trim() !== savedBody.trim();
 });
 
 export const setZeroJobEditedContent$ = command(({ set }, value: string) => {
@@ -201,10 +201,11 @@ export const zeroJobBuildError$ = computed((get) => get(internalBuildError$));
 
 export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
-  const edited = get(editedContent$);
-  if (!detail?.content || edited === null) {
+  const raw = get(editedContent$);
+  if (!detail?.content || raw === null) {
     return;
   }
+  const edited = raw.trim();
 
   set(jobBuilding$, true);
   set(internalBuildError$, null);

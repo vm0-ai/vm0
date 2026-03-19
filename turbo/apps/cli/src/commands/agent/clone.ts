@@ -41,7 +41,6 @@ function cleanComposeContent(
       cleaned.experimental_capabilities = agent.experimental_capabilities;
     if (agent.experimental_firewalls)
       cleaned.experimental_firewalls = agent.experimental_firewalls;
-    if (agent.metadata) cleaned.metadata = agent.metadata;
     agents[name] = cleaned;
   }
 

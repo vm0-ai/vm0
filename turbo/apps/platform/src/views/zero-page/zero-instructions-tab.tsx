@@ -1,6 +1,6 @@
-import { Card, CardContent } from "@vm0/ui";
 import type { AgentInstructions } from "../../signals/zero-page/agent-types.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
+import { TiptapInstructionsEditor } from "./tiptap-instructions-editor.tsx";
 
 interface ZeroInstructionsTabProps {
   instructions: AgentInstructions | null;
@@ -30,43 +30,35 @@ export function ZeroInstructionsTab({
   const rawContent = instructions?.content ?? "";
   const displayContent = editedContent ?? rawContent;
 
+  // Use rawContent as key so the editor remounts when saved content changes
+  // (initial fetch or after discard). During typing, editedContent changes
+  // but rawContent stays the same, so the editor keeps its internal state.
+  const editorKey = rawContent;
+
   return (
     <div className="mx-auto max-w-[900px]">
-      <Card className="zero-card-white">
-        <CardContent className="py-7">
-          {loading ? (
-            <div className="space-y-4 animate-pulse">
-              <div className="h-5 w-40 rounded bg-muted/50" />
-              <div className="h-64 w-full rounded bg-muted/30" />
-            </div>
-          ) : fetchError ? (
-            <p className="text-sm text-destructive">{fetchError}</p>
-          ) : (
-            <>
-              <textarea
-                aria-label="Agent instructions editor"
-                className="px-1 text-sm font-mono text-foreground w-full min-h-[200px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap leading-relaxed"
-                value={displayContent}
-                onChange={(e) => onEdit(e.target.value)}
-                rows={Math.max(10, displayContent.split("\n").length + 2)}
-                disabled={isBuilding}
-                placeholder="Write instructions for your agent..."
-              />
-              <div className="flex items-center gap-2 pt-5 mt-5 border-t border-border/60">
-                <p className="text-muted-foreground text-xs">
-                  Edit the instructions directly to customize your agent&apos;s
-                  behavior.
-                </p>
-                {buildError && (
-                  <span className="text-xs font-medium text-destructive">
-                    {buildError}
-                  </span>
-                )}
-              </div>
-            </>
+      {loading ? (
+        <div className="space-y-4 animate-pulse">
+          <div className="h-5 w-40 rounded bg-muted/50" />
+          <div className="h-64 w-full rounded bg-muted/30" />
+        </div>
+      ) : fetchError ? (
+        <p className="text-sm text-destructive">{fetchError}</p>
+      ) : (
+        <>
+          <TiptapInstructionsEditor
+            key={editorKey}
+            initialContent={displayContent}
+            onChange={onEdit}
+            disabled={isBuilding}
+          />
+          {buildError && (
+            <p className="text-xs font-medium text-destructive mt-3">
+              {buildError}
+            </p>
           )}
-        </CardContent>
-      </Card>
+        </>
+      )}
 
       {(isDirty || isBuilding) && (
         <ZeroUnsavedBar

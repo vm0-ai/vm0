@@ -1,8 +1,9 @@
 import type { MouseEvent } from "react";
-import { useCCState } from "ccstate-react/experimental";
+import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
 import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/zero-page/zero-chat.ts";
+import { onRef } from "../../signals/utils.ts";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
@@ -44,6 +45,23 @@ export function ImageLightbox({
   url: string;
   onClose: () => void;
 }) {
+  const escapeKeydown$ = useCommand(
+    (_, el: HTMLDivElement, signal: AbortSignal) => {
+      document.addEventListener(
+        "keydown",
+        (e: KeyboardEvent) => {
+          if (e.key === "Escape") {
+            onClose();
+          }
+        },
+        { signal },
+      );
+      el.focus();
+    },
+  );
+  const dialogRef$ = onRef(escapeKeydown$);
+  const dialogRef = useSet(dialogRef$);
+
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -52,7 +70,9 @@ export function ImageLightbox({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      ref={dialogRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"

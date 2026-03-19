@@ -46,7 +46,11 @@
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
       "ignore": ["custom-eslint/**"],
-      "ignoreDependencies": ["tailwindcss", "typescript-eslint"]
+      "ignoreDependencies": [
+        "tailwindcss",
+        "typescript-eslint",
+        "@tailwindcss/typography"
+      ]
     },
     "packages/core": {
       "entry": [
