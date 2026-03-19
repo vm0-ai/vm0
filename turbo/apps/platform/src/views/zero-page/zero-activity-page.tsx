@@ -55,7 +55,7 @@ const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
-const TRIGGER_SOURCE_LABELS: Record<TriggerSource, string> = {
+const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   schedule: "Schedule",
   chat: "Chat",
   slack: "Slack",

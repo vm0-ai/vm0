@@ -62,7 +62,7 @@ function isVisibleMessage(
   return (message.toolOperations?.length ?? 0) > 0;
 }
 
-const TRIGGER_SOURCE_LABELS: Record<TriggerSource, string> = {
+const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   schedule: "Schedule",
   chat: "Chat",
   slack: "Slack",

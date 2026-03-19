@@ -20,6 +20,7 @@ import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { eq, and } from "drizzle-orm";
+import { inferTriggerSource } from "../../../../../src/lib/run/trigger-source";
 
 interface RunResult {
   checkpointId?: string;
@@ -180,7 +181,7 @@ const router = tsr.router(logsByIdContract, {
         displayName: agentDisplayName ?? null,
         framework: extractFramework(composeContent),
         modelProvider: run.modelProvider ?? null,
-        triggerSource: run.triggerSource ?? null,
+        triggerSource: inferTriggerSource(run),
         status: run.status as
           | "pending"
           | "running"
