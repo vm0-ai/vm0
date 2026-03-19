@@ -428,11 +428,59 @@ describe("zero-chat signals", () => {
       expect(messages[1]?.role).toBe("assistant");
     });
 
-    it("should set error on run creation failure", async () => {
+    it("should surface API error message on run creation failure", async () => {
       useChatThreadHandlers();
       server.use(
         http.post("*/api/agent/runs", () => {
-          return new HttpResponse(null, { status: 500 });
+          return HttpResponse.json(
+            { error: { message: "Some API error", code: "BAD_REQUEST" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      await setup();
+      await context.store.set(sendZeroChatMessage$, "Hello");
+
+      const messages = context.store.get(zeroChatMessages$);
+      const lastMsg = messages[messages.length - 1];
+      expect(lastMsg?.error).toBe("Some API error");
+      expect(context.store.get(zeroChatSending$)).toBeFalsy();
+    });
+
+    it("should surface provider incompatibility error message", async () => {
+      useChatThreadHandlers();
+      server.use(
+        http.post("*/api/agent/runs", () => {
+          return HttpResponse.json(
+            {
+              error: {
+                message:
+                  "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key",
+                code: "PROVIDER_INCOMPATIBLE",
+              },
+            },
+            { status: 400 },
+          );
+        }),
+      );
+
+      await setup();
+      await context.store.set(sendZeroChatMessage$, "Hello");
+
+      const messages = context.store.get(zeroChatMessages$);
+      const lastMsg = messages[messages.length - 1];
+      expect(lastMsg?.error).toBe(
+        "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key",
+      );
+      expect(context.store.get(zeroChatSending$)).toBeFalsy();
+    });
+
+    it("should fall back to generic message when error body is unparseable", async () => {
+      useChatThreadHandlers();
+      server.use(
+        http.post("*/api/agent/runs", () => {
+          return new HttpResponse("Bad Gateway", { status: 502 });
         }),
       );
 

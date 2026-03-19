@@ -133,14 +133,14 @@ function updateQueuePosition(
   }
 }
 
-/** Start an agent run and return the runId, or null on failure. */
+/** Start an agent run and return the runId. Throws on failure with the API error message. */
 async function startAgentRun(
   fetchFn: typeof fetch,
   composeId: string,
   prompt: string,
   sessionId?: string | null,
   modelProvider?: string | null,
-): Promise<string | null> {
+): Promise<string> {
   const body: Record<string, string> = {
     agentComposeId: composeId,
     prompt: prompt.trim(),
@@ -160,7 +160,10 @@ async function startAgentRun(
   });
 
   if (!response.ok) {
-    return null;
+    const errBody = (await response.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    throw new Error(errBody?.error?.message ?? "Failed to start agent run");
   }
 
   const data = (await response.json()) as { runId: string };
@@ -934,19 +937,6 @@ export const sendZeroChatMessage$ = command(
         sessionId,
         modelProvider,
       );
-
-      if (!runId) {
-        set(internalMessages$, (prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            error: "Failed to start agent run",
-          };
-          return updated;
-        });
-        set(internalSending$, false);
-        return;
-      }
 
       // Associate run to thread (must complete before polling so refresh works)
       await addRunToThread(fetchFn, threadId, runId);
