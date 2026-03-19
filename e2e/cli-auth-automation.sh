@@ -19,7 +19,7 @@
 #
 # Uses agent-browser's built-in browser. No CDP/Playwright needed.
 
-set -euo pipefail
+set -eu
 
 OTP="424242"
 BASE_URL=""
@@ -62,10 +62,21 @@ echo "   URL:   $BASE_URL"
 echo "   Email: $EMAIL"
 
 # ---------------------------------------------------------------------------
+# Helper: check if string contains pattern (avoids pipe + grep in conditionals)
+# ---------------------------------------------------------------------------
+contains() {
+  [[ "$(echo "$1" | grep -ci "$2" 2>/dev/null)" -gt 0 ]]
+}
+
+# ---------------------------------------------------------------------------
 # Helper: extract @eN ref from a snapshot line containing [ref=eN]
 # ---------------------------------------------------------------------------
 extract_ref() {
-  echo "$1" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//'
+  local match
+  match=$(echo "$1" | grep -oE '\[ref=e[0-9]+\]' 2>/dev/null | head -1) || true
+  if [[ -n "$match" ]]; then
+    echo "$match" | sed 's/\[ref=/@/; s/\]//'
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -122,9 +133,10 @@ enter_otp() {
 # Helper: generate random password for sign-up
 # ---------------------------------------------------------------------------
 generate_password() {
-  # 20-char password: alphanumeric + symbols, satisfies Clerk requirements
-  head -c 32 /dev/urandom | base64 | tr -d '/+\n' | head -c 16
-  echo '!Aa1'  # append guaranteed symbol + upper + lower + digit
+  # 20-char password: random alphanumeric + guaranteed symbol/upper/lower/digit
+  local rand
+  rand=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n')
+  echo "${rand:0:16}!Aa1"
 }
 
 # ---------------------------------------------------------------------------
@@ -194,7 +206,7 @@ else
   echo "⏳ Waiting for Clerk sign-in form..."
   for i in $(seq 1 10); do
     SNAP=$(agent-browser snapshot -i 2>/dev/null || true)
-    if echo "$SNAP" | grep -qi "email address"; then
+    if contains "$SNAP" "email address"; then
       break
     fi
     if [[ $i -eq 10 ]]; then
@@ -226,7 +238,7 @@ else
     SNAP=$(full_snapshot)
 
     # ----- Account not found → sign-up flow -----
-    if echo "$SNAP" | grep -qi "couldn.t find your account"; then
+    if contains "$SNAP" "couldn.t find your account"; then
       echo "📝 Account not found — switching to sign-up flow"
 
       SIGNUP_PASSWORD="$(generate_password)"
@@ -236,7 +248,7 @@ else
 
       for i in $(seq 1 10); do
         SNAP=$(agent-browser snapshot -i 2>/dev/null || true)
-        if echo "$SNAP" | grep -qi "email address"; then
+        if contains "$SNAP" "email address"; then
           break
         fi
         if [[ $i -eq 10 ]]; then
@@ -260,7 +272,7 @@ else
       agent-browser wait 5000
 
       SNAP=$(full_snapshot)
-      if echo "$SNAP" | grep -qi "verify your email\|verification code"; then
+      if contains "$SNAP" "verify your email\|verification code"; then
         enter_otp "$OTP"
       fi
 
@@ -273,7 +285,7 @@ else
       echo "✅ Sign-up successful!"
 
     # ----- "Use another method" → email code flow -----
-    elif echo "$SNAP" | grep -qi "use another method"; then
+    elif contains "$SNAP" "use another method"; then
       echo "🔄 Clicking 'Use another method'"
       SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
       UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'use another method' || true)")
@@ -299,7 +311,7 @@ else
       echo "✅ Sign-in via email code successful!"
 
     # ----- Already on verification code screen -----
-    elif echo "$SNAP" | grep -qi "verify\|verification code\|enter.*code"; then
+    elif contains "$SNAP" "verify\|verification code\|enter.*code"; then
       enter_otp "$OTP"
 
       REDIRECT_URL=$(wait_for_redirect_away "sign-in" 15 || true)
@@ -311,7 +323,7 @@ else
       echo "✅ Sign-in via OTP successful!"
 
     # ----- Password required (enter empty and try email code) -----
-    elif echo "$SNAP" | grep -qi "password"; then
+    elif contains "$SNAP" "password"; then
       echo "🔄 Password screen detected — looking for email code option"
       SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
 
@@ -360,7 +372,7 @@ agent-browser wait 3000
 echo "⏳ Waiting for device code form..."
 for i in $(seq 1 10); do
   SNAP=$(agent-browser snapshot -i 2>/dev/null || true)
-  if echo "$SNAP" | grep -qi "Authorize.*CLI\|Verify"; then
+  if contains "$SNAP" "Authorize.*CLI\|Verify"; then
     break
   fi
   if [[ $i -eq 10 ]]; then
