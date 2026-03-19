@@ -299,10 +299,18 @@ export type ModelProviderFramework = "claude-code";
  * Firewall gateway configs for model providers with static base URLs.
  * Used to auto-generate firewall entries that protect API tokens from sandbox exposure.
  * Excluded: aws-bedrock (dynamic region URLs + SigV4), azure-foundry (dynamic resource URLs).
+ *
+ * Base URL is derived from environmentMapping.ANTHROPIC_BASE_URL (or https://api.anthropic.com
+ * for providers without environmentMapping like anthropic-api-key and claude-code-oauth-token).
  */
+const ANTHROPIC_API_BASE = "https://api.anthropic.com";
+
+function getProviderBaseUrl(type: ModelProviderType): string {
+  return getEnvironmentMapping(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE;
+}
+
 function mpFirewall(
-  type: string,
-  base: string,
+  type: ModelProviderType,
   authHeaders: Record<string, string>,
   placeholders: Record<string, string>,
 ): ExpandedFirewallConfig {
@@ -311,7 +319,7 @@ function mpFirewall(
     ref: "__auto__",
     apis: [
       {
-        base,
+        base: getProviderBaseUrl(type),
         auth: { headers: authHeaders },
         permissions: [{ name: "all", rules: ["ANY /{path*}"] }],
       },
@@ -328,7 +336,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
   "anthropic-api-key": mpFirewall(
     "anthropic-api-key",
-    "https://api.anthropic.com",
     { "x-api-key": "${{ secrets.ANTHROPIC_API_KEY }}" },
     {
       ANTHROPIC_API_KEY:
@@ -341,7 +348,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   //   Example: sk-ant-oat01-xxxxx...xxxxx (1-year OAuth token)
   "claude-code-oauth-token": mpFirewall(
     "claude-code-oauth-token",
-    "https://api.anthropic.com",
     { Authorization: "Bearer ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" },
     {
       CLAUDE_CODE_OAUTH_TOKEN:
@@ -354,7 +360,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   //   Example: 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
   "openrouter-api-key": mpFirewall(
     "openrouter-api-key",
-    "https://openrouter.ai/api",
     { Authorization: "Bearer ${{ secrets.OPENROUTER_API_KEY }}" },
     {
       OPENROUTER_API_KEY:
@@ -365,7 +370,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   // Source: no authoritative format documentation found; using generic sk- prefix
   "moonshot-api-key": mpFirewall(
     "moonshot-api-key",
-    "https://api.moonshot.ai/anthropic",
     { Authorization: "Bearer ${{ secrets.MOONSHOT_API_KEY }}" },
     { MOONSHOT_API_KEY: "sk-vm0placeholder000000000000000000" },
   ),
@@ -374,7 +378,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   //   https://platform.minimax.io/docs/api-reference/api-overview
   "minimax-api-key": mpFirewall(
     "minimax-api-key",
-    "https://api.minimax.io/anthropic",
     { Authorization: "Bearer ${{ secrets.MINIMAX_API_KEY }}" },
     { MINIMAX_API_KEY: "eyvm0placeholder000000000000000000000000000000000000" },
   ),
@@ -383,7 +386,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
   "deepseek-api-key": mpFirewall(
     "deepseek-api-key",
-    "https://api.deepseek.com/anthropic",
     { Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}" },
     { DEEPSEEK_API_KEY: "sk-vm0placeholder000000000000000000" },
   ),
@@ -391,7 +393,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   // Source: no authoritative format documentation found; using generic sk- prefix
   "zai-api-key": mpFirewall(
     "zai-api-key",
-    "https://api.z.ai/api/anthropic",
     { Authorization: "Bearer ${{ secrets.ZAI_API_KEY }}" },
     { ZAI_API_KEY: "sk-vm0placeholder000000000000000000" },
   ),
@@ -399,7 +400,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
   // Source: no authoritative format documentation found; Vercel gateway proxies upstream providers
   "vercel-ai-gateway": mpFirewall(
     "vercel-ai-gateway",
-    "https://ai-gateway.vercel.sh",
     { Authorization: "Bearer ${{ secrets.VERCEL_AI_GATEWAY_API_KEY }}" },
     { VERCEL_AI_GATEWAY_API_KEY: "sk-vm0placeholder000000000000000000" },
   ),
