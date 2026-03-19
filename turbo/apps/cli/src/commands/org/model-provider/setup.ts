@@ -11,6 +11,7 @@ import {
   MODEL_PROVIDER_TYPES,
   hasModelSelection,
   hasAuthMethods,
+  getSelectableProviderTypes,
   type ModelProviderType,
 } from "@vm0/core";
 import { isInteractive } from "../../../lib/utils/prompt-utils";
@@ -37,24 +38,23 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   const { modelProviders: configuredProviders } = await listOrgModelProviders();
   const configuredTypes = new Set(configuredProviders.map((p) => p.type));
 
-  // Build provider choices with configuration status
-  const annotatedChoices = Object.entries(MODEL_PROVIDER_TYPES).map(
-    ([type, config]) => {
-      const isConfigured = configuredTypes.has(type as ModelProviderType);
-      const isExperimental = hasAuthMethods(type as ModelProviderType);
-      let title: string = config.label;
-      if (isConfigured) {
-        title = `${title} ✓`;
-      }
-      if (isExperimental) {
-        title = `${title} ${chalk.dim("(experimental)")}`;
-      }
-      return {
-        title,
-        value: type as ModelProviderType,
-      };
-    },
-  );
+  // Build provider choices with configuration status (only selectable providers)
+  const annotatedChoices = getSelectableProviderTypes().map((type) => {
+    const config = MODEL_PROVIDER_TYPES[type];
+    const isConfigured = configuredTypes.has(type);
+    const isExperimental = hasAuthMethods(type);
+    let title: string = config.label;
+    if (isConfigured) {
+      title = `${title} ✓`;
+    }
+    if (isExperimental) {
+      title = `${title} ${chalk.dim("(experimental)")}`;
+    }
+    return {
+      title,
+      value: type,
+    };
+  });
 
   const typeResponse = await prompts(
     {

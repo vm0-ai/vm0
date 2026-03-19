@@ -20,6 +20,7 @@ import { ProviderIcon } from "./components/settings/provider-icons";
 import {
   MODEL_PROVIDER_TYPES,
   isProviderVisible,
+  getSelectableProviderTypes,
   type ConnectorType,
   type ModelProviderType,
 } from "@vm0/core";
@@ -180,18 +181,8 @@ class WelcomeAnimation extends Component<
   }
 }
 
-const MODEL_PROVIDER_LIST: readonly ModelProviderType[] = [
-  "claude-code-oauth-token",
-  "anthropic-api-key",
-  "openrouter-api-key",
-  "moonshot-api-key",
-  "minimax-api-key",
-  "deepseek-api-key",
-  "zai-api-key",
-  "vercel-ai-gateway",
-  "azure-foundry",
-  "aws-bedrock",
-];
+const MODEL_PROVIDER_LIST: readonly ModelProviderType[] =
+  getSelectableProviderTypes();
 
 function OnboardingSkillCard({
   label,

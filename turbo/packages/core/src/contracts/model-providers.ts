@@ -296,6 +296,27 @@ export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
 export type ModelProviderFramework = "claude-code";
 
 /**
+ * Provider types hidden from user-facing selection UI.
+ * These providers cannot support token replacement (firewall-based secret protection),
+ * so new selection is blocked until a proper solution is implemented.
+ * Existing configurations continue to work at runtime.
+ */
+const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
+  "aws-bedrock",
+  "azure-foundry",
+]);
+
+/**
+ * Get provider types available for user selection.
+ * Excludes providers that are hidden from the UI (e.g., those without token replacement support).
+ */
+export function getSelectableProviderTypes(): ModelProviderType[] {
+  return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
+    (type) => !HIDDEN_PROVIDER_TYPES.has(type),
+  );
+}
+
+/**
  * Firewall gateway configs for model providers with static base URLs.
  * Used to auto-generate firewall entries that protect API tokens from sandbox exposure.
  * Excluded: aws-bedrock (dynamic region URLs + SigV4), azure-foundry (dynamic resource URLs).

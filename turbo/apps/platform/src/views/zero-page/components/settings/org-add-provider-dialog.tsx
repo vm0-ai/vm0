@@ -6,8 +6,8 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import {
-  MODEL_PROVIDER_TYPES,
   isProviderVisible,
+  getSelectableProviderTypes,
   type ModelProviderType,
 } from "@vm0/core";
 import {
@@ -19,7 +19,7 @@ import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
 function getProviderTypes(): ModelProviderType[] {
-  return Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[];
+  return getSelectableProviderTypes();
 }
 
 function ProviderCardInDialog({
