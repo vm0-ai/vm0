@@ -45,7 +45,6 @@ describe("credit-service", () => {
         model: "gpt-4",
         inputTokens: 1000,
         outputTokens: 500,
-        numEvents: 2,
       });
 
       await processOrgCredits(user.orgId);
@@ -76,14 +75,12 @@ describe("credit-service", () => {
         model: "gpt-4",
         inputTokens: 100,
         outputTokens: 100,
-        numEvents: 1,
       });
       const id2 = await insertTestCreditUsage(user.orgId, {
         userId: user.userId,
         model: "gpt-4",
         inputTokens: 200,
         outputTokens: 200,
-        numEvents: 2,
       });
 
       await processOrgCredits(user.orgId);
@@ -159,7 +156,6 @@ describe("credit-service", () => {
         outputTokens: 500,
         cacheReadInputTokens: 6000,
         cacheCreationInputTokens: 18000,
-        numEvents: 2,
       });
 
       await processOrgCredits(user.orgId);
@@ -193,7 +189,6 @@ describe("credit-service", () => {
         modelProvider: "anthropic-api-key",
         inputTokens: 100,
         outputTokens: 100,
-        numEvents: 1,
       });
 
       // Insert usage with different provider — no charge
@@ -203,7 +198,6 @@ describe("credit-service", () => {
         modelProvider: "user-own-key",
         inputTokens: 100,
         outputTokens: 100,
-        numEvents: 1,
       });
 
       await processOrgCredits(user.orgId);
@@ -232,7 +226,6 @@ describe("credit-service", () => {
         model: "gpt-4",
         inputTokens: 100,
         outputTokens: 100,
-        numEvents: 0,
       });
 
       // Run two concurrent calls
@@ -269,14 +262,12 @@ describe("credit-service", () => {
         model: "gpt-4",
         inputTokens: 100,
         outputTokens: 0,
-        numEvents: 0,
       });
       const id2 = await insertTestCreditUsage(org2Id, {
         userId: user.userId,
         model: "gpt-4",
         inputTokens: 200,
         outputTokens: 0,
-        numEvents: 0,
       });
 
       const count = await processStaleCredits();

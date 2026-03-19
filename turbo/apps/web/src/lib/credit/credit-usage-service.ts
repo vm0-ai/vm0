@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { logger } from "../logger";
 
@@ -8,6 +7,7 @@ interface EventData {
   type: string;
   subtype?: string;
   model?: string;
+  uuid?: string;
   total_cost_usd?: number;
   usage?: {
     input_tokens?: number;
@@ -20,7 +20,8 @@ interface EventData {
   };
 }
 
-interface ResultData {
+interface ResultEventData {
+  uuid: string | undefined;
   inputTokens: number;
   outputTokens: number;
   cacheReadInputTokens: number;
@@ -38,33 +39,27 @@ function extractModel(events: EventData[]): string | undefined {
   return undefined;
 }
 
-function extractResultData(events: EventData[]): ResultData | undefined {
-  for (const event of events) {
-    if (event.type === "result") {
-      return {
-        inputTokens: event.usage?.input_tokens ?? 0,
-        outputTokens: event.usage?.output_tokens ?? 0,
-        cacheReadInputTokens: event.usage?.cache_read_input_tokens ?? 0,
-        cacheCreationInputTokens: event.usage?.cache_creation_input_tokens ?? 0,
-        webSearchRequests:
-          event.usage?.server_tool_use?.web_search_requests ?? 0,
-        costUsd:
-          event.total_cost_usd !== undefined
-            ? String(event.total_cost_usd)
-            : null,
-      };
-    }
-  }
-  return undefined;
+function extractAllResults(events: EventData[]): ResultEventData[] {
+  return events
+    .filter((e) => e.type === "result")
+    .map((e) => ({
+      uuid: e.uuid,
+      inputTokens: e.usage?.input_tokens ?? 0,
+      outputTokens: e.usage?.output_tokens ?? 0,
+      cacheReadInputTokens: e.usage?.cache_read_input_tokens ?? 0,
+      cacheCreationInputTokens: e.usage?.cache_creation_input_tokens ?? 0,
+      webSearchRequests: e.usage?.server_tool_use?.web_search_requests ?? 0,
+      costUsd: e.total_cost_usd !== undefined ? String(e.total_cost_usd) : null,
+    }));
 }
 
 /**
- * Upsert a credit_usage record from an events webhook batch.
+ * Upsert credit_usage records from an events webhook batch.
  *
+ * - Only creates rows for result events (one row per result)
+ * - Each row is keyed by (runId, resultUuid) for deduplication
  * - Scans events for system init event to extract model
- * - Scans events for result event to extract token usage
- * - Inserts or updates the credit_usage row keyed by runId
- * - Increments numEvents by the batch size on each call
+ * - On conflict (same runId + resultUuid), updates token data (idempotent for retries)
  */
 export async function upsertCreditUsage(
   runId: string,
@@ -75,48 +70,49 @@ export async function upsertCreditUsage(
 ): Promise<void> {
   const db = globalThis.services.db;
 
-  const model = extractModel(events);
-  const result = extractResultData(events);
+  const results = extractAllResults(events);
+  if (results.length === 0) {
+    return;
+  }
 
-  await db
-    .insert(creditUsage)
-    .values({
+  const model = extractModel(events) ?? "unknown";
+
+  for (const result of results) {
+    await db
+      .insert(creditUsage)
+      .values({
+        runId,
+        resultUuid: result.uuid ?? null,
+        orgId,
+        userId,
+        model,
+        modelProvider: modelProvider ?? "",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadInputTokens: result.cacheReadInputTokens,
+        cacheCreationInputTokens: result.cacheCreationInputTokens,
+        webSearchRequests: result.webSearchRequests,
+        costUsd: result.costUsd,
+      })
+      .onConflictDoUpdate({
+        target: [creditUsage.runId, creditUsage.resultUuid],
+        set: {
+          model,
+          modelProvider: modelProvider ?? "",
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          cacheReadInputTokens: result.cacheReadInputTokens,
+          cacheCreationInputTokens: result.cacheCreationInputTokens,
+          webSearchRequests: result.webSearchRequests,
+          costUsd: result.costUsd,
+        },
+      });
+
+    log.debug("Upserted credit usage", {
       runId,
-      orgId,
-      userId,
-      model: model ?? "unknown",
-      modelProvider: modelProvider ?? "",
-      numEvents: events.length,
-      inputTokens: result?.inputTokens ?? 0,
-      outputTokens: result?.outputTokens ?? 0,
-      cacheReadInputTokens: result?.cacheReadInputTokens ?? 0,
-      cacheCreationInputTokens: result?.cacheCreationInputTokens ?? 0,
-      webSearchRequests: result?.webSearchRequests ?? 0,
-      costUsd: result?.costUsd ?? null,
-    })
-    .onConflictDoUpdate({
-      target: creditUsage.runId,
-      set: {
-        numEvents: sql`${creditUsage.numEvents} + ${events.length}`,
-        ...(model !== undefined ? { model } : {}),
-        ...(modelProvider !== undefined ? { modelProvider } : {}),
-        ...(result !== undefined
-          ? {
-              inputTokens: result.inputTokens,
-              outputTokens: result.outputTokens,
-              cacheReadInputTokens: result.cacheReadInputTokens,
-              cacheCreationInputTokens: result.cacheCreationInputTokens,
-              webSearchRequests: result.webSearchRequests,
-              costUsd: result.costUsd,
-            }
-          : {}),
-      },
+      resultUuid: result.uuid,
+      model,
+      hasTokenData: true,
     });
-
-  log.debug("Upserted credit usage", {
-    runId,
-    numEvents: events.length,
-    model: model ?? "unchanged",
-    hasTokenData: result !== undefined,
-  });
+  }
 }

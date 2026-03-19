@@ -12,7 +12,7 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
-  findTestCreditUsageByRunId,
+  findTestCreditUsagesByRunId,
   setTestRunModelProvider,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -567,7 +567,7 @@ describe("POST /api/webhooks/agent/events", () => {
   // ============================================
 
   describe("Credit Usage", () => {
-    it("should create credit_usage record on init event", async () => {
+    it("should not create credit_usage record for non-result events", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
@@ -595,96 +595,12 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const record = await findTestCreditUsageByRunId(testRunId);
-      expect(record).toBeDefined();
-      expect(record!.model).toBe("claude-sonnet-4-20250514");
-      expect(record!.numEvents).toBe(1);
-      expect(record!.orgId).toBe(user.orgId);
-      expect(record!.userId).toBe(user.userId);
-      expect(record!.status).toBe("pending");
-    });
-
-    it("should increment numEvents on each webhook call", async () => {
-      // First batch: 3 events
-      const request1 = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/events",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            events: [
-              {
-                type: "system",
-                subtype: "init",
-                model: "gpt-4",
-                sequenceNumber: 0,
-                timestamp: Date.now(),
-                data: {},
-              },
-              {
-                type: "assistant",
-                sequenceNumber: 1,
-                timestamp: Date.now(),
-                data: {},
-              },
-              {
-                type: "user",
-                sequenceNumber: 2,
-                timestamp: Date.now(),
-                data: {},
-              },
-            ],
-          }),
-        },
-      );
-
-      const response1 = await POST(request1);
-      expect(response1.status).toBe(200);
-
-      let record = await findTestCreditUsageByRunId(testRunId);
-      expect(record!.numEvents).toBe(3);
-
-      // Second batch: 2 events
-      const request2 = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/events",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            events: [
-              {
-                type: "assistant",
-                sequenceNumber: 3,
-                timestamp: Date.now(),
-                data: {},
-              },
-              {
-                type: "user",
-                sequenceNumber: 4,
-                timestamp: Date.now(),
-                data: {},
-              },
-            ],
-          }),
-        },
-      );
-
-      const response2 = await POST(request2);
-      expect(response2.status).toBe(200);
-
-      record = await findTestCreditUsageByRunId(testRunId);
-      expect(record!.numEvents).toBe(5);
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(0);
     });
 
     it("should set token data on result event", async () => {
+      const resultUuid = randomUUID();
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
@@ -698,6 +614,7 @@ describe("POST /api/webhooks/agent/events", () => {
             events: [
               {
                 type: "result",
+                uuid: resultUuid,
                 sequenceNumber: 0,
                 timestamp: Date.now(),
                 total_cost_usd: 0.11752625,
@@ -720,19 +637,108 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const record = await findTestCreditUsageByRunId(testRunId);
-      expect(record).toBeDefined();
-      expect(record!.inputTokens).toBe(15000);
-      expect(record!.outputTokens).toBe(3000);
-      expect(record!.cacheReadInputTokens).toBe(6285);
-      expect(record!.cacheCreationInputTokens).toBe(18247);
-      expect(record!.webSearchRequests).toBe(2);
-      expect(record!.costUsd).toBe("0.11752625");
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.resultUuid).toBe(resultUuid);
+      expect(record.inputTokens).toBe(15000);
+      expect(record.outputTokens).toBe(3000);
+      expect(record.cacheReadInputTokens).toBe(6285);
+      expect(record.cacheCreationInputTokens).toBe(18247);
+      expect(record.webSearchRequests).toBe(2);
+      expect(record.costUsd).toBe("0.11752625");
     });
 
     it("should store modelProvider from agent run in credit_usage", async () => {
       // Set modelProvider on the existing test run
       await setTestRunModelProvider(testRunId, "anthropic-api-key");
+
+      const resultUuid = randomUUID();
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "system",
+                subtype: "init",
+                model: "claude-sonnet-4-20250514",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+              {
+                type: "result",
+                uuid: resultUuid,
+                sequenceNumber: 1,
+                timestamp: Date.now(),
+                usage: {
+                  input_tokens: 100,
+                  output_tokens: 50,
+                },
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.model).toBe("claude-sonnet-4-20250514");
+      expect(record.modelProvider).toBe("anthropic-api-key");
+    });
+
+    it("should use 'unknown' model when no init event in batch", async () => {
+      const resultUuid = randomUUID();
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "result",
+                uuid: resultUuid,
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                usage: {
+                  input_tokens: 100,
+                  output_tokens: 50,
+                },
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(1);
+      expect(records[0]!.model).toBe("unknown");
+    });
+
+    it("should create separate rows for multiple result events", async () => {
+      const uuid1 = randomUUID();
+      const uuid2 = randomUUID();
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
@@ -753,6 +759,30 @@ describe("POST /api/webhooks/agent/events", () => {
                 timestamp: Date.now(),
                 data: {},
               },
+              {
+                type: "result",
+                uuid: uuid1,
+                sequenceNumber: 1,
+                timestamp: Date.now(),
+                total_cost_usd: 0.05,
+                usage: {
+                  input_tokens: 1000,
+                  output_tokens: 200,
+                },
+                data: {},
+              },
+              {
+                type: "result",
+                uuid: uuid2,
+                sequenceNumber: 2,
+                timestamp: Date.now(),
+                total_cost_usd: 0.08,
+                usage: {
+                  input_tokens: 2000,
+                  output_tokens: 400,
+                },
+                data: {},
+              },
             ],
           }),
         },
@@ -761,14 +791,26 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const record = await findTestCreditUsageByRunId(testRunId);
-      expect(record).toBeDefined();
-      expect(record!.model).toBe("claude-sonnet-4-20250514");
-      expect(record!.modelProvider).toBe("anthropic-api-key");
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(2);
+
+      const byUuid = new Map(records.map((r) => [r.resultUuid, r]));
+      const r1 = byUuid.get(uuid1)!;
+      expect(r1.inputTokens).toBe(1000);
+      expect(r1.outputTokens).toBe(200);
+      expect(r1.costUsd).toBe("0.05000000");
+
+      const r2 = byUuid.get(uuid2)!;
+      expect(r2.inputTokens).toBe(2000);
+      expect(r2.outputTokens).toBe(400);
+      expect(r2.costUsd).toBe("0.08000000");
     });
 
-    it("should use 'unknown' model when no init event in batch", async () => {
-      const request = createTestRequest(
+    it("should deduplicate result events with same UUID", async () => {
+      const resultUuid = randomUUID();
+
+      // First request with result event
+      const request1 = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
           method: "POST",
@@ -780,25 +822,66 @@ describe("POST /api/webhooks/agent/events", () => {
             runId: testRunId,
             events: [
               {
-                type: "assistant",
+                type: "result",
+                uuid: resultUuid,
                 sequenceNumber: 0,
                 timestamp: Date.now(),
-                data: { text: "Hello" },
+                total_cost_usd: 0.05,
+                usage: {
+                  input_tokens: 1000,
+                  output_tokens: 200,
+                },
+                data: {},
               },
             ],
           }),
         },
       );
 
-      const response = await POST(request);
-      expect(response.status).toBe(200);
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
 
-      const record = await findTestCreditUsageByRunId(testRunId);
-      expect(record).toBeDefined();
-      expect(record!.model).toBe("unknown");
+      // Second request with same UUID but updated data (retry)
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "result",
+                uuid: resultUuid,
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                total_cost_usd: 0.05,
+                usage: {
+                  input_tokens: 1000,
+                  output_tokens: 200,
+                },
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+
+      // Should have single row (deduplicated)
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(1);
+      expect(records[0]!.resultUuid).toBe(resultUuid);
     });
 
-    it("should not create duplicate rows on concurrent calls", async () => {
+    it("should not create duplicate rows on concurrent calls with same UUID", async () => {
+      const resultUuid = randomUUID();
+
       const makeRequest = () =>
         createTestRequest("http://localhost:3000/api/webhooks/agent/events", {
           method: "POST",
@@ -810,9 +893,14 @@ describe("POST /api/webhooks/agent/events", () => {
             runId: testRunId,
             events: [
               {
-                type: "assistant",
+                type: "result",
+                uuid: resultUuid,
                 sequenceNumber: 0,
                 timestamp: Date.now(),
+                usage: {
+                  input_tokens: 100,
+                  output_tokens: 50,
+                },
                 data: {},
               },
             ],
@@ -828,10 +916,9 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(response1.status).toBe(200);
       expect(response2.status).toBe(200);
 
-      // Should have a single record with numEvents = 2
-      const record = await findTestCreditUsageByRunId(testRunId);
-      expect(record).toBeDefined();
-      expect(record!.numEvents).toBe(2);
+      // Should have a single record (deduplicated by runId + resultUuid)
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(1);
     });
   });
 });

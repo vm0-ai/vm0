@@ -3342,7 +3342,7 @@ export async function insertTestCreditUsage(
     cacheCreationInputTokens?: number;
     webSearchRequests?: number;
     costUsd?: string;
-    numEvents?: number;
+    resultUuid?: string;
     status?: string;
     creditsCharged?: number;
   },
@@ -3382,6 +3382,7 @@ export async function insertTestCreditUsage(
     .insert(creditUsage)
     .values({
       runId: run!.id,
+      resultUuid: options.resultUuid ?? null,
       orgId,
       userId,
       model: options.model ?? "gpt-4",
@@ -3392,7 +3393,6 @@ export async function insertTestCreditUsage(
       cacheCreationInputTokens: options.cacheCreationInputTokens ?? 0,
       webSearchRequests: options.webSearchRequests ?? 0,
       costUsd: options.costUsd ?? null,
-      numEvents: options.numEvents ?? 2,
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
     })
@@ -3410,7 +3410,6 @@ export async function findTestCreditUsage(id: string): Promise<
       status: string;
       creditsCharged: number | null;
       processedAt: Date | null;
-      numEvents: number;
     }
   | undefined
 > {
@@ -3421,7 +3420,6 @@ export async function findTestCreditUsage(id: string): Promise<
       status: creditUsage.status,
       creditsCharged: creditUsage.creditsCharged,
       processedAt: creditUsage.processedAt,
-      numEvents: creditUsage.numEvents,
     })
     .from(creditUsage)
     .where(eq(creditUsage.id, id))
@@ -3430,33 +3428,34 @@ export async function findTestCreditUsage(id: string): Promise<
 }
 
 /**
- * Find a credit_usage record by runId.
+ * Find credit_usage records by runId.
+ * Returns all records for the run (one per result event).
  */
-export async function findTestCreditUsageByRunId(runId: string): Promise<
-  | {
-      id: string;
-      runId: string;
-      orgId: string;
-      userId: string;
-      model: string;
-      modelProvider: string;
-      inputTokens: number;
-      outputTokens: number;
-      cacheReadInputTokens: number;
-      cacheCreationInputTokens: number;
-      webSearchRequests: number;
-      costUsd: string | null;
-      numEvents: number;
-      status: string;
-      creditsCharged: number | null;
-    }
-  | undefined
+export async function findTestCreditUsagesByRunId(runId: string): Promise<
+  Array<{
+    id: string;
+    runId: string;
+    resultUuid: string | null;
+    orgId: string;
+    userId: string;
+    model: string;
+    modelProvider: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreationInputTokens: number;
+    webSearchRequests: number;
+    costUsd: string | null;
+    status: string;
+    creditsCharged: number | null;
+  }>
 > {
   initServices();
-  const [record] = await globalThis.services.db
+  return globalThis.services.db
     .select({
       id: creditUsage.id,
       runId: creditUsage.runId,
+      resultUuid: creditUsage.resultUuid,
       orgId: creditUsage.orgId,
       userId: creditUsage.userId,
       model: creditUsage.model,
@@ -3467,14 +3466,11 @@ export async function findTestCreditUsageByRunId(runId: string): Promise<
       cacheCreationInputTokens: creditUsage.cacheCreationInputTokens,
       webSearchRequests: creditUsage.webSearchRequests,
       costUsd: creditUsage.costUsd,
-      numEvents: creditUsage.numEvents,
       status: creditUsage.status,
       creditsCharged: creditUsage.creditsCharged,
     })
     .from(creditUsage)
-    .where(eq(creditUsage.runId, runId))
-    .limit(1);
-  return record;
+    .where(eq(creditUsage.runId, runId));
 }
 
 /**
