@@ -78,6 +78,18 @@ Next steps:
 - Use `/dev-stop` to stop the server
 ```
 
+If the script fails with error:
+- a database error (e.g., missing `org_cache` table)
+- missing environment variables
+- missing npm modules
+
+Then the user likely needs to set up their environment. run prepare.sh, this will setup .env.local, set up the database, run migrations, and install npm dependencies. it may cost minutes to run, wait for it to complete:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT" && bash scripts/prepare.sh
+```
+
 ## Notes
 
 - Use TaskOutput with the task_id from `run_in_background` to check server output

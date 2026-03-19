@@ -40,8 +40,8 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     kill "$pid" 2>/dev/null || true
   done
-  # Also kill any Chrome we started (matched by CDP port)
-  pkill -f "chrome.*--remote-debugging-port=${CDP_PORT:-9222}" 2>/dev/null || true
+
+  agent-browser close 2>/dev/null || true
   wait 2>/dev/null || true
   log "All processes stopped."
 }
@@ -66,7 +66,7 @@ pkill -x Xvfb 2>/dev/null || true
 pkill -x openbox 2>/dev/null || true
 pkill -x x11vnc 2>/dev/null || true
 pkill -f websockify 2>/dev/null || true
-pkill -f "chrome.*--remote-debugging-port=${CDP_PORT:-9222}" 2>/dev/null || true
+agent-browser close 2>/dev/null || true
 sleep 1
 
 # --- Start Xvfb ---
@@ -92,29 +92,6 @@ log "Starting websockify on 0.0.0.0:${NOVNC_PORT} -> localhost:${VNC_PORT}"
 websockify --web /usr/share/novnc/ "0.0.0.0:${NOVNC_PORT}" "localhost:${VNC_PORT}" >/dev/null 2>&1 &
 PIDS+=($!)
 sleep 1
-
-# --- Launch Chrome with CDP (remote debugging) ---
-CDP_PORT="${CDP_PORT:-9222}"
-CHROME_BIN=$(find "$HOME/.cache/ms-playwright" -name chrome -type f 2>/dev/null | head -1)
-CHROME_PROFILE="${AGENT_BROWSER_PROFILE:-$HOME/.local/share/agent-browser/profile}"
-
-if [[ -z "$CHROME_BIN" ]]; then
-  log "Warning: Chrome not found in Playwright cache, skipping"
-else
-  # Clear stale profile locks from other VMs
-  rm -f "${CHROME_PROFILE}/SingletonLock" "${CHROME_PROFILE}/SingletonCookie" "${CHROME_PROFILE}/SingletonSocket" 2>/dev/null
-  log "Starting Chrome (profile: ${CHROME_PROFILE}, CDP port: ${CDP_PORT})"
-  DISPLAY="$DISPLAY" "$CHROME_BIN" \
-    --user-data-dir="$CHROME_PROFILE" \
-    --remote-debugging-port="$CDP_PORT" \
-    --no-first-run \
-    --no-default-browser-check \
-    --disable-blink-features=AutomationControlled \
-    --start-maximized \
-    >/dev/null 2>&1 &
-  PIDS+=($!)
-  sleep 2
-fi
 
 # --- Verify VNC stack ---
 if ! pgrep -x Xvfb >/dev/null; then

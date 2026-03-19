@@ -170,7 +170,6 @@ jobs:
             echo "Preview URL not set (PREVIEW_DOMAIN or job-ref is empty)"
           fi
 
-
   file-size-check:
     runs-on: ubuntu-latest
     # Skip for release-please commits (only version bumps and changelogs)
@@ -854,29 +853,13 @@ jobs:
       - name: Link CLI globally
         run: cd /tmp/cli-deploy && sudo npm link
       - name: Install E2E dependencies
-        run: cd e2e && npm install
-      - name: Install Playwright system dependencies
-        run: cd e2e && sudo npx playwright install-deps chromium
-      - name: Install Playwright browsers
-        run: cd e2e && npx playwright install chromium
-
+        run: npm install -g agent-browser
       - name: Verify device flow authentication
         run: |
           echo "Verifying device flow with ${{ needs.deploy-web.outputs.preview-url }}"
-          cd e2e && npm run auth
+          cd e2e && bash cli-auth-automation.sh ${{ needs.deploy-web.outputs.preview-url }}
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-
-      - name: Verify sign-in flow
-        run: cd e2e && npx playwright test sign-in.spec.ts
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   # Build CLI once and share via artifact — e2e jobs download instead of rebuilding
   build-cli:
@@ -986,7 +969,6 @@ jobs:
             kill "$CRON_SIMULATOR_PID" 2>/dev/null || true
             echo "Cron simulator stopped"
           fi
-
 
   # Deploy runner prepare: cross-compile, deploy to all metal hosts, build rootfs/snapshot with mock URL
   # Runs in parallel with deploy-web since rootfs/snapshot don't need the preview URL
@@ -1689,4 +1671,3 @@ jobs:
 
           echo "::endgroup::"
           exit $FAILED
-
