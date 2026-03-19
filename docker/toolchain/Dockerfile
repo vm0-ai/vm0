@@ -103,7 +103,7 @@ RUN npx -y playwright@1.58.2 install-deps chromium \
     && npx -y playwright@1.58.2 install chrome-for-testing
 
 # Symlink Chromium binary to a stable path for agent-browser
-RUN CHROMIUM_PATH=$(find /root/.cache/ms-playwright/chromium-*/chrome-linux -type f -name chrome 2>/dev/null | head -1) \
+RUN CHROMIUM_PATH=$(find /root/.cache/ms-playwright/chromium-*/chrome-linux* -type f -name chrome 2>/dev/null | head -1) \
     && test -n "$CHROMIUM_PATH" || { echo "ERROR: Chromium not found"; ls -laR /root/.cache/ms-playwright/; exit 1; } \
     && ln -sf "$CHROMIUM_PATH" /usr/local/bin/playwright-chromium
 
