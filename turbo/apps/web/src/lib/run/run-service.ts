@@ -832,6 +832,9 @@ async function resolveStartRunCompose(
       params.agentComposeVersionId,
       params.composeId,
     );
+    if (!meta.orgId) {
+      throw notFound("Agent compose version not found");
+    }
     return { agentComposeVersionId: params.agentComposeVersionId, ...meta };
   }
 
