@@ -65,6 +65,7 @@ import notionIcon from "./icons/notion.svg";
 import openaiIcon from "./icons/openai.svg";
 import outlookCalendarIcon from "./icons/outlook-calendar.svg";
 import outlookMailIcon from "./icons/outlook-mail.svg";
+import pdforgeIcon from "./icons/pdforge.svg";
 import pdf4meIcon from "./icons/pdf4me.svg";
 import pdfcoIcon from "./icons/pdfco.svg";
 import perplexityIcon from "./icons/perplexity.svg";
@@ -96,12 +97,14 @@ import scrapeninja from "./icons/scrapeninja.svg";
 import sentryIcon from "./icons/sentry.svg";
 import similarwebIcon from "./icons/similarweb.svg";
 import slackIcon from "./icons/slack.svg";
+import slackWebhookIcon from "./icons/slack-webhook.svg";
 import stravaIcon from "./icons/strava.svg";
 import stripeIcon from "./icons/stripe.svg";
 import supabaseIcon from "./icons/supabase.svg";
 import todoistIcon from "./icons/todoist.svg";
 import vercelIcon from "./icons/vercel.svg";
 import webflowIcon from "./icons/webflow.svg";
+import wixIcon from "./icons/wix.svg";
 import wrikeIcon from "./icons/wrike.svg";
 import xIcon from "./icons/x.svg";
 import xeroIcon from "./icons/xero.svg";
@@ -172,6 +175,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   openai: openaiIcon,
   "outlook-calendar": outlookCalendarIcon,
   "outlook-mail": outlookMailIcon,
+  pdforge: pdforgeIcon,
   pdf4me: pdf4meIcon,
   pdfco: pdfcoIcon,
   perplexity: perplexityIcon,
@@ -203,12 +207,14 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   sentry: sentryIcon,
   similarweb: similarwebIcon,
   slack: slackIcon,
+  "slack-webhook": slackWebhookIcon,
   strava: stravaIcon,
   stripe: stripeIcon,
   supabase: supabaseIcon,
   todoist: todoistIcon,
   vercel: vercelIcon,
   webflow: webflowIcon,
+  wix: wixIcon,
   wrike: wrikeIcon,
   x: xIcon,
   xero: xeroIcon,
@@ -226,6 +232,8 @@ const MONOCHROME_ICONS: Readonly<Record<string, true>> = Object.freeze({
   instagram: true,
   notion: true,
   openai: true,
+  pdforge: true,
+  wix: true,
   x: true,
 });
 

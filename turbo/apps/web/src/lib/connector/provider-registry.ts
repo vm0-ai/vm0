@@ -108,6 +108,9 @@ import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
 import { wrikeHandler } from "./providers/wrike-handler";
 import { xeroHandler } from "./providers/xero-handler";
+import { pdforgeHandler } from "./providers/pdforge-handler";
+import { slackWebhookHandler } from "./providers/slack-webhook-handler";
+import { wixHandler } from "./providers/wix-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
@@ -220,6 +223,9 @@ export const PROVIDER_HANDLERS: Record<
   zapier: zapierHandler,
   zapsign: zapsignHandler,
   zendesk: zendeskHandler,
+  pdforge: pdforgeHandler,
+  "slack-webhook": slackWebhookHandler,
+  wix: wixHandler,
 };
 
 /**
