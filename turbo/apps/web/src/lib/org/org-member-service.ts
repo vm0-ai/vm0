@@ -70,22 +70,39 @@ export async function getOrgMembers(
     .map((m) => m.publicUserData?.userId)
     .filter((id): id is string => Boolean(id));
 
-  const emailMap = new Map<string, string>();
+  const userMap = new Map<
+    string,
+    {
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+      imageUrl: string;
+    }
+  >();
   if (userIds.length > 0) {
     const users = await client.users.getUserList({ userId: userIds });
     for (const user of users.data) {
       const primaryEmail = user.emailAddresses.find(
         (e) => e.id === user.primaryEmailAddressId,
       );
-      emailMap.set(user.id, primaryEmail?.emailAddress ?? "");
+      userMap.set(user.id, {
+        email: primaryEmail?.emailAddress ?? "",
+        firstName: user.firstName,
+        lastName: user.lastName,
+        imageUrl: user.imageUrl,
+      });
     }
   }
 
   const members = memberships.data.map((membership) => {
-    const userId = membership.publicUserData?.userId ?? "";
+    const uid = membership.publicUserData?.userId ?? "";
+    const profile = userMap.get(uid);
     return {
-      userId,
-      email: emailMap.get(userId) ?? "",
+      userId: uid,
+      email: profile?.email ?? "",
+      firstName: profile?.firstName ?? null,
+      lastName: profile?.lastName ?? null,
+      imageUrl: profile?.imageUrl ?? "",
       role: mapClerkRole(membership.role),
       joinedAt: membership.createdAt
         ? new Date(membership.createdAt).toISOString()
