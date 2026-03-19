@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.130.1](https://github.com/vm0-ai/vm0/compare/web-v12.130.0...web-v12.130.1) (2026-03-19)
+
+
+### Refactoring
+
+* migrate org credits from clerk metadata to database ([#5462](https://github.com/vm0-ai/vm0/issues/5462)) ([4b2c873](https://github.com/vm0-ai/vm0/commit/4b2c87336b8aa458d79fdc0685c9eb57b43e451a))
+* **web:** unify run output extraction into shared service ([#5395](https://github.com/vm0-ai/vm0/issues/5395)) ([1b93611](https://github.com/vm0-ai/vm0/commit/1b9361161299bf766c61e822959a575e319edf2d))
+
 ## [12.130.0](https://github.com/vm0-ai/vm0/compare/web-v12.129.0...web-v12.130.0) (2026-03-19)
 
 

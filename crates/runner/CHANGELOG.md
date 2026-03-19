@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.37.0...runner-rs-v0.38.0) (2026-03-19)
+
+
+### Features
+
+* **runner:** always register vms in proxy for network logging ([#5465](https://github.com/vm0-ai/vm0/issues/5465)) ([5508b23](https://github.com/vm0-ai/vm0/commit/5508b2326891cd4294a12ed392dc7e296611462d))
+
 ## [0.37.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.36.0...runner-rs-v0.37.0) (2026-03-19)
 
 

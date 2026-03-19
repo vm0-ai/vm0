@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.126.2](https://github.com/vm0-ai/vm0/compare/app-v0.126.1...app-v0.126.2) (2026-03-19)
+
+
+### Refactoring
+
+* **web:** unify run output extraction into shared service ([#5395](https://github.com/vm0-ai/vm0/issues/5395)) ([1b93611](https://github.com/vm0-ai/vm0/commit/1b9361161299bf766c61e822959a575e319edf2d))
+
 ## [0.126.1](https://github.com/vm0-ai/vm0/compare/app-v0.126.0...app-v0.126.1) (2026-03-19)
 
 
