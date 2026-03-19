@@ -199,8 +199,10 @@ extract_and_inject() {
   sudo cp "$ca_cert" "$ca_target"
   sudo chmod 644 "$ca_target"
 
-  # Update system CA bundle
+  # Update system CA bundle, then remove the standalone file (only the
+  # merged bundle at /etc/ssl/certs/ca-certificates.crt is needed at runtime)
   sudo chroot "$EXTRACT_DIR" update-ca-certificates
+  sudo rm -f "$ca_target"
 
   echo "[OK] proxy CA installed and system bundle updated"
 }

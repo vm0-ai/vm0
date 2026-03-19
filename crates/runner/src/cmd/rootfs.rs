@@ -241,9 +241,12 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let verify_path = work_dir.path().join("verify-rootfs.sh");
     let rootfs_str = rootfs_path.to_string_lossy();
 
+    let ca_cert_path = paths.ca_dir().join("mitmproxy-ca-cert.pem");
+    let ca_cert_str = ca_cert_path.to_string_lossy();
+
     let status = tokio::process::Command::new("bash")
         .arg(&verify_path)
-        .args(["--rootfs", &rootfs_str])
+        .args(["--rootfs", &rootfs_str, "--ca-cert", &ca_cert_str])
         .stdin(std::process::Stdio::null())
         .status()
         .await

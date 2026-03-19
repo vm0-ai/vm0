@@ -6,7 +6,7 @@
 # invalidate the rootfs cache.
 #
 # Usage:
-#   bash verify-rootfs.sh --rootfs /path/to/rootfs.squashfs
+#   bash verify-rootfs.sh --rootfs /path/to/rootfs.squashfs --ca-cert /path/to/ca-cert.pem
 
 set -euo pipefail
 
@@ -15,24 +15,22 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 ROOTFS=""
+CA_CERT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rootfs) ROOTFS="$2"; shift 2 ;;
+    --ca-cert) CA_CERT="$2"; shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-if [[ -z "$ROOTFS" ]]; then
-  echo "error: --rootfs is required" >&2
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+for var in ROOTFS CA_CERT; do
+  if [[ -z "${!var}" ]]; then
+    echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
+    exit 1
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # Cleanup
@@ -113,25 +111,16 @@ else
   errors+=("gh CLI not found at /usr/bin/gh")
 fi
 
-# Check proxy CA certificate file
-ca_path="${MOUNT_DIR}/${CA_ROOTFS_DEST}"
-if [[ -f "$ca_path" ]]; then
-  echo "  proxy CA file: found"
-else
-  errors+=("proxy CA certificate not found")
-fi
-
-# Check proxy CA in system bundle
+# Check proxy CA in system bundle (compare against host CA cert)
 bundle_path="${MOUNT_DIR}/etc/ssl/certs/ca-certificates.crt"
 if [[ ! -f "$bundle_path" ]]; then
   errors+=("system CA bundle not found at /etc/ssl/certs/ca-certificates.crt")
-elif [[ -f "$ca_path" ]]; then
-  # Read second line of CA cert as a unique identifier
-  ca_line=$(sed -n '2p' "$ca_path")
+else
+  ca_line=$(sed -n '2p' "$CA_CERT")
   if [[ -z "$ca_line" ]]; then
     errors+=("proxy CA cert appears empty or malformed")
   elif grep -qF "$ca_line" "$bundle_path"; then
-    echo "  proxy CA bundle: updated"
+    echo "  proxy CA bundle: present"
   else
     errors+=("proxy CA not found in system CA bundle (update-ca-certificates may have failed)")
   fi
