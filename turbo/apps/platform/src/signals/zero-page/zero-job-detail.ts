@@ -7,6 +7,7 @@ import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
 import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { getInstructionsFilename } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
+import { SEED_SKILLS } from "../../data/the-seed.ts";
 import {
   buildCronExpression,
   buildAtTime,
@@ -313,15 +314,15 @@ const internalAddedSkills$ = state<string[] | null>(null);
 
 const seededSkills$ = computed((get) => {
   const detail = get(zeroJobDetail$);
-  if (!detail?.content) {
-    return [];
+  const fromContent: string[] = [];
+  if (detail?.content) {
+    const agentKey = Object.keys(detail.content.agents)[0];
+    if (agentKey) {
+      const agent = detail.content.agents[agentKey];
+      fromContent.push(...(agent?.skills ?? []).map(skillUrlToValue));
+    }
   }
-  const agentKey = Object.keys(detail.content.agents)[0];
-  if (!agentKey) {
-    return [];
-  }
-  const agent = detail.content.agents[agentKey];
-  return (agent?.skills ?? []).map(skillUrlToValue);
+  return [...new Set([...SEED_SKILLS, ...fromContent])];
 });
 
 export const zeroJobAddedSkills$ = computed((get) => {

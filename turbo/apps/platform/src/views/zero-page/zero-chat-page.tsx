@@ -738,6 +738,8 @@ interface ZeroChatPageProps {
   zeroAvatarSrc?: string;
   /** Override agent name when chatting with a sub-agent. */
   chatAgentName?: string;
+  /** Navigate to agent team detail page when avatar is clicked. */
+  onAvatarClick?: () => void;
 }
 
 export function ZeroChatPage({
@@ -748,6 +750,7 @@ export function ZeroChatPage({
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
+  onAvatarClick,
 }: ZeroChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const defaultAgentName =
@@ -876,14 +879,18 @@ export function ZeroChatPage({
             >
               <IconArrowLeft size={20} stroke={1.5} />
             </Button>
-            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
+            <button
+              type="button"
+              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
+              onClick={onAvatarClick}
+            >
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-8 w-8 rounded-full object-cover object-top"
               />
-            </div>
+            </button>
             <span className="font-semibold text-foreground">{agentName}</span>
           </div>
           <div className="flex items-center gap-0.5">
@@ -1046,14 +1053,18 @@ export function ZeroChatPage({
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
-            <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 overflow-hidden rounded-xl">
+            <button
+              type="button"
+              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
+              onClick={onAvatarClick}
+            >
               <img
                 src={zeroAvatarSrc}
                 alt=""
                 role="presentation"
                 className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
               />
-            </div>
+            </button>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
                 <TypewriterText text={tagline} />

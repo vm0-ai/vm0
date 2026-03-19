@@ -86,6 +86,7 @@ export function ZeroContent({
         onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
         chatAgentName={chatAgentName}
+        onAvatarClick={onChatAvatarClick}
       />
     );
   }

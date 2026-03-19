@@ -61,6 +61,13 @@ cd "$PROJECT_ROOT/turbo" && pnpm dev
 
 This will return a task_id for monitoring.
 
+**Save the task_id** to a local file so `/dev-logs` can find it across conversation sessions:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+echo "<task_id>" > "$PROJECT_ROOT/turbo/.dev-task-id"
+```
+
 ### Step 3: Display Results
 
 Once the server is confirmed running, display the URLs:

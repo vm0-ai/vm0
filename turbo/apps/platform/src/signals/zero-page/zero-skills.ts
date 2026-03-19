@@ -11,6 +11,7 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { getInstructionsFilename } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
+import { SEED_SKILLS } from "../../data/the-seed.ts";
 import { zeroChatAgentId$ } from "./zero-nav.ts";
 
 const L = logger("ZeroSkills");
@@ -93,18 +94,18 @@ const internalSaving$ = state(false);
 // null = not initialized (fallback to seeded), string[] = user's local draft
 const internalAddedSkills$ = state<string[] | null>(null);
 
-/** Skills seeded from compose content. */
+/** Skills seeded from compose content, always includes default seed skills. */
 const seededSkills$ = computed(async (get) => {
   const compose = await get(zeroCompose$);
-  if (!compose?.content) {
-    return [];
+  const fromContent: string[] = [];
+  if (compose?.content) {
+    const agentKey = Object.keys(compose.content.agents)[0];
+    if (agentKey) {
+      const agent = compose.content.agents[agentKey];
+      fromContent.push(...(agent?.skills ?? []).map(skillUrlToValue));
+    }
   }
-  const agentKey = Object.keys(compose.content.agents)[0];
-  if (!agentKey) {
-    return [];
-  }
-  const agent = compose.content.agents[agentKey];
-  return (agent?.skills ?? []).map(skillUrlToValue);
+  return [...new Set([...SEED_SKILLS, ...fromContent])];
 });
 
 /** Added skills: local draft takes precedence, otherwise seeded from compose. */
