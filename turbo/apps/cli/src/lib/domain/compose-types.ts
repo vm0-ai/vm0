@@ -21,11 +21,6 @@ export interface AgentDefinition {
   experimental_profile?: string;
   experimental_capabilities?: string[];
   experimental_firewalls?: Record<string, { permissions: string[] | "all" }>;
-  metadata?: {
-    displayName?: string;
-    description?: string;
-    sound?: string;
-  };
 }
 
 /**
