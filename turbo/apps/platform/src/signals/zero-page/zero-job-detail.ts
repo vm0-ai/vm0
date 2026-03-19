@@ -271,72 +271,28 @@ interface ZeroJobSettingsUpdate {
 export const zeroJobUpdateSettings$ = command(
   async ({ get, set }, update: ZeroJobSettingsUpdate) => {
     const detail = get(zeroJobDetail$);
-    if (!detail?.content) {
-      throw new Error("No compose content found");
-    }
-
-    const agentKey = Object.keys(detail.content.agents)[0];
-    if (!agentKey) {
-      throw new Error("No agent found in compose");
-    }
-
-    const agentConfig = detail.content.agents[agentKey];
-    const currentMetadata = agentConfig.metadata ?? {};
-    const newMetadata = { ...currentMetadata };
-    if (update.displayName !== undefined) {
-      newMetadata.displayName = update.displayName;
-    }
-    if (update.description !== undefined) {
-      newMetadata.description = update.description;
-    }
-    if (update.sound !== undefined) {
-      newMetadata.sound = update.sound;
-    }
-
-    if (
-      newMetadata.displayName === currentMetadata.displayName &&
-      newMetadata.description === currentMetadata.description &&
-      newMetadata.sound === currentMetadata.sound
-    ) {
-      return;
+    if (!detail) {
+      throw new Error("No compose detail found");
     }
 
     set(internalSaving$, true);
     try {
       const fetchFn = get(fetch$);
-      const newContent = {
-        ...detail.content,
-        agents: {
-          [agentKey]: { ...agentConfig, metadata: newMetadata },
+      const response = await fetchFn(
+        `/api/agent/composes/${detail.id}/metadata`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(update),
         },
-      };
-
-      const instructions =
-        (await resolveExistingInstructions(get, fetchFn, detail.id)) ?? "";
-
-      // Ensure instructions field in content
-      const agent = newContent.agents[agentKey];
-      if (agent && !("instructions" in agent)) {
-        newContent.agents[agentKey] = {
-          ...agent,
-          instructions: getInstructionsFilename(agent.framework),
-        };
-      }
-
-      const job = await triggerAndPollComposeJob(
-        fetchFn,
-        newContent,
-        instructions,
       );
-      if (!job.result) {
-        throw new Error("Build completed without result");
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
       }
 
       await set(fetchZeroJobDetail$);
-      await Promise.all([
-        set(fetchZeroJobInstructions$),
-        set(fetchAgentsList$),
-      ]);
+      await set(fetchAgentsList$);
       toast.success("Profile saved");
     } catch (error) {
       throwIfAbort(error);
