@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, state } from "ccstate";
 import {
   buildFirewallYamlUrl,
   firewallConfigSchema,
