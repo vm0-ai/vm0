@@ -96,12 +96,12 @@ export function FileAttachmentChip({
       {iconSrc ? (
         <img
           alt=""
-          className="h-6 w-6 object-contain opacity-80"
+          className="h-9 w-9 object-contain opacity-80"
           aria-hidden="true"
           src={iconSrc}
         />
       ) : (
-        <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
+        <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
       )}
     </a>
   );
@@ -134,7 +134,7 @@ function AttachmentChip({
             type="button"
             onClick={() => attachment.url && setLightboxUrl(attachment.url)}
             disabled={!attachment.url}
-            className="group relative h-6 w-6 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+            className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
           >
             {attachment.url ? (
               <>
@@ -161,12 +161,12 @@ function AttachmentChip({
         ) : iconSrc ? (
           <img
             alt=""
-            className="h-6 w-6 object-contain opacity-80"
+            className="h-9 w-9 object-contain opacity-80"
             aria-hidden="true"
             src={iconSrc}
           />
         ) : (
-          <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
+          <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
         )}
         {attachment.uploading ? (
           <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
