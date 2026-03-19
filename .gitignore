@@ -189,3 +189,4 @@ tmp/
 
 *.sarif
 junit.xml
+e2e/results/

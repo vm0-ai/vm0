@@ -1026,12 +1026,22 @@ jobs:
       - name: Run Serial E2E Tests
         run: |
           echo "=== Running Serial E2E Tests ==="
-          BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/01-serial/*.bats
+          mkdir -p e2e/results
+          BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T --report-formatter junit --output e2e/results ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: e2e-serial
+          files: e2e/results/*.xml
+          report_type: test_results
 
       - name: Stop Cron Simulator
         if: always()
@@ -1489,7 +1499,8 @@ jobs:
           [ "$PARALLEL" -lt 1 ] && PARALLEL=1
           echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
           echo "Files: ${{ matrix.files }}"
-          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" ${{ matrix.files }}
+          mkdir -p e2e/results
+          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --report-formatter junit --output e2e/results ${{ matrix.files }}
           echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
           RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
@@ -1500,6 +1511,15 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: e2e-runner
+          files: e2e/results/*.xml
+          report_type: test_results
 
       - name: Stop Cron Simulator
         if: always()
