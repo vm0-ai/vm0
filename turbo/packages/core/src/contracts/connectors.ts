@@ -2719,6 +2719,64 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  discord: {
+    label: "Discord",
+    helpText:
+      "Connect your Discord bot to manage servers, channels, messages, and automate interactions",
+    authMethods: {
+      "api-token": {
+        label: "Bot Token",
+        secrets: {
+          DISCORD_BOT_TOKEN: {
+            label: "Bot Token",
+            required: true,
+            placeholder: "your-discord-bot-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  "discord-webhook": {
+    label: "Discord Webhook",
+    helpText: "Connect a Discord webhook to send messages to channels",
+    authMethods: {
+      "api-token": {
+        label: "Webhook URL",
+        secrets: {
+          DISCORD_WEBHOOK_URL: {
+            label: "Webhook URL",
+            required: true,
+            placeholder: "https://discord.com/api/webhooks/xxx/xxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  gitlab: {
+    label: "GitLab",
+    helpText:
+      "Connect your GitLab account to manage repositories, issues, merge requests, and CI/CD pipelines",
+    authMethods: {
+      "api-token": {
+        label: "Personal Access Token",
+        secrets: {
+          GITLAB_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+          },
+          GITLAB_HOST: {
+            label: "GitLab Host",
+            required: false,
+            placeholder: "gitlab.com",
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2828,6 +2886,9 @@ export const connectorTypeSchema = z.enum([
   "bitrix",
   "brave-search",
   "cronlytic",
+  "discord",
+  "discord-webhook",
+  "gitlab",
 ]);
 
 /**

@@ -21,6 +21,8 @@ import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
 import cronlyticIcon from "./icons/cronlytic.svg";
 import deelIcon from "./icons/deel.svg";
+import discordIcon from "./icons/discord.svg";
+import discordWebhookIcon from "./icons/discord-webhook.svg";
 import deepseekIcon from "./icons/deepseek.svg";
 import difyIcon from "./icons/dify.svg";
 import devtoIcon from "./icons/devto.svg";
@@ -33,6 +35,7 @@ import figmaIcon from "./icons/figma.svg";
 import firefliesIcon from "./icons/fireflies.svg";
 import firecrawlIcon from "./icons/firecrawl.svg";
 import garminConnectIcon from "./icons/garmin-connect.svg";
+import gitlabIcon from "./icons/gitlab.svg";
 import granolaIcon from "./icons/granola.svg";
 import githubIcon from "./icons/github.svg";
 import heygenIcon from "./icons/heygen.svg";
@@ -125,6 +128,8 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   computer: computerIcon,
   cronlytic: cronlyticIcon,
   deel: deelIcon,
+  discord: discordIcon,
+  "discord-webhook": discordWebhookIcon,
   deepseek: deepseekIcon,
   dify: difyIcon,
   devto: devtoIcon,
@@ -137,6 +142,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   fireflies: firefliesIcon,
   firecrawl: firecrawlIcon,
   "garmin-connect": garminConnectIcon,
+  gitlab: gitlabIcon,
   granola: granolaIcon,
   github: githubIcon,
   gmail: gmailIcon,
@@ -213,6 +219,8 @@ const MONOCHROME_ICONS: Readonly<Record<string, true>> = Object.freeze({
   agentmail: true,
   "bright-data": true,
   cronlytic: true,
+  discord: true,
+  "discord-webhook": true,
   dify: true,
   github: true,
   hume: true,

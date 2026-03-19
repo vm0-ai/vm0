@@ -24,6 +24,8 @@ import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { closeHandler } from "./providers/close-handler";
 import { cronlyticHandler } from "./providers/cronlytic-handler";
 import { deelHandler } from "./providers/deel-handler";
+import { discordHandler } from "./providers/discord-handler";
+import { discordWebhookHandler } from "./providers/discord-webhook-handler";
 import { deepseekHandler } from "./providers/deepseek-handler";
 import { difyHandler } from "./providers/dify-handler";
 import { devtoHandler } from "./providers/devto-handler";
@@ -36,6 +38,7 @@ import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
+import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
@@ -132,6 +135,8 @@ export const PROVIDER_HANDLERS: Record<
   close: closeHandler,
   cronlytic: cronlyticHandler,
   deel: deelHandler,
+  discord: discordHandler,
+  "discord-webhook": discordWebhookHandler,
   deepseek: deepseekHandler,
   dify: difyHandler,
   devto: devtoHandler,
@@ -144,6 +149,7 @@ export const PROVIDER_HANDLERS: Record<
   fireflies: firefliesHandler,
   firecrawl: firecrawlHandler,
   "garmin-connect": garminConnectHandler,
+  gitlab: gitlabHandler,
   granola: granolaHandler,
   github: githubHandler,
   gmail: gmailHandler,
