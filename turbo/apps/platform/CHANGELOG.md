@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.126.3](https://github.com/vm0-ai/vm0/compare/app-v0.126.2...app-v0.126.3) (2026-03-19)
+
+
+### Bug Fixes
+
+* **platform:** enlarge image previews and add click-to-zoom in composer ([#5470](https://github.com/vm0-ai/vm0/issues/5470)) ([a03a230](https://github.com/vm0-ai/vm0/commit/a03a23092bce1d61436763b974443157b4966467))
+
 ## [0.126.2](https://github.com/vm0-ai/vm0/compare/app-v0.126.1...app-v0.126.2) (2026-03-19)
 
 
