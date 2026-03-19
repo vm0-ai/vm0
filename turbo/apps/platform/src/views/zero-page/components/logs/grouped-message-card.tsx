@@ -166,13 +166,13 @@ function ResultMessageCard({
               {timestamp}
             </span>
           </div>
-          <div className="text-xs text-muted-foreground pl-[14px] mt-1 sm:hidden">
+          <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
             {timestamp}
           </div>
         </summary>
         {/* Vertical line from dot to content */}
         <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
-        <div className="ml-[16px] mt-2 relative pl-[14px]">
+        <div className="ml-[18px] mt-2 relative">
           <ResultEventContent eventData={eventData} />
         </div>
       </details>
