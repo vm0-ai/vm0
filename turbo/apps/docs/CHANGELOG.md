@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.27.0](https://github.com/vm0-ai/vm0/compare/docs-v2.26.0...docs-v2.27.0) (2026-03-19)
+
+
+### Features
+
+* block agent deletion for sandbox tokens ([#5427](https://github.com/vm0-ai/vm0/issues/5427)) ([4baf5bb](https://github.com/vm0-ai/vm0/commit/4baf5bba8b63d97dc4bb7cc76253d00ce8fe204d)), closes [#5425](https://github.com/vm0-ai/vm0/issues/5425)
+
 ## [2.26.0](https://github.com/vm0-ai/vm0/compare/docs-v2.25.0...docs-v2.26.0) (2026-03-18)
 
 

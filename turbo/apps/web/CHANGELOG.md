@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.130.0](https://github.com/vm0-ai/vm0/compare/web-v12.129.0...web-v12.130.0) (2026-03-19)
+
+
+### Features
+
+* add append-system-prompt support to schedule system ([#5426](https://github.com/vm0-ai/vm0/issues/5426)) ([56fcb08](https://github.com/vm0-ai/vm0/commit/56fcb082797280d0129f3fb3be287bb9b1290aa9)), closes [#5377](https://github.com/vm0-ai/vm0/issues/5377)
+* block agent deletion for sandbox tokens ([#5427](https://github.com/vm0-ai/vm0/issues/5427)) ([4baf5bb](https://github.com/vm0-ai/vm0/commit/4baf5bba8b63d97dc4bb7cc76253d00ce8fe204d)), closes [#5425](https://github.com/vm0-ai/vm0/issues/5425)
+* inject agent identity env vars and add whoami command ([#5461](https://github.com/vm0-ai/vm0/issues/5461)) ([76ceb92](https://github.com/vm0-ai/vm0/commit/76ceb92d5559ed2987abbacc24fcf422ebad2753))
+
+
+### Refactoring
+
+* migrate agent metadata to zero_agents table ([#5393](https://github.com/vm0-ai/vm0/issues/5393)) ([a6bc58d](https://github.com/vm0-ai/vm0/commit/a6bc58db3a554ff76a37554c553fe180c9d1a9c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.82.0
+
 ## [12.129.0](https://github.com/vm0-ai/vm0/compare/web-v12.128.1...web-v12.129.0) (2026-03-19)
 
 

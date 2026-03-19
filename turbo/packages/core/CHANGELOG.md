@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.82.0](https://github.com/vm0-ai/vm0/compare/core-v8.81.0...core-v8.82.0) (2026-03-19)
+
+
+### Features
+
+* add append-system-prompt support to schedule system ([#5426](https://github.com/vm0-ai/vm0/issues/5426)) ([56fcb08](https://github.com/vm0-ai/vm0/commit/56fcb082797280d0129f3fb3be287bb9b1290aa9)), closes [#5377](https://github.com/vm0-ai/vm0/issues/5377)
+* inject agent identity env vars and add whoami command ([#5461](https://github.com/vm0-ai/vm0/issues/5461)) ([76ceb92](https://github.com/vm0-ai/vm0/commit/76ceb92d5559ed2987abbacc24fcf422ebad2753))
+
+
+### Refactoring
+
+* migrate agent metadata to zero_agents table ([#5393](https://github.com/vm0-ai/vm0/issues/5393)) ([a6bc58d](https://github.com/vm0-ai/vm0/commit/a6bc58db3a554ff76a37554c553fe180c9d1a9c8))
+* remove instructions metadata injection system ([#5445](https://github.com/vm0-ai/vm0/issues/5445)) ([d9d11ca](https://github.com/vm0-ai/vm0/commit/d9d11cabce49d1dea783a12c86f59328af336ab0)), closes [#5380](https://github.com/vm0-ai/vm0/issues/5380)
+
 ## [8.81.0](https://github.com/vm0-ai/vm0/compare/core-v8.80.0...core-v8.81.0) (2026-03-19)
 
 

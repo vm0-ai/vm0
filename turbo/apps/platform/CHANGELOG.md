@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.126.1](https://github.com/vm0-ai/vm0/compare/app-v0.126.0...app-v0.126.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* improve line break test assertions to check dom structure directly ([#5456](https://github.com/vm0-ai/vm0/issues/5456)) ([4abf336](https://github.com/vm0-ai/vm0/commit/4abf336c3cf95d9cefcf3e6bbc5ff77361d7e0eb))
+
+
+### Refactoring
+
+* migrate agent metadata to zero_agents table ([#5393](https://github.com/vm0-ai/vm0/issues/5393)) ([a6bc58d](https://github.com/vm0-ai/vm0/commit/a6bc58db3a554ff76a37554c553fe180c9d1a9c8))
+* remove instructions metadata injection system ([#5445](https://github.com/vm0-ai/vm0/issues/5445)) ([d9d11ca](https://github.com/vm0-ai/vm0/commit/d9d11cabce49d1dea783a12c86f59328af336ab0)), closes [#5380](https://github.com/vm0-ai/vm0/issues/5380)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.82.0
+
 ## [0.126.0](https://github.com/vm0-ai/vm0/compare/app-v0.125.1...app-v0.126.0) (2026-03-19)
 
 

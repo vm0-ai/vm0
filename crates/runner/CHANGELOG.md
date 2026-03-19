@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.36.0...runner-rs-v0.37.0) (2026-03-19)
+
+
+### Features
+
+* inject agent identity env vars and add whoami command ([#5461](https://github.com/vm0-ai/vm0/issues/5461)) ([76ceb92](https://github.com/vm0-ai/vm0/commit/76ceb92d5559ed2987abbacc24fcf422ebad2753))
+
 ## [0.36.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.35.0...runner-rs-v0.36.0) (2026-03-19)
 
 
