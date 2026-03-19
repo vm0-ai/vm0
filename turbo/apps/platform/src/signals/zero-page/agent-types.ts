@@ -19,7 +19,6 @@ interface AgentDefinition {
   instructions?: string;
   skills?: string[];
   environment?: Record<string, string>;
-  metadata?: { displayName?: string; sound?: string; description?: string };
   experimental_runner?: { group: string };
   experimental_capabilities?: string[];
 }

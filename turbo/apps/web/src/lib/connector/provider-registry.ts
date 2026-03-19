@@ -53,14 +53,20 @@ import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
+import { instantlyHandler } from "./providers/instantly-handler";
 import { intercomHandler } from "./providers/intercom-handler";
 import { jamHandler } from "./providers/jam-handler";
+import { jiraHandler } from "./providers/jira-handler";
 import { jotformHandler } from "./providers/jotform-handler";
+import { kommoHandler } from "./providers/kommo-handler";
+import { larkHandler } from "./providers/lark-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
+import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
 import { metabaseHandler } from "./providers/metabase-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
+import { minioHandler } from "./providers/minio-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { neonHandler } from "./providers/neon-handler";
@@ -165,17 +171,21 @@ export const PROVIDER_HANDLERS: Record<
   htmlcsstoimage: htmlcsstoimageHandler,
   hubspot: hubspotHandler,
   imgur: imgurHandler,
+  instantly: instantlyHandler,
   instagram: instagramHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,
   "google-sheets": googleSheetsHandler,
+  lark: larkHandler,
   line: lineHandler,
   linear: linearHandler,
+  mailsac: mailsacHandler,
   make: makeHandler,
   metabase: metabaseHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
+  minio: minioHandler,
   minimax: minimaxHandler,
   monday: mondayHandler,
   neon: neonHandler,
@@ -188,7 +198,9 @@ export const PROVIDER_HANDLERS: Record<
   serpapi: serpapiHandler,
   intercom: intercomHandler,
   jam: jamHandler,
+  jira: jiraHandler,
   jotform: jotformHandler,
+  kommo: kommoHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
   slack: slackHandler,

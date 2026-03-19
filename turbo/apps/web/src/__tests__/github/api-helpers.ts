@@ -12,6 +12,7 @@ import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
 import { orgCache } from "../../db/schema/org-cache";
+import { org } from "../../db/schema/org";
 import {
   agentComposes,
   agentComposeVersions,
@@ -58,13 +59,18 @@ export async function givenGitHubInstallation(
     .values({
       orgId,
       slug: orgSlug,
-      tier: "free",
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
+      set: { slug: orgSlug, cachedAt: new Date() },
     });
+
+  // Ensure org row exists (source of truth for tier and default agent)
+  await globalThis.services.db
+    .insert(org)
+    .values({ orgId })
+    .onConflictDoNothing();
 
   // Create compose
   const [compose] = await globalThis.services.db

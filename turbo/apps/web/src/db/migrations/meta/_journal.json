@@ -1177,6 +1177,20 @@
       "when": 1774051200011,
       "tag": "0167_create_org_members",
       "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1774051200012,
+      "tag": "0168_last_loners",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1774051200013,
+      "tag": "0169_same_shockwave",
+      "breakpoints": true
     }
   ]
 }

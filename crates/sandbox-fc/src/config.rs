@@ -7,7 +7,7 @@ pub struct FirecrackerConfig {
     pub rootfs_path: PathBuf,
     /// Base directory for runtime data (workspaces, overlays, etc.).
     pub base_dir: PathBuf,
-    /// Profile name (e.g., "vm0/default", "vm0/browser") used for per-profile overlay isolation.
+    /// Profile name (e.g., "vm0/default") used for per-profile overlay isolation.
     pub profile: String,
     /// Port of the HTTP/HTTPS proxy. When set, iptables rules redirect traffic through it.
     pub proxy_port: Option<u16>,

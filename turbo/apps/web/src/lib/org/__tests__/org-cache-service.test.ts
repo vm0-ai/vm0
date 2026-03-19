@@ -7,6 +7,8 @@ import {
   insertOrgCacheEntry,
   deleteOrgCacheEntry,
   getOrgCacheEntry,
+  updateOrgTier,
+  ensureOrgRow,
 } from "../../../__tests__/api-test-helpers";
 import { getOrgData, getOrgBySlug } from "../org-cache-service";
 
@@ -58,11 +60,10 @@ describe("getOrgData", () => {
     await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
-    // Pre-populate cache with fresh entry
+    // Pre-populate cache with fresh entry (different slug)
     await insertOrgCacheEntry({
       orgId,
       slug: "cached-slug",
-      tier: "pro",
     });
 
     const result = await getOrgData(orgId);
@@ -70,7 +71,7 @@ describe("getOrgData", () => {
     expect(result).toEqual({
       orgId,
       slug: "cached-slug",
-      tier: "pro",
+      tier: "free",
     });
 
     // Clerk API should NOT have been called
@@ -94,7 +95,6 @@ describe("getOrgData", () => {
     await insertOrgCacheEntry({
       orgId,
       slug: "old-slug",
-      tier: "free",
       cachedAt: twoMinutesAgo,
     });
 
@@ -116,23 +116,14 @@ describe("getOrgData", () => {
     expect(cached!.cachedAt.getTime()).toBeGreaterThan(twoMinutesAgo.getTime());
   });
 
-  it("reads tier from Clerk publicMetadata", async () => {
+  it("reads tier from org table", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
     mockClerk({ userId });
-    await createTestOrg(slug);
-    const orgId = `org_mock_${slug}`;
+    const { id: orgId } = await createTestOrg(slug);
 
-    // Override getOrganization to return tier in publicMetadata
-    const client = await clerkClient();
-    vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-      id: orgId,
-      slug,
-      name: slug,
-      publicMetadata: { tier: "pro" },
-    } as unknown as Awaited<
-      ReturnType<typeof client.organizations.getOrganization>
-    >);
+    // Update tier in org table
+    await updateOrgTier(orgId, "pro");
 
     const result = await getOrgData(orgId);
 
@@ -145,6 +136,9 @@ describe("getOrgData", () => {
     mockClerk({ userId });
     await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
+
+    // Delete cache to force Clerk fetch
+    await deleteOrgCacheEntry(orgId);
 
     // Override getOrganization to return null slug
     const client = await clerkClient();
@@ -207,8 +201,11 @@ describe("getOrgBySlug", () => {
       clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
 
-    // Insert fresh cache entry directly
-    await insertOrgCacheEntry({ orgId, slug, tier: "pro" });
+    // Insert fresh cache entry and org row directly (bypass createTestOrg
+    // which uses org_mock_${userId} as orgId, not org_mock_${slug})
+    await insertOrgCacheEntry({ orgId, slug });
+    await ensureOrgRow(orgId);
+    await updateOrgTier(orgId, "pro");
 
     const result = await getOrgBySlug(slug);
 
@@ -242,7 +239,6 @@ describe("getOrgBySlug", () => {
     await insertOrgCacheEntry({
       orgId,
       slug,
-      tier: "free",
       cachedAt: twoMinutesAgo,
     });
 

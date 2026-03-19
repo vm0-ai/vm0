@@ -143,7 +143,7 @@ export function ZeroActivityDetailPage() {
             {agentName}
           </span>
         </nav>
-        <div className="mx-auto w-full max-w-[900px] pt-4 pb-8">
+        <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8">
           {/* Compact header card */}
           <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2">
@@ -272,7 +272,7 @@ function ActivitySkeleton() {
           <span className="text-muted-foreground/40 select-none">/</span>
           <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
         </nav>
-        <div className="mx-auto max-w-[900px] pt-4 pb-8 w-full">
+        <div className="mx-auto max-w-[900px] px-4 sm:px-6 pt-4 pb-8 w-full">
           {/* Header card skeleton */}
           <div className="zero-card shrink-0 px-4 py-3">
             <div className="flex flex-wrap items-center gap-y-2 gap-x-3">

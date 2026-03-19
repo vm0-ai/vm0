@@ -4,8 +4,8 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
+import { org as orgTable } from "../../../../src/db/schema/org";
 import { eq, and } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 
 const router = tsr.router(orgDefaultAgentContract, {
   setDefaultAgent: async ({ query, body, headers }) => {
@@ -38,13 +38,12 @@ const router = tsr.router(orgDefaultAgentContract, {
     const { agentComposeId } = body;
 
     // Once a default agent is configured, prevent any further changes.
-    const client = await clerkClient();
-    const clerkOrg = await client.organizations.getOrganization({
-      organizationId: org.orgId,
-    });
-    const existingComposeId = (
-      clerkOrg.publicMetadata as Record<string, unknown>
-    )?.default_agent_compose_id;
+    const [orgRow] = await globalThis.services.db
+      .select({ defaultAgentComposeId: orgTable.defaultAgentComposeId })
+      .from(orgTable)
+      .where(eq(orgTable.orgId, org.orgId))
+      .limit(1);
+    const existingComposeId = orgRow?.defaultAgentComposeId ?? null;
     if (typeof existingComposeId === "string" && existingComposeId) {
       // Verify the existing compose still exists — if it was deleted, allow re-setting.
       const [existing] = await globalThis.services.db
@@ -96,9 +95,10 @@ const router = tsr.router(orgDefaultAgentContract, {
       }
     }
 
-    await client.organizations.updateOrganizationMetadata(org.orgId, {
-      publicMetadata: { default_agent_compose_id: agentComposeId },
-    });
+    await globalThis.services.db
+      .update(orgTable)
+      .set({ defaultAgentComposeId: agentComposeId, updatedAt: new Date() })
+      .where(eq(orgTable.orgId, org.orgId));
 
     return {
       status: 200 as const,

@@ -33,7 +33,7 @@ function resolveRunnerGroup(agentCompose: unknown): string | null {
 /**
  * Known profiles. Must stay in sync with Rust: crates/runner/src/profile.rs
  */
-const KNOWN_PROFILES = [DEFAULT_PROFILE, "vm0/browser"];
+const KNOWN_PROFILES = [DEFAULT_PROFILE];
 
 /**
  * Resolve runner profile from agent compose config

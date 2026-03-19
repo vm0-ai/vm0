@@ -27,9 +27,9 @@ describe("credit-service", () => {
     it("no-ops when no pending records exist", async () => {
       await processOrgCredits(user.orgId);
 
-      // No org row should be created when nothing to process
+      // Org row exists (from setupUser) with default credits (0)
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBeNull();
+      expect(credits).toBe(0);
     });
 
     it("processes a single pending record with correct calculation", async () => {
@@ -118,9 +118,9 @@ describe("credit-service", () => {
       expect(record!.status).toBe("processed");
       expect(record!.creditsCharged).toBe(500);
 
-      // No org row should be created since nothing to process
+      // Org row exists (from setupUser) with default credits (0)
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBeNull();
+      expect(credits).toBe(0);
     });
 
     it("marks records with no matching pricing as processed with zero charge", async () => {

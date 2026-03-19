@@ -48,7 +48,7 @@ import { inArray } from "drizzle-orm";
 import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
-import { insertOrgCacheEntry } from "./api-test-helpers";
+import { insertOrgCacheEntry, ensureOrgRow } from "./api-test-helpers";
 import * as s3Client from "../lib/s3/s3-client";
 import * as axiomClient from "../lib/axiom/client";
 import { agentComposes } from "../db/schema/agent-compose";
@@ -432,6 +432,7 @@ export function testContext(): TestContext {
       const defaultOrgId = `org_mock_${userId}`;
       const defaultOrgSlug = `org-${suffix}`;
       await insertOrgCacheEntry({ orgId: defaultOrgId, slug: defaultOrgSlug });
+      await ensureOrgRow(defaultOrgId);
       controller.signal.throwIfAborted();
 
       return {

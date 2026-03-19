@@ -52,7 +52,7 @@ export interface PreparedContext {
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: string[] | null;
 
-  // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
+  // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: string | null;
 
   // Routing hint (runner group name)

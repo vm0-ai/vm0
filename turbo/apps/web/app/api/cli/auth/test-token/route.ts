@@ -5,6 +5,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
+import { org } from "../../../../../src/db/schema/org";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import {
@@ -94,9 +95,12 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
     .values({
       orgId: sentinelOrgId,
       slug,
-      tier: "free",
       cachedAt: farFuture,
     })
+    .onConflictDoNothing();
+  await globalThis.services.db
+    .insert(org)
+    .values({ orgId: sentinelOrgId })
     .onConflictDoNothing();
   await globalThis.services.db
     .insert(orgMembersCache)

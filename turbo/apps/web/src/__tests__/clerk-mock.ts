@@ -56,8 +56,6 @@ let mockUserIds: string[] = [];
  * @param options.orgId - Organization ID from active org session (optional)
  * @param options.orgSlug - Organization slug from active org session (optional)
  * @param options.clerkOrgs - Clerk orgs the user belongs to (for JIT discovery)
- * @param options.orgTier - Tier to include in JWT sessionClaims.org_tier (optional)
- * @param options.orgDefaultAgentComposeId - Default agent compose ID to include in JWT sessionClaims.org_default_agent_compose_id (optional)
  */
 export function mockClerk(options: {
   userId: string | null;
@@ -65,8 +63,6 @@ export function mockClerk(options: {
   orgId?: string | null;
   orgSlug?: string | null;
   orgRole?: string | null;
-  orgTier?: string;
-  orgDefaultAgentComposeId?: string | null;
   clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
 }) {
   const email = options.email ?? "test@example.com";
@@ -116,12 +112,7 @@ export function mockClerk(options: {
     orgId: effectiveOrgId,
     orgSlug: options.orgSlug,
     orgRole: options.orgRole ?? (effectiveOrgId ? "org:admin" : undefined),
-    sessionClaims: {
-      ...(options.orgTier !== undefined && { org_tier: options.orgTier }),
-      ...(options.orgDefaultAgentComposeId !== undefined && {
-        org_default_agent_compose_id: options.orgDefaultAgentComposeId,
-      }),
-    },
+    sessionClaims: {},
   } as Awaited<ReturnType<typeof auth>>);
 
   // Also set up clerkClient mock to return user data with email

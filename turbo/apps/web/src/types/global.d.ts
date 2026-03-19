@@ -22,9 +22,8 @@ declare global {
   // Captured Next.js after() callbacks for test assertions (see setup.ts)
   var nextAfterCallbacks: Array<() => Promise<unknown>>;
 
-  // Clerk custom JWT session claims (configured in Clerk Dashboard)
-  interface CustomJwtSessionClaims {
-    org_tier?: string;
-    org_default_agent_compose_id?: string | null;
-  }
+  // Clerk custom JWT session claims (configured in Clerk Dashboard).
+  // org_tier and membership_* claims have been migrated to the org and
+  // org_members tables respectively. Add new claims here as needed.
+  type CustomJwtSessionClaims = Record<string, unknown>;
 }

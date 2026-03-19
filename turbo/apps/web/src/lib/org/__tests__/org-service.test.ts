@@ -35,7 +35,7 @@ describe("resolveOrgOrNull", () => {
     mockClerk({ userId, orgId });
 
     // Pre-populate org_cache
-    await insertOrgCacheEntry({ orgId, slug, tier: "free" });
+    await insertOrgCacheEntry({ orgId, slug });
 
     const result = await resolveOrgOrNull({ userId, orgId, orgRole: "admin" });
 

@@ -4,7 +4,6 @@ import {
   AGENT_NAME_REGEX,
   isSupportedFramework,
   expandFirewallConfigs,
-  agentDefinitionSchema,
   type SkillFrontmatter,
   type SupportedFramework,
 } from "@vm0/core";
@@ -15,7 +14,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
 import { skills } from "../../db/schema/skill";
 import { logger } from "../logger";
 
@@ -223,7 +221,6 @@ export async function serverSideCompose(params: {
     Record<string, unknown>
   >;
   const agentDef = { ...agentsCopy[agentName]! };
-  delete agentDef.metadata;
   const resolvedContent = {
     ...contentCopy,
     version: contentCopy.version as string,
@@ -254,32 +251,6 @@ export async function serverSideCompose(params: {
     resolvedContent,
     versionId,
   });
-
-  // 8. Upsert agent metadata into zero_agents
-  const metadataResult = agentDefinitionSchema.shape.metadata.safeParse(
-    agent.metadata,
-  );
-  const metadata = metadataResult.success ? metadataResult.data : undefined;
-  if (metadata) {
-    await db
-      .insert(zeroAgents)
-      .values({
-        orgId,
-        name: normalizedName,
-        displayName: metadata.displayName ?? null,
-        description: metadata.description ?? null,
-        sound: metadata.sound ?? null,
-      })
-      .onConflictDoUpdate({
-        target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
-          displayName: metadata.displayName ?? null,
-          description: metadata.description ?? null,
-          sound: metadata.sound ?? null,
-          updatedAt: new Date(),
-        },
-      });
-  }
 
   log.info(
     `Server-side compose completed: ${normalizedName} (${versionId.slice(0, 8)})`,

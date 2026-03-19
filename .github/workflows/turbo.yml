@@ -1058,8 +1058,6 @@ jobs:
       chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
       default-rootfs-hash: ${{ steps.deploy.outputs.default-rootfs-hash }}
       default-snapshot-hash: ${{ steps.deploy.outputs.default-snapshot-hash }}
-      browser-rootfs-hash: ${{ steps.deploy.outputs.browser-rootfs-hash }}
-      browser-snapshot-hash: ${{ steps.deploy.outputs.browser-snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1205,7 +1203,6 @@ jobs:
 
             # Run build to create rootfs + snapshot (outputs hashes to stdout)
             ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/default"
-            ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/browser"
             echo "=== Done deploying to ${HOST} ==="
           }
 
@@ -1235,25 +1232,16 @@ jobs:
           fi
 
           # Extract build hashes from any host's log (all hosts produce identical hashes).
-          # Two builds run sequentially per host: default first, then browser.
           FIRST_LOG=$(ls ${LOG_DIR}/*.log | head -1)
-          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$FIRST_LOG" | head -1 | cut -d= -f2)
-          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$FIRST_LOG" | head -1 | cut -d= -f2)
-          BROWSER_ROOTFS_HASH=$(grep '^rootfs_hash=' "$FIRST_LOG" | tail -1 | cut -d= -f2)
-          BROWSER_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$FIRST_LOG" | tail -1 | cut -d= -f2)
+          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$FIRST_LOG" | cut -d= -f2)
+          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$FIRST_LOG" | cut -d= -f2)
           rm -rf "$LOG_DIR"
           if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
             echo "::error::Failed to extract default build hashes from log"
             exit 1
           fi
-          if [ -z "$BROWSER_ROOTFS_HASH" ] || [ -z "$BROWSER_SNAPSHOT_HASH" ]; then
-            echo "::error::Failed to extract browser build hashes from log"
-            exit 1
-          fi
           echo "default-rootfs-hash=${DEFAULT_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
           echo "default-snapshot-hash=${DEFAULT_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
-          echo "browser-rootfs-hash=${BROWSER_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
-          echo "browser-snapshot-hash=${BROWSER_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
 
   # Deploy runner start: generate config with real preview URL and start service
   # Waits for both deploy-runner-prepare (binaries + rootfs/snapshot) and deploy-web (preview URL)
@@ -1294,8 +1282,6 @@ jobs:
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           DEFAULT_ROOTFS_HASH: ${{ needs.deploy-runner-prepare.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.deploy-runner-prepare.outputs.default-snapshot-hash }}
-          BROWSER_ROOTFS_HASH: ${{ needs.deploy-runner-prepare.outputs.browser-rootfs-hash }}
-          BROWSER_SNAPSHOT_HASH: ${{ needs.deploy-runner-prepare.outputs.browser-snapshot-hash }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
@@ -1317,9 +1303,6 @@ jobs:
               --profile vm0/default \
               --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
               --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-              --profile vm0/browser \
-              --rootfs-hash ${BROWSER_ROOTFS_HASH} \
-              --snapshot-hash ${BROWSER_SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \

@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { createTestOrg } from "../../../__tests__/api-test-helpers";
+import {
+  createTestOrg,
+  updateOrgTier,
+} from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { resolveOrg } from "../resolve-org";
 import type { AuthContext } from "../../auth/get-auth-context";
@@ -197,36 +200,31 @@ describe("resolveOrg", () => {
     expect(result.org.orgId).not.toBe(`org_mock_${slug1}`);
   });
 
-  it("reads tier from AuthContext when org matches", async () => {
+  it("reads tier from org table", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
     // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
+
+    // Update tier in org table (use orgId from createTestOrg, not from slug)
+    await updateOrgTier(orgId, "pro");
 
     // Mock Clerk for membership verification
     mockClerk({
       userId,
-      orgId: `org_mock_${slug}`,
-      orgTier: "pro",
+      orgId,
       clerkOrgs: testOrgs(slug),
     });
 
-    const result = await resolveOrg(
-      authCtx({
-        userId,
-        orgId: `org_mock_${slug}`,
-        sessionClaims: { org_tier: "pro" },
-      }),
-    );
+    const result = await resolveOrg(authCtx({ userId, orgId }));
 
-    expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    // tier should be overridden from AuthContext
+    expect(result.org.orgId).toBe(orgId);
     expect(result.org.tier).toBe("pro");
   });
 
-  it("falls back to DB tier when AuthContext sessionClaims.org_tier is missing", async () => {
+  it("returns default tier when org table has default", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
@@ -234,7 +232,7 @@ describe("resolveOrg", () => {
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
     await createTestOrg(slug);
 
-    // Mock session WITHOUT org_tier in sessionClaims
+    // Mock session WITHOUT setting tier in org table (default is "free")
     mockClerk({
       userId,
       orgId: `org_mock_${slug}`,
@@ -249,35 +247,24 @@ describe("resolveOrg", () => {
     expect(result.org.tier).toBe("free");
   });
 
-  it("does not override tier when resolving non-active org via explicit slug", async () => {
+  it("tier reflects org table value, not a default", async () => {
     const userId = uniqueId("test-user");
-    const slug1 = uniqueId("org");
-    const slug2 = uniqueId("org");
+    const slug = uniqueId("org");
 
-    // Set up two Clerk orgs BEFORE creating orgs
-    mockClerk({ userId, clerkOrgs: testOrgs(slug1, slug2) });
-    await createTestOrg(slug1);
-    await createTestOrg(slug2);
+    // Set up Clerk org BEFORE creating org
+    mockClerk({ userId, clerkOrgs: testOrgs(slug) });
+    const { id: orgId } = await createTestOrg(slug);
 
-    // JWT active org is org2, but resolving org1 via explicit slug
-    mockClerk({
-      userId,
-      orgId: `org_mock_${slug2}`,
-      orgTier: "max",
-      clerkOrgs: testOrgs(slug1, slug2),
-    });
+    // Verify default tier is "free"
+    mockClerk({ userId, orgId, clerkOrgs: testOrgs(slug) });
+    const result1 = await resolveOrg(authCtx({ userId, orgId }));
+    expect(result1.org.tier).toBe("free");
 
-    const result = await resolveOrg(
-      authCtx({
-        userId,
-        orgId: `org_mock_${slug2}`,
-        sessionClaims: { org_tier: "max" },
-      }),
-      slug1,
-    );
+    // Update tier to "max"
+    await updateOrgTier(orgId, "max");
 
-    // tier should NOT be overridden (slug1 != active org)
-    expect(result.org.tier).toBe("free");
+    const result2 = await resolveOrg(authCtx({ userId, orgId }));
+    expect(result2.org.tier).toBe("max");
   });
 
   it("returns member with correct role", async () => {

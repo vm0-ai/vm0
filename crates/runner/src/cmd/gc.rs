@@ -267,10 +267,10 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
     Ok(removed)
 }
 
-/// Delete stale per-job log files (older than [`JOB_LOG_MAX_AGE`]).
+/// Delete stale log files (older than [`JOB_LOG_MAX_AGE`]).
 ///
-/// Per-job log files (`network-*.jsonl`, `system-*.log`, `metrics-*.jsonl`)
-/// accumulate across runs. Returns `(files_removed, bytes_freed)`.
+/// Covers per-job logs (`network-*.jsonl`, `system-*.log`, `metrics-*.jsonl`)
+/// and runner instance logs (`runner-*.log`). Returns `(files_removed, bytes_freed)`.
 async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
     let logs_dir = home.logs_dir();
     let mut entries = match tokio::fs::read_dir(&logs_dir).await {
@@ -292,8 +292,7 @@ async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
 
-        // Only target per-job log files, not runner logs.
-        if !LogPaths::is_job_log(name) {
+        if !LogPaths::is_gc_eligible_log(name) {
             continue;
         }
 
@@ -782,7 +781,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_job_logs_ignores_runner_logs() {
+    async fn gc_job_logs_deletes_stale_runner_logs() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -791,7 +790,7 @@ mod tests {
         let logs_dir = home.logs_dir();
         std::fs::create_dir_all(&logs_dir).unwrap();
 
-        // Old runner log file — must NOT be deleted.
+        // Old runner log file — should be deleted.
         let runner_log = logs_dir.join("runner-default.2026-02-10.log");
         std::fs::write(&runner_log, "log content").unwrap();
         let old_time = SystemTime::now() - Duration::from_secs(30 * 24 * 3600);
@@ -799,6 +798,22 @@ mod tests {
             .unwrap()
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
+
+        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(removed, 1);
+        assert!(!runner_log.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_job_logs_keeps_recent_runner_logs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let logs_dir = home.logs_dir();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+
+        // Recent runner log — should be kept.
+        let runner_log = logs_dir.join("runner-default.2026-03-19.log");
+        std::fs::write(&runner_log, "log content").unwrap();
 
         let (removed, _) = gc_job_logs(&home, false).await.unwrap();
         assert_eq!(removed, 0);

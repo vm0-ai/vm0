@@ -43,7 +43,7 @@ interface AgentDefinition {
     group: string;
   };
   /**
-   * VM profile for resource allocation (e.g., "vm0/default", "vm0/browser").
+   * VM profile for resource allocation (e.g., "vm0/default").
    * Determines rootfs image and VM resources (vCPU, memory).
    * Defaults to "vm0/default" when omitted.
    */
@@ -64,14 +64,6 @@ interface AgentDefinition {
    * Each entry is a tool name (e.g., "CronCreate", "WebSearch").
    */
   disallowed_tools?: string[];
-  /**
-   * Agent metadata for display and personalization.
-   */
-  metadata?: {
-    displayName?: string;
-    description?: string;
-    sound?: string;
-  };
 }
 
 export interface AgentComposeYaml {

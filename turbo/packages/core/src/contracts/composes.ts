@@ -140,7 +140,7 @@ const agentDefinitionSchema = z.object({
     })
     .optional(),
   /**
-   * VM profile for resource allocation (e.g., "vm0/default", "vm0/browser").
+   * VM profile for resource allocation (e.g., "vm0/default").
    * Determines rootfs image and VM resources (vCPU, memory).
    * Defaults to "vm0/default" when omitted.
    */
@@ -172,18 +172,6 @@ const agentDefinitionSchema = z.object({
     .array(z.enum(VALID_CAPABILITIES))
     .refine((arr) => new Set(arr).size === arr.length, {
       message: "Duplicate capabilities are not allowed",
-    })
-    .optional(),
-  /**
-   * Agent metadata for display and personalization.
-   * - displayName: Human-readable name shown in the UI (preserves original casing).
-   * - sound: Communication tone (e.g., "professional", "friendly").
-   */
-  metadata: z
-    .object({
-      displayName: z.string().optional(),
-      description: z.string().optional(),
-      sound: z.string().optional(),
     })
     .optional(),
   /**

@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { clerkClient } from "@clerk/nextjs/server";
+import { describe, it, expect, beforeEach } from "vitest";
 import { PUT } from "../route";
 import {
   createTestRequest,
   createTestCompose,
   deleteTestCompose,
+  getOrgDefaultAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -88,39 +88,30 @@ describe("PUT /api/orgs/default-agent", () => {
     expect(response.status).toBe(404);
   });
 
-  it("should dual-write default agent to Clerk org metadata", async () => {
-    await context.setupUser();
+  it("should write default agent to org table", async () => {
+    const { orgId } = await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
     await putDefaultAgent(undefined, compose.composeId);
 
-    const client = await vi.mocked(clerkClient)();
-    expect(
-      client.organizations.updateOrganizationMetadata,
-    ).toHaveBeenCalledWith(expect.any(String), {
-      publicMetadata: { default_agent_compose_id: compose.composeId },
-    });
+    // Verify the value was persisted to the org table
+    const storedId = await getOrgDefaultAgent(orgId);
+    expect(storedId).toBe(compose.composeId);
   });
 
-  it("should not update Clerk metadata when 409 conflict prevents unsetting", async () => {
-    await context.setupUser();
+  it("should not update org table when 409 conflict prevents unsetting", async () => {
+    const { orgId } = await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
     await putDefaultAgent(undefined, compose.composeId);
-
-    const client = await vi.mocked(clerkClient)();
-    const callCountAfterSet = vi.mocked(
-      client.organizations.updateOrganizationMetadata,
-    ).mock.calls.length;
 
     // Attempt to unset — should be rejected with 409
     const response = await putDefaultAgent(undefined, null);
     expect(response.status).toBe(409);
 
-    // updateOrganizationMetadata should not have been called again
-    expect(
-      client.organizations.updateOrganizationMetadata,
-    ).toHaveBeenCalledTimes(callCountAfterSet);
+    // org table should still have the original value
+    const storedId = await getOrgDefaultAgent(orgId);
+    expect(storedId).toBe(compose.composeId);
   });
 
   it("should return 409 when setting default agent twice", async () => {

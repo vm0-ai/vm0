@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 # Test VM0 profile support (E2E happy path only)
-# Verifies that explicit profile selection works for both default and browser.
+# Verifies that the default profile includes CLI tools and browser automation.
 # Profile validation (org/name format) is tested via Rust unit tests.
 
 load '../../helpers/setup'
@@ -44,15 +44,15 @@ EOF
     assert_output --partial "gh version"
 }
 
-@test "vm0 run with browser profile has agent-browser and chromium" {
+@test "vm0 run with default profile has agent-browser and chromium" {
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent with browser profile"
+    description: "Test agent with browser automation"
     framework: claude-code
-    experimental_profile: vm0/browser
+    experimental_profile: vm0/default
 EOF
 
     run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"

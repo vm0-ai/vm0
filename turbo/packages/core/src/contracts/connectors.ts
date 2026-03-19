@@ -723,6 +723,24 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  instantly: {
+    label: "Instantly",
+    helpText:
+      "Connect your Instantly account to manage email campaigns, leads, and outreach sequences",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          INSTANTLY_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-instantly-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   jam: {
     label: "Jam",
     helpText:
@@ -735,6 +753,35 @@ const CONNECTOR_TYPES_DEF = {
             label: "Personal Access Token",
             required: true,
             placeholder: "jam_pat_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  jira: {
+    label: "Jira",
+    helpText:
+      "Connect your Jira account to manage projects, issues, sprints, and workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          JIRA_API_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+          JIRA_DOMAIN: {
+            label: "Jira Domain",
+            required: true,
+            type: "variable",
+            placeholder: "your-domain.atlassian.net",
+          },
+          JIRA_EMAIL: {
+            label: "Jira Email",
+            required: true,
+            type: "variable",
+            placeholder: "your-email@example.com",
           },
         },
       },
@@ -754,6 +801,29 @@ const CONNECTOR_TYPES_DEF = {
           JOTFORM_TOKEN: {
             label: "API Key",
             required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  kommo: {
+    label: "Kommo",
+    helpText:
+      "Connect your Kommo account to manage leads, contacts, and sales pipelines",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          KOMMO_API_KEY: {
+            label: "API Key",
+            required: true,
+          },
+          KOMMO_SUBDOMAIN: {
+            label: "Subdomain",
+            required: true,
+            type: "variable",
+            placeholder: "your-subdomain",
           },
         },
       },
@@ -2798,6 +2868,76 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  lark: {
+    label: "Lark",
+    helpText:
+      "Connect your Lark (Feishu) app to manage messages, documents, calendars, and workflows",
+    authMethods: {
+      "api-token": {
+        label: "App Credentials",
+        secrets: {
+          LARK_TOKEN: {
+            label: "App Secret",
+            required: true,
+            type: "secret",
+          },
+          LARK_APP_ID: {
+            label: "App ID",
+            required: true,
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  mailsac: {
+    label: "Mailsac",
+    helpText:
+      "Connect your Mailsac account to manage disposable email inboxes for testing",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          MAILSAC_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-mailsac-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  minio: {
+    label: "MinIO",
+    helpText:
+      "Connect your MinIO instance to manage S3-compatible object storage buckets and objects",
+    authMethods: {
+      "api-token": {
+        label: "Access Credentials",
+        secrets: {
+          MINIO_TOKEN: {
+            label: "Access Key",
+            required: true,
+            type: "secret",
+          },
+          MINIO_SECRET_TOKEN: {
+            label: "Secret Key",
+            required: true,
+            type: "secret",
+          },
+          MINIO_ENDPOINT: {
+            label: "Endpoint URL",
+            required: true,
+            placeholder: "https://minio.example.com",
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   pdforge: {
     label: "PDForge",
     helpText:
@@ -3005,7 +3145,13 @@ export const connectorTypeSchema = z.enum([
   "gitlab",
   "htmlcsstoimage",
   "imgur",
+  "instantly",
   "instagram",
+  "jira",
+  "kommo",
+  "lark",
+  "mailsac",
+  "minio",
   "pdforge",
   "slack-webhook",
   "wix",
