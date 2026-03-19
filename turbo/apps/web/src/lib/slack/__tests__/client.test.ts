@@ -13,7 +13,7 @@ function createMockClient(
 }
 
 describe("Feature: Fetch Slack User Info", () => {
-  it("should return formatted user info with display name and timezone", async () => {
+  it("should return structured user info with display name and timezone", async () => {
     const client = createMockClient({
       ok: true,
       user: {
@@ -31,9 +31,12 @@ describe("Feature: Fetch Slack User Info", () => {
 
     const result = await fetchSlackUserInfo(client, "U123");
 
-    expect(result).toContain("Slack User ID: U123");
-    expect(result).toContain("Name: Jane");
-    expect(result).toContain("Timezone: Pacific Standard Time");
+    expect(result).toEqual({
+      id: "U123",
+      name: "Jane",
+      email: undefined,
+      timezone: "Pacific Standard Time",
+    });
   });
 
   it("should fall back to real_name when display_name is empty", async () => {
@@ -52,8 +55,12 @@ describe("Feature: Fetch Slack User Info", () => {
 
     const result = await fetchSlackUserInfo(client, "U456");
 
-    expect(result).toContain("Name: Bob Smith");
-    expect(result).toContain("Timezone: UTC");
+    expect(result).toEqual({
+      id: "U456",
+      name: "Bob Smith",
+      email: undefined,
+      timezone: "UTC",
+    });
   });
 
   it("should return undefined when API returns ok: false", async () => {
@@ -89,7 +96,34 @@ describe("Feature: Fetch Slack User Info", () => {
 
     const result = await fetchSlackUserInfo(client, "U789");
 
-    expect(result).toBe("Slack User ID: U789");
-    expect(result).not.toContain("Name:");
+    expect(result).toEqual({
+      id: "U789",
+      name: undefined,
+      email: undefined,
+      timezone: undefined,
+    });
+  });
+
+  it("should include email when available", async () => {
+    const client = createMockClient({
+      ok: true,
+      user: {
+        id: "U101",
+        profile: {
+          display_name: "Alice",
+          email: "alice@example.com",
+        },
+        tz_label: "Eastern Time",
+      },
+    });
+
+    const result = await fetchSlackUserInfo(client, "U101");
+
+    expect(result).toEqual({
+      id: "U101",
+      name: "Alice",
+      email: "alice@example.com",
+      timezone: "Eastern Time",
+    });
   });
 });
