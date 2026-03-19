@@ -24,6 +24,8 @@ set -eu
 OTP="424242"
 BASE_URL=""
 EMAIL=""
+SCREENSHOT_DIR="/tmp/e2e-auth-screenshots"
+mkdir -p "$SCREENSHOT_DIR"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -60,6 +62,20 @@ fi
 echo "🚀 CLI authentication via agent-browser"
 echo "   URL:   $BASE_URL"
 echo "   Email: $EMAIL"
+
+# ---------------------------------------------------------------------------
+# Helper: take a numbered screenshot + snapshot for debugging
+# ---------------------------------------------------------------------------
+STEP_NUM=0
+step_screenshot() {
+  STEP_NUM=$((STEP_NUM + 1))
+  local label="$1"
+  local filename
+  filename=$(printf "%02d-%s" "$STEP_NUM" "$label")
+  echo "📸 [$filename] Taking screenshot..."
+  agent-browser screenshot "$SCREENSHOT_DIR/${filename}.png" 2>/dev/null || true
+  agent-browser snapshot > "$SCREENSHOT_DIR/${filename}.txt" 2>/dev/null || true
+}
 
 # ---------------------------------------------------------------------------
 # Helper: check if string contains pattern (avoids pipe + grep in conditionals)
@@ -237,6 +253,7 @@ echo "🔐 Phase 2: Clerk authentication..."
 echo "🌐 Navigating to $BASE_URL/sign-in"
 agent-browser open "$BASE_URL/sign-in" --ignore-https-errors
 agent-browser wait 3000
+step_screenshot "sign-in-page"
 
 # Check if already signed in (redirected away from /sign-in)
 CURRENT_URL=$(agent-browser get url 2>/dev/null || true)
@@ -254,6 +271,7 @@ else
       break
     fi
     if [[ $i -eq 10 ]]; then
+      step_screenshot "sign-in-form-missing"
       echo "❌ Clerk sign-in form did not appear within 30s" >&2
       exit 1
     fi
@@ -261,7 +279,7 @@ else
   done
 
   # -----------------------------------------------------------------------
-  # Sign-in: email only → Continue (email code flow, no password)
+  # Enter email on sign-in form and click Continue
   # -----------------------------------------------------------------------
   SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
   EMAIL_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'Email address' || true)")
@@ -272,106 +290,89 @@ else
   agent-browser wait 300
   agent-browser click "$CONTINUE_REF"
   agent-browser wait 5000
+  step_screenshot "after-email-continue"
 
-  CURRENT_URL=$(agent-browser get url 2>/dev/null || true)
+  # -----------------------------------------------------------------------
+  # Decide: sign-in succeeded, need sign-up, or need OTP?
+  # Check snapshot text instead of relying on URL redirects.
+  # -----------------------------------------------------------------------
+  SNAP=$(full_snapshot)
 
-  if [[ -n "$CURRENT_URL" && ! "$CURRENT_URL" =~ sign-in && ! "$CURRENT_URL" =~ sign-up ]]; then
-    # Redirected away — sign-in succeeded (e.g. Clerk dev mode)
-    echo "✅ Sign-in successful!"
-  else
+  if contains "$SNAP" "identifier is invalid\|couldn.t find your account"; then
+    # ---- Account does not exist → sign-up flow ----
+    step_screenshot "account-not-found"
+    echo "📝 Account not found — switching to sign-up flow"
+
+    SIGNUP_PASSWORD="$(generate_password)"
+
+    agent-browser open "$BASE_URL/sign-up" --ignore-https-errors
+    agent-browser wait 3000
+
+    for i in $(seq 1 10); do
+      SNAP=$(agent-browser snapshot -i 2>/dev/null || true)
+      if contains "$SNAP" "email address"; then
+        break
+      fi
+      if [[ $i -eq 10 ]]; then
+        step_screenshot "sign-up-form-missing"
+        echo "❌ Sign-up form did not appear" >&2
+        exit 1
+      fi
+      sleep 3
+    done
+
+    step_screenshot "sign-up-form"
+    echo "📧 Filling sign-up form"
+    SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
+    EMAIL_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'Email address' || true)")
+    PASS_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'textbox "Password"' || true)")
+    CONTINUE_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Continue"' || true)")
+
+    agent-browser fill "$EMAIL_REF" "$EMAIL"
+    agent-browser wait 300
+    agent-browser fill "$PASS_REF" "$SIGNUP_PASSWORD"
+    agent-browser wait 300
+    agent-browser click "$CONTINUE_REF"
+    agent-browser wait 5000
+    step_screenshot "after-sign-up-continue"
+
     SNAP=$(full_snapshot)
+    if contains "$SNAP" "verify your email\|verification code"; then
+      enter_otp "$OTP"
+      step_screenshot "after-sign-up-otp"
+    fi
 
-    # ----- Account not found → sign-up flow -----
-    if contains "$SNAP" "couldn.t find your account"; then
-      echo "📝 Account not found — switching to sign-up flow"
-
-      SIGNUP_PASSWORD="$(generate_password)"
-
-      agent-browser open "$BASE_URL/sign-up"
-      agent-browser wait 3000
-
-      for i in $(seq 1 10); do
-        SNAP=$(agent-browser snapshot -i 2>/dev/null || true)
-        if contains "$SNAP" "email address"; then
-          break
-        fi
-        if [[ $i -eq 10 ]]; then
-          echo "❌ Sign-up form did not appear" >&2
-          exit 1
-        fi
-        sleep 3
-      done
-
-      echo "📧 Filling sign-up form"
-      SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-      EMAIL_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'Email address' || true)")
-      PASS_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'textbox "Password"' || true)")
-      CONTINUE_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Continue"' || true)")
-
-      agent-browser fill "$EMAIL_REF" "$EMAIL"
-      agent-browser wait 300
-      agent-browser fill "$PASS_REF" "$SIGNUP_PASSWORD"
-      agent-browser wait 300
-      agent-browser click "$CONTINUE_REF"
-      agent-browser wait 5000
-
+    # Wait for sign-up to complete: page should no longer show sign-up form
+    for _i in $(seq 1 30); do
       SNAP=$(full_snapshot)
-      if contains "$SNAP" "verify your email\|verification code"; then
-        enter_otp "$OTP"
+      if ! contains "$SNAP" "sign.up\|Create your account\|verification code"; then
+        break
       fi
+      sleep 1
+    done
 
-      REDIRECT_URL=$(wait_for_redirect_away "sign-up" 30 || true)
-      if [[ -z "$REDIRECT_URL" ]]; then
-        echo "❌ Sign-up did not complete" >&2
-        agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
-        exit 1
-      fi
-      echo "✅ Sign-up successful!"
+    SNAP=$(full_snapshot)
+    if contains "$SNAP" "sign.up\|Create your account"; then
+      step_screenshot "sign-up-failed"
+      echo "❌ Sign-up did not complete" >&2
+      exit 1
+    fi
+    echo "✅ Sign-up successful!"
 
-    # ----- "Use another method" → email code flow -----
-    elif contains "$SNAP" "use another method"; then
-      echo "🔄 Clicking 'Use another method'"
-      SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-      UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'use another method' || true)")
-      agent-browser click "$UAM_REF"
-      agent-browser wait 2000
+  elif ! contains "$SNAP" "sign.in\|password\|email address"; then
+    # ---- Page no longer shows sign-in form → already authenticated ----
+    echo "✅ Sign-in successful!"
 
-      echo "📧 Selecting 'Email code'"
-      SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-      EC_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'email code' || true)")
-      if [[ -n "$EC_REF" ]]; then
-        agent-browser click "$EC_REF"
-        agent-browser wait 3000
-      fi
+  else
+    # ---- Still on sign-in page → need OTP to complete sign-in ----
+    step_screenshot "sign-in-needs-otp"
+    echo "🔐 Sign-in requires further verification"
 
-      enter_otp "$OTP"
-
-      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 30 || true)
-      if [[ -z "$REDIRECT_URL" ]]; then
-        echo "❌ Email code sign-in did not complete" >&2
-        agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
-        exit 1
-      fi
-      echo "✅ Sign-in via email code successful!"
-
-    # ----- Already on verification code screen -----
-    elif contains "$SNAP" "verify\|verification code\|enter.*code"; then
-      enter_otp "$OTP"
-
-      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 30 || true)
-      if [[ -z "$REDIRECT_URL" ]]; then
-        echo "❌ OTP verification did not complete" >&2
-        agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
-        exit 1
-      fi
-      echo "✅ Sign-in via OTP successful!"
-
-    # ----- Password required (enter empty and try email code) -----
-    elif contains "$SNAP" "password"; then
+    # If password field is showing, try to switch to email code method
+    if contains "$SNAP" "password"; then
       echo "🔄 Password screen detected — looking for email code option"
       SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
 
-      # Try "Use another method" first, then fall back to "Email code" or "Forgot password"
       UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'use another method' || true)")
       if [[ -z "$UAM_REF" ]]; then
         UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'email code\|forgot password' || true)")
@@ -380,6 +381,7 @@ else
         echo "🔄 Clicking alternative auth method"
         agent-browser click "$UAM_REF"
         agent-browser wait 3000
+        step_screenshot "after-alt-method-click"
         SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
         EC_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'email code' || true)")
         if [[ -n "$EC_REF" ]]; then
@@ -388,28 +390,33 @@ else
           agent-browser wait 3000
         fi
       fi
+    fi
 
-      # Wait for OTP screen to appear before entering code
-      if ! wait_for_otp_screen 10; then
-        echo "⚠️ OTP screen not detected, attempting OTP entry anyway"
+    # Wait for OTP screen, then enter code
+    if ! wait_for_otp_screen 10; then
+      echo "⚠️ OTP screen not detected, attempting OTP entry anyway"
+      step_screenshot "otp-screen-not-detected"
+    fi
+
+    enter_otp "$OTP"
+    step_screenshot "after-sign-in-otp"
+
+    # Wait for sign-in to complete: page should no longer show sign-in form
+    for _i in $(seq 1 30); do
+      SNAP=$(full_snapshot)
+      if ! contains "$SNAP" "sign.in\|password\|verification code"; then
+        break
       fi
+      sleep 1
+    done
 
-      enter_otp "$OTP"
-
-      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 30 || true)
-      if [[ -z "$REDIRECT_URL" ]]; then
-        echo "❌ Email code sign-in did not complete" >&2
-        agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
-        exit 1
-      fi
-      echo "✅ Sign-in via email code successful!"
-
-    else
-      echo "❌ Unexpected state after sign-in attempt" >&2
-      echo "$SNAP" >&2
-      agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
+    SNAP=$(full_snapshot)
+    if contains "$SNAP" "sign.in\|password"; then
+      step_screenshot "sign-in-failed"
+      echo "❌ Sign-in did not complete" >&2
       exit 1
     fi
+    echo "✅ Sign-in successful!"
   fi
 fi
 
@@ -430,11 +437,13 @@ for i in $(seq 1 10); do
     break
   fi
   if [[ $i -eq 10 ]]; then
+    step_screenshot "cli-auth-page-failed"
     echo "❌ CLI auth page did not load" >&2
     exit 1
   fi
   sleep 2
 done
+step_screenshot "cli-auth-page"
 
 # Get snapshot and find the 8 textbox refs for device code
 SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
@@ -488,6 +497,7 @@ else
     agent-browser click "$AUTH_REF"
     echo "➡️ Clicked Authorize Device"
   else
+    step_screenshot "verify-button-not-found"
     echo "❌ Verify button not found" >&2
     echo "$SNAP_I" >&2
     exit 1
@@ -495,6 +505,7 @@ else
 fi
 
 agent-browser wait 3000
+step_screenshot "after-verify-click"
 
 # ===========================================================================
 # Phase 4: Wait for CLI authentication to complete
