@@ -937,25 +937,9 @@ describe("zero-job-detail signals", () => {
       context.store.set(addZeroJobSkill$, "gmail");
       await context.store.set(saveZeroJobSkills$);
 
-<<<<<<< HEAD
-      // Verify skills were sent in the compose content
-      const content = capturedJobBody["content"] as Record<string, unknown>;
-      const agents = content["agents"] as Record<
-        string,
-        Record<string, unknown>
-      >;
-      const mainAgent = agents["main"];
-      const skills = mainAgent["skills"] as string[];
-      // All SEED_SKILLS plus agent-specific skills are saved, converted to URLs
-      expect(skills).toHaveLength(SEED_SKILLS.length + 2);
-      // Skills should be converted to URLs via skillValueToUrl
-      expect(skills).toContainEqual(expect.stringContaining("search"));
-      expect(skills).toContainEqual(expect.stringContaining("gmail"));
-=======
       // Verify connectors were sent as short names
       expect(capturedBody).toBeTruthy();
       expect(capturedBody!.connectors).toStrictEqual(["search", "gmail"]);
->>>>>>> 4542e8f4c (refactor(platform): migrate frontend signals to zero agents api)
 
       // After save, dirty state should be reset
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
