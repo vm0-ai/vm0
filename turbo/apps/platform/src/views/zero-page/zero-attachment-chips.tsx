@@ -1,3 +1,6 @@
+import type { MouseEvent } from "react";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useSet } from "ccstate-react";
 import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/zero-page/zero-chat.ts";
 import docPdfIcon from "./assets/doc-pdf.svg";
@@ -28,6 +31,47 @@ function getFileTypeIcon(filename: string): string | null {
       return null;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// ImageLightbox — full-screen image viewer
+// ---------------------------------------------------------------------------
+
+export function ImageLightbox({
+  url,
+  onClose,
+}: {
+  url: string;
+  onClose: () => void;
+}) {
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+        aria-label="Close"
+      >
+        <IconX size={20} stroke={2} />
+      </button>
+      <img
+        src={url}
+        alt=""
+        className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-200"
+      />
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -74,57 +118,78 @@ function AttachmentChip({
   attachment: ZeroChatAttachment;
   onRemove: () => void;
 }) {
+  const lightboxUrl$ = useCCState<string | null>(null);
+  const lightboxUrl = useGet(lightboxUrl$);
+  const setLightboxUrl = useSet(lightboxUrl$);
   const isImage = attachment.contentType.startsWith("image/");
   const iconSrc = isImage ? null : getFileTypeIcon(attachment.filename);
   return (
-    <div
-      className="relative inline-flex items-center justify-center"
-      title={attachment.filename}
-    >
-      {isImage ? (
-        <div className="relative h-6 w-6 rounded-lg overflow-hidden border border-foreground/10">
-          {attachment.url ? (
-            <img
-              src={attachment.url}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <IconPhoto
-              size={16}
-              stroke={1.5}
-              className="text-muted-foreground m-auto h-full"
-            />
-          )}
-        </div>
-      ) : iconSrc ? (
-        <img
-          alt=""
-          className="h-6 w-6 object-contain opacity-80"
-          aria-hidden="true"
-          src={iconSrc}
-        />
-      ) : (
-        <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
-      )}
-      {attachment.uploading ? (
-        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
-          <IconLoader2
-            size={10}
-            className="animate-spin text-muted-foreground"
+    <>
+      <div
+        className="relative inline-flex items-center justify-center"
+        title={attachment.filename}
+      >
+        {isImage ? (
+          <button
+            type="button"
+            onClick={() => attachment.url && setLightboxUrl(attachment.url)}
+            disabled={!attachment.url}
+            className="group relative h-14 max-w-[120px] rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+          >
+            {attachment.url ? (
+              <>
+                <img
+                  src={attachment.url}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                  <IconPhoto
+                    size={18}
+                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                  />
+                </span>
+              </>
+            ) : (
+              <IconPhoto
+                size={20}
+                stroke={1.5}
+                className="text-muted-foreground m-auto h-full"
+              />
+            )}
+          </button>
+        ) : iconSrc ? (
+          <img
+            alt=""
+            className="h-6 w-6 object-contain opacity-80"
+            aria-hidden="true"
+            src={iconSrc}
           />
-        </span>
-      ) : (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
-          aria-label={`Remove ${attachment.filename}`}
-        >
-          <IconX size={9} stroke={2.5} />
-        </button>
+        ) : (
+          <IconFile size={20} stroke={1.5} className="text-muted-foreground" />
+        )}
+        {attachment.uploading ? (
+          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
+            <IconLoader2
+              size={10}
+              className="animate-spin text-muted-foreground"
+            />
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            aria-label={`Remove ${attachment.filename}`}
+          >
+            <IconX size={9} stroke={2.5} />
+          </button>
+        )}
+      </div>
+      {lightboxUrl && (
+        <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       )}
-    </div>
+    </>
   );
 }
 

@@ -1,4 +1,3 @@
-import type { MouseEvent } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
@@ -7,7 +6,6 @@ import {
   IconArrowLeft,
   IconUsers,
   IconCalendar,
-  IconX,
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
@@ -26,7 +24,7 @@ import {
 } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
-import { FileAttachmentChip } from "./zero-attachment-chips.tsx";
+import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroChatMessages$,
@@ -325,7 +323,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
                       <img
                         src={a.url}
                         alt={a.filename}
-                        className="h-7 max-w-[56px] object-cover"
+                        className="h-14 max-w-[120px] object-cover"
                       />
                       <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
                         <IconPhoto
@@ -351,37 +349,6 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
         <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       )}
     </>
-  );
-}
-
-function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
-  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-        aria-label="Close"
-      >
-        <IconX size={20} stroke={2} />
-      </button>
-      <img
-        src={url}
-        alt=""
-        className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-200"
-      />
-    </div>
   );
 }
 
