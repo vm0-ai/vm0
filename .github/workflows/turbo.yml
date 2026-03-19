@@ -266,6 +266,9 @@ jobs:
     runs-on: ubuntu-latest
     # Skip for release-please commits (only version bumps and changelogs)
     if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release') }}"
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260310
     services:
@@ -290,7 +293,7 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm vitest run --project=web --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=web --shard=${{ matrix.shard }}/4 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v5
