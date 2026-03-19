@@ -1,5 +1,6 @@
 {
   "bash.lang.security.ifs-tampering.ifs-tampering": 1,
+  "generic.secrets.security.detected-generic-api-key.detected-generic-api-key": 1,
   "generic.secrets.security.detected-github-token.detected-github-token": 1,
   "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp": 5,
   "javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key": 6,
