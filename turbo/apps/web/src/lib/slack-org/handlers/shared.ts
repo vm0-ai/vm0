@@ -1,10 +1,10 @@
 import { eq, and } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { zeroAgents } from "../../../db/schema/zero-agent";
+import { org as orgTable } from "../../../db/schema/org";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
 import { ensureStorageExists } from "../../storage/storage-service";
@@ -63,25 +63,20 @@ export async function resolveConnectionFromSlackUser(
 }
 
 /**
- * Resolve default agent compose ID from Clerk org metadata.
+ * Resolve default agent compose ID from org table.
  * Falls back to VM0_DEFAULT_AGENT env var if not set.
  */
 export async function resolveDefaultComposeId(
   orgId: string,
 ): Promise<string | null> {
-  // For now, read from Clerk org metadata via org cache
-  // The publicMetadata.default_agent_compose_id field may not yet exist,
-  // so we read it via getOrgData which fetches from Clerk API
-  const clerk = await clerkClient();
-  const org = await clerk.organizations.getOrganization({
-    organizationId: orgId,
-  });
+  const [orgRow] = await globalThis.services.db
+    .select({ defaultAgentComposeId: orgTable.defaultAgentComposeId })
+    .from(orgTable)
+    .where(eq(orgTable.orgId, orgId))
+    .limit(1);
 
-  const metadata = org.publicMetadata as Record<string, unknown> | undefined;
-  const composeId = metadata?.default_agent_compose_id;
-
-  if (typeof composeId === "string" && composeId.length > 0) {
-    return composeId;
+  if (orgRow?.defaultAgentComposeId) {
+    return orgRow.defaultAgentComposeId;
   }
 
   // Fallback: resolve from VM0_DEFAULT_AGENT env var

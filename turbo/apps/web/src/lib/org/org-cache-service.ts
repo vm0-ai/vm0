@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { orgCache } from "../../db/schema/org-cache";
+import { org } from "../../db/schema/org";
 import { logger } from "../logger";
 
 const log = logger("service:org-cache");
@@ -15,16 +16,32 @@ interface OrgData {
 }
 
 /**
+ * Read tier from the org table (source of truth).
+ * Returns "free" if the org row does not exist.
+ */
+async function readTier(orgId: string): Promise<string> {
+  const db = globalThis.services.db;
+  const [orgRow] = await db
+    .select({ tier: org.tier })
+    .from(org)
+    .where(eq(org.orgId, orgId))
+    .limit(1);
+  return orgRow?.tier ?? "free";
+}
+
+/**
  * Get org data from cache or Clerk API.
  *
- * 1. Check org_cache by orgId
- * 2. If fresh (< 1 min): return cached data
- * 3. If miss or stale: call Clerk API, upsert cache, return
+ * - slug: cached from Clerk (org_cache, 1-min TTL)
+ * - tier: read from org table (owned by platform, always fresh)
  */
 export async function getOrgData(orgId: string): Promise<OrgData> {
   const db = globalThis.services.db;
 
-  // 1. Check cache
+  // Read tier from org table (source of truth)
+  const tier = await readTier(orgId);
+
+  // Check slug cache
   const [cached] = await db
     .select()
     .from(orgCache)
@@ -32,38 +49,28 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return {
-      orgId,
-      slug: cached.slug,
-      tier: cached.tier,
-    };
+    return { orgId, slug: cached.slug, tier };
   }
 
-  // 2. Fetch from Clerk (source of truth)
+  // Fetch slug from Clerk (source of truth for slug)
   const client = await clerkClient();
-  const org = await client.organizations.getOrganization({
+  const clerkOrg = await client.organizations.getOrganization({
     organizationId: orgId,
   });
 
-  if (!org.slug) {
+  if (!clerkOrg.slug) {
     throw new Error(`Clerk organization ${orgId} has no slug — cannot cache`);
   }
-  const slug = org.slug;
-  const publicMetadata = org.publicMetadata as
-    | Record<string, unknown>
-    | undefined;
-  const rawTier = publicMetadata?.tier;
-  const tier =
-    typeof rawTier === "string" && rawTier.length > 0 ? rawTier : "free";
+  const slug = clerkOrg.slug;
 
-  // 3. Upsert cache
+  // Upsert slug cache
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId, slug, tier, cachedAt: now })
+    .values({ orgId, slug, cachedAt: now })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, tier, cachedAt: now },
+      set: { slug, cachedAt: now },
     });
 
   log.debug("org cache refreshed", { orgId, slug, tier });
@@ -84,16 +91,15 @@ export async function invalidateOrgCache(orgId: string): Promise<void> {
 /**
  * Get org data by slug from cache or Clerk API (reverse lookup).
  *
- * 1. Check org_cache by slug
- * 2. If fresh (< 1 min): return cached data
- * 3. If miss or stale: call Clerk API with { slug }, upsert cache, return
+ * - slug: cached from Clerk (org_cache, 1-min TTL)
+ * - tier: read from org table (owned by platform, always fresh)
  *
  * Returns null when the slug does not exist in Clerk.
  */
 export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   const db = globalThis.services.db;
 
-  // 1. Check cache by slug
+  // Check slug cache
   const [cached] = await db
     .select()
     .from(orgCache)
@@ -101,49 +107,41 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return {
-      orgId: cached.orgId,
-      slug: cached.slug,
-      tier: cached.tier,
-    };
+    const tier = await readTier(cached.orgId);
+    return { orgId: cached.orgId, slug: cached.slug, tier };
   }
 
-  // 2. Fetch from Clerk by slug
+  // Fetch from Clerk by slug
   const client = await clerkClient();
-  let org;
+  let clerkOrg;
   try {
-    org = await client.organizations.getOrganization({ slug });
+    clerkOrg = await client.organizations.getOrganization({ slug });
   } catch {
     return null;
   }
 
-  if (!org.slug) {
+  if (!clerkOrg.slug) {
     log.warn(`Clerk organization looked up by slug '${slug}' has no slug`);
     return null;
   }
 
-  const publicMetadata = org.publicMetadata as
-    | Record<string, unknown>
-    | undefined;
-  const rawTier = publicMetadata?.tier;
-  const tier =
-    typeof rawTier === "string" && rawTier.length > 0 ? rawTier : "free";
+  const tier = await readTier(clerkOrg.id);
 
-  // 3. Upsert cache
+  // Upsert slug cache
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId: org.id, slug: org.slug, tier, cachedAt: now })
+    .values({ orgId: clerkOrg.id, slug: clerkOrg.slug, cachedAt: now })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: org.slug, tier, cachedAt: now },
+      set: { slug: clerkOrg.slug, cachedAt: now },
     });
 
   log.debug("org cache refreshed (by slug)", {
-    orgId: org.id,
-    slug: org.slug,
+    orgId: clerkOrg.id,
+    slug: clerkOrg.slug,
     tier,
   });
 
-  return { orgId: org.id, slug: org.slug, tier };
+  return { orgId: clerkOrg.id, slug: clerkOrg.slug, tier };
 }

@@ -11,7 +11,7 @@ import {
   markRunningRunsAsCompleted,
   expireQueueEntry,
   setTestRunStatus,
-  insertOrgCacheEntry,
+  updateOrgTier,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import {
@@ -252,12 +252,8 @@ describe("run-queue-service", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "10");
       reloadEnv();
 
-      // Update org_cache to "pro" tier (limit=2 vs free limit=1)
-      await insertOrgCacheEntry({
-        orgId: user.orgId,
-        slug: `org-${user.orgId}`,
-        tier: "pro",
-      });
+      // Update org table to "pro" tier (limit=2 vs free limit=1)
+      await updateOrgTier(user.orgId, "pro");
 
       // Create 1 running run — fills free limit but not pro limit
       await createRun(baseParams({ prompt: "Running" }));

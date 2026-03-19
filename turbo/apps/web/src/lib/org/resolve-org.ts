@@ -107,22 +107,7 @@ async function verifyMembership(
 }
 
 /**
- * Override org tier with JWT session claim when the resolved org matches
- * the AuthContext's active org. Falls back to org_cache tier if claim is missing.
- */
-function applyJwtTier(
-  resolved: ResolvedOrg,
-  authCtx: AuthContext,
-): ResolvedOrg {
-  const jwtTier = authCtx.sessionClaims?.org_tier;
-  if (resolved.orgId === authCtx.orgId && jwtTier) {
-    return { ...resolved, tier: jwtTier };
-  }
-  return resolved;
-}
-
-/**
- * Resolve org from request context using org_cache.
+ * Resolve org from request context using org_cache + org table.
  *
  * Requires explicit org context — either an orgSlug (?org= query param),
  * an explicit orgId, or an AuthContext with active org. Does NOT guess
@@ -132,8 +117,7 @@ function applyJwtTier(
  * 1. orgSlug (?org=<slug> query param) -> org_cache lookup, verify membership
  * 2. orgId (explicit param or AuthContext) -> org_cache lookup, verify membership
  *
- * When the resolved org matches the AuthContext's active org, `tier` is read from
- * authCtx.sessionClaims?.org_tier (falling back to org_cache value if missing).
+ * Tier is always read from the org table (source of truth).
  *
  * @throws BadRequestError when no explicit org context is available
  */
@@ -148,7 +132,7 @@ export async function resolveOrg(
     if (!orgData) throw notFound("Org not found");
 
     const member = await verifyMembership(orgData, authCtx);
-    return { org: applyJwtTier(orgData, authCtx), member };
+    return { org: orgData, member };
   }
 
   // 2. Explicit orgId — use provided value or auto-detect from AuthContext.
@@ -156,7 +140,7 @@ export async function resolveOrg(
   if (effectiveOrgId) {
     const orgData = await getOrgData(effectiveOrgId);
     const member = await verifyMembership(orgData, authCtx);
-    return { org: applyJwtTier(orgData, authCtx), member };
+    return { org: orgData, member };
   }
 
   // No explicit org context available — require callers to provide one

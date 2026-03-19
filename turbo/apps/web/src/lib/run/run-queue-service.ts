@@ -2,7 +2,7 @@ import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { transitionRunStatus } from "./run-status";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
-import { orgCache } from "../../db/schema/org-cache";
+import { org } from "../../db/schema/org";
 import { env } from "../../env";
 import { logger } from "../logger";
 import { isConcurrentRunLimit } from "../errors";
@@ -194,14 +194,14 @@ async function dequeueNextAtomic(
       // Serialize all queue operations for this org
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-      // Look up org tier from cache (simple DB read, no external API call).
-      // Falls back to "free" (most conservative limit) if cache is empty.
-      const [cached] = await tx
-        .select({ tier: orgCache.tier })
-        .from(orgCache)
-        .where(eq(orgCache.orgId, orgId))
+      // Look up org tier from org table (source of truth).
+      // Falls back to "free" (most conservative limit) if row is missing.
+      const [orgRow] = await tx
+        .select({ tier: org.tier })
+        .from(org)
+        .where(eq(org.orgId, orgId))
         .limit(1);
-      const orgTier = parseOrgTier(cached?.tier);
+      const orgTier = parseOrgTier(orgRow?.tier);
 
       // Check concurrency FIRST — don't dequeue if no slot available
       await checkRunConcurrencyLimit(orgId, orgTier, tx);

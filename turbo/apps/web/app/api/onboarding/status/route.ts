@@ -14,6 +14,7 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
 import { agentComposeApiContentSchema } from "@vm0/core";
 import { orgMembers } from "../../../../src/db/schema/org-members";
+import { org as orgTable } from "../../../../src/db/schema/org";
 
 async function isMemberOnboardingDone(
   orgId: string,
@@ -133,14 +134,18 @@ const router = tsr.router(onboardingStatusContract, {
 
       hasModelProvider = provider !== undefined;
 
-      // Read default agent compose ID from Clerk JWT session claims
-      const claimAgentComposeId =
-        authCtx.sessionClaims?.org_default_agent_compose_id ?? null;
+      // Read default agent compose ID from org table
+      const [orgRow] = await globalThis.services.db
+        .select({ defaultAgentComposeId: orgTable.defaultAgentComposeId })
+        .from(orgTable)
+        .where(eq(orgTable.orgId, resolvedOrg.orgId))
+        .limit(1);
+      const defaultAgentComposeId = orgRow?.defaultAgentComposeId ?? null;
 
-      if (claimAgentComposeId) {
+      if (defaultAgentComposeId) {
         defaultAgent = await resolveDefaultAgent(
           resolvedOrg.orgId,
-          claimAgentComposeId,
+          defaultAgentComposeId,
         );
       }
     } catch (error) {

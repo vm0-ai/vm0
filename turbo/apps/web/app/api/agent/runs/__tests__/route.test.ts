@@ -21,6 +21,7 @@ import {
   insertOrgMembersCacheEntry,
   getOrgCacheEntry,
   createTestZeroAgent,
+  updateOrgTier,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
@@ -653,12 +654,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should allow 2 concurrent runs for pro tier orgs", async () => {
       // Set org to pro tier (allows 2 concurrent runs)
-      const orgEntry = (await getOrgCacheEntry(user.orgId))!;
-      await insertOrgCacheEntry({
-        orgId: user.orgId,
-        slug: orgEntry.slug,
-        tier: "pro",
-      });
+      await updateOrgTier(user.orgId, "pro");
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");
@@ -669,12 +665,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should queue 3rd concurrent run for pro tier orgs", async () => {
       // Pro tier only allows 2 concurrent runs
-      const orgEntry = (await getOrgCacheEntry(user.orgId))!;
-      await insertOrgCacheEntry({
-        orgId: user.orgId,
-        slug: orgEntry.slug,
-        tier: "pro",
-      });
+      await updateOrgTier(user.orgId, "pro");
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");

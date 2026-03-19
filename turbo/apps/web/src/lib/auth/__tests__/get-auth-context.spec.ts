@@ -186,7 +186,7 @@ describe("getAuthContext org fields from Clerk session", () => {
       userId: "user_123",
       orgId: "org_456",
       orgRole: "org:admin",
-      sessionClaims: { org_tier: "pro" },
+      sessionClaims: { membership_timezone: "America/New_York" },
     } as Awaited<ReturnType<typeof auth>>);
 
     const result = await getAuthContext();
@@ -195,7 +195,7 @@ describe("getAuthContext org fields from Clerk session", () => {
     expect(result?.userId).toBe("user_123");
     expect(result?.orgId).toBe("org_456");
     expect(result?.orgRole).toBe("admin");
-    expect(result?.sessionClaims?.org_tier).toBe("pro");
+    expect(result?.sessionClaims?.membership_timezone).toBe("America/New_York");
   });
 
   it("should map org:member role to member", async () => {
@@ -224,7 +224,7 @@ describe("getAuthContext org fields from Clerk session", () => {
     expect(result?.userId).toBe("user_123");
     expect(result?.orgId).toBeUndefined();
     expect(result?.orgRole).toBeUndefined();
-    expect(result?.sessionClaims?.org_tier).toBeUndefined();
+    expect(result?.sessionClaims?.membership_timezone).toBeUndefined();
   });
 
   it("should not populate org fields for sandbox tokens", async () => {

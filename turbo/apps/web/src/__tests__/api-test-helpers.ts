@@ -340,13 +340,15 @@ export async function createTestOrg(
     .values({
       orgId,
       slug,
-      tier: "free",
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, tier: "free", cachedAt: new Date() },
+      set: { slug, cachedAt: new Date() },
     });
+
+  // Ensure org row exists (source of truth for tier and default agent)
+  await ensureOrgRow(orgId);
 
   return { id: orgId, slug };
 }
@@ -2624,13 +2626,15 @@ export async function createTestTelegramInstallation(options?: {
     .values({
       orgId,
       slug: orgSlug,
-      tier: "free",
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
+      set: { slug: orgSlug, cachedAt: new Date() },
     });
+
+  // Ensure org row exists
+  await ensureOrgRow(orgId);
 
   const [compose] = await globalThis.services.db
     .insert(agentComposes)
@@ -2874,7 +2878,6 @@ export async function findTestOutboxItemById(id: string) {
 export async function insertOrgCacheEntry(entry: {
   orgId: string;
   slug: string;
-  tier?: string;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
@@ -2883,14 +2886,12 @@ export async function insertOrgCacheEntry(entry: {
     .values({
       orgId: entry.orgId,
       slug: entry.slug,
-      tier: entry.tier ?? "free",
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
       set: {
         slug: entry.slug,
-        tier: entry.tier ?? "free",
         cachedAt: entry.cachedAt ?? new Date(),
       },
     });
@@ -2933,6 +2934,44 @@ export async function getOrgCredits(orgId: string): Promise<number | null> {
     .where(eq(org.orgId, orgId))
     .limit(1);
   return row?.credits ?? null;
+}
+
+/**
+ * Ensure an org row exists in the `org` table.
+ * Inserts with defaults if missing, does nothing if already present.
+ */
+export async function ensureOrgRow(orgId: string): Promise<void> {
+  await globalThis.services.db
+    .insert(org)
+    .values({ orgId })
+    .onConflictDoNothing();
+}
+
+/**
+ * Update the tier for an org in the `org` table.
+ */
+export async function updateOrgTier(
+  orgId: string,
+  tier: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(org)
+    .set({ tier, updatedAt: new Date() })
+    .where(eq(org.orgId, orgId));
+}
+
+/**
+ * Read the default agent compose ID for an org from the `org` table.
+ */
+export async function getOrgDefaultAgent(
+  orgId: string,
+): Promise<string | null> {
+  const [row] = await globalThis.services.db
+    .select({ defaultAgentComposeId: org.defaultAgentComposeId })
+    .from(org)
+    .where(eq(org.orgId, orgId))
+    .limit(1);
+  return row?.defaultAgentComposeId ?? null;
 }
 
 /**

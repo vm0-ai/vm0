@@ -97,7 +97,7 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return needsOnboarding=false when default agent is configured", async () => {
-    const user = await context.setupUser();
+    await context.setupUser();
 
     // Create a compose and set as default via API
     const compose = await createTestCompose("test-agent");
@@ -113,12 +113,7 @@ describe("GET /api/onboarding/status", () => {
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
 
-    // Re-mock Clerk so the JWT session claim includes the compose ID
-    // (in production, Clerk propagates org metadata to JWT claims)
-    mockClerk({
-      userId: user.userId,
-      orgDefaultAgentComposeId: compose.composeId,
-    });
+    // Default agent is now stored in org table by setDefaultAgent route
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
@@ -163,11 +158,7 @@ describe("GET /api/onboarding/status", () => {
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
 
-    // Re-mock Clerk so the JWT session claim includes the compose ID
-    mockClerk({
-      userId: user.userId,
-      orgDefaultAgentComposeId: compose.composeId,
-    });
+    // Default agent is now stored in org table by setDefaultAgent route
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
@@ -190,7 +181,7 @@ describe("GET /api/onboarding/status", () => {
   });
 
   it("should return needsOnboarding=false for admin with default agent but no model provider", async () => {
-    const user = await context.setupUser();
+    await context.setupUser();
 
     // Create a compose and set as default via API (no model provider created)
     const compose = await createTestCompose("test-agent");
@@ -206,11 +197,7 @@ describe("GET /api/onboarding/status", () => {
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
 
-    // Re-mock Clerk so the JWT session claim includes the compose ID
-    mockClerk({
-      userId: user.userId,
-      orgDefaultAgentComposeId: compose.composeId,
-    });
+    // Default agent is now stored in org table by setDefaultAgent route
 
     const request = createTestRequest(
       "http://localhost:3000/api/onboarding/status",
