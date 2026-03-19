@@ -57,6 +57,7 @@ export interface PreparedContext {
 
   // Metadata for vm0_start event
   agentName: string | null;
+  agentComposeId: string;
   agentOrgSlug: string | null;
   resumedFromCheckpointId: string | null;
   continuedFromSessionId: string | null;

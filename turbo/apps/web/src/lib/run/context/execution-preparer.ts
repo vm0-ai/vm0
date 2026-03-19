@@ -98,6 +98,7 @@ export async function prepareForExecution(
   const [agentComposeInfo] = await globalThis.services.db
     .select({
       orgId: agentComposes.orgId,
+      composeId: agentComposes.id,
     })
     .from(agentComposeVersions)
     .innerJoin(
@@ -174,6 +175,7 @@ export async function prepareForExecution(
     profile,
     storageManifest,
     agentOrgInfo.orgSlug,
+    agentComposeInfo.composeId,
   );
 
   const timings: PrepareTimings = {
@@ -200,6 +202,7 @@ function buildPreparedContext(
   profile: string | null,
   storageManifest: StorageManifest,
   agentOrgSlug: string | null,
+  agentComposeId: string,
 ): PreparedContext {
   return {
     // Identity
@@ -247,6 +250,7 @@ function buildPreparedContext(
 
     // Metadata
     agentName: context.agentName || null,
+    agentComposeId,
     agentOrgSlug,
     resumedFromCheckpointId: context.resumedFromCheckpointId || null,
     continuedFromSessionId: context.continuedFromSessionId || null,

@@ -174,6 +174,7 @@ impl JobProvider for LocalProvider {
             api_start_time: None,
             user_timezone: req.user_timezone,
             agent_name: None,
+            agent_compose_id: None,
             agent_org_slug: None,
             memory_name: None,
             experimental_firewalls: None,
