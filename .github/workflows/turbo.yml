@@ -303,11 +303,12 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: web
           files: turbo/junit.xml
+          report_type: test_results
 
   test-migrate:
     needs: prepare
@@ -354,11 +355,12 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: cli
           files: turbo/junit.xml
+          report_type: test_results
 
   test-app:
     runs-on: ubuntu-latest
@@ -379,11 +381,12 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: app
           files: turbo/junit.xml
+          report_type: test_results
 
   test-other:
     runs-on: ubuntu-latest
@@ -404,11 +407,12 @@ jobs:
           files: turbo/coverage/coverage-final.json
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: core-ui
           files: turbo/junit.xml
+          report_type: test_results
 
   # Deploy web application with database
   deploy-web:
