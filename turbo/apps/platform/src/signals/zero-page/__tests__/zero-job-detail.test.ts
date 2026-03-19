@@ -33,7 +33,6 @@ import {
   discardZeroJobSkills$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
-import { injectDefaultCapabilities } from "../compose-job";
 import { SEED_SKILLS } from "../../../data/the-seed.ts";
 
 const context = testContext();
@@ -645,25 +644,26 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobInstructionsDirty$)).toBeFalsy();
     });
 
-    it("should build instructions via compose job and update state", async () => {
-      let capturedJobBody: Record<string, unknown> = {};
+    it("should build instructions via zero agents api and update state", async () => {
+      let capturedBody: { content: string } | null = null;
 
       await setupWithAgent();
 
       server.use(
-        http.post("*/api/compose/jobs", async ({ request }) => {
-          capturedJobBody = (await request.json()) as Record<string, unknown>;
-          return HttpResponse.json({
-            jobId: "job-1",
-            status: "completed",
-            result: {
-              composeId: "compose-1",
-              composeName: "my-agent",
-              versionId: "v2",
-              warnings: [],
-            },
-          });
-        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as { content: string };
+            return HttpResponse.json({
+              name: "my-agent",
+              agentComposeId: "compose-1",
+              description: null,
+              displayName: null,
+              sound: null,
+              connectors: [],
+            });
+          },
+        ),
         http.get("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
@@ -675,9 +675,9 @@ describe("zero-job-detail signals", () => {
       // Build should succeed without errors
       expect(context.store.get(zeroJobBuildError$)).toBeNull();
 
-      // Should have sent the edited content in the compose job
-      expect(capturedJobBody).toHaveProperty("instructions");
-      expect(capturedJobBody["instructions"]).toBe("Updated instructions");
+      // Should have sent the edited content via zero agents instructions API
+      expect(capturedBody).toBeTruthy();
+      expect(capturedBody!.content).toBe("Updated instructions");
 
       // After build, edited content should be cleared
       expect(context.store.get(zeroJobEditedContent$)).toBeNull();
@@ -689,16 +689,19 @@ describe("zero-job-detail signals", () => {
       expect(instructions?.content).toBe("Updated instructions");
     });
 
-    it("should set build error on compose job failure", async () => {
+    it("should set build error on api failure", async () => {
       await setupWithAgent();
 
       server.use(
-        http.post("http://localhost:3000/api/compose/jobs", () => {
-          return HttpResponse.json(
-            { error: { message: "Build quota exceeded" } },
-            { status: 429, statusText: "Too Many Requests" },
-          );
-        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Build quota exceeded" } },
+              { status: 429, statusText: "Too Many Requests" },
+            );
+          },
+        ),
       );
 
       context.store.set(setZeroJobEditedContent$, "Updated instructions");
@@ -716,19 +719,29 @@ describe("zero-job-detail signals", () => {
     });
 
     it("should not build when no edited content", async () => {
-      let composeJobCalled = false;
+      let apiCalled = false;
 
       await setupWithAgent();
 
       server.use(
-        http.post("http://localhost:3000/api/compose/jobs", () => {
-          composeJobCalled = true;
-          return HttpResponse.json({ jobId: "job-1", status: "completed" });
-        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          () => {
+            apiCalled = true;
+            return HttpResponse.json({
+              name: "my-agent",
+              agentComposeId: "compose-1",
+              description: null,
+              displayName: null,
+              sound: null,
+              connectors: [],
+            });
+          },
+        ),
       );
 
       await context.store.set(buildZeroJobInstructions$);
-      expect(composeJobCalled).toBeFalsy();
+      expect(apiCalled).toBeFalsy();
     });
   });
 
@@ -896,42 +909,35 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
     });
 
-    it("should save skills via compose job", async () => {
-      let capturedJobBody: Record<string, unknown> = {};
+    it("should save skills via zero agents api", async () => {
+      let capturedBody: { connectors: string[] } | null = null;
 
       await setupWithAgent();
 
       server.use(
-        http.post(
-          "http://localhost:3000/api/compose/jobs",
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent",
           async ({ request }) => {
-            capturedJobBody = (await request.json()) as Record<string, unknown>;
+            capturedBody = (await request.json()) as { connectors: string[] };
             return HttpResponse.json({
-              jobId: "job-1",
-              status: "completed",
-              result: {
-                composeId: "compose-1",
-                composeName: "my-agent",
-                versionId: "v2",
-                warnings: [],
-              },
+              name: "my-agent",
+              agentComposeId: "compose-1",
+              description: null,
+              displayName: null,
+              sound: null,
+              connectors: capturedBody.connectors,
             });
           },
         ),
         http.get("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
-        http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
       );
 
       context.store.set(addZeroJobSkill$, "gmail");
       await context.store.set(saveZeroJobSkills$);
 
+<<<<<<< HEAD
       // Verify skills were sent in the compose content
       const content = capturedJobBody["content"] as Record<string, unknown>;
       const agents = content["agents"] as Record<
@@ -945,6 +951,11 @@ describe("zero-job-detail signals", () => {
       // Skills should be converted to URLs via skillValueToUrl
       expect(skills).toContainEqual(expect.stringContaining("search"));
       expect(skills).toContainEqual(expect.stringContaining("gmail"));
+=======
+      // Verify connectors were sent as short names
+      expect(capturedBody).toBeTruthy();
+      expect(capturedBody!.connectors).toStrictEqual(["search", "gmail"]);
+>>>>>>> 4542e8f4c (refactor(platform): migrate frontend signals to zero agents api)
 
       // After save, dirty state should be reset
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
@@ -955,7 +966,7 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.post("http://localhost:3000/api/compose/jobs", () => {
+        http.put("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(
             { error: { message: "Build failed" } },
             { status: 500, statusText: "Internal Server Error" },
@@ -969,67 +980,6 @@ describe("zero-job-detail signals", () => {
       await context.store.set(saveZeroJobSkills$);
 
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
-    });
-  });
-
-  describe("injectDefaultCapabilities", () => {
-    it("should inject all capabilities when none present", () => {
-      const content = {
-        version: "1",
-        agents: { main: { framework: "claude-code" } },
-      };
-      const result = injectDefaultCapabilities(content) as typeof content & {
-        agents: {
-          main: { experimental_capabilities: string[] };
-        };
-      };
-      expect(result.agents.main.experimental_capabilities).toHaveLength(8);
-      expect(result.agents.main.experimental_capabilities).toContain(
-        "agent:read",
-      );
-      expect(result.agents.main.experimental_capabilities).toContain(
-        "schedule:write",
-      );
-    });
-
-    it("should preserve existing capabilities", () => {
-      const content = {
-        version: "1",
-        agents: {
-          main: {
-            framework: "claude-code",
-            experimental_capabilities: ["agent:read"],
-          },
-        },
-      };
-      const result = injectDefaultCapabilities(content);
-      expect(result).toBe(content); // same reference, no modification
-    });
-
-    it("should return content unchanged when no agents key", () => {
-      const content = { version: "1" };
-      const result = injectDefaultCapabilities(content);
-      expect(result).toBe(content);
-    });
-
-    it("should return content unchanged when agents is empty", () => {
-      const content = { version: "1", agents: {} };
-      const result = injectDefaultCapabilities(content);
-      expect(result).toBe(content);
-    });
-
-    it("should preserve empty array (user disabled all capabilities)", () => {
-      const content = {
-        version: "1",
-        agents: {
-          main: {
-            framework: "claude-code",
-            experimental_capabilities: [] as string[],
-          },
-        },
-      };
-      const result = injectDefaultCapabilities(content);
-      expect(result).toBe(content); // same reference, not re-injected
     });
   });
 });

@@ -3,10 +3,6 @@ import type { ComboboxOption } from "@vm0/ui";
 
 const SKILL_URL_PREFIX = "https://github.com/vm0-ai/vm0-skills/tree/main/";
 
-export function skillValueToUrl(value: string): string {
-  return `${SKILL_URL_PREFIX}${value}`;
-}
-
 export function skillUrlToValue(url: string): string {
   if (url.startsWith(SKILL_URL_PREFIX)) {
     return url.slice(SKILL_URL_PREFIX.length);

@@ -4,9 +4,7 @@ import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
-import { triggerAndPollComposeJob } from "./compose-job.ts";
-import { getInstructionsFilename } from "@vm0/core";
-import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
+import { skillUrlToValue } from "../../data/skills.ts";
 import { SEED_SKILLS } from "../../data/the-seed.ts";
 import {
   buildCronExpression,
@@ -151,27 +149,6 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Shared: resolve existing instructions (cache → API fallback)
-// ---------------------------------------------------------------------------
-
-async function resolveExistingInstructions(
-  get: (atom: typeof instructionsState$) => ZeroJobInstructionsState,
-  fetchFn: typeof fetch,
-  composeId: string,
-): Promise<string | undefined> {
-  const instrContent = get(instructionsState$).instructions?.content;
-  if (instrContent) {
-    return instrContent;
-  }
-  const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
-  if (resp.ok) {
-    const data = (await resp.json()) as AgentInstructions;
-    return data.content ?? undefined;
-  }
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
 // Instructions editing
 // ---------------------------------------------------------------------------
 
@@ -213,30 +190,23 @@ export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const agentKey = Object.keys(detail.content.agents)[0];
-    const agent = agentKey ? detail.content.agents[agentKey] : undefined;
 
-    const contentWithInstructions =
-      agentKey && agent
-        ? {
-            ...detail.content,
-            agents: {
-              ...detail.content.agents,
-              [agentKey]: {
-                ...agent,
-                instructions: getInstructionsFilename(agent.framework),
-              },
-            },
-          }
-        : detail.content;
-
-    const job = await triggerAndPollComposeJob(
-      fetchFn,
-      contentWithInstructions,
-      edited,
+    const resp = await fetchFn(
+      `/api/zero/agents/${encodeURIComponent(detail.name)}/instructions`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: edited }),
+      },
     );
-    if (!job.result) {
-      throw new Error("Build completed without result");
+
+    if (!resp.ok) {
+      const errorData = (await resp.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        errorData?.error?.message ?? `Build failed: ${resp.statusText}`,
+      );
     }
 
     // Optimistically update instructions state
@@ -371,49 +341,27 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
     throw new Error("No compose content found");
   }
 
-  const agentKey = Object.keys(detail.content.agents)[0];
-  if (!agentKey) {
-    throw new Error("No agent found in compose");
-  }
-
   set(internalSaving$, true);
   try {
     const newSkills = get(internalAddedSkills$) ?? [];
-    const agent = detail.content.agents[agentKey];
-    const newContent = {
-      ...detail.content,
-      agents: {
-        [agentKey]: {
-          ...agent,
-          skills:
-            newSkills.length > 0 ? newSkills.map(skillValueToUrl) : undefined,
-        },
-      },
-    };
-
     const fetchFn = get(fetch$);
-    const instructions = await resolveExistingInstructions(
-      get,
-      fetchFn,
-      detail.id,
+
+    const resp = await fetchFn(
+      `/api/zero/agents/${encodeURIComponent(detail.name)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectors: newSkills }),
+      },
     );
 
-    // Ensure instructions field
-    const updatedAgent = newContent.agents[agentKey];
-    if (updatedAgent && !("instructions" in updatedAgent)) {
-      newContent.agents[agentKey] = {
-        ...updatedAgent,
-        instructions: getInstructionsFilename(updatedAgent.framework),
-      };
-    }
-
-    const job = await triggerAndPollComposeJob(
-      fetchFn,
-      newContent,
-      instructions ?? "",
-    );
-    if (!job.result) {
-      throw new Error("Build completed without result");
+    if (!resp.ok) {
+      const errorData = (await resp.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        errorData?.error?.message ?? `Save failed: ${resp.statusText}`,
+      );
     }
 
     set(internalAddedSkills$, null);

@@ -3,7 +3,6 @@ import {
   type ModelProviderType,
   getDefaultAuthMethod,
   getDefaultModel,
-  getInstructionsFilename,
   getSecretsForAuthMethod,
   hasAuthMethods,
   hasModelSelection,
@@ -13,9 +12,7 @@ import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
 import { getProviderShape } from "../../views/zero-page/components/settings/provider-ui-config.ts";
-import { skillValueToUrl } from "../../data/skills.ts";
 import { SEED_INSTRUCTIONS, SEED_SKILLS } from "../../data/the-seed.ts";
-import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
@@ -301,8 +298,17 @@ export const saveZeroModelProvider$ = command(
   },
 );
 
+interface ZeroAgentResponse {
+  name: string;
+  agentComposeId: string;
+  description: string | null;
+  displayName: string | null;
+  sound: string | null;
+  connectors: string[];
+}
+
 /**
- * Complete onboarding: create agent compose and set as default.
+ * Complete onboarding: create agent via zero agents API and set as default.
  */
 export const completeZeroOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -314,52 +320,53 @@ export const completeZeroOnboarding$ = command(
       const selectedSkills = get(internalSelectedSkills$);
       const fetchFn = get(fetch$);
 
-      // Use a UUID as the agent identifier; the user-facing name goes into metadata
-      const agentId = crypto.randomUUID();
+      // Merge seed skills with user-selected skills (deduplicated)
+      const allConnectors = [...new Set([...SEED_SKILLS, ...selectedSkills])];
 
-      // Build agent definition with optional skills
-      const agentDef: Record<string, unknown> = {
-        framework: "claude-code",
-        instructions: getInstructionsFilename("claude-code"),
-      };
-      const allSkills = [...new Set([...SEED_SKILLS, ...selectedSkills])];
-      agentDef.skills = allSkills.map(skillValueToUrl);
-
-      const content = {
-        version: "1",
-        agents: {
-          [agentId]: agentDef,
-        },
-      };
-
-      // Run compose job (CLI processes skills, uploads assets)
-      const job = await triggerAndPollComposeJob(
-        fetchFn,
-        content,
-        SEED_INSTRUCTIONS,
-      );
+      // Create agent via zero agents API
+      const createResp = await fetchFn("/api/zero/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connectors: allConnectors,
+          displayName,
+          sound: "professional",
+        }),
+      });
       signal.throwIfAborted();
 
-      if (!job.result) {
-        throw new Error("Compose job completed without result");
+      if (!createResp.ok) {
+        const errorData = (await createResp.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(
+          errorData?.error?.message ??
+            `Failed to create agent: ${createResp.statusText}`,
+        );
       }
 
-      // Write agent metadata (displayName, sound) directly to zero_agents
-      const metadataResp = await fetchFn(
-        `/api/agent/composes/${job.result.composeId}/metadata`,
+      const agent = (await createResp.json()) as ZeroAgentResponse;
+      signal.throwIfAborted();
+
+      // Upload instructions via zero agents API
+      const instrResp = await fetchFn(
+        `/api/zero/agents/${encodeURIComponent(agent.name)}/instructions`,
         {
-          method: "PATCH",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            displayName,
-            sound: "professional",
-          }),
+          body: JSON.stringify({ content: SEED_INSTRUCTIONS }),
         },
       );
       signal.throwIfAborted();
 
-      if (!metadataResp.ok) {
-        throw new Error(`Failed to set agent metadata: ${metadataResp.status}`);
+      if (!instrResp.ok) {
+        const errorData = (await instrResp.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(
+          errorData?.error?.message ??
+            `Failed to upload instructions: ${instrResp.statusText}`,
+        );
       }
 
       // Set as default agent
@@ -367,7 +374,7 @@ export const completeZeroOnboarding$ = command(
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: job.result.composeId,
+          agentComposeId: agent.agentComposeId,
         }),
       });
       signal.throwIfAborted();
@@ -377,8 +384,8 @@ export const completeZeroOnboarding$ = command(
       }
 
       L.debug("Zero onboarding completed", {
-        agentName: job.result.composeName,
-        composeId: job.result.composeId,
+        agentName: agent.name,
+        composeId: agent.agentComposeId,
       });
 
       // Force JWT refresh so updated org metadata is available immediately
@@ -391,7 +398,7 @@ export const completeZeroOnboarding$ = command(
       set(internalReload$, (x) => x + 1);
       set(internalStep$, "done");
 
-      return job.result.composeId;
+      return agent.agentComposeId;
     } catch (error) {
       throwIfAbort(error);
       const message =

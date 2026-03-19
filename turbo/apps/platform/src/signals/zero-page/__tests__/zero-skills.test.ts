@@ -13,14 +13,6 @@ import { SEED_SKILLS } from "../../../data/the-seed.ts";
 
 const context = testContext();
 
-interface ComposeJobPayload {
-  content: { agents: Record<string, { skills?: string[] }> };
-}
-
-function getComposeContent(payload: ComposeJobPayload) {
-  return payload.content;
-}
-
 function mockComposeApi(content: {
   agents: Record<
     string,
@@ -126,8 +118,8 @@ describe("zeroAddedSkills$", () => {
 });
 
 describe("addZeroSkill$", () => {
-  it("should add a skill locally and save to compose", async () => {
-    let postedContent: ComposeJobPayload | null = null;
+  it("should add a skill locally and save via zero agents api", async () => {
+    let capturedBody: { connectors: string[] } | null = null;
 
     mockComposeApi({
       agents: {
@@ -139,21 +131,16 @@ describe("addZeroSkill$", () => {
     });
 
     server.use(
-      http.post("*/api/compose/jobs", async ({ request }) => {
-        postedContent = (await request.json()) as ComposeJobPayload;
+      http.put("*/api/zero/agents/test-compose", async ({ request }) => {
+        capturedBody = (await request.json()) as { connectors: string[] };
         return HttpResponse.json({
-          jobId: "job-1",
-          status: "completed",
-          result: {
-            composeId: "new-compose-id",
-            composeName: "test-compose",
-            versionId: "v2",
-            warnings: [],
-          },
+          name: "test-compose",
+          agentComposeId: "mock-compose-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          connectors: capturedBody.connectors,
         });
-      }),
-      http.put("*/api/orgs/default-agent", () => {
-        return HttpResponse.json({ ok: true });
       }),
     );
 
@@ -167,17 +154,12 @@ describe("addZeroSkill$", () => {
     expect(skills).toContain("slack");
     expect(skills).toContain("github");
 
-    // Save triggers the compose job
+    // Save triggers the zero agents API
     await context.store.set(saveZeroSkills$);
 
-    expect(postedContent).not.toBeNull();
-    const content = getComposeContent(postedContent!);
-    const agentKey = Object.keys(content.agents)[0];
-    expect(content.agents[agentKey].skills).toContain(
-      "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
-    );
-    expect(content.agents[agentKey].skills).toContain(
-      "https://github.com/vm0-ai/vm0-skills/tree/main/github",
-    );
+    expect(capturedBody).not.toBeNull();
+    // Connectors are sent as short names
+    expect(capturedBody!.connectors).toContain("slack");
+    expect(capturedBody!.connectors).toContain("github");
   });
 });

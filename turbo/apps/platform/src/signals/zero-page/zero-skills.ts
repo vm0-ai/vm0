@@ -5,32 +5,13 @@ import {
   zeroOnboardingStatus$,
   reloadOnboardingStatus$,
 } from "./zero-onboarding.ts";
-import { triggerAndPollComposeJob } from "./compose-job.ts";
-import type { AgentInstructions } from "./agent-types.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { getInstructionsFilename } from "@vm0/core";
-import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
+import { skillUrlToValue } from "../../data/skills.ts";
 import { SEED_SKILLS } from "../../data/the-seed.ts";
 import { zeroChatAgentId$ } from "./zero-nav.ts";
 
 const L = logger("ZeroSkills");
-
-// ---------------------------------------------------------------------------
-// Instructions state (read-only, used by syncSkillsToCompose$)
-// ---------------------------------------------------------------------------
-
-interface InstructionsState {
-  instructions: AgentInstructions | null;
-  loading: boolean;
-  error: string | null;
-}
-
-const instructionsState$ = state<InstructionsState>({
-  instructions: null,
-  loading: false,
-  error: null,
-});
 
 // ---------------------------------------------------------------------------
 // Default agent compose
@@ -145,84 +126,7 @@ export const saveZeroSkills$ = command(async ({ get, set }) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Shared helper: resolve current instructions content
-// ---------------------------------------------------------------------------
-
-async function resolveInstructionsContent(
-  fetchFn: typeof fetch,
-  composeId: string | undefined,
-  localContent: string | null | undefined,
-): Promise<string | undefined> {
-  let raw: string | undefined;
-  if (localContent) {
-    raw = localContent;
-  } else if (composeId) {
-    const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
-    if (!resp.ok) {
-      L.warn(
-        `Failed to fetch instructions for compose ${composeId}: ${resp.status} ${resp.statusText}`,
-      );
-      return undefined;
-    }
-    const data = (await resp.json()) as AgentInstructions;
-    raw = data.content ?? undefined;
-  }
-  return raw ?? undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Shared helper: build compose and update default agent reference
-// ---------------------------------------------------------------------------
-
-async function buildAndSetDefaultAgent(
-  fetchFn: typeof fetch,
-  newContent: ZeroComposeContent,
-  instructions?: string,
-): Promise<void> {
-  const agentKey = Object.keys(newContent.agents)[0];
-  const agent = agentKey ? newContent.agents[agentKey] : undefined;
-  const resolvedInstructions = instructions ?? "";
-  const contentWithInstructions: ZeroComposeContent =
-    agentKey && agent && !("instructions" in agent)
-      ? {
-          ...newContent,
-          agents: {
-            ...newContent.agents,
-            [agentKey]: {
-              ...agent,
-              instructions: getInstructionsFilename(agent.framework),
-            },
-          },
-        }
-      : newContent;
-
-  const job = await triggerAndPollComposeJob(
-    fetchFn,
-    contentWithInstructions,
-    resolvedInstructions,
-  );
-  if (!job.result) {
-    throw new Error("Build completed without result");
-  }
-
-  const resp = await fetchFn("/api/orgs/default-agent", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentComposeId: job.result.composeId }),
-  });
-
-  if (!resp.ok) {
-    const err = (await resp.json().catch(() => null)) as {
-      error?: { message?: string };
-    } | null;
-    throw new Error(
-      err?.error?.message ?? `Failed to update: ${resp.statusText}`,
-    );
-  }
-}
-
-/** Sync the skills list to compose content via compose job. */
+/** Sync the skills list via zero agents API. */
 const syncSkillsToCompose$ = command(
   async ({ get, set }, skillValues: string[]) => {
     const compose = await get(zeroCompose$);
@@ -230,32 +134,26 @@ const syncSkillsToCompose$ = command(
       throw new Error("No compose content available");
     }
 
-    const agentKey = Object.keys(compose.content.agents)[0];
-    if (!agentKey) {
-      throw new Error("No agent found in compose");
+    const fetchFn = get(fetch$);
+
+    const resp = await fetchFn(
+      `/api/zero/agents/${encodeURIComponent(compose.name)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectors: skillValues }),
+      },
+    );
+
+    if (!resp.ok) {
+      const errorData = (await resp.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        errorData?.error?.message ?? `Save failed: ${resp.statusText}`,
+      );
     }
 
-    const agent = compose.content.agents[agentKey];
-    const newContent: ZeroComposeContent = {
-      ...compose.content,
-      agents: {
-        [agentKey]: {
-          ...agent,
-          skills:
-            skillValues.length > 0
-              ? skillValues.map(skillValueToUrl)
-              : undefined,
-        },
-      },
-    };
-
-    const fetchFn = get(fetch$);
-    const instructions = await resolveInstructionsContent(
-      fetchFn,
-      compose.id,
-      get(instructionsState$).instructions?.content,
-    );
-    await buildAndSetDefaultAgent(fetchFn, newContent, instructions);
     await set(reloadOnboardingStatus$);
     set(internalComposeReload$, (x) => x + 1);
   },
