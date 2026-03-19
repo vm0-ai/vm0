@@ -173,6 +173,9 @@ interface ModelProviderSecretResult {
    *  Secret-derived values use ${{ secrets.X }} references so they go through
    *  servicePlaceholders logic; literals (base URLs, model names) are plain strings. */
   injectedEnvironment: Record<string, string> | undefined;
+  /** The resolved model provider type (e.g. "anthropic", "vercel-ai-gateway").
+   *  Undefined when provider resolution was skipped (explicit env vars or non-claude-code). */
+  resolvedModelProvider: string | undefined;
 }
 
 /**
@@ -191,7 +194,11 @@ async function resolveModelProviderSecrets(
 
   // Skip if explicit model provider config exists or framework doesn't use model providers
   if (hasExplicitModelProviderConfig || framework !== "claude-code") {
-    return { secrets, injectedEnvironment: undefined };
+    return {
+      secrets,
+      injectedEnvironment: undefined,
+      resolvedModelProvider: undefined,
+    };
   }
 
   // Fetch org-level default provider
@@ -216,14 +223,22 @@ async function resolveModelProviderSecrets(
       log.debug(
         `Multi-auth provider ${providerType} has no auth method configured`,
       );
-      return { secrets, injectedEnvironment: undefined };
+      return {
+        secrets,
+        injectedEnvironment: undefined,
+        resolvedModelProvider: providerType,
+      };
     }
 
     // Get secret names for this auth method
     const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
     if (!secretNames || secretNames.length === 0) {
       log.debug(`No secret names found for ${providerType}/${authMethod}`);
-      return { secrets, injectedEnvironment: undefined };
+      return {
+        secrets,
+        injectedEnvironment: undefined,
+        resolvedModelProvider: providerType,
+      };
     }
 
     // Fetch all model-provider secrets by name (scoped to provider owner)
@@ -246,7 +261,11 @@ async function resolveModelProviderSecrets(
     }
 
     if (!hasAllRequired) {
-      return { secrets, injectedEnvironment: undefined };
+      return {
+        secrets,
+        injectedEnvironment: undefined,
+        resolvedModelProvider: providerType,
+      };
     }
 
     // Store secrets for masking
@@ -266,13 +285,21 @@ async function resolveModelProviderSecrets(
       `Resolved multi-auth model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
     );
 
-    return { secrets, injectedEnvironment };
+    return {
+      secrets,
+      injectedEnvironment,
+      resolvedModelProvider: providerType,
+    };
   }
 
   // Handle single-secret providers
   const secretName = getSecretNameForType(providerType);
   if (!secretName) {
-    return { secrets, injectedEnvironment: undefined };
+    return {
+      secrets,
+      injectedEnvironment: undefined,
+      resolvedModelProvider: providerType,
+    };
   }
 
   const secretValue = await getSecretValue(
@@ -283,7 +310,11 @@ async function resolveModelProviderSecrets(
   );
 
   if (!secretValue) {
-    return { secrets, injectedEnvironment: undefined };
+    return {
+      secrets,
+      injectedEnvironment: undefined,
+      resolvedModelProvider: providerType,
+    };
   }
 
   // Store secret in secrets map for masking
@@ -301,7 +332,7 @@ async function resolveModelProviderSecrets(
     `Resolved model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
   );
 
-  return { secrets, injectedEnvironment };
+  return { secrets, injectedEnvironment, resolvedModelProvider: providerType };
 }
 
 /**
@@ -594,6 +625,7 @@ async function resolveSecretsAndEnvironment(
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
+  resolvedModelProvider: string | undefined;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -669,7 +701,12 @@ async function resolveSecretsAndEnvironment(
     modelProviderResult.injectedEnvironment,
   );
 
-  return { secrets, environment, secretConnectorMap };
+  return {
+    secrets,
+    environment,
+    secretConnectorMap,
+    resolvedModelProvider: modelProviderResult.resolvedModelProvider,
+  };
 }
 
 /**
@@ -762,6 +799,8 @@ interface BuildContextResult {
   context: ExecutionContext;
   runtimeOrg: RuntimeOrg;
   timings: BuildContextTimings;
+  /** The resolved model provider type, if provider resolution ran during context build. */
+  resolvedModelProvider: string | undefined;
 }
 
 /**
@@ -914,7 +953,8 @@ export async function buildExecutionContext(
   ]);
   const resolveSecretsEnd = Date.now();
 
-  const { secrets, environment, secretConnectorMap } = secretsResult;
+  const { secrets, environment, secretConnectorMap, resolvedModelProvider } =
+    secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
   // Build experimental firewall manifest (base + auth entries for the runner)
@@ -961,5 +1001,6 @@ export async function buildExecutionContext(
       resolveSourceAndOrg: resolveEnd - resolveStart,
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
     },
+    resolvedModelProvider,
   };
 }
