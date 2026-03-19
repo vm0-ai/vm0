@@ -50,9 +50,12 @@ import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
 import { googleSheetsHandler } from "./providers/google-sheets-handler";
+import { instantlyHandler } from "./providers/instantly-handler";
 import { intercomHandler } from "./providers/intercom-handler";
 import { jamHandler } from "./providers/jam-handler";
+import { jiraHandler } from "./providers/jira-handler";
 import { jotformHandler } from "./providers/jotform-handler";
+import { kommoHandler } from "./providers/kommo-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { makeHandler } from "./providers/make-handler";
@@ -159,6 +162,7 @@ export const PROVIDER_HANDLERS: Record<
   htmlcsstoimage: htmlcsstoimageHandler,
   hubspot: hubspotHandler,
   imgur: imgurHandler,
+  instantly: instantlyHandler,
   instagram: instagramHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
@@ -182,7 +186,9 @@ export const PROVIDER_HANDLERS: Record<
   serpapi: serpapiHandler,
   intercom: intercomHandler,
   jam: jamHandler,
+  jira: jiraHandler,
   jotform: jotformHandler,
+  kommo: kommoHandler,
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
   slack: slackHandler,
