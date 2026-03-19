@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.127.0](https://github.com/vm0-ai/vm0/compare/app-v0.126.3...app-v0.127.0) (2026-03-19)
+
+
+### Features
+
+* add friendly frontend error for provider incompatibility ([#5459](https://github.com/vm0-ai/vm0/issues/5459)) ([11c6b1d](https://github.com/vm0-ai/vm0/commit/11c6b1d66881823da9205abdb2e32f5e72bee473)), closes [#5450](https://github.com/vm0-ai/vm0/issues/5450)
+
+
+### Refactoring
+
+* **platform:** simplify settings update to use metadata api ([#5491](https://github.com/vm0-ai/vm0/issues/5491)) ([3950652](https://github.com/vm0-ai/vm0/commit/395065288d99fa3b9b3a8ec0317bcff64757ff74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.83.0
+
 ## [0.126.3](https://github.com/vm0-ai/vm0/compare/app-v0.126.2...app-v0.126.3) (2026-03-19)
 
 

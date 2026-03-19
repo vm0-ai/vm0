@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.83.0](https://github.com/vm0-ai/vm0/compare/core-v8.82.0...core-v8.83.0) (2026-03-19)
+
+
+### Features
+
+* add provider compatibility utility ([#5448](https://github.com/vm0-ai/vm0/issues/5448)) ([#5458](https://github.com/vm0-ai/vm0/issues/5458)) ([9d2a8ab](https://github.com/vm0-ai/vm0/commit/9d2a8ab053581d5cecbc392f62965c36c720b846))
+
 ## [8.82.0](https://github.com/vm0-ai/vm0/compare/core-v8.81.0...core-v8.82.0) (2026-03-19)
 
 

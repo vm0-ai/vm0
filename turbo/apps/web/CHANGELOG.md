@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.131.0](https://github.com/vm0-ai/vm0/compare/web-v12.130.1...web-v12.131.0) (2026-03-19)
+
+
+### Features
+
+* reply all result events to Slack instead of only the last one ([#5490](https://github.com/vm0-ai/vm0/issues/5490)) ([6e11ad9](https://github.com/vm0-ai/vm0/commit/6e11ad91c75a7938e90ed45d7e53409e25233bff))
+* **run:** store resolved model provider on run record after context build ([#5460](https://github.com/vm0-ai/vm0/issues/5460)) ([06bbc92](https://github.com/vm0-ai/vm0/commit/06bbc92f16ece9993bfa519302649ec7042baf8d))
+* **slack:** use native markdown block for agent response rendering ([#5489](https://github.com/vm0-ai/vm0/issues/5489)) ([199ce16](https://github.com/vm0-ai/vm0/commit/199ce16817eb527f7d83943d73b3e3b1c25771e5)), closes [#5486](https://github.com/vm0-ai/vm0/issues/5486)
+
+
+### Refactoring
+
+* consolidate run creation into single entry point ([#5488](https://github.com/vm0-ai/vm0/issues/5488)) ([20e9d56](https://github.com/vm0-ai/vm0/commit/20e9d56fffa296670923fee56d81aae4590a65b9))
+* inline legacy slack shared handlers into slack-org module ([#5495](https://github.com/vm0-ai/vm0/issues/5495)) ([8f127e3](https://github.com/vm0-ai/vm0/commit/8f127e3cf43d9d2517b03b84d8658144b0df1a16))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.83.0
+
 ## [12.130.1](https://github.com/vm0-ai/vm0/compare/web-v12.130.0...web-v12.130.1) (2026-03-19)
 
 
