@@ -6,6 +6,8 @@ import {
   IconLayoutGrid,
   IconTrash,
   IconPlus,
+  IconChevronLeft,
+  IconChevronRight,
 } from "@tabler/icons-react";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
@@ -187,6 +189,11 @@ function ScheduleCalendarView({
 }) {
   const enabledEntries = combinedSchedule.filter((e) => e.enabled !== false);
   const calendarSlots = buildCalendarTimeSlots(enabledEntries);
+  const selectedDay$ = useCCState(
+    new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
+  );
+  const selectedDay = useGet(selectedDay$);
+  const setSelectedDay = useSet(selectedDay$);
 
   const loopEntries = enabledEntries.filter((e) =>
     e.time.match(/Every \d+ (minutes?|seconds?)/),
@@ -211,71 +218,150 @@ function ScheduleCalendarView({
           Week view
         </h3>
         <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
-          <div className="grid grid-cols-8 text-sm">
-            <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
-            {WEEKDAY_LABELS.map((d, dayIndex) => (
-              <div
-                key={d}
-                className={cn(
-                  "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
-                  dayIndex < WEEKDAY_LABELS.length - 1 &&
-                    "border-r border-border/60",
-                )}
+          {/* Mobile: single-day view */}
+          <div className="md:hidden">
+            <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60">
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedDay(
+                    (selectedDay - 1 + WEEKDAY_LABELS.length) %
+                      WEEKDAY_LABELS.length,
+                  )
+                }
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Previous day"
               >
-                {d}
-              </div>
-            ))}
-            {calendarSlots.map((timeLabel, timeIndex) => (
-              <div key={timeLabel} className="contents">
+                <IconChevronLeft size={16} stroke={1.5} />
+              </button>
+              <span className="text-sm font-medium text-muted-foreground">
+                {WEEKDAY_LABELS[selectedDay]}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedDay((selectedDay + 1) % WEEKDAY_LABELS.length)
+                }
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Next day"
+              >
+                <IconChevronRight size={16} stroke={1.5} />
+              </button>
+            </div>
+            {calendarSlots.map((timeLabel, timeIndex) => {
+              const cellEntries = getEntriesInCell(
+                enabledEntries,
+                selectedDay,
+                timeLabel,
+              ) as CombinedEntry[];
+              const isEmpty = cellEntries.length === 0;
+              const isLastRow = timeIndex === calendarSlots.length - 1;
+              return (
                 <div
+                  key={timeLabel}
                   className={cn(
-                    "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
-                    timeIndex < calendarSlots.length - 1 &&
-                      "border-b border-border/60",
+                    "flex",
+                    !isLastRow && "border-b border-border/60",
                   )}
                 >
-                  {timeLabel}
+                  <div className="w-16 shrink-0 bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center">
+                    {timeLabel}
+                  </div>
+                  <div
+                    className={cn(
+                      "flex-1 min-h-[52px] p-1.5 flex items-center justify-center",
+                      isEmpty && "bg-background/50",
+                    )}
+                  >
+                    {isEmpty ? (
+                      <span className="text-muted-foreground/40 text-xs">
+                        —
+                      </span>
+                    ) : (
+                      <div className="w-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
+                        {cellEntries.map((entry) => (
+                          <CalendarEntryPopover
+                            key={entry.id}
+                            entry={entry}
+                            agentOrder={agentOrder}
+                            onEdit={onEdit}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {WEEKDAY_LABELS.map((_, dayIndex) => {
-                  const cellEntries = getEntriesInCell(
-                    enabledEntries,
-                    dayIndex,
-                    timeLabel,
-                  ) as CombinedEntry[];
-                  const isEmpty = cellEntries.length === 0;
-                  const isLastRow = timeIndex === calendarSlots.length - 1;
-                  const isLastCol = dayIndex === WEEKDAY_LABELS.length - 1;
-                  return (
-                    <div
-                      key={`${timeLabel}-${dayIndex}`}
-                      className={cn(
-                        "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
-                        !isLastCol && "border-r border-border/60",
-                        !isLastRow && "border-b border-border/60",
-                        isEmpty && "bg-background/50",
-                      )}
-                    >
-                      {isEmpty ? (
-                        <span className="text-muted-foreground/40 text-xs">
-                          —
-                        </span>
-                      ) : (
-                        <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                          {cellEntries.map((entry) => (
-                            <CalendarEntryPopover
-                              key={entry.id}
-                              entry={entry}
-                              agentOrder={agentOrder}
-                              onEdit={onEdit}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+              );
+            })}
+          </div>
+          {/* Desktop: full week grid */}
+          <div className="hidden md:block">
+            <div className="grid grid-cols-8 text-sm">
+              <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
+              {WEEKDAY_LABELS.map((d, dayIndex) => (
+                <div
+                  key={d}
+                  className={cn(
+                    "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
+                    dayIndex < WEEKDAY_LABELS.length - 1 &&
+                      "border-r border-border/60",
+                  )}
+                >
+                  {d}
+                </div>
+              ))}
+              {calendarSlots.map((timeLabel, timeIndex) => (
+                <div key={timeLabel} className="contents">
+                  <div
+                    className={cn(
+                      "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
+                      timeIndex < calendarSlots.length - 1 &&
+                        "border-b border-border/60",
+                    )}
+                  >
+                    {timeLabel}
+                  </div>
+                  {WEEKDAY_LABELS.map((_, dayIndex) => {
+                    const cellEntries = getEntriesInCell(
+                      enabledEntries,
+                      dayIndex,
+                      timeLabel,
+                    ) as CombinedEntry[];
+                    const isEmpty = cellEntries.length === 0;
+                    const isLastRow = timeIndex === calendarSlots.length - 1;
+                    const isLastCol = dayIndex === WEEKDAY_LABELS.length - 1;
+                    return (
+                      <div
+                        key={`${timeLabel}-${dayIndex}`}
+                        className={cn(
+                          "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
+                          !isLastCol && "border-r border-border/60",
+                          !isLastRow && "border-b border-border/60",
+                          isEmpty && "bg-background/50",
+                        )}
+                      >
+                        {isEmpty ? (
+                          <span className="text-muted-foreground/40 text-xs">
+                            —
+                          </span>
+                        ) : (
+                          <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
+                            {cellEntries.map((entry) => (
+                              <CalendarEntryPopover
+                                key={entry.id}
+                                entry={entry}
+                                agentOrder={agentOrder}
+                                onEdit={onEdit}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -943,7 +1029,7 @@ function ScheduleListView({
               }}
               ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
             />
-            <span className="w-[140px] shrink-0 text-muted-foreground text-xs truncate">
+            <span className="w-[100px] sm:w-[140px] shrink-0 text-muted-foreground text-xs truncate">
               {entry.agentLabel}
             </span>
             <span

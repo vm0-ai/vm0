@@ -133,7 +133,7 @@ export function ZeroSlackConnectPage() {
   return (
     <div className="zero-app flex h-dvh w-full bg-background zero-workspace-bg">
       <div className="flex flex-1 items-center justify-center p-4">
-        <div className="zero-card w-full max-w-sm rounded-xl border border-border bg-card p-8 flex flex-col items-center gap-6">
+        <div className="zero-card w-full max-w-sm rounded-xl border border-border bg-card p-5 sm:p-8 flex flex-col items-center gap-6">
           <PageContent
             effectiveStatus={effectiveStatus}
             effectiveError={effectiveError}

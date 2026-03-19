@@ -451,7 +451,7 @@ export function ZeroOnboarding({
   }
 
   const dialogBaseClass =
-    "zero-app sm:max-w-[720px] h-[500px] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg";
+    "zero-app sm:max-w-[720px] h-[min(500px,85dvh)] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg";
   const footerClass =
     "zero-onboarding-footer shrink-0 border-t h-16 flex items-center gap-2 px-8";
 
@@ -784,7 +784,7 @@ export function MemberWelcome({
   };
 
   const dialogBaseClass =
-    "zero-app sm:max-w-[720px] h-[500px] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg";
+    "zero-app sm:max-w-[720px] h-[min(500px,85dvh)] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg";
   const footerClass =
     "zero-onboarding-footer shrink-0 border-t h-16 flex items-center gap-2 px-8";
 

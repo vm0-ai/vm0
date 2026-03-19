@@ -179,7 +179,7 @@ export function ZeroSessionChatPage({
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
         <footer className="relative sticky bottom-0 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
           <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-          <div className="mx-auto max-w-[900px] grid grid-cols-[36px_1fr] gap-2.5">
+          <div className="mx-auto max-w-[900px] grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
             <div className="w-9 shrink-0" />
             <ZeroChatComposer
               className="w-full min-w-0"
@@ -209,8 +209,8 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
-        <Skeleton className="h-9 w-9 rounded-xl" />
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
           <Skeleton className="h-4 w-[75%] rounded-lg" />
@@ -222,8 +222,8 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
-        <Skeleton className="h-9 w-9 rounded-xl" />
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
           <Skeleton className="h-4 w-[60%] rounded-lg" />
@@ -303,8 +303,8 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
 
   return (
     <>
-      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="w-9 h-9 shrink-0" />
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="w-7 h-7 sm:w-9 sm:h-9 shrink-0" />
         <div className="flex flex-col items-end min-w-0">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
             <div className="px-4 py-3">
@@ -570,7 +570,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
         src={zeroAvatarSrc}
         alt=""
         role="presentation"
-        className="h-9 w-9 rounded-full object-cover object-top"
+        className="h-7 w-7 sm:h-9 sm:w-9 rounded-full object-cover object-top"
       />
     </div>
   );
@@ -591,7 +591,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   };
 
   const logButton = message.runId ? (
-    <div className="grid grid-cols-[36px_1fr] gap-2.5">
+    <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
       <div />
       <div className="flex py-2 gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         <TooltipProvider delayDuration={300}>
@@ -644,7 +644,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -703,7 +703,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   if (message.content) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -726,7 +726,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   // Thinking / loading state — show live run activity
   return (
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <RunActivityLine />

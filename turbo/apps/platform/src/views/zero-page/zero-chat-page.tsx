@@ -241,7 +241,7 @@ function HelloFromZeroBlock({
   );
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+      <div className="grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3 items-start">
         {avatarButton}
         <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0">
           <p className="text-foreground">
@@ -251,7 +251,7 @@ function HelloFromZeroBlock({
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+      <div className="grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3 items-start">
         {avatarButton}
         <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0 flex flex-col gap-2">
           <p className="font-medium text-foreground">
@@ -291,7 +291,7 @@ function ChatScenarioBlock({
 }: ChatScenarioBlockProps) {
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+      <div className="grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3 items-start">
         <div className="w-9 h-9 shrink-0" />
         <div className="flex min-w-0 justify-end">
           <div className="zero-chat-bubble-user rounded-xl px-4 py-3 max-w-[85%] text-sm leading-relaxed">
@@ -299,7 +299,7 @@ function ChatScenarioBlock({
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-[48px_1fr] gap-3 items-start">
+      <div className="grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3 items-start">
         <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
           <img
             src={zeroAvatarSrc}
@@ -941,7 +941,7 @@ export function ZeroChatPage({
             {showSubAgentList && (
               <div
                 ref={setSubAgentListEl}
-                className="grid grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
+                className="grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
               >
                 <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
                   <img
@@ -1019,7 +1019,7 @@ export function ZeroChatPage({
           </div>
         </main>
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
-          <div className="mx-auto max-w-[900px] grid grid-cols-[48px_1fr] gap-3">
+          <div className="mx-auto max-w-[900px] grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3">
             <div className="w-9 shrink-0" />
             <ZeroChatComposer
               className="w-full min-w-0"

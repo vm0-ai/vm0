@@ -214,59 +214,63 @@ export function ZeroActivityPage() {
       {/* Scrollable table area */}
       <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-4">
         <div className="mx-auto max-w-[900px]">
-          <div className="zero-card overflow-hidden px-7 pb-3">
-            {(logs.length > 0 || isLoading) && (
-              <div
-                className={cn(
-                  ROW_GRID,
-                  "sticky top-0 z-10 -mx-4 px-4 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
+          <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
+            <div className="overflow-x-auto">
+              <div className="min-w-[540px]">
+                {(logs.length > 0 || isLoading) && (
+                  <div
+                    className={cn(
+                      ROW_GRID,
+                      "sticky top-0 z-10 -mx-4 px-4 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
+                    )}
+                  >
+                    <div className="text-left">Agent</div>
+                    <div className="text-left">Status</div>
+                    <div className="text-left">Start Time</div>
+                    <div className="text-left">Duration</div>
+                    <div />
+                  </div>
                 )}
-              >
-                <div className="text-left">Agent</div>
-                <div className="text-left">Status</div>
-                <div className="text-left">Start Time</div>
-                <div className="text-left">Duration</div>
-                <div />
+                {isLoading ? (
+                  <div className="flex items-center justify-center min-h-[20rem]">
+                    <IconLoader2
+                      size={20}
+                      stroke={1.5}
+                      className="animate-spin text-muted-foreground"
+                    />
+                  </div>
+                ) : logs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
+                    <img
+                      src={emptyActivityImg}
+                      alt=""
+                      className="h-20 w-20 object-contain opacity-80"
+                    />
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-foreground">
+                        {agentFilter === "all" && statusFilter === "all"
+                          ? "All quiet for now"
+                          : "Nothing matches those filters"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {agentFilter === "all" && statusFilter === "all"
+                          ? "When your agents start working, their activity will show up here."
+                          : "Try different filters to find what you're looking for."}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  logs.map((entry) => (
+                    <ActivityRow
+                      key={entry.id}
+                      entry={entry}
+                      href={`/activity/${entry.id}`}
+                      agentName={entry.displayName ?? entry.agentName}
+                    />
+                  ))
+                )}
               </div>
-            )}
-            {isLoading ? (
-              <div className="flex items-center justify-center min-h-[20rem]">
-                <IconLoader2
-                  size={20}
-                  stroke={1.5}
-                  className="animate-spin text-muted-foreground"
-                />
-              </div>
-            ) : logs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
-                <img
-                  src={emptyActivityImg}
-                  alt=""
-                  className="h-20 w-20 object-contain opacity-80"
-                />
-                <div className="text-center">
-                  <p className="text-sm font-medium text-foreground">
-                    {agentFilter === "all" && statusFilter === "all"
-                      ? "All quiet for now"
-                      : "Nothing matches those filters"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {agentFilter === "all" && statusFilter === "all"
-                      ? "When your agents start working, their activity will show up here."
-                      : "Try different filters to find what you're looking for."}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              logs.map((entry) => (
-                <ActivityRow
-                  key={entry.id}
-                  entry={entry}
-                  href={`/activity/${entry.id}`}
-                  agentName={entry.displayName ?? entry.agentName}
-                />
-              ))
-            )}
+            </div>
           </div>
         </div>
       </div>

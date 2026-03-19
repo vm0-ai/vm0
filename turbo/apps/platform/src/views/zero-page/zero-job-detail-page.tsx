@@ -435,7 +435,7 @@ export function ZeroJobDetailPage({
               onValueChange={setActiveTab}
               className="flex-1 min-w-0"
             >
-              <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1">
+              <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto">
                 <TabsTrigger value="connectors" className={TAB_TRIGGER_CLASS}>
                   <IconPlug size={14} stroke={1.5} />
                   Connectors
