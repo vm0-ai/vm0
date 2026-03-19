@@ -2806,7 +2806,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "App Credentials",
         secrets: {
-          LARK_APP_SECRET: {
+          LARK_TOKEN: {
             label: "App Secret",
             required: true,
             type: "secret",
@@ -2829,7 +2829,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Key",
         secrets: {
-          MAILSAC_API_KEY: {
+          MAILSAC_TOKEN: {
             label: "API Key",
             required: true,
             placeholder: "your-mailsac-api-key",
@@ -2847,12 +2847,12 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "Access Credentials",
         secrets: {
-          MINIO_ACCESS_KEY: {
+          MINIO_TOKEN: {
             label: "Access Key",
             required: true,
             type: "secret",
           },
-          MINIO_SECRET_KEY: {
+          MINIO_SECRET_TOKEN: {
             label: "Secret Key",
             required: true,
             type: "secret",

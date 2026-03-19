@@ -9,5 +9,5 @@ export const minioHandler: ProviderHandler = {
   },
   getClientId: () => undefined,
   getClientSecret: () => undefined,
-  getSecretName: () => "MINIO_ACCESS_KEY",
+  getSecretName: () => "MINIO_TOKEN",
 };

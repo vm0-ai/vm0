@@ -9,5 +9,5 @@ export const larkHandler: ProviderHandler = {
   },
   getClientId: () => undefined,
   getClientSecret: () => undefined,
-  getSecretName: () => "LARK_APP_SECRET",
+  getSecretName: () => "LARK_TOKEN",
 };

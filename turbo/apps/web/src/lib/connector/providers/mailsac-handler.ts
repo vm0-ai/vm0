@@ -9,5 +9,5 @@ export const mailsacHandler: ProviderHandler = {
   },
   getClientId: () => undefined,
   getClientSecret: () => undefined,
-  getSecretName: () => "MAILSAC_API_KEY",
+  getSecretName: () => "MAILSAC_TOKEN",
 };
