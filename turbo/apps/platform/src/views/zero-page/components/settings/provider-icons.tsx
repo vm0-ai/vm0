@@ -23,6 +23,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "vercel-ai-gateway": vercelIcon,
     "azure-foundry": azureIcon,
     "aws-bedrock": bedrockIcon,
+    vm0: "",
   });
 
 export function ProviderIcon({
