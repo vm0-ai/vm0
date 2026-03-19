@@ -22,7 +22,12 @@ pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
 }
 
 /// Build the argument list from explicit parameters (testable).
-fn build_claude_args(resume_id: &str, append_system_prompt: &str, prompt: &str) -> Vec<String> {
+fn build_claude_args(
+    resume_id: &str,
+    append_system_prompt: &str,
+    disallowed_tools: &str,
+    prompt: &str,
+) -> Vec<String> {
     let mut args = vec![
         "--print".to_string(),
         "--verbose".to_string(),
@@ -44,6 +49,16 @@ fn build_claude_args(resume_id: &str, append_system_prompt: &str, prompt: &str) 
         args.push(append_system_prompt.to_string());
     }
 
+    if !disallowed_tools.is_empty() {
+        args.push("--disallowed-tools".to_string());
+        for tool in disallowed_tools.split(',') {
+            let tool = tool.trim();
+            if !tool.is_empty() {
+                args.push(tool.to_string());
+            }
+        }
+    }
+
     // Prompt must be the last positional argument
     args.push(prompt.to_string());
     args
@@ -53,6 +68,7 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
     let args = build_claude_args(
         env::resume_session_id(),
         env::append_system_prompt(),
+        env::disallowed_tools(),
         env::prompt(),
     );
 
@@ -320,7 +336,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_basic() {
-        let args = build_claude_args("", "", "hello world");
+        let args = build_claude_args("", "", "", "hello world");
         assert!(args.contains(&"--print".to_string()));
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
         assert_eq!(args.last().unwrap(), "hello world");
@@ -330,7 +346,7 @@ mod tests {
 
     #[test]
     fn build_claude_args_with_append_system_prompt() {
-        let args = build_claude_args("", "Your name is Aria.", "analyze this");
+        let args = build_claude_args("", "Your name is Aria.", "", "analyze this");
         let asp_idx = args
             .iter()
             .position(|a| a == "--append-system-prompt")
@@ -344,13 +360,13 @@ mod tests {
 
     #[test]
     fn build_claude_args_empty_append_system_prompt_omitted() {
-        let args = build_claude_args("", "", "test");
+        let args = build_claude_args("", "", "", "test");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
     }
 
     #[test]
     fn build_claude_args_with_resume_and_append() {
-        let args = build_claude_args("sess-123", "Be helpful.", "prompt");
+        let args = build_claude_args("sess-123", "Be helpful.", "", "prompt");
         assert!(args.contains(&"--resume".to_string()));
         assert!(args.contains(&"--append-system-prompt".to_string()));
         assert_eq!(args.last().unwrap(), "prompt");
@@ -366,5 +382,22 @@ mod tests {
     fn build_claude_command_uses_mock_binary() {
         let cmd = build_claude_command(true);
         assert_eq!(cmd[0], "/usr/local/bin/guest-mock-claude");
+    }
+
+    #[test]
+    fn build_claude_args_with_disallowed_tools() {
+        let args = build_claude_args("", "", "CronCreate,CronDelete,CronList", "hello");
+        let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
+        assert_eq!(args[dt_idx + 1], "CronCreate");
+        assert_eq!(args[dt_idx + 2], "CronDelete");
+        assert_eq!(args[dt_idx + 3], "CronList");
+        // Prompt must be last
+        assert_eq!(args.last().unwrap(), "hello");
+    }
+
+    #[test]
+    fn build_claude_args_empty_disallowed_tools_omitted() {
+        let args = build_claude_args("", "", "", "test");
+        assert!(!args.contains(&"--disallowed-tools".to_string()));
     }
 }

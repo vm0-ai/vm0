@@ -45,6 +45,11 @@ fn parse_args(args: &[String]) -> ParsedArgs {
                     i += 1;
                 }
             }
+            "--disallowed-tools" => {
+                // Skip the flag; tool names fall through to remaining
+                // and prompt is extracted as last remaining arg
+                i += 1;
+            }
             "--print" | "--verbose" | "--dangerously-skip-permissions" => {
                 i += 1;
             }
@@ -57,7 +62,7 @@ fn parse_args(args: &[String]) -> ParsedArgs {
         }
     }
 
-    let prompt = remaining.into_iter().next().unwrap_or_default();
+    let prompt = remaining.into_iter().last().unwrap_or_default();
 
     ParsedArgs {
         output_format,
@@ -389,13 +394,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_args_first_remaining_is_prompt() {
+    fn parse_args_last_remaining_is_prompt() {
         let args: Vec<String> = vec!["first", "second", "third"]
             .into_iter()
             .map(String::from)
             .collect();
         let result = parse_args(&args);
-        assert_eq!(result.prompt, "first");
+        assert_eq!(result.prompt, "third");
     }
 
     #[test]
@@ -456,5 +461,20 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(1));
         let id2 = generate_session_id();
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn parse_args_disallowed_tools_skipped() {
+        let args: Vec<String> = vec![
+            "--disallowed-tools",
+            "CronCreate",
+            "CronDelete",
+            "echo hello",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hello");
     }
 }

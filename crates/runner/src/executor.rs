@@ -661,6 +661,13 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_SECRET_VALUES".into(), encoded.join(","));
     }
 
+    // Disallowed tools (comma-separated for guest-agent)
+    if let Some(tools) = &context.disallowed_tools
+        && !tools.is_empty()
+    {
+        env.insert("VM0_DISALLOWED_TOOLS".into(), tools.join(","));
+    }
+
     env
 }
 
@@ -700,6 +707,7 @@ mod tests {
             experimental_firewalls: None,
             experimental_capabilities: None,
             experimental_profile: None,
+            disallowed_tools: None,
         }
     }
 
@@ -1180,5 +1188,31 @@ mod tests {
         for id in valid_ids {
             assert!(is_valid_session_id(id), "expected acceptance for: {id:?}");
         }
+    }
+
+    #[test]
+    fn build_env_json_with_disallowed_tools() {
+        let mut ctx = minimal_context();
+        ctx.disallowed_tools = Some(vec!["CronCreate".into(), "CronDelete".into()]);
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(
+            env.get("VM0_DISALLOWED_TOOLS").unwrap(),
+            "CronCreate,CronDelete"
+        );
+    }
+
+    #[test]
+    fn build_env_json_empty_disallowed_tools_omitted() {
+        let mut ctx = minimal_context();
+        ctx.disallowed_tools = Some(vec![]);
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
+    }
+
+    #[test]
+    fn build_env_json_no_disallowed_tools() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     }
 }

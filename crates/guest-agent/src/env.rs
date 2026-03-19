@@ -24,6 +24,7 @@ static RESUME_SESSION_ID: LazyLock<String> =
 static API_START_TIME: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_START_TIME"));
 static WORKING_DIR: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_WORKING_DIR"));
 static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECRET_VALUES"));
+static DISALLOWED_TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_DISALLOWED_TOOLS"));
 static USE_MOCK_CLAUDE: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("USE_MOCK_CLAUDE")
         .map(|v| v == "true")
@@ -103,6 +104,9 @@ pub fn working_dir() -> &'static str {
 }
 pub fn secret_values() -> &'static str {
     &SECRET_VALUES
+}
+pub fn disallowed_tools() -> &'static str {
+    &DISALLOWED_TOOLS
 }
 pub fn use_mock_claude() -> bool {
     *USE_MOCK_CLAUDE
