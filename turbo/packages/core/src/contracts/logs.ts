@@ -79,6 +79,7 @@ const logDetailSchema = z.object({
   framework: z.string().nullable(),
   status: logStatusSchema,
   prompt: z.string(),
+  appendSystemPrompt: z.string().nullable(),
   error: z.string().nullable(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),

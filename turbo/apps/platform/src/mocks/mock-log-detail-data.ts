@@ -37,6 +37,7 @@ export const mockLogDetail: LogDetail = {
   framework: "claude-code",
   modelProvider: null,
   status: "completed",
+  appendSystemPrompt: null,
   prompt: [
     "# Slack Thread Context",
     "",

@@ -188,6 +188,7 @@ const router = tsr.router(logsByIdContract, {
           | "timeout"
           | "cancelled",
         prompt: run.prompt,
+        appendSystemPrompt: run.appendSystemPrompt ?? null,
         error: run.error ?? null,
         createdAt: run.createdAt.toISOString(),
         startedAt: run.startedAt?.toISOString() ?? null,

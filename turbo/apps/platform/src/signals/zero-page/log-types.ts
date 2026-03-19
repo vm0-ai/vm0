@@ -43,6 +43,7 @@ export interface LogDetail {
   modelProvider: string | null;
   status: LogStatus;
   prompt: string;
+  appendSystemPrompt: string | null;
   error: string | null;
   createdAt: string; // ISO timestamp
   startedAt: string | null;

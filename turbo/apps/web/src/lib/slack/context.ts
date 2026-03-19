@@ -487,14 +487,12 @@ function formatMessageWithMetadata(
   fileParts: string[],
 ): string {
   const senderId = msg.bot_id ? "BOT" : (msg.user ?? "unknown");
-  const msgId = msg.ts ?? "unknown";
   const text = extractTextFromBlocks(msg.blocks) ?? msg.text ?? "";
 
   const parts: string[] = [
     "---",
     "",
     `- RELATIVE_INDEX: ${relativeIndex}`,
-    `- MSG_ID: ${msgId}`,
     `- SENDER_ID: ${senderId}`,
     "",
     text,
@@ -509,6 +507,7 @@ function formatMessageWithMetadata(
 
 const CONTEXT_PREAMBLE = [
   "The messages below are from a Slack conversation. When responding:",
+  "- Messages closer to RELATIVE_INDEX 0 are more recent — prioritize them.",
   "- Match the tone of the conversation — casual messages deserve casual replies.",
   "- Only provide technical analysis when explicitly asked a technical question.",
   "- Keep responses proportional to the message length and complexity.",

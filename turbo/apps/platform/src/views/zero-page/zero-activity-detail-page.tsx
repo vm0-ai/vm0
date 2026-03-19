@@ -1,5 +1,10 @@
 import { useCCState } from "ccstate-react/experimental";
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import {
   IconSearch,
   IconLoader2,
@@ -8,7 +13,12 @@ import {
   IconChartLine,
 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
-import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
+import {
+  MODEL_PROVIDER_TYPES,
+  FeatureSwitchKey,
+  type ModelProviderType,
+} from "@vm0/core";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { SimpleLink } from "../router/link.tsx";
 import type {
   LogStatus,
@@ -106,6 +116,7 @@ export function ZeroActivityDetailPage() {
   const stepSearch$ = useCCState("");
   const stepSearch = useGet(stepSearch$);
   const setStepSearch = useSet(stepSearch$);
+  const features = useLastResolved(featureSwitch$);
 
   // Skeleton until both detail and initial events are loaded
   const eventsReady = eventsLoadable.state === "hasData";
@@ -129,7 +140,13 @@ export function ZeroActivityDetailPage() {
     groupedMessageMatchesSearch(m, stepSearch.trim()),
   );
 
+  const showSystemPrompt =
+    features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false;
+
   const prompt = detail.prompt ?? "";
+  const appendSystemPrompt = detail.appendSystemPrompt ?? "";
+  const hasSystemPrompt =
+    showSystemPrompt && appendSystemPrompt.trim().length > 0;
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
@@ -146,15 +163,15 @@ export function ZeroActivityDetailPage() {
         <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8">
           {/* Compact header card */}
           <div className="zero-card shrink-0 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-y-2">
-              <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3">
+            <div className="flex items-center gap-y-2 overflow-hidden">
+              <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3 shrink-0">
                 {agentName}
               </h2>
               <span
                 className="w-px h-3.5 shrink-0 bg-border self-center"
                 aria-hidden
               />
-              <div className="flex flex-wrap items-center gap-x-0 text-sm">
+              <div className="flex items-center gap-x-0 text-sm min-w-0 overflow-x-auto">
                 <div className="flex items-center gap-1.5 pl-3 pr-3">
                   <span className="text-muted-foreground shrink-0">Status</span>
                   <StatusBadge status={status} zeroStyle />
@@ -251,6 +268,7 @@ export function ZeroActivityDetailPage() {
 
               <StepsList
                 prompt={prompt}
+                appendSystemPrompt={hasSystemPrompt ? appendSystemPrompt : ""}
                 messages={messages}
                 stepSearch={stepSearch}
                 isLoading={false}
@@ -318,19 +336,35 @@ function ActivitySkeleton() {
 
 function StepsList({
   prompt,
+  appendSystemPrompt,
   messages,
   stepSearch,
   isLoading,
 }: {
   prompt: string;
+  appendSystemPrompt: string;
   messages: GroupedMessage[];
   stepSearch: string;
   isLoading: boolean;
 }) {
+  const hasSystemPrompt = appendSystemPrompt.trim().length > 0;
+  const hasPrompt = prompt.trim().length > 0;
+  const hasContent = hasSystemPrompt || hasPrompt || messages.length > 0;
   return (
     <div className="min-w-0">
-      {prompt.trim().length > 0 && (
-        <PromptCard prompt={prompt} showConnector={messages.length > 0} />
+      {hasSystemPrompt && (
+        <PromptCard
+          label="System Prompt"
+          prompt={appendSystemPrompt}
+          showConnector={hasPrompt || messages.length > 0}
+        />
+      )}
+      {hasPrompt && (
+        <PromptCard
+          label="Prompt"
+          prompt={prompt}
+          showConnector={messages.length > 0}
+        />
       )}
       {isLoading ? (
         <div className="flex justify-center py-8">
@@ -340,7 +374,7 @@ function StepsList({
             className="animate-spin text-muted-foreground"
           />
         </div>
-      ) : messages.length === 0 && prompt.trim().length === 0 ? (
+      ) : messages.length === 0 && !hasContent ? (
         <div className="py-8 text-center text-muted-foreground">
           No events available
         </div>
@@ -404,9 +438,11 @@ function summarizePrompt(prompt: string): string {
 }
 
 function PromptCard({
+  label = "Prompt",
   prompt,
   showConnector,
 }: {
+  label?: string;
   prompt: string;
   showConnector: boolean;
 }) {
@@ -425,7 +461,7 @@ function PromptCard({
           <div className="flex gap-2 items-center">
             <StatusDot variant="neutral" />
             <span className="font-semibold text-sm text-foreground shrink-0">
-              Prompt
+              {label}
             </span>
             <span className="text-sm text-muted-foreground truncate">
               {summary}

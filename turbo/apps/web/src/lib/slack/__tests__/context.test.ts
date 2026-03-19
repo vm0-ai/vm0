@@ -27,11 +27,9 @@ describe("Feature: Format Context For Agent", () => {
 
       expect(result).toContain("# Slack Thread Context");
       expect(result).toContain("- RELATIVE_INDEX: -2");
-      expect(result).toContain("- MSG_ID: 1234567890.001");
       expect(result).toContain("- SENDER_ID: U123");
       expect(result).toContain("Hello, can you help me?");
       expect(result).toContain("- RELATIVE_INDEX: -1");
-      expect(result).toContain("- MSG_ID: 1234567890.002");
       expect(result).toContain("- SENDER_ID: U456");
       expect(result).toContain("Sure, what do you need?");
     });
@@ -100,7 +98,6 @@ describe("Feature: Format Context For Agent", () => {
       expect(result).toContain("- SENDER_ID: unknown");
       expect(result).toContain("No user");
       expect(result).toContain("- SENDER_ID: U123");
-      expect(result).toContain("- MSG_ID: unknown");
     });
   });
 
@@ -496,7 +493,6 @@ describe("Feature: Format Context With Image Upload", () => {
         'View: curl -sS -o /tmp/F123.png "https://mock-presigned-url"',
       );
       expect(result).toContain("- SENDER_ID: U123");
-      expect(result).toContain("- MSG_ID: 1234567890.001");
     });
 
     it("should upload JPEG images to R2", async () => {
@@ -919,10 +915,8 @@ describe("Feature: Format Context With Image Upload", () => {
 
       expect(result).toContain("# Slack Thread Context");
       expect(result).toContain("- RELATIVE_INDEX: -2");
-      expect(result).toContain("- MSG_ID: 1234567890.001");
       expect(result).toContain("- SENDER_ID: U123");
       expect(result).toContain("- RELATIVE_INDEX: -1");
-      expect(result).toContain("- MSG_ID: 1234567890.002");
       expect(result).toContain("- SENDER_ID: U456");
     });
   });
