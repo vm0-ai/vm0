@@ -364,6 +364,14 @@ fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
 ///
 /// When `stdout_log_path` is `Some`, stdout is streamed to the host via
 /// `MSG_STDOUT_CHUNK` messages AND teed to the specified file path inside the VM.
+/// Handle spawn_watch: spawn the child, write the response over the wire,
+/// THEN start the background monitor. This ordering is critical — the
+/// streaming monitor thread also writes to the same socket (via the shared
+/// `writer` mutex), and `MSG_STDOUT_CHUNK` messages must not arrive at the
+/// host before the `MSG_SPAWN_WATCH_RESULT` for this pid. If the monitor
+/// thread were spawned first, it could race the main thread for the mutex
+/// and send chunks before the result, causing the host to drop them (the
+/// host only registers the stdout channel when it processes the result).
 fn handle_spawn_watch(
     timeout_ms: u32,
     command: &str,
@@ -372,7 +380,7 @@ fn handle_spawn_watch(
     stdout_log_path: Option<&str>,
     seq: u32,
     writer: Arc<Mutex<UnixStream>>,
-) -> io::Result<Vec<u8>> {
+) -> io::Result<()> {
     log(
         "INFO",
         &format!(
@@ -407,6 +415,18 @@ fn handle_spawn_watch(
             let pid = child.id();
             log("INFO", &format!("spawn_watch: started pid={}", pid));
 
+            // Write the response BEFORE spawning the monitor thread.
+            // The monitor thread contends for the same writer mutex to send
+            // stdout chunks / process_exit. Writing here guarantees the
+            // spawn_watch_result is on the wire first.
+            let payload = vsock_proto::encode_spawn_watch_result(pid);
+            let response =
+                vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, seq, &payload).map_err(to_io_error)?;
+            {
+                let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+                w.write_all(&response)?;
+            }
+
             if let Some(log_path) = stdout_log_path {
                 // Streaming mode: tee stdout to log file + vsock chunks.
                 // Take stdout from child so we can read it in a separate thread.
@@ -424,13 +444,14 @@ fn handle_spawn_watch(
                 spawn_buffered_monitor(pid, child, timeout_ms, writer);
             }
 
-            // Return immediate acknowledgment with PID
-            let payload = vsock_proto::encode_spawn_watch_result(pid);
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, seq, &payload).map_err(to_io_error)
+            Ok(())
         }
         Err(e) => {
             let payload = vsock_proto::encode_error(&format!("Failed to spawn: {}", e));
-            vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)
+            let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
+            let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+            w.write_all(&response)?;
+            Ok(())
         }
     }
 }
@@ -759,7 +780,10 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
             // pipe fd) would otherwise stall all subsequent messages.
             if msg.msg_type == MSG_SPAWN_WATCH {
                 let d = vsock_proto::decode_spawn_watch(&msg.payload).map_err(to_io_error)?;
-                let response = handle_spawn_watch(
+                // handle_spawn_watch writes the response itself (before
+                // spawning the streaming thread) to prevent a race where
+                // stdout chunks could arrive at the host before the result.
+                handle_spawn_watch(
                     d.exec.timeout_ms,
                     d.exec.command,
                     &d.exec.env,
@@ -768,8 +792,6 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
                     msg.seq,
                     Arc::clone(&writer),
                 )?;
-                let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                w.write_all(&response)?;
             } else if msg.msg_type == MSG_EXEC {
                 log(
                     "INFO",
