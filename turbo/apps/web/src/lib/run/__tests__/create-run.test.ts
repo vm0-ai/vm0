@@ -1004,7 +1004,7 @@ describe("createRun()", () => {
         agentSessionId: string;
       };
 
-      // Continue with explicit compatible provider (aws-bedrock — same Anthropic-native group)
+      // Continue with explicit compatible provider (claude-code-oauth-token — same Anthropic-native group)
       const continueResult = await createRun(
         baseParams({
           agentComposeVersionId: noKeyCompose.versionId,
