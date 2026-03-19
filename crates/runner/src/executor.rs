@@ -115,28 +115,23 @@ async fn execute_inner(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    // Register VM in proxy registry when firewall rules are present
+    // Register VM in proxy registry for network logging and firewall enforcement.
+    // All VMs are registered so mitmproxy can log network activity regardless of
+    // whether firewall rules are configured.
     let source_ip = sandbox.source_ip().to_string();
-    let has_firewalls = context
-        .experimental_firewalls
-        .as_ref()
-        .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
-    let proxy_registered = has_firewalls;
     let network_log_path = config.log_paths.network_log(context.run_id);
 
-    if proxy_registered {
-        let run_id_str = context.run_id.to_string();
-        let registration = proxy::VmRegistration {
-            run_id: &run_id_str,
-            sandbox_token: &context.sandbox_token,
-            network_log_path: &network_log_path,
-            firewalls: context.experimental_firewalls.as_deref(),
-            encrypted_secrets: context.encrypted_secrets.as_deref(),
-            secret_connector_map: context.secret_connector_map.as_ref(),
-        };
-        if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
-            warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
-        }
+    let run_id_str = context.run_id.to_string();
+    let registration = proxy::VmRegistration {
+        run_id: &run_id_str,
+        sandbox_token: &context.sandbox_token,
+        network_log_path: &network_log_path,
+        firewalls: context.experimental_firewalls.as_deref(),
+        encrypted_secrets: context.encrypted_secrets.as_deref(),
+        secret_connector_map: context.secret_connector_map.as_ref(),
+    };
+    if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
+        warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
 
     // Run job inside sandbox, then destroy regardless of outcome
@@ -154,18 +149,16 @@ async fn execute_inner(
 
     // Unregister VM from proxy + upload network logs before cleanup timer.
     // Unregister first ensures the addon writes no more log entries.
-    if proxy_registered {
-        if let Err(e) = config.registry.unregister_vm(&source_ip).await {
-            warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
-        }
-        network_logs::upload_network_logs(
-            &config.http,
-            context.run_id,
-            &context.sandbox_token,
-            &network_log_path,
-        )
-        .await;
+    if let Err(e) = config.registry.unregister_vm(&source_ip).await {
+        warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
+    network_logs::upload_network_logs(
+        &config.http,
+        context.run_id,
+        &context.sandbox_token,
+        &network_log_path,
+    )
+    .await;
 
     // Cleanup: stop + destroy
     let t = Instant::now();
@@ -580,16 +573,10 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("USE_MOCK_CLAUDE".into(), val);
     }
 
-    // Tell Node.js to trust the proxy CA when MITM proxy is active.
-    // MITM is always enabled when firewall rules are configured.
+    // Tell Node.js/Bun to trust the proxy CA. All VMs route through
+    // mitmproxy (use_proxy is always true), so the CA cert is always needed.
     // The certificate is pre-baked into the rootfs at build time.
-    let proxy_active = context
-        .experimental_firewalls
-        .as_ref()
-        .is_some_and(|s| s.iter().any(|entry| !entry.apis.is_empty()));
-    if proxy_active {
-        env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
-    }
+    env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
 
     // When capabilities are declared, inject CLI-compatible env vars
     // so vm0 CLI can authenticate inside the sandbox.
@@ -974,11 +961,11 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_empty_firewall_no_ca_certs() {
+    fn build_env_json_empty_firewall_still_has_ca_certs() {
         let mut ctx = minimal_context();
         ctx.experimental_firewalls = Some(vec![]);
         let env = build_env_json(&ctx, "http://localhost");
-        assert!(!env.contains_key("NODE_EXTRA_CA_CERTS"));
+        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
     }
 
     #[test]
