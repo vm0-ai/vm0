@@ -12,6 +12,8 @@ import { apifyHandler } from "./providers/apify-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
+import { bitrixHandler } from "./providers/bitrix-handler";
+import { braveSearchHandler } from "./providers/brave-search-handler";
 import { brightDataHandler } from "./providers/bright-data-handler";
 import { browserbaseHandler } from "./providers/browserbase-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
@@ -20,6 +22,7 @@ import { chatwootHandler } from "./providers/chatwoot-handler";
 import { clickupHandler } from "./providers/clickup-handler";
 import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { closeHandler } from "./providers/close-handler";
+import { cronlyticHandler } from "./providers/cronlytic-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { deepseekHandler } from "./providers/deepseek-handler";
 import { difyHandler } from "./providers/dify-handler";
@@ -117,6 +120,8 @@ export const PROVIDER_HANDLERS: Record<
   axiom: axiomHandler,
   asana: asanaHandler,
   atlassian: atlassianHandler,
+  bitrix: bitrixHandler,
+  "brave-search": braveSearchHandler,
   "bright-data": brightDataHandler,
   browserbase: browserbaseHandler,
   browserless: browserlessHandler,
@@ -125,6 +130,7 @@ export const PROVIDER_HANDLERS: Record<
   clickup: clickupHandler,
   cloudflare: cloudflareHandler,
   close: closeHandler,
+  cronlytic: cronlyticHandler,
   deel: deelHandler,
   deepseek: deepseekHandler,
   dify: difyHandler,
