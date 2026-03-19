@@ -60,37 +60,6 @@ RUN apt-get update && apt-get install -y \
 # Install vercel and neonctl for development
 RUN npm install -g vercel@48.11.0 neonctl@2.15.0
 
-# Install Playwright dependencies
-# These are required for running browser automation tests
-RUN apt-get update && apt-get install -y \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libatspi2.0-0 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libx11-6 \
-    libxcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxkbcommon0 \
-    libxrandr2 \
-    libxshmfence1 \
-    xvfb \
-    fonts-liberation \
-    libu2f-udev \
-    libvulkan1 \
-    && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -172,7 +141,9 @@ RUN mkdir -p /usr/share/keyrings \
 
 # Install noVNC stack for remote browser viewing
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
     x11vnc \
+    openbox \
     novnc \
     && rm -rf /var/lib/apt/lists/*
 

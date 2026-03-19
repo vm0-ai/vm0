@@ -589,7 +589,7 @@ describe("PUT /api/user/preferences", () => {
     expect(data.pinnedAgentIds).toEqual(["agent-a", "agent-b", "agent-c"]);
   });
 
-  it("should enforce max 4 pinned agents", async () => {
+  it("should accept more than 4 pinned agents", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
@@ -605,7 +605,9 @@ describe("PUT /api/user/preferences", () => {
     );
     const response = await PUT(request);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.pinnedAgentIds).toEqual(["a1", "a2", "a3", "a4", "a5"]);
   });
 
   it("should update pinnedAgentIds without affecting other preferences", async () => {

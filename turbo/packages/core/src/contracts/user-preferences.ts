@@ -30,7 +30,7 @@ export const updateUserPreferencesRequestSchema = z
     timezone: z.string().min(1).optional(),
     notifyEmail: z.boolean().optional(),
     notifySlack: z.boolean().optional(),
-    pinnedAgentIds: z.array(z.string()).max(4).optional(),
+    pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
   })
   .refine(

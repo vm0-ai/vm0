@@ -67,7 +67,7 @@ Display a status line showing all 10 runs in order (most recent first), using �
   3. Calculate **success count since last failure** — the number of consecutive successful runs that occurred after (more recent than) the failed run. This equals `position - 1`.
   4. Calculate **time elapsed since the failure** — compute a human-readable duration from the failed run's `createdAt` to now (e.g., "2 小时 15 分钟", "1 天 3 小时"). Use hours and minutes for durations under 24 hours, days and hours for longer durations.
   5. Report the failure details in the dashboard output (see output format below).
-  6. Post to Slack `#flaky-test` channel using the Slack MCP tool (`slack_send_message` to `#flaky-test`). Use Slack mrkdwn link syntax `<url|display text>` for all URLs so they render as clickable links. Example message format:
+  6. Post to Slack using the Slack MCP tool (`slack_send_message` with `channelId: C0ALXC1SHHN`). Do NOT mention or @ any users in the message. Use Slack mrkdwn link syntax `<url|display text>` for all URLs so they render as clickable links. Example message format:
      ```
      🔴 main CI failure
      Failed jobs: lint, test
@@ -250,7 +250,7 @@ vm04
 
 - Use `printf "vm%02d"` for label generation (consistent with coding-assign/coding-loop)
 - Use `gh` CLI for all GitHub queries
-- Use Slack MCP (`slack_send_message`) for `#flaky-test` notifications
+- Use Slack MCP (`slack_send_message` with `channelId: C0ALXC1SHHN`) for flaky test notifications — do NOT mention or @ any users
 - Current user determined via `gh api user --jq '.login'`
 - No "new" markers — only `[Pending]` for items with `pending` label
 - Deduplicate issues that appear in both author and assignee queries
