@@ -513,11 +513,21 @@ step_screenshot "after-verify-click"
 echo ""
 echo "⏳ Phase 4: Waiting for CLI authentication..."
 
-for i in $(seq 1 30); do
+CONFIG_FILE="$HOME/.vm0/config.json"
+CLI_AUTH_TIMEOUT=60
+
+for i in $(seq 1 "$CLI_AUTH_TIMEOUT"); do
+  # Check CLI log for success message
   if grep -qi "authentication successful\|successfully authenticated\|credentials have been saved" "$CLI_LOG" 2>/dev/null; then
     echo "✅ CLI authentication successful!"
     break
   fi
+  # Check if config file appeared (alternative success signal)
+  if [[ -f "$CONFIG_FILE" ]] && grep -q '"token"' "$CONFIG_FILE" 2>/dev/null; then
+    echo "✅ CLI authentication successful (config file detected)!"
+    break
+  fi
+  # Check if CLI process exited
   if ! kill -0 "$CLI_PID" 2>/dev/null; then
     wait "$CLI_PID" 2>/dev/null && EXIT_CODE=$? || EXIT_CODE=$?
     CLI_PID=""
@@ -530,9 +540,13 @@ for i in $(seq 1 30); do
       exit 1
     fi
   fi
-  if [[ $i -eq 30 ]]; then
-    echo "❌ CLI authentication did not complete within 30s" >&2
+  if [[ $i -eq $CLI_AUTH_TIMEOUT ]]; then
+    step_screenshot "cli-auth-timeout"
+    echo "❌ CLI authentication did not complete within ${CLI_AUTH_TIMEOUT}s" >&2
+    echo "--- CLI log ---" >&2
     cat "$CLI_LOG" >&2
+    echo "--- Browser state ---" >&2
+    full_snapshot >&2
     exit 1
   fi
   sleep 1
@@ -541,7 +555,6 @@ done
 # ===========================================================================
 # Phase 5: Verify auth config
 # ===========================================================================
-CONFIG_FILE="$HOME/.vm0/config.json"
 if [[ -f "$CONFIG_FILE" ]]; then
   echo "✅ Auth config saved to $CONFIG_FILE"
   if grep -q '"token"' "$CONFIG_FILE" 2>/dev/null; then
