@@ -96,9 +96,12 @@ const router = tsr.router(orgDefaultAgentContract, {
     }
 
     await globalThis.services.db
-      .update(orgTable)
-      .set({ defaultAgentComposeId: agentComposeId, updatedAt: new Date() })
-      .where(eq(orgTable.orgId, org.orgId));
+      .insert(orgTable)
+      .values({ orgId: org.orgId, defaultAgentComposeId: agentComposeId })
+      .onConflictDoUpdate({
+        target: orgTable.orgId,
+        set: { defaultAgentComposeId: agentComposeId, updatedAt: new Date() },
+      });
 
     return {
       status: 200 as const,
