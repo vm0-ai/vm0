@@ -80,7 +80,7 @@ gh pr view <PR> --json mergeable --jq '.mergeable'
    gh pr checks <PR> --json name,state,conclusion
    ```
 
-2. **If runner/e2e failures:** Post to Slack `#dev` channel mentioning `liangyou@vm0.ai` with the failed job URL, then retry:
+2. **If runner/e2e failures:** Post to Slack channel (channelId: `C0ALXC1SHHN`) with the failed job URL. Do NOT mention or @ any users. Then retry:
    ```bash
    gh pr checks <PR> --json name,state,conclusion --jq '.[] | select(.conclusion == "failure")'
    # Retry failed workflows
