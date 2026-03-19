@@ -75,6 +75,7 @@ Once the server is confirmed running, display the URLs:
 Next steps:
 - Use `/dev-logs` to view server output
 - Use `/dev-logs [pattern]` to filter logs (e.g., `/dev-logs error`)
+- Use `/dev-runner` to deploy a runner (needed for running agents)
 - Use `/dev-stop` to stop the server
 ```
 
@@ -377,6 +378,9 @@ Auth token saved to: ~/.vm0/config.json
 
 You can now test webhooks locally:
   vm0 run <agent-name> "<prompt>"
+
+Note: To run agents (CLI, frontend sessions, etc.), you need a runner.
+Use `/dev-runner` to deploy one (takes several minutes).
 
 Use `/dev-stop` to stop the server.
 ```

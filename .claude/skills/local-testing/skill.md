@@ -29,7 +29,10 @@ cd turbo && pnpm vitest run
 # 2. Wait for server to be ready, then authenticate CLI
 /dev-auth
 
-# 3. Run CLI E2E tests
+# 3. Deploy runner (needed for vm0 run, takes several minutes)
+/dev-runner
+
+# 4. Run CLI E2E tests
 VM0_API_URL=http://localhost:3000 USE_MOCK_CLAUDE=true BATS_TEST_TIMEOUT=60 \
   ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/01-serial/*.bats
 ```
