@@ -25,7 +25,12 @@ export default defineConfig({
       ],
     },
 
-    reporters: process.env.CI ? ["default", "github-actions"] : ["default"],
+    reporters: process.env.CI
+      ? ["default", "github-actions", "junit"]
+      : ["default"],
+    outputFile: {
+      junit: "junit.xml",
+    },
 
     projects: ["packages/*", "apps/*"],
   },
