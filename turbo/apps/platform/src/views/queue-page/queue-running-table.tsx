@@ -1,8 +1,10 @@
 import { useSet } from "ccstate-react";
 import { IconLoader2, IconClock } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
-import type { RunningTask } from "../../signals/queue-page/queue-signals.ts";
-import { cancelQueueRun$ } from "../../signals/queue-page/queue-signals.ts";
+import {
+  cancelQueueRun$,
+  type RunningTask,
+} from "../../signals/queue-page/queue-signals.ts";
 import { SimpleLink } from "../router/link.tsx";
 
 const ROW_GRID = "grid grid-cols-[1fr_1fr_6rem_5rem_4rem] gap-x-6 items-center";
@@ -47,62 +49,65 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
             <div>Activity logs</div>
             <div>Cancel</div>
           </div>
-          {tasks.map((task, i) => (
-            <div
-              key={task.runId ?? `running-${i}`}
-              className={cn(
-                ROW_GRID,
-                "py-3 -mx-4 px-4 border-b border-border/40 last:border-b-0",
-              )}
-            >
-              <div className="text-sm font-medium text-foreground truncate">
-                {task.agentDisplayName ?? task.agentName}
-              </div>
-              <div className="text-sm text-muted-foreground truncate">
-                {task.userEmail}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {task.startedAt ? (
-                  <span className="inline-flex items-center gap-1">
-                    <IconClock size={12} stroke={1.5} />
-                    {formatRelativeTime(task.startedAt)}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1">
-                    <IconLoader2
-                      size={12}
-                      stroke={1.5}
-                      className="animate-spin"
-                    />
-                    Starting
-                  </span>
+          {tasks.map((task, i) => {
+            const runId = task.runId;
+            return (
+              <div
+                key={runId ?? `running-${i}`}
+                className={cn(
+                  ROW_GRID,
+                  "py-3 -mx-4 px-4 border-b border-border/40 last:border-b-0",
                 )}
+              >
+                <div className="text-sm font-medium text-foreground truncate">
+                  {task.agentDisplayName ?? task.agentName}
+                </div>
+                <div className="text-sm text-muted-foreground truncate">
+                  {task.userEmail}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {task.startedAt ? (
+                    <span className="inline-flex items-center gap-1">
+                      <IconClock size={12} stroke={1.5} />
+                      {formatRelativeTime(task.startedAt)}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <IconLoader2
+                        size={12}
+                        stroke={1.5}
+                        className="animate-spin"
+                      />
+                      Starting
+                    </span>
+                  )}
+                </div>
+                <div>
+                  {runId ? (
+                    <SimpleLink
+                      href={`/activity/${runId}`}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      View logs
+                    </SimpleLink>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">--</span>
+                  )}
+                </div>
+                <div>
+                  {task.isOwner && runId && (
+                    <button
+                      type="button"
+                      className="text-sm text-destructive hover:underline"
+                      onClick={() => void cancelRun(runId)}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                {task.runId ? (
-                  <SimpleLink
-                    href={`/activity/${task.runId}`}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    View logs
-                  </SimpleLink>
-                ) : (
-                  <span className="text-sm text-muted-foreground">--</span>
-                )}
-              </div>
-              <div>
-                {task.isOwner && task.runId && (
-                  <button
-                    type="button"
-                    className="text-sm text-destructive hover:underline"
-                    onClick={() => cancelRun(task.runId!)}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

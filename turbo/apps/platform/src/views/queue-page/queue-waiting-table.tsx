@@ -1,7 +1,9 @@
 import { useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
-import type { QueueEntry } from "../../signals/queue-page/queue-signals.ts";
-import { cancelQueueRun$ } from "../../signals/queue-page/queue-signals.ts";
+import {
+  cancelQueueRun$,
+  type QueueEntry,
+} from "../../signals/queue-page/queue-signals.ts";
 import { SimpleLink } from "../router/link.tsx";
 
 const ROW_GRID =
@@ -63,56 +65,59 @@ export function QueueWaitingTable({
             <div>Activity logs</div>
             <div>Cancel</div>
           </div>
-          {queue.map((entry) => (
-            <div
-              key={entry.runId ?? `queue-${entry.position}`}
-              className={cn(
-                ROW_GRID,
-                "py-3 -mx-4 px-4 border-b border-border/40 last:border-b-0",
-              )}
-            >
-              <div className="text-sm font-medium text-muted-foreground tabular-nums">
-                {entry.position}
-              </div>
-              <div className="text-sm font-medium text-foreground truncate">
-                {entry.agentDisplayName ?? entry.agentName}
-              </div>
-              <div className="text-sm text-muted-foreground truncate">
-                {entry.userEmail}
-              </div>
-              <div className="text-sm text-muted-foreground tabular-nums">
-                {formatRelativeTime(entry.createdAt)}
-              </div>
-              <div className="text-sm text-muted-foreground tabular-nums">
-                {estimatedTimePerRun
-                  ? formatDuration(estimatedTimePerRun * entry.position)
-                  : "--"}
-              </div>
-              <div>
-                {entry.runId ? (
-                  <SimpleLink
-                    href={`/activity/${entry.runId}`}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    View logs
-                  </SimpleLink>
-                ) : (
-                  <span className="text-sm text-muted-foreground">--</span>
+          {queue.map((entry) => {
+            const runId = entry.runId;
+            return (
+              <div
+                key={runId ?? `queue-${entry.position}`}
+                className={cn(
+                  ROW_GRID,
+                  "py-3 -mx-4 px-4 border-b border-border/40 last:border-b-0",
                 )}
+              >
+                <div className="text-sm font-medium text-muted-foreground tabular-nums">
+                  {entry.position}
+                </div>
+                <div className="text-sm font-medium text-foreground truncate">
+                  {entry.agentDisplayName ?? entry.agentName}
+                </div>
+                <div className="text-sm text-muted-foreground truncate">
+                  {entry.userEmail}
+                </div>
+                <div className="text-sm text-muted-foreground tabular-nums">
+                  {formatRelativeTime(entry.createdAt)}
+                </div>
+                <div className="text-sm text-muted-foreground tabular-nums">
+                  {estimatedTimePerRun
+                    ? formatDuration(estimatedTimePerRun * entry.position)
+                    : "--"}
+                </div>
+                <div>
+                  {runId ? (
+                    <SimpleLink
+                      href={`/activity/${runId}`}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      View logs
+                    </SimpleLink>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">--</span>
+                  )}
+                </div>
+                <div>
+                  {entry.isOwner && runId && (
+                    <button
+                      type="button"
+                      className="text-sm text-destructive hover:underline"
+                      onClick={() => void cancelRun(runId)}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                {entry.isOwner && entry.runId && (
-                  <button
-                    type="button"
-                    className="text-sm text-destructive hover:underline"
-                    onClick={() => cancelRun(entry.runId!)}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
