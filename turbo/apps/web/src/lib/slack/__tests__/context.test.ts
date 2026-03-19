@@ -27,10 +27,10 @@ describe("Feature: Format Context For Agent", () => {
 
       expect(result).toContain("# Slack Thread Context");
       expect(result).toContain("- RELATIVE_INDEX: -2");
-      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- SENDER: {id: U123}");
       expect(result).toContain("Hello, can you help me?");
       expect(result).toContain("- RELATIVE_INDEX: -1");
-      expect(result).toContain("- SENDER_ID: U456");
+      expect(result).toContain("- SENDER: {id: U456}");
       expect(result).toContain("Sure, what do you need?");
     });
 
@@ -50,7 +50,7 @@ describe("Feature: Format Context For Agent", () => {
   });
 
   describe("Scenario: Include bot messages in context", () => {
-    it("should include bot messages with SENDER_ID: BOT", () => {
+    it("should include bot messages with SENDER ID: BOT", () => {
       const messages = [
         { user: "U123", text: "Hello", ts: "1234567890.001" },
         { bot_id: "BBOT123", text: "Bot response", ts: "1234567890.002" },
@@ -59,10 +59,10 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("- SENDER_ID: U123");
-      expect(result).toContain("- SENDER_ID: BOT");
+      expect(result).toContain("- SENDER: {id: U123}");
+      expect(result).toContain("- SENDER: {id: BOT}");
       expect(result).toContain("Bot response");
-      expect(result).toContain("- SENDER_ID: U456");
+      expect(result).toContain("- SENDER: {id: U456}");
     });
 
     it("should not filter out any messages even when botUserId is provided", () => {
@@ -77,7 +77,7 @@ describe("Feature: Format Context For Agent", () => {
 
       // All messages should be included
       expect(result).toContain("User message 1");
-      expect(result).toContain("- SENDER_ID: BBOT123");
+      expect(result).toContain("- SENDER: {id: BBOT123}");
       expect(result).toContain("Bot message");
       expect(result).toContain("User message 2");
     });
@@ -95,9 +95,9 @@ describe("Feature: Format Context For Agent", () => {
 
       const result = formatContextForAgent(messages);
 
-      expect(result).toContain("- SENDER_ID: unknown");
+      expect(result).toContain("- SENDER: {id: unknown}");
       expect(result).toContain("No user");
-      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- SENDER: {id: U123}");
     });
   });
 
@@ -110,7 +110,7 @@ describe("Feature: Format Context For Agent", () => {
       const result = formatContextForAgent(messages, undefined, "channel");
 
       expect(result).toContain("# Recent Channel Messages");
-      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- SENDER: {id: U123}");
       expect(result).toContain("Recent message");
     });
   });
@@ -492,7 +492,7 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain(
         'View: curl -sS -o /tmp/F123.png "https://mock-presigned-url"',
       );
-      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- SENDER: {id: U123}");
     });
 
     it("should upload JPEG images to R2", async () => {
@@ -915,9 +915,9 @@ describe("Feature: Format Context With Image Upload", () => {
 
       expect(result).toContain("# Slack Thread Context");
       expect(result).toContain("- RELATIVE_INDEX: -2");
-      expect(result).toContain("- SENDER_ID: U123");
+      expect(result).toContain("- SENDER: {id: U123}");
       expect(result).toContain("- RELATIVE_INDEX: -1");
-      expect(result).toContain("- SENDER_ID: U456");
+      expect(result).toContain("- SENDER: {id: U456}");
     });
   });
 });

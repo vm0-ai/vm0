@@ -9,7 +9,12 @@ import { org as orgTable } from "../../../db/schema/org";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
 import { ensureStorageExists } from "../../storage/storage-service";
-import { createSlackClient, fetchSlackUserInfo } from "../../slack/client";
+import {
+  createSlackClient,
+  fetchSlackUserInfo,
+  fetchSlackUserInfoMap,
+  formatSenderBlock,
+} from "../../slack/client";
 import {
   fetchThreadContext,
   fetchChannelContext,
@@ -283,11 +288,18 @@ export async function fetchConversationContexts(
     ? allMessages.filter((m) => m.ts !== currentMessageTs)
     : allMessages;
 
+  // Resolve user info for all unique user IDs in context messages
+  const userIds = allMessages
+    .filter((m) => m.user && !m.bot_id)
+    .map((m) => m.user as string);
+  const userInfoMap = await fetchSlackUserInfoMap(client, userIds);
+
   // Text-only full context for routing (no image uploads needed)
   const routingContext = formatContextForAgent(
     contextMessages,
     botUserId,
     contextType,
+    userInfoMap,
   );
 
   // Filter to only new messages for execution context
@@ -304,6 +316,7 @@ export async function fetchConversationContexts(
           imageSessionId,
           botUserId,
           contextType,
+          userInfoMap,
         )
       : "";
 
@@ -414,7 +427,7 @@ export async function enrichMessageContent(opts: {
   let userContext = "";
   const userInfo = await fetchSlackUserInfo(opts.client, opts.userId);
   if (userInfo) {
-    userContext = `# Current User\n[Slack User]\n${userInfo}`;
+    userContext = `# Current User\n[Slack User]\n${formatSenderBlock(userInfo)}`;
   }
 
   return { prompt, userContext };

@@ -2,6 +2,7 @@ import type { WebClient } from "@slack/web-api";
 import { logger } from "../logger";
 import { uploadS3Buffer, generatePresignedUrl } from "../s3/s3-client";
 import { env } from "../../env";
+import { type SlackUserInfo, formatSenderBlock } from "./client";
 
 const log = logger("slack:context");
 
@@ -485,15 +486,18 @@ function formatMessageWithMetadata(
   msg: SlackMessage,
   relativeIndex: number,
   fileParts: string[],
+  userInfoMap?: Map<string, SlackUserInfo>,
 ): string {
   const senderId = msg.bot_id ? "BOT" : (msg.user ?? "unknown");
+  const userInfo = userInfoMap?.get(senderId);
+  const senderBlock = formatSenderBlock(userInfo ?? { id: senderId });
   const text = extractTextFromBlocks(msg.blocks) ?? msg.text ?? "";
 
   const parts: string[] = [
     "---",
     "",
     `- RELATIVE_INDEX: ${relativeIndex}`,
-    `- SENDER_ID: ${senderId}`,
+    senderBlock,
     "",
     text,
   ];
@@ -519,12 +523,14 @@ const CONTEXT_PREAMBLE = [
  * @param messages - Array of Slack messages
  * @param botUserId - Bot user ID (kept for API compatibility, no longer used for filtering)
  * @param contextType - Type of context: "thread" or "channel"
+ * @param userInfoMap - Pre-resolved map of Slack user ID → user info
  * @returns Formatted context string
  */
 export function formatContextForAgent(
   messages: SlackMessage[],
   botUserId?: string,
   contextType: "thread" | "channel" = "thread",
+  userInfoMap?: Map<string, SlackUserInfo>,
 ): string {
   if (messages.length === 0) {
     return "";
@@ -555,7 +561,12 @@ export function formatContextForAgent(
       }
     }
 
-    return formatMessageWithMetadata(msg, relativeIndex, fileParts);
+    return formatMessageWithMetadata(
+      msg,
+      relativeIndex,
+      fileParts,
+      userInfoMap,
+    );
   });
 
   const header =
@@ -581,6 +592,7 @@ export function formatContextForAgent(
  * @param sessionId - Session ID for organizing uploaded images
  * @param botUserId - Bot user ID (kept for API compatibility, no longer used for filtering)
  * @param contextType - Type of context: "thread" or "channel"
+ * @param userInfoMap - Pre-resolved map of Slack user ID → user info
  * @returns Formatted context string with image URLs
  */
 export async function formatContextForAgentWithImages(
@@ -589,6 +601,7 @@ export async function formatContextForAgentWithImages(
   sessionId: string,
   botUserId?: string,
   contextType: "thread" | "channel" = "thread",
+  userInfoMap?: Map<string, SlackUserInfo>,
 ): Promise<string> {
   if (messages.length === 0) {
     return "";
@@ -625,7 +638,12 @@ export async function formatContextForAgentWithImages(
         }
       }
 
-      return formatMessageWithMetadata(msg, relativeIndex, fileParts);
+      return formatMessageWithMetadata(
+        msg,
+        relativeIndex,
+        fileParts,
+        userInfoMap,
+      );
     }),
   );
 

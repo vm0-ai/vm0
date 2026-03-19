@@ -101,8 +101,7 @@ describe("enrichMessageContent", () => {
     expect(result.prompt).toBe("Hello world");
     expect(result.userContext).toContain("# Current User");
     expect(result.userContext).toContain("[Slack User]");
-    expect(result.userContext).toContain("Slack User ID: U123");
-    expect(result.userContext).toContain("Name: Jane");
+    expect(result.userContext).toContain("- SENDER: {id: U123, name: Jane");
   });
 
   it("should return empty userContext when user info is unavailable", async () => {
@@ -143,7 +142,7 @@ describe("enrichMessageContent", () => {
     });
 
     expect(result.prompt).not.toContain("[Slack User]");
-    expect(result.prompt).not.toContain("Slack User ID");
+    expect(result.prompt).not.toContain("- SENDER:");
     expect(result.prompt).toBe("My message");
   });
 });

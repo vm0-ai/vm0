@@ -56,31 +56,80 @@ export async function publishAppHome(
   });
 }
 
+export interface SlackUserInfo {
+  id: string;
+  name?: string;
+  email?: string;
+  timezone?: string;
+}
+
 /**
- * Fetch basic Slack user info (display name, real name, timezone)
+ * Format a SENDER block from user info.
+ * Used in both thread context messages and the current-user system prompt.
+ */
+export function formatSenderBlock(info: SlackUserInfo): string {
+  const parts = [`id: ${info.id}`];
+  if (info.name) {
+    parts.push(`name: ${info.name}`);
+  }
+  if (info.email) {
+    parts.push(`email: ${info.email}`);
+  }
+  if (info.timezone) {
+    parts.push(`timezone: ${info.timezone}`);
+  }
+  return `- SENDER: {${parts.join(", ")}}`;
+}
+
+/**
+ * Fetch basic Slack user info (display name, email, timezone)
  *
  * @param client - Slack WebClient
  * @param userId - Slack user ID
- * @returns User info string for prompt context, or undefined if lookup fails
+ * @returns Structured user info, or undefined if lookup fails
  */
 export async function fetchSlackUserInfo(
   client: WebClient,
   userId: string,
-): Promise<string | undefined> {
+): Promise<SlackUserInfo | undefined> {
   const result = await client.users.info({ user: userId });
   if (!result.ok || !result.user) return undefined;
 
   const u = result.user;
-  const displayName =
+  const name =
     u.profile?.display_name || u.profile?.real_name || u.real_name || u.name;
+  const email = u.profile?.email;
   const tz = u.tz_label || u.tz;
 
-  const parts: string[] = [];
-  parts.push(`Slack User ID: ${userId}`);
-  if (displayName) parts.push(`Name: ${displayName}`);
-  if (tz) parts.push(`Timezone: ${tz}`);
+  return {
+    id: userId,
+    name: name || undefined,
+    email: email || undefined,
+    timezone: tz || undefined,
+  };
+}
 
-  return parts.join("\n");
+/**
+ * Batch-resolve Slack user info for multiple user IDs.
+ * Deduplicates IDs and resolves concurrently.
+ */
+export async function fetchSlackUserInfoMap(
+  client: WebClient,
+  userIds: string[],
+): Promise<Map<string, SlackUserInfo>> {
+  const map = new Map<string, SlackUserInfo>();
+  const uniqueIds = [...new Set(userIds)];
+
+  await Promise.allSettled(
+    uniqueIds.map(async (id) => {
+      const info = await fetchSlackUserInfo(client, id);
+      if (info) {
+        map.set(id, info);
+      }
+    }),
+  );
+
+  return map;
 }
 
 /**
