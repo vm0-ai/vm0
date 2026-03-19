@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   extractAndGroupVariables,
   getConnectorProvidedSecretNames,
@@ -10,7 +10,6 @@ import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
-import { slackOrgPendingQuestions } from "../../../../../src/db/schema/slack-org-pending-question";
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
@@ -31,6 +30,7 @@ import { publishAppHome } from "../../../../../src/lib/slack/client";
 import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
 import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
+import { cleanupWorkspaceInstallation } from "../../../../../src/lib/slack-org/connect-service";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -189,10 +189,7 @@ async function handleUninstall(
 
   // Refresh App Home for all connected users before deleting (best-effort)
   const connections = await db
-    .select({
-      id: slackOrgConnections.id,
-      slackUserId: slackOrgConnections.slackUserId,
-    })
+    .select({ slackUserId: slackOrgConnections.slackUserId })
     .from(slackOrgConnections)
     .where(
       eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
@@ -216,27 +213,10 @@ async function handleUninstall(
         ),
       ),
     );
-
-    // Delete pending questions
-    const connectionIds = connections.map((c) => c.id);
-    await db
-      .delete(slackOrgPendingQuestions)
-      .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
   }
 
-  // Delete all connections (cascades to thread sessions)
-  await db
-    .delete(slackOrgConnections)
-    .where(
-      eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
-    );
-
-  // Delete the installation
-  await db
-    .delete(slackOrgInstallations)
-    .where(
-      eq(slackOrgInstallations.slackWorkspaceId, installation.slackWorkspaceId),
-    );
+  // Clean up installation and all related data
+  await cleanupWorkspaceInstallation(installation.slackWorkspaceId);
 
   log.info("Slack workspace uninstalled", {
     workspaceId: installation.slackWorkspaceId,

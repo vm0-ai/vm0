@@ -1,6 +1,7 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
+import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
 import {
   ensureOrgArtifact,
   resolveDefaultComposeId,
@@ -211,6 +212,56 @@ export async function disconnect(params: {
     .where(eq(slackOrgConnections.id, connectionId));
 
   log.info("User disconnected from Slack", params);
+}
+
+/**
+ * Remove a workspace installation and all associated data.
+ *
+ * Deletes: pending questions → connections (cascades thread sessions) → installation.
+ * Skips Slack API calls — the caller decides whether to refresh App Homes first.
+ *
+ * Returns true if an installation was deleted, false if none existed.
+ */
+export async function cleanupWorkspaceInstallation(
+  workspaceId: string,
+): Promise<boolean> {
+  const db = globalThis.services.db;
+
+  const [installation] = await db
+    .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation) {
+    return false;
+  }
+
+  // Delete pending questions for all connections in this workspace
+  const connections = await db
+    .select({ id: slackOrgConnections.id })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+
+  if (connections.length > 0) {
+    const connectionIds = connections.map((c) => c.id);
+    await db
+      .delete(slackOrgPendingQuestions)
+      .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
+  }
+
+  // Delete all connections (cascades to thread sessions)
+  await db
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+
+  // Delete the installation
+  await db
+    .delete(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
+
+  log.info("Cleaned up workspace installation", { workspaceId });
+  return true;
 }
 
 /**

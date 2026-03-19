@@ -11,6 +11,7 @@ import {
   handleOrgAppHomeOpened,
   handleOrgMessagesTabOpened,
 } from "../../../../../src/lib/slack-org/handlers/app-home";
+import { cleanupWorkspaceInstallation } from "../../../../../src/lib/slack-org/connect-service";
 import type { SlackFile } from "../../../../../src/lib/slack/context";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -54,6 +55,18 @@ interface SlackAppHomeOpenedEvent {
   channel: string;
 }
 
+interface SlackAppUninstalledEvent {
+  type: "app_uninstalled";
+}
+
+interface SlackTokensRevokedEvent {
+  type: "tokens_revoked";
+  tokens: {
+    oauth?: string[];
+    bot?: string[];
+  };
+}
+
 interface SlackEventCallback {
   type: "event_callback";
   token: string;
@@ -62,7 +75,9 @@ interface SlackEventCallback {
   event:
     | SlackAppMentionEvent
     | SlackDirectMessageEvent
-    | SlackAppHomeOpenedEvent;
+    | SlackAppHomeOpenedEvent
+    | SlackAppUninstalledEvent
+    | SlackTokensRevokedEvent;
   event_id: string;
   event_time: number;
 }
@@ -182,6 +197,28 @@ export async function POST(request: Request) {
           channelId: event.channel,
         }).catch((error) => {
           log.error("Error handling org messages_tab_opened", { error });
+        }),
+      );
+    }
+
+    if (event.type === "app_uninstalled") {
+      initServices();
+      after(
+        cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
+          log.error("Error handling app_uninstalled", { error });
+        }),
+      );
+    }
+
+    if (
+      event.type === "tokens_revoked" &&
+      event.tokens.bot &&
+      event.tokens.bot.length > 0
+    ) {
+      initServices();
+      after(
+        cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
+          log.error("Error handling tokens_revoked", { error });
         }),
       );
     }
