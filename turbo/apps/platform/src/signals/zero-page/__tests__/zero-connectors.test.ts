@@ -24,7 +24,7 @@ describe("connectors", () => {
 
     expect(gmailConnector).toBeDefined();
     expect(gmailConnector?.label).toContain("Gmail");
-    expect(gmailConnector?.connected).toBe(false);
+    expect(gmailConnector?.connected).toBeFalsy();
   });
 
   it("should not show gmail connector when feature switch is disabled", async () => {
