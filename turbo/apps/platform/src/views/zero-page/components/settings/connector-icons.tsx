@@ -4,6 +4,8 @@ import { cn } from "@vm0/ui";
 import agentmailIcon from "./icons/agentmail.svg";
 import ahrefsIcon from "./icons/ahrefs.svg";
 import apifyIcon from "./icons/apify.svg";
+import bitrixIcon from "./icons/bitrix.svg";
+import braveSearchIcon from "./icons/brave-search.svg";
 import brightDataIcon from "./icons/bright-data.svg";
 import browserbaseIcon from "./icons/browserbase.svg";
 import browserlessIcon from "./icons/browserless.svg";
@@ -17,6 +19,7 @@ import clickupIcon from "./icons/clickup.svg";
 import cloudflareIcon from "./icons/cloudflare.svg";
 import closeIcon from "./icons/close.svg";
 import computerIcon from "./icons/computer.svg";
+import cronlyticIcon from "./icons/cronlytic.svg";
 import deelIcon from "./icons/deel.svg";
 import deepseekIcon from "./icons/deepseek.svg";
 import difyIcon from "./icons/dify.svg";
@@ -109,6 +112,8 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   axiom: axiomIcon,
   asana: asanaIcon,
   atlassian: atlassianIcon,
+  bitrix: bitrixIcon,
+  "brave-search": braveSearchIcon,
   "bright-data": brightDataIcon,
   browserbase: browserbaseIcon,
   browserless: browserlessIcon,
@@ -118,6 +123,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   cloudflare: cloudflareIcon,
   close: closeIcon,
   computer: computerIcon,
+  cronlytic: cronlyticIcon,
   deel: deelIcon,
   deepseek: deepseekIcon,
   dify: difyIcon,
@@ -206,6 +212,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
 const MONOCHROME_ICONS: Readonly<Record<string, true>> = Object.freeze({
   agentmail: true,
   "bright-data": true,
+  cronlytic: true,
   dify: true,
   github: true,
   hume: true,

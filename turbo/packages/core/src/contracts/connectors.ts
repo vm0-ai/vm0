@@ -919,6 +919,28 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  cronlytic: {
+    label: "Cronlytic",
+    helpText:
+      "Connect your Cronlytic account to monitor cron jobs and scheduled tasks",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          CRONLYTIC_API_KEY: {
+            label: "API Key",
+            required: true,
+          },
+          CRONLYTIC_USER_ID: {
+            label: "User ID",
+            required: true,
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   dify: {
     label: "Dify",
     helpText:
@@ -2114,6 +2136,42 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  bitrix: {
+    label: "Bitrix24",
+    helpText:
+      "Connect your Bitrix24 account to manage CRM, tasks, and workflows",
+    authMethods: {
+      "api-token": {
+        label: "Webhook URL",
+        secrets: {
+          BITRIX_WEBHOOK_URL: {
+            label: "Webhook URL",
+            required: true,
+            placeholder: "https://your-domain.bitrix24.com/rest/1/xxx/",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  "brave-search": {
+    label: "Brave Search",
+    helpText:
+      "Connect your Brave Search account to perform privacy-focused web, image, video, and news searches",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          BRAVE_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "BSAxxxxxxxxxxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   "bright-data": {
     label: "Bright Data",
     helpText:
@@ -2767,6 +2825,9 @@ export const connectorTypeSchema = z.enum([
   "zapsign",
   "zendesk",
   "prisma-postgres",
+  "bitrix",
+  "brave-search",
+  "cronlytic",
 ]);
 
 /**
