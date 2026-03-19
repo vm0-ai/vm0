@@ -3617,3 +3617,27 @@ export async function findOrgMembersEntry(orgId: string, userId: string) {
     .limit(1);
   return row;
 }
+
+/**
+ * Insert test VM0 API keys into the key pool.
+ */
+export async function insertVm0ApiKeys(
+  keys: Array<{
+    vendor: string;
+    model: string;
+    apiKey: string;
+    label?: string;
+  }>,
+) {
+  initServices();
+  const { vm0ApiKeys } = await import("../db/schema/vm0-api-key");
+  await globalThis.services.db.insert(vm0ApiKeys).values(keys);
+}
+
+/**
+ * Get a VM0 API key from the pool for a vendor.
+ */
+export async function getTestVm0ApiKey(vendor: string) {
+  const { getVm0ApiKey } = await import("../lib/vm0-key/vm0-key-service");
+  return getVm0ApiKey(vendor);
+}

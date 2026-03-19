@@ -104,7 +104,9 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   const config = MODEL_PROVIDER_TYPES[type];
 
   console.log();
-  console.log(chalk.dim(config.helpText));
+  if ("helpText" in config) {
+    console.log(chalk.dim(config.helpText));
+  }
   console.log();
 
   // Handle multi-auth providers

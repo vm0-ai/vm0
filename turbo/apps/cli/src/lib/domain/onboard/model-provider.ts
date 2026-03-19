@@ -77,7 +77,7 @@ export function getProviderChoices(): ProviderChoice[] {
     return {
       type,
       label: config.label,
-      helpText: config.helpText,
+      helpText: "helpText" in config ? config.helpText : "",
       secretLabel: "secretLabel" in config ? config.secretLabel : "",
       models: getModels(type),
       defaultModel: getDefaultModel(type),

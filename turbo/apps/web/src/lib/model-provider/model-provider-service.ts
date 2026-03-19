@@ -527,6 +527,100 @@ async function upsertMultiAuthModelProvider(
 }
 
 /**
+ * Create or update a model provider that requires no secret (e.g., vm0 managed provider).
+ * Inserts model_providers with secretId = NULL and authMethod = NULL.
+ */
+async function upsertNoSecretModelProvider(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+  selectedModel?: string,
+): Promise<{ provider: ModelProviderInfo; created: boolean }> {
+  const framework = getFrameworkForType(type);
+
+  log.debug("upserting no-secret model provider", {
+    orgId,
+    type,
+    selectedModel,
+  });
+
+  // Pre-check: does a provider for this type already exist?
+  const [existingProvider] = await globalThis.services.db
+    .select({ id: modelProviders.id })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
+    )
+    .limit(1);
+
+  // Atomic model provider upsert
+  const [provider] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId,
+      isDefault: false,
+      selectedModel: selectedModel ?? null,
+      orgId,
+    })
+    .onConflictDoUpdate({
+      target: [
+        modelProviders.orgId,
+        modelProviders.userId,
+        modelProviders.type,
+      ],
+      set: {
+        selectedModel: selectedModel ?? null,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  const wasCreated = !existingProvider;
+
+  // Assign default if no other default exists for the framework
+  if (!provider!.isDefault) {
+    const isDefault = await assignDefaultIfFirst(
+      orgId,
+      userId,
+      provider!.id,
+      framework,
+    );
+    if (isDefault) {
+      provider!.isDefault = true;
+    }
+  }
+
+  log.debug(
+    wasCreated
+      ? "no-secret model provider created"
+      : "no-secret model provider updated",
+    {
+      providerId: provider!.id,
+      type,
+      selectedModel,
+      isDefault: provider!.isDefault,
+    },
+  );
+
+  return {
+    provider: toModelProviderInfo({
+      id: provider!.id,
+      type,
+      isDefault: provider!.isDefault,
+      selectedModel: provider!.selectedModel,
+      createdAt: provider!.createdAt,
+      updatedAt: provider!.updatedAt,
+    }),
+    created: wasCreated,
+  };
+}
+
+/**
  * Delete a model provider and its secret
  */
 async function deleteModelProvider(
@@ -865,6 +959,23 @@ export function upsertOrgMultiAuthModelProvider(
     type,
     authMethod,
     secretValues,
+    selectedModel,
+  );
+}
+
+/**
+ * Create or update an org-level no-secret model provider (e.g., vm0).
+ * Uses ORG_SENTINEL_USER_ID for org-scoped storage.
+ */
+export function upsertOrgNoSecretModelProvider(
+  orgId: string,
+  type: ModelProviderType,
+  selectedModel?: string,
+): Promise<{ provider: ModelProviderInfo; created: boolean }> {
+  return upsertNoSecretModelProvider(
+    orgId,
+    ORG_SENTINEL_USER_ID,
+    type,
     selectedModel,
   );
 }

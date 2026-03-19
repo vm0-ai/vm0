@@ -11,6 +11,7 @@ import {
   listOrgModelProviders,
   upsertOrgModelProvider,
   upsertOrgMultiAuthModelProvider,
+  upsertOrgNoSecretModelProvider,
 } from "../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
@@ -84,12 +85,25 @@ const router = tsr.router(orgModelProvidersMainContract, {
     });
 
     try {
-      const isMultiAuth = hasAuthMethods(type);
-
       let provider;
       let created: boolean;
 
-      if (isMultiAuth) {
+      if (type === "vm0") {
+        // VM0 managed provider: org slug must be "vm0"
+        if (org.slug !== "vm0") {
+          return createErrorResponse(
+            "FORBIDDEN",
+            "VM0 managed provider is only available to the vm0 org",
+          );
+        }
+        const result = await upsertOrgNoSecretModelProvider(
+          org.orgId,
+          type,
+          selectedModel,
+        );
+        provider = result.provider;
+        created = result.created;
+      } else if (hasAuthMethods(type)) {
         if (!authMethod || !secrets) {
           return createErrorResponse(
             "BAD_REQUEST",

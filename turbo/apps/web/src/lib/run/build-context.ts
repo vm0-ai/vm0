@@ -13,6 +13,8 @@ import {
   VALID_CAPABILITIES,
   getModelProviderFirewall,
   areProvidersCompatible,
+  getVm0ConcreteProviderType,
+  getVm0Vendor,
   type ExperimentalFirewalls,
   type ExpandedFirewallConfig,
   type ConnectorType,
@@ -37,6 +39,7 @@ import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
+import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { connectors } from "../../db/schema/connector";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
@@ -179,6 +182,45 @@ interface ModelProviderSecretResult {
   /** The resolved model provider type (e.g. "anthropic", "vercel-ai-gateway").
    *  Undefined when provider resolution was skipped (explicit env vars or non-claude-code). */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** For meta-providers like "vm0", the concrete provider type resolved at build time.
+   *  Used for firewall lookup instead of the meta-provider type. */
+  concreteProviderType?: ModelProviderType;
+}
+
+/**
+ * Resolve VM0 managed provider: map selected model to concrete provider,
+ * fetch API key from pool, and resolve environment mapping.
+ */
+async function resolveVm0Provider(
+  selectedModel: string,
+): Promise<ModelProviderSecretResult> {
+  const concreteType = getVm0ConcreteProviderType(selectedModel);
+  const vendor = getVm0Vendor(selectedModel);
+  const poolKey = await getVm0ApiKey(vendor);
+  if (!poolKey) {
+    throw badRequest(`No API key available for vendor "${vendor}"`);
+  }
+  const concreteSecretName = getSecretNameForType(concreteType);
+  if (!concreteSecretName) {
+    throw badRequest(`Concrete provider "${concreteType}" has no secret name`);
+  }
+  const secrets = { [concreteSecretName]: poolKey.apiKey };
+  const injectedEnvironment = resolveEnvironmentMapping(
+    concreteType,
+    concreteSecretName,
+    poolKey.model,
+  );
+
+  log.debug(
+    `Resolved VM0 model provider: ${selectedModel} → ${concreteType} (vendor: ${vendor})`,
+  );
+
+  return {
+    secrets,
+    injectedEnvironment,
+    resolvedModelProvider: "vm0",
+    concreteProviderType: concreteType,
+  };
 }
 
 /**
@@ -218,6 +260,14 @@ async function resolveModelProviderSecrets(
     explicitModelProvider,
   );
   const selectedModel = defaultProvider?.selectedModel ?? undefined;
+
+  // Handle VM0 managed provider (meta-provider resolution)
+  if (providerType === "vm0") {
+    if (!selectedModel) {
+      throw badRequest("VM0 provider requires a selected model");
+    }
+    return resolveVm0Provider(selectedModel);
+  }
 
   // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
@@ -695,8 +745,12 @@ async function resolveSecretsAndEnvironment(
   }
 
   // Auto-generate firewall entry for model provider (if applicable).
-  const modelProviderFirewall = modelProviderResult.resolvedModelProvider
-    ? getModelProviderFirewall(modelProviderResult.resolvedModelProvider)
+  // For meta-providers like "vm0", use the concrete provider type for firewall lookup.
+  const firewallType =
+    modelProviderResult.concreteProviderType ??
+    modelProviderResult.resolvedModelProvider;
+  const modelProviderFirewall = firewallType
+    ? getModelProviderFirewall(firewallType)
     : undefined;
 
   // Expand environment variables from compose config.
