@@ -1163,6 +1163,13 @@
       "when": 1774051200009,
       "tag": "0165_multi_result_credit_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1774051200010,
+      "tag": "0166_nasty_joystick",
+      "breakpoints": true
     }
   ]
 }

@@ -146,6 +146,7 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
                 "artifact",
                 env::run_id(),
                 &format!("Checkpoint from run {}", env::run_id()),
+                env::artifact_version_id(),
             )
             .await?;
             log_info!(
@@ -182,6 +183,7 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
                 "memory",
                 env::run_id(),
                 &format!("Memory checkpoint from run {}", env::run_id()),
+                env::memory_version_id(),
             )
             .await?;
             log_info!(

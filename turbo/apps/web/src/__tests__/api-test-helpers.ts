@@ -24,6 +24,7 @@ import { runnerJobQueue } from "../db/schema/runner-job-queue";
 import { composeJobs } from "../db/schema/compose-job";
 import { exportJobs } from "../db/schema/export-job";
 import { storages, storageVersions } from "../db/schema/storage";
+import { storageVersionLineage } from "../db/schema/storage-version-lineage";
 import { skills } from "../db/schema/skill";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackOrgInstallations } from "../db/schema/slack-org-installation";
@@ -3482,4 +3483,16 @@ export async function deleteTestCompose(composeId: string): Promise<void> {
   await globalThis.services.db
     .delete(agentComposes)
     .where(eq(agentComposes.id, composeId));
+}
+
+/**
+ * Query storage version lineage records for a given versionId.
+ * Used to verify lineage tracking in commit webhook tests.
+ */
+export async function getStorageVersionLineage(versionId: string) {
+  initServices();
+  return globalThis.services.db
+    .select()
+    .from(storageVersionLineage)
+    .where(eq(storageVersionLineage.versionId, versionId));
 }

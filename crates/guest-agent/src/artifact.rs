@@ -66,6 +66,7 @@ pub async fn create_snapshot(
     storage_type: &str,
     run_id: &str,
     message: &str,
+    parent_version_id: &str,
 ) -> Result<SnapshotResult, AgentError> {
     log_info!(
         LOG_TAG,
@@ -85,12 +86,17 @@ pub async fn create_snapshot(
     // Step 2: Prepare
     log_info!(LOG_TAG, "Calling prepare endpoint...");
     let prep_start = std::time::Instant::now();
-    let prep_payload = json!({
+    let mut prep_payload = json!({
         "storageName": storage_name,
         "storageType": storage_type,
         "files": files,
         "runId": run_id,
     });
+    if !parent_version_id.is_empty()
+        && let Some(obj) = prep_payload.as_object_mut()
+    {
+        obj.insert("parentVersionId".to_string(), json!(parent_version_id));
+    }
 
     let prep_result = http::post_json(
         urls::storage_prepare_url(),
@@ -129,13 +135,18 @@ pub async fn create_snapshot(
             LOG_TAG,
             "Version already exists (deduplicated), updating HEAD"
         );
-        let commit_payload = json!({
+        let mut commit_payload = json!({
             "storageName": storage_name,
             "storageType": storage_type,
             "versionId": version_id,
             "files": files,
             "runId": run_id,
         });
+        if !parent_version_id.is_empty()
+            && let Some(obj) = commit_payload.as_object_mut()
+        {
+            obj.insert("parentVersionId".to_string(), json!(parent_version_id));
+        }
         let resp = http::post_json(
             urls::storage_commit_url(),
             &commit_payload,
@@ -224,7 +235,7 @@ pub async fn create_snapshot(
     // Step 7: Commit
     log_info!(LOG_TAG, "Calling commit endpoint...");
     let commit_start = std::time::Instant::now();
-    let commit_payload = json!({
+    let mut commit_payload = json!({
         "storageName": storage_name,
         "storageType": storage_type,
         "versionId": version_id,
@@ -232,6 +243,11 @@ pub async fn create_snapshot(
         "runId": run_id,
         "message": message,
     });
+    if !parent_version_id.is_empty()
+        && let Some(obj) = commit_payload.as_object_mut()
+    {
+        obj.insert("parentVersionId".to_string(), json!(parent_version_id));
+    }
     let resp = match http::post_json(
         urls::storage_commit_url(),
         &commit_payload,
