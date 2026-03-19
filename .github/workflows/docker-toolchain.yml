@@ -2,8 +2,6 @@ name: Docker Toolchain Build
 
 on:
   pull_request:
-    branches-ignore:
-      - 'release-please--branches--**'
     paths:
       - 'docker/toolchain/**'
       - '.github/workflows/docker-toolchain.yml'
@@ -17,6 +15,8 @@ permissions:
 
 jobs:
   toolchain:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

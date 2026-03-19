@@ -2,8 +2,6 @@ name: Crates
 
 on:
   pull_request:
-    branches-ignore:
-      - 'release-please--branches--**'
     paths:
       - 'crates/**'
       - 'ansible/**'
@@ -23,6 +21,8 @@ concurrency:
 
 jobs:
   detect:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
@@ -111,6 +111,8 @@ jobs:
           cargo run -p ably-subscriber --example smoke_test
 
   mitm-addon-test:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -712,9 +714,10 @@ jobs:
       - runner-balloon
       - runner-upgrade-local
     # Always run so the gate reports an explicit result (not "skipped").
-    # Skip on release-please commits — GitHub treats "skipped" as passing.
+    # Skip on release-please PRs and commits — GitHub treats "skipped" as passing.
     if: >-
       always() &&
+      !startsWith(github.head_ref || '', 'release-please--branches--') &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release'))
     steps:
       - name: Validate CI results

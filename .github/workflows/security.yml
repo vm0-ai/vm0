@@ -2,8 +2,6 @@ name: Security Scanning
 
 on:
   pull_request:
-    branches-ignore:
-      - 'release-please--branches--**'
   push:
     branches:
       - main
@@ -15,6 +13,8 @@ permissions:
 jobs:
   semgrep:
     name: Semgrep SAST
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep
@@ -73,6 +73,8 @@ jobs:
 
   codeql:
     name: CodeQL SAST
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -89,6 +91,8 @@ jobs:
 
   pnpm-audit:
     name: pnpm audit (SCA)
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -115,6 +119,8 @@ jobs:
 
   gitleaks:
     name: Gitleaks Secrets Detection
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

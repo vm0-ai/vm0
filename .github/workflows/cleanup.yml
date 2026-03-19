@@ -3,8 +3,6 @@ name: Cleanup Resources
 on:
   pull_request_target:
     types: [closed]
-    branches-ignore:
-      - 'release-please--branches--**'
 
 concurrency:
   group: ${{ github.head_ref || github.ref }}
@@ -12,6 +10,8 @@ concurrency:
 
 jobs:
   cleanup-runner:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -76,6 +76,8 @@ jobs:
           fi
 
   cleanup-database:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260310
@@ -91,6 +93,8 @@ jobs:
           action: "cleanup"
 
   cleanup-deployments:
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     permissions:
       deployments: write
