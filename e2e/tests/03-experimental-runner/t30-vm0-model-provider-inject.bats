@@ -57,5 +57,6 @@ EOF
         "echo INJECTED=\$CLAUDE_CODE_OAUTH_TOKEN"
 
     assert_success
-    assert_output --partial "INJECTED=***"
+    # Token is replaced with a firewall placeholder (proxy injects real token at runtime).
+    assert_output --partial "INJECTED=sk-ant-oat01-vm0placeholder"
 }
