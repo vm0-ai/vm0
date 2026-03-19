@@ -3,7 +3,7 @@
 import React from "react";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
-import Particles from "../skills/Particles";
+import Particles from "../../components/Particles";
 
 function PricingCard({
   title,

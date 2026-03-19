@@ -19,7 +19,6 @@ import {
 const isPublicRoute = createRouteMatcher([
   "/",
   "/:locale",
-  "/:locale/skills",
   "/:locale/glossary",
   "/:locale/pricing",
   "/terms-of-use",

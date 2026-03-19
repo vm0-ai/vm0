@@ -16,7 +16,7 @@ export function skillUrlToValue(url: string): string {
 
 /**
  * Static skills data for the multi-select combobox.
- * Sourced from https://vm0.ai/api/web/skills — maintained manually.
+ * Maintained manually.
  *
  * value = GitHub directory name (used in skill URL)
  * label = display name

@@ -90,7 +90,7 @@ describe("proxy middleware: sandbox token handling", () => {
   });
 
   it("should pass requests without authorization header through normally", async () => {
-    const request = new NextRequest("https://www.vm0.ai/en/skills");
+    const request = new NextRequest("https://www.vm0.ai/en/blog");
 
     await middleware(request, createMockEvent());
 
