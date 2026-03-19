@@ -290,7 +290,14 @@ jobs:
         working-directory: turbo
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm vitest run --project=web
+        run: pnpm vitest run --project=web --coverage.enabled --coverage.reporter=json
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: web
+          files: turbo/apps/web/coverage/coverage-final.json
 
   test-migrate:
     needs: prepare
@@ -327,7 +334,14 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/cli
+        run: pnpm vitest run --project=@vm0/cli --coverage.enabled --coverage.reporter=json
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: cli
+          files: turbo/apps/cli/coverage/coverage-final.json
 
   test-app:
     runs-on: ubuntu-latest
@@ -338,7 +352,14 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/app
+        run: pnpm vitest run --project=@vm0/app --coverage.enabled --coverage.reporter=json
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: app
+          files: turbo/apps/platform/coverage/coverage-final.json
 
   test-other:
     runs-on: ubuntu-latest
@@ -349,7 +370,14 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test Other Packages
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui
+        run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --coverage.enabled --coverage.reporter=json
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: core-ui
+          files: turbo/packages/core/coverage/coverage-final.json,turbo/packages/ui/coverage/coverage-final.json
 
   # Deploy web application with database
   deploy-web:
