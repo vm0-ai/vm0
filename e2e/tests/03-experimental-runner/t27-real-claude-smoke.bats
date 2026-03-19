@@ -31,16 +31,8 @@ require_api_key() {
     fi
 }
 
-# Helper: skip if not authenticated
-require_auth() {
-    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
-        skip "Not authenticated"
-    fi
-}
-
 @test "real claude via cook with environment secret" {
     require_api_key
-    require_auth
 
     cd "$TEST_DIR"
 
@@ -70,7 +62,6 @@ EOF
 
 @test "real claude via run with model-provider injection" {
     require_api_key
-    require_auth
 
     # Step 1: Set up model provider with real API key
     echo "# Setting up model provider..."
