@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.81.0](https://github.com/vm0-ai/vm0/compare/core-v8.80.0...core-v8.81.0) (2026-03-19)
+
+
+### Features
+
+* add append-system-prompt to web api pipeline ([#5385](https://github.com/vm0-ai/vm0/issues/5385)) ([d91d73c](https://github.com/vm0-ai/vm0/commit/d91d73cfdf338e7ab7ba9fb0d7581a57a7739f3e))
+
 ## [8.80.0](https://github.com/vm0-ai/vm0/compare/core-v8.79.2...core-v8.80.0) (2026-03-18)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.68.0](https://github.com/vm0-ai/vm0/compare/cli-v9.67.0...cli-v9.68.0) (2026-03-19)
+
+
+### Features
+
+* **runner:** add vm0/browser profile with dockerfile and ci integration ([#5311](https://github.com/vm0-ai/vm0/issues/5311)) ([a6b6077](https://github.com/vm0-ai/vm0/commit/a6b6077eb2e8a83f48bed456e4ee7d5e3323c192))
+
+
+### Bug Fixes
+
+* remove environment-variables-setup url from compose output ([#5401](https://github.com/vm0-ai/vm0/issues/5401)) ([8041030](https://github.com/vm0-ai/vm0/commit/80410309155ddfa23bcded39a92e58f52dbb78c5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.81.0
+
 ## [9.67.0](https://github.com/vm0-ai/vm0/compare/cli-v9.66.0...cli-v9.67.0) (2026-03-18)
 
 

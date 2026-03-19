@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.36.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.35.0...runner-rs-v0.36.0) (2026-03-19)
+
+
+### Features
+
+* **runner:** add vm0/browser profile with dockerfile and ci integration ([#5311](https://github.com/vm0-ai/vm0/issues/5311)) ([a6b6077](https://github.com/vm0-ai/vm0/commit/a6b6077eb2e8a83f48bed456e4ee7d5e3323c192))
+
+
+### Bug Fixes
+
+* **sandbox-fc:** use per-profile overlay directories to prevent cross-deletion ([#5413](https://github.com/vm0-ai/vm0/issues/5413)) ([a5c1a56](https://github.com/vm0-ai/vm0/commit/a5c1a56e0cbbf7ce305bf34414981ef3a08f2841)), closes [#5405](https://github.com/vm0-ai/vm0/issues/5405)
+
 ## [0.35.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.34.0...runner-rs-v0.35.0) (2026-03-18)
 
 

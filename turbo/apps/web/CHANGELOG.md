@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.129.0](https://github.com/vm0-ai/vm0/compare/web-v12.128.1...web-v12.129.0) (2026-03-19)
+
+
+### Features
+
+* add append-system-prompt to web api pipeline ([#5385](https://github.com/vm0-ai/vm0/issues/5385)) ([d91d73c](https://github.com/vm0-ai/vm0/commit/d91d73cfdf338e7ab7ba9fb0d7581a57a7739f3e))
+* extend credit_usage with cache tokens, web search requests, and cost ([#5428](https://github.com/vm0-ai/vm0/issues/5428)) ([fcfd1dc](https://github.com/vm0-ai/vm0/commit/fcfd1dcde3939bf7bfe3e8f61e4e90c4d9de8724))
+* **runner:** add vm0/browser profile with dockerfile and ci integration ([#5311](https://github.com/vm0-ai/vm0/issues/5311)) ([a6b6077](https://github.com/vm0-ai/vm0/commit/a6b6077eb2e8a83f48bed456e4ee7d5e3323c192))
+
+
+### Bug Fixes
+
+* allow re-setting default agent when previous compose was deleted ([#5398](https://github.com/vm0-ai/vm0/issues/5398)) ([cf52c92](https://github.com/vm0-ai/vm0/commit/cf52c92bc474374623b8f96b76d95f51f6ef1b32))
+* **platform:** unblock server-side compose from sandbox job concurrency limit ([#5416](https://github.com/vm0-ai/vm0/issues/5416)) ([a2f3af3](https://github.com/vm0-ai/vm0/commit/a2f3af3b97767dcce1a5fcd69a2c600dbdbed593)), closes [#5414](https://github.com/vm0-ai/vm0/issues/5414)
+
+
+### CI
+
+* test e2e-auth pipeline with trivial comment change ([#5435](https://github.com/vm0-ai/vm0/issues/5435)) ([aba00f2](https://github.com/vm0-ai/vm0/commit/aba00f23f6c1ad15665cb7c93de0c942c777ef0f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.81.0
+
 ## [12.128.1](https://github.com/vm0-ai/vm0/compare/web-v12.128.0...web-v12.128.1) (2026-03-18)
 
 

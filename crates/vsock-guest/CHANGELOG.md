@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.6.3...vsock-guest-v0.7.0) (2026-03-19)
+
+
+### Features
+
+* **runner:** add vm0/browser profile with dockerfile and ci integration ([#5311](https://github.com/vm0-ai/vm0/issues/5311)) ([a6b6077](https://github.com/vm0-ai/vm0/commit/a6b6077eb2e8a83f48bed456e4ee7d5e3323c192))
+
 ## [0.6.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.6.2...vsock-guest-v0.6.3) (2026-03-07)
 
 

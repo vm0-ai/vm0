@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.126.0](https://github.com/vm0-ai/vm0/compare/app-v0.125.1...app-v0.126.0) (2026-03-19)
+
+
+### Features
+
+* **platform:** add delete agent button to profile tab ([#5400](https://github.com/vm0-ai/vm0/issues/5400)) ([3757fee](https://github.com/vm0-ai/vm0/commit/3757fee1ed4fbbe726d80c8bca0a01763c468f4f))
+* **platform:** optimize zero chat connector popover and schedule dialogs ([#5429](https://github.com/vm0-ai/vm0/issues/5429)) ([00a0fe7](https://github.com/vm0-ai/vm0/commit/00a0fe7b71838a57290795276c5fb5e93a1b30d2))
+
+
+### Bug Fixes
+
+* add scroll constraint to connector popover for long lists ([#5387](https://github.com/vm0-ai/vm0/issues/5387)) ([9ae73bc](https://github.com/vm0-ai/vm0/commit/9ae73bc4ef5b9af715adcc133bffa18ac5c383c9))
+* **platform:** navigate to /talk/:name from agent detail chat button ([#5419](https://github.com/vm0-ai/vm0/issues/5419)) ([c220b03](https://github.com/vm0-ai/vm0/commit/c220b03d888d8ed9dbcdd9419d503b4f8d5e88b5)), closes [#5418](https://github.com/vm0-ai/vm0/issues/5418)
+* **platform:** pass memory name when creating agent runs from zero chat ([#5411](https://github.com/vm0-ai/vm0/issues/5411)) ([92c48d6](https://github.com/vm0-ai/vm0/commit/92c48d68fd76bd27d900f59cdda063f1970ef196))
+* **platform:** sync composer connectors after job detail save and limit popover height ([#5404](https://github.com/vm0-ai/vm0/issues/5404)) ([b20eef8](https://github.com/vm0-ai/vm0/commit/b20eef8558b92aefa916bedfbda2a268227984a8))
+* remove environment-variables-setup url from compose output ([#5401](https://github.com/vm0-ai/vm0/issues/5401)) ([8041030](https://github.com/vm0-ai/vm0/commit/80410309155ddfa23bcded39a92e58f52dbb78c5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.81.0
+
 ## [0.125.1](https://github.com/vm0-ai/vm0/compare/app-v0.125.0...app-v0.125.1) (2026-03-18)
 
 
