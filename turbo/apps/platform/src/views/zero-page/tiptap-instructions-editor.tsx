@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import type { ReactNode } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
@@ -8,18 +7,30 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Markdown } from "@tiptap/markdown";
 import { common, createLowlight } from "lowlight";
+import {
+  IconBold,
+  IconItalic,
+  IconStrikethrough,
+  IconH1,
+  IconH2,
+  IconH3,
+  IconList,
+  IconListNumbers,
+  IconBlockquote,
+  IconCode,
+} from "@tabler/icons-react";
 import "highlight.js/styles/github.css";
 
 const lowlight = createLowlight(common);
 
 function flattenNodes(
-  nodes: Array<{
+  nodes: {
     properties?: { className?: string[] };
     children?: unknown[];
     value?: string;
-  }>,
+  }[],
   className: string[] = [],
-): Array<{ text: string; classes: string[] }> {
+): { text: string; classes: string[] }[] {
   return nodes.flatMap((node) => {
     const classes = [...className, ...(node.properties?.className ?? [])];
     if (node.children) {
@@ -33,30 +44,31 @@ function buildDecorations(
   doc: Parameters<typeof findChildren>[0],
 ): DecorationSet {
   const decorations: Decoration[] = [];
-  findChildren(doc, (node) => node.type.name === "codeBlock").forEach(
-    (block) => {
-      let from = block.pos + 1;
-      const language: string | null = block.node.attrs.language;
-      const result =
-        language && lowlight.listLanguages().includes(language)
-          ? lowlight.highlight(language, block.node.textContent)
-          : lowlight.highlightAuto(block.node.textContent);
+  for (const block of findChildren(
+    doc,
+    (node) => node.type.name === "codeBlock",
+  )) {
+    let from = block.pos + 1;
+    const language: string | null = block.node.attrs.language;
+    const result =
+      language && lowlight.listLanguages().includes(language)
+        ? lowlight.highlight(language, block.node.textContent)
+        : lowlight.highlightAuto(block.node.textContent);
 
-      flattenNodes(
-        (result.children ?? []) as Parameters<typeof flattenNodes>[0],
-      ).forEach((node) => {
-        const to = from + node.text.length;
-        if (node.classes.length) {
-          decorations.push(
-            Decoration.inline(from, to, {
-              class: node.classes.join(" "),
-            }),
-          );
-        }
-        from = to;
-      });
-    },
-  );
+    for (const flatNode of flattenNodes(
+      (result.children ?? []) as Parameters<typeof flattenNodes>[0],
+    )) {
+      const to = from + flatNode.text.length;
+      if (flatNode.classes.length) {
+        decorations.push(
+          Decoration.inline(from, to, {
+            class: flatNode.classes.join(" "),
+          }),
+        );
+      }
+      from = to;
+    }
+  }
   return DecorationSet.create(doc, decorations);
 }
 
@@ -87,18 +99,6 @@ const LowlightPlugin = Extension.create({
     ];
   },
 });
-import {
-  IconBold,
-  IconItalic,
-  IconStrikethrough,
-  IconH1,
-  IconH2,
-  IconH3,
-  IconList,
-  IconListNumbers,
-  IconBlockquote,
-  IconCode,
-} from "@tabler/icons-react";
 
 interface TiptapInstructionsEditorProps {
   initialContent: string;
@@ -160,8 +160,6 @@ export function TiptapInstructionsEditor({
   onChange,
   disabled = false,
 }: TiptapInstructionsEditorProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
   const editor = useEditor({
     extensions: [StarterKit, LowlightPlugin, Markdown],
     content: initialContent,
@@ -180,7 +178,6 @@ export function TiptapInstructionsEditor({
 
   return (
     <div
-      ref={containerRef}
       className={`relative rounded-lg border border-border/60 bg-transparent transition-colors focus-within:border-border ${disabled ? "opacity-60 pointer-events-none" : ""}`}
     >
       {editor && (
