@@ -62,6 +62,14 @@ npm install -g @vm0/cli && vm0 onboard
 
 For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
 
+## 📊 Coverage
+
+<p align="center">
+  <a href="https://codecov.io/gh/vm0-ai/vm0">
+    <img src="https://codecov.io/gh/vm0-ai/vm0/graphs/sunburst.svg?token=UZSMUBBOUC" alt="Codecov Sunburst" width="400">
+  </a>
+</p>
+
 ## 🤝 Contribute
 
 <p><a href="https://github.com/vm0-ai/vm0/blob/main/CONTRIBUTING.md">
