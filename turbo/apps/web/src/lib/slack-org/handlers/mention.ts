@@ -114,7 +114,7 @@ export async function handleOrgMention(
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // 5. Enrich message content
-  const messageContent = await enrichMessageContent({
+  const { prompt: messageContent, userContext } = await enrichMessageContent({
     messageContent: context.messageText,
     files: context.files,
     botToken,
@@ -179,6 +179,7 @@ export async function handleOrgMention(
     sessionId: existingSessionId,
     prompt: messageContent,
     threadContext: executionContext,
+    userContext,
     userId: connection.vm0UserId,
     callbackContext,
   });

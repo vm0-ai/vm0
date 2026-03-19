@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { buildOrgConnectUrl, buildLogsUrl, buildAgentLogsUrl } from "../shared";
+import { describe, it, expect, vi } from "vitest";
+import type { WebClient } from "@slack/web-api";
+import {
+  buildOrgConnectUrl,
+  buildLogsUrl,
+  buildAgentLogsUrl,
+  enrichMessageContent,
+} from "../shared";
 
 describe("buildOrgConnectUrl", () => {
   it("should point to platform slack connect page", () => {
@@ -58,5 +64,86 @@ describe("buildAgentLogsUrl", () => {
     const url = buildAgentLogsUrl();
 
     expect(url).toBe("http://localhost:3001/activity");
+  });
+});
+
+function createMockSlackClient(
+  usersInfoResponse: Record<string, unknown>,
+): WebClient {
+  return {
+    users: {
+      info: vi.fn().mockResolvedValue(usersInfoResponse),
+    },
+  } as unknown as WebClient;
+}
+
+describe("enrichMessageContent", () => {
+  it("should return prompt and userContext as separate fields", async () => {
+    const client = createMockSlackClient({
+      ok: true,
+      user: {
+        id: "U123",
+        profile: { display_name: "Jane", real_name: "Jane Doe" },
+        tz_label: "Pacific Standard Time",
+      },
+    });
+
+    const result = await enrichMessageContent({
+      messageContent: "Hello world",
+      files: undefined,
+      botToken: "xoxb-test",
+      channelId: "C123",
+      threadTs: "1234567890.001",
+      client,
+      userId: "U123",
+    });
+
+    expect(result.prompt).toBe("Hello world");
+    expect(result.userContext).toContain("# Current User");
+    expect(result.userContext).toContain("[Slack User]");
+    expect(result.userContext).toContain("Slack User ID: U123");
+    expect(result.userContext).toContain("Name: Jane");
+  });
+
+  it("should return empty userContext when user info is unavailable", async () => {
+    const client = createMockSlackClient({ ok: false, error: "not_found" });
+
+    const result = await enrichMessageContent({
+      messageContent: "Hello world",
+      files: undefined,
+      botToken: "xoxb-test",
+      channelId: "C123",
+      threadTs: "1234567890.001",
+      client,
+      userId: "U999",
+    });
+
+    expect(result.prompt).toBe("Hello world");
+    expect(result.userContext).toBe("");
+  });
+
+  it("should not prepend user info to prompt", async () => {
+    const client = createMockSlackClient({
+      ok: true,
+      user: {
+        id: "U123",
+        profile: { display_name: "Jane", real_name: "Jane Doe" },
+        tz_label: "PST",
+      },
+    });
+
+    const result = await enrichMessageContent({
+      messageContent: "My message",
+      files: undefined,
+      botToken: "xoxb-test",
+      channelId: "C123",
+      threadTs: "1234567890.001",
+      client,
+      userId: "U123",
+    });
+
+    expect(result.prompt).not.toContain("[Slack User]");
+    expect(result.prompt).not.toContain("Slack User ID");
+    expect(result.prompt).toBe("My message");
   });
 });

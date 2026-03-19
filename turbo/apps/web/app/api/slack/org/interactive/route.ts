@@ -563,6 +563,7 @@ async function finishSubmit(
     sessionId: claimed.sessionId ?? undefined,
     prompt: answerPrompt,
     threadContext: "",
+    userContext: "",
     userId: connection.vm0UserId,
     callbackContext,
   });

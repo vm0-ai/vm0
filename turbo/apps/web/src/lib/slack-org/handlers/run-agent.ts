@@ -26,6 +26,7 @@ interface RunAgentParams {
   sessionId: string | undefined;
   prompt: string;
   threadContext: string;
+  userContext: string;
   userId: string;
   callbackContext: SlackOrgCallbackContext;
 }
@@ -41,6 +42,10 @@ interface RunAgentResult {
  *
  * Uses the unified startRun() entry point which handles compose/org resolution.
  * This function only handles Slack-specific concerns: prompt construction and callbacks.
+ *
+ * Context (integration header, thread history, user metadata) is passed via
+ * appendSystemPrompt so Claude sees it as system-level instructions rather than
+ * user input. startRun() prepends agent identity to appendSystemPrompt.
  */
 export async function runAgentForSlackOrg(
   params: RunAgentParams,
@@ -51,16 +56,20 @@ export async function runAgentForSlackOrg(
     sessionId,
     prompt,
     threadContext,
+    userContext,
     userId,
     callbackContext,
   } = params;
 
   try {
-    // Build prompt with integration context (Slack-specific)
-    const integrationContext = buildIntegrationContext("Slack");
-    const fullPrompt = threadContext
-      ? `${integrationContext}\n\n${threadContext}\n\n# User Prompt\n\n${prompt}`
-      : `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
+    // Build system prompt from context parts (agent identity is prepended by startRun)
+    const contextParts = [
+      buildIntegrationContext("Slack"),
+      threadContext,
+      userContext,
+    ].filter(Boolean);
+    const appendSystemPrompt =
+      contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
 
     // Build callback (Slack-specific)
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack/org`;
@@ -69,7 +78,8 @@ export async function runAgentForSlackOrg(
     const result = await startRun({
       userId,
       composeId,
-      prompt: fullPrompt,
+      prompt,
+      appendSystemPrompt,
       sessionId,
       callbacks: [
         {
