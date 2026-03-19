@@ -19,7 +19,12 @@ import {
   fetchFirewallConfigByRef$,
   type PermissionPolicy,
 } from "../../../../signals/zero-page/settings/firewalls.ts";
-import { IconLoader2, IconCheck, IconX, IconClock } from "@tabler/icons-react";
+import {
+  IconLoader2,
+  IconCheck,
+  IconBan,
+  IconClock,
+} from "@tabler/icons-react";
 
 interface FirewallPermission {
   name: string;
@@ -114,38 +119,18 @@ function PolicyPill({
             e.stopPropagation();
             onChange(opt.value);
           }}
-          className={`px-2.5 py-1.5 transition-colors ${
+          className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
             policy === opt.value
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           }`}
         >
+          {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
+          {opt.value === "always_allow" && <IconClock size={12} stroke={2.5} />}
+          {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
           {opt.label}
         </button>
       ))}
-    </span>
-  );
-}
-
-function policyIcon(policy: PermissionPolicy) {
-  const base = "shrink-0 flex items-center justify-center rounded-full w-4 h-4";
-  if (policy === "deny") {
-    return (
-      <span className={`${base} bg-red-500`}>
-        <IconX size={10} stroke={3.5} className="text-white" />
-      </span>
-    );
-  }
-  if (policy === "always_allow") {
-    return (
-      <span className={`${base} bg-amber-500`}>
-        <IconClock size={10} stroke={3.5} className="text-white" />
-      </span>
-    );
-  }
-  return (
-    <span className={`${base} bg-emerald-500`}>
-      <IconCheck size={10} stroke={3.5} className="text-white" />
     </span>
   );
 }
@@ -175,6 +160,10 @@ export function FirewallPermissionsDrawer({
   const policies$ = useCCState<Record<string, PermissionPolicy>>({});
   const policies = useGet(policies$);
   const setPolicies = useSet(policies$);
+
+  const scrolled$ = useCCState(false);
+  const scrolled = useGet(scrolled$);
+  const setScrolled = useSet(scrolled$);
 
   const fetchConfig = useSet(fetchFirewallConfigByRef$);
 
@@ -288,41 +277,49 @@ export function FirewallPermissionsDrawer({
             <p className="text-sm text-destructive">{errorMsg}</p>
           </div>
         ) : (
-          <div className="flex flex-1 flex-col gap-3 min-h-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-muted-foreground mr-1">
-                  Set all:
-                </span>
-                {POLICY_OPTIONS.map((opt) => (
+          <div className="flex flex-1 flex-col min-h-0">
+            <div
+              className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
+            >
+              <span className="text-xs font-medium text-foreground">
+                Select all ({permissions.length})
+              </span>
+              <span
+                className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium"
+                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+              >
+                {POLICY_OPTIONS.map((opt, idx) => (
                   <button
                     key={opt.value}
                     type="button"
+                    style={
+                      idx > 0
+                        ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
+                        : undefined
+                    }
                     onClick={() => handleSetAll(opt.value)}
-                    className="rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   >
+                    {opt.value === "allow" && (
+                      <IconCheck size={12} stroke={2.5} />
+                    )}
+                    {opt.value === "always_allow" && (
+                      <IconClock size={12} stroke={2.5} />
+                    )}
+                    {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
                     {opt.label}
                   </button>
                 ))}
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {counts.allow > 0 && <span>{counts.allow} allow</span>}
-                {counts.always_allow > 0 && (
-                  <span>
-                    {counts.allow > 0 ? " · " : ""}
-                    {counts.always_allow} approval
-                  </span>
-                )}
-                {counts.deny > 0 && (
-                  <span>
-                    {counts.allow > 0 || counts.always_allow > 0 ? " · " : ""}
-                    {counts.deny} deny
-                  </span>
-                )}
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto -mx-6 px-3">
+            <div
+              className="flex-1 overflow-y-auto -mx-6 px-3"
+              onScroll={(e) => {
+                const target = e.currentTarget;
+                setScrolled(target.scrollTop > 0);
+              }}
+            >
               {permissions.map((perm, idx) => {
                 const pol = policies[perm.name] ?? "allow";
                 return (
@@ -331,7 +328,6 @@ export function FirewallPermissionsDrawer({
                       <div className="mx-3 border-t border-border/40" />
                     )}
                     <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors">
-                      {policyIcon(pol)}
                       <div className="min-w-0 flex-1">
                         <code className="text-xs font-medium text-foreground truncate block">
                           {perm.name}
