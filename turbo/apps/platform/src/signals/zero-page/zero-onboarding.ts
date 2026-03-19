@@ -317,14 +317,10 @@ export const completeZeroOnboarding$ = command(
       // Use a UUID as the agent identifier; the user-facing name goes into metadata
       const agentId = crypto.randomUUID();
 
-      // Build agent definition with optional skills and metadata
+      // Build agent definition with optional skills
       const agentDef: Record<string, unknown> = {
         framework: "claude-code",
         instructions: getInstructionsFilename("claude-code"),
-        metadata: {
-          displayName,
-          sound: "professional",
-        },
       };
       const allSkills = [...new Set([...SEED_SKILLS, ...selectedSkills])];
       agentDef.skills = allSkills.map(skillValueToUrl);
@@ -346,6 +342,24 @@ export const completeZeroOnboarding$ = command(
 
       if (!job.result) {
         throw new Error("Compose job completed without result");
+      }
+
+      // Write agent metadata (displayName, sound) directly to zero_agents
+      const metadataResp = await fetchFn(
+        `/api/agent/composes/${job.result.composeId}/metadata`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            displayName,
+            sound: "professional",
+          }),
+        },
+      );
+      signal.throwIfAborted();
+
+      if (!metadataResp.ok) {
+        throw new Error(`Failed to set agent metadata: ${metadataResp.status}`);
       }
 
       // Set as default agent
