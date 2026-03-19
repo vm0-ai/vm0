@@ -25,7 +25,6 @@ interface ComposePayload {
       {
         framework: string;
         instructions?: string;
-        metadata?: { displayName?: string; sound?: string };
         skills?: string[];
       }
     >;
@@ -33,9 +32,15 @@ interface ComposePayload {
   instructions?: string;
 }
 
+interface MetadataPayload {
+  displayName?: string;
+  sound?: string;
+}
+
 describe("completeZeroOnboarding$", () => {
-  it("should create compose with UUID key and metadata containing display name", async () => {
+  it("should create compose with UUID key and write metadata via api", async () => {
     let capturedPayload: ComposePayload | null = null;
+    let capturedMetadata: MetadataPayload | null = null;
 
     server.use(
       http.post("*/api/compose/jobs", async ({ request }) => {
@@ -49,6 +54,13 @@ describe("completeZeroOnboarding$", () => {
           },
         });
       }),
+      http.patch(
+        "*/api/agent/composes/new-compose-id/metadata",
+        async ({ request }) => {
+          capturedMetadata = (await request.json()) as MetadataPayload;
+          return HttpResponse.json({ ok: true });
+        },
+      ),
       http.put("*/api/orgs/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
@@ -72,13 +84,16 @@ describe("completeZeroOnboarding$", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
 
-    // Display name should be in metadata
+    // Content should NOT contain metadata
     const agentDef = capturedPayload!.content.agents[agentKey];
-    expect(agentDef.metadata).toStrictEqual({
+    expect(agentDef).not.toHaveProperty("metadata");
+    expect(agentDef.framework).toBe("claude-code");
+
+    // Metadata should be written via separate API call
+    expect(capturedMetadata).toStrictEqual({
       displayName: "My Assistant",
       sound: "professional",
     });
-    expect(agentDef.framework).toBe("claude-code");
 
     // Instructions should be SEED_INSTRUCTIONS
     expect(capturedPayload!.instructions).toBe(SEED_INSTRUCTIONS);
@@ -102,6 +117,9 @@ describe("completeZeroOnboarding$", () => {
             composeName: "test-compose",
           },
         });
+      }),
+      http.patch("*/api/agent/composes/new-compose-id/metadata", () => {
+        return HttpResponse.json({ ok: true });
       }),
       http.put("*/api/orgs/default-agent", () => {
         return HttpResponse.json({ ok: true });
@@ -138,6 +156,9 @@ describe("completeZeroOnboarding$", () => {
           },
         });
       }),
+      http.patch("*/api/agent/composes/new-compose-id/metadata", () => {
+        return HttpResponse.json({ ok: true });
+      }),
       http.put("*/api/orgs/default-agent", async ({ request }) => {
         defaultAgentBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ ok: true });
@@ -164,6 +185,9 @@ describe("completeZeroOnboarding$", () => {
             composeName: "test-compose",
           },
         });
+      }),
+      http.patch("*/api/agent/composes/new-compose-id/metadata", () => {
+        return HttpResponse.json({ ok: true });
       }),
       http.put("*/api/orgs/default-agent", () => {
         return HttpResponse.json({ ok: true });
@@ -231,6 +255,9 @@ describe("completeZeroOnboarding$", () => {
             composeName: "test-compose",
           },
         });
+      }),
+      http.patch("*/api/agent/composes/new-compose-id/metadata", () => {
+        return HttpResponse.json({ ok: true });
       }),
       http.put("*/api/orgs/default-agent", () => {
         return HttpResponse.json({ ok: true });
