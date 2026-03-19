@@ -83,6 +83,7 @@ EOF
 
     run timeout 120 $CLI_COMMAND run "${AGENT_NAME}-mp" \
         --artifact-name "$ARTIFACT_NAME" \
+        --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         "Compute 789+101 and reply with exactly: RESULT=<answer>"
 
