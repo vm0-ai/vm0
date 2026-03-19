@@ -699,6 +699,7 @@ mod tests {
             memory_name: None,
             experimental_firewalls: None,
             experimental_capabilities: None,
+            disallowed_tools: None,
             experimental_profile: None,
         }
     }

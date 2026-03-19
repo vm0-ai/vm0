@@ -84,6 +84,9 @@ export interface ExecutionContext {
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities?: (typeof VALID_CAPABILITIES)[number][];
 
+  // Tools to disable in Claude CLI (passed as --disallowed-tools)
+  disallowedTools?: string[];
+
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;

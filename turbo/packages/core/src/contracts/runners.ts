@@ -128,6 +128,8 @@ export const storedExecutionContextSchema = z.object({
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
+  // Tools to disable in Claude CLI (passed as --disallowed-tools)
+  disallowedTools: z.array(z.string()).optional(),
   // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
   experimentalProfile: z.string().optional(),
 });
@@ -172,6 +174,8 @@ export const executionContextSchema = z.object({
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
+  // Tools to disable in Claude CLI (passed as --disallowed-tools)
+  disallowedTools: z.array(z.string()).optional(),
   // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
   experimentalProfile: z.string().optional(),
 });

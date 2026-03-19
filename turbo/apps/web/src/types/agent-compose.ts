@@ -60,6 +60,11 @@ interface AgentDefinition {
    */
   experimental_capabilities?: (typeof VALID_CAPABILITIES)[number][];
   /**
+   * Tools that Claude Code cannot use.
+   * Each entry is a tool name (e.g., "CronCreate", "WebSearch").
+   */
+  disallowed_tools?: string[];
+  /**
    * Agent metadata for display and personalization.
    */
   metadata?: {

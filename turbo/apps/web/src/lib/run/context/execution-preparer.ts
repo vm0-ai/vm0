@@ -242,6 +242,9 @@ function buildPreparedContext(
     // Experimental capabilities
     experimentalCapabilities: context.experimentalCapabilities ?? null,
 
+    // Disallowed tools
+    disallowedTools: context.disallowedTools ?? null,
+
     // Experimental profile
     experimentalProfile: profile,
 

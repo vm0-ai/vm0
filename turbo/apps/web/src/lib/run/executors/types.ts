@@ -49,6 +49,9 @@ export interface PreparedContext {
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: (typeof VALID_CAPABILITIES)[number][] | null;
 
+  // Tools to disable in Claude CLI (passed as --disallowed-tools)
+  disallowedTools: string[] | null;
+
   // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
   experimentalProfile: string | null;
 
