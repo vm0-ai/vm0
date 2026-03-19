@@ -921,7 +921,7 @@ export async function startRun(
     conversationId: params.conversationId,
     vars: params.vars,
     secrets: params.secrets,
-    artifactName: params.artifactName,
+    artifactName: params.artifactName ?? "artifact",
     artifactVersion: params.artifactVersion,
     memoryName: params.memoryName,
     volumeVersions: params.volumeVersions,
