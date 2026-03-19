@@ -266,7 +266,7 @@ impl SandboxFactory for FirecrackerFactory {
             .netns_pool()
             .lock()
             .await
-            .acquire(config.use_proxy)
+            .acquire()
             .await
             .map_err(|e| SandboxError::CreationFailed(format!("acquire netns: {e}")))?;
 
@@ -276,7 +276,7 @@ impl SandboxFactory for FirecrackerFactory {
             Err(e) => {
                 // Roll back: return netns to pool before propagating error.
                 let mut netns_pool = self.netns_pool().lock().await;
-                if let Err(rel_err) = netns_pool.release(network, config.use_proxy).await {
+                if let Err(rel_err) = netns_pool.release(network).await {
                     warn!(error = %rel_err, "failed to release netns during rollback");
                 }
                 return Err(SandboxError::CreationFailed(format!(
@@ -318,7 +318,6 @@ impl SandboxFactory for FirecrackerFactory {
         // all fields intact, so we cannot move them out.
         let sandbox_id = sandbox.id.clone();
         let network = sandbox.network.clone();
-        let use_proxy = sandbox.config.use_proxy;
         let overlay = sandbox.overlay.clone();
         let sock_dir = sandbox.sock_paths.dir().to_owned();
         let workspace = sandbox.sandbox_paths.workspace().to_owned();
@@ -326,7 +325,7 @@ impl SandboxFactory for FirecrackerFactory {
 
         // Return the network namespace to the pool.
         let mut netns_pool = self.netns_pool().lock().await;
-        if let Err(e) = netns_pool.release(network, use_proxy).await {
+        if let Err(e) = netns_pool.release(network).await {
             warn!(id = %sandbox_id, error = %e, "failed to release netns");
         }
         drop(netns_pool);

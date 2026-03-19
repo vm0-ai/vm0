@@ -94,7 +94,6 @@ async fn execute_inner(
             cpu_count: params.vcpu,
             memory_mb: params.memory_mb,
         },
-        use_proxy: true,
     };
 
     // Create and start sandbox
@@ -574,7 +573,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     }
 
     // Tell Node.js/Bun to trust the proxy CA. All VMs route through
-    // mitmproxy (use_proxy is always true), so the CA cert is always needed.
+    // mitmproxy, so the CA cert is always needed.
     // The certificate is pre-baked into the rootfs at build time.
     env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
 

@@ -38,7 +38,7 @@ use std::collections::VecDeque;
 use std::fs::File;
 
 use nix::fcntl::{Flock, FlockArg};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use crate::command::{Privilege, exec, exec_ignore_errors};
 use crate::paths::LockPaths;
@@ -663,22 +663,16 @@ impl NetnsPool {
     /// After acquisition, spawns a background replenishment task if the
     /// buffer is below [`BUFFER_SIZE`].
     ///
-    /// The two queues are completely independent — `use_proxy=true` only
-    /// touches the proxy queue, `use_proxy=false` only touches the plain queue.
-    pub async fn acquire(&mut self, use_proxy: bool) -> Result<PooledNetns> {
+    /// When `proxy_port` is configured, acquires from the proxy queue
+    /// (namespaces with iptables REDIRECT rules). Otherwise acquires from
+    /// the plain queue.
+    pub async fn acquire(&mut self) -> Result<PooledNetns> {
         // Move completed background tasks into queues before checking.
         self.drain_completed();
 
-        // Intentional graceful degradation: when `use_proxy=true` but no
-        // proxy port is configured, fall back to the plain queue.  Callers
-        // (e.g. executor) always set `use_proxy=true` without knowing
-        // whether the factory was started with a proxy — the pool decides.
-        if use_proxy && self.proxy_port.is_some() {
+        if self.proxy_port.is_some() {
             self.acquire_proxy().await
         } else {
-            if use_proxy {
-                debug!("use_proxy=true but no proxy port configured, falling back to plain");
-            }
             self.acquire_plain().await
         }
     }
@@ -841,15 +835,16 @@ impl NetnsPool {
 
     /// Return a namespace to the pool, or delete it if the pool is inactive.
     ///
-    /// When `has_proxy` is true and a proxy port is configured, the namespace
-    /// is returned to [`Self::proxy_queue`] so its REDIRECT rules are reused.
-    pub async fn release(&mut self, ns: PooledNetns, has_proxy: bool) -> Result<()> {
+    /// When `proxy_port` is configured, the namespace is returned to
+    /// [`Self::proxy_queue`] so its REDIRECT rules are reused.
+    pub async fn release(&mut self, ns: PooledNetns) -> Result<()> {
         if !self.active {
             delete_namespace_resources(&ns.name, &ns.host_device).await;
             return Ok(());
         }
 
-        let target_queue = if has_proxy && self.proxy_port.is_some() {
+        let has_proxy = self.proxy_port.is_some();
+        let target_queue = if has_proxy {
             &mut self.proxy_queue
         } else {
             &mut self.plain_queue

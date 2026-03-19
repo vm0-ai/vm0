@@ -102,7 +102,6 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
             cpu_count: default_profile.vcpu,
             memory_mb: default_profile.memory_mb,
         },
-        use_proxy: true,
     };
     let (result, timing) = run_sandbox(&args, &factory, &mitm, sandbox_config, is_snapshot).await;
     let total_ms = total.elapsed().as_millis();
