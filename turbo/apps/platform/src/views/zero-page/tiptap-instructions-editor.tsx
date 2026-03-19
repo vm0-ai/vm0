@@ -1,6 +1,7 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import type { ReactNode } from "react";
 import {
   IconBold,
   IconItalic,
@@ -37,7 +38,7 @@ function ToolbarButton({
   active?: boolean;
   disabled?: boolean;
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
