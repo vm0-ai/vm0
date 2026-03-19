@@ -20,23 +20,19 @@ Your args are: `$ARGUMENTS`
 
 ## Workflow
 
-### Step 1: Check Dev Server is Running
+### Step 1: Find the Dev Server Task
 
-```bash
-curl -k -s --connect-timeout 3 https://www.vm7.ai:8443/ > /dev/null 2>&1 && echo "✅ Dev server is running" || echo "❌ Dev server is not running. Please run /dev-start first."
-```
+Use **TaskList** to find the dev server background task. Look for a task whose command contains `pnpm dev` — this is the task created by `/dev-start`.
 
-### Step 2: Read Background Task Output
+This approach survives conversation compaction, since TaskList always reflects the current task state regardless of whether the original task_id was preserved in the summary.
 
-Use TaskOutput to read the dev server's background task output. The task_id comes from the `run_in_background` Bash call that started the server.
+If no matching task is found, inform the user:
+- "No dev server background task found in this session. Please run `/dev-start` to start the server."
 
-If no task_id is available (e.g., server was started in a previous conversation), inform the user that logs are only available within the same session that started the server.
+### Step 2: Read Task Output
 
-### Step 3: Display Output
+Use **TaskOutput** with the task_id from Step 1 to read the dev server logs.
+
+### Step 2: Display Output
 
 Show the output in readable format. If a filter pattern was provided, grep the output for matching lines.
-
-## Notes
-
-- Dev server logs are only accessible via TaskOutput within the same session
-- For persistent logs, check individual service outputs or use the Turbo TUI
