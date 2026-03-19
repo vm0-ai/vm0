@@ -249,6 +249,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         {
           agentName: "test-agent",
           agentOrgSlug: orgSlug,
+          agentComposeId: composeId,
         },
       );
 
@@ -272,6 +273,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const data = await response.json();
       expect(data.agentName).toBe("test-agent");
       expect(data.agentOrgSlug).toBe(orgSlug);
+      expect(data.agentComposeId).toBe(composeId);
     });
 
     it("should omit agentName and agentOrgSlug when not set in stored context", async () => {
@@ -308,6 +310,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const data = await response.json();
       expect(data.agentName).toBeUndefined();
       expect(data.agentOrgSlug).toBeUndefined();
+      expect(data.agentComposeId).toBeUndefined();
     });
 
     it("should return appendSystemPrompt in claim response", async () => {
