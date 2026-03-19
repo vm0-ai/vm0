@@ -19,7 +19,7 @@ const mockLogDetails: LogDetail[] = [
     displayName: null,
     framework: "claude-code",
     modelProvider: null,
-    triggerSource: "chat",
+    triggerSource: "web",
     status: "completed",
     prompt: "Test prompt",
     appendSystemPrompt: null,

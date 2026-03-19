@@ -57,7 +57,7 @@ const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
 
 const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   schedule: "Schedule",
-  chat: "Chat",
+  web: "Web",
   slack: "Slack",
   email: "Email",
   telegram: "Telegram",

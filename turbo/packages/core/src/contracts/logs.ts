@@ -41,7 +41,7 @@ const logStatusSchema = z.enum([
  */
 export const triggerSourceSchema = z.enum([
   "schedule",
-  "chat",
+  "web",
   "slack",
   "email",
   "telegram",

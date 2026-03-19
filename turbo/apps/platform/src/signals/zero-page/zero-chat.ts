@@ -145,7 +145,7 @@ async function startAgentRun(
     agentComposeId: composeId,
     prompt: prompt.trim(),
     memoryName: "memory",
-    triggerSource: "chat",
+    triggerSource: "web",
   };
   if (sessionId) {
     body.sessionId = sessionId;

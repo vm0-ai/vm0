@@ -64,7 +64,7 @@ function isVisibleMessage(
 
 const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   schedule: "Schedule",
-  chat: "Chat",
+  web: "Web",
   slack: "Slack",
   email: "Email",
   telegram: "Telegram",

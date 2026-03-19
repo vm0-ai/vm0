@@ -13,12 +13,13 @@ export function inferTriggerSource(run: {
   continuedFromSessionId: string | null;
 }): TriggerSource {
   if (run.triggerSource) {
-    // Old rows may have "api" before the rename to "cli"
-    const source = run.triggerSource === "api" ? "cli" : run.triggerSource;
+    // Old rows may have "api"/"chat" before the rename to "cli"/"web"
+    const legacy: Record<string, string> = { api: "cli", chat: "web" };
+    const source = legacy[run.triggerSource] ?? run.triggerSource;
     return triggerSourceSchema.parse(source);
   }
   // Fallback inference for old rows without trigger_source
   if (run.scheduleId) return "schedule";
-  if (run.continuedFromSessionId) return "chat";
+  if (run.continuedFromSessionId) return "web";
   return "cli";
 }
