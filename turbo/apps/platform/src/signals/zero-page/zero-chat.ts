@@ -702,6 +702,7 @@ export const switchZeroSession$ = command(
           role: "user" | "assistant";
           content: string;
           runId?: string;
+          error?: string;
           summaries?: string[];
           createdAt: string;
         }[];
@@ -746,6 +747,7 @@ export const switchZeroSession$ = command(
           content: m.content,
           runId: m.runId,
           ...(summaries && summaries.length > 0 ? { summaries } : {}),
+          ...(m.error ? { status: "failed" as const, error: m.error } : {}),
         };
       });
 

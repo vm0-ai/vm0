@@ -160,6 +160,7 @@ export async function getChatThreadMessages(
     role: "user" | "assistant";
     content: string;
     runId?: string;
+    error?: string;
     createdAt: string;
   }>;
   latestSessionId: string | null;
@@ -222,6 +223,22 @@ export async function getChatThreadMessages(
     }
   }
 
+  // Build a map of run errors for failed runs that are in chatMessages
+  const runErrorMap = new Map<string, string>();
+  for (const run of runs) {
+    if (run.error && savedRunIds.has(run.runId)) {
+      runErrorMap.set(run.runId, run.error);
+    }
+  }
+
+  // Inject error into chatMessages for failed runs
+  const enrichedMessages = messages.map((m) => {
+    if (m.runId && runErrorMap.has(m.runId)) {
+      return { ...m, error: runErrorMap.get(m.runId)! };
+    }
+    return m;
+  });
+
   // Collect runs not reflected in chatMessages (active, failed, pending, etc.)
   const unsavedRuns: UnsavedRun[] = runs
     .filter((r) => !savedRunIds.has(r.runId))
@@ -233,7 +250,7 @@ export async function getChatThreadMessages(
     }));
 
   return {
-    chatMessages: messages,
+    chatMessages: enrichedMessages,
     latestSessionId: sessionId,
     unsavedRuns,
   };
