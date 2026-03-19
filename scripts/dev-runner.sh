@@ -121,10 +121,39 @@ cmd_deploy() {
 
   # Start service
   log "Starting new service..."
+  LOCAL_FLAG=""
+  MOCK_FLAG=""
+  if [[ "${LOCAL_MODE:-}" == "1" ]]; then
+    LOCAL_FLAG="--local"
+    MOCK_FLAG="--env USE_MOCK_CLAUDE=true"
+  fi
   ssh_cmd "$RUNNER_BIN service start --name $RUNNER_NAME \
-    --config $RUNNER_DIR/runner.yaml"
+    --config $RUNNER_DIR/runner.yaml $LOCAL_FLAG $MOCK_FLAG"
 
   log "Done! Runner $RUNNER_NAME deployed to $HOST"
+}
+
+cmd_submit() {
+  PROFILE="${2:?Usage: $0 submit <profile> <prompt>}"
+  PROMPT="${3:?Usage: $0 submit <profile> <prompt>}"
+  log "Submitting job to $RUNNER_NAME (profile: $PROFILE, prompt: $PROMPT)..."
+  # Use printf %q to safely escape the prompt for remote shell
+  ESCAPED_PROMPT=$(printf '%q' "$PROMPT")
+  ssh_cmd "$RUNNER_BIN submit --group $RUNNER_GROUP --profile $PROFILE --prompt $ESCAPED_PROMPT --timeout 120"
+}
+
+cmd_deploy_local() {
+  LOCAL_MODE=1 cmd_deploy
+}
+
+cmd_exec() {
+  RUN_ID="${2:?Usage: $0 exec <run-id> <command...>}"
+  COMMAND="${3:?Usage: $0 exec <run-id> <command...>}"
+  shift 3
+  COMMAND="$COMMAND $*"
+  log "Executing in VM $RUN_ID: $COMMAND"
+  ESCAPED_COMMAND=$(printf '%q' "$COMMAND")
+  ssh_cmd "$RUNNER_BIN exec $RUN_ID -- $ESCAPED_COMMAND"
 }
 
 cmd_remove() {
@@ -140,9 +169,12 @@ cmd_remove() {
 COMMAND="${1:-}"
 case "$COMMAND" in
   deploy) cmd_deploy ;;
+  deploy-local) cmd_deploy_local ;;
+  submit) cmd_submit "$@" ;;
+  exec) cmd_exec "$@" ;;
   remove) cmd_remove ;;
   *)
-    log "Usage: $0 {deploy|remove}"
+    log "Usage: $0 {deploy|deploy-local|submit|exec|remove}"
     exit 1
     ;;
 esac

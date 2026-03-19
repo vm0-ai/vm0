@@ -19,6 +19,9 @@
     "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
     "dev:status": "bash scripts/dev-server-check.sh",
     "runner": "bash ../scripts/dev-runner.sh deploy",
+    "runner:local": "bash ../scripts/dev-runner.sh deploy-local",
+    "runner:submit": "bash ../scripts/dev-runner.sh submit",
+    "runner:exec": "bash ../scripts/dev-runner.sh exec",
     "runner:remove": "bash ../scripts/dev-runner.sh remove"
   },
   "devDependencies": {
