@@ -87,6 +87,21 @@ full_snapshot() {
 }
 
 # ---------------------------------------------------------------------------
+# Helper: dismiss cookie consent banner if present
+# ---------------------------------------------------------------------------
+dismiss_cookie_banner() {
+  local snap_i
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  local accept_ref
+  accept_ref=$(extract_ref "$(echo "$snap_i" | grep -i '"Accept"' | grep -iv 'sign\|google\|continue\|verify' | head -1 || true)")
+  if [[ -n "$accept_ref" ]]; then
+    agent-browser click "$accept_ref" 2>/dev/null || true
+    agent-browser wait 500
+    echo "🍪 Dismissed cookie consent banner"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Helper: wait until URL no longer contains a pattern
 # ---------------------------------------------------------------------------
 wait_for_redirect_away() {
@@ -96,6 +111,22 @@ wait_for_redirect_away() {
     CURRENT_URL=$(agent-browser get url 2>/dev/null || true)
     if [[ -n "$CURRENT_URL" && ! "$CURRENT_URL" =~ $pattern ]]; then
       echo "$CURRENT_URL"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Helper: wait for verification/OTP screen to appear
+# ---------------------------------------------------------------------------
+wait_for_otp_screen() {
+  local timeout_secs="${1:-10}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local snap
+    snap=$(full_snapshot)
+    if contains "$snap" "verify\|verification code\|enter.*code"; then
       return 0
     fi
     sleep 1
@@ -125,6 +156,16 @@ enter_otp() {
     for digit in $(echo "$code" | grep -o .); do
       agent-browser press "$digit"
     done
+  fi
+  agent-browser wait 2000
+
+  # Click Continue/Verify button if present (needed when OTP is a single text input)
+  SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
+  local submit_ref
+  submit_ref=$(extract_ref "$(echo "$SNAP_I" | grep -iE '"Continue"|"Verify"' | head -1 || true)")
+  if [[ -n "$submit_ref" ]]; then
+    echo "➡️ Clicking submit button"
+    agent-browser click "$submit_ref"
   fi
   agent-browser wait 5000
 }
@@ -202,6 +243,9 @@ CURRENT_URL=$(agent-browser get url 2>/dev/null || true)
 if [[ -n "$CURRENT_URL" && ! "$CURRENT_URL" =~ sign-in ]]; then
   echo "✅ Already signed in (redirected to $CURRENT_URL)"
 else
+  # Dismiss cookie consent banner early to prevent it from blocking clicks
+  dismiss_cookie_banner
+
   # Wait for Clerk sign-in form
   echo "⏳ Waiting for Clerk sign-in form..."
   for i in $(seq 1 10); do
@@ -276,7 +320,7 @@ else
         enter_otp "$OTP"
       fi
 
-      REDIRECT_URL=$(wait_for_redirect_away "sign-up" 15 || true)
+      REDIRECT_URL=$(wait_for_redirect_away "sign-up" 30 || true)
       if [[ -z "$REDIRECT_URL" ]]; then
         echo "❌ Sign-up did not complete" >&2
         agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
@@ -302,7 +346,7 @@ else
 
       enter_otp "$OTP"
 
-      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 15 || true)
+      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 30 || true)
       if [[ -z "$REDIRECT_URL" ]]; then
         echo "❌ Email code sign-in did not complete" >&2
         agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
@@ -314,7 +358,7 @@ else
     elif contains "$SNAP" "verify\|verification code\|enter.*code"; then
       enter_otp "$OTP"
 
-      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 15 || true)
+      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 30 || true)
       if [[ -z "$REDIRECT_URL" ]]; then
         echo "❌ OTP verification did not complete" >&2
         agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
@@ -327,22 +371,32 @@ else
       echo "🔄 Password screen detected — looking for email code option"
       SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
 
-      # Try "Use another method" or "Email code" link/button
-      UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'use another method\|email code\|forgot password' || true)")
+      # Try "Use another method" first, then fall back to "Email code" or "Forgot password"
+      UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'use another method' || true)")
+      if [[ -z "$UAM_REF" ]]; then
+        UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'email code\|forgot password' || true)")
+      fi
       if [[ -n "$UAM_REF" ]]; then
+        echo "🔄 Clicking alternative auth method"
         agent-browser click "$UAM_REF"
-        agent-browser wait 2000
+        agent-browser wait 3000
         SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
         EC_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'email code' || true)")
         if [[ -n "$EC_REF" ]]; then
+          echo "📧 Selecting 'Email code'"
           agent-browser click "$EC_REF"
           agent-browser wait 3000
         fi
       fi
 
+      # Wait for OTP screen to appear before entering code
+      if ! wait_for_otp_screen 10; then
+        echo "⚠️ OTP screen not detected, attempting OTP entry anyway"
+      fi
+
       enter_otp "$OTP"
 
-      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 15 || true)
+      REDIRECT_URL=$(wait_for_redirect_away "sign-in" 30 || true)
       if [[ -z "$REDIRECT_URL" ]]; then
         echo "❌ Email code sign-in did not complete" >&2
         agent-browser screenshot /tmp/clerk-auth-failure.png 2>/dev/null || true
