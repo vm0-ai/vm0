@@ -18,6 +18,10 @@ pub const MITMDUMP_SHA256_X86_64: &str =
 pub const MITMDUMP_SHA256_AARCH64: &str =
     "48fb2cd30945f03faa5cc2797dd6e5762f09ebe8754da87ac8c372dc82e694df";
 
+/// System CA certificate bundle path. The standalone mitmproxy binary bundles its
+/// own (incomplete) certifi CA store; we override it with the host's system store.
+pub const SYSTEM_CA_BUNDLE: &str = "/etc/ssl/certs/ca-certificates.crt";
+
 /// "v1.14.1" → "v1.14"
 const FIRECRACKER_MINOR: &str = strip_patch(FIRECRACKER_VERSION);
 

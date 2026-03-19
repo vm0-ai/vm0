@@ -8,8 +8,8 @@ use tokio::io::AsyncWriteExt;
 use crate::deps::{
     FIRECRACKER_SHA256_AARCH64, FIRECRACKER_SHA256_X86_64, FIRECRACKER_VERSION,
     KERNEL_SHA256_AARCH64, KERNEL_SHA256_X86_64, KERNEL_VERSION, MITMDUMP_SHA256_AARCH64,
-    MITMDUMP_SHA256_X86_64, MITMDUMP_TAR_ENTRY, MITMPROXY_VERSION, firecracker_tar_entry,
-    firecracker_url, kernel_url, mitmdump_url,
+    MITMDUMP_SHA256_X86_64, MITMDUMP_TAR_ENTRY, MITMPROXY_VERSION, SYSTEM_CA_BUNDLE,
+    firecracker_tar_entry, firecracker_url, kernel_url, mitmdump_url,
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
@@ -23,6 +23,7 @@ pub async fn run_setup() -> RunnerResult<()> {
     download_firecracker(&paths, arch).await?;
     download_kernel(&paths, arch).await?;
     download_mitmdump(&paths, arch).await?;
+    check_system_ca_bundle()?;
     check_kvm();
 
     if !missing_required.is_empty() {
@@ -451,6 +452,18 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
 // ---------------------------------------------------------------------------
 // Host checks
 // ---------------------------------------------------------------------------
+
+fn check_system_ca_bundle() -> RunnerResult<()> {
+    if Path::new(SYSTEM_CA_BUNDLE).exists() {
+        tracing::info!("[OK] system CA bundle found at {SYSTEM_CA_BUNDLE}");
+        Ok(())
+    } else {
+        Err(RunnerError::Config(format!(
+            "system CA bundle not found at {SYSTEM_CA_BUNDLE} — \
+             install ca-certificates: sudo apt install ca-certificates"
+        )))
+    }
+}
 
 fn check_kvm() {
     use std::fs::File;

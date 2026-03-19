@@ -255,7 +255,12 @@ pub(crate) async fn spawn_mitmdump(
         ))
         .arg("--scripts")
         .arg(&config.addon_path)
-        .arg("--quiet");
+        .arg("--quiet")
+        .arg("--set")
+        .arg(format!(
+            "ssl_verify_upstream_trusted_ca={}",
+            crate::deps::SYSTEM_CA_BUNDLE
+        ));
     if let Some(url) = &config.api_url {
         cmd.arg("--set").arg(format!("vm0_api_url={url}"));
     }
