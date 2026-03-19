@@ -181,7 +181,6 @@ impl JobProvider for LocalProvider {
             experimental_capabilities: None,
             disallowed_tools: None,
             experimental_profile: req.profile,
-            disallowed_tools: None,
         })
     }
 

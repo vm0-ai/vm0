@@ -708,7 +708,6 @@ mod tests {
             experimental_capabilities: None,
             disallowed_tools: None,
             experimental_profile: None,
-            disallowed_tools: None,
         }
     }
 

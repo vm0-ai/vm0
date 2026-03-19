@@ -939,7 +939,11 @@ describe("zero-job-detail signals", () => {
 
       // Verify connectors were sent as short names
       expect(capturedBody).toBeTruthy();
-      expect(capturedBody!.connectors).toStrictEqual(["search", "gmail"]);
+      expect(capturedBody!.connectors).toStrictEqual([
+        ...SEED_SKILLS,
+        "search",
+        "gmail",
+      ]);
 
       // After save, dirty state should be reset
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
