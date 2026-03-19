@@ -66,7 +66,7 @@ EOF
 
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "agent-browser open https://example.com && agent-browser get title && agent-browser close"
+        "agent-browser open https://github.com && agent-browser get title && agent-browser close"
     assert_success
-    assert_output --partial "Example Domain"
+    assert_output --partial "GitHub"
 }
