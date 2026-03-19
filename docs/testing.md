@@ -258,7 +258,7 @@ Don't render components directly—use `setupPage()` which mirrors `main.ts` sta
 | CLI commands | [cli-testing.md](./testing/cli-testing.md) |
 | CLI E2E (BATS) | [cli-e2e-testing.md](./testing/cli-e2e-testing.md) |
 | Web routes | [web-testing.md](./testing/web-testing.md) |
-| Platform UI | [platform-testing.md](./testing/platform-testing.md) |
+| App UI | [app-testing.md](./testing/app-testing.md) |
 | Rust crates | [rust-testing.md](./testing/rust-testing.md) |
 | Python addon | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
 

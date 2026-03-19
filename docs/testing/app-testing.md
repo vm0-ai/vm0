@@ -1,10 +1,10 @@
-# Platform Testing Patterns
+# App Testing Patterns
 
 This document describes the testing patterns for `turbo/apps/platform`.
 
 ## Test Categories
 
-Platform has two main types of tests:
+App has two main types of tests:
 
 | Type | Location | Suffix | Purpose |
 |------|----------|--------|---------|
@@ -192,7 +192,7 @@ export function resetAllMockHandlers(): void {
 
 ## External Network Requests
 
-**Platform tests do not allow any external network requests.** This is enforced through MSW configuration.
+**App tests do not allow any external network requests.** This is enforced through MSW configuration.
 
 ### Default Configuration
 
