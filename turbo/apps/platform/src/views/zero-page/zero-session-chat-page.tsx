@@ -323,7 +323,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
                       <img
                         src={a.url}
                         alt={a.filename}
-                        className="h-14 max-w-[120px] object-cover"
+                        className="h-7 max-w-[56px] object-cover"
                       />
                       <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
                         <IconPhoto

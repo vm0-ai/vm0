@@ -134,7 +134,7 @@ function AttachmentChip({
             type="button"
             onClick={() => attachment.url && setLightboxUrl(attachment.url)}
             disabled={!attachment.url}
-            className="group relative h-14 max-w-[120px] rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+            className="group relative h-6 w-6 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
           >
             {attachment.url ? (
               <>
