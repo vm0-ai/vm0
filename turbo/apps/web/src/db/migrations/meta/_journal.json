@@ -1135,6 +1135,13 @@
       "when": 1774051200005,
       "tag": "0161_create_zero_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1774051200006,
+      "tag": "0162_lying_vulcan",
+      "breakpoints": true
     }
   ]
 }

@@ -30,6 +30,7 @@ export interface ScheduleResponse {
   intervalSeconds: number | null;
   timezone: string;
   prompt: string;
+  appendSystemPrompt: string | null;
   vars: Record<string, string> | null;
   secretNames: string[] | null;
   artifactName: string | null;
@@ -69,6 +70,7 @@ interface DeployScheduleRequest {
   intervalSeconds?: number;
   timezone: string;
   prompt: string;
+  appendSystemPrompt?: string;
   enabled?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
@@ -135,6 +137,7 @@ function toResponse(
     intervalSeconds: schedule.intervalSeconds,
     timezone: schedule.timezone,
     prompt: schedule.prompt,
+    appendSystemPrompt: schedule.appendSystemPrompt,
     vars: schedule.vars,
     secretNames,
     artifactName: schedule.artifactName,
@@ -271,6 +274,7 @@ async function updateExistingSchedule(
       intervalSeconds: request.intervalSeconds ?? null,
       timezone: request.timezone,
       prompt: request.prompt,
+      appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
       artifactName: request.artifactName ?? null,
@@ -319,6 +323,7 @@ async function insertNewSchedule(
       intervalSeconds: request.intervalSeconds ?? null,
       timezone: request.timezone,
       prompt: request.prompt,
+      appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
       artifactName: request.artifactName ?? null,
@@ -845,6 +850,7 @@ async function executeSchedule(
       userId: schedule.userId,
       agentComposeVersionId: compose.headVersionId,
       prompt: schedule.prompt,
+      appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
       composeId: compose.id,
       scheduleId: schedule.id,
       artifactName: schedule.artifactName ?? undefined,

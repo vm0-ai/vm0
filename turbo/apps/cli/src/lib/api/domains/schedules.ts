@@ -24,6 +24,7 @@ export async function deploySchedule(body: {
   intervalSeconds?: number;
   timezone?: string;
   prompt: string;
+  appendSystemPrompt?: string;
   // vars and secrets removed - now managed via server-side tables
   artifactName?: string;
   artifactVersion?: string;

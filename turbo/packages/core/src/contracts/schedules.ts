@@ -30,6 +30,7 @@ const scheduleTriggerSchema = z
 const scheduleRunConfigSchema = z.object({
   agent: z.string().min(1, "Agent reference required"),
   prompt: z.string().min(1, "Prompt required"),
+  appendSystemPrompt: z.string().optional(),
   vars: z.record(z.string(), z.string()).optional(),
   secrets: z.record(z.string(), z.string()).optional(),
   artifactName: z.string().optional(),
@@ -66,6 +67,7 @@ const deployScheduleRequestSchema = z
     intervalSeconds: z.number().int().min(0).optional(),
     timezone: z.string().default("UTC"),
     prompt: z.string().min(1, "Prompt required"),
+    appendSystemPrompt: z.string().optional(),
     // vars and secrets removed - now managed via server-side tables
     artifactName: z.string().optional(),
     artifactVersion: z.string().optional(),
@@ -109,6 +111,7 @@ const scheduleResponseSchema = z.object({
   intervalSeconds: z.number().nullable(),
   timezone: z.string(),
   prompt: z.string(),
+  appendSystemPrompt: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   // Secret names only (values are never returned)
   secretNames: z.array(z.string()).nullable(),

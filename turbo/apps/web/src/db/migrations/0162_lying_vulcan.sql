@@ -1,0 +1,1 @@
+ALTER TABLE "agent_schedules" ADD COLUMN "append_system_prompt" text;

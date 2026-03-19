@@ -762,6 +762,7 @@ export async function getTestRun(runId: string): Promise<{
   status: string;
   error: string | null;
   completedAt: string | null;
+  appendSystemPrompt: string | null;
 }> {
   const request = createTestRequest(
     `http://localhost:3000/api/agent/runs/${runId}`,
@@ -779,6 +780,7 @@ export async function getTestRun(runId: string): Promise<{
     status: data.status,
     error: data.error ?? null,
     completedAt: data.completedAt ?? null,
+    appendSystemPrompt: data.appendSystemPrompt ?? null,
   };
 }
 
@@ -931,6 +933,7 @@ export async function createTestSchedule(
     intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
+    appendSystemPrompt?: string;
     // vars and secrets removed - now managed via server-side tables
   },
 ): Promise<ScheduleResponse> {
@@ -955,6 +958,7 @@ export async function createTestSchedule(
         cronExpression: options?.cronExpression,
         atTime: options?.atTime,
         intervalSeconds: options?.intervalSeconds,
+        appendSystemPrompt: options?.appendSystemPrompt,
         // vars and secrets no longer sent - managed via server-side tables
         ...trigger,
       }),
