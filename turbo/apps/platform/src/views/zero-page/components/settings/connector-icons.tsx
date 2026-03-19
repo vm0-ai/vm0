@@ -35,7 +35,10 @@ import githubIcon from "./icons/github.svg";
 import heygenIcon from "./icons/heygen.svg";
 import huggingFaceIcon from "./icons/hugging-face.svg";
 import humeIcon from "./icons/hume.svg";
+import htmlcsstoimageIcon from "./icons/htmlcsstoimage.svg";
 import hubspotIcon from "./icons/hubspot.svg";
+import imgurIcon from "./icons/imgur.svg";
+import instagramIcon from "./icons/instagram.svg";
 import intercomIcon from "./icons/intercom.svg";
 import intervalsIcuIcon from "./icons/intervals-icu.svg";
 import jamIcon from "./icons/jam.svg";
@@ -137,7 +140,10 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   heygen: heygenIcon,
   "hugging-face": huggingFaceIcon,
   hume: humeIcon,
+  htmlcsstoimage: htmlcsstoimageIcon,
   hubspot: hubspotIcon,
+  imgur: imgurIcon,
+  instagram: instagramIcon,
   "google-calendar": googleCalendarIcon,
   "google-docs": googleDocsIcon,
   "google-drive": googleDriveIcon,
@@ -208,7 +214,9 @@ const MONOCHROME_ICONS: Readonly<Record<string, true>> = Object.freeze({
   "bright-data": true,
   dify: true,
   github: true,
+  htmlcsstoimage: true,
   hume: true,
+  instagram: true,
   notion: true,
   openai: true,
   x: true,
