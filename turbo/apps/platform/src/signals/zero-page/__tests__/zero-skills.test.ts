@@ -26,7 +26,6 @@ function mockComposeApi(content: {
     {
       framework: string;
       skills?: string[];
-      metadata?: { displayName?: string; sound?: string };
     }
   >;
 }) {

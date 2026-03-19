@@ -59,14 +59,6 @@ interface AgentDefinition {
    * Validated at compose time against VALID_CAPABILITIES.
    */
   experimental_capabilities?: (typeof VALID_CAPABILITIES)[number][];
-  /**
-   * Agent metadata for display and personalization.
-   */
-  metadata?: {
-    displayName?: string;
-    description?: string;
-    sound?: string;
-  };
 }
 
 export interface AgentComposeYaml {

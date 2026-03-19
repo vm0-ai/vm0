@@ -174,18 +174,6 @@ const agentDefinitionSchema = z.object({
       message: "Duplicate capabilities are not allowed",
     })
     .optional(),
-  /**
-   * Agent metadata for display and personalization.
-   * - displayName: Human-readable name shown in the UI (preserves original casing).
-   * - sound: Communication tone (e.g., "professional", "friendly").
-   */
-  metadata: z
-    .object({
-      displayName: z.string().optional(),
-      description: z.string().optional(),
-      sound: z.string().optional(),
-    })
-    .optional(),
 });
 
 /**
