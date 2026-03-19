@@ -9,6 +9,7 @@ import {
   saveZeroSkills$,
 } from "../zero-skills.ts";
 import { setZeroChatAgent$ } from "../zero-nav.ts";
+import { SEED_SKILLS } from "../../../data/the-seed.ts";
 
 const context = testContext();
 
@@ -59,10 +60,11 @@ describe("zeroAddedSkills$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     const skills = await context.store.get(zeroAddedSkills$);
-    expect(skills).toStrictEqual(["slack", "github"]);
+    // Seed skills are always included, plus compose-specific skills
+    expect(skills).toStrictEqual([...SEED_SKILLS, "slack", "github"]);
   });
 
-  it("should return empty array when compose has no skills", async () => {
+  it("should return seed skills when compose has no skills", async () => {
     mockComposeApi({
       agents: { zero: { framework: "claude-code" } },
     });
@@ -70,7 +72,7 @@ describe("zeroAddedSkills$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     const skills = await context.store.get(zeroAddedSkills$);
-    expect(skills).toStrictEqual([]);
+    expect(skills).toStrictEqual([...SEED_SKILLS]);
   });
 
   it("should seed skills from sub-agent compose when chat agent is set", async () => {
@@ -119,7 +121,8 @@ describe("zeroAddedSkills$", () => {
     });
 
     const skills = await context.store.get(zeroAddedSkills$);
-    expect(skills).toStrictEqual(["github"]);
+    // Seed skills + compose-specific "github" (not in seed)
+    expect(skills).toStrictEqual([...SEED_SKILLS, "github"]);
   });
 });
 

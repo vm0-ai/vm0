@@ -34,6 +34,7 @@ import {
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
 import { injectDefaultCapabilities } from "../compose-job";
+import { SEED_SKILLS } from "../../../data/the-seed.ts";
 
 const context = testContext();
 
@@ -854,9 +855,8 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       const skills = context.store.get(zeroJobAddedSkills$);
-      // mockAgentResponse has skills: ["search"], skillUrlToValue returns the value as-is
-      // since "search" doesn't start with the GitHub URL prefix
-      expect(skills).toStrictEqual(["search"]);
+      // Seed skills are always included, plus compose-specific "search"
+      expect(skills).toStrictEqual([...SEED_SKILLS, "search"]);
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
     });
 
@@ -866,6 +866,7 @@ describe("zero-job-detail signals", () => {
       context.store.set(addZeroJobSkill$, "gmail");
 
       expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual([
+        ...SEED_SKILLS,
         "search",
         "gmail",
       ]);
@@ -873,7 +874,10 @@ describe("zero-job-detail signals", () => {
 
       context.store.set(removeZeroJobSkill$, "search");
 
-      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual(["gmail"]);
+      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual([
+        ...SEED_SKILLS,
+        "gmail",
+      ]);
       expect(context.store.get(zeroJobSkillsDirty$)).toBeTruthy();
     });
 
@@ -885,7 +889,10 @@ describe("zero-job-detail signals", () => {
 
       context.store.set(discardZeroJobSkills$);
 
-      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual(["search"]);
+      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual([
+        ...SEED_SKILLS,
+        "search",
+      ]);
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
     });
 
@@ -933,10 +940,11 @@ describe("zero-job-detail signals", () => {
       >;
       const mainAgent = agents["main"];
       const skills = mainAgent["skills"] as string[];
-      expect(skills).toHaveLength(2);
+      // All seed skills + "search" (from compose) + "gmail" (added)
+      expect(skills).toHaveLength(SEED_SKILLS.length + 2);
       // Skills should be converted to URLs via skillValueToUrl
-      expect(skills[0]).toContain("search");
-      expect(skills[1]).toContain("gmail");
+      expect(skills).toContainEqual(expect.stringContaining("search"));
+      expect(skills).toContainEqual(expect.stringContaining("gmail"));
 
       // After save, dirty state should be reset
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
