@@ -12,7 +12,7 @@ interface AgentIdentity {
  * Format agent identity metadata into a system prompt fragment.
  * Returns empty string if all fields are null/undefined.
  */
-export function formatAgentIdentityPrompt(identity: AgentIdentity): string {
+function formatAgentIdentityPrompt(identity: AgentIdentity): string {
   const parts: string[] = [];
 
   if (identity.displayName) {
