@@ -3,6 +3,7 @@ import { vi } from "vitest";
 interface MockedUser {
   id: string;
   fullName: string;
+  primaryEmailAddress: { emailAddress: string } | null;
   organizationMemberships: { id: string }[];
   getOrganizationInvitations: (params?: {
     status?: string;
@@ -16,12 +17,13 @@ let internalMockedInvitations: { id: string }[] = [];
 let internalMockedMemberships: { id: string }[] = [{ id: "org_default" }];
 
 export function mockUser(
-  user: { id: string; fullName: string } | null,
+  user: { id: string; fullName: string; email?: string } | null,
   session: { token: string } | null,
 ) {
   if (user) {
     internalMockedUser = {
       ...user,
+      primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
       get organizationMemberships() {
         return internalMockedMemberships;
       },

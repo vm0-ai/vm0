@@ -11,6 +11,7 @@ export interface FeatureSwitch {
   readonly maintainer: string;
   readonly enabled: boolean;
   readonly enabledUserHashes?: readonly string[];
+  readonly enabledEmailHashes?: readonly string[];
 }
 
 const sha1Cache = new Map<string, string>();
@@ -34,6 +35,10 @@ const STAFF_USER_HASHES: readonly string[] = [
   "d938bb6e49cb8ccfaa962942d69c9ccd1ee239af",
   "67a65740246389d7fecf7702f8b7d6914ad38dc5",
   "55651a8b2c85b35ff0629fa3d4718b9476069d0f",
+];
+
+const GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES: readonly string[] = [
+  "da04f6515e16a883d6e8c4b03932f51ccc362c10", // Google OAuth reviewer
 ];
 
 /**
@@ -103,26 +108,31 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
+    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
   },
   [FeatureSwitchKey.GoogleSheetsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
+    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
   },
   [FeatureSwitchKey.GoogleDocsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
+    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
   },
   [FeatureSwitchKey.GoogleDriveConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
+    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
   },
   [FeatureSwitchKey.GoogleCalendarConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
+    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -225,11 +235,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
  */
 export async function getAllFeatureStates(
   userId?: string,
+  email?: string,
 ): Promise<Record<FeatureSwitchKey, boolean>> {
+  const switches = Object.values(FEATURE_SWITCHES);
   const userHash =
-    userId &&
-    Object.values(FEATURE_SWITCHES).some((s) => s.enabledUserHashes?.length)
+    userId && switches.some((s) => s.enabledUserHashes?.length)
       ? await sha1(userId)
+      : undefined;
+  const emailHash =
+    email && switches.some((s) => s.enabledEmailHashes?.length)
+      ? await sha1(email.toLowerCase())
       : undefined;
 
   const result = {} as Record<FeatureSwitchKey, boolean>;
@@ -237,8 +252,10 @@ export async function getAllFeatureStates(
     const fs = FEATURE_SWITCHES[key];
     if (fs.enabled) {
       result[key] = true;
-    } else if (userHash && fs.enabledUserHashes?.length) {
-      result[key] = fs.enabledUserHashes.includes(userHash);
+    } else if (userHash && fs.enabledUserHashes?.includes(userHash)) {
+      result[key] = true;
+    } else if (emailHash && fs.enabledEmailHashes?.includes(emailHash)) {
+      result[key] = true;
     } else {
       result[key] = false;
     }
@@ -251,10 +268,13 @@ export async function getAllFeatureStates(
  *
  * When `userId` is provided and the switch has `enabledUserHashes`,
  * the userId is SHA-1 hashed and compared against the stored hashes.
+ * When `email` is provided and the switch has `enabledEmailHashes`,
+ * the email is SHA-1 hashed (lowercased) and compared.
  */
 export async function isFeatureEnabled(
   key: FeatureSwitchKey,
   userId?: string,
+  email?: string,
 ): Promise<boolean> {
   const featureSwitch = FEATURE_SWITCHES[key];
   if (featureSwitch.enabled) {
@@ -262,7 +282,11 @@ export async function isFeatureEnabled(
   }
   if (userId && featureSwitch.enabledUserHashes?.length) {
     const hash = await sha1(userId);
-    return featureSwitch.enabledUserHashes.includes(hash);
+    if (featureSwitch.enabledUserHashes.includes(hash)) return true;
+  }
+  if (email && featureSwitch.enabledEmailHashes?.length) {
+    const hash = await sha1(email.toLowerCase());
+    if (featureSwitch.enabledEmailHashes.includes(hash)) return true;
   }
   return false;
 }

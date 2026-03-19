@@ -17,8 +17,9 @@ export const featureSwitch$ = computed(async (get) => {
 
   const user = await get(user$);
   const userId = user?.id;
+  const email = user?.primaryEmailAddress?.emailAddress;
 
-  const result = await getAllFeatureStates(userId);
+  const result = await getAllFeatureStates(userId, email);
 
   const override = get(get$);
   if (!override) {

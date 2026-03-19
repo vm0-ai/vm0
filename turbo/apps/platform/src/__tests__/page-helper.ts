@@ -20,7 +20,7 @@ import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 export async function setupPage(options: {
   context: TestContext;
   path: string;
-  user?: { id: string; fullName: string } | null;
+  user?: { id: string; fullName: string; email?: string } | null;
   session?: { token: string } | null;
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
