@@ -1,0 +1,303 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+function createMockSchedules() {
+  return [
+    {
+      id: "sched-1",
+      composeId: "mock-compose-id",
+      composeName: "zero",
+      orgSlug: "test",
+      name: "morning-briefing",
+      triggerType: "cron",
+      cronExpression: "0 9 * * 1-5",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "UTC",
+      prompt: "Summarize yesterday's threads",
+      enabled: true,
+      notifyEmail: false,
+      notifySlack: false,
+      nextRunAt: null,
+      lastRunAt: null,
+      createdAt: "2026-03-01T00:00:00Z",
+      updatedAt: "2026-03-01T00:00:00Z",
+    },
+    {
+      id: "sched-2",
+      composeId: "mock-compose-id",
+      composeName: "zero",
+      orgSlug: "test",
+      name: "check-inbox",
+      triggerType: "loop",
+      cronExpression: null,
+      atTime: null,
+      intervalSeconds: 900,
+      timezone: "UTC",
+      prompt: "Check inbox for urgent items",
+      enabled: true,
+      notifyEmail: false,
+      notifySlack: false,
+      nextRunAt: null,
+      lastRunAt: null,
+      createdAt: "2026-03-02T00:00:00Z",
+      updatedAt: "2026-03-02T00:00:00Z",
+    },
+    {
+      id: "sched-disabled",
+      composeId: "mock-compose-id",
+      composeName: "zero",
+      orgSlug: "test",
+      name: "disabled-schedule",
+      triggerType: "cron",
+      cronExpression: "0 12 * * *",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "UTC",
+      prompt: "Disabled daily task",
+      enabled: false,
+      notifyEmail: false,
+      notifySlack: false,
+      nextRunAt: null,
+      lastRunAt: null,
+      createdAt: "2026-02-28T00:00:00Z",
+      updatedAt: "2026-02-28T00:00:00Z",
+    },
+  ];
+}
+
+function mockScheduleAPI(schedules = createMockSchedules()) {
+  server.use(
+    http.get("*/api/agent/schedules", () => {
+      return HttpResponse.json({ schedules });
+    }),
+    http.get("*/api/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+  );
+}
+
+async function renderSchedulePage() {
+  await setupPage({ context, path: "/schedule" });
+}
+
+describe("zero schedule page - list view", () => {
+  it("should render schedule entries with time and prompt", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("Check inbox for urgent items"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
+  });
+
+  it("should render page title and subtitle", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "Automated tasks scheduled across all agents in your workspace.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("should show empty state when no schedules exist", async () => {
+    mockScheduleAPI([]);
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Nothing on the calendar")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "Set up a schedule and your agents will handle the rest.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("should have Add schedule button in header", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should show edit buttons for each schedule entry", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Edit Every 15 minutes")).toBeInTheDocument();
+  });
+
+  it("should show delete buttons for named schedule entries", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero schedule page - create dialog", () => {
+  it("should open create dialog when Add schedule is clicked", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    // Wait for the schedule list to render (non-empty so only one Add schedule in header)
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("New schedule")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Prompt")).toBeInTheDocument();
+  });
+
+  it("should save a new schedule via API", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("*/api/agent/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.post("*/api/agent/schedules", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ success: true });
+      }),
+      http.get("*/api/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    // Wait for schedules to render
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("New schedule")).toBeInTheDocument();
+    });
+
+    // Fill in prompt
+    const promptInput = screen.getByLabelText("Prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "Daily standup summary" },
+    });
+
+    // Click Create
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody).toHaveProperty("prompt", "Daily standup summary");
+  });
+});
+
+describe("zero schedule page - toggle enabled", () => {
+  it("should send PATCH request when toggling schedule enabled state", async () => {
+    let capturedAction: string | null = null;
+
+    server.use(
+      http.get("*/api/agent/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.post("*/api/agent/schedules/:name/:action", ({ params }) => {
+        capturedAction = params["action"] as string;
+        return HttpResponse.json({ success: true });
+      }),
+      http.get("*/api/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    // Wait for the schedule list to render
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Disable Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    // Toggle the first schedule's enabled switch
+    const toggleSwitch = screen.getByLabelText(
+      "Disable Every weekday at 9:00 AM",
+    );
+    fireEvent.click(toggleSwitch);
+
+    await waitFor(() => {
+      expect(capturedAction).toBe("disable");
+    });
+  });
+});
+
+describe("zero schedule page - view modes", () => {
+  it("should render list and calendar view tabs", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: /List/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("tab", { name: /Calendar/i })).toBeInTheDocument();
+  });
+
+  it("should switch to calendar view when Calendar tab is clicked", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("tab", { name: /Calendar/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: /Calendar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Week view")).toBeInTheDocument();
+    });
+  });
+});
