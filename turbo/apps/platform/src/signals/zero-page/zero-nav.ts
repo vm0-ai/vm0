@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { pathname$, updatePathname$ } from "../route.ts";
+import { pathname$, updatePathname$, navigateInReact$ } from "../route.ts";
 import type { ZeroNavId } from "../../views/zero-page/zero-sidebar.tsx";
 
 function isValidTab(tab: string): tab is ZeroNavId {
@@ -75,9 +75,22 @@ export const zeroChatAgentId$ = computed((get): string | null => {
  * Navigate to a zero tab — updates the URL path to `/:tab`.
  * "chat" maps to `/` (the default, no suffix needed).
  */
-export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
-  const newPath = id === "chat" ? "/" : `/${id}`;
-  set(updatePathname$, newPath);
+export const setZeroActiveId$ = command(({ get, set }, id: ZeroNavId) => {
+  const currentPath = get(pathname$);
+  const currentSegments = currentPath.split("/").filter(Boolean);
+  // When the current path has a sub-segment (e.g. /team/:name), use full
+  // navigation so the route handler re-runs. For flat paths (e.g. /team →
+  // /schedule) a lightweight pathname update suffices.
+  if (currentSegments.length >= 2) {
+    if (id === "chat") {
+      set(navigateInReact$, "/");
+    } else {
+      set(navigateInReact$, "/:tab", { pathParams: { tab: id } });
+    }
+  } else {
+    const newPath = id === "chat" ? "/" : `/${id}`;
+    set(updatePathname$, newPath);
+  }
 });
 
 /**
