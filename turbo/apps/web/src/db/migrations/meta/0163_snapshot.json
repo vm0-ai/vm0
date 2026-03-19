@@ -892,6 +892,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "append_system_prompt": {
+          "name": "append_system_prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
