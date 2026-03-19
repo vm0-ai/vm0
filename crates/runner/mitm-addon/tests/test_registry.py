@@ -1,7 +1,8 @@
 """Tests for registry loading, caching, and network logging."""
+
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import mitm_addon
 

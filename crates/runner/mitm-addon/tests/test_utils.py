@@ -1,5 +1,7 @@
 """Tests for URL utility functions."""
+
 from unittest.mock import MagicMock
+
 from mitm_addon import get_original_url
 
 

@@ -8,16 +8,17 @@ This addon runs on the runner HOST (not inside VMs) and:
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
 """
+
 import asyncio
-import os
 import json
+import os
 import time
 import urllib.parse
 import urllib.request
 from typing import NamedTuple
-from mitmproxy import http, ctx, tls
-from mitmproxy.addonmanager import Loader
 
+from mitmproxy import ctx, http, tls
+from mitmproxy.addonmanager import Loader
 
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
@@ -127,6 +128,7 @@ def get_original_url(flow: http.HTTPFlow) -> str:
 # Firewall Header Resolution
 # ============================================================================
 
+
 def match_path(path: str, pattern: str) -> dict | None:
     """Match a URL path against a rule pattern. Returns extracted params or None.
 
@@ -174,19 +176,23 @@ def match_path(path: str, pattern: str) -> dict | None:
 
 class FirewallAllow(NamedTuple):
     """Permission matched — inject auth headers."""
+
     api_entry: dict
     match_info: dict
 
 
 class FirewallBlock(NamedTuple):
     """Base URL matched but no permission granted — return 403."""
+
     base: str
     firewall_ref: str
     method: str
     path: str
 
 
-def match_firewall_request(url: str, method: str, vm_firewalls: list | None) -> FirewallAllow | FirewallBlock | None:
+def match_firewall_request(
+    url: str, method: str, vm_firewalls: list | None
+) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions.
 
     Returns:
@@ -212,7 +218,7 @@ def match_firewall_request(url: str, method: str, vm_firewalls: list | None) -> 
             base = api_entry.get("base", "").rstrip("/")
             if not base or not url.startswith(base):
                 continue
-            rest = url[len(base):]
+            rest = url[len(base) :]
             if rest and rest[0] not in ("/", "?", "#"):
                 continue
 
@@ -240,24 +246,31 @@ def match_firewall_request(url: str, method: str, vm_firewalls: list | None) -> 
                         continue
                     params = match_path(rel_path, rule_pattern)
                     if params is not None:
-                        return FirewallAllow(api_entry, {
-                            "name": fw_name,
-                            "ref": fw_ref,
-                            "permission": perm_name,
-                            "params": params,
-                            "rule": rule_str,
-                        })
+                        return FirewallAllow(
+                            api_entry,
+                            {
+                                "name": fw_name,
+                                "ref": fw_ref,
+                                "permission": perm_name,
+                                "params": params,
+                                "rule": rule_str,
+                            },
+                        )
 
     if blocked_base is not None:
         # Extract relative path for the error message
-        rest = url[len(blocked_base):]
+        rest = url[len(blocked_base) :]
         rel_path = rest.split("?")[0].split("#")[0] or "/"
         return FirewallBlock(blocked_base, blocked_ref, upper_method, rel_path)
     return None
 
 
-def _fetch_firewall_headers_sync(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
-                                 secret_connector_map: dict | None = None) -> dict:
+def _fetch_firewall_headers_sync(
+    encrypted_secrets: str,
+    auth_headers: dict,
+    sandbox_token: str,
+    secret_connector_map: dict | None = None,
+) -> dict:
     """Synchronous helper — runs in a thread to avoid blocking the event loop."""
     api_url = get_api_url()
     url = f"{api_url}/api/webhooks/agent/firewall/auth"
@@ -265,19 +278,27 @@ def _fetch_firewall_headers_sync(encrypted_secrets: str, auth_headers: dict, san
     if secret_connector_map:
         body["secretConnectorMap"] = secret_connector_map
     data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, headers={
-        "Authorization": f"Bearer {sandbox_token}",
-        "Content-Type": "application/json",
-        "User-Agent": "vm0-mitm-addon/1.0",
-    })
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {sandbox_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "vm0-mitm-addon/1.0",
+        },
+    )
     if VERCEL_BYPASS:
         req.add_header("x-vercel-protection-bypass", VERCEL_BYPASS)
     resp = urllib.request.urlopen(req, timeout=10)
     return json.loads(resp.read())
 
 
-async def fetch_firewall_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
-                                 secret_connector_map: dict | None = None) -> dict:
+async def fetch_firewall_headers(
+    encrypted_secrets: str,
+    auth_headers: dict,
+    sandbox_token: str,
+    secret_connector_map: dict | None = None,
+) -> dict:
     """Resolve auth headers via server-side decryption.
 
     When secret_connector_map is provided, the auth endpoint can refresh
@@ -286,12 +307,22 @@ async def fetch_firewall_headers(encrypted_secrets: str, auth_headers: dict, san
     Uses asyncio.to_thread to avoid blocking mitmproxy's event loop.
     """
     return await asyncio.to_thread(
-        _fetch_firewall_headers_sync, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
+        _fetch_firewall_headers_sync,
+        encrypted_secrets,
+        auth_headers,
+        sandbox_token,
+        secret_connector_map,
     )
 
 
-async def get_firewall_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict,
-                              sandbox_token: str, secret_connector_map: dict | None = None) -> dict:
+async def get_firewall_headers(
+    run_id: str,
+    api_id: str,
+    encrypted_secrets: str,
+    auth_headers: dict,
+    sandbox_token: str,
+    secret_connector_map: dict | None = None,
+) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
     Cache is evicted when:
@@ -307,13 +338,17 @@ async def get_firewall_headers(run_id: str, api_id: str, encrypted_secrets: str,
             return cached["headers"]
         # Token expired — evict and re-fetch
 
-    result = await fetch_firewall_headers(encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
+    result = await fetch_firewall_headers(
+        encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
+    )
     headers = result["headers"]
     _firewall_header_cache[cache_key] = {"headers": headers, "expiresAt": result.get("expiresAt")}
     return headers
 
 
-async def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict) -> None:
+async def handle_firewall_request(
+    flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict
+) -> None:
     """Handle a firewall-matched request: fetch resolved headers, inject into request."""
     client_ip = flow.client_conn.peername[0]
     firewall_base = api_entry["base"]
@@ -329,12 +364,14 @@ async def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info:
         flow.metadata["firewall_action"] = "DENY"
         flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
-        error_body = json.dumps({
-            "error": "firewall_auth_unavailable",
-            "message": "Firewall auth secrets not configured",
-            "firewall": match_info.get("ref", ""),
-            "base": firewall_base,
-        })
+        error_body = json.dumps(
+            {
+                "error": "firewall_auth_unavailable",
+                "message": "Firewall auth secrets not configured",
+                "firewall": match_info.get("ref", ""),
+                "base": firewall_base,
+            }
+        )
         flow.response = http.Response.make(
             502,
             error_body.encode(),
@@ -343,18 +380,22 @@ async def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info:
         return
 
     try:
-        headers = await get_firewall_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
+        headers = await get_firewall_headers(
+            run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
+        )
     except Exception as e:
         ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
         flow.metadata["firewall_action"] = "DENY"
         flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
         flow.metadata["original_url"] = get_original_url(flow)
-        error_body = json.dumps({
-            "error": "firewall_auth_failed",
-            "message": f"Failed to resolve firewall auth headers: {e}",
-            "firewall": match_info.get("ref", ""),
-            "base": firewall_base,
-        })
+        error_body = json.dumps(
+            {
+                "error": "firewall_auth_failed",
+                "message": f"Failed to resolve firewall auth headers: {e}",
+                "firewall": match_info.get("ref", ""),
+                "base": firewall_base,
+            }
+        )
         flow.response = http.Response.make(
             502,
             error_body.encode(),
@@ -388,6 +429,7 @@ async def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info:
 # TLS ClientHello Handler
 # ============================================================================
 
+
 def tls_clienthello(data: tls.ClientHelloData) -> None:
     """
     Handle TLS ClientHello — decide whether to MITM intercept.
@@ -411,6 +453,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 # ============================================================================
 # HTTP Request Handler (MITM mode)
 # ============================================================================
+
 
 async def request(flow: http.HTTPFlow) -> None:
     """
@@ -468,19 +511,27 @@ async def request(flow: http.HTTPFlow) -> None:
         original_url = get_original_url(flow)
         result = match_firewall_request(original_url, flow.request.method, vm_firewalls)
         if isinstance(result, FirewallBlock):
-            ctx.log.warn(f"[{run_id}] Firewall {result.firewall_ref}: no matching permission for {result.method} {result.path}")
+            ctx.log.warn(
+                f"[{run_id}] Firewall {result.firewall_ref}: "
+                f"no matching permission for {result.method} {result.path}"
+            )
             flow.metadata["firewall_action"] = "DENY"
             flow.metadata["firewall_rule"] = f"firewall:{result.base}"
             flow.metadata["original_url"] = original_url
-            error_body = json.dumps({
-                "error": "firewall_permission_denied",
-                "message": "Request blocked: no matching permission rule",
-                "method": result.method,
-                "path": result.path,
-                "firewall": result.firewall_ref,
-                "base": result.base,
-                "hint": f"Add a permission rule for '{result.method} {result.path}' to the {result.firewall_ref} firewall in vm0.yaml",
-            })
+            error_body = json.dumps(
+                {
+                    "error": "firewall_permission_denied",
+                    "message": "Request blocked: no matching permission rule",
+                    "method": result.method,
+                    "path": result.path,
+                    "firewall": result.firewall_ref,
+                    "base": result.base,
+                    "hint": (
+                        f"Add a permission rule for '{result.method} {result.path}'"
+                        f" to the {result.firewall_ref} firewall in vm0.yaml"
+                    ),
+                }
+            )
             flow.response = http.Response.make(
                 403,
                 error_body.encode(),
@@ -589,9 +640,7 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:
-        ctx.log.warn(
-            f"[{run_id}] Response {flow.response.status_code}: {original_url}"
-        )
+        ctx.log.warn(f"[{run_id}] Response {flow.response.status_code}: {original_url}")
 
 
 def error(flow: http.HTTPFlow) -> None:

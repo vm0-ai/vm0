@@ -128,6 +128,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Lint and format check
+        run: |
+          cd crates/runner/mitm-addon
+          pip install ".[dev]"
+          ruff check .
+          ruff format --check .
+
       - name: Run mitm-addon tests
         run: |
           cd crates/runner/mitm-addon

@@ -1,6 +1,6 @@
 """Tests for HTTP/TLS handlers."""
+
 import json
-import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -120,13 +120,23 @@ class TestRequestHandler:
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
-                        {"name": "github", "ref": "github", "apis": [
-                            {
-                                "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-                            },
-                        ]},
+                        {
+                            "name": "github",
+                            "ref": "github",
+                            "apis": [
+                                {
+                                    "base": "https://api.github.com",
+                                    "auth": {
+                                        "headers": {
+                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                                        }
+                                    },
+                                    "permissions": [
+                                        {"name": "full-access", "rules": ["ANY /{path+}"]}
+                                    ],
+                                },
+                            ],
+                        },
                     ],
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -135,9 +145,7 @@ class TestRequestHandler:
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        flow = _make_http_flow(
-            client_ip="10.200.0.5", host="api.github.com", path="/repos"
-        )
+        flow = _make_http_flow(client_ip="10.200.0.5", host="api.github.com", path="/repos")
 
         mock_handler = AsyncMock()
         with (
@@ -166,15 +174,26 @@ class TestRequestHandler:
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
-                        {"name": "github", "ref": "github", "apis": [
-                            {
-                                "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                                "permissions": [
-                                    {"name": "read-repos", "rules": ["GET /repos/{owner}/{repo}"]},
-                                ],
-                            },
-                        ]},
+                        {
+                            "name": "github",
+                            "ref": "github",
+                            "apis": [
+                                {
+                                    "base": "https://api.github.com",
+                                    "auth": {
+                                        "headers": {
+                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                                        }
+                                    },
+                                    "permissions": [
+                                        {
+                                            "name": "read-repos",
+                                            "rules": ["GET /repos/{owner}/{repo}"],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
                     ],
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -183,9 +202,7 @@ class TestRequestHandler:
         reg_path = tmp_path / "registry.json"
         reg_path.write_text(json.dumps(registry))
 
-        flow = _make_http_flow(
-            client_ip="10.200.0.5", host="api.github.com", path="/orgs"
-        )
+        flow = _make_http_flow(client_ip="10.200.0.5", host="api.github.com", path="/orgs")
 
         mock_handler = AsyncMock()
         with (
@@ -218,15 +235,26 @@ class TestRequestHandler:
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
-                        {"name": "github", "ref": "github", "apis": [
-                            {
-                                "base": "https://api.github.com",
-                                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                                "permissions": [
-                                    {"name": "read-repos", "rules": ["GET /repos/{owner}/{repo}"]},
-                                ],
-                            },
-                        ]},
+                        {
+                            "name": "github",
+                            "ref": "github",
+                            "apis": [
+                                {
+                                    "base": "https://api.github.com",
+                                    "auth": {
+                                        "headers": {
+                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                                        }
+                                    },
+                                    "permissions": [
+                                        {
+                                            "name": "read-repos",
+                                            "rules": ["GET /repos/{owner}/{repo}"],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
                     ],
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -268,13 +296,19 @@ class TestRequestHandler:
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
                     "firewalls": [
-                        {"name": "github", "ref": "github", "apis": [
-                            {
-                                "base": "https://api.github.com",
-                                "auth": {"headers": {}},
-                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-                            },
-                        ]},
+                        {
+                            "name": "github",
+                            "ref": "github",
+                            "apis": [
+                                {
+                                    "base": "https://api.github.com",
+                                    "auth": {"headers": {}},
+                                    "permissions": [
+                                        {"name": "full-access", "rules": ["ANY /{path+}"]}
+                                    ],
+                                },
+                            ],
+                        },
                     ],
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -284,9 +318,7 @@ class TestRequestHandler:
         reg_path.write_text(json.dumps(registry))
 
         # Request to example.com — not a firewall match, passes through
-        flow = _make_http_flow(
-            client_ip="10.200.0.5", host="api.example.com", path="/data"
-        )
+        flow = _make_http_flow(client_ip="10.200.0.5", host="api.example.com", path="/data")
 
         mock_handler = AsyncMock()
         with (

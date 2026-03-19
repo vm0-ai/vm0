@@ -1,4 +1,5 @@
 """Tests for firewall subsystem: matching, caching, header injection, and HTTP fetching."""
+
 import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -50,7 +51,9 @@ class TestMatchPath:
         assert result == {"owner": "octocat", "repo": "hello-world"}
 
     def test_mixed_literal_and_param(self):
-        result = mitm_addon.match_path("/repos/octocat/hello-world/issues", "/repos/{owner}/{repo}/issues")
+        result = mitm_addon.match_path(
+            "/repos/octocat/hello-world/issues", "/repos/{owner}/{repo}/issues"
+        )
         assert result == {"owner": "octocat", "repo": "hello-world"}
 
     def test_greedy_param_matches_rest(self):
@@ -115,10 +118,16 @@ class TestMatchFirewallRequest:
 
     def test_no_permissions_blocks(self):
         """Missing permissions field → block (fail-closed)."""
-        fw_configs = _wrap_firewalls([
-            {"base": "https://api.github.com", "auth": {"headers": {}}},
-        ], name="github", ref="github")
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {"base": "https://api.github.com", "auth": {"headers": {}}},
+            ],
+            name="github",
+            ref="github",
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos", "GET", fw_configs
+        )
         assert isinstance(result, FirewallBlock)
         assert result.base == "https://api.github.com"
         assert result.firewall_ref == "github"
@@ -126,12 +135,20 @@ class TestMatchFirewallRequest:
         assert result.path == "/repos"
 
     def test_permission_match_allows(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
-        }], name="github", ref="github")
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos/octocat/hello", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
+                }
+            ],
+            name="github",
+            ref="github",
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos/octocat/hello", "GET", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["name"] == "github"
         assert result.match_info["permission"] == "repo-read"
@@ -139,49 +156,79 @@ class TestMatchFirewallRequest:
         assert result.match_info["rule"] == "GET /repos/{owner}/{repo}"
 
     def test_any_method_matches(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/anything", "DELETE", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/anything", "DELETE", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "full-access"
 
     def test_method_case_insensitive(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["post /repos"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos", "POST", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["post /repos"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos", "POST", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
 
     def test_wrong_method_blocks(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "read-only", "rules": ["GET /repos/{owner}/{repo}"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos/a/b", "POST", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "read-only", "rules": ["GET /repos/{owner}/{repo}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos/a/b", "POST", fw_configs
+        )
         assert isinstance(result, FirewallBlock)
 
     def test_wrong_path_blocks(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/users/octocat", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/users/octocat", "GET", fw_configs
+        )
         assert isinstance(result, FirewallBlock)
 
     def test_no_base_match_returns_none(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["GET /{path+}"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.gitlab.com/repos", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /{path+}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.gitlab.com/repos", "GET", fw_configs
+        )
         assert result is None
 
     def test_no_firewall_returns_none(self):
@@ -192,181 +239,273 @@ class TestMatchFirewallRequest:
 
     def test_exact_base_no_path(self):
         """URL equals base exactly (rest='') → rel_path='/' → matches root rule."""
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "root", "rules": ["GET /"]}],
-        }])
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "root", "rules": ["GET /"]}],
+                }
+            ]
+        )
         result = mitm_addon.match_firewall_request("https://api.github.com", "GET", fw_configs)
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "root"
 
     def test_trailing_slash_on_url(self):
         """URL trailing slash doesn't affect matching (split filters empty segments)."""
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos/", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos/", "GET", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
 
     def test_trailing_slash_on_base_config(self):
         """Base URL with trailing slash still matches (rstrip strips it)."""
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com/",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com/",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos", "GET", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
 
     def test_port_boundary_rejected(self):
         """Port in URL (rest starts with ':') is not a valid path boundary."""
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com:8443/repos", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com:8443/repos", "GET", fw_configs
+        )
         assert result is None
 
     def test_evil_domain_not_matched(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com.evil.com/steal", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com.evil.com/steal", "GET", fw_configs
+        )
         assert result is None
 
     def test_multiple_permissions_first_match_wins(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://slack.com/api",
-            "auth": {"headers": {}},
-            "permissions": [
-                {"name": "messages-read", "rules": ["POST /conversations.history"]},
-                {"name": "messages-send", "rules": ["POST /chat.postMessage"]},
-            ],
-        }])
-        result = mitm_addon.match_firewall_request("https://slack.com/api/chat.postMessage", "POST", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://slack.com/api",
+                    "auth": {"headers": {}},
+                    "permissions": [
+                        {"name": "messages-read", "rules": ["POST /conversations.history"]},
+                        {"name": "messages-send", "rules": ["POST /chat.postMessage"]},
+                    ],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://slack.com/api/chat.postMessage", "POST", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "messages-send"
 
     def test_malformed_rules_skipped(self):
         """Rules without 'METHOD /path' format are silently skipped, not crash or false-allow."""
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "bad", "rules": ["GET", "", "INVALID", "  ", "GET /repos"]}],
-        }])
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [
+                        {"name": "bad", "rules": ["GET", "", "INVALID", "  ", "GET /repos"]}
+                    ],
+                }
+            ]
+        )
         # Only "GET /repos" is valid — the rest are skipped
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos", "GET", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
         # Non-matching path still blocks (malformed rules don't accidentally allow)
-        result2 = mitm_addon.match_firewall_request("https://api.github.com/users", "GET", fw_configs)
+        result2 = mitm_addon.match_firewall_request(
+            "https://api.github.com/users", "GET", fw_configs
+        )
         assert isinstance(result2, FirewallBlock)
 
     def test_path_case_sensitive(self):
         """URL paths are case-sensitive — /REPOS must not match /repos."""
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["GET /repos/{owner}"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/REPOS/octocat", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /repos/{owner}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/REPOS/octocat", "GET", fw_configs
+        )
         assert isinstance(result, FirewallBlock)
 
     def test_multiple_services_match_across(self):
         fw_configs = [
-            {"name": "github", "ref": "github", "apis": [{
-                "base": "https://api.github.com",
-                "auth": {"headers": {}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            }]},
-            {"name": "slack", "ref": "slack", "apis": [{
-                "base": "https://slack.com/api",
-                "auth": {"headers": {}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            }]},
+            {
+                "name": "github",
+                "ref": "github",
+                "apis": [
+                    {
+                        "base": "https://api.github.com",
+                        "auth": {"headers": {}},
+                        "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                    }
+                ],
+            },
+            {
+                "name": "slack",
+                "ref": "slack",
+                "apis": [
+                    {
+                        "base": "https://slack.com/api",
+                        "auth": {"headers": {}},
+                        "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                    }
+                ],
+            },
         ]
         gh = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(gh, FirewallAllow)
         assert gh.match_info["name"] == "github"
 
-        sl = mitm_addon.match_firewall_request("https://slack.com/api/chat.postMessage", "POST", fw_configs)
+        sl = mitm_addon.match_firewall_request(
+            "https://slack.com/api/chat.postMessage", "POST", fw_configs
+        )
         assert isinstance(sl, FirewallAllow)
         assert sl.match_info["name"] == "slack"
 
     def test_query_string_stripped_for_matching(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos?page=1", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos?page=1", "GET", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
 
     def test_fragment_stripped_for_matching(self):
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [{"name": "p", "rules": ["GET /repos"]}],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos#section", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /repos"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos#section", "GET", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
 
     def test_empty_permissions_list_blocks(self):
         """If permissions is present but empty, no rules can match → block."""
-        fw_configs = _wrap_firewalls([{
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-            "permissions": [],
-        }])
-        result = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos", "GET", fw_configs
+        )
         assert isinstance(result, FirewallBlock)
 
     def test_different_bases_same_permission_name(self):
         """Same permission name across different api_entries — each matches its own base."""
-        fw_configs = _wrap_firewalls([
-            {
-                "base": "https://slack.com/api",
-                "auth": {"headers": {"Authorization": "Bearer api-token"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            {
-                "base": "https://files.slack.com",
-                "auth": {"headers": {"Authorization": "Bearer files-token"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-        ])
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://slack.com/api",
+                    "auth": {"headers": {"Authorization": "Bearer api-token"}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                },
+                {
+                    "base": "https://files.slack.com",
+                    "auth": {"headers": {"Authorization": "Bearer files-token"}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                },
+            ]
+        )
         # Request to first base
-        result = mitm_addon.match_firewall_request("https://slack.com/api/conversations.history", "POST", fw_configs)
+        result = mitm_addon.match_firewall_request(
+            "https://slack.com/api/conversations.history", "POST", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer api-token"
         assert result.match_info["permission"] == "full-access"
 
         # Request to second base
-        result = mitm_addon.match_firewall_request("https://files.slack.com/files-pri/T1/download", "GET", fw_configs)
+        result = mitm_addon.match_firewall_request(
+            "https://files.slack.com/files-pri/T1/download", "GET", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer files-token"
         assert result.match_info["permission"] == "full-access"
 
     def test_same_base_different_permissions(self):
         """Same base URL with different permissions/auth — second api_entry can match."""
-        fw_configs = _wrap_firewalls([
-            {
-                "base": "https://slack.com/api",
-                "auth": {"headers": {"Authorization": "Bearer bot"}},
-                "permissions": [{"name": "read", "rules": ["POST /conversations.history"]}],
-            },
-            {
-                "base": "https://slack.com/api",
-                "auth": {"headers": {"Authorization": "Bearer user"}},
-                "permissions": [{"name": "send", "rules": ["POST /chat.postMessage"]}],
-            },
-        ])
-        result = mitm_addon.match_firewall_request("https://slack.com/api/chat.postMessage", "POST", fw_configs)
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://slack.com/api",
+                    "auth": {"headers": {"Authorization": "Bearer bot"}},
+                    "permissions": [{"name": "read", "rules": ["POST /conversations.history"]}],
+                },
+                {
+                    "base": "https://slack.com/api",
+                    "auth": {"headers": {"Authorization": "Bearer user"}},
+                    "permissions": [{"name": "send", "rules": ["POST /chat.postMessage"]}],
+                },
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://slack.com/api/chat.postMessage", "POST", fw_configs
+        )
         assert isinstance(result, FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer user"
         assert result.match_info["permission"] == "send"
@@ -389,7 +528,9 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock(return_value=mock_result)
         with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers("run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz")
+            headers = await mitm_addon.get_firewall_headers(
+                "run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz"
+            )
 
         assert headers == mock_headers
         mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz", None)
@@ -408,7 +549,9 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers("run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz")
+            headers = await mitm_addon.get_firewall_headers(
+                "run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert headers == cached_headers
         mock_fetch.assert_not_called()
@@ -424,7 +567,9 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            headers = await mitm_addon.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert headers == cached_headers
         mock_fetch.assert_not_called()
@@ -442,7 +587,9 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock(return_value=mock_result)
         with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            headers = await mitm_addon.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert headers == fresh_headers
         mock_fetch.assert_called_once()
@@ -460,7 +607,9 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            headers = await mitm_addon.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
 
         assert headers == cached_headers
         mock_fetch.assert_not_called()
@@ -477,18 +626,30 @@ class TestHandleFirewallRequest:
 
     async def test_success_injects_headers_and_audit_metadata(self):
         flow = _make_http_flow()
-        api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}}
+        api_entry = {
+            "id": "run-1:0",
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+        }
         vm_info = {
             "runId": "run-1",
             "sandboxToken": "tok-xyz",
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": "/tmp/net.jsonl",
         }
-        match_info = {"name": "github", "ref": "github", "permission": "repo-read", "rule": "GET /repos/{owner}/{repo}", "params": {"owner": "octocat", "repo": "hello"}}
+        match_info = {
+            "name": "github",
+            "ref": "github",
+            "permission": "repo-read",
+            "rule": "GET /repos/{owner}/{repo}",
+            "params": {"owner": "octocat", "repo": "hello"},
+        }
         resolved_headers = {"Authorization": "Bearer real-token", "X-Custom": "value"}
 
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=resolved_headers)),
+            patch.object(
+                mitm_addon, "get_firewall_headers", AsyncMock(return_value=resolved_headers)
+            ),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
@@ -524,7 +685,8 @@ class TestHandleFirewallRequest:
 
         with (
             patch.object(
-                mitm_addon, "get_firewall_headers",
+                mitm_addon,
+                "get_firewall_headers",
                 AsyncMock(side_effect=Exception("API unreachable")),
             ),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
@@ -545,11 +707,18 @@ class TestHandleFirewallRequest:
         """On success, flow.response should remain None (request continues to origin)."""
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "encryptedSecrets": "iv:tag:data", "networkLogPath": ""}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": "",
+        }
         match_info = {"name": "github", "ref": "github"}
 
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value={"Auth": "tok"})),
+            patch.object(
+                mitm_addon, "get_firewall_headers", AsyncMock(return_value={"Auth": "tok"})
+            ),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
@@ -582,7 +751,9 @@ class TestHandleFirewallRequest:
 class TestFetchFirewallHeaders:
     def test_builds_correct_request(self):
         mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps({"headers": {"Authorization": "Bearer tok"}}).encode()
+        mock_resp.read.return_value = json.dumps(
+            {"headers": {"Authorization": "Bearer tok"}}
+        ).encode()
 
         with (
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
@@ -590,7 +761,9 @@ class TestFetchFirewallHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", ""),
         ):
-            result = mitm_addon._fetch_firewall_headers_sync("iv:tag:data", {"Authorization": "Bearer ${{ secrets.TOKEN }}"}, "tok-xyz")
+            result = mitm_addon._fetch_firewall_headers_sync(
+                "iv:tag:data", {"Authorization": "Bearer ${{ secrets.TOKEN }}"}, "tok-xyz"
+            )
 
         assert result == {"headers": {"Authorization": "Bearer tok"}}
 
@@ -620,7 +793,9 @@ class TestFetchFirewallHeaders:
         ):
             mitm_addon._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz")
 
-        mock_req_instance.add_header.assert_called_once_with("x-vercel-protection-bypass", "secret-bypass-value")
+        mock_req_instance.add_header.assert_called_once_with(
+            "x-vercel-protection-bypass", "secret-bypass-value"
+        )
 
     def test_no_vercel_bypass_when_empty(self):
         mock_resp = MagicMock()
