@@ -414,7 +414,7 @@ function RunActivityLine() {
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
   const runStatus = useGet(zeroChatRunStatus$);
   const queuePosition = useGet(zeroChatQueuePosition$);
-  const isQueued = runStatus === "queued" || runStatus === "pending";
+  const isQueued = runStatus === "queued";
 
   const thinkingIndex$ = useCCState(
     Math.floor(Math.random() * THINKING_MESSAGES.length),

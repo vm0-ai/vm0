@@ -124,7 +124,7 @@ function updateQueuePosition(
   runId: string,
   setPosition: (pos: number) => void,
 ) {
-  if (status === "queued" || status === "pending") {
+  if (status === "queued") {
     fetchQueuePosition(fetchFn, runId)
       .then((pos) => setPosition(pos))
       .catch(() => {});
