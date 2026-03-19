@@ -57,9 +57,6 @@ let mockUserIds: string[] = [];
  * @param options.orgSlug - Organization slug from active org session (optional)
  * @param options.clerkOrgs - Clerk orgs the user belongs to (for JIT discovery)
  * @param options.orgTier - Tier to include in JWT sessionClaims.org_tier (optional)
- * @param options.membershipTimezone - Timezone to include in JWT sessionClaims.membership_timezone (optional)
- * @param options.membershipNotifyEmail - Flag to include in JWT sessionClaims.membership_notify_email (optional)
- * @param options.membershipNotifySlack - Flag to include in JWT sessionClaims.membership_notify_slack (optional)
  * @param options.orgDefaultAgentComposeId - Default agent compose ID to include in JWT sessionClaims.org_default_agent_compose_id (optional)
  */
 export function mockClerk(options: {
@@ -69,9 +66,6 @@ export function mockClerk(options: {
   orgSlug?: string | null;
   orgRole?: string | null;
   orgTier?: string;
-  membershipTimezone?: string;
-  membershipNotifyEmail?: boolean;
-  membershipNotifySlack?: boolean;
   orgDefaultAgentComposeId?: string | null;
   clerkOrgs?: Array<{ id: string; slug: string; name: string; role?: string }>;
 }) {
@@ -124,15 +118,6 @@ export function mockClerk(options: {
     orgRole: options.orgRole ?? (effectiveOrgId ? "org:admin" : undefined),
     sessionClaims: {
       ...(options.orgTier !== undefined && { org_tier: options.orgTier }),
-      ...(options.membershipTimezone !== undefined && {
-        membership_timezone: options.membershipTimezone,
-      }),
-      ...(options.membershipNotifyEmail !== undefined && {
-        membership_notify_email: options.membershipNotifyEmail,
-      }),
-      ...(options.membershipNotifySlack !== undefined && {
-        membership_notify_slack: options.membershipNotifySlack,
-      }),
       ...(options.orgDefaultAgentComposeId !== undefined && {
         org_default_agent_compose_id: options.orgDefaultAgentComposeId,
       }),
@@ -199,18 +184,6 @@ export function mockClerk(options: {
         .fn()
         .mockImplementation(
           ({ organizationId }: { organizationId: string }) => {
-            // Build publicMetadata from membership preference options
-            const publicMetadata: Record<string, unknown> = {};
-            if (options.membershipTimezone !== undefined) {
-              publicMetadata.timezone = options.membershipTimezone;
-            }
-            if (options.membershipNotifyEmail !== undefined) {
-              publicMetadata.notify_email = options.membershipNotifyEmail;
-            }
-            if (options.membershipNotifySlack !== undefined) {
-              publicMetadata.notify_slack = options.membershipNotifySlack;
-            }
-
             // Return members of this org.
             // For clerkOrgs: session user is a member.
             // For createdOrgs: the creator is a member (regardless of session).
@@ -223,7 +196,7 @@ export function mockClerk(options: {
                   {
                     role: matchedClerkOrg.role ?? "org:admin",
                     publicUserData: { userId: options.userId },
-                    publicMetadata,
+                    publicMetadata: {},
                     createdAt: Date.now(),
                   },
                 ],
@@ -238,7 +211,7 @@ export function mockClerk(options: {
                     publicUserData: {
                       userId: created.creatorUserId,
                     },
-                    publicMetadata,
+                    publicMetadata: {},
                     createdAt: Date.now(),
                   },
                 ],

@@ -1,16 +1,11 @@
-import {
-  pgTable,
-  text,
-  boolean,
-  timestamp,
-  primaryKey,
-  jsonb,
-} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, primaryKey } from "drizzle-orm/pg-core";
 
 /**
- * org_members_cache — DB-backed cache for Clerk membership preferences.
- * Clerk remains the single source of truth; this table is a read-through cache
+ * org_members_cache — DB-backed cache for Clerk membership role.
+ * Clerk remains the source of truth for role; this table is a read-through cache
  * for contexts where no JWT is available (cron, run-builder, CLI tokens).
+ *
+ * Preferences are stored in org_members (not cached here).
  */
 export const orgMembersCache = pgTable(
   "org_members_cache",
@@ -18,12 +13,6 @@ export const orgMembersCache = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     role: text("role").notNull().default("member"),
-    timezone: text("timezone"),
-    notifyEmail: boolean("notify_email").notNull().default(false),
-    notifySlack: boolean("notify_slack").notNull().default(true),
-    pinnedAgentIds: jsonb("pinned_agent_ids").$type<string[]>().default([]),
-    sendMode: text("send_mode").notNull().default("enter"),
-    onboardingDone: boolean("onboarding_done").notNull().default(false),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
   },
   (table) => [primaryKey({ columns: [table.orgId, table.userId] })],

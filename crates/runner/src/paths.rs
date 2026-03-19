@@ -190,10 +190,14 @@ impl LogPaths {
         self.dir.join(format!("metrics-{run_id}.jsonl"))
     }
 
-    /// Whether `name` matches any per-job log file pattern.
-    pub fn is_job_log(name: &str) -> bool {
+    /// Whether `name` matches any GC-eligible log file pattern.
+    ///
+    /// Includes per-job logs (`network-*`, `system-*`, `metrics-*`) and
+    /// runner instance logs (`runner-*.log`).
+    pub fn is_gc_eligible_log(name: &str) -> bool {
         (name.starts_with("network-") && name.ends_with(".jsonl"))
             || (name.starts_with("system-") && name.ends_with(".log"))
             || (name.starts_with("metrics-") && name.ends_with(".jsonl"))
+            || (name.starts_with("runner-") && name.ends_with(".log"))
     }
 }

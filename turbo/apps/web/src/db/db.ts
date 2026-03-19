@@ -35,6 +35,7 @@ import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session"
 import * as slackOrgPendingQuestionSchema from "./schema/slack-org-pending-question";
 import * as orgSchema from "./schema/org";
 import * as orgCacheSchema from "./schema/org-cache";
+import * as orgMembersSchema from "./schema/org-members";
 import * as orgMembersCacheSchema from "./schema/org-members-cache";
 import * as userCacheSchema from "./schema/user-cache";
 import * as exportJobSchema from "./schema/export-job";
@@ -83,6 +84,7 @@ export const schema = {
   ...telegramMessageSchema,
   ...orgSchema,
   ...orgCacheSchema,
+  ...orgMembersSchema,
   ...orgMembersCacheSchema,
   ...userCacheSchema,
   ...exportJobSchema,

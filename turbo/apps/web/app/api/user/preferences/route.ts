@@ -24,11 +24,7 @@ const router = tsr.router(userPreferencesContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(ctx, orgSlug);
 
-    const prefs = await getUserPreferences(
-      org.orgId,
-      ctx.userId,
-      ctx.sessionClaims,
-    );
+    const prefs = await getUserPreferences(org.orgId, ctx.userId);
 
     return {
       status: 200 as const,

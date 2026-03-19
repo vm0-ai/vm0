@@ -44,11 +44,14 @@ import humeIcon from "./icons/hume.svg";
 import htmlcsstoimageIcon from "./icons/htmlcsstoimage.svg";
 import hubspotIcon from "./icons/hubspot.svg";
 import imgurIcon from "./icons/imgur.svg";
+import instantlyIcon from "./icons/instantly.svg";
 import instagramIcon from "./icons/instagram.svg";
 import intercomIcon from "./icons/intercom.svg";
 import intervalsIcuIcon from "./icons/intervals-icu.svg";
 import jamIcon from "./icons/jam.svg";
+import jiraIcon from "./icons/jira.svg";
 import jotformIcon from "./icons/jotform.svg";
+import kommoIcon from "./icons/kommo.svg";
 import gmailIcon from "./icons/gmail.svg";
 import googleCalendarIcon from "./icons/google-calendar.svg";
 import googleDocsIcon from "./icons/google-docs.svg";
@@ -161,6 +164,7 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   htmlcsstoimage: htmlcsstoimageIcon,
   hubspot: hubspotIcon,
   imgur: imgurIcon,
+  instantly: instantlyIcon,
   instagram: instagramIcon,
   "google-calendar": googleCalendarIcon,
   "google-docs": googleDocsIcon,
@@ -169,7 +173,9 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   intercom: intercomIcon,
   "intervals-icu": intervalsIcuIcon,
   jam: jamIcon,
+  jira: jiraIcon,
   jotform: jotformIcon,
+  kommo: kommoIcon,
   lark: larkIcon,
   line: lineIcon,
   linear: linearIcon,

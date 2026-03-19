@@ -44,6 +44,7 @@ import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { org } from "../db/schema/org";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
+import { orgMembers } from "../db/schema/org-members";
 import { zeroAgents } from "../db/schema/zero-agent";
 import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
@@ -2940,8 +2941,6 @@ export async function insertOrgMembersCacheEntry(entry: {
   orgId: string;
   userId: string;
   role?: string;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
@@ -2951,20 +2950,12 @@ export async function insertOrgMembersCacheEntry(entry: {
       orgId: entry.orgId,
       userId: entry.userId,
       role: entry.role ?? "member",
-      notifyEmail: entry.notifyEmail ?? false,
-      notifySlack: entry.notifySlack ?? true,
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
       target: [orgMembersCache.orgId, orgMembersCache.userId],
       set: {
         role: entry.role ?? "member",
-        ...(entry.notifyEmail !== undefined && {
-          notifyEmail: entry.notifyEmail,
-        }),
-        ...(entry.notifySlack !== undefined && {
-          notifySlack: entry.notifySlack,
-        }),
         cachedAt: entry.cachedAt ?? new Date(),
       },
     });
@@ -2980,6 +2971,57 @@ export async function findOrgMembersCacheEntry(orgId: string, userId: string) {
     )
     .limit(1);
   return row;
+}
+
+/**
+ * Insert an org_members entry for testing member preferences.
+ */
+export async function insertOrgMembersEntry(entry: {
+  orgId: string;
+  userId: string;
+  timezone?: string | null;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
+  pinnedAgentIds?: string[];
+  sendMode?: string;
+  onboardingDone?: boolean;
+}): Promise<void> {
+  initServices();
+  const now = new Date();
+  await globalThis.services.db
+    .insert(orgMembers)
+    .values({
+      orgId: entry.orgId,
+      userId: entry.userId,
+      timezone: entry.timezone ?? null,
+      notifyEmail: entry.notifyEmail ?? false,
+      notifySlack: entry.notifySlack ?? true,
+      pinnedAgentIds: entry.pinnedAgentIds ?? [],
+      sendMode: entry.sendMode ?? "enter",
+      onboardingDone: entry.onboardingDone ?? false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembers.orgId, orgMembers.userId],
+      set: {
+        ...(entry.timezone !== undefined && { timezone: entry.timezone }),
+        ...(entry.notifyEmail !== undefined && {
+          notifyEmail: entry.notifyEmail,
+        }),
+        ...(entry.notifySlack !== undefined && {
+          notifySlack: entry.notifySlack,
+        }),
+        ...(entry.pinnedAgentIds !== undefined && {
+          pinnedAgentIds: entry.pinnedAgentIds,
+        }),
+        ...(entry.sendMode !== undefined && { sendMode: entry.sendMode }),
+        ...(entry.onboardingDone !== undefined && {
+          onboardingDone: entry.onboardingDone,
+        }),
+        updatedAt: now,
+      },
+    });
 }
 
 export async function findTestRunnerJobEntry(runId: string) {

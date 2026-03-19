@@ -13,40 +13,19 @@ import {
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
 import { agentComposeApiContentSchema } from "@vm0/core";
-import { clerkClient } from "@clerk/nextjs/server";
-import { orgMembersCache } from "../../../../src/db/schema/org-members-cache";
-import { z } from "zod";
-
-const memberPublicMetadataSchema = z
-  .object({ onboarding_done: z.boolean().optional() })
-  .optional();
+import { orgMembers } from "../../../../src/db/schema/org-members";
 
 async function isMemberOnboardingDone(
   orgId: string,
   userId: string,
 ): Promise<boolean> {
-  const [cached] = await globalThis.services.db
-    .select({ onboardingDone: orgMembersCache.onboardingDone })
-    .from(orgMembersCache)
-    .where(
-      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
-    )
+  const [row] = await globalThis.services.db
+    .select({ onboardingDone: orgMembers.onboardingDone })
+    .from(orgMembers)
+    .where(and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, userId)))
     .limit(1);
 
-  if (cached) {
-    return cached.onboardingDone;
-  }
-
-  // Cache miss — read from Clerk API
-  const client = await clerkClient();
-  const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId: orgId,
-  });
-  const membership = memberships.data.find(
-    (m) => m.publicUserData?.userId === userId,
-  );
-  const metadata = memberPublicMetadataSchema.parse(membership?.publicMetadata);
-  return metadata?.onboarding_done === true;
+  return row?.onboardingDone ?? false;
 }
 
 interface DefaultAgentInfo {

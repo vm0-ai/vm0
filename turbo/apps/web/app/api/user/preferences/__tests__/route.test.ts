@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { GET, PUT } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -29,8 +28,6 @@ describe("GET /api/user/preferences", () => {
 
   it("should return default preferences for new user", async () => {
     const user = await context.setupUser();
-
-    // Set orgId so the route can resolve orgId
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
@@ -43,13 +40,15 @@ describe("GET /api/user/preferences", () => {
     expect(data.timezone).toBeNull();
     expect(data.notifyEmail).toBe(false);
     expect(data.notifySlack).toBe(true);
+    expect(data.pinnedAgentIds).toEqual([]);
+    expect(data.sendMode).toBe("enter");
   });
 
   it("should return saved timezone after update", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
-    // Set timezone via PUT (writes to DB + dual-writes to Clerk)
+    // Set timezone via PUT
     const putRequest = createTestRequest(
       "http://localhost:3000/api/user/preferences",
       {
@@ -60,14 +59,7 @@ describe("GET /api/user/preferences", () => {
     );
     await PUT(putRequest);
 
-    // Re-mock with updated metadata to simulate Clerk having the data
-    mockClerk({
-      userId: user.userId,
-      orgId: user.orgId,
-      membershipTimezone: "Asia/Shanghai",
-    });
-
-    // Get preferences — reads from Clerk API (no JWT claims)
+    // Get preferences — reads from org_members table
     const request = createTestRequest(
       "http://localhost:3000/api/user/preferences",
     );
@@ -77,117 +69,9 @@ describe("GET /api/user/preferences", () => {
     expect(response.status).toBe(200);
     expect(data.timezone).toBe("Asia/Shanghai");
   });
-});
-
-describe("GET /api/user/preferences (JWT claims)", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
-  it("should read preferences from JWT claims when available", async () => {
-    const user = await context.setupUser();
-
-    mockClerk({
-      userId: user.userId,
-      orgId: user.orgId,
-      membershipTimezone: "Asia/Tokyo",
-      membershipNotifyEmail: true,
-      membershipNotifySlack: false,
-    });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.timezone).toBe("Asia/Tokyo");
-    expect(data.notifyEmail).toBe(true);
-    expect(data.notifySlack).toBe(false);
-  });
-
-  it("should fall back to Clerk API when JWT claims are missing", async () => {
-    const user = await context.setupUser();
-
-    // orgId set but no membership claims → falls back to Clerk API
-    mockClerk({ userId: user.userId, orgId: user.orgId });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.timezone).toBeNull();
-    expect(data.notifyEmail).toBe(false);
-    expect(data.notifySlack).toBe(true);
-  });
-
-  it("should use default values for missing JWT claims", async () => {
-    const user = await context.setupUser();
-
-    // Only timezone in JWT, no notification claims
-    mockClerk({
-      userId: user.userId,
-      orgId: user.orgId,
-      membershipTimezone: "Europe/London",
-    });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.timezone).toBe("Europe/London");
-    expect(data.notifyEmail).toBe(false);
-    expect(data.notifySlack).toBe(true);
-  });
-
-  it("should read from Clerk API fallback with metadata values", async () => {
-    const user = await context.setupUser();
-
-    // Set membership metadata in Clerk API (also sets JWT claims)
-    mockClerk({
-      userId: user.userId,
-      orgId: user.orgId,
-      membershipTimezone: "America/Chicago",
-      membershipNotifyEmail: true,
-      membershipNotifySlack: false,
-    });
-
-    // Clear JWT claims so the code falls through to Clerk API path
-    vi.mocked(auth).mockResolvedValue({
-      userId: user.userId,
-      orgId: user.orgId,
-      sessionClaims: {},
-    } as Awaited<ReturnType<typeof auth>>);
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.timezone).toBe("America/Chicago");
-    expect(data.notifyEmail).toBe(true);
-    expect(data.notifySlack).toBe(false);
-  });
-});
-
-describe("GET /api/user/preferences (error paths)", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
 
   it("should resolve default org when no orgId in session", async () => {
     const user = await context.setupUser();
-
-    // No orgId in session — resolveOrg falls back to user's default org
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
@@ -224,7 +108,6 @@ describe("PUT /api/user/preferences", () => {
 
   it("should resolve default org when no orgId in session", async () => {
     const user = await context.setupUser();
-    // No orgId in session — resolveOrg falls back to user's default org
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
@@ -453,58 +336,6 @@ describe("PUT /api/user/preferences", () => {
     expect(data.notifySlack).toBe(false);
   });
 
-  it("should dual-write timezone to Clerk membership metadata", async () => {
-    const user = await context.setupUser();
-    mockClerk({ userId: user.userId, orgId: user.orgId });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ timezone: "Asia/Tokyo" }),
-      },
-    );
-    const response = await PUT(request);
-    expect(response.status).toBe(200);
-
-    const client = await vi.mocked(clerkClient)();
-    expect(
-      client.organizations.updateOrganizationMembershipMetadata,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: user.userId,
-        publicMetadata: { timezone: "Asia/Tokyo" },
-      }),
-    );
-  });
-
-  it("should dual-write notifyEmail and notifySlack to Clerk membership metadata", async () => {
-    const user = await context.setupUser();
-    mockClerk({ userId: user.userId, orgId: user.orgId });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notifyEmail: true, notifySlack: false }),
-      },
-    );
-    const response = await PUT(request);
-    expect(response.status).toBe(200);
-
-    const client = await vi.mocked(clerkClient)();
-    expect(
-      client.organizations.updateOrganizationMembershipMetadata,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: user.userId,
-        publicMetadata: { notify_email: true, notify_slack: false },
-      }),
-    );
-  });
-
   it("should reject request with no preferences", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
@@ -572,13 +403,6 @@ describe("PUT /api/user/preferences", () => {
     );
     await PUT(putRequest);
 
-    // Clear JWT claims so it falls back to cache
-    vi.mocked(auth).mockResolvedValue({
-      userId: user.userId,
-      orgId: user.orgId,
-      sessionClaims: {},
-    } as Awaited<ReturnType<typeof auth>>);
-
     const getRequest = createTestRequest(
       "http://localhost:3000/api/user/preferences",
     );
@@ -642,32 +466,6 @@ describe("PUT /api/user/preferences", () => {
     expect(data.timezone).toBe("America/New_York");
   });
 
-  it("should dual-write pinnedAgentIds to Clerk membership metadata", async () => {
-    const user = await context.setupUser();
-    mockClerk({ userId: user.userId, orgId: user.orgId });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinnedAgentIds: ["agent-1", "agent-2"] }),
-      },
-    );
-    const response = await PUT(request);
-    expect(response.status).toBe(200);
-
-    const client = await vi.mocked(clerkClient)();
-    expect(
-      client.organizations.updateOrganizationMembershipMetadata,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: user.userId,
-        publicMetadata: { pinned_agent_ids: ["agent-1", "agent-2"] },
-      }),
-    );
-  });
-
   it("should update sendMode to cmd-enter", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
@@ -716,13 +514,6 @@ describe("PUT /api/user/preferences", () => {
     );
     await PUT(putRequest);
 
-    // Clear JWT claims so it falls back to cache
-    vi.mocked(auth).mockResolvedValue({
-      userId: user.userId,
-      orgId: user.orgId,
-      sessionClaims: {},
-    } as Awaited<ReturnType<typeof auth>>);
-
     const getRequest = createTestRequest(
       "http://localhost:3000/api/user/preferences",
     );
@@ -731,31 +522,5 @@ describe("PUT /api/user/preferences", () => {
 
     expect(response.status).toBe(200);
     expect(data.sendMode).toBe("cmd-enter");
-  });
-
-  it("should dual-write sendMode to Clerk membership metadata", async () => {
-    const user = await context.setupUser();
-    mockClerk({ userId: user.userId, orgId: user.orgId });
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sendMode: "cmd-enter" }),
-      },
-    );
-    const response = await PUT(request);
-    expect(response.status).toBe(200);
-
-    const client = await vi.mocked(clerkClient)();
-    expect(
-      client.organizations.updateOrganizationMembershipMetadata,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: user.userId,
-        publicMetadata: { send_mode: "cmd-enter" },
-      }),
-    );
   });
 });
