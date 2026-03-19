@@ -14,6 +14,7 @@ import { clerk$ } from "../auth.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
 import { getProviderShape } from "../../views/zero-page/components/settings/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
+import { SEED_INSTRUCTIONS, SEED_SKILLS } from "../../data/the-seed.ts";
 import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -325,9 +326,8 @@ export const completeZeroOnboarding$ = command(
           sound: "professional",
         },
       };
-      if (selectedSkills.length > 0) {
-        agentDef.skills = selectedSkills.map(skillValueToUrl);
-      }
+      const allSkills = [...new Set([...SEED_SKILLS, ...selectedSkills])];
+      agentDef.skills = allSkills.map(skillValueToUrl);
 
       const content = {
         version: "1",
@@ -337,8 +337,11 @@ export const completeZeroOnboarding$ = command(
       };
 
       // Run compose job (CLI processes skills, uploads assets)
-      // Pass empty instructions so the server creates a CLAUDE.md with agent profile
-      const job = await triggerAndPollComposeJob(fetchFn, content, "");
+      const job = await triggerAndPollComposeJob(
+        fetchFn,
+        content,
+        SEED_INSTRUCTIONS,
+      );
       signal.throwIfAborted();
 
       if (!job.result) {

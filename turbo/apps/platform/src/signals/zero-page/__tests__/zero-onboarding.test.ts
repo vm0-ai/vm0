@@ -7,10 +7,13 @@ import {
   completeZeroOnboarding$,
   setZeroAgentName$,
   setZeroStep$,
+  toggleZeroSkill$,
   zeroOnboardingStep$,
   zeroOnboardingError$,
   zeroSaving$,
 } from "../zero-onboarding.ts";
+import { SEED_INSTRUCTIONS, SEED_SKILLS } from "../../../data/the-seed.ts";
+import { skillValueToUrl } from "../../../data/skills.ts";
 
 const context = testContext();
 
@@ -76,6 +79,49 @@ describe("completeZeroOnboarding$", () => {
       sound: "professional",
     });
     expect(agentDef.framework).toBe("claude-code");
+
+    // Instructions should be SEED_INSTRUCTIONS
+    expect(capturedPayload!.instructions).toBe(SEED_INSTRUCTIONS);
+
+    // Skills should include all 33 seed skills
+    const expectedSkillUrls = SEED_SKILLS.map(skillValueToUrl);
+    expect(agentDef.skills).toStrictEqual(expectedSkillUrls);
+  });
+
+  it("should merge user-selected skills with seed skills and deduplicate", async () => {
+    let capturedPayload: ComposePayload | null = null;
+
+    server.use(
+      http.post("*/api/compose/jobs", async ({ request }) => {
+        capturedPayload = (await request.json()) as ComposePayload;
+        return HttpResponse.json({
+          jobId: "test-job-id",
+          status: "completed",
+          result: {
+            composeId: "new-compose-id",
+            composeName: "test-compose",
+          },
+        });
+      }),
+      http.put("*/api/orgs/default-agent", () => {
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    // Select a connector skill and a duplicate seed skill
+    context.store.set(toggleZeroSkill$, "slack");
+    context.store.set(toggleZeroSkill$, "vm0"); // duplicate of seed skill
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    const agentKeys = Object.keys(capturedPayload!.content.agents);
+    const agentDef = capturedPayload!.content.agents[agentKeys[0]];
+
+    // All seed skills + "slack" (vm0 deduplicated)
+    const expectedSkills = [...SEED_SKILLS, "slack"].map(skillValueToUrl);
+    expect(agentDef.skills).toStrictEqual(expectedSkills);
   });
 
   it("should set default agent after creating compose", async () => {
