@@ -94,9 +94,9 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
     && rm -rf /var/lib/apt/lists/*
 
 # Install Playwright Chromium for browser automation (supports ARM64)
-RUN npx -y playwright install --with-deps chromium \
-    && CHROMIUM_PATH=$(find /root/.cache/ms-playwright -name chrome -path "*/chrome-linux/*" | head -1) \
-    && ln -sf "$CHROMIUM_PATH" /usr/local/bin/playwright-chromium
+RUN npx -y playwright install --with-deps --no-shell chromium \
+    && CHROMIUM_PATH=$(find /root/.cache/ms-playwright -type f -name chrome -path "*/chrome-linux/*" | head -1) \
+    && test -n "$CHROMIUM_PATH" && ln -sf "$CHROMIUM_PATH" /usr/local/bin/playwright-chromium
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/local/bin/playwright-chromium
 
