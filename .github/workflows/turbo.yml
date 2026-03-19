@@ -292,12 +292,12 @@ jobs:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm vitest run --project=web --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
-        if: always()
+        if: success() || failure()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: web
-          files: turbo/apps/web/coverage/coverage-final.json
+          files: turbo/coverage/coverage-final.json
 
   test-migrate:
     needs: prepare
@@ -336,12 +336,12 @@ jobs:
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
-        if: always()
+        if: success() || failure()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: cli
-          files: turbo/apps/cli/coverage/coverage-final.json
+          files: turbo/coverage/coverage-final.json
 
   test-app:
     runs-on: ubuntu-latest
@@ -354,12 +354,12 @@ jobs:
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/app --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
-        if: always()
+        if: success() || failure()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: app
-          files: turbo/apps/platform/coverage/coverage-final.json
+          files: turbo/coverage/coverage-final.json
 
   test-other:
     runs-on: ubuntu-latest
@@ -372,12 +372,12 @@ jobs:
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
-        if: always()
+        if: success() || failure()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: core-ui
-          files: turbo/packages/core/coverage/coverage-final.json,turbo/packages/ui/coverage/coverage-final.json
+          files: turbo/coverage/coverage-final.json
 
   # Deploy web application with database
   deploy-web:
