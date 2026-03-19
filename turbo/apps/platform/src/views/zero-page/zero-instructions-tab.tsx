@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@vm0/ui";
 import type { AgentInstructions } from "../../signals/zero-page/agent-types.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
+import { TiptapInstructionsEditor } from "./tiptap-instructions-editor.tsx";
 
 interface ZeroInstructionsTabProps {
   instructions: AgentInstructions | null;
@@ -30,6 +31,11 @@ export function ZeroInstructionsTab({
   const rawContent = instructions?.content ?? "";
   const displayContent = editedContent ?? rawContent;
 
+  // Use rawContent as key so the editor remounts when saved content changes
+  // (initial fetch or after discard). During typing, editedContent changes
+  // but rawContent stays the same, so the editor keeps its internal state.
+  const editorKey = rawContent;
+
   return (
     <div className="mx-auto max-w-[900px]">
       <Card className="zero-card-white">
@@ -43,14 +49,11 @@ export function ZeroInstructionsTab({
             <p className="text-sm text-destructive">{fetchError}</p>
           ) : (
             <>
-              <textarea
-                aria-label="Agent instructions editor"
-                className="px-1 text-sm font-mono text-foreground w-full min-h-[200px] bg-transparent border-none outline-none resize-none whitespace-pre-wrap leading-relaxed"
-                value={displayContent}
-                onChange={(e) => onEdit(e.target.value)}
-                rows={Math.max(10, displayContent.split("\n").length + 2)}
+              <TiptapInstructionsEditor
+                key={editorKey}
+                initialContent={displayContent}
+                onChange={onEdit}
                 disabled={isBuilding}
-                placeholder="Write instructions for your agent..."
               />
               <div className="flex items-center gap-2 pt-5 mt-5 border-t border-border/60">
                 <p className="text-muted-foreground text-xs">
