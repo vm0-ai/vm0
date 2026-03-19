@@ -723,6 +723,24 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  instantly: {
+    label: "Instantly",
+    helpText:
+      "Connect your Instantly account to manage email campaigns, leads, and outreach sequences",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          INSTANTLY_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-instantly-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   jam: {
     label: "Jam",
     helpText:
@@ -735,6 +753,35 @@ const CONNECTOR_TYPES_DEF = {
             label: "Personal Access Token",
             required: true,
             placeholder: "jam_pat_...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  jira: {
+    label: "Jira",
+    helpText:
+      "Connect your Jira account to manage projects, issues, sprints, and workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          JIRA_API_TOKEN: {
+            label: "API Token",
+            required: true,
+          },
+          JIRA_DOMAIN: {
+            label: "Jira Domain",
+            required: true,
+            type: "variable",
+            placeholder: "your-domain.atlassian.net",
+          },
+          JIRA_EMAIL: {
+            label: "Jira Email",
+            required: true,
+            type: "variable",
+            placeholder: "your-email@example.com",
           },
         },
       },
@@ -754,6 +801,29 @@ const CONNECTOR_TYPES_DEF = {
           JOTFORM_TOKEN: {
             label: "API Key",
             required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  kommo: {
+    label: "Kommo",
+    helpText:
+      "Connect your Kommo account to manage leads, contacts, and sales pipelines",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          KOMMO_API_KEY: {
+            label: "API Key",
+            required: true,
+          },
+          KOMMO_SUBDOMAIN: {
+            label: "Subdomain",
+            required: true,
+            type: "variable",
+            placeholder: "your-subdomain",
           },
         },
       },
@@ -2944,7 +3014,10 @@ export const connectorTypeSchema = z.enum([
   "cronlytic",
   "htmlcsstoimage",
   "imgur",
+  "instantly",
   "instagram",
+  "jira",
+  "kommo",
   "pdforge",
   "slack-webhook",
   "wix",
