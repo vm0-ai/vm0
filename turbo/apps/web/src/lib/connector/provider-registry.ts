@@ -41,7 +41,10 @@ import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
 import { huggingFaceHandler } from "./providers/hugging-face-handler";
 import { humeHandler } from "./providers/hume-handler";
+import { htmlcsstoimageHandler } from "./providers/htmlcsstoimage-handler";
 import { hubspotHandler } from "./providers/hubspot-handler";
+import { imgurHandler } from "./providers/imgur-handler";
+import { instagramHandler } from "./providers/instagram-handler";
 import { gmailHandler } from "./providers/gmail-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
@@ -150,7 +153,10 @@ export const PROVIDER_HANDLERS: Record<
   heygen: heygenHandler,
   "hugging-face": huggingFaceHandler,
   hume: humeHandler,
+  htmlcsstoimage: htmlcsstoimageHandler,
   hubspot: hubspotHandler,
+  imgur: imgurHandler,
+  instagram: instagramHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,

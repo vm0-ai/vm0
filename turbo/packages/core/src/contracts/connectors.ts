@@ -2701,6 +2701,67 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  htmlcsstoimage: {
+    label: "HTML/CSS to Image",
+    helpText:
+      "Connect your HTML/CSS to Image account to generate images from HTML and CSS",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          HCTI_API_KEY: {
+            label: "API Key",
+            required: true,
+          },
+          HCTI_USER_ID: {
+            label: "User ID",
+            required: true,
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  imgur: {
+    label: "Imgur",
+    helpText: "Connect your Imgur account to upload, manage, and share images",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          IMGUR_CLIENT_ID: {
+            label: "Client ID",
+            required: true,
+            placeholder: "your-imgur-client-id",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  instagram: {
+    label: "Instagram",
+    helpText:
+      "Connect your Instagram Business account to manage posts, stories, and insights",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          INSTAGRAM_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: {
+            label: "Business Account ID",
+            required: true,
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   "prisma-postgres": {
     label: "Prisma Postgres",
     helpText:
@@ -2898,6 +2959,9 @@ export const connectorTypeSchema = z.enum([
   "bitrix",
   "brave-search",
   "cronlytic",
+  "htmlcsstoimage",
+  "imgur",
+  "instagram",
   "lark",
   "mailsac",
   "minio",
