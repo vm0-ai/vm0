@@ -5,7 +5,7 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
 import { triggerAndPollComposeJob } from "./compose-job.ts";
-import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 import {
   buildCronExpression,
@@ -160,12 +160,12 @@ async function resolveExistingInstructions(
 ): Promise<string | undefined> {
   const instrContent = get(instructionsState$).instructions?.content;
   if (instrContent) {
-    return stripMetadataFrontmatter(instrContent);
+    return instrContent;
   }
   const resp = await fetchFn(`/api/agent/composes/${composeId}/instructions`);
   if (resp.ok) {
     const data = (await resp.json()) as AgentInstructions;
-    return data.content ? stripMetadataFrontmatter(data.content) : undefined;
+    return data.content ?? undefined;
   }
   return undefined;
 }
@@ -181,7 +181,7 @@ export const zeroJobEditedContent$ = computed((get) => get(editedContent$));
 export const zeroJobInstructionsDirty$ = computed((get) => {
   const edited = get(editedContent$);
   const instructions = get(instructionsState$).instructions;
-  const savedBody = stripMetadataFrontmatter(instructions?.content ?? "");
+  const savedBody = instructions?.content ?? "";
   return edited !== null && edited !== savedBody;
 });
 

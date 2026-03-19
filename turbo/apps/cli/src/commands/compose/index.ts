@@ -71,7 +71,6 @@ interface AgentConfig {
   framework?: string;
   skills?: string[];
   environment?: Record<string, string>;
-  metadata?: { displayName?: string; sound?: string };
   experimental_firewalls?: Record<string, FirewallSelection>;
 }
 
@@ -151,7 +150,6 @@ async function uploadAssets(
       agent.instructions,
       basePath,
       agent.framework,
-      agent.metadata,
     );
     if (!jsonMode) {
       console.log(

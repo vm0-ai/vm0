@@ -11,7 +11,7 @@ import {
   type SkillFrontmatter,
 } from "../domain/github-skills";
 import { directUpload } from "./direct-upload";
-import { getInstructionsFilename, injectMetadataFrontmatter } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core";
 
 interface StorageUploadResult {
   name: string;
@@ -45,7 +45,6 @@ export async function uploadInstructions(
   instructionsFilePath: string,
   basePath: string,
   framework?: string,
-  metadata?: { displayName?: string; sound?: string },
 ): Promise<StorageUploadResult> {
   // Normalize agent name to lowercase to match server's normalization behavior
   // Server normalizes agent names to lowercase when storing compose configs
@@ -56,9 +55,8 @@ export async function uploadInstructions(
     ? instructionsFilePath
     : path.join(basePath, instructionsFilePath);
 
-  // Read the instructions file and inject metadata frontmatter
-  const rawContent = await fs.readFile(absolutePath, "utf8");
-  const content = injectMetadataFrontmatter(rawContent, metadata);
+  // Read the instructions file
+  const content = await fs.readFile(absolutePath, "utf8");
 
   // Create a temporary directory with the file
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "vm0-instructions-"));

@@ -1,9 +1,3 @@
-interface AgentMetadata {
-  displayName?: string;
-  description?: string;
-  sound?: string;
-}
-
 // Legacy HTML comment markers (for backward-compatible stripping)
 const LEGACY_PROFILE_START = "<!-- ZERO_PROFILE";
 const LEGACY_PROFILE_END = "ZERO_PROFILE -->";
@@ -94,86 +88,14 @@ function stripLegacyFrontmatter(content: string): string {
   return `---\n${remaining}\n---${body}`;
 }
 
-const TONE_DESCRIPTIONS: Record<string, string> = {
-  professional: "clear, polished, and business-appropriate",
-  friendly: "warm, approachable, and conversational",
-  direct: "concise, to the point, and no-nonsense",
-  supportive: "encouraging, empathetic, and reassuring",
-};
-
-function buildProfileParagraph(metadata: AgentMetadata): string | null {
-  const parts: string[] = [];
-
-  if (metadata.displayName) {
-    parts.push(`Your name is ${metadata.displayName}.`);
-  }
-
-  if (metadata.description) {
-    parts.push(metadata.description);
-  }
-
-  if (metadata.sound) {
-    const desc = TONE_DESCRIPTIONS[metadata.sound] ?? metadata.sound;
-    parts.push(
-      `Communicate in a ${desc} tone. This should be reflected in all your responses.`,
-    );
-  }
-
-  if (parts.length === 0) {
-    return null;
-  }
-
-  return parts.join(" ");
-}
-
-/**
- * Inject agent metadata into instructions content as a profile block.
- *
- * The block uses plain-text markers so it is fully visible to the agent
- * at runtime. It can be stripped before displaying in the instructions editor.
- *
- * Format:
- * ```
- * [AGENT_PROFILE]
- * Your name is Aria. Communicate in a clear, polished, and business-appropriate tone.
- * This should be reflected in all your responses.
- * [/AGENT_PROFILE]
- * ```
- *
- * - If metadata is undefined/null or has no truthy fields, returns content unchanged.
- * - If content already has a profile block, replaces it.
- * - Otherwise prepends it at the beginning.
- */
-export function injectMetadataFrontmatter(
-  content: string,
-  metadata?: AgentMetadata | null,
-): string {
-  if (!metadata) {
-    return content;
-  }
-
-  const paragraph = buildProfileParagraph(metadata);
-  if (!paragraph) {
-    return content;
-  }
-
-  const block = `${PROFILE_START}\n${paragraph}\n${PROFILE_END}`;
-
-  // Remove any existing profile block and legacy frontmatter first
-  const stripped = stripProfileBlocks(
-    stripLegacyFrontmatter(content),
-  ).trimStart();
-
-  if (!stripped) {
-    return `${block}\n`;
-  }
-
-  return `${block}\n\n${stripped}`;
-}
-
 /**
  * Strip the profile block (and legacy YAML frontmatter) from
  * instructions content for display in the editor.
+ *
+ * Kept for transition: existing S3 archives may still have baked-in
+ * `[AGENT_PROFILE]` blocks from before metadata was moved to the
+ * `zero_agents` table. Once all instructions have been re-uploaded
+ * without the block, this function can be removed entirely.
  */
 export function stripMetadataFrontmatter(content: string): string {
   return stripProfileBlocks(stripLegacyFrontmatter(content)).trim();

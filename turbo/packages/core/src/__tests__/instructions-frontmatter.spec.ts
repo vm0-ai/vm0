@@ -1,112 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  injectMetadataFrontmatter,
-  stripMetadataFrontmatter,
-} from "../instructions-frontmatter";
-
-describe("injectMetadataFrontmatter", () => {
-  it("should return content unchanged when metadata is undefined", () => {
-    const content = "# Instructions\nDo stuff.";
-    expect(injectMetadataFrontmatter(content)).toBe(content);
-  });
-
-  it("should return content unchanged when metadata is null", () => {
-    const content = "# Instructions\nDo stuff.";
-    expect(injectMetadataFrontmatter(content, null)).toBe(content);
-  });
-
-  it("should return content unchanged when metadata is empty", () => {
-    const content = "# Instructions\nDo stuff.";
-    expect(injectMetadataFrontmatter(content, {})).toBe(content);
-  });
-
-  it("should return content unchanged when metadata has only falsy fields", () => {
-    const content = "# Instructions";
-    expect(
-      injectMetadataFrontmatter(content, { displayName: "", sound: "" }),
-    ).toBe(content);
-  });
-
-  it("should prepend profile block with full metadata as natural language", () => {
-    const content = "# Instructions\nDo stuff.";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "Aria",
-      sound: "professional",
-    });
-    expect(result).toBe(
-      "[AGENT_PROFILE]\nYour name is Aria. Communicate in a clear, polished, and business-appropriate tone. This should be reflected in all your responses.\n[/AGENT_PROFILE]\n\n# Instructions\nDo stuff.",
-    );
-  });
-
-  it("should prepend profile block with only displayName", () => {
-    const content = "# Instructions";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "Aria",
-    });
-    expect(result).toBe(
-      "[AGENT_PROFILE]\nYour name is Aria.\n[/AGENT_PROFILE]\n\n# Instructions",
-    );
-  });
-
-  it("should prepend profile block with only sound", () => {
-    const content = "# Instructions";
-    const result = injectMetadataFrontmatter(content, {
-      sound: "friendly",
-    });
-    expect(result).toBe(
-      "[AGENT_PROFILE]\nCommunicate in a warm, approachable, and conversational tone. This should be reflected in all your responses.\n[/AGENT_PROFILE]\n\n# Instructions",
-    );
-  });
-
-  it("should use sound value directly for unknown tones", () => {
-    const content = "# Instructions";
-    const result = injectMetadataFrontmatter(content, {
-      sound: "playful",
-    });
-    expect(result).toContain("Communicate in a playful tone.");
-  });
-
-  it("should replace existing profile block", () => {
-    const content =
-      "[AGENT_PROFILE]\nYour name is OldName.\n[/AGENT_PROFILE]\n\n# Instructions\nDo stuff.";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "NewName",
-      sound: "direct",
-    });
-    expect(result).toContain("Your name is NewName.");
-    expect(result).toContain("concise, to the point, and no-nonsense");
-    expect(result).not.toContain("OldName");
-  });
-
-  it("should replace legacy HTML comment profile block", () => {
-    const content =
-      "# Instructions\nDo stuff.\n\n<!-- ZERO_PROFILE\nYour name is OldName.\nZERO_PROFILE -->\n";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "NewName",
-    });
-    expect(result).toContain("Your name is NewName.");
-    expect(result).toContain("[AGENT_PROFILE]");
-    expect(result).not.toContain("ZERO_PROFILE");
-    expect(result).not.toContain("OldName");
-  });
-
-  it("should handle empty content with metadata", () => {
-    const result = injectMetadataFrontmatter("", {
-      displayName: "Aria",
-    });
-    expect(result).toBe(
-      "[AGENT_PROFILE]\nYour name is Aria.\n[/AGENT_PROFILE]\n",
-    );
-  });
-
-  it("should describe all known tones correctly", () => {
-    for (const tone of ["professional", "friendly", "direct", "supportive"]) {
-      const result = injectMetadataFrontmatter("test", { sound: tone });
-      expect(result).toContain("Communicate in a ");
-      expect(result).toContain("tone.");
-    }
-  });
-});
+import { stripMetadataFrontmatter } from "../instructions-frontmatter";
 
 describe("stripMetadataFrontmatter", () => {
   it("should return content unchanged when no profile block", () => {
@@ -135,15 +28,6 @@ describe("stripMetadataFrontmatter", () => {
   it("should handle content with only profile block", () => {
     const content = "[AGENT_PROFILE]\nYour name is Aria.\n[/AGENT_PROFILE]\n";
     expect(stripMetadataFrontmatter(content)).toBe("");
-  });
-
-  it("should be the inverse of injectMetadataFrontmatter", () => {
-    const original = "# Instructions\nDo stuff.";
-    const injected = injectMetadataFrontmatter(original, {
-      displayName: "Aria",
-      sound: "professional",
-    });
-    expect(stripMetadataFrontmatter(injected)).toBe(original);
   });
 
   it("should strip legacy YAML frontmatter with name and tone", () => {
@@ -202,17 +86,6 @@ describe("ReDoS regression", () => {
     expect(result).not.toContain("AGENT_PROFILE");
   });
 
-  it("should handle injectMetadataFrontmatter with repeated markers in linear time", () => {
-    const malicious = "[AGENT_PROFILE]\n".repeat(10000);
-    const start = performance.now();
-    const result = injectMetadataFrontmatter(malicious, {
-      displayName: "Test",
-    });
-    const elapsed = performance.now() - start;
-    expect(elapsed).toBeLessThan(100);
-    expect(result).toContain("Your name is Test.");
-  });
-
   it("should handle legacy markers in linear time", () => {
     const malicious = "<!-- ZERO_PROFILE\n".repeat(10000);
     const start = performance.now();
@@ -220,31 +93,5 @@ describe("ReDoS regression", () => {
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(100);
     expect(result).toBe(malicious.trim());
-  });
-});
-
-describe("legacy migration", () => {
-  it("should replace old frontmatter with new profile block on inject", () => {
-    const content =
-      "---\nname: OldName\ntone: casual\n---\n\n# Instructions\nDo stuff.";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "NewName",
-      sound: "professional",
-    });
-    expect(result).not.toContain("---");
-    expect(result).toContain("[AGENT_PROFILE]");
-    expect(result).toContain("Your name is NewName.");
-    expect(result).toContain("# Instructions\nDo stuff.");
-  });
-
-  it("should migrate legacy HTML comment format on inject", () => {
-    const content =
-      "# Instructions\n\n<!-- ZERO_PROFILE\nYour name is OldName.\nZERO_PROFILE -->\n";
-    const result = injectMetadataFrontmatter(content, {
-      displayName: "NewName",
-    });
-    expect(result).toContain("[AGENT_PROFILE]");
-    expect(result).not.toContain("<!-- ZERO_PROFILE");
-    expect(result).toContain("Your name is NewName.");
   });
 });

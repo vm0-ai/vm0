@@ -9,7 +9,7 @@ import { triggerAndPollComposeJob } from "./compose-job.ts";
 import type { AgentInstructions } from "./agent-types.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { getInstructionsFilename, stripMetadataFrontmatter } from "@vm0/core";
+import { getInstructionsFilename } from "@vm0/core";
 import { skillValueToUrl, skillUrlToValue } from "../../data/skills.ts";
 import { zeroChatAgentId$ } from "./zero-nav.ts";
 
@@ -167,9 +167,7 @@ async function resolveInstructionsContent(
     const data = (await resp.json()) as AgentInstructions;
     raw = data.content ?? undefined;
   }
-  // Strip any existing metadata (legacy frontmatter or profile block)
-  // so the server can inject a clean copy from compose metadata.
-  return raw ? stripMetadataFrontmatter(raw) : undefined;
+  return raw ?? undefined;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-import { stripMetadataFrontmatter } from "@vm0/core";
 import { Card, CardContent } from "@vm0/ui";
 import type { AgentInstructions } from "../../signals/zero-page/agent-types.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -29,8 +28,7 @@ export function ZeroInstructionsTab({
   onBuild,
 }: ZeroInstructionsTabProps) {
   const rawContent = instructions?.content ?? "";
-  const strippedContent = stripMetadataFrontmatter(rawContent);
-  const displayContent = editedContent ?? strippedContent;
+  const displayContent = editedContent ?? rawContent;
 
   return (
     <div className="mx-auto max-w-[900px]">
