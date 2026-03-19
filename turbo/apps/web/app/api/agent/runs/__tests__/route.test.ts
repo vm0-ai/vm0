@@ -91,7 +91,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(run.appendSystemPrompt).toContain("My Agent");
       expect(run.appendSystemPrompt).toContain("A helpful assistant");
-      expect(run.appendSystemPrompt).toContain("friendly");
+      expect(run.appendSystemPrompt).toContain("warm, approachable");
     });
 
     it("should not inject identity when no metadata exists", async () => {
