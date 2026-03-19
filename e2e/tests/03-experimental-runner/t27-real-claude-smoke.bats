@@ -49,9 +49,11 @@ ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 EOF
 
     echo "# Step 3: Run cook with --debug-no-mock-claude flag..."
-    run timeout 120 $CLI_COMMAND cook --no-auto-update --debug-no-mock-claude "1+1=?"
+    run timeout 120 $CLI_COMMAND cook --no-auto-update --debug-no-mock-claude \
+        "Compute 123+456 and reply with exactly: RESULT=<answer>"
 
-    echo "# Step 4: Verify run completed with result..."
+    echo "# Step 4: Verify run completed with correct result..."
     assert_success
     assert_output --partial "◆ Claude Code Completed"
+    assert_output --partial "RESULT=579"
 }
