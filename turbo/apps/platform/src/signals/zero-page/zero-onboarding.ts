@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
   type ModelProviderType,
+  type ZeroAgentResponse,
   getDefaultAuthMethod,
   getDefaultModel,
   getSecretsForAuthMethod,
@@ -297,15 +298,6 @@ export const saveZeroModelProvider$ = command(
     }
   },
 );
-
-interface ZeroAgentResponse {
-  name: string;
-  agentComposeId: string;
-  description: string | null;
-  displayName: string | null;
-  sound: string | null;
-  connectors: string[];
-}
 
 /**
  * Complete onboarding: create agent via zero agents API and set as default.

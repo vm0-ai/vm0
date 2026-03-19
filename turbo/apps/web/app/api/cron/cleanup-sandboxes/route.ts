@@ -276,8 +276,6 @@ const router = tsr.router(cronCleanupSandboxesContract, {
         cleaned: results.filter((r) => r.status === "cleaned").length,
         errors: results.filter((r) => r.status === "error").length,
         results,
-        composeJobsCleaned: 0,
-        composeJobErrors: 0,
         exportJobsCleaned,
         exportJobsStuck,
       },

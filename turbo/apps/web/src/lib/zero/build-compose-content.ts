@@ -2,6 +2,9 @@ import {
   resolveSkillRef,
   getInstructionsFilename,
   VALID_CAPABILITIES,
+  DEFAULT_SKILLS_OWNER,
+  DEFAULT_SKILLS_REPO,
+  DEFAULT_SKILLS_BRANCH,
 } from "@vm0/core";
 
 /**
@@ -54,7 +57,7 @@ export function extractConnectors(content: Record<string, unknown>): string[] {
   const agent = agents[agentKey];
   const skills = (agent?.skills ?? []) as string[];
 
-  const prefix = "https://github.com/vm0-ai/vm0-skills/tree/main/";
+  const prefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
   return skills.map((url) =>
     url.startsWith(prefix) ? url.slice(prefix.length) : url,
   );
