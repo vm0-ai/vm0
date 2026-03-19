@@ -510,6 +510,12 @@ function RecentChatSection({
         <div
           className="shrink-0 flex items-center gap-2 h-7 rounded-lg px-2.5 bg-sidebar-accent/60"
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              setSearchOpen(false);
+              setSearchTerm("");
+            }
+          }}
         >
           <IconSearch
             size={14}
