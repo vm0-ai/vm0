@@ -1,5 +1,8 @@
 import { WebClient } from "@slack/web-api";
 import type { Block, KnownBlock, View } from "@slack/web-api";
+import { logger } from "../logger";
+
+const log = logger("slack:client");
 
 /**
  * Create a Slack Web API client
@@ -120,7 +123,7 @@ export async function fetchSlackUserInfoMap(
   const map = new Map<string, SlackUserInfo>();
   const uniqueIds = [...new Set(userIds)];
 
-  await Promise.allSettled(
+  const results = await Promise.allSettled(
     uniqueIds.map(async (id) => {
       const info = await fetchSlackUserInfo(client, id);
       if (info) {
@@ -128,6 +131,12 @@ export async function fetchSlackUserInfoMap(
       }
     }),
   );
+
+  for (const result of results) {
+    if (result.status === "rejected") {
+      log.warn("Failed to fetch Slack user info", { error: result.reason });
+    }
+  }
 
   return map;
 }

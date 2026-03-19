@@ -289,9 +289,9 @@ export async function fetchConversationContexts(
     : allMessages;
 
   // Resolve user info for all unique user IDs in context messages
-  const userIds = allMessages
-    .filter((m) => m.user && !m.bot_id)
-    .map((m) => m.user as string);
+  const userIds = allMessages.flatMap((m) =>
+    m.user && !m.bot_id ? [m.user] : [],
+  );
   const userInfoMap = await fetchSlackUserInfoMap(client, userIds);
 
   // Text-only full context for routing (no image uploads needed)
