@@ -183,6 +183,7 @@ export async function handleOrgDirectMessage(
     threadContext: executionContext,
     userContext,
     userId: connection.vm0UserId,
+    botUserId,
     callbackContext,
   });
 

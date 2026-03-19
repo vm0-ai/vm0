@@ -100,7 +100,6 @@ describe("enrichMessageContent", () => {
 
     expect(result.prompt).toBe("Hello world");
     expect(result.userContext).toContain("# Current User");
-    expect(result.userContext).toContain("[Slack User]");
     expect(result.userContext).toContain("- SENDER: {id: U123, name: Jane");
   });
 

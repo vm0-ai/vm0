@@ -28,6 +28,7 @@ const BOT_SCOPES = [
   "im:write",
   "commands",
   "users:read",
+  "users:read.email",
   "reactions:write",
   "files:read",
   "files:write",

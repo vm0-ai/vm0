@@ -7,6 +7,13 @@ type IntegrationPlatform = "Email" | "GitHub" | "Slack" | "Telegram";
 /**
  * Build the integration context header prepended to agent run prompts.
  */
-export function buildIntegrationContext(platform: IntegrationPlatform): string {
-  return `# Current Integration\nYou are currently running inside: ${platform}`;
+export function buildIntegrationContext(
+  platform: IntegrationPlatform,
+  options?: { botUserId?: string },
+): string {
+  let context = `# Current Integration\nYou are currently running inside: ${platform}`;
+  if (options?.botUserId) {
+    context += `\nYour bot user ID: ${options.botUserId}`;
+  }
+  return context;
 }

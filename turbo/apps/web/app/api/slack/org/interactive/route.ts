@@ -565,6 +565,7 @@ async function finishSubmit(
     threadContext: "",
     userContext: "",
     userId: connection.vm0UserId,
+    botUserId: installation.botUserId,
     callbackContext,
   });
 

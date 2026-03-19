@@ -427,7 +427,7 @@ export async function enrichMessageContent(opts: {
   let userContext = "";
   const userInfo = await fetchSlackUserInfo(opts.client, opts.userId);
   if (userInfo) {
-    userContext = `# Current User\n[Slack User]\n${formatSenderBlock(userInfo)}`;
+    userContext = `# Current User\n${formatSenderBlock(userInfo)}`;
   }
 
   return { prompt, userContext };
