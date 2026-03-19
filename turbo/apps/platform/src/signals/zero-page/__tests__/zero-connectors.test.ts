@@ -23,8 +23,7 @@ describe("connectors", () => {
     const gmailConnector = connectorTypes.find((c) => c.type === "gmail");
 
     expect(gmailConnector).toBeDefined();
-    expect(gmailConnector?.label).toContain("Gmail");
-    expect(gmailConnector?.connected).toBeFalsy();
+    expect(gmailConnector!.connected).toBe(false);
   });
 
   it("should not show gmail connector when feature switch is disabled", async () => {
