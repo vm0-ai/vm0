@@ -710,7 +710,10 @@ jobs:
       - runner-balloon
       - runner-upgrade-local
     # Always run so the gate reports an explicit result (not "skipped").
-    if: always()
+    # Skip on release-please commits — GitHub treats "skipped" as passing.
+    if: >-
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release'))
     steps:
       - name: Validate CI results
         run: |
@@ -723,6 +726,8 @@ jobs:
               echo "✅ $job: $result"
             elif [ "$allow_skip" = "true" ] && [ "$result" = "skipped" ]; then
               echo "⏭️ $job: $result (allowed)"
+            elif [ "$allow_skip" = "informational" ]; then
+              echo "ℹ️ $job: $result (informational, not blocking)"
             else
               if [ "$allow_skip" = "true" ]; then
                 echo "::error::$job: expected success or skipped, got $result"
