@@ -127,6 +127,116 @@ describe("POST /api/agent/schedules - Deploy Schedule", () => {
     });
   });
 
+  describe("appendSystemPrompt", () => {
+    it("should create schedule with appendSystemPrompt", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "with-system-prompt",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            prompt: "Run daily",
+            appendSystemPrompt: "Always respond in formal tone",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.schedule.appendSystemPrompt).toBe(
+        "Always respond in formal tone",
+      );
+    });
+
+    it("should default appendSystemPrompt to null when not provided", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "no-system-prompt",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            prompt: "Run daily",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.schedule.appendSystemPrompt).toBeNull();
+    });
+
+    it("should update appendSystemPrompt on existing schedule", async () => {
+      await createTestSchedule(testComposeId, "update-sys-prompt", {
+        cronExpression: "0 8 * * *",
+        prompt: "Original",
+        appendSystemPrompt: "Original system prompt",
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "update-sys-prompt",
+            cronExpression: "0 8 * * *",
+            timezone: "UTC",
+            prompt: "Original",
+            appendSystemPrompt: "Updated system prompt",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.schedule.appendSystemPrompt).toBe("Updated system prompt");
+    });
+
+    it("should clear appendSystemPrompt when not provided in update", async () => {
+      await createTestSchedule(testComposeId, "clear-sys-prompt", {
+        cronExpression: "0 8 * * *",
+        prompt: "Original",
+        appendSystemPrompt: "Will be cleared",
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/schedules",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "clear-sys-prompt",
+            cronExpression: "0 8 * * *",
+            timezone: "UTC",
+            prompt: "Original",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.schedule.appendSystemPrompt).toBeNull();
+    });
+  });
+
   describe("Validation", () => {
     it("should reject when neither cron nor atTime provided", async () => {
       const request = createTestRequest(

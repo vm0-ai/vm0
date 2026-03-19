@@ -1,6 +1,6 @@
 {
-  "id": "573d04bc-41ad-4e8b-8a4a-16216181c926",
-  "prevId": "40c67909-9a64-4034-b468-7cdca2a189ab",
+  "id": "40c67909-9a64-4034-b468-7cdca2a189ab",
+  "prevId": "5f2615cb-6064-4a00-9db1-3d6b66912c37",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3388,6 +3388,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'free'"
+        },
+        "credits": {
+          "name": "credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "cached_at": {
           "name": "cached_at",

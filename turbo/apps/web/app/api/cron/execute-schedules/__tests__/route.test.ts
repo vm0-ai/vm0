@@ -8,6 +8,7 @@ import {
   enableTestSchedule,
   getTestSchedule,
   getTestScheduleRuns,
+  getTestRun,
   disableAllSchedules,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -215,6 +216,41 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.executed).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should pass appendSystemPrompt from schedule to created run", async () => {
+      // 1. Mock time to 8:00 AM UTC
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      // 2. Create schedule with appendSystemPrompt
+      await createTestSchedule(testComposeId, "sys-prompt-flow-test", {
+        cronExpression: "0 9 * * *",
+        prompt: "Daily task",
+        appendSystemPrompt: "Always respond in formal tone",
+        timezone: "UTC",
+      });
+      await enableTestSchedule(testComposeId, "sys-prompt-flow-test");
+
+      // 3. Advance time to 9:01 AM (schedule is due)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+
+      // 4. Execute cron endpoint
+      const response = await GET(authenticatedCronRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.executed).toBeGreaterThanOrEqual(1);
+
+      // 5. Get the created run and verify appendSystemPrompt was passed through
+      const { runs } = await getTestScheduleRuns(
+        testComposeId,
+        "sys-prompt-flow-test",
+        1,
+      );
+      expect(runs.length).toBe(1);
+
+      const run = await getTestRun(runs[0]!.id);
+      expect(run.appendSystemPrompt).toBe("Always respond in formal tone");
     });
 
     it("should disable one-time schedule after execution", async () => {

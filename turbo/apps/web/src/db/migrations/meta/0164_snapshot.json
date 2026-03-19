@@ -1,6 +1,6 @@
 {
-  "id": "5f2615cb-6064-4a00-9db1-3d6b66912c37",
-  "prevId": "31f70706-1b03-4bfb-bde9-03ddf0ce98e9",
+  "id": "573d04bc-41ad-4e8b-8a4a-16216181c926",
+  "prevId": "40c67909-9a64-4034-b468-7cdca2a189ab",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -796,12 +796,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "append_system_prompt": {
-          "name": "append_system_prompt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "vars": {
           "name": "vars",
@@ -3395,13 +3389,6 @@
           "notNull": true,
           "default": "'free'"
         },
-        "credits": {
-          "name": "credits",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "cached_at": {
           "name": "cached_at",
           "type": "timestamp",
@@ -3514,6 +3501,46 @@
           "columns": ["org_id", "user_id"]
         }
       },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.org": {
+      "name": "org",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "credits": {
+          "name": "credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
