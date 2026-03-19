@@ -54,3 +54,15 @@ const startPolling$ = command(
 );
 
 export const queuePollingRef$ = onRef(startPolling$);
+
+export const cancelQueueRun$ = command(async ({ get, set }, runId: string) => {
+  const fetchFn = get(fetch$);
+  const response = await fetchFn(`/api/agent/runs/${runId}/cancel`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to cancel run: ${response.statusText}`);
+  }
+  // Refresh queue data after cancel
+  await set(fetchQueueData$);
+});

@@ -1,9 +1,11 @@
+import { useSet } from "ccstate-react";
 import { IconLoader2, IconClock } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import type { RunningTask } from "../../signals/queue-page/queue-signals.ts";
+import { cancelQueueRun$ } from "../../signals/queue-page/queue-signals.ts";
 import { SimpleLink } from "../router/link.tsx";
 
-const ROW_GRID = "grid grid-cols-[1fr_1fr_6rem_5rem] gap-x-4 items-center";
+const ROW_GRID = "grid grid-cols-[1fr_1fr_6rem_5rem_4rem] gap-x-6 items-center";
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -21,6 +23,7 @@ interface QueueRunningTableProps {
 }
 
 export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
+  const cancelRun = useSet(cancelQueueRun$);
   return (
     <div>
       <p className="text-sm font-medium text-muted-foreground mb-2 px-1">
@@ -31,24 +34,25 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
           No tasks currently running.
         </div>
       ) : (
-        <div className="zero-card overflow-hidden px-6 pb-2">
+        <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
           <div
             className={cn(
               ROW_GRID,
-              "sticky top-0 z-10 -mx-4 px-4 py-2.5 text-xs font-medium text-muted-foreground bg-card border-b border-border/40",
+              "sticky top-0 z-10 -mx-4 px-4 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
             )}
           >
             <div>Agent</div>
             <div>User</div>
             <div>Started</div>
             <div>Activity logs</div>
+            <div>Cancel</div>
           </div>
           {tasks.map((task, i) => (
             <div
               key={task.runId ?? `running-${i}`}
               className={cn(
                 ROW_GRID,
-                "py-2.5 -mx-4 px-4 border-b border-border/40 last:border-b-0",
+                "py-3 -mx-4 px-4 border-b border-border/40 last:border-b-0",
               )}
             >
               <div className="text-sm font-medium text-foreground truncate">
@@ -84,6 +88,17 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
                   </SimpleLink>
                 ) : (
                   <span className="text-sm text-muted-foreground">--</span>
+                )}
+              </div>
+              <div>
+                {task.isOwner && task.runId && (
+                  <button
+                    type="button"
+                    className="text-sm text-destructive hover:underline"
+                    onClick={() => cancelRun(task.runId!)}
+                  >
+                    Cancel
+                  </button>
                 )}
               </div>
             </div>
