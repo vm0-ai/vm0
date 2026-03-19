@@ -107,16 +107,10 @@ async fn execute_inner(
         }
     };
 
-    if let Err(e) = sandbox.start().await {
-        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        factory.destroy(sandbox).await;
-        return Err(e.into());
-    }
-    telemetry.record("vm_create", t.elapsed(), true, None);
-
-    // Register VM in proxy registry for network logging and firewall enforcement.
-    // All VMs are registered so mitmproxy can log network activity regardless of
-    // whether firewall rules are configured.
+    // Register VM in proxy registry BEFORE starting the sandbox so that
+    // mitmproxy can intercept traffic from the very first request.
+    // source_ip is available after create() — it's assigned during network
+    // namespace allocation, before the VM boots.
     let source_ip = sandbox.source_ip().to_string();
     let network_log_path = config.log_paths.network_log(context.run_id);
 
@@ -132,6 +126,17 @@ async fn execute_inner(
     if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
+
+    if let Err(e) = sandbox.start().await {
+        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+        // Unregister on start failure
+        if let Err(e) = config.registry.unregister_vm(&source_ip).await {
+            warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
+        }
+        factory.destroy(sandbox).await;
+        return Err(e.into());
+    }
+    telemetry.record("vm_create", t.elapsed(), true, None);
 
     // Run job inside sandbox, then destroy regardless of outcome
     let result = run_in_sandbox(
