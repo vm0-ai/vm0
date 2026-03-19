@@ -1,6 +1,6 @@
 {
-  "id": "0165_multi_result_credit_usage",
-  "prevId": "0164_drop_org_cache_credits",
+  "id": "76f8f7bf-a17f-41d4-a9ea-77b73f8ad1a1",
+  "prevId": "573d04bc-41ad-4e8b-8a4a-16216181c926",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
