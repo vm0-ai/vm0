@@ -362,9 +362,6 @@ importers:
       '@clerk/nextjs':
         specifier: ^6.37.4
         version: 6.37.4(next@16.1.7(@opentelemetry/api@1.9.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@e2b/code-interpreter':
-        specifier: ^2.3.3
-        version: 2.3.3
       '@neondatabase/serverless':
         specifier: ^1.0.2
         version: 1.0.2
@@ -1221,10 +1218,6 @@ packages:
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
-
-  '@e2b/code-interpreter@2.3.3':
-    resolution: {integrity: sha512-WOpSwc1WpvxyOijf6WMbR76BUuvd2O9ddXgCHHi65lkuy6YgQGq7oyd8PNsT331O9Tqbccjy6uF4xanSdLX1UA==}
-    engines: {node: '>=20'}
 
   '@emnapi/core@1.7.1':
     resolution: {integrity: sha512-o1uhUASyo921r2XtHYOHy7gdkGLge8ghBEQHMWmyJFoXlpU58kIrhhN3w26lpQb6dspetweapMn2CSNwQ8I4wg==}
@@ -10121,10 +10114,6 @@ snapshots:
       tslib: 2.8.1
 
   '@drizzle-team/brocli@0.10.2': {}
-
-  '@e2b/code-interpreter@2.3.3':
-    dependencies:
-      e2b: 2.10.3
 
   '@emnapi/core@1.7.1':
     dependencies:
