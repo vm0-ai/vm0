@@ -10,6 +10,7 @@ import {
   storages,
   storageVersions,
 } from "../../../../../../src/db/schema/storage";
+import { storageVersionLineage } from "../../../../../../src/db/schema/storage-version-lineage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
 import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
@@ -27,7 +28,15 @@ const router = tsr.router(webhookStoragesCommitContract, {
   commit: async ({ body, headers }) => {
     initServices();
 
-    const { runId, storageName, storageType, versionId, files, message } = body;
+    const {
+      runId,
+      storageName,
+      storageType,
+      versionId,
+      parentVersionId,
+      files,
+      message,
+    } = body;
 
     // Authenticate with sandbox JWT and verify runId matches
     const auth = getSandboxAuthForRun(runId, headers.authorization);
@@ -286,6 +295,26 @@ const router = tsr.router(webhookStoragesCommitContract, {
         })
         .where(eq(storages.id, storage.id));
     });
+
+    // Record lineage (best-effort — failure does not block commit response)
+    if (parentVersionId && storageType !== "volume") {
+      try {
+        await globalThis.services.db.insert(storageVersionLineage).values({
+          storageId: storage.id,
+          versionId,
+          parentVersionId,
+          runId,
+          storageType,
+        });
+        log.debug(
+          `Recorded lineage: ${versionId} <- ${parentVersionId} (run ${runId})`,
+        );
+      } catch (err: unknown) {
+        log.error(
+          `Failed to record lineage for ${versionId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
 
     log.debug(
       `Committed version ${versionId}: ${fileCount} files, ${totalSize} bytes`,

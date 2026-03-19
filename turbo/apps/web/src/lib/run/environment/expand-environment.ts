@@ -2,8 +2,8 @@ import {
   expandVariables,
   extractAndGroupVariables,
   extractSecretNamesFromApis,
+  type ExpandedFirewallConfig,
 } from "@vm0/core";
-import type { ExpandedFirewallConfig } from "@vm0/core";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
@@ -94,6 +94,7 @@ export function expandEnvironmentFromCompose(
   passedSecrets: Record<string, string> | undefined,
   checkEnv?: boolean,
   additionalEnvironment?: Record<string, string>,
+  additionalFirewalls?: ExpandedFirewallConfig[],
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
 
@@ -124,9 +125,10 @@ export function expandEnvironmentFromCompose(
     );
   }
 
-  const firewallPlaceholders = buildFirewallPlaceholders(
-    firstAgent?.experimental_firewalls ?? [],
-  );
+  const firewallPlaceholders = buildFirewallPlaceholders([
+    ...(firstAgent?.experimental_firewalls ?? []),
+    ...(additionalFirewalls ?? []),
+  ]);
 
   // Process secrets if needed
   const secretNames = grouped.secrets.map((r) => r.name);

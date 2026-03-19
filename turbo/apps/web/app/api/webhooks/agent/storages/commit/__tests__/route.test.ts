@@ -6,6 +6,7 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  getStorageVersionLineage,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -200,5 +201,100 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
     const json = await response.json();
     expect(json.success).toBe(true);
     expect(json.deduplicated).toBe(true);
+  });
+
+  it("should record lineage when parentVersionId is provided for artifact", async () => {
+    const storageName = uniqueId("webhook-lineage");
+    const files = [{ path: "file1.txt", hash: "f".repeat(64), size: 100 }];
+
+    const versionId = await prepareStorage(
+      testRunId,
+      testToken,
+      storageName,
+      "artifact",
+      files,
+    );
+
+    const parentVersionId = "a".repeat(64);
+    const response = await POST(
+      makeCommitRequest(testRunId, testToken, {
+        storageName,
+        storageType: "artifact",
+        versionId,
+        parentVersionId,
+        files,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+
+    const lineageRows = await getStorageVersionLineage(versionId);
+
+    expect(lineageRows).toHaveLength(1);
+    const row = lineageRows[0];
+    expect(row).toBeDefined();
+    expect(row?.parentVersionId).toBe(parentVersionId);
+    expect(row?.runId).toBe(testRunId);
+    expect(row?.storageType).toBe("artifact");
+  });
+
+  it("should not record lineage when parentVersionId is absent", async () => {
+    const storageName = uniqueId("webhook-no-lineage");
+    const files = [{ path: "file1.txt", hash: "1".repeat(64), size: 50 }];
+
+    const versionId = await prepareStorage(
+      testRunId,
+      testToken,
+      storageName,
+      "artifact",
+      files,
+    );
+
+    const response = await POST(
+      makeCommitRequest(testRunId, testToken, {
+        storageName,
+        storageType: "artifact",
+        versionId,
+        files,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const lineageRows = await getStorageVersionLineage(versionId);
+
+    expect(lineageRows).toHaveLength(0);
+  });
+
+  it("should not record lineage for volume storage type", async () => {
+    const storageName = uniqueId("webhook-vol-lineage");
+    const files = [{ path: "file1.txt", hash: "2".repeat(64), size: 75 }];
+
+    const versionId = await prepareStorage(
+      testRunId,
+      testToken,
+      storageName,
+      "volume",
+      files,
+    );
+
+    const parentVersionId = "b".repeat(64);
+    const response = await POST(
+      makeCommitRequest(testRunId, testToken, {
+        storageName,
+        storageType: "volume",
+        versionId,
+        parentVersionId,
+        files,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const lineageRows = await getStorageVersionLineage(versionId);
+
+    expect(lineageRows).toHaveLength(0);
   });
 });

@@ -27,6 +27,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
   IconCrown,
+  IconPin,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -62,7 +63,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  cn,
   Button,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
@@ -84,9 +84,6 @@ import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatar
 import { Link, SimpleLink } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
-
-/** Max pinned sub-agents (default agent counts as 1, total slots = 5). */
-const MAX_PINNED = 4;
 
 export const AGENT_AVATARS = [
   avatar1Img,
@@ -511,8 +508,14 @@ function RecentChatSection({
     <div className="mt-4 flex flex-col min-h-0 flex-1">
       {searchOpen ? (
         <div
-          className="shrink-0 flex items-center gap-2 h-8 rounded-lg px-2.5 bg-sidebar-accent/60"
+          className="shrink-0 flex items-center gap-2 h-7 rounded-lg px-2.5 bg-sidebar-accent/60"
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+              setSearchOpen(false);
+              setSearchTerm("");
+            }
+          }}
         >
           <IconSearch
             size={14}
@@ -551,7 +554,7 @@ function RecentChatSection({
               className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
               aria-label="Search chats"
             >
-              <IconSearch size={16} />
+              <IconSearch size={14} />
             </button>
           </div>
         </div>
@@ -718,7 +721,7 @@ function ManagePinnedAgentsDialog({
   const togglePin = (agentId: string) => {
     if (draftIds.includes(agentId)) {
       setDraftIds(draftIds.filter((id) => id !== agentId));
-    } else if (draftIds.length < MAX_PINNED) {
+    } else {
       setDraftIds([...draftIds, agentId]);
     }
   };
@@ -744,7 +747,7 @@ function ManagePinnedAgentsDialog({
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Reorder or add agents to your sidebar (max {MAX_PINNED}).
+            Reorder or add agents to your sidebar.
           </p>
         </DialogHeader>
 
@@ -818,14 +821,8 @@ function ManagePinnedAgentsDialog({
                   </span>
                   <button
                     type="button"
-                    className={cn(
-                      "transition-colors px-2 py-0.5 rounded-md text-xs font-medium",
-                      draftIds.length >= MAX_PINNED
-                        ? "text-muted-foreground/30 cursor-not-allowed"
-                        : "text-primary hover:text-primary/80 hover:bg-primary/10",
-                    )}
+                    className="transition-colors px-2 py-0.5 rounded-md text-xs font-medium text-primary hover:text-primary/80 hover:bg-primary/10"
                     onClick={() => togglePin(agent.id)}
-                    disabled={draftIds.length >= MAX_PINNED}
                   >
                     Pin
                   </button>
@@ -885,11 +882,19 @@ function TalkToSection({
   return (
     <div className="shrink-0 mt-4">
       <div className="h-7 flex items-center pl-2">
-        <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate">
+        <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate flex-1">
           Talk to {talkToLabel}
         </span>
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          aria-label="Manage pinned agents"
+          onClick={onManagePinned}
+        >
+          <IconPin size={14} />
+        </button>
       </div>
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5 max-h-[170px] overflow-y-auto">
         <Link
           pathname={defaultAgentRawName ? "/talk/:name" : "/"}
           options={
@@ -897,7 +902,7 @@ function TalkToSection({
               ? { pathParams: { name: defaultAgentRawName } }
               : undefined
           }
-          className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+          className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
             activeId === "chat" &&
             !selectedRecentId &&
             currentChatAgentId === null
@@ -917,7 +922,7 @@ function TalkToSection({
             key={agent.id}
             pathname="/talk/:name"
             options={{ pathParams: { name: agent.name } }}
-            className={`flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+            className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
               activeId === "chat" &&
               !selectedRecentId &&
               currentChatAgentId === agent.id
@@ -933,17 +938,6 @@ function TalkToSection({
             <span className="truncate">{agent.displayName ?? agent.name}</span>
           </Link>
         ))}
-        <button
-          type="button"
-          className="flex w-full h-8 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors duration-200"
-          aria-label="Manage pinned agents"
-          onClick={onManagePinned}
-        >
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-sidebar-accent">
-            <IconPlus size={12} />
-          </span>
-          <span className="truncate">Pin agent</span>
-        </button>
       </div>
     </div>
   );
