@@ -84,6 +84,96 @@ interface SlackEventCallback {
 
 type SlackEvent = SlackUrlVerificationEvent | SlackEventCallback;
 
+function handleEventCallback(payload: SlackEventCallback) {
+  const event = payload.event;
+
+  if (event.type === "app_mention") {
+    initServices();
+    after(
+      handleOrgMention({
+        workspaceId: payload.team_id,
+        channelId: event.channel,
+        userId: event.user,
+        messageText: event.text,
+        messageTs: event.ts,
+        threadTs: event.thread_ts,
+        files: event.files,
+      }).catch((error) => {
+        log.error("Error handling org app_mention", { error });
+      }),
+    );
+  }
+
+  if (
+    event.type === "message" &&
+    event.channel_type === "im" &&
+    (!event.subtype || event.subtype === "file_share") &&
+    !event.bot_id
+  ) {
+    initServices();
+    after(
+      handleOrgDirectMessage({
+        workspaceId: payload.team_id,
+        channelId: event.channel,
+        userId: event.user,
+        messageText: event.text,
+        files: event.files,
+        messageTs: event.ts,
+        threadTs: event.thread_ts,
+      }).catch((error) => {
+        log.error("Error handling org direct_message", { error });
+      }),
+    );
+  }
+
+  if (event.type === "app_home_opened" && event.tab === "home") {
+    initServices();
+    after(
+      handleOrgAppHomeOpened({
+        workspaceId: payload.team_id,
+        userId: event.user,
+      }).catch((error) => {
+        log.error("Error handling org app_home_opened", { error });
+      }),
+    );
+  }
+
+  if (event.type === "app_home_opened" && event.tab === "messages") {
+    initServices();
+    after(
+      handleOrgMessagesTabOpened({
+        workspaceId: payload.team_id,
+        userId: event.user,
+        channelId: event.channel,
+      }).catch((error) => {
+        log.error("Error handling org messages_tab_opened", { error });
+      }),
+    );
+  }
+
+  if (event.type === "app_uninstalled") {
+    initServices();
+    after(
+      cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
+        log.error("Error handling app_uninstalled", { error });
+      }),
+    );
+  }
+
+  if (
+    event.type === "tokens_revoked" &&
+    event.tokens.bot &&
+    event.tokens.bot.length > 0
+  ) {
+    initServices();
+    after(
+      cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
+        log.error("Error handling tokens_revoked", { error });
+      }),
+    );
+  }
+}
+
 /**
  * POST /api/slack/org/events
  *
@@ -135,94 +225,7 @@ export async function POST(request: Request) {
   }
 
   if (payload.type === "event_callback") {
-    const event = payload.event;
-
-    if (event.type === "app_mention") {
-      initServices();
-      after(
-        handleOrgMention({
-          workspaceId: payload.team_id,
-          channelId: event.channel,
-          userId: event.user,
-          messageText: event.text,
-          messageTs: event.ts,
-          threadTs: event.thread_ts,
-          files: event.files,
-        }).catch((error) => {
-          log.error("Error handling org app_mention", { error });
-        }),
-      );
-    }
-
-    if (
-      event.type === "message" &&
-      event.channel_type === "im" &&
-      (!event.subtype || event.subtype === "file_share") &&
-      !event.bot_id
-    ) {
-      initServices();
-      after(
-        handleOrgDirectMessage({
-          workspaceId: payload.team_id,
-          channelId: event.channel,
-          userId: event.user,
-          messageText: event.text,
-          files: event.files,
-          messageTs: event.ts,
-          threadTs: event.thread_ts,
-        }).catch((error) => {
-          log.error("Error handling org direct_message", { error });
-        }),
-      );
-    }
-
-    if (event.type === "app_home_opened" && event.tab === "home") {
-      initServices();
-      after(
-        handleOrgAppHomeOpened({
-          workspaceId: payload.team_id,
-          userId: event.user,
-        }).catch((error) => {
-          log.error("Error handling org app_home_opened", { error });
-        }),
-      );
-    }
-
-    if (event.type === "app_home_opened" && event.tab === "messages") {
-      initServices();
-      after(
-        handleOrgMessagesTabOpened({
-          workspaceId: payload.team_id,
-          userId: event.user,
-          channelId: event.channel,
-        }).catch((error) => {
-          log.error("Error handling org messages_tab_opened", { error });
-        }),
-      );
-    }
-
-    if (event.type === "app_uninstalled") {
-      initServices();
-      after(
-        cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
-          log.error("Error handling app_uninstalled", { error });
-        }),
-      );
-    }
-
-    if (
-      event.type === "tokens_revoked" &&
-      event.tokens.bot &&
-      event.tokens.bot.length > 0
-    ) {
-      initServices();
-      after(
-        cleanupWorkspaceInstallation(payload.team_id).catch((error) => {
-          log.error("Error handling tokens_revoked", { error });
-        }),
-      );
-    }
-
+    handleEventCallback(payload);
     return new Response("OK", { status: 200 });
   }
 

@@ -25,6 +25,7 @@ import { skills } from "../db/schema/skill";
 import { usageDaily } from "../db/schema/usage-daily";
 import { slackOrgInstallations } from "../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../db/schema/slack-org-connection";
+import { slackOrgPendingQuestions } from "../db/schema/slack-org-pending-question";
 import { githubInstallations } from "../db/schema/github-installation";
 import { githubUserLinks } from "../db/schema/github-user-link";
 import { githubIssueSessions } from "../db/schema/github-issue-session";
@@ -3584,4 +3585,130 @@ export async function insertVm0ApiKeys(
  */
 export async function getTestVm0ApiKey(vendor: string) {
   return getVm0ApiKey(vendor);
+}
+
+/**
+ * Seed a Slack org connection directly for testing cleanup scenarios.
+ *
+ * Unlike createTestSlackOrgConnection, this does not require the
+ * installation to have an orgId.
+ */
+export async function seedTestSlackOrgConnection(opts: {
+  slackUserId: string;
+  slackWorkspaceId: string;
+  vm0UserId: string;
+}): Promise<{ connectionId: string }> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(slackOrgConnections)
+    .values({
+      slackUserId: opts.slackUserId,
+      slackWorkspaceId: opts.slackWorkspaceId,
+      vm0UserId: opts.vm0UserId,
+    })
+    .returning({ id: slackOrgConnections.id });
+  if (!row) {
+    throw new Error("Failed to seed Slack org connection");
+  }
+  return { connectionId: row.id };
+}
+
+/**
+ * Seed an agent compose record for testing.
+ */
+export async function seedTestCompose(opts: {
+  userId: string;
+  name: string;
+  orgId: string;
+}): Promise<{ composeId: string }> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId: opts.userId,
+      name: opts.name,
+      orgId: opts.orgId,
+    })
+    .returning({ id: agentComposes.id });
+  if (!row) {
+    throw new Error("Failed to seed agent compose");
+  }
+  return { composeId: row.id };
+}
+
+/**
+ * Seed a Slack org pending question for testing.
+ */
+export async function seedTestSlackOrgPendingQuestion(opts: {
+  runId: string;
+  slackWorkspaceId: string;
+  slackChannelId: string;
+  slackThreadTs: string;
+  connectionId: string;
+  composeId: string;
+  agentName: string;
+  questions: unknown;
+  expiresAt: Date;
+}): Promise<{ pendingQuestionId: string }> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(slackOrgPendingQuestions)
+    .values({
+      runId: opts.runId,
+      slackWorkspaceId: opts.slackWorkspaceId,
+      slackChannelId: opts.slackChannelId,
+      slackThreadTs: opts.slackThreadTs,
+      connectionId: opts.connectionId,
+      composeId: opts.composeId,
+      agentName: opts.agentName,
+      questions: opts.questions,
+      expiresAt: opts.expiresAt,
+    })
+    .returning({ id: slackOrgPendingQuestions.id });
+  if (!row) {
+    throw new Error("Failed to seed pending question");
+  }
+  return { pendingQuestionId: row.id };
+}
+
+/**
+ * Count Slack org installations for a workspace.
+ */
+export async function countSlackOrgInstallations(
+  workspaceId: string,
+): Promise<number> {
+  initServices();
+  const rows = await globalThis.services.db
+    .select({ id: slackOrgInstallations.slackWorkspaceId })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
+  return rows.length;
+}
+
+/**
+ * Count Slack org connections for a workspace.
+ */
+export async function countSlackOrgConnections(
+  workspaceId: string,
+): Promise<number> {
+  initServices();
+  const rows = await globalThis.services.db
+    .select({ id: slackOrgConnections.id })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+  return rows.length;
+}
+
+/**
+ * Count Slack org pending questions for a connection.
+ */
+export async function countSlackOrgPendingQuestions(
+  connectionId: string,
+): Promise<number> {
+  initServices();
+  const rows = await globalThis.services.db
+    .select({ id: slackOrgPendingQuestions.id })
+    .from(slackOrgPendingQuestions)
+    .where(eq(slackOrgPendingQuestions.connectionId, connectionId));
+  return rows.length;
 }

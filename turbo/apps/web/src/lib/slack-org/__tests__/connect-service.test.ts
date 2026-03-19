@@ -1,59 +1,90 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { describe, it, expect } from "vitest";
 import { uniqueId } from "../../../__tests__/test-helpers";
-import { initServices } from "../../init-services";
-import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
+import {
+  createTestSlackOrgInstallation,
+  seedTestSlackOrgConnection,
+  seedTestCompose,
+  seedTestSlackOrgPendingQuestion,
+  countSlackOrgInstallations,
+  countSlackOrgConnections,
+  countSlackOrgPendingQuestions,
+} from "../../../__tests__/api-test-helpers";
 import { cleanupWorkspaceInstallation } from "../connect-service";
-
-beforeAll(() => {
-  initServices();
-});
 
 describe("cleanupWorkspaceInstallation", () => {
   it("should delete installation and all connections for a workspace", async () => {
-    const db = globalThis.services.db;
     const workspaceId = uniqueId("T-ws");
 
-    // Seed installation
-    await db.insert(slackOrgInstallations).values({
-      slackWorkspaceId: workspaceId,
-      encryptedBotToken: "encrypted-token",
-      botUserId: "B001",
+    await createTestSlackOrgInstallation({
+      workspaceId,
       orgId: uniqueId("org"),
     });
 
-    // Seed connections
-    await db.insert(slackOrgConnections).values([
-      {
-        slackUserId: "U001",
-        slackWorkspaceId: workspaceId,
-        vm0UserId: uniqueId("user"),
-      },
-      {
-        slackUserId: "U002",
-        slackWorkspaceId: workspaceId,
-        vm0UserId: uniqueId("user"),
-      },
-    ]);
+    await seedTestSlackOrgConnection({
+      slackUserId: "U001",
+      slackWorkspaceId: workspaceId,
+      vm0UserId: uniqueId("user"),
+    });
+    await seedTestSlackOrgConnection({
+      slackUserId: "U002",
+      slackWorkspaceId: workspaceId,
+      vm0UserId: uniqueId("user"),
+    });
 
     const result = await cleanupWorkspaceInstallation(workspaceId);
 
     expect(result).toBe(true);
+    expect(await countSlackOrgInstallations(workspaceId)).toBe(0);
+    expect(await countSlackOrgConnections(workspaceId)).toBe(0);
+  });
 
-    // Verify installation deleted
-    const installations = await db
-      .select()
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
-    expect(installations).toHaveLength(0);
+  it("should delete pending questions before connections", async () => {
+    const workspaceId = uniqueId("T-ws");
+    const orgId = uniqueId("org");
 
-    // Verify connections deleted
-    const connections = await db
-      .select()
-      .from(slackOrgConnections)
-      .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
-    expect(connections).toHaveLength(0);
+    await createTestSlackOrgInstallation({ workspaceId, orgId });
+
+    const { connectionId } = await seedTestSlackOrgConnection({
+      slackUserId: "U001",
+      slackWorkspaceId: workspaceId,
+      vm0UserId: uniqueId("user"),
+    });
+
+    const { composeId } = await seedTestCompose({
+      userId: uniqueId("user"),
+      name: uniqueId("compose"),
+      orgId,
+    });
+
+    await seedTestSlackOrgPendingQuestion({
+      runId: uniqueId("run"),
+      slackWorkspaceId: workspaceId,
+      slackChannelId: "C001",
+      slackThreadTs: "1234567890.000001",
+      connectionId,
+      composeId,
+      agentName: "test-agent",
+      questions: [{ type: "text", question: "test?" }],
+      expiresAt: new Date(Date.now() + 3600000),
+    });
+    await seedTestSlackOrgPendingQuestion({
+      runId: uniqueId("run"),
+      slackWorkspaceId: workspaceId,
+      slackChannelId: "C002",
+      slackThreadTs: "1234567890.000002",
+      connectionId,
+      composeId,
+      agentName: "test-agent",
+      questions: [{ type: "text", question: "another?" }],
+      expiresAt: new Date(Date.now() + 3600000),
+    });
+
+    const result = await cleanupWorkspaceInstallation(workspaceId);
+
+    expect(result).toBe(true);
+    expect(await countSlackOrgPendingQuestions(connectionId)).toBe(0);
+    expect(await countSlackOrgConnections(workspaceId)).toBe(0);
+    expect(await countSlackOrgInstallations(workspaceId)).toBe(0);
   });
 
   it("should return false when workspace does not exist", async () => {
@@ -63,23 +94,13 @@ describe("cleanupWorkspaceInstallation", () => {
   });
 
   it("should handle workspace with no connections", async () => {
-    const db = globalThis.services.db;
     const workspaceId = uniqueId("T-ws");
 
-    await db.insert(slackOrgInstallations).values({
-      slackWorkspaceId: workspaceId,
-      encryptedBotToken: "encrypted-token",
-      botUserId: "B001",
-    });
+    await createTestSlackOrgInstallation({ workspaceId, orgId: null });
 
     const result = await cleanupWorkspaceInstallation(workspaceId);
 
     expect(result).toBe(true);
-
-    const installations = await db
-      .select()
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
-    expect(installations).toHaveLength(0);
+    expect(await countSlackOrgInstallations(workspaceId)).toBe(0);
   });
 });
