@@ -16,6 +16,7 @@ import {
   hasModelSelection,
   allowsCustomModel,
   getCustomModelPlaceholder,
+  type ModelProviderType,
 } from "@vm0/core";
 import {
   getUIDefaultModel,
@@ -210,6 +211,34 @@ export function MultiAuthFields({
         onUseDefaultModelChange={onUseDefaultModelChange}
       />
     </>
+  );
+}
+
+/**
+ * Fields for providers that require no secret (e.g. vm0 managed provider).
+ * Only renders the model selector if the provider supports model selection.
+ */
+export function NoSecretFields({
+  providerType,
+  selectedModel,
+  useDefaultModel,
+  onModelChange,
+  onUseDefaultModelChange,
+}: {
+  providerType: ModelProviderType;
+  selectedModel: string;
+  useDefaultModel: boolean;
+  onModelChange: (value: string) => void;
+  onUseDefaultModelChange: (value: boolean) => void;
+}) {
+  return (
+    <ModelSelector
+      providerType={providerType}
+      selectedModel={selectedModel}
+      useDefaultModel={useDefaultModel}
+      onModelChange={onModelChange}
+      onUseDefaultModelChange={onUseDefaultModelChange}
+    />
   );
 }
 

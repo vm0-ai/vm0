@@ -29,6 +29,7 @@ import {
   OAuthFields,
   ApiKeyFields,
   MultiAuthFields,
+  NoSecretFields,
 } from "./provider-dialog-fields.tsx";
 
 export function OrgProviderDialog() {
@@ -139,6 +140,16 @@ export function OrgProviderDialog() {
               onUseDefaultModelChange={setUseDefaultModel}
               errors={errors}
               isLoading={isLoading}
+            />
+          )}
+
+          {shape === "no-secret" && (
+            <NoSecretFields
+              providerType={providerType}
+              selectedModel={formValues.selectedModel}
+              useDefaultModel={formValues.useDefaultModel}
+              onModelChange={setModel}
+              onUseDefaultModelChange={setUseDefaultModel}
             />
           )}
         </div>

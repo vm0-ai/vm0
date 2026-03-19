@@ -1,5 +1,6 @@
 import {
   MODEL_PROVIDER_TYPES,
+  getSecretNameForType,
   hasAuthMethods,
   type ModelProviderType,
   type SecretFieldConfig,
@@ -7,8 +8,13 @@ import {
 
 /**
  * Provider dialog shape: determines which dialog UI to render
+ *
+ * - "oauth": OAuth token flow (e.g. claude-code-oauth-token)
+ * - "multi-auth": Multiple auth methods with secret fields (e.g. aws-bedrock)
+ * - "no-secret": No credentials needed (e.g. vm0 managed provider)
+ * - "api-key": Single API key input (default for legacy providers)
  */
-type ProviderShape = "oauth" | "api-key" | "multi-auth";
+type ProviderShape = "oauth" | "api-key" | "multi-auth" | "no-secret";
 
 export function getProviderShape(type: ModelProviderType): ProviderShape {
   if (type === "claude-code-oauth-token") {
@@ -16,6 +22,9 @@ export function getProviderShape(type: ModelProviderType): ProviderShape {
   }
   if (hasAuthMethods(type)) {
     return "multi-auth";
+  }
+  if (!getSecretNameForType(type)) {
+    return "no-secret";
   }
   return "api-key";
 }

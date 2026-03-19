@@ -152,6 +152,10 @@ export const zeroCanSave$ = computed((get) => {
     return true;
   }
 
+  if (shape === "no-secret") {
+    return true;
+  }
+
   return formValues.secret.trim().length > 0;
 });
 
@@ -183,7 +187,7 @@ export const setZeroProviderType$ = command(
       selectedModel: defaultModel,
       authMethod: defaultAuth,
       secrets: {},
-      useDefaultModel: true,
+      useDefaultModel: !defaultModel,
     });
   },
 );
@@ -274,7 +278,7 @@ export const saveZeroModelProvider$ = command(
       if (shape === "multi-auth") {
         request.authMethod = formValues.authMethod;
         request.secrets = formValues.secrets;
-      } else {
+      } else if (shape !== "no-secret") {
         request.secret = formValues.secret.trim();
       }
 

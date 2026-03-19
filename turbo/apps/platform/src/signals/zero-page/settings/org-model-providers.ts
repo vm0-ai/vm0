@@ -4,6 +4,7 @@ import {
   MODEL_PROVIDER_TYPES,
   getDefaultAuthMethod,
   getDefaultModel,
+  getSecretNameForType,
   getSecretsForAuthMethod,
   hasAuthMethods,
   hasModelSelection,
@@ -143,7 +144,7 @@ export const orgOpenAddDialog$ = command(
       selectedModel: defaultModel,
       authMethod: defaultAuth,
       secrets: {},
-      useDefaultModel: true,
+      useDefaultModel: !defaultModel,
     });
     set(internalOrgFormErrors$, {});
     set(internalOrgDialogState$, {
@@ -273,7 +274,10 @@ export const orgSubmitDialog$ = command(
           }
         }
       }
-    } else if (dialogState.mode === "add") {
+    } else if (
+      dialogState.mode === "add" &&
+      getSecretNameForType(providerType)
+    ) {
       if (!formValues.secret.trim()) {
         errors["secret"] =
           providerType === "claude-code-oauth-token"

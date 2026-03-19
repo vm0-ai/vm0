@@ -132,6 +132,16 @@ export function ProviderFormFields({
           isLoading={isLoading}
         />
       )}
+
+      {shape === "no-secret" && hasModelSelection(providerType) && (
+        <ModelSelector
+          providerType={providerType}
+          selectedModel={formValues.selectedModel}
+          useDefaultModel={formValues.useDefaultModel}
+          onModelChange={onModelChange}
+          onUseDefaultModelChange={onUseDefaultModelChange}
+        />
+      )}
     </>
   );
 }
