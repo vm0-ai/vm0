@@ -1367,6 +1367,46 @@ jobs:
           echo "Total capacity across all hosts: ${TOTAL}"
 
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
+  # Bootstrap runner E2E test account (runs once, in parallel with deploy-runner-start)
+  e2e-runner-bootstrap:
+    runs-on: ubuntu-latest
+    needs: [prepare, build-cli, deploy-web]
+    if: |
+      github.event_name != 'push' &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
+      )
+    timeout-minutes: 2
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download CLI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-dist
+          path: /tmp/cli-deploy
+      - name: Link CLI globally
+        run: cd /tmp/cli-deploy && sudo npm link
+      - name: Download E2E test tokens
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-tokens
+          path: /tmp
+      - name: Setup test token
+        run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
+      - name: Bootstrap test account
+        run: |
+          vm0 org set "e2e-runner" --force
+          vm0 org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
   # Skip on push to main - runner tests are only needed for PRs
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
@@ -1377,6 +1417,7 @@ jobs:
         deploy-web,
         deploy-runner-prepare,
         deploy-runner-start,
+        e2e-runner-bootstrap,
       ]
     if: |
       github.event_name != 'push' &&
@@ -1415,14 +1456,6 @@ jobs:
           path: /tmp
       - name: Setup test token
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
-
-      - name: Bootstrap test account
-        run: |
-          vm0 org set "e2e-runner" --force
-          vm0 org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
-        env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Start Cron Simulator
         run: |
@@ -1651,6 +1684,7 @@ jobs:
       - cli-e2e-01-serial
       - deploy-runner-prepare
       - deploy-runner-start
+      - e2e-runner-bootstrap
       - cli-e2e-03-runner
       - lighthouse-web
       - lighthouse-app
@@ -1706,6 +1740,7 @@ jobs:
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "true"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "true"
+          check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "true"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "true"
           # Informational: any result is acceptable (not a merge blocker)
           check_result "lighthouse-web" "${{ needs.lighthouse-web.result }}" "informational"
