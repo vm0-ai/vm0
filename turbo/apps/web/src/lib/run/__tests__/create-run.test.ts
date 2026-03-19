@@ -27,7 +27,11 @@ import {
   type CreateRunParams,
   type CreateRunResult,
 } from "../run-service";
-import { isForbidden, isBadRequest } from "../../errors";
+import {
+  isForbidden,
+  isBadRequest,
+  isProviderIncompatible,
+} from "../../errors";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
 import { POST as pollRoute } from "../../../../app/api/runners/poll/route";
 import { mockClerk } from "../../../__tests__/clerk-mock";
@@ -905,6 +909,113 @@ describe("createRun()", () => {
 
       const run = await findTestRunRecord(result.runId);
       expect(run!.modelProvider).toBe("vercel-ai-gateway");
+    });
+
+    it("should reject session continue with incompatible model provider", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+      reloadEnv();
+
+      const noKeyCompose = await createTestCompose(uniqueId("incompat-agent"), {
+        skipDefaultApiKey: true,
+      });
+
+      // Initial run with anthropic-api-key provider
+      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+
+      const { runId } = await createTestRun(
+        noKeyCompose.composeId,
+        "Initial run",
+      );
+      const sandboxToken = await createTestSandboxToken(user.userId, runId);
+
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-incompat",
+            cliAgentSessionHistory: JSON.stringify([]),
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+
+      const { agentSessionId } = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Continue session with explicit incompatible provider (moonshot)
+      await expect(
+        createRun(
+          baseParams({
+            agentComposeVersionId: noKeyCompose.versionId,
+            sessionId: agentSessionId,
+            prompt: "Continue",
+            modelProvider: "moonshot-api-key",
+          }),
+        ),
+      ).rejects.toSatisfy(isProviderIncompatible);
+    });
+
+    it("should allow session continue with compatible model provider", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+      reloadEnv();
+
+      const noKeyCompose = await createTestCompose(uniqueId("compat-agent"), {
+        skipDefaultApiKey: true,
+      });
+
+      // Initial run with anthropic-api-key provider
+      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+
+      const { runId } = await createTestRun(
+        noKeyCompose.composeId,
+        "Initial run",
+      );
+      const sandboxToken = await createTestSandboxToken(user.userId, runId);
+
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sandboxToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "session-compat",
+            cliAgentSessionHistory: JSON.stringify([]),
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+
+      const { agentSessionId } = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // Continue with explicit compatible provider (claude-code-oauth-token — same Anthropic-native group)
+      const continueResult = await createRun(
+        baseParams({
+          agentComposeVersionId: noKeyCompose.versionId,
+          sessionId: agentSessionId,
+          prompt: "Continue",
+          modelProvider: "claude-code-oauth-token",
+        }),
+      );
+
+      expect(continueResult.runId).toBeDefined();
+      expect(continueResult.status).toBe("pending");
     });
   });
 

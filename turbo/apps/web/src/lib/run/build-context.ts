@@ -12,6 +12,7 @@ import {
   MODEL_PROVIDER_TYPES,
   VALID_CAPABILITIES,
   getModelProviderFirewall,
+  areProvidersCompatible,
   type ExperimentalFirewalls,
   type ExpandedFirewallConfig,
   type ConnectorType,
@@ -20,7 +21,7 @@ import {
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import type { AgentComposeYaml } from "../../types/agent-compose";
-import { badRequest, notFound } from "../errors";
+import { badRequest, notFound, providerIncompatible } from "../errors";
 import { getOrgData } from "../org/org-cache-service";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession, RuntimeOrg } from "./types";
@@ -971,6 +972,26 @@ export async function buildExecutionContext(
     modelProviderFirewall,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
+
+  // Step 5: Provider compatibility check for session continues.
+  // When resuming a session, verify the new provider is compatible with the
+  // original provider to avoid mid-conversation base URL mismatches.
+  if (
+    resolution?.originalModelProvider &&
+    resolvedModelProvider &&
+    resolution.originalModelProvider in MODEL_PROVIDER_TYPES
+  ) {
+    const originalType = resolution.originalModelProvider as ModelProviderType;
+    const newType = resolvedModelProvider as ModelProviderType;
+    if (!areProvidersCompatible(originalType, newType)) {
+      const originalLabel = MODEL_PROVIDER_TYPES[originalType].label;
+      const newLabel = MODEL_PROVIDER_TYPES[newType].label;
+      throw providerIncompatible(
+        `Cannot continue session: this session was created with ${originalLabel} and cannot be continued with ${newLabel}. ` +
+          `Please start a new session or switch back to a compatible model.`,
+      );
+    }
+  }
 
   // Build experimental firewall manifest (base + auth entries for the runner).
   // Merge compose-declared firewalls with auto-generated model provider firewall.

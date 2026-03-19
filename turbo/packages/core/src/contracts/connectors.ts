@@ -2798,6 +2798,24 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  pdforge: {
+    label: "PDForge",
+    helpText:
+      "Connect your PDForge account to generate PDF documents from templates",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          PDFORGE_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-pdforge-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   "discord-webhook": {
     label: "Discord Webhook",
     helpText: "Connect a Discord webhook to send messages to channels",
@@ -2809,6 +2827,23 @@ const CONNECTOR_TYPES_DEF = {
             label: "Webhook URL",
             required: true,
             placeholder: "https://discord.com/api/webhooks/xxx/xxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  "slack-webhook": {
+    label: "Slack Webhook",
+    helpText: "Connect a Slack incoming webhook to send messages to channels",
+    authMethods: {
+      "api-token": {
+        label: "Webhook URL",
+        secrets: {
+          SLACK_WEBHOOK_URL: {
+            label: "Webhook URL",
+            required: true,
+            placeholder: "https://hooks.slack.com/services/xxx/xxx/xxx",
           },
         },
       },
@@ -2832,6 +2867,24 @@ const CONNECTOR_TYPES_DEF = {
             required: false,
             placeholder: "gitlab.com",
             type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  wix: {
+    label: "Wix",
+    helpText:
+      "Connect your Wix account to manage sites, collections, and content",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          WIX_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-wix-api-key",
           },
         },
       },
@@ -2953,6 +3006,9 @@ export const connectorTypeSchema = z.enum([
   "htmlcsstoimage",
   "imgur",
   "instagram",
+  "pdforge",
+  "slack-webhook",
+  "wix",
 ]);
 
 /**

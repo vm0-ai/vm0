@@ -20,6 +20,7 @@ import {
   insertOrgCacheEntry,
   insertOrgMembersCacheEntry,
   getOrgCacheEntry,
+  createTestZeroAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
@@ -74,6 +75,45 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(data.runId).toBeDefined();
       expect(data.status).toBe("pending");
+    });
+
+    it("should inject agent identity into appendSystemPrompt", async () => {
+      const agentName = uniqueId("identity-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "My Agent",
+        description: "A helpful assistant",
+        sound: "friendly",
+      });
+
+      const data = await createTestRun(composeId, "Hello");
+      const run = await getTestRun(data.runId);
+
+      expect(run.appendSystemPrompt).toContain("My Agent");
+      expect(run.appendSystemPrompt).toContain("A helpful assistant");
+      expect(run.appendSystemPrompt).toContain("warm, approachable");
+    });
+
+    it("should not inject identity when no metadata exists", async () => {
+      const data = await createTestRun(testComposeId, "Hello");
+      const run = await getTestRun(data.runId);
+
+      expect(run.appendSystemPrompt).toBeNull();
+    });
+
+    it("should prepend identity before existing appendSystemPrompt", async () => {
+      const agentName = uniqueId("prepend-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "Bot",
+      });
+
+      const data = await createTestRun(composeId, "Hello", {
+        appendSystemPrompt: "Custom instructions",
+      });
+      const run = await getTestRun(data.runId);
+
+      expect(run.appendSystemPrompt).toMatch(/Bot[\s\S]*Custom instructions/);
     });
   });
 

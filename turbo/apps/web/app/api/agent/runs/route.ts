@@ -22,6 +22,7 @@ import {
   isBadRequest,
   isNotFound,
   isUnauthorized,
+  isProviderIncompatible,
 } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
@@ -31,6 +32,19 @@ const log = logger("api:runs");
  * Translate createRun() errors into API response format
  */
 function handleCreateRunError(error: unknown) {
+  // Provider incompatibility must be checked before RunDispatchError:
+  // the error is thrown inside buildAndDispatchRun (after run INSERT),
+  // so markRunFailed attaches runId. Without this early check,
+  // dispatchError.runId would match first and return a generic 201 "Run failed".
+  if (isProviderIncompatible(error)) {
+    return {
+      status: 400 as const,
+      body: {
+        error: { message: error.message, code: "PROVIDER_INCOMPATIBLE" },
+      },
+    };
+  }
+
   const dispatchError = error as RunDispatchError;
   if (dispatchError.runId) {
     return {
