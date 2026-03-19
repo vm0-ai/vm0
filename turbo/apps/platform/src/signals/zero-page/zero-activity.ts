@@ -129,6 +129,19 @@ export const {
   },
 });
 
+/**
+ * Refresh activity data at most once.
+ * Safe to call from render — subsequent calls are no-ops.
+ */
+const activityRefreshed$ = state(false);
+export const refreshZeroActivityOnce$ = command(({ get, set }) => {
+  if (get(activityRefreshed$)) {
+    return;
+  }
+  set(activityRefreshed$, true);
+  detach(set(refreshZeroActivity$), Reason.Entrance);
+});
+
 /** Update a filter — resets pagination and writes to URL. */
 export const setZeroActivityFilter$ = command(
   ({ get, set }, key: "agent" | "status", value: string) => {
