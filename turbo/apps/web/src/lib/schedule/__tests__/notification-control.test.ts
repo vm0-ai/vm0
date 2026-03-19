@@ -10,7 +10,7 @@ import {
   findTestRunCallbacks,
   findTestScheduleById,
   updateTestScheduleState,
-  insertOrgMembersCacheEntry,
+  insertOrgMembersEntry,
   disableAllSchedules,
 } from "../../../__tests__/api-test-helpers";
 import { POST as deployScheduleRoute } from "../../../../app/api/agent/schedules/route";
@@ -83,7 +83,7 @@ describe("Schedule notification control - AND logic", () => {
 
   it("should register both email and slack callbacks when all notifications enabled", async () => {
     // User global: both on
-    await insertOrgMembersCacheEntry({
+    await insertOrgMembersEntry({
       orgId: user.orgId,
       userId: user.userId,
       notifyEmail: true,
@@ -114,7 +114,7 @@ describe("Schedule notification control - AND logic", () => {
 
   it("should NOT register email callback when schedule notifyEmail is false", async () => {
     // User global: both on
-    await insertOrgMembersCacheEntry({
+    await insertOrgMembersEntry({
       orgId: user.orgId,
       userId: user.userId,
       notifyEmail: true,
@@ -145,7 +145,7 @@ describe("Schedule notification control - AND logic", () => {
 
   it("should NOT register slack callback when schedule notifySlack is false", async () => {
     // User global: both on
-    await insertOrgMembersCacheEntry({
+    await insertOrgMembersEntry({
       orgId: user.orgId,
       userId: user.userId,
       notifyEmail: true,
@@ -176,7 +176,7 @@ describe("Schedule notification control - AND logic", () => {
 
   it("should NOT register email callback when user global notifyEmail is false", async () => {
     // User global: email off
-    await insertOrgMembersCacheEntry({
+    await insertOrgMembersEntry({
       orgId: user.orgId,
       userId: user.userId,
       notifyEmail: false,
@@ -207,7 +207,7 @@ describe("Schedule notification control - AND logic", () => {
 
   it("should NOT register any notification callbacks when both schedule notifications are off", async () => {
     // User global: both on
-    await insertOrgMembersCacheEntry({
+    await insertOrgMembersEntry({
       orgId: user.orgId,
       userId: user.userId,
       notifyEmail: true,

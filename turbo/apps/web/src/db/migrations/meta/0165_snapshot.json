@@ -1,5 +1,5 @@
 {
-  "id": "76f8f7bf-a17f-41d4-a9ea-77b73f8ad1a1",
+  "id": "168afd45-f650-4051-beb7-4053c6cad688",
   "prevId": "573d04bc-41ad-4e8b-8a4a-16216181c926",
   "version": "7",
   "dialect": "postgresql",
@@ -797,6 +797,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "append_system_prompt": {
+          "name": "append_system_prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "vars": {
           "name": "vars",
           "type": "jsonb",
@@ -892,12 +898,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "append_system_prompt": {
-          "name": "append_system_prompt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -2122,12 +2122,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "result_uuid": {
-          "name": "result_uuid",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -2194,6 +2188,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "num_events": {
+          "name": "num_events",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "credits_charged": {
           "name": "credits_charged",
           "type": "bigint",
@@ -2222,6 +2223,21 @@
         }
       },
       "indexes": {
+        "uq_credit_usage_run_id": {
+          "name": "uq_credit_usage_run_id",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_credit_usage_org_status": {
           "name": "idx_credit_usage_org_status",
           "columns": [
@@ -2256,42 +2272,6 @@
               "expression": "created_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "uq_credit_usage_run_result": {
-          "name": "uq_credit_usage_run_result",
-          "columns": [
-            {
-              "expression": "run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "result_uuid",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_credit_usage_run_id": {
-          "name": "idx_credit_usage_run_id",
-          "columns": [
-            {
-              "expression": "run_id",
-              "isExpression": false,
-              "asc": true,
               "nulls": "last"
             }
           ],
@@ -3524,6 +3504,91 @@
       "compositePrimaryKeys": {
         "org_members_cache_org_id_user_id_pk": {
           "name": "org_members_cache_org_id_user_id_pk",
+          "columns": ["org_id", "user_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.org_members": {
+      "name": "org_members",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notify_email": {
+          "name": "notify_email",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "notify_slack": {
+          "name": "notify_slack",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "pinned_agent_ids": {
+          "name": "pinned_agent_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'[]'::jsonb"
+        },
+        "send_mode": {
+          "name": "send_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'enter'"
+        },
+        "onboarding_done": {
+          "name": "onboarding_done",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "org_members_org_id_user_id_pk": {
+          "name": "org_members_org_id_user_id_pk",
           "columns": ["org_id", "user_id"]
         }
       },

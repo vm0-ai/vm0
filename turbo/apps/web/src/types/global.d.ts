@@ -26,10 +26,5 @@ declare global {
   interface CustomJwtSessionClaims {
     org_tier?: string;
     org_default_agent_compose_id?: string | null;
-    membership_timezone?: string;
-    membership_notify_email?: boolean;
-    membership_notify_slack?: boolean;
-    membership_pinned_agent_ids?: string[];
-    membership_send_mode?: string;
   }
 }
