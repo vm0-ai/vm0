@@ -24,10 +24,10 @@ teardown() {
     fi
 }
 
-# Helper: skip if ANTHROPIC_API_KEY is not set
+# Helper: fail if ANTHROPIC_API_KEY is not set
 require_api_key() {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
-        skip "ANTHROPIC_API_KEY not set"
+        fail "ANTHROPIC_API_KEY not set - required for real Claude test"
     fi
 }
 
