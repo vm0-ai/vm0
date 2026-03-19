@@ -93,11 +93,15 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
     && apt-get install -y 1password-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Install agent-browser for browser automation
-# Use system chromium instead of Chrome for Testing (no ARM64 builds)
-RUN apt-get update && apt-get install -y chromium-browser \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm install -g agent-browser
+# Install Playwright Chromium for browser automation (supports ARM64)
+RUN npx -y playwright install --with-deps chromium \
+    && CHROMIUM_PATH=$(find /root/.cache/ms-playwright -name chrome -path "*/chrome-linux/*" | head -1) \
+    && ln -sf "$CHROMIUM_PATH" /usr/local/bin/playwright-chromium
+
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/local/bin/playwright-chromium
+
+# Install agent-browser CLI
+RUN npm install -g agent-browser@0.21.2
 
 # Install AWS CLI v2
 RUN apt-get update && apt-get install -y unzip \
