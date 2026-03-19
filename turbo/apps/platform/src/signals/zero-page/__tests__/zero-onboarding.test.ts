@@ -5,9 +5,13 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
+  saveZeroModelProvider$,
   setZeroAgentName$,
+  setZeroProviderType$,
   setZeroStep$,
   toggleZeroSkill$,
+  zeroCanSave$,
+  zeroFormValues$,
   zeroOnboardingStep$,
   zeroOnboardingError$,
   zeroSaving$,
@@ -270,5 +274,75 @@ describe("completeZeroOnboarding$", () => {
 
     expect(context.store.get(zeroOnboardingError$)).toBeNull();
     expect(context.store.get(zeroOnboardingStep$)).toBe("done");
+  });
+});
+
+describe("zero-onboarding vm0 no-secret provider", () => {
+  it("should allow saving without a secret for vm0 provider", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    // Switch to vm0 provider type
+    context.store.set(setZeroProviderType$, "vm0");
+
+    // zeroCanSave$ should return true without entering any secret
+    const canSave = context.store.get(zeroCanSave$);
+    expect(canSave).toBeTruthy();
+  });
+
+  it("should initialize useDefaultModel to false when provider has a default model", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    // Switch to vm0 provider — vm0 has a default model (claude-sonnet-4.6)
+    context.store.set(setZeroProviderType$, "vm0");
+
+    const formValues = context.store.get(zeroFormValues$);
+    expect(formValues.useDefaultModel).toBeFalsy();
+    expect(formValues.selectedModel).toBe("claude-sonnet-4.6");
+  });
+
+  it("should not include secret in request when saving vm0 provider", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.put("*/api/org/model-providers", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            provider: {
+              id: "test-id",
+              type: "vm0",
+              framework: "claude-code",
+              secretName: null,
+              authMethod: null,
+              secretNames: null,
+              isDefault: true,
+              selectedModel: (capturedBody.selectedModel as string) ?? null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    // Switch to vm0 provider type
+    context.store.set(setZeroProviderType$, "vm0");
+
+    // Save the model provider
+    await context.store.set(saveZeroModelProvider$, context.signal);
+
+    // Should have sent the request
+    expect(capturedBody).not.toBeNull();
+    expect(capturedBody!.type).toBe("vm0");
+
+    // Should NOT include a secret field
+    expect(capturedBody).not.toHaveProperty("secret");
+
+    // Should include the pre-selected model
+    expect(capturedBody!.selectedModel).toBe("claude-sonnet-4.6");
   });
 });
