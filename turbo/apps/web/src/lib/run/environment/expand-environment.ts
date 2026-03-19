@@ -125,9 +125,11 @@ export function expandEnvironmentFromCompose(
     );
   }
 
+  // Model provider firewalls first (lower priority), compose firewalls second (higher priority).
+  // Later entries override earlier in buildFirewallPlaceholders, so compose wins on conflict.
   const firewallPlaceholders = buildFirewallPlaceholders([
-    ...(firstAgent?.experimental_firewalls ?? []),
     ...(additionalFirewalls ?? []),
+    ...(firstAgent?.experimental_firewalls ?? []),
   ]);
 
   // Process secrets if needed

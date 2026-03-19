@@ -868,7 +868,6 @@ describe("createRun()", () => {
       // Model provider token is replaced with placeholder (firewall gateway protects it)
       expect(job!.executionContext.environment).toMatchObject({
         ANTHROPIC_AUTH_TOKEN: "sk-vm0placeholder000000000000000000",
-
         ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
         ANTHROPIC_API_KEY: "",
         ANTHROPIC_MODEL: "anthropic/claude-sonnet-4.6",
