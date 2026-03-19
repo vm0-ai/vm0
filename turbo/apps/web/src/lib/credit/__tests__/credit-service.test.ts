@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { clerkClient } from "@clerk/nextjs/server";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -10,17 +9,11 @@ import {
   insertTestCreditPricing,
   insertTestCreditUsage,
   findTestCreditUsage,
-  getOrgCacheEntry,
+  getOrgCredits,
 } from "../../../__tests__/api-test-helpers";
 import { processOrgCredits, processStaleCredits } from "../credit-service";
 
 const context = testContext();
-
-type ClerkOrg = Awaited<
-  ReturnType<
-    Awaited<ReturnType<typeof clerkClient>>["organizations"]["getOrganization"]
-  >
->;
 
 describe("credit-service", () => {
   let user: UserContext;
@@ -34,9 +27,9 @@ describe("credit-service", () => {
     it("no-ops when no pending records exist", async () => {
       await processOrgCredits(user.orgId);
 
-      // Verify no Clerk calls were made
-      const client = await clerkClient();
-      expect(client.organizations.getOrganization).not.toHaveBeenCalled();
+      // No org row should be created when nothing to process
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBeNull();
     });
 
     it("processes a single pending record with correct calculation", async () => {
@@ -55,13 +48,6 @@ describe("credit-service", () => {
         numEvents: 2,
       });
 
-      // Mock Clerk to return current balance
-      const client = await clerkClient();
-      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-        id: user.orgId,
-        privateMetadata: { credits: 10000 },
-      } as unknown as ClerkOrg);
-
       await processOrgCredits(user.orgId);
 
       // Verify calculation (purely token-based):
@@ -73,16 +59,9 @@ describe("credit-service", () => {
       expect(record!.creditsCharged).toBe(2);
       expect(record!.processedAt).toBeInstanceOf(Date);
 
-      // Verify Clerk was called with correct balance deduction
-      expect(
-        client.organizations.updateOrganizationMetadata,
-      ).toHaveBeenCalledWith(user.orgId, {
-        privateMetadata: { credits: 10000 - 2 },
-      });
-
-      // Verify org cache was invalidated
-      const cacheEntry = await getOrgCacheEntry(user.orgId);
-      expect(cacheEntry).toBeNull();
+      // Verify credits were deducted in org table
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(-2);
     });
 
     it("processes multiple pending records in a batch", async () => {
@@ -107,12 +86,6 @@ describe("credit-service", () => {
         numEvents: 2,
       });
 
-      const client = await clerkClient();
-      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-        id: user.orgId,
-        privateMetadata: { credits: 50000 },
-      } as unknown as ClerkOrg);
-
       await processOrgCredits(user.orgId);
 
       // Record 1: ceil(100*1M/1M) + ceil(100*1M/1M) = 100 + 100 = 200
@@ -125,12 +98,9 @@ describe("credit-service", () => {
       expect(record2!.status).toBe("processed");
       expect(record2!.creditsCharged).toBe(400);
 
-      // Total: 200 + 400 = 600
-      expect(
-        client.organizations.updateOrganizationMetadata,
-      ).toHaveBeenCalledWith(user.orgId, {
-        privateMetadata: { credits: 50000 - 600 },
-      });
+      // Total: 200 + 400 = 600, deducted from org
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(-600);
     });
 
     it("skips already-processed records", async () => {
@@ -151,9 +121,9 @@ describe("credit-service", () => {
       expect(record!.status).toBe("processed");
       expect(record!.creditsCharged).toBe(500);
 
-      // No Clerk calls since nothing to process
-      const client = await clerkClient();
-      expect(client.organizations.getOrganization).not.toHaveBeenCalled();
+      // No org row should be created since nothing to process
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBeNull();
     });
 
     it("marks records with no matching pricing as processed with zero charge", async () => {
@@ -162,12 +132,6 @@ describe("credit-service", () => {
         userId: user.userId,
         model: "unknown-model",
       });
-
-      const client = await clerkClient();
-      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-        id: user.orgId,
-        privateMetadata: { credits: 10000 },
-      } as unknown as ClerkOrg);
 
       await processOrgCredits(user.orgId);
 
@@ -198,12 +162,6 @@ describe("credit-service", () => {
         numEvents: 2,
       });
 
-      const client = await clerkClient();
-      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-        id: user.orgId,
-        privateMetadata: { credits: 10000 },
-      } as unknown as ClerkOrg);
-
       await processOrgCredits(user.orgId);
 
       // Verify calculation:
@@ -216,11 +174,8 @@ describe("credit-service", () => {
       expect(record!.status).toBe("processed");
       expect(record!.creditsCharged).toBe(6);
 
-      expect(
-        client.organizations.updateOrganizationMetadata,
-      ).toHaveBeenCalledWith(user.orgId, {
-        privateMetadata: { credits: 10000 - 6 },
-      });
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(-6);
     });
 
     it("charges only when model+provider matches pricing", async () => {
@@ -251,12 +206,6 @@ describe("credit-service", () => {
         numEvents: 1,
       });
 
-      const client = await clerkClient();
-      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-        id: user.orgId,
-        privateMetadata: { credits: 50000 },
-      } as unknown as ClerkOrg);
-
       await processOrgCredits(user.orgId);
 
       const charged = await findTestCreditUsage(chargedId);
@@ -267,12 +216,9 @@ describe("credit-service", () => {
       expect(free!.status).toBe("processed");
       expect(free!.creditsCharged).toBe(0);
 
-      // Clerk deduction should only include the charged record (200 credits)
-      expect(
-        client.organizations.updateOrganizationMetadata,
-      ).toHaveBeenCalledWith(user.orgId, {
-        privateMetadata: { credits: 50000 - 200 },
-      });
+      // Only charged record (200 credits) should be deducted
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(-200);
     });
 
     it("concurrent calls serialize via advisory lock (no double-processing)", async () => {
@@ -289,12 +235,6 @@ describe("credit-service", () => {
         numEvents: 0,
       });
 
-      const client = await clerkClient();
-      vi.mocked(client.organizations.getOrganization).mockResolvedValue({
-        id: user.orgId,
-        privateMetadata: { credits: 10000 },
-      } as unknown as ClerkOrg);
-
       // Run two concurrent calls
       await Promise.all([
         processOrgCredits(user.orgId),
@@ -306,10 +246,9 @@ describe("credit-service", () => {
       expect(record!.status).toBe("processed");
       expect(record!.creditsCharged).toBe(200);
 
-      // Clerk should have been called exactly once (second call is a no-op)
-      expect(
-        client.organizations.updateOrganizationMetadata,
-      ).toHaveBeenCalledTimes(1);
+      // Credits should be deducted exactly once
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(-200);
     });
   });
 
@@ -339,12 +278,6 @@ describe("credit-service", () => {
         outputTokens: 0,
         numEvents: 0,
       });
-
-      const client = await clerkClient();
-      vi.mocked(client.organizations.getOrganization).mockResolvedValue({
-        id: "any",
-        privateMetadata: { credits: 99999 },
-      } as unknown as ClerkOrg);
 
       const count = await processStaleCredits();
 

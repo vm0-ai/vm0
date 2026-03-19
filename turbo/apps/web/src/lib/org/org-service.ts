@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireOrgMember } from "./org-member-service";
 import {
@@ -138,4 +139,26 @@ export async function validateRunnerGroupOrg(
   if (!membership) {
     throw forbidden(`Runner group org "${orgSlug}" does not match your org`);
   }
+}
+
+/**
+ * Atomically deduct credits from an org's balance.
+ *
+ * Uses INSERT ON CONFLICT UPDATE so the row is created with `-amount`
+ * if it doesn't exist, or decremented if it does.
+ *
+ * Accepts a Drizzle transaction so the deduction can be part of
+ * a larger atomic operation (e.g. credit processing).
+ */
+export async function deductOrgCredits(
+  tx: Parameters<Parameters<typeof globalThis.services.db.transaction>[0]>[0],
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  await tx.execute(
+    sql`INSERT INTO org (org_id, credits, created_at, updated_at)
+        VALUES (${orgId}, ${-amount}, now(), now())
+        ON CONFLICT (org_id)
+        DO UPDATE SET credits = org.credits - ${amount}, updated_at = now()`,
+  );
 }

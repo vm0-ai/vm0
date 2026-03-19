@@ -12,7 +12,6 @@ interface OrgData {
   orgId: string;
   slug: string;
   tier: string;
-  credits: number;
 }
 
 /**
@@ -37,7 +36,6 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
       orgId,
       slug: cached.slug,
       tier: cached.tier,
-      credits: cached.credits,
     };
   }
 
@@ -58,25 +56,19 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
   const tier =
     typeof rawTier === "string" && rawTier.length > 0 ? rawTier : "free";
 
-  const privateMetadata = org.privateMetadata as
-    | Record<string, unknown>
-    | undefined;
-  const rawCredits = privateMetadata?.credits;
-  const credits = typeof rawCredits === "number" ? rawCredits : 0;
-
   // 3. Upsert cache
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId, slug, tier, credits, cachedAt: now })
+    .values({ orgId, slug, tier, cachedAt: now })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, tier, credits, cachedAt: now },
+      set: { slug, tier, cachedAt: now },
     });
 
-  log.debug("org cache refreshed", { orgId, slug, tier, credits });
+  log.debug("org cache refreshed", { orgId, slug, tier });
 
-  return { orgId, slug, tier, credits };
+  return { orgId, slug, tier };
 }
 
 /**
@@ -113,7 +105,6 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
       orgId: cached.orgId,
       slug: cached.slug,
       tier: cached.tier,
-      credits: cached.credits,
     };
   }
 
@@ -138,28 +129,21 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   const tier =
     typeof rawTier === "string" && rawTier.length > 0 ? rawTier : "free";
 
-  const privateMetadata = org.privateMetadata as
-    | Record<string, unknown>
-    | undefined;
-  const rawCredits = privateMetadata?.credits;
-  const credits = typeof rawCredits === "number" ? rawCredits : 0;
-
   // 3. Upsert cache
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId: org.id, slug: org.slug, tier, credits, cachedAt: now })
+    .values({ orgId: org.id, slug: org.slug, tier, cachedAt: now })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: org.slug, tier, credits, cachedAt: now },
+      set: { slug: org.slug, tier, cachedAt: now },
     });
 
   log.debug("org cache refreshed (by slug)", {
     orgId: org.id,
     slug: org.slug,
     tier,
-    credits,
   });
 
-  return { orgId: org.id, slug: org.slug, tier, credits };
+  return { orgId: org.id, slug: org.slug, tier };
 }

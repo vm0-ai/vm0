@@ -40,6 +40,7 @@ import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
+import { org } from "../db/schema/org";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
 import { zeroAgents } from "../db/schema/zero-agent";
@@ -337,12 +338,11 @@ export async function createTestOrg(
       orgId,
       slug,
       tier: "free",
-      credits: 0,
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, tier: "free", credits: 0, cachedAt: new Date() },
+      set: { slug, tier: "free", cachedAt: new Date() },
     });
 
   return { id: orgId, slug };
@@ -2617,12 +2617,11 @@ export async function createTestTelegramInstallation(options?: {
       orgId,
       slug: orgSlug,
       tier: "free",
-      credits: 0,
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: orgSlug, tier: "free", credits: 0, cachedAt: new Date() },
+      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
     });
 
   const [compose] = await globalThis.services.db
@@ -2868,7 +2867,6 @@ export async function insertOrgCacheEntry(entry: {
   orgId: string;
   slug: string;
   tier?: string;
-  credits?: number;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
@@ -2878,7 +2876,6 @@ export async function insertOrgCacheEntry(entry: {
       orgId: entry.orgId,
       slug: entry.slug,
       tier: entry.tier ?? "free",
-      credits: entry.credits ?? 0,
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
@@ -2886,7 +2883,6 @@ export async function insertOrgCacheEntry(entry: {
       set: {
         slug: entry.slug,
         tier: entry.tier ?? "free",
-        credits: entry.credits ?? 0,
         cachedAt: entry.cachedAt ?? new Date(),
       },
     });
@@ -2912,6 +2908,23 @@ export async function getOrgCacheEntry(orgId: string) {
     .where(eq(orgCache.orgId, orgId))
     .limit(1);
   return row ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// org table helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the credit balance for an org from the `org` table.
+ * Returns null if no row exists.
+ */
+export async function getOrgCredits(orgId: string): Promise<number | null> {
+  const [row] = await globalThis.services.db
+    .select({ credits: org.credits })
+    .from(org)
+    .where(eq(org.orgId, orgId))
+    .limit(1);
+  return row?.credits ?? null;
 }
 
 /**

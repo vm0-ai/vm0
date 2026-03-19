@@ -1,33 +1,26 @@
 import { eq, and, sql } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { creditPricing } from "../../db/schema/credit-pricing";
-import { invalidateOrgCache } from "../org/org-cache-service";
+import { deductOrgCredits } from "../org/org-service";
 import { logger } from "../logger";
 
 const log = logger("service:credit");
 
-interface CreditAtomicResult {
-  totalCredits: number;
-  processedCount: number;
-}
-
 /**
- * Atomically process pending credit_usage records for an org.
+ * Atomically process pending credit_usage records for an org
+ * and deduct the total from the org's credit balance.
  *
  * Within a single advisory-locked transaction:
  * 1. Acquire org-level lock (independent from run queue lock)
  * 2. Fetch pending records and pricing
  * 3. Calculate and update each record
  * 4. Mark records with no matching pricing as processed with zero charge
- *
- * Returns the total credits charged and count, or undefined if nothing to process.
+ * 5. Deduct total credits from the org table
  */
-async function creditAtomic(
-  db: typeof globalThis.services.db,
-  orgId: string,
-): Promise<CreditAtomicResult | undefined> {
-  return db.transaction(async (tx) => {
+export async function processOrgCredits(orgId: string): Promise<void> {
+  const db = globalThis.services.db;
+
+  const result = await db.transaction(async (tx) => {
     // Org-level lock independent from run queue (which uses hashtext(orgId))
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext('credit_' || ${orgId}))`,
@@ -110,49 +103,20 @@ async function creditAtomic(
       processedCount++;
     }
 
+    // Deduct total credits from the org table within the same transaction
+    if (totalCredits > 0) {
+      await deductOrgCredits(tx, orgId, totalCredits);
+    }
+
     return { totalCredits, processedCount };
   });
-}
 
-/**
- * Process pending credit records for an org and deduct from Clerk balance.
- *
- * 1. Atomically mark pending records as processed (under advisory lock)
- * 2. Read current Clerk balance and deduct
- * 3. Invalidate org_cache so next read re-fetches
- */
-export async function processOrgCredits(orgId: string): Promise<void> {
-  const result = await creditAtomic(globalThis.services.db, orgId);
   if (!result) return;
-
-  const { totalCredits, processedCount } = result;
-
-  // Read current balance from Clerk (outside transaction)
-  const client = await clerkClient();
-  const org = await client.organizations.getOrganization({
-    organizationId: orgId,
-  });
-
-  const privateMetadata = org.privateMetadata as
-    | Record<string, unknown>
-    | undefined;
-  const currentCredits =
-    typeof privateMetadata?.credits === "number" ? privateMetadata.credits : 0;
-  const newBalance = currentCredits - totalCredits;
-
-  // Write updated balance back to Clerk
-  await client.organizations.updateOrganizationMetadata(orgId, {
-    privateMetadata: { credits: newBalance },
-  });
-
-  // Invalidate cache so next read re-fetches from Clerk
-  await invalidateOrgCache(orgId);
 
   log.debug("Processed org credits", {
     orgId,
-    processedCount,
-    totalCredits,
-    newBalance,
+    processedCount: result.processedCount,
+    totalCredits: result.totalCredits,
   });
 }
 

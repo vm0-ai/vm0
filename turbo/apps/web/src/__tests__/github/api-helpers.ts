@@ -59,12 +59,11 @@ export async function givenGitHubInstallation(
       orgId,
       slug: orgSlug,
       tier: "free",
-      credits: 0,
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: orgSlug, tier: "free", credits: 0, cachedAt: new Date() },
+      set: { slug: orgSlug, tier: "free", cachedAt: new Date() },
     });
 
   // Create compose

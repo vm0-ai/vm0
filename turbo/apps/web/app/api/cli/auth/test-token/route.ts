@@ -95,7 +95,6 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
       orgId: sentinelOrgId,
       slug,
       tier: "free",
-      credits: 0,
       cachedAt: farFuture,
     })
     .onConflictDoNothing();
