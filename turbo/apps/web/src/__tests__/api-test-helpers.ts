@@ -2948,6 +2948,14 @@ export async function ensureOrgRow(orgId: string): Promise<void> {
 }
 
 /**
+ * Delete an org row from the `org` table.
+ * Useful for testing scenarios where the org row does not exist.
+ */
+export async function deleteOrgRow(orgId: string): Promise<void> {
+  await globalThis.services.db.delete(org).where(eq(org.orgId, orgId));
+}
+
+/**
  * Update the tier for an org in the `org` table.
  */
 export async function updateOrgTier(

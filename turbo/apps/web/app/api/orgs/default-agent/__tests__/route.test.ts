@@ -4,6 +4,7 @@ import {
   createTestRequest,
   createTestCompose,
   deleteTestCompose,
+  deleteOrgRow,
   getOrgDefaultAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -160,5 +161,24 @@ describe("PUT /api/orgs/default-agent", () => {
 
     const data = await response.json();
     expect(data.agentComposeId).toBe(compose.composeId);
+  });
+
+  it("should succeed when org row does not exist in org table", async () => {
+    const { orgId } = await context.setupUser();
+    const compose = await createTestCompose("test-agent");
+
+    // Remove the org row to simulate a free-tier org that never triggered lazy migration
+    await deleteOrgRow(orgId);
+
+    // The upsert should create the org row and set the default agent
+    const response = await putDefaultAgent(undefined, compose.composeId);
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.agentComposeId).toBe(compose.composeId);
+
+    // Verify the value was persisted to the org table
+    const storedId = await getOrgDefaultAgent(orgId);
+    expect(storedId).toBe(compose.composeId);
   });
 });
