@@ -24,6 +24,7 @@ import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
 import { ZeroSkillsTab } from "./zero-skills-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
+
 import { TONE_OPTIONS, type Tone } from "./zero-tone-constants.ts";
 import type { ScheduleEntry } from "./zero-schedule-card.tsx";
 import {
@@ -237,7 +238,7 @@ function extractAgentFields(
 // Tab wrappers — resolve signals into shared component props
 // ---------------------------------------------------------------------------
 
-function JobSkillsTab() {
+function JobSkillsTab({ agentName }: { agentName: string }) {
   const addedSkills = useGet(zeroJobAddedSkills$);
   const skillsDirty = useGet(zeroJobSkillsDirty$);
   const skillsSaving = useGet(zeroJobSettingsSaving$);
@@ -252,6 +253,7 @@ function JobSkillsTab() {
       addedSkillsLoading={false}
       skillsDirty={skillsDirty}
       skillsSaving={skillsSaving}
+      agentName={agentName}
       onAddSkill={addSkill}
       onRemoveSkill={removeSkill}
       onSaveSkills={() => detach(saveSkills(), Reason.DomCallback)}
@@ -456,8 +458,8 @@ export function ZeroJobDetailPage({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    pathname="/:tab"
-                    options={{ pathParams: { tab: "chat" } }}
+                    pathname="/talk/:name"
+                    options={{ pathParams: { name: agentName } }}
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
                   >
                     <IconMessageCircle size={14} stroke={1.5} />
@@ -477,7 +479,7 @@ export function ZeroJobDetailPage({
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        {activeTab === "connectors" && <JobSkillsTab />}
+        {activeTab === "connectors" && <JobSkillsTab agentName={displayName} />}
 
         {activeTab === "schedule" && <JobScheduleTab agentName={displayName} />}
 

@@ -5,6 +5,7 @@ import {
   text,
   bigint,
   integer,
+  numeric,
   timestamp,
   index,
   uniqueIndex,
@@ -35,6 +36,16 @@ export const creditUsage = pgTable(
     outputTokens: bigint("output_tokens", { mode: "number" })
       .notNull()
       .default(0),
+    cacheReadInputTokens: bigint("cache_read_input_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    cacheCreationInputTokens: bigint("cache_creation_input_tokens", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    webSearchRequests: integer("web_search_requests").notNull().default(0),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 8 }),
     numEvents: integer("num_events").notNull().default(0),
     creditsCharged: bigint("credits_charged", { mode: "number" }),
     status: varchar("status", { length: 20 }).notNull().default("pending"),

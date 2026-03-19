@@ -178,6 +178,51 @@ describe("credit-service", () => {
       expect(record!.processedAt).toBeInstanceOf(Date);
     });
 
+    it("includes cache tokens in credit calculation", async () => {
+      // Set up pricing with cache token prices
+      await insertTestCreditPricing("gpt-4", {
+        inputTokenPrice: 100,
+        outputTokenPrice: 200,
+        cacheReadTokenPrice: 10,
+        cacheCreationTokenPrice: 150,
+      });
+
+      // Insert usage with cache tokens
+      const usageId = await insertTestCreditUsage(user.orgId, {
+        userId: user.userId,
+        model: "gpt-4",
+        inputTokens: 1000,
+        outputTokens: 500,
+        cacheReadInputTokens: 6000,
+        cacheCreationInputTokens: 18000,
+        numEvents: 2,
+      });
+
+      const client = await clerkClient();
+      vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
+        id: user.orgId,
+        privateMetadata: { credits: 10000 },
+      } as unknown as ClerkOrg);
+
+      await processOrgCredits(user.orgId);
+
+      // Verify calculation:
+      // input: ceil(1000 * 100 / 1_000_000) = ceil(0.1) = 1
+      // output: ceil(500 * 200 / 1_000_000) = ceil(0.1) = 1
+      // cacheRead: ceil(6000 * 10 / 1_000_000) = ceil(0.06) = 1
+      // cacheCreation: ceil(18000 * 150 / 1_000_000) = ceil(2.7) = 3
+      // total: 1 + 1 + 1 + 3 = 6
+      const record = await findTestCreditUsage(usageId);
+      expect(record!.status).toBe("processed");
+      expect(record!.creditsCharged).toBe(6);
+
+      expect(
+        client.organizations.updateOrganizationMetadata,
+      ).toHaveBeenCalledWith(user.orgId, {
+        privateMetadata: { credits: 10000 - 6 },
+      });
+    });
+
     it("charges only when model+provider matches pricing", async () => {
       // Set up pricing for gpt-4 with anthropic-api-key provider
       await insertTestCreditPricing("gpt-4", {

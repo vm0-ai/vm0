@@ -1,6 +1,7 @@
 use crate::error::{RunnerError, RunnerResult};
 
-const EMBEDDED_DOCKERFILE_DEFAULT: &str = include_str!("../scripts/rootfs.Dockerfile");
+const EMBEDDED_DOCKERFILE_DEFAULT: &str = include_str!("../scripts/rootfs-default.Dockerfile");
+const EMBEDDED_DOCKERFILE_BROWSER: &str = include_str!("../scripts/rootfs-browser.Dockerfile");
 
 /// A platform-defined profile specifying rootfs image and VM resources.
 pub struct ProfileDef {
@@ -22,12 +23,17 @@ pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
         memory_mb: 2048,
     };
 
-    // Phase 1: only vm0/default is buildable. vm0/browser will be added
-    // in PR 5 when rootfs-browser.Dockerfile is created.
+    static BROWSER: ProfileDef = ProfileDef {
+        dockerfile: EMBEDDED_DOCKERFILE_BROWSER,
+        vcpu: 4,
+        memory_mb: 4096,
+    };
+
     match name {
         "vm0/default" => Ok(&DEFAULT),
+        "vm0/browser" => Ok(&BROWSER),
         _ => Err(RunnerError::Config(format!(
-            "unknown profile: {name}. available profiles: vm0/default"
+            "unknown profile: {name}. available profiles: vm0/default, vm0/browser"
         ))),
     }
 }
@@ -67,8 +73,15 @@ mod tests {
     }
 
     #[test]
+    fn get_browser_profile() {
+        let def = get("vm0/browser").unwrap();
+        assert_eq!(def.vcpu, 4);
+        assert_eq!(def.memory_mb, 4096);
+        assert!(!def.dockerfile.is_empty());
+    }
+
+    #[test]
     fn get_unknown_profile_fails() {
-        assert!(get("vm0/browser").is_err());
         assert!(get("unknown").is_err());
     }
 

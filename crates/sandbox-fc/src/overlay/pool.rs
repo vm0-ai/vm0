@@ -626,4 +626,42 @@ mod tests {
             "expected NotInitialized, got {result:?}"
         );
     }
+
+    #[tokio::test]
+    async fn separate_subdirs_isolate_pools() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        // Create two pools in sibling subdirectories under the same parent.
+        let dir_a = tmp.path().join("pool-a");
+        let dir_b = tmp.path().join("pool-b");
+
+        let mut pool_a = OverlayPool::create(OverlayPoolConfig {
+            pool_dir: dir_a.clone(),
+            creator: Box::new(TestCreator),
+        })
+        .await
+        .expect("create pool_a");
+        assert_eq!(pool_a.available_count(), BUFFER_SIZE);
+
+        // Creating pool_b must NOT delete pool_a's files.
+        let mut pool_b = OverlayPool::create(OverlayPoolConfig {
+            pool_dir: dir_b.clone(),
+            creator: Box::new(TestCreator),
+        })
+        .await
+        .expect("create pool_b");
+        assert_eq!(pool_b.available_count(), BUFFER_SIZE);
+
+        // pool_a files still exist and acquirable.
+        let path_a = pool_a.acquire().await.expect("acquire from pool_a");
+        assert!(path_a.exists());
+        assert!(path_a.starts_with(&dir_a));
+
+        let path_b = pool_b.acquire().await.expect("acquire from pool_b");
+        assert!(path_b.exists());
+        assert!(path_b.starts_with(&dir_b));
+
+        pool_a.cleanup().await;
+        pool_b.cleanup().await;
+    }
 }

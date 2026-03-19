@@ -505,6 +505,7 @@ export function AddConnectionDialog({
   excludeTypes,
   onConnectSuccess,
   onAdd,
+  agentName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -512,6 +513,7 @@ export function AddConnectionDialog({
   excludeTypes?: ReadonlySet<string>;
   onConnectSuccess?: (type: ConnectorType) => void;
   onAdd?: (type: ConnectorType) => void;
+  agentName?: string;
 }) {
   const isZero = variant === "zero";
 
@@ -523,6 +525,7 @@ export function AddConnectionDialog({
         excludeTypes={excludeTypes}
         onConnectSuccess={onConnectSuccess}
         onAdd={onAdd}
+        agentName={agentName}
       />
     );
   }
@@ -612,20 +615,25 @@ function ZeroAddConnectionDialog({
   excludeTypes,
   onConnectSuccess,
   onAdd,
+  agentName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   excludeTypes?: ReadonlySet<string>;
   onConnectSuccess?: (type: ConnectorType) => void;
   onAdd?: (type: ConnectorType) => void;
+  agentName?: string;
 }) {
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const search$ = useCCState("");
   const search = useGet(search$);
   const setSearch = useSet(search$);
+  const tab$ = useCCState<"not-connected" | "connected">("not-connected");
+  const tab = useGet(tab$);
+  const setTab = useSet(tab$);
   const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
-  const filteredTypes = connectorTypes
+  const baseFiltered = connectorTypes
     ?.filter((item) => !excludeTypes || !excludeTypes.has(item.type))
     .filter((item) => {
       if (!search.trim()) {
@@ -639,37 +647,67 @@ function ZeroAddConnectionDialog({
       );
     });
 
+  const notConnected = baseFiltered?.filter((item) => !item.connected);
+  const connected = baseFiltered?.filter((item) => item.connected);
+  const filteredTypes = tab === "connected" ? connected : notConnected;
+
+  const notConnectedCount =
+    connectorTypes
+      ?.filter((item) => !excludeTypes || !excludeTypes.has(item.type))
+      .filter((item) => !item.connected).length ?? 0;
+  const connectedCount =
+    connectorTypes
+      ?.filter((item) => !excludeTypes || !excludeTypes.has(item.type))
+      .filter((item) => item.connected).length ?? 0;
+
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => {
         if (!v) {
           setSearch("");
+          setTab("not-connected");
         }
         onOpenChange(v);
       }}
     >
       <DialogContent className="max-w-2xl h-[85vh] flex flex-col overflow-hidden pr-0 pb-0 zero-app">
         <DialogHeader>
-          <DialogTitle>Add connector</DialogTitle>
+          <DialogTitle>Add connector to {agentName ?? "agent"}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground pr-6">
           Connectors let your agents access and interact with third-party
           services.
         </p>
-        <div className="relative pr-6">
-          <IconSearch
-            size={16}
-            stroke={1.5}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search connectors..."
-            className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
+        <div className="flex items-center gap-3 pr-6">
+          <div className="relative flex-1">
+            <IconSearch
+              size={16}
+              stroke={1.5}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setTab(v as "not-connected" | "connected")}
+          >
+            <TabsList className="w-fit">
+              <TabsTrigger value="not-connected">
+                Not connected
+                {notConnectedCount > 0 ? ` (${notConnectedCount})` : ""}
+              </TabsTrigger>
+              <TabsTrigger value="connected">
+                Connected{connectedCount > 0 ? ` (${connectedCount})` : ""}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="pt-4 pb-6 pr-6">

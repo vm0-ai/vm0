@@ -85,29 +85,34 @@ cmd_deploy() {
   log "Running setup..."
   ssh_cmd "$RUNNER_BIN setup"
 
-  # Clean up old rootfs/snapshots
+  # Clean up old rootfs/snapshots (2 profiles × 3 deploys = 6)
   ssh_cmd "$RUNNER_BIN gc --keep-latest 6"
 
-  # Build rootfs + snapshot
-  log "Building rootfs and snapshot..."
-  BUILD_LOG=$(mktemp)
-  ssh_cmd "$RUNNER_BIN build --profile vm0/default" | tee "$BUILD_LOG"
-  ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
-  SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
-  rm -f "$BUILD_LOG"
+  # Build rootfs + snapshot for all profiles
+  PROFILES=("vm0/default" "vm0/browser")
+  CONFIG_ARGS=""
 
-  if [[ -z "$ROOTFS_HASH" || -z "$SNAPSHOT_HASH" ]]; then
-    log "Error: failed to extract build hashes"
-    exit 1
-  fi
-  log "Hashes: rootfs=$ROOTFS_HASH snapshot=$SNAPSHOT_HASH"
+  for PROFILE in "${PROFILES[@]}"; do
+    log "Building $PROFILE..."
+    BUILD_LOG=$(mktemp)
+    ssh_cmd "$RUNNER_BIN build --profile $PROFILE" | tee "$BUILD_LOG"
+    ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
+    SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
+    rm -f "$BUILD_LOG"
+
+    if [[ -z "$ROOTFS_HASH" || -z "$SNAPSHOT_HASH" ]]; then
+      log "Error: failed to extract build hashes for $PROFILE"
+      exit 1
+    fi
+    log "$PROFILE: rootfs=$ROOTFS_HASH snapshot=$SNAPSHOT_HASH"
+
+    CONFIG_ARGS+=" --profile $PROFILE --rootfs-hash $ROOTFS_HASH --snapshot-hash $SNAPSHOT_HASH"
+  done
 
   # Generate config
   log "Generating config..."
   ssh_cmd "$RUNNER_BIN config \
-    --profile vm0/default \
-    --rootfs-hash $ROOTFS_HASH \
-    --snapshot-hash $SNAPSHOT_HASH \
+    $CONFIG_ARGS \
     --name $RUNNER_NAME \
     --group $RUNNER_GROUP \
     --runner-dirname $RUNNER_NAME \

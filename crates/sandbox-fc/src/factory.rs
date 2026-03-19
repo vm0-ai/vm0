@@ -206,7 +206,7 @@ impl SandboxFactory for FirecrackerFactory {
 
         let t = std::time::Instant::now();
         let overlay_pool = match OverlayPool::create(OverlayPoolConfig {
-            pool_dir: self.factory_paths.overlays(),
+            pool_dir: self.factory_paths.overlays(&self.config.profile),
             creator: overlay_creator,
         })
         .await

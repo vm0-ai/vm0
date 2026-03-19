@@ -927,7 +927,7 @@ export function ZeroScheduleCard({
           }
         }}
       >
-        <DialogContent className="sm:max-w-md gap-6">
+        <DialogContent className="sm:max-w-lg gap-6">
           <DialogHeader>
             <DialogTitle>
               {editingScheduleId ? "Edit schedule" : "Add schedule"}
@@ -946,8 +946,8 @@ export function ZeroScheduleCard({
                 value={newSchedulePrompt}
                 onChange={(e) => setNewSchedulePrompt(e.target.value)}
                 placeholder="Describe your task and instruction"
-                rows={3}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[72px]"
+                rows={5}
+                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
               />
             </div>
             <div className="flex flex-col gap-2">

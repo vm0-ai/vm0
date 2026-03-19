@@ -231,7 +231,9 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         (provider, group)
     } else {
         let group_name = group.clone();
-        let provider = ApiProvider::new(http.clone(), server.token, group, cancel.clone()).await;
+        let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
+        let provider =
+            ApiProvider::new(http.clone(), server.token, group, profiles, cancel.clone()).await;
         (provider, group_name)
     };
 
@@ -314,6 +316,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let fc_config = config::RunnerConfig::build_firecracker_config(
             &firecracker,
             &base_dir,
+            profile_name,
             profile_config,
             &home,
             Some(proxy_port),

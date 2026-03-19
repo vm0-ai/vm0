@@ -31,11 +31,9 @@ function resolveRunnerGroup(agentCompose: unknown): string | null {
 }
 
 /**
- * Known profiles (hardcoded for Phase 1).
- * Add "vm0/browser" here when rootfs-browser.Dockerfile lands (PR 5).
- * Must stay in sync with Rust: crates/runner/src/profile.rs
+ * Known profiles. Must stay in sync with Rust: crates/runner/src/profile.rs
  */
-const KNOWN_PROFILES = [DEFAULT_PROFILE];
+const KNOWN_PROFILES = [DEFAULT_PROFILE, "vm0/browser"];
 
 /**
  * Resolve runner profile from agent compose config

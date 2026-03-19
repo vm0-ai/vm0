@@ -2305,6 +2305,7 @@ export async function findTestComposeWithOrg(composeId: string) {
  * @param versionId - The agent compose version ID
  * @param runnerGroup - The runner group (e.g., "org-slug/default")
  * @param contextOverrides - Optional overrides for the stored execution context
+ * @param runOverrides - Optional overrides for the agent run record (e.g., appendSystemPrompt)
  * @returns The created run ID
  */
 export async function createTestRunnerJob(
@@ -2312,6 +2313,7 @@ export async function createTestRunnerJob(
   versionId: string,
   runnerGroup: string,
   contextOverrides?: Partial<StoredExecutionContext>,
+  runOverrides?: { appendSystemPrompt?: string },
 ): Promise<{ runId: string }> {
   const orgId = await getOrgIdFromVersion(versionId);
 
@@ -2323,6 +2325,7 @@ export async function createTestRunnerJob(
       agentComposeVersionId: versionId,
       status: "pending",
       prompt: "test prompt",
+      ...runOverrides,
     })
     .returning({ id: agentRuns.id });
 
@@ -3271,20 +3274,36 @@ export async function insertTestCreditPricing(
   options?: {
     inputTokenPrice?: number;
     outputTokenPrice?: number;
+    cacheReadTokenPrice?: number;
+    cacheCreationTokenPrice?: number;
     modelProvider?: string;
   },
 ): Promise<void> {
   initServices();
   const inputTokenPrice = options?.inputTokenPrice ?? 100;
   const outputTokenPrice = options?.outputTokenPrice ?? 200;
+  const cacheReadTokenPrice = options?.cacheReadTokenPrice ?? 0;
+  const cacheCreationTokenPrice = options?.cacheCreationTokenPrice ?? 0;
   const modelProvider = options?.modelProvider ?? "";
 
   await globalThis.services.db
     .insert(creditPricing)
-    .values({ model, modelProvider, inputTokenPrice, outputTokenPrice })
+    .values({
+      model,
+      modelProvider,
+      inputTokenPrice,
+      outputTokenPrice,
+      cacheReadTokenPrice,
+      cacheCreationTokenPrice,
+    })
     .onConflictDoUpdate({
       target: [creditPricing.model, creditPricing.modelProvider],
-      set: { inputTokenPrice, outputTokenPrice },
+      set: {
+        inputTokenPrice,
+        outputTokenPrice,
+        cacheReadTokenPrice,
+        cacheCreationTokenPrice,
+      },
     });
 }
 
@@ -3302,6 +3321,10 @@ export async function insertTestCreditUsage(
     modelProvider?: string;
     inputTokens?: number;
     outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    webSearchRequests?: number;
+    costUsd?: string;
     numEvents?: number;
     status?: string;
     creditsCharged?: number;
@@ -3348,6 +3371,10 @@ export async function insertTestCreditUsage(
       modelProvider: options.modelProvider ?? "",
       inputTokens: options.inputTokens ?? 1000,
       outputTokens: options.outputTokens ?? 500,
+      cacheReadInputTokens: options.cacheReadInputTokens ?? 0,
+      cacheCreationInputTokens: options.cacheCreationInputTokens ?? 0,
+      webSearchRequests: options.webSearchRequests ?? 0,
+      costUsd: options.costUsd ?? null,
       numEvents: options.numEvents ?? 2,
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
@@ -3398,6 +3425,10 @@ export async function findTestCreditUsageByRunId(runId: string): Promise<
       modelProvider: string;
       inputTokens: number;
       outputTokens: number;
+      cacheReadInputTokens: number;
+      cacheCreationInputTokens: number;
+      webSearchRequests: number;
+      costUsd: string | null;
       numEvents: number;
       status: string;
       creditsCharged: number | null;
@@ -3415,6 +3446,10 @@ export async function findTestCreditUsageByRunId(runId: string): Promise<
       modelProvider: creditUsage.modelProvider,
       inputTokens: creditUsage.inputTokens,
       outputTokens: creditUsage.outputTokens,
+      cacheReadInputTokens: creditUsage.cacheReadInputTokens,
+      cacheCreationInputTokens: creditUsage.cacheCreationInputTokens,
+      webSearchRequests: creditUsage.webSearchRequests,
+      costUsd: creditUsage.costUsd,
       numEvents: creditUsage.numEvents,
       status: creditUsage.status,
       creditsCharged: creditUsage.creditsCharged,

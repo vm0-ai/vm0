@@ -205,6 +205,119 @@ jobs:
             console.log(`Deleted: ${deleted}`);
             console.log(`Skipped: ${skipped}`);
 
+  cleanup-metal-runners:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check if cleanup needed
+        id: check
+        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          SSH_KEY: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
+            echo "Metal secrets not available, skipping runner cleanup"
+            echo "should-cleanup=false" >> $GITHUB_OUTPUT
+          else
+            echo "should-cleanup=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Find recently closed PRs
+        if: steps.check.outputs.should-cleanup == 'true'
+        id: prs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+            // Fetch first page only — sorted by updated desc, 100 is enough for 2 days
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100
+            });
+            const recent = pulls
+              .filter(pr => pr.closed_at && pr.closed_at >= since)
+              .map(pr => pr.number);
+            console.log(`Found ${recent.length} PRs closed since ${since}: ${recent.join(', ')}`);
+            core.setOutput('numbers', JSON.stringify(recent));
+            core.setOutput('has-prs', recent.length > 0 ? 'true' : 'false');
+
+      - name: Install Ansible
+        if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
+        run: pip3 install ansible-core
+
+      - name: Setup SSH via Cloudflare Tunnel
+        if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Cleanup stale runners
+        if: steps.check.outputs.should-cleanup == 'true' && steps.prs.outputs.has-prs == 'true'
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+        run: |
+          cd ansible
+          CLEANED=0
+          FAILED=0
+
+          for PR_NUMBER in $(echo "$PR_NUMBERS" | jq -r '.[]'); do
+            echo "--- Cleaning up runners for PR #${PR_NUMBER} ---"
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[DRY-RUN] Would cleanup turbo runner pr-${PR_NUMBER}"
+              echo "[DRY-RUN] Would cleanup crates runner pr-${PR_NUMBER}-test"
+              CLEANED=$((CLEANED + 1))
+              continue
+            fi
+
+            PR_FAILED=0
+
+            # Cleanup turbo runner
+            if ! ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/cleanup-turbo-runner.yml \
+              -e "ansible_user=${METAL_USER}" \
+              -e "job_ref=pr-${PR_NUMBER}" \
+              -v; then
+              echo "::warning::Turbo runner cleanup failed for PR #${PR_NUMBER}"
+              PR_FAILED=1
+            fi
+
+            # Cleanup crates runner
+            if ! ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/cleanup-crates-runner.yml \
+              -e "ansible_user=${METAL_USER}" \
+              -e "job_ref=pr-${PR_NUMBER}-test" \
+              -v; then
+              echo "::warning::Crates runner cleanup failed for PR #${PR_NUMBER}"
+              PR_FAILED=1
+            fi
+
+            if [ "$PR_FAILED" -eq 1 ]; then
+              FAILED=$((FAILED + 1))
+            else
+              CLEANED=$((CLEANED + 1))
+            fi
+          done
+
+          echo ""
+          echo "=== Metal Runner Cleanup Summary ==="
+          echo "Cleaned: $CLEANED"
+          echo "Failures: $FAILED"
+
   cleanup-git-branches:
     runs-on: ubuntu-latest
     permissions:

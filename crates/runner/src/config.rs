@@ -205,11 +205,19 @@ impl RunnerConfig {
     /// using the standard content-addressed storage layout.
     pub fn firecracker_config(
         &self,
+        profile_name: &str,
         profile: &ProfileConfig,
         home: &HomePaths,
         proxy_port: Option<u16>,
     ) -> sandbox_fc::FirecrackerConfig {
-        Self::build_firecracker_config(&self.firecracker, &self.base_dir, profile, home, proxy_port)
+        Self::build_firecracker_config(
+            &self.firecracker,
+            &self.base_dir,
+            profile_name,
+            profile,
+            home,
+            proxy_port,
+        )
     }
 
     /// Build a `sandbox_fc::FirecrackerConfig` from components.
@@ -219,6 +227,7 @@ impl RunnerConfig {
     pub fn build_firecracker_config(
         firecracker: &FirecrackerConfig,
         base_dir: &Path,
+        profile_name: &str,
         profile: &ProfileConfig,
         home: &HomePaths,
         proxy_port: Option<u16>,
@@ -234,6 +243,7 @@ impl RunnerConfig {
             kernel_path: firecracker.kernel.clone(),
             rootfs_path: rootfs_paths.rootfs(),
             base_dir: base_dir.to_path_buf(),
+            profile: profile_name.to_string(),
             proxy_port,
             snapshot,
         }
@@ -647,7 +657,7 @@ profiles:
         };
 
         let profile = &config.profiles["vm0/default"];
-        let fc = config.firecracker_config(profile, &home, Some(8080));
+        let fc = config.firecracker_config("vm0/default", profile, &home, Some(8080));
 
         assert_eq!(fc.binary_path, dir.path().join("firecracker"));
         assert_eq!(fc.kernel_path, dir.path().join("vmlinux"));
@@ -655,6 +665,7 @@ profiles:
             fc.rootfs_path,
             home.rootfs_dir().join("abc123").join("rootfs.squashfs")
         );
+        assert_eq!(fc.profile, "vm0/default");
         assert_eq!(fc.proxy_port, Some(8080));
         assert!(fc.snapshot.is_some());
     }

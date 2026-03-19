@@ -143,8 +143,10 @@ jobs:
     outputs:
       host: ${{ steps.host.outputs.host }}
       job-ref: ${{ steps.host.outputs.job-ref }}
-      rootfs-hash: ${{ steps.build.outputs.rootfs-hash }}
-      snapshot-hash: ${{ steps.build.outputs.snapshot-hash }}
+      default-rootfs-hash: ${{ steps.build.outputs.default-rootfs-hash }}
+      default-snapshot-hash: ${{ steps.build.outputs.default-snapshot-hash }}
+      browser-rootfs-hash: ${{ steps.build.outputs.browser-rootfs-hash }}
+      browser-snapshot-hash: ${{ steps.build.outputs.browser-snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -239,24 +241,37 @@ jobs:
 
           # Run build (rootfs via Docker + snapshot via Firecracker)
           # Use tee to stream output in real-time while capturing for hash extraction
-          echo "=== Running build ==="
-          BUILD_LOG=$(mktemp)
-          ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG"
-          ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
-          SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
-          rm -f "$BUILD_LOG"
+          echo "=== Building vm0/default ==="
+          BUILD_LOG_DEFAULT=$(mktemp)
+          ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
+          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          rm -f "$BUILD_LOG_DEFAULT"
 
-          if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
-            echo "ERROR: Failed to extract build hashes"
+          echo "=== Building vm0/browser ==="
+          BUILD_LOG_BROWSER=$(mktemp)
+          ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/browser" | tee "$BUILD_LOG_BROWSER"
+          BROWSER_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_BROWSER" | cut -d= -f2)
+          BROWSER_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_BROWSER" | cut -d= -f2)
+          rm -f "$BUILD_LOG_BROWSER"
+
+          if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
+            echo "ERROR: Failed to extract default build hashes"
             exit 1
           fi
-          echo "rootfs-hash=${ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
-          echo "snapshot-hash=${SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+          if [ -z "$BROWSER_ROOTFS_HASH" ] || [ -z "$BROWSER_SNAPSHOT_HASH" ]; then
+            echo "ERROR: Failed to extract browser build hashes"
+            exit 1
+          fi
+          echo "default-rootfs-hash=${DEFAULT_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "default-snapshot-hash=${DEFAULT_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+          echo "browser-rootfs-hash=${BROWSER_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
+          echo "browser-snapshot-hash=${BROWSER_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
 
   runner-benchmark:
     runs-on: ubuntu-latest
     needs: [runner-build]
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
 
@@ -273,8 +288,10 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
-          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          BROWSER_ROOTFS_HASH: ${{ needs.runner-build.outputs.browser-rootfs-hash }}
+          BROWSER_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.browser-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
@@ -283,19 +300,28 @@ jobs:
           echo "=== Generating config ==="
           ssh $REMOTE "${BIN_DIR}/runner config \
             --profile vm0/default \
-            --rootfs-hash ${ROOTFS_HASH} \
-            --snapshot-hash ${SNAPSHOT_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --profile vm0/browser \
+            --rootfs-hash ${BROWSER_ROOTFS_HASH} \
+            --snapshot-hash ${BROWSER_SNAPSHOT_HASH} \
             --name ${JOB_REF}-bench \
             --group vm0/development-${JOB_REF} \
             --runner-dirname ${JOB_REF}-bench \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
-          echo "=== Running benchmark ==="
+          echo "=== Running benchmark (default) ==="
           ssh $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             --profile vm0/default \
             'curl -sf --max-time 10 https://httpbin.org/get'"
+
+          echo "=== Running benchmark (browser) ==="
+          ssh $REMOTE "${BIN_DIR}/runner benchmark \
+            --config ${RUNNER_DIR}/runner.yaml \
+            --profile vm0/browser \
+            'agent-browser open https://github.com/ && agent-browser get title && agent-browser close'"
 
   runner-exec:
     runs-on: ubuntu-latest
@@ -317,8 +343,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
-          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
@@ -326,8 +352,8 @@ jobs:
           echo "=== Generating config ==="
           ssh $REMOTE "${BIN_DIR}/runner config \
             --profile vm0/default \
-            --rootfs-hash ${ROOTFS_HASH} \
-            --snapshot-hash ${SNAPSHOT_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-exec \
             --group vm0/exec-${JOB_REF} \
             --runner-dirname ${JOB_REF}-exec \
@@ -418,8 +444,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
-          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
@@ -427,8 +453,8 @@ jobs:
           echo "=== Generating config ==="
           ssh $REMOTE "${BIN_DIR}/runner config \
             --profile vm0/default \
-            --rootfs-hash ${ROOTFS_HASH} \
-            --snapshot-hash ${SNAPSHOT_HASH} \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
             --name ${JOB_REF}-balloon \
             --group vm0/balloon-${JOB_REF} \
             --runner-dirname ${JOB_REF}-balloon \
@@ -596,8 +622,8 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-          ROOTFS_HASH: ${{ needs.runner-build.outputs.rootfs-hash }}
-          SNAPSHOT_HASH: ${{ needs.runner-build.outputs.snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
@@ -607,8 +633,8 @@ jobs:
           for SUFFIX in upgrade-a upgrade-b; do
             ssh $REMOTE "${BIN_DIR}/runner config \
               --profile vm0/default \
-              --rootfs-hash ${ROOTFS_HASH} \
-              --snapshot-hash ${SNAPSHOT_HASH} \
+              --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+              --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
               --name ${JOB_REF}-${SUFFIX} \
               --group ${GROUP} \
               --runner-dirname ${JOB_REF}-${SUFFIX} \

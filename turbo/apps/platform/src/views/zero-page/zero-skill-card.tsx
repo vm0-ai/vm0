@@ -36,7 +36,10 @@ export function ZeroSkillCard({
   const isPolling = pollingType === name;
 
   return (
-    <div className="flex flex-col rounded-[var(--zero-card-radius)] border border-[var(--zero-card-border)] bg-card shadow-[var(--zero-card-shadow)]">
+    <div
+      className="flex flex-col rounded-[var(--zero-card-radius)] bg-card shadow-[var(--zero-card-shadow)]"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+    >
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center">
           {name in CONNECTOR_TYPES ? (

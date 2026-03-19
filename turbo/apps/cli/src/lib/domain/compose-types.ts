@@ -18,6 +18,7 @@ export interface AgentDefinition {
   experimental_runner?: {
     group: string;
   };
+  experimental_profile?: string;
 }
 
 /**

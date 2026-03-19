@@ -1,14 +1,11 @@
-# Firecracker VM rootfs image
+# Firecracker VM rootfs image — default profile
 # Based on Node.js 24 with Python 3.11+, guest-init, and agent CLIs
 #
 # Included CLIs:
 # - Claude Code CLI (@anthropic-ai/claude-code)
-# - GitHub CLI (gh) for apps: [github]
+# - GitHub CLI (gh)
 #
-# This mirrors the e2b template configurations for consistency.
-# See: turbo/scripts/e2b/vm0-*/template.ts
-#
-# Build: docker build -t vm0-rootfs .
+# Build: docker build -t vm0-rootfs-default .
 # Export: See build-rootfs.sh
 
 FROM node:24-bookworm-slim
@@ -42,8 +39,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     ca-certificates \
     sudo \
+    libnss3 \
+    p11-kit-modules \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Make NSS-based applications (Chromium, Firefox) trust the system CA store.
+# By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
+# root CAs. Replacing it with p11-kit's module makes NSS read from the same
+# store as OpenSSL (/etc/ssl/certs/), so proxy CA certs injected via
+# update-ca-certificates are trusted by all applications.
+RUN find /usr/lib -name libnssckbi.so -exec sh -c \
+    'p11=$(find /usr/lib -name p11-kit-trust.so | head -1) && ln -sf "$p11" "$1"' _ {} \;
 
 # Install Claude Code CLI as a standalone Bun-compiled binary.
 # The binary bundles Bun runtime (JSC) + application code into a single executable,

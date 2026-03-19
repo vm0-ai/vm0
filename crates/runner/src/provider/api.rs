@@ -42,6 +42,9 @@ const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
 pub struct ApiProvider {
     api: ApiClient,
     group: String,
+    /// Profile names this runner supports (e.g., ["vm0/default", "vm0/browser"]).
+    /// Sent in poll requests so the server only returns jobs this runner can handle.
+    profiles: Vec<String>,
     /// Mutable discovery state, behind Mutex for `&self` compatibility.
     /// Only one caller (main loop) — never contended in practice.
     discovery: tokio::sync::Mutex<DiscoveryState>,
@@ -67,6 +70,7 @@ impl ApiProvider {
         http: HttpClient,
         token: String,
         group: String,
+        profiles: Vec<String>,
         cancel: CancellationToken,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
@@ -89,6 +93,7 @@ impl ApiProvider {
         Arc::new(Self {
             api,
             group,
+            profiles,
             discovery: tokio::sync::Mutex::new(DiscoveryState {
                 ably,
                 ably_retry,
@@ -178,7 +183,7 @@ impl JobProvider for ApiProvider {
                 // Poll fallback (adaptive interval)
                 () = tokio::time::sleep(sleep_dur) => {
                     *poll_now = false;
-                    match self.api.poll(&self.group).await {
+                    match self.api.poll(&self.group, &self.profiles).await {
                         Ok(Some(job)) => {
                             // Fall back to default profile when server doesn't send one
                             // (backwards compat with pre-profile API).
@@ -406,11 +411,11 @@ impl ApiClient {
     }
 
     /// Poll for a pending job. Returns `Ok(None)` when no work is available.
-    async fn poll(&self, group: &str) -> RunnerResult<Option<Job>> {
+    async fn poll(&self, group: &str, profiles: &[String]) -> RunnerResult<Option<Job>> {
         let resp = self
             .http
             .request(reqeast::Method::POST, "/api/runners/poll", &self.token)
-            .json(&serde_json::json!({ "group": group }))
+            .json(&serde_json::json!({ "group": group, "profiles": profiles }))
             .send()
             .await
             .map_err(|e| RunnerError::Api(format!("poll: {e}")))?;

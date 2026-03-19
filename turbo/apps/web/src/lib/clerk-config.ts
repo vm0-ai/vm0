@@ -1,7 +1,7 @@
 import { env } from "../env";
 
 /**
- * Get Clerk publishable key from validated environment
+ * Get Clerk publishable key from validated environment variables
  */
 export function getClerkPublishableKey(): string {
   const environment = env();

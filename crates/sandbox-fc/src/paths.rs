@@ -80,8 +80,12 @@ impl FactoryPaths {
         self.base_dir.join("workspaces")
     }
 
-    pub fn overlays(&self) -> PathBuf {
-        self.base_dir.join("overlays")
+    /// Per-profile overlay directory: `base_dir/overlays/{profile}/`.
+    ///
+    /// Each profile gets its own subdirectory so that [`OverlayPool`]'s
+    /// `clean_stale_files()` only deletes files belonging to this profile.
+    pub fn overlays(&self, profile: &str) -> PathBuf {
+        self.base_dir.join("overlays").join(profile)
     }
 
     pub fn workspace(&self, id: &str) -> PathBuf {

@@ -74,6 +74,10 @@ pub struct BalloonStatistics {
 /// Per-request timeout matching the TS client (30s).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Extended timeout for snapshot creation. Writing a full memory dump
+/// (up to 4 GiB for browser profile) can exceed the default 30s timeout.
+const SNAPSHOT_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
+
 /// Minimal HTTP-over-Unix-socket client for the Firecracker API.
 pub struct ApiClient<'a> {
     socket_path: &'a Path,
@@ -125,7 +129,8 @@ impl<'a> ApiClient<'a> {
 
     /// Load a snapshot and resume the VM via PUT /snapshot/load.
     pub async fn load_snapshot(&self, snapshot_path: &str, mem_path: &str) -> Result<(), ApiError> {
-        self.put_json(
+        self.send_json(
+            "PUT",
             "/snapshot/load",
             &serde_json::json!({
                 "snapshot_path": snapshot_path,
@@ -135,6 +140,7 @@ impl<'a> ApiClient<'a> {
                 },
                 "resume_vm": true,
             }),
+            REQUEST_TIMEOUT,
         )
         .await
     }
@@ -143,25 +149,35 @@ impl<'a> ApiClient<'a> {
     ///
     /// The VM must be paused before creating a snapshot.
     pub async fn pause(&self) -> Result<(), ApiError> {
-        self.request_with_timeout("PATCH", "/vm", Some(br#"{"state":"Paused"}"#))
-            .await
+        self.send(
+            "PATCH",
+            "/vm",
+            Some(br#"{"state":"Paused"}"#),
+            REQUEST_TIMEOUT,
+        )
+        .await?;
+        Ok(())
     }
 
     /// Create a snapshot via PUT /snapshot/create.
     ///
     /// The VM must be paused first (see [`Self::pause`]).
+    /// Uses an extended timeout because writing a full memory dump to disk
+    /// can take well over 30s for large VMs (e.g. 4 GiB for browser profile).
     pub async fn create_snapshot(
         &self,
         snapshot_path: &str,
         mem_path: &str,
     ) -> Result<(), ApiError> {
-        self.put_json(
+        self.send_json(
+            "PUT",
             "/snapshot/create",
             &serde_json::json!({
                 "snapshot_type": "Full",
                 "snapshot_path": snapshot_path,
                 "mem_file_path": mem_path,
             }),
+            SNAPSHOT_CREATE_TIMEOUT,
         )
         .await
     }
@@ -172,12 +188,14 @@ impl<'a> ApiClient<'a> {
         vcpu_count: u32,
         mem_size_mib: u32,
     ) -> Result<(), ApiError> {
-        self.put_json(
+        self.send_json(
+            "PUT",
             "/machine-config",
             &serde_json::json!({
                 "vcpu_count": vcpu_count,
                 "mem_size_mib": mem_size_mib,
             }),
+            REQUEST_TIMEOUT,
         )
         .await
     }
@@ -188,12 +206,14 @@ impl<'a> ApiClient<'a> {
         kernel_image_path: &str,
         boot_args: &str,
     ) -> Result<(), ApiError> {
-        self.put_json(
+        self.send_json(
+            "PUT",
             "/boot-source",
             &serde_json::json!({
                 "kernel_image_path": kernel_image_path,
                 "boot_args": boot_args,
             }),
+            REQUEST_TIMEOUT,
         )
         .await
     }
@@ -207,7 +227,8 @@ impl<'a> ApiClient<'a> {
         is_read_only: bool,
     ) -> Result<(), ApiError> {
         let path = format!("/drives/{drive_id}");
-        self.put_json(
+        self.send_json(
+            "PUT",
             &path,
             &serde_json::json!({
                 "drive_id": drive_id,
@@ -215,6 +236,7 @@ impl<'a> ApiClient<'a> {
                 "is_root_device": is_root_device,
                 "is_read_only": is_read_only,
             }),
+            REQUEST_TIMEOUT,
         )
         .await
     }
@@ -227,25 +249,29 @@ impl<'a> ApiClient<'a> {
         host_dev_name: &str,
     ) -> Result<(), ApiError> {
         let path = format!("/network-interfaces/{iface_id}");
-        self.put_json(
+        self.send_json(
+            "PUT",
             &path,
             &serde_json::json!({
                 "iface_id": iface_id,
                 "guest_mac": guest_mac,
                 "host_dev_name": host_dev_name,
             }),
+            REQUEST_TIMEOUT,
         )
         .await
     }
 
     /// Configure the vsock device via PUT /vsock.
     pub async fn configure_vsock(&self, guest_cid: u32, uds_path: &str) -> Result<(), ApiError> {
-        self.put_json(
+        self.send_json(
+            "PUT",
             "/vsock",
             &serde_json::json!({
                 "guest_cid": guest_cid,
                 "uds_path": uds_path,
             }),
+            REQUEST_TIMEOUT,
         )
         .await
     }
@@ -255,11 +281,13 @@ impl<'a> ApiClient<'a> {
     /// Unlike [`Self::configure_balloon`] (PUT, pre-boot only), this can be called
     /// while the VM is running to dynamically inflate or deflate the balloon.
     pub async fn patch_balloon(&self, amount_mib: u32) -> Result<(), ApiError> {
-        let body = serde_json::json!({ "amount_mib": amount_mib });
-        let bytes =
-            serde_json::to_string(&body).map_err(|e| ApiError::Other(format!("json: {e}")))?;
-        self.request_with_timeout("PATCH", "/balloon", Some(bytes.as_bytes()))
-            .await
+        self.send_json(
+            "PATCH",
+            "/balloon",
+            &serde_json::json!({ "amount_mib": amount_mib }),
+            REQUEST_TIMEOUT,
+        )
+        .await
     }
 
     /// Retrieve balloon device statistics via GET /balloon/statistics.
@@ -268,7 +296,7 @@ impl<'a> ApiClient<'a> {
     /// [`Self::configure_balloon`]. Returns an error if statistics were not enabled.
     pub async fn get_balloon_statistics(&self) -> Result<BalloonStatistics, ApiError> {
         let body = self
-            .request_with_timeout_body("GET", "/balloon/statistics", None)
+            .send("GET", "/balloon/statistics", None, REQUEST_TIMEOUT)
             .await?;
         serde_json::from_str(&body)
             .map_err(|e| ApiError::Other(format!("parse balloon statistics: {e}")))
@@ -285,56 +313,57 @@ impl<'a> ApiClient<'a> {
         deflate_on_oom: bool,
         stats_polling_interval_s: u32,
     ) -> Result<(), ApiError> {
-        self.put_json(
+        self.send_json(
+            "PUT",
             "/balloon",
             &serde_json::json!({
                 "amount_mib": amount_mib,
                 "deflate_on_oom": deflate_on_oom,
                 "stats_polling_interval_s": stats_polling_interval_s,
             }),
+            REQUEST_TIMEOUT,
         )
         .await
     }
 
     /// Start the VM instance via PUT /actions.
     pub async fn start_instance(&self) -> Result<(), ApiError> {
-        self.request_with_timeout(
+        self.send(
             "PUT",
             "/actions",
             Some(br#"{"action_type":"InstanceStart"}"#),
+            REQUEST_TIMEOUT,
         )
-        .await
-    }
-
-    /// Send a request with the standard timeout and return the response body.
-    async fn request_with_timeout_body(
-        &self,
-        method: &str,
-        path: &str,
-        body: Option<&[u8]>,
-    ) -> Result<String, ApiError> {
-        tokio::time::timeout(REQUEST_TIMEOUT, self.request(method, path, body))
-            .await
-            .map_err(|_| ApiError::Other(format!("request timed out after {REQUEST_TIMEOUT:?}")))?
-    }
-
-    /// Send a request with the standard timeout, discarding the response body.
-    async fn request_with_timeout(
-        &self,
-        method: &str,
-        path: &str,
-        body: Option<&[u8]>,
-    ) -> Result<(), ApiError> {
-        self.request_with_timeout_body(method, path, body).await?;
+        .await?;
         Ok(())
     }
 
-    /// Serialize a JSON value and PUT it to the given path.
-    async fn put_json(&self, path: &str, value: &serde_json::Value) -> Result<(), ApiError> {
+    /// Send a request with a timeout and return the response body.
+    async fn send(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+        timeout: Duration,
+    ) -> Result<String, ApiError> {
+        tokio::time::timeout(timeout, self.request(method, path, body))
+            .await
+            .map_err(|_| ApiError::Other(format!("request timed out after {timeout:?}")))?
+    }
+
+    /// Serialize a JSON value and send it with the given method and timeout.
+    async fn send_json(
+        &self,
+        method: &str,
+        path: &str,
+        value: &serde_json::Value,
+        timeout: Duration,
+    ) -> Result<(), ApiError> {
         let body =
             serde_json::to_string(value).map_err(|e| ApiError::Other(format!("json: {e}")))?;
-        self.request_with_timeout("PUT", path, Some(body.as_bytes()))
-            .await
+        self.send(method, path, Some(body.as_bytes()), timeout)
+            .await?;
+        Ok(())
     }
 
     /// Send a raw HTTP/1.1 request over a Unix domain socket.

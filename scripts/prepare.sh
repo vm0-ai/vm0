@@ -106,28 +106,13 @@ fi
 # -----------------------------------------------------------------------------
 # 5. Check .env.local files
 # -----------------------------------------------------------------------------
-echo "5. Checking environment files..."
-ENV_MISSING=0
-
-if [ ! -f "$TURBO_DIR/apps/web/.env.local" ]; then
-  echo -e "${YELLOW}   Missing: turbo/apps/web/.env.local${NC}"
-  ENV_MISSING=1
+echo "5. Syncing environment files..."
+if "$SCRIPT_DIR/sync-env.sh"; then
+  echo -e "${GREEN}   Environment files synced${NC}"
 else
-  echo -e "${GREEN}   turbo/apps/web/.env.local${NC}"
-fi
-
-if [ ! -f "$TURBO_DIR/apps/platform/.env.local" ]; then
-  echo -e "${YELLOW}   Missing: turbo/apps/platform/.env.local${NC}"
-  ENV_MISSING=1
-else
-  echo -e "${GREEN}   turbo/apps/platform/.env.local${NC}"
-fi
-
-if [ $ENV_MISSING -eq 1 ]; then
-  echo ""
-  echo -e "${RED}   Error: Some .env.local files are missing.${NC}"
+  echo -e "${RED}   Error: sync-env.sh failed${NC}"
   echo "   Options:"
-  echo "   - Run: ./scripts/sync-env.sh (requires 1Password CLI)"
+  echo "   - Run manually: ./scripts/sync-env.sh (requires 1Password CLI)"
   echo "   - Or manually create .env.local files from .env.local.tpl templates"
   FAILED=1
 fi

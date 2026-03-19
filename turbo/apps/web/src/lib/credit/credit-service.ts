@@ -80,15 +80,22 @@ async function creditAtomic(
         continue;
       }
 
-      // Calculate credits: ceil(inputTokens * inputTokenPrice / 1_000_000) +
-      //                     ceil(outputTokens * outputTokenPrice / 1_000_000)
+      // Calculate credits: ceil(tokens * price / 1_000_000) for each token type
       const inputCredits = Math.ceil(
         (record.inputTokens * pricing.inputTokenPrice) / 1_000_000,
       );
       const outputCredits = Math.ceil(
         (record.outputTokens * pricing.outputTokenPrice) / 1_000_000,
       );
-      const creditsCharged = inputCredits + outputCredits;
+      const cacheReadCredits = Math.ceil(
+        (record.cacheReadInputTokens * pricing.cacheReadTokenPrice) / 1_000_000,
+      );
+      const cacheCreationCredits = Math.ceil(
+        (record.cacheCreationInputTokens * pricing.cacheCreationTokenPrice) /
+          1_000_000,
+      );
+      const creditsCharged =
+        inputCredits + outputCredits + cacheReadCredits + cacheCreationCredits;
 
       await tx
         .update(creditUsage)

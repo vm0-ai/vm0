@@ -37,7 +37,7 @@ fn parse_args(args: &[String]) -> ParsedArgs {
                     i += 1;
                 }
             }
-            "--resume" => {
+            "--resume" | "--append-system-prompt" => {
                 // Parsed for CLI compat but not used by mock-claude
                 if args.get(i + 1).is_some() {
                     i += 2;
@@ -323,6 +323,8 @@ mod tests {
             "--dangerously-skip-permissions",
             "--resume",
             "session-abc",
+            "--append-system-prompt",
+            "Your name is Aria.",
             "ls -la",
         ]
         .into_iter()
@@ -373,6 +375,16 @@ mod tests {
             .collect();
         let result = parse_args(&args);
         // --resume and its value are consumed, not treated as prompt
+        assert_eq!(result.prompt, "echo hi");
+    }
+
+    #[test]
+    fn parse_args_append_system_prompt_skipped() {
+        let args: Vec<String> = vec!["--append-system-prompt", "Your name is Aria.", "echo hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
         assert_eq!(result.prompt, "echo hi");
     }
 
