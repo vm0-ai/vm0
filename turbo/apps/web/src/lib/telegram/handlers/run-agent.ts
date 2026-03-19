@@ -1,15 +1,8 @@
-import { eq, desc } from "drizzle-orm";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import { createRun, isRunDispatchError } from "../../run";
+import { startRun, isRunDispatchError } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { isConcurrentRunLimit } from "../../errors";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
-import { getOrgData } from "../../org/org-cache-service";
-import { orgTierSchema } from "@vm0/core";
 
 const log = logger("telegram:run-agent");
 
@@ -64,47 +57,6 @@ export async function runAgentForTelegram(
     callbackContext,
   } = params;
 
-  const [compose] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      headVersionId: agentComposes.headVersionId,
-      orgId: agentComposes.orgId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose) {
-    log.error("Agent compose not found", { composeId, agentName });
-    return {
-      status: "failed",
-      response:
-        "The agent configuration could not be found. Please contact the workspace admin.",
-      runId: undefined,
-    };
-  }
-
-  let versionId = compose.headVersionId;
-  if (!versionId) {
-    const [latestVersion] = await globalThis.services.db
-      .select({ id: agentComposeVersions.id })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, compose.id))
-      .orderBy(desc(agentComposeVersions.createdAt))
-      .limit(1);
-
-    if (!latestVersion) {
-      log.error("Agent has no published versions", { composeId, agentName });
-      return {
-        status: "failed",
-        response:
-          "The agent has no published versions. Please publish a version in the dashboard first.",
-        runId: undefined,
-      };
-    }
-    versionId = latestVersion.id;
-  }
-
   const integrationContext = buildIntegrationContext("Telegram");
   const fullPrompt = threadContext
     ? `${integrationContext}\n\n${threadContext}\n\n# User Prompt\n\n${prompt}`
@@ -113,23 +65,12 @@ export async function runAgentForTelegram(
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/telegram`;
   const callbackSecret = generateCallbackSecret();
 
-  // Resolve org context from compose
-  const orgData = await getOrgData(compose.orgId);
-  const orgTier = orgTierSchema.parse(orgData.tier);
-
   try {
-    const result = await createRun({
+    const result = await startRun({
       userId,
-      agentComposeVersionId: versionId,
+      composeId,
       prompt: fullPrompt,
-      composeId: compose.id,
       sessionId,
-      agentName,
-      artifactName: "artifact",
-      memoryName: "memory",
-      orgId: compose.orgId,
-      orgSlug: orgData.slug,
-      orgTier,
       callbacks: [
         {
           url: callbackUrl,

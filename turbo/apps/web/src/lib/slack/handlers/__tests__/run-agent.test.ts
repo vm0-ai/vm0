@@ -16,15 +16,15 @@ describe("runAgentForSlack", () => {
     context.setupMocks();
   });
 
-  it("should pass artifactName and memoryName conventions to createRun", async () => {
+  it("should call startRun with correct composeId and prompt", async () => {
     // Given a user with an agent compose (created via API so it has a version)
     const userId = uniqueId("test-user");
     mockClerk({ userId });
     await createTestOrg(uniqueId("org"));
     const { composeId } = await createTestCompose("test-agent");
 
-    // And createRun is spied on to capture the call without executing
-    const createRunSpy = vi.spyOn(runModule, "createRun").mockResolvedValue({
+    // And startRun is spied on to capture the call without executing
+    const startRunSpy = vi.spyOn(runModule, "startRun").mockResolvedValue({
       runId: "mock-run-id",
       status: "running",
       createdAt: new Date(),
@@ -54,17 +54,13 @@ describe("runAgentForSlack", () => {
     // Then the run should be dispatched
     expect(result.status).toBe("dispatched");
 
-    // And createRun should receive artifactName: "artifact"
-    expect(createRunSpy).toHaveBeenCalledTimes(1);
-    const callArgs = createRunSpy.mock.calls[0]![0] as {
+    // And startRun should receive the correct composeId and prompt
+    expect(startRunSpy).toHaveBeenCalledTimes(1);
+    const callArgs = startRunSpy.mock.calls[0]![0] as {
+      composeId: string;
       prompt: string;
-      artifactName: string;
-      memoryName: string;
     };
-    expect(callArgs).toMatchObject({
-      artifactName: "artifact",
-      memoryName: "memory",
-    });
+    expect(callArgs.composeId).toBe(composeId);
 
     // And the prompt should contain integration context
     expect(callArgs.prompt).toContain(

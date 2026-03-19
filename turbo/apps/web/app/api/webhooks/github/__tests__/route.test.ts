@@ -18,10 +18,10 @@ import { POST } from "../route";
 import * as runModule from "../../../../../src/lib/run";
 import { reloadEnv } from "../../../../../src/env";
 
-// Note: createRun is spied on (rather than exercised with real DB + executor)
+// Note: startRun is spied on (rather than exercised with real DB + executor)
 // because this test file focuses on the webhook routing layer: signature
 // verification, event routing, trigger conditions, and callback context
-// construction.  Real createRun integration is covered by its own dedicated
+// construction.  Real run creation integration is covered by its own dedicated
 // tests in src/lib/run/__tests__/create-run.test.ts.  The same boundary is
 // used in the Slack webhook tests (slack/handlers/__tests__/run-agent.test.ts).
 
@@ -154,7 +154,7 @@ function buildIssueCommentPayload(overrides?: CommentPayloadOverrides) {
 }
 
 describe("POST /api/webhooks/github", () => {
-  let createRunSpy: ReturnType<typeof vi.spyOn>;
+  let startRunSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     afterPromises.length = 0;
@@ -183,8 +183,8 @@ describe("POST /api/webhooks/github", () => {
       ),
     );
 
-    // Mock createRun to prevent actual sandbox dispatch
-    createRunSpy = vi.spyOn(runModule, "createRun").mockResolvedValue({
+    // Mock startRun to prevent actual sandbox dispatch
+    startRunSpy = vi.spyOn(runModule, "startRun").mockResolvedValue({
       runId: "test-run-id",
       status: "running",
       createdAt: new Date(),
@@ -261,8 +261,8 @@ describe("POST /api/webhooks/github", () => {
       await flushAfterCallbacks();
 
       // Then createRun should have been called
-      expect(createRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createRunSpy.mock.calls[0]![0] as {
+      expect(startRunSpy).toHaveBeenCalledTimes(1);
+      const callArgs = startRunSpy.mock.calls[0]![0] as {
         prompt: string;
         callbacks: Array<{ payload: { issueNumber: number } }>;
       };
@@ -292,7 +292,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).toHaveBeenCalledTimes(1);
+      expect(startRunSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should NOT trigger agent for opened issue without app slug label", async () => {
@@ -313,7 +313,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).not.toHaveBeenCalled();
+      expect(startRunSpy).not.toHaveBeenCalled();
     });
 
     it("should NOT trigger agent when a non-app slug label is added", async () => {
@@ -338,7 +338,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).not.toHaveBeenCalled();
+      expect(startRunSpy).not.toHaveBeenCalled();
     });
 
     it("should ignore closed/edited/other issue actions", async () => {
@@ -346,7 +346,7 @@ describe("POST /api/webhooks/github", () => {
         await givenGitHubInstallation();
 
       for (const action of ["closed", "edited", "reopened", "deleted"]) {
-        createRunSpy.mockClear();
+        startRunSpy.mockClear();
 
         const request = createGitHubWebhookRequest(
           "issues",
@@ -362,7 +362,7 @@ describe("POST /api/webhooks/github", () => {
 
         await flushAfterCallbacks();
 
-        expect(createRunSpy).not.toHaveBeenCalled();
+        expect(startRunSpy).not.toHaveBeenCalled();
       }
     });
 
@@ -385,8 +385,8 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createRunSpy.mock.calls[0]![0] as { prompt: string };
+      expect(startRunSpy).toHaveBeenCalledTimes(1);
+      const callArgs = startRunSpy.mock.calls[0]![0] as { prompt: string };
       // When body is null, falls back to issue title
       expect(callArgs.prompt).toContain("Test Issue");
       expect(callArgs.prompt).toContain(
@@ -415,7 +415,7 @@ describe("POST /api/webhooks/github", () => {
       await flushAfterCallbacks();
 
       // Label alone should NOT trigger — bot mention is required
-      expect(createRunSpy).not.toHaveBeenCalled();
+      expect(startRunSpy).not.toHaveBeenCalled();
     });
 
     it("should trigger agent for comment mentioning @bot", async () => {
@@ -436,7 +436,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).toHaveBeenCalledTimes(1);
+      expect(startRunSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should NOT trigger for comment without label or mention", async () => {
@@ -457,7 +457,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).not.toHaveBeenCalled();
+      expect(startRunSpy).not.toHaveBeenCalled();
     });
 
     it("should prevent self-triggering from bot comments", async () => {
@@ -480,7 +480,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).not.toHaveBeenCalled();
+      expect(startRunSpy).not.toHaveBeenCalled();
     });
 
     it("should ignore non-created comment actions", async () => {
@@ -488,7 +488,7 @@ describe("POST /api/webhooks/github", () => {
         await givenGitHubInstallation();
 
       for (const action of ["edited", "deleted"]) {
-        createRunSpy.mockClear();
+        startRunSpy.mockClear();
 
         const request = createGitHubWebhookRequest(
           "issue_comment",
@@ -504,7 +504,7 @@ describe("POST /api/webhooks/github", () => {
 
         await flushAfterCallbacks();
 
-        expect(createRunSpy).not.toHaveBeenCalled();
+        expect(startRunSpy).not.toHaveBeenCalled();
       }
     });
   });
@@ -525,7 +525,7 @@ describe("POST /api/webhooks/github", () => {
       // The error thrown in dispatchAgentRun is caught by the .catch() in route.ts
       await flushAfterCallbacks();
 
-      expect(createRunSpy).not.toHaveBeenCalled();
+      expect(startRunSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -686,8 +686,8 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createRunSpy.mock.calls[0]![0] as {
+      expect(startRunSpy).toHaveBeenCalledTimes(1);
+      const callArgs = startRunSpy.mock.calls[0]![0] as {
         callbacks: Array<{
           url: string;
           secret: string;

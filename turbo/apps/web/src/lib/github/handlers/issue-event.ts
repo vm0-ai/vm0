@@ -1,13 +1,10 @@
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { githubInstallations } from "../../../db/schema/github-installation";
 import { githubUserLinks } from "../../../db/schema/github-user-link";
 import { githubIssueSessions } from "../../../db/schema/github-issue-session";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import { createRun, validateAgentSession } from "../../run";
+import { agentComposes } from "../../../db/schema/agent-compose";
+import { startRun, validateAgentSession } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getInstallationAccessToken } from "../github-app";
@@ -20,8 +17,6 @@ import {
 } from "../api";
 import { env } from "../../../env";
 import { logger } from "../../logger";
-import { getOrgData } from "../../org/org-cache-service";
-import { orgTierSchema } from "@vm0/core";
 
 const log = logger("github:issue-event");
 
@@ -226,28 +221,6 @@ interface DispatchParams {
   comment?: GitHubComment;
   forceNewSession?: boolean;
   appSlug: string | undefined;
-}
-
-/**
- * Resolve the compose version ID, falling back to the latest version.
- */
-async function resolveVersionId(compose: {
-  id: string;
-  headVersionId: string | null;
-}): Promise<string> {
-  if (compose.headVersionId) return compose.headVersionId;
-
-  const [latestVersion] = await globalThis.services.db
-    .select({ id: agentComposeVersions.id })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.composeId, compose.id))
-    .orderBy(desc(agentComposeVersions.createdAt))
-    .limit(1);
-
-  if (!latestVersion) {
-    throw new Error(`Agent compose has no versions: composeId=${compose.id}`);
-  }
-  return latestVersion.id;
 }
 
 /**
@@ -457,13 +430,11 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
 
   const vm0UserId = userLink.vm0UserId;
 
-  // 3. Resolve agent compose and version
+  // 3. Resolve agent compose (version + org resolved by startRun)
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, installation.defaultComposeId))
@@ -474,8 +445,6 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       `Agent compose not found: composeId=${installation.defaultComposeId}`,
     );
   }
-
-  const versionId = await resolveVersionId(compose);
 
   // 4. Look up existing session
   let existingSessionId: string | undefined;
@@ -524,22 +493,12 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     triggerReactionId: reactionId,
   };
 
-  // Resolve org context from compose
-  const orgData = await getOrgData(compose.orgId);
-  const orgTier = orgTierSchema.parse(orgData.tier);
-
   try {
-    const result = await createRun({
+    const result = await startRun({
       userId: vm0UserId,
-      agentComposeVersionId: versionId,
       prompt: fullPrompt,
       composeId: compose.id,
       sessionId: existingSessionId,
-      agentName: compose.name,
-      artifactName: "artifact",
-      orgId: compose.orgId,
-      orgSlug: orgData.slug,
-      orgTier,
       callbacks: [
         {
           url: callbackUrl,

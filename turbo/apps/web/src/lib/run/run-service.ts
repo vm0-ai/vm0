@@ -320,18 +320,45 @@ export interface CreateRunParams {
 }
 
 /**
- * Simplified run params — callers provide composeId and the function
+ * High-level run params — callers provide a compose identifier and startRun()
  * resolves version + org internally.
+ *
+ * Compose resolution modes (mutually exclusive):
+ * - composeId: new run from compose (resolves headVersionId)
+ * - agentComposeVersionId: new run from pinned version (SDK/CLI)
+ * - checkpointId: resume from checkpoint (resolves version from checkpoint)
+ * - sessionId: continue session (resolves version from session's compose)
  */
-interface StartRunParams {
+export interface StartRunParams {
   userId: string;
-  composeId: string;
   prompt: string;
+
+  // --- Compose resolution (mutually exclusive) ---
+  composeId?: string;
+  agentComposeVersionId?: string;
+  checkpointId?: string;
   sessionId?: string;
-  modelProvider?: string;
-  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
+
+  // --- Caller-validated org (optional, for API routes with org membership) ---
+  // When provided, startRun() verifies the compose belongs to this org
+  // and uses it for authorization. When omitted, org is auto-resolved
+  // from the compose (used by integration callers that verify access upstream).
+  callerOrgId?: string;
+
+  // --- Optional params (forwarded to createRun) ---
+  appendSystemPrompt?: string;
+  conversationId?: string;
+  vars?: Record<string, string>;
+  secrets?: Record<string, string>;
   artifactName?: string;
+  artifactVersion?: string;
   memoryName?: string;
+  volumeVersions?: Record<string, string>;
+  scheduleId?: string;
+  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
+  modelProvider?: string;
+  debugNoMockClaude?: boolean;
+  checkEnv?: boolean;
 }
 
 export interface CreateRunResult {
@@ -687,18 +714,49 @@ async function buildAndDispatchRun(opts: {
 }
 
 /**
- * High-level run entry point.
- *
- * Resolves compose version + org context from composeId, then delegates
- * to createRun(). Callers only need composeId — no manual DB queries.
- *
- * @throws NotFoundError - compose not found or has no versions
+ * Resolved compose metadata from one of the 4 resolution modes.
  */
-export async function startRun(
-  params: StartRunParams,
-): Promise<CreateRunResult> {
-  const { userId, composeId, prompt } = params;
+interface ResolvedStartRunCompose {
+  agentComposeVersionId: string;
+  composeId?: string;
+  agentName?: string;
+  orgId: string;
+}
 
+/**
+ * Look up compose metadata from a version ID (shared by checkpoint + versionId paths).
+ */
+async function lookupComposeByVersion(
+  versionId: string,
+  fallbackComposeId?: string,
+): Promise<{ composeId?: string; agentName?: string; orgId: string }> {
+  const [row] = await globalThis.services.db
+    .select({
+      composeName: agentComposes.name,
+      composeOrgId: agentComposes.orgId,
+      composeId: agentComposes.id,
+    })
+    .from(agentComposeVersions)
+    .leftJoin(
+      agentComposes,
+      eq(agentComposeVersions.composeId, agentComposes.id),
+    )
+    .where(eq(agentComposeVersions.id, versionId))
+    .limit(1);
+
+  return {
+    composeId: row?.composeId ?? fallbackComposeId,
+    agentName: row?.composeName ?? undefined,
+    orgId: row?.composeOrgId ?? "",
+  };
+}
+
+/**
+ * Resolve compose by composeId → headVersionId.
+ */
+async function resolveByComposeId(
+  composeId: string,
+): Promise<ResolvedStartRunCompose> {
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
@@ -717,23 +775,131 @@ export async function startRun(
     throw badRequest("Agent compose has no versions. Run 'vm0 build' first.");
   }
 
-  const orgData = await getOrgData(compose.orgId);
+  return {
+    agentComposeVersionId: compose.headVersionId,
+    composeId: compose.id,
+    agentName: compose.name ?? undefined,
+    orgId: compose.orgId,
+  };
+}
+
+/**
+ * Resolve compose version + org ID from StartRunParams.
+ *
+ * Handles 4 mutually exclusive resolution modes:
+ * 1. checkpointId → validate checkpoint → get version, then look up compose
+ * 2. sessionId → validate session → get compose → use headVersionId
+ * 3. agentComposeVersionId → use directly, look up compose metadata
+ * 4. composeId → load compose → use headVersionId
+ */
+async function resolveStartRunCompose(
+  params: StartRunParams,
+): Promise<ResolvedStartRunCompose> {
+  // Validate mutual exclusivity before resolution
+  if (params.checkpointId && params.sessionId) {
+    throw badRequest(
+      "Cannot specify both checkpointId and sessionId. Use one or the other.",
+    );
+  }
+
+  if (params.checkpointId) {
+    const checkpointData = await validateCheckpoint(
+      params.checkpointId,
+      params.userId,
+    );
+    const meta = await lookupComposeByVersion(
+      checkpointData.agentComposeVersionId,
+    );
+    if (!meta.orgId) {
+      throw notFound("Agent compose version not found");
+    }
+    return {
+      agentComposeVersionId: checkpointData.agentComposeVersionId,
+      ...meta,
+    };
+  }
+
+  if (params.sessionId) {
+    const sessionData = await validateAgentSession(
+      params.sessionId,
+      params.userId,
+    );
+    return resolveByComposeId(sessionData.agentComposeId);
+  }
+
+  if (params.agentComposeVersionId) {
+    const meta = await lookupComposeByVersion(
+      params.agentComposeVersionId,
+      params.composeId,
+    );
+    return { agentComposeVersionId: params.agentComposeVersionId, ...meta };
+  }
+
+  if (!params.composeId) {
+    throw badRequest(
+      "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, checkpointId, or sessionId.",
+    );
+  }
+
+  return resolveByComposeId(params.composeId);
+}
+
+/**
+ * High-level run entry point — the single public API for all run creation.
+ *
+ * Resolves compose version + org context internally, then delegates to
+ * createRun(). Callers only need a compose identifier (composeId, versionId,
+ * checkpointId, or sessionId) — no manual DB queries or org resolution.
+ *
+ * @throws NotFoundError - compose/version/checkpoint/session not found
+ * @throws BadRequestError - compose has no versions, or missing identifier
+ * @throws ForbiddenError - user cannot access compose
+ * @throws Error - dispatch failure
+ */
+export async function startRun(
+  params: StartRunParams,
+): Promise<CreateRunResult> {
+  // 1. Resolve compose version
+  const resolved = await resolveStartRunCompose(params);
+
+  // 2. Cross-org check: if caller provides a validated orgId, ensure
+  //    the compose belongs to that org. This prevents users from accessing
+  //    composes in orgs they don't belong to (used by API routes).
+  if (params.callerOrgId && resolved.orgId !== params.callerOrgId) {
+    throw notFound("Resource not found");
+  }
+
+  // 3. Resolve org context (use callerOrgId for authorization when available)
+  const authOrgId = params.callerOrgId ?? resolved.orgId;
+  const orgData = await getOrgData(authOrgId);
   const orgTier = orgTierSchema.parse(orgData.tier);
 
+  // 4. Delegate to createRun with fully resolved params
   return createRun({
-    userId,
-    agentComposeVersionId: compose.headVersionId,
-    prompt,
-    composeId: compose.id,
-    agentName: compose.name,
-    orgId: compose.orgId,
-    orgSlug: orgData.slug,
-    orgTier,
+    userId: params.userId,
+    agentComposeVersionId: resolved.agentComposeVersionId,
+    prompt: params.prompt,
+    appendSystemPrompt: params.appendSystemPrompt,
+    composeId: resolved.composeId,
+    checkpointId: params.checkpointId,
     sessionId: params.sessionId,
-    modelProvider: params.modelProvider,
-    callbacks: params.callbacks,
+    conversationId: params.conversationId,
+    vars: params.vars,
+    secrets: params.secrets,
     artifactName: params.artifactName ?? "artifact",
+    artifactVersion: params.artifactVersion,
     memoryName: params.memoryName ?? "memory",
+    volumeVersions: params.volumeVersions,
+    scheduleId: params.scheduleId,
+    callbacks: params.callbacks,
+    resumedFromCheckpointId: params.checkpointId,
+    agentName: resolved.agentName,
+    modelProvider: params.modelProvider,
+    debugNoMockClaude: params.debugNoMockClaude,
+    checkEnv: params.checkEnv,
+    orgSlug: orgData.slug,
+    orgId: authOrgId,
+    orgTier,
   });
 }
 

@@ -1,6 +1,5 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
-import { orgTierSchema } from "@vm0/core";
 import { agentSchedules } from "../../db/schema/agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
@@ -8,7 +7,7 @@ import { decryptSecretsMap } from "../crypto";
 import { getOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
-import { createRun } from "../run/run-service";
+import { startRun } from "../run/run-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 
@@ -843,12 +842,11 @@ async function executeSchedule(
     });
   }
 
-  // Delegate run creation, validation, and dispatch to createRun()
+  // Delegate run creation, validation, and dispatch to startRun()
   let runId: string;
   try {
-    const result = await createRun({
+    const result = await startRun({
       userId: schedule.userId,
-      agentComposeVersionId: compose.headVersionId,
       prompt: schedule.prompt,
       appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
       composeId: compose.id,
@@ -856,11 +854,7 @@ async function executeSchedule(
       artifactName: schedule.artifactName ?? undefined,
       artifactVersion: schedule.artifactVersion ?? undefined,
       volumeVersions: schedule.volumeVersions ?? undefined,
-      agentName: compose.name,
       callbacks,
-      orgSlug: orgData.slug,
-      orgId: orgData.orgId,
-      orgTier: orgTierSchema.parse(orgData.tier),
     });
     runId = result.runId;
   } catch (error) {

@@ -10,7 +10,7 @@ import {
   getFromDomain,
   type HandlerResult,
 } from "./shared";
-import { createRun } from "../../run";
+import { startRun } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
@@ -276,16 +276,10 @@ export async function handleInboundEmailTrigger(
 
   // 12. Inject integration context and create run
   const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${prompt}`;
-  const result = await createRun({
+  const result = await startRun({
     userId,
-    agentComposeVersionId: compose.headVersionId,
     prompt: fullPrompt,
     composeId: compose.composeId,
-    agentName,
-    artifactName: "artifact",
-    memoryName: "memory",
-    orgId: runtimeOrgId,
-    orgSlug: runtimeOrgSlug,
     callbacks,
   });
 

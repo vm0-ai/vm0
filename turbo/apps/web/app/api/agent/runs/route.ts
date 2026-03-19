@@ -3,12 +3,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import {
-  runsMainContract,
-  ALL_RUN_STATUSES,
-  orgTierSchema,
-  type RunStatus,
-} from "@vm0/core";
+import { runsMainContract, ALL_RUN_STATUSES, type RunStatus } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -16,12 +11,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { and, eq, inArray, desc, gte, lte } from "drizzle-orm";
-import {
-  validateCheckpoint,
-  validateAgentSession,
-  createRun,
-  type RunDispatchError,
-} from "../../../../src/lib/run";
+import { startRun, type RunDispatchError } from "../../../../src/lib/run";
 import {
   requireAuth,
   isAuthError,
@@ -31,225 +21,11 @@ import {
   isForbidden,
   isBadRequest,
   isNotFound,
+  isUnauthorized,
 } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
 const log = logger("api:runs");
-
-interface ResolvedCompose {
-  agentComposeVersionId: string;
-  agentComposeName?: string;
-  composeId?: string;
-  composeOrgId?: string;
-}
-
-type ErrorResponse = {
-  status: 400 | 404;
-  body: { error: { message: string; code: string } };
-};
-
-/**
- * Resolve compose version ID from request body parameters.
- * Handles new runs, checkpoint resumes, and session continues.
- */
-async function resolveComposeVersion(
-  body: {
-    agentComposeId?: string;
-    agentComposeVersionId?: string;
-    checkpointId?: string;
-    sessionId?: string;
-  },
-  userId: string,
-): Promise<ResolvedCompose | ErrorResponse> {
-  const isCheckpointResume = !!body.checkpointId;
-  const isSessionContinue = !!body.sessionId;
-
-  if (!isCheckpointResume && !isSessionContinue) {
-    return resolveNewRun(body);
-  }
-
-  if (isCheckpointResume) {
-    return resolveCheckpointResume(body.checkpointId!, userId);
-  }
-
-  return resolveSessionContinue(body.sessionId!, userId);
-}
-
-async function resolveNewRun(body: {
-  agentComposeId?: string;
-  agentComposeVersionId?: string;
-}): Promise<ResolvedCompose | ErrorResponse> {
-  if (body.agentComposeVersionId) {
-    const [versionRow] = await globalThis.services.db
-      .select({
-        composeName: agentComposes.name,
-        composeOrgId: agentComposes.orgId,
-        composeId: agentComposes.id,
-      })
-      .from(agentComposeVersions)
-      .leftJoin(
-        agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
-      )
-      .where(eq(agentComposeVersions.id, body.agentComposeVersionId))
-      .limit(1);
-
-    return {
-      agentComposeVersionId: body.agentComposeVersionId,
-      agentComposeName: versionRow?.composeName || undefined,
-      composeId: versionRow?.composeId || undefined,
-      composeOrgId: versionRow?.composeOrgId || undefined,
-    };
-  }
-
-  const composeId = body.agentComposeId!;
-  const [compose] = await globalThis.services.db
-    .select({
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-      orgId: agentComposes.orgId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose) {
-    return {
-      status: 404 as const,
-      body: {
-        error: { message: "Agent compose not found", code: "NOT_FOUND" },
-      },
-    };
-  }
-
-  if (!compose.headVersionId) {
-    return {
-      status: 400 as const,
-      body: {
-        error: {
-          message: "Agent compose has no versions. Run 'vm0 build' first.",
-          code: "BAD_REQUEST",
-        },
-      },
-    };
-  }
-
-  return {
-    agentComposeVersionId: compose.headVersionId,
-    agentComposeName: compose.name || undefined,
-    composeId,
-    composeOrgId: compose.orgId,
-  };
-}
-
-async function resolveCheckpointResume(
-  checkpointId: string,
-  userId: string,
-): Promise<ResolvedCompose | ErrorResponse> {
-  let agentComposeVersionId: string;
-  try {
-    const checkpointData = await validateCheckpoint(checkpointId, userId);
-    agentComposeVersionId = checkpointData.agentComposeVersionId;
-  } catch {
-    return {
-      status: 404 as const,
-      body: {
-        error: {
-          message: "Resource not found",
-          code: "NOT_FOUND",
-        },
-      },
-    };
-  }
-
-  const [versionWithCompose] = await globalThis.services.db
-    .select({
-      composeName: agentComposes.name,
-      composeOrgId: agentComposes.orgId,
-      composeId: agentComposes.id,
-    })
-    .from(agentComposeVersions)
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .where(eq(agentComposeVersions.id, agentComposeVersionId))
-    .limit(1);
-
-  return {
-    agentComposeVersionId,
-    agentComposeName: versionWithCompose?.composeName || undefined,
-    composeId: versionWithCompose?.composeId || undefined,
-    composeOrgId: versionWithCompose?.composeOrgId || undefined,
-  };
-}
-
-async function resolveSessionContinue(
-  sessionId: string,
-  userId: string,
-): Promise<ResolvedCompose | ErrorResponse> {
-  let sessionData;
-  try {
-    sessionData = await validateAgentSession(sessionId, userId);
-  } catch {
-    return {
-      status: 404 as const,
-      body: {
-        error: {
-          message: "Resource not found",
-          code: "NOT_FOUND",
-        },
-      },
-    };
-  }
-
-  const [compose] = await globalThis.services.db
-    .select({
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-      orgId: agentComposes.orgId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, sessionData.agentComposeId))
-    .limit(1);
-
-  if (!compose) {
-    return {
-      status: 404 as const,
-      body: {
-        error: {
-          message: "Agent compose for session not found",
-          code: "NOT_FOUND",
-        },
-      },
-    };
-  }
-
-  if (!compose.headVersionId) {
-    return {
-      status: 400 as const,
-      body: {
-        error: {
-          message: "Agent compose has no versions. Run 'vm0 build' first.",
-          code: "BAD_REQUEST",
-        },
-      },
-    };
-  }
-
-  return {
-    agentComposeVersionId: compose.headVersionId,
-    agentComposeName: compose.name || undefined,
-    composeId: sessionData.agentComposeId,
-    composeOrgId: compose.orgId,
-  };
-}
-
-function isErrorResponse(
-  result: ResolvedCompose | ErrorResponse,
-): result is ErrorResponse {
-  return "status" in result;
-}
 
 /**
  * Translate createRun() errors into API response format
@@ -268,6 +44,15 @@ function handleCreateRunError(error: unknown) {
     };
   }
 
+  // Map unauthorized to 404 for security (don't leak resource existence).
+  // This covers checkpoint/session validation failures where the resource
+  // belongs to a different user.
+  if (isUnauthorized(error)) {
+    return {
+      status: 404 as const,
+      body: { error: { message: "Resource not found", code: "NOT_FOUND" } },
+    };
+  }
   if (isForbidden(error)) {
     return {
       status: 403 as const,
@@ -277,13 +62,13 @@ function handleCreateRunError(error: unknown) {
   if (isBadRequest(error)) {
     return {
       status: 400 as const,
-      body: { error: { message: "Invalid request", code: "BAD_REQUEST" } },
+      body: { error: { message: error.message, code: "BAD_REQUEST" } },
     };
   }
   if (isNotFound(error)) {
     return {
       status: 404 as const,
-      body: { error: { message: "Resource not found", code: "NOT_FOUND" } },
+      body: { error: { message: error.message, code: "NOT_FOUND" } },
     };
   }
 
@@ -418,73 +203,22 @@ const router = tsr.router(runsMainContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    // Validate mutually exclusive shortcuts
-    if (body.checkpointId && body.sessionId) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message:
-              "Cannot specify both checkpointId and sessionId. Use one or the other.",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
-
-    // For new runs, require either agentComposeId or agentComposeVersionId
-    if (!body.checkpointId && !body.sessionId) {
-      if (!body.agentComposeId && !body.agentComposeVersionId) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message:
-                "Missing agentComposeId or agentComposeVersionId. For new runs, one is required.",
-              code: "BAD_REQUEST",
-            },
-          },
-        };
-      }
-    }
+    // Resolve caller's org for authorization (ensures org membership)
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     log.debug(
       `Creating run - mode: ${body.checkpointId ? "checkpoint" : body.sessionId ? "session" : "new"}`,
     );
 
-    // Resolve compose version ID for the run
-    const resolved = await resolveComposeVersion(body, userId);
-    if (isErrorResponse(resolved)) {
-      return resolved;
-    }
-
-    log.debug(
-      `Resolved agentComposeVersionId: ${resolved.agentComposeVersionId}`,
-    );
-
-    // Resolve org for variable/secret resolution.
-    // The actual variable fetching happens in build-context.ts.
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
-
-    // Cross-org session access check: session's compose must belong to the resolved org
-    if (resolved.composeOrgId && resolved.composeOrgId !== org.orgId) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Resource not found", code: "NOT_FOUND" },
-        },
-      };
-    }
-
-    // Delegate run creation, validation, and dispatch to createRun()
+    // Delegate all resolution, validation, and dispatch to startRun()
     try {
-      const result = await createRun({
+      const result = await startRun({
         userId,
-        agentComposeVersionId: resolved.agentComposeVersionId,
         prompt: body.prompt,
         appendSystemPrompt: body.appendSystemPrompt,
-        composeId: resolved.composeId,
+        composeId: body.agentComposeId,
+        agentComposeVersionId: body.agentComposeVersionId,
         checkpointId: body.checkpointId,
         sessionId: body.sessionId,
         conversationId: body.conversationId,
@@ -494,14 +228,10 @@ const router = tsr.router(runsMainContract, {
         artifactVersion: body.artifactVersion,
         memoryName: body.memoryName,
         volumeVersions: body.volumeVersions,
-        resumedFromCheckpointId: body.checkpointId,
-        agentName: resolved.agentComposeName,
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
-        orgSlug: org.slug,
-        orgId: org.orgId,
-        orgTier: orgTierSchema.parse(org.tier),
+        callerOrgId: org.orgId,
       });
 
       log.debug(

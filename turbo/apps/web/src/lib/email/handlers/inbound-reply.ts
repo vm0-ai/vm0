@@ -1,5 +1,3 @@
-import { eq } from "drizzle-orm";
-import { agentComposes } from "../../../db/schema/agent-compose";
 import { getReceivedEmail } from "../client";
 import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
@@ -11,7 +9,7 @@ import {
   getFromDomain,
   type HandlerResult,
 } from "./shared";
-import { createRun } from "../../run";
+import { startRun } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
@@ -161,28 +159,7 @@ export async function handleInboundEmailReply(
     replyContent = `${replyContent}\n\n${attachmentText}`;
   }
 
-  // 10. Get compose to find agent name, version, and org (fallback for legacy sessions)
-  const [compose] = await globalThis.services.db
-    .select({
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-      orgId: agentComposes.orgId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, session.composeId))
-    .limit(1);
-
-  if (!compose) {
-    log.error("Compose not found for email reply", {
-      composeId: session.composeId,
-    });
-    return {
-      ok: false,
-      errorMessage: "The agent for this conversation has been removed.",
-    };
-  }
-
-  // 11. Build callbacks for email reply notification
+  // 10. Build callbacks for email reply notification
   const callbacks = [
     {
       url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
@@ -198,26 +175,21 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 12. Resolve runtime org: prefer session.orgId, fall back to compose.orgId
-  const runtimeOrgId = session.orgId ?? compose.orgId;
-
-  // 13. Inject integration context and create run
+  // 11. Inject integration context and create run
+  // startRun resolves compose version + org internally
   const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${replyContent}`;
-  const result = await createRun({
+  const result = await startRun({
     userId: session.userId,
-    agentComposeVersionId: compose.headVersionId ?? "",
     prompt: fullPrompt,
     composeId: session.composeId,
     sessionId: session.agentSessionId,
-    agentName: compose.name,
-    orgId: runtimeOrgId,
     callbacks,
   });
 
   log.info("Dispatched agent run from email reply", {
     runId: result.runId,
     emailId,
-    agentName: compose.name,
+    composeId: session.composeId,
   });
 
   return { ok: true };

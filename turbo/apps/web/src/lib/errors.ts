@@ -121,6 +121,10 @@ export function concurrentRunLimit(
 // Type Guards
 // ============================================================================
 
+export function isUnauthorized(e: unknown): e is UnauthorizedError {
+  return e instanceof Error && e.name === "UnauthorizedError";
+}
+
 export function isNotFound(e: unknown): e is NotFoundError {
   return e instanceof Error && e.name === "NotFoundError";
 }

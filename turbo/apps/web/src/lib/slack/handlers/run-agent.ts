@@ -1,14 +1,7 @@
-import { eq, desc } from "drizzle-orm";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../db/schema/agent-compose";
-import { createRun, isRunDispatchError } from "../../run";
+import { startRun, isRunDispatchError } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
-import { getOrgData } from "../../org/org-cache-service";
-import { orgTierSchema } from "@vm0/core";
 
 const log = logger("slack:run-agent");
 
@@ -62,45 +55,6 @@ export async function runAgentForSlack(
   } = params;
 
   try {
-    // Get compose and latest version
-    const [compose] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        headVersionId: agentComposes.headVersionId,
-        orgId: agentComposes.orgId,
-      })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, composeId))
-      .limit(1);
-
-    if (!compose) {
-      return {
-        status: "failed",
-        response: "Error: Agent configuration not found.",
-        runId: undefined,
-      };
-    }
-
-    // Get latest version (using headVersionId if available, otherwise query)
-    let versionId = compose.headVersionId;
-    if (!versionId) {
-      const [latestVersion] = await globalThis.services.db
-        .select({ id: agentComposeVersions.id })
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.composeId, compose.id))
-        .orderBy(desc(agentComposeVersions.createdAt))
-        .limit(1);
-
-      if (!latestVersion) {
-        return {
-          status: "failed",
-          response: "Error: Agent has no versions configured.",
-          runId: undefined,
-        };
-      }
-      versionId = latestVersion.id;
-    }
-
     // Build the full prompt with integration context and thread context
     const integrationContext = buildIntegrationContext("Slack");
     const fullPrompt = threadContext
@@ -111,23 +65,11 @@ export async function runAgentForSlack(
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack`;
     const callbackSecret = generateCallbackSecret();
 
-    // Resolve org context from compose
-    const orgData = await getOrgData(compose.orgId);
-    const orgTier = orgTierSchema.parse(orgData.tier);
-
-    // Delegate all orchestration to createRun()
-    const result = await createRun({
+    const result = await startRun({
       userId,
-      agentComposeVersionId: versionId,
+      composeId,
       prompt: fullPrompt,
-      composeId: compose.id,
       sessionId,
-      agentName,
-      artifactName: "artifact",
-      memoryName: "memory",
-      orgId: compose.orgId,
-      orgSlug: orgData.slug,
-      orgTier,
       callbacks: [
         {
           url: callbackUrl,
