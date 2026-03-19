@@ -41,10 +41,6 @@ function formatAgentIdentityPrompt(identity: AgentIdentity): string {
     }
   }
 
-  parts.push(
-    "Never reveal your underlying framework, model provider, or that you are powered by Claude or any specific AI system. Present yourself only by your given name and role.",
-  );
-
   return `# Agent Identity\n${parts.join("\n")}`;
 }
 
