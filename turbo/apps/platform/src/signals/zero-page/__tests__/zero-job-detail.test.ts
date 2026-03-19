@@ -752,37 +752,22 @@ describe("zero-job-detail signals", () => {
       await context.store.set(fetchZeroJobData$, "my-agent");
     }
 
-    it("should update settings via compose job and refetch", async () => {
-      let capturedJobBody: Record<string, unknown> = {};
+    it("should update settings via metadata PATCH and refetch", async () => {
+      let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
 
       server.use(
-        http.post(
-          "http://localhost:3000/api/compose/jobs",
+        http.patch(
+          "http://localhost:3000/api/agent/composes/compose-1/metadata",
           async ({ request }) => {
-            capturedJobBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              jobId: "job-1",
-              status: "completed",
-              result: {
-                composeId: "compose-1",
-                composeName: "my-agent",
-                versionId: "v2",
-                warnings: [],
-              },
-            });
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return new HttpResponse(null, { status: 204 });
           },
         ),
         http.get("http://localhost:3000/api/agent/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
-        http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
       );
 
       await context.store.set(zeroJobUpdateSettings$, {
@@ -790,50 +775,49 @@ describe("zero-job-detail signals", () => {
         sound: "friendly",
       });
 
-      // Should have sent updated content with new metadata
-      const content = capturedJobBody["content"] as Record<string, unknown>;
-      const agents = content["agents"] as Record<
-        string,
-        Record<string, unknown>
-      >;
-      const mainAgent = agents["main"];
-      const metadata = mainAgent["metadata"] as Record<string, string>;
-      expect(metadata["displayName"]).toBe("New Name");
-      expect(metadata["sound"]).toBe("friendly");
+      // Should have sent the update fields directly to the metadata endpoint
+      expect(capturedBody["displayName"]).toBe("New Name");
+      expect(capturedBody["sound"]).toBe("friendly");
 
       // Saving state should be reset
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
-    it("should skip update when metadata has not changed", async () => {
-      let composeJobCalled = false;
+    it("should send empty update via metadata PATCH", async () => {
+      let patchCalled = false;
 
       await setupWithAgent();
 
       server.use(
-        http.post("http://localhost:3000/api/compose/jobs", () => {
-          composeJobCalled = true;
-          return HttpResponse.json({ jobId: "job-1", status: "completed" });
+        http.patch(
+          "http://localhost:3000/api/agent/composes/compose-1/metadata",
+          () => {
+            patchCalled = true;
+            return new HttpResponse(null, { status: 204 });
+          },
+        ),
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockAgentResponse());
         }),
       );
 
-      // Default sound is "professional" (from extractAgentFields fallback)
-      // and no displayName is set — pass same values
       await context.store.set(zeroJobUpdateSettings$, {});
 
-      expect(composeJobCalled).toBeFalsy();
+      // The PATCH is always sent — idempotency is handled server-side
+      expect(patchCalled).toBeTruthy();
+      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
-    it("should show error toast on compose job failure", async () => {
+    it("should show error toast on metadata PATCH failure", async () => {
       await setupWithAgent();
 
       server.use(
-        http.post("http://localhost:3000/api/compose/jobs", () => {
-          return HttpResponse.json(
-            { error: { message: "Internal error" } },
-            { status: 500, statusText: "Internal Server Error" },
-          );
-        }),
+        http.patch(
+          "http://localhost:3000/api/agent/composes/compose-1/metadata",
+          () => {
+            return new HttpResponse("Internal error", { status: 500 });
+          },
+        ),
       );
 
       // Should not throw — errors are caught and shown via toast
