@@ -2,6 +2,8 @@ name: Security Scanning
 
 on:
   pull_request:
+    branches-ignore:
+      - 'release-please--branches--**'
   push:
     branches:
       - main

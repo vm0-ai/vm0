@@ -2,6 +2,8 @@ name: Docker Toolchain Build
 
 on:
   pull_request:
+    branches-ignore:
+      - 'release-please--branches--**'
     paths:
       - 'docker/toolchain/**'
       - '.github/workflows/docker-toolchain.yml'

@@ -2,6 +2,8 @@ name: Crates
 
 on:
   pull_request:
+    branches-ignore:
+      - 'release-please--branches--**'
     paths:
       - 'crates/**'
       - 'ansible/**'

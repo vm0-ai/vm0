@@ -3,6 +3,8 @@ name: Cleanup Resources
 on:
   pull_request_target:
     types: [closed]
+    branches-ignore:
+      - 'release-please--branches--**'
 
 concurrency:
   group: ${{ github.head_ref || github.ref }}
