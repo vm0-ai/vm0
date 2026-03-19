@@ -24,7 +24,7 @@ export function buildComposeContent(
     instructions: getInstructionsFilename("claude-code"),
     experimental_capabilities: [...VALID_CAPABILITIES],
     environment: {},
-    volumes: {},
+    volumes: [],
   };
 
   if (skills.length > 0) {

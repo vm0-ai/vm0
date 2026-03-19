@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { gzipSync } from "node:zlib";
 import { POST } from "../route";
 import { GET, PUT } from "../[name]/route";
 import {
@@ -12,6 +13,7 @@ import {
   clearSkillsData,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { createSingleFileTar } from "../../../../../src/lib/tar";
 
 const context = testContext();
 
@@ -348,6 +350,119 @@ describe("Zero Agents API", () => {
       );
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe("round-trip verification", () => {
+    it("should read back agent data after POST via GET", async () => {
+      await seedTestSkill({
+        url: "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
+        name: "slack",
+        fullPath: "vm0-ai/vm0-skills/tree/main/slack",
+        frontmatter: {
+          name: "Slack",
+          description: "Slack integration",
+          vm0_secrets: ["SLACK_BOT_TOKEN"],
+          vm0_vars: [],
+        },
+      });
+
+      const createRes = await postAgent(
+        {
+          connectors: ["slack"],
+          displayName: "Round Trip Agent",
+          description: "test description",
+          sound: "friendly",
+        },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(createRes.status).toBe(201);
+      const created = await createRes.json();
+
+      const getRes = await getAgent(created.name, testCliToken, testOrgSlug);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+
+      expect(fetched).toStrictEqual(created);
+    });
+
+    it("should read back updated agent data after PUT via GET", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Original" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      await putAgent(
+        created.name,
+        {
+          connectors: [],
+          displayName: "Updated Name",
+          description: "new desc",
+          sound: "casual",
+        },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      const getRes = await getAgent(created.name, testCliToken, testOrgSlug);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+
+      expect(fetched.displayName).toBe("Updated Name");
+      expect(fetched.description).toBe("new desc");
+      expect(fetched.sound).toBe("casual");
+    });
+
+    it("should read back instructions content after PUT via GET", async () => {
+      const created = await (
+        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      ).json();
+
+      const instructionsContent = "# My Instructions\nBe helpful.";
+      await putAgentInstructions(
+        created.name,
+        { content: instructionsContent },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      // Mock S3 downloads to return what was uploaded
+      const canonicalFilename = "CLAUDE.md";
+      context.mocks.s3.downloadManifest.mockResolvedValueOnce({
+        version: "a".repeat(64),
+        createdAt: new Date().toISOString(),
+        totalSize: instructionsContent.length,
+        fileCount: 1,
+        files: [
+          {
+            path: canonicalFilename,
+            hash: "b".repeat(64),
+            size: instructionsContent.length,
+          },
+        ],
+      });
+      context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
+        gzipSync(
+          createSingleFileTar(
+            canonicalFilename,
+            Buffer.from(instructionsContent, "utf-8"),
+          ),
+        ),
+      );
+
+      const getRes = await getAgentInstructions(
+        created.name,
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+
+      expect(fetched.content).toBe(instructionsContent);
     });
   });
 });
