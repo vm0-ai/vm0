@@ -19,6 +19,9 @@ export const orgModelProviders$ = computed(async (get) => {
   get(internalReloadOrgModelProviders$);
   const fetchFn = get(fetch$);
   const resp = await fetchFn("/api/org/model-providers");
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch org model providers: ${resp.status}`);
+  }
   return (await resp.json()) as ModelProviderListResponse;
 });
 
