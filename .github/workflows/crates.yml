@@ -698,6 +698,56 @@ jobs:
           echo "=== Upgrade test passed ==="
           REMOTE_SCRIPT
 
+  ci-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - detect
+      - check
+      - mitm-addon-test
+      - runner-build
+      - runner-benchmark
+      - runner-exec
+      - runner-balloon
+      - runner-upgrade-local
+    # Always run so the gate reports an explicit result (not "skipped").
+    if: always()
+    steps:
+      - name: Validate CI results
+        run: |
+          echo "::group::CI Gate Results"
+          FAILED=0
+
+          check_result() {
+            local job="$1" result="$2" allow_skip="$3"
+            if [ "$result" = "success" ]; then
+              echo "✅ $job: $result"
+            elif [ "$allow_skip" = "true" ] && [ "$result" = "skipped" ]; then
+              echo "⏭️ $job: $result (allowed)"
+            else
+              if [ "$allow_skip" = "true" ]; then
+                echo "::error::$job: expected success or skipped, got $result"
+              else
+                echo "::error::$job: expected success, got $result"
+              fi
+              FAILED=1
+            fi
+          }
+
+          # Must-succeed: only 'success' is acceptable
+          check_result "detect" "${{ needs.detect.result }}" ""
+          check_result "check" "${{ needs.check.result }}" ""
+          check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" ""
+
+          # May-skip: runner jobs only run when relevant crates change
+          check_result "runner-build" "${{ needs.runner-build.result }}" "true"
+          check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
+          check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
+          check_result "runner-balloon" "${{ needs.runner-balloon.result }}" "true"
+          check_result "runner-upgrade-local" "${{ needs.runner-upgrade-local.result }}" "true"
+
+          echo "::endgroup::"
+          exit $FAILED
+
   runner-cleanup:
     runs-on: ubuntu-latest
     needs: [runner-build, runner-benchmark, runner-exec, runner-balloon, runner-upgrade-local]
