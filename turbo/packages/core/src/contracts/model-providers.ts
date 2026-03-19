@@ -305,7 +305,7 @@ export type ModelProviderFramework = "claude-code";
  */
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 
-function getProviderBaseUrl(type: ModelProviderType): string {
+function getFirewallBaseUrl(type: ModelProviderType): string {
   return getEnvironmentMapping(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE;
 }
 
@@ -319,7 +319,7 @@ function mpFirewall(
     ref: "__auto__",
     apis: [
       {
-        base: getProviderBaseUrl(type),
+        base: getFirewallBaseUrl(type),
         auth: { headers: authHeaders },
         permissions: [{ name: "all", rules: ["ANY /{path*}"] }],
       },
