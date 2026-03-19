@@ -205,6 +205,11 @@ describe("Server-side compose", () => {
     });
 
     it("should return existing sandbox job when falling back to sandbox", async () => {
+      // Stall the fire-and-forget sandbox spawn so it cannot race with request 2.
+      // Without this, the .catch() handler in triggerComposeJob can mark the job
+      // as "failed" before request 2 queries, causing a flaky 201 instead of 200.
+      vi.mocked(Sandbox.create).mockReturnValueOnce(new Promise(() => {}));
+
       // Create a sandbox job first (uncached skill triggers sandbox)
       const content = makeContent({
         skills: ["https://github.com/vm0-ai/vm0-skills/tree/main/uncached"],
