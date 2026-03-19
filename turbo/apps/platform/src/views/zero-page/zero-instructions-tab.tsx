@@ -1,4 +1,3 @@
-import { Card, CardContent } from "@vm0/ui";
 import type { AgentInstructions } from "../../signals/zero-page/agent-types.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import { TiptapInstructionsEditor } from "./tiptap-instructions-editor.tsx";
@@ -38,38 +37,28 @@ export function ZeroInstructionsTab({
 
   return (
     <div className="mx-auto max-w-[900px]">
-      <Card className="zero-card-white">
-        <CardContent className="py-7">
-          {loading ? (
-            <div className="space-y-4 animate-pulse">
-              <div className="h-5 w-40 rounded bg-muted/50" />
-              <div className="h-64 w-full rounded bg-muted/30" />
-            </div>
-          ) : fetchError ? (
-            <p className="text-sm text-destructive">{fetchError}</p>
-          ) : (
-            <>
-              <TiptapInstructionsEditor
-                key={editorKey}
-                initialContent={displayContent}
-                onChange={onEdit}
-                disabled={isBuilding}
-              />
-              <div className="flex items-center gap-2 pt-5 mt-5 border-t border-border/60">
-                <p className="text-muted-foreground text-xs">
-                  Edit the instructions directly to customize your agent&apos;s
-                  behavior.
-                </p>
-                {buildError && (
-                  <span className="text-xs font-medium text-destructive">
-                    {buildError}
-                  </span>
-                )}
-              </div>
-            </>
+      {loading ? (
+        <div className="space-y-4 animate-pulse">
+          <div className="h-5 w-40 rounded bg-muted/50" />
+          <div className="h-64 w-full rounded bg-muted/30" />
+        </div>
+      ) : fetchError ? (
+        <p className="text-sm text-destructive">{fetchError}</p>
+      ) : (
+        <>
+          <TiptapInstructionsEditor
+            key={editorKey}
+            initialContent={displayContent}
+            onChange={onEdit}
+            disabled={isBuilding}
+          />
+          {buildError && (
+            <p className="text-xs font-medium text-destructive mt-3">
+              {buildError}
+            </p>
           )}
-        </CardContent>
-      </Card>
+        </>
+      )}
 
       {(isDirty || isBuilding) && (
         <ZeroUnsavedBar
