@@ -2,7 +2,7 @@
 import json
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import mitm_addon
 
@@ -44,7 +44,7 @@ class TestRequestHandler:
     def setup_method(self):
         _reset()
 
-    def test_allowed_domain_passes_through(self, registry_file):
+    async def test_allowed_domain_passes_through(self, registry_file):
         flow = _make_http_flow(host="api.anthropic.com")
 
         with (
@@ -52,11 +52,11 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         assert flow.metadata["firewall_action"] == "ALLOW"
 
-    def test_vm0_api_auto_allowed(self, registry_file):
+    async def test_vm0_api_auto_allowed(self, registry_file):
         flow = _make_http_flow(host="api.vm0.ai")
 
         with (
@@ -64,12 +64,12 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_rule"] == "vm0-api"
 
-    def test_tracks_start_time(self, registry_file):
+    async def test_tracks_start_time(self, registry_file):
         flow = _make_http_flow(host="api.anthropic.com")
 
         with (
@@ -77,11 +77,11 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         assert flow.id in mitm_addon._request_start_times
 
-    def test_unregistered_vm_passes_through(self, registry_file):
+    async def test_unregistered_vm_passes_through(self, registry_file):
         flow = _make_http_flow(client_ip="192.168.99.99", host="anything.com")
 
         with (
@@ -89,13 +89,13 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         # No 403, no metadata set
         assert flow.response is None
         assert "firewall_action" not in flow.metadata
 
-    def test_mitm_allowed_passes_through(self, registry_file):
+    async def test_mitm_allowed_passes_through(self, registry_file):
         """Allowed request passes through without rewrite."""
         flow = _make_http_flow(host="api.anthropic.com", path="/v1/messages")
 
@@ -104,14 +104,14 @@ class TestRequestHandler:
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         # Request should pass through without rewrite
         assert flow.response is None
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
 
-    def test_firewall_match_calls_handler(self, tmp_path):
+    async def test_firewall_match_calls_handler(self, tmp_path):
         """When URL matches a firewall rule, handle_firewall_request is called."""
         registry = {
             "vms": {
@@ -139,13 +139,14 @@ class TestRequestHandler:
             client_ip="10.200.0.5", host="api.github.com", path="/repos"
         )
 
+        mock_handler = AsyncMock()
         with (
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         mock_handler.assert_called_once()
         call_args = mock_handler.call_args
@@ -156,7 +157,7 @@ class TestRequestHandler:
         assert match_info["ref"] == "github"
         assert match_info["permission"] == "full-access"
 
-    def test_firewall_permission_blocks_unmatched(self, tmp_path):
+    async def test_firewall_permission_blocks_unmatched(self, tmp_path):
         """Firewall with permissions but no matching rule returns 403."""
         registry = {
             "vms": {
@@ -186,13 +187,14 @@ class TestRequestHandler:
             client_ip="10.200.0.5", host="api.github.com", path="/orgs"
         )
 
+        mock_handler = AsyncMock()
         with (
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         mock_handler.assert_not_called()
         assert flow.response is not None
@@ -207,7 +209,7 @@ class TestRequestHandler:
         assert body["base"] == "https://api.github.com"
         assert "hint" in body
 
-    def test_firewall_permission_allows_matched(self, tmp_path):
+    async def test_firewall_permission_allows_matched(self, tmp_path):
         """Firewall with permissions and matching rule calls handler with match_info."""
         registry = {
             "vms": {
@@ -237,13 +239,14 @@ class TestRequestHandler:
             client_ip="10.200.0.5", host="api.github.com", path="/repos/octocat/hello"
         )
 
+        mock_handler = AsyncMock()
         with (
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         mock_handler.assert_called_once()
         call_args = mock_handler.call_args
@@ -256,7 +259,7 @@ class TestRequestHandler:
         assert match_info["rule"] == "GET /repos/{owner}/{repo}"
         assert match_info["params"] == {"owner": "octocat", "repo": "hello"}
 
-    def test_firewall_no_base_match_passes_through(self, tmp_path):
+    async def test_firewall_no_base_match_passes_through(self, tmp_path):
         """URL not matching any firewall base → pass-through (not block)."""
         registry = {
             "vms": {
@@ -285,13 +288,14 @@ class TestRequestHandler:
             client_ip="10.200.0.5", host="api.example.com", path="/data"
         )
 
+        mock_handler = AsyncMock()
         with (
             patch.object(mitm_addon, "get_registry_path", return_value=str(reg_path)),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "handle_firewall_request") as mock_handler,
+            patch.object(mitm_addon, "handle_firewall_request", mock_handler),
         ):
-            mitm_addon.request(flow)
+            await mitm_addon.request(flow)
 
         # No firewall match → pass-through, not blocked
         mock_handler.assert_not_called()

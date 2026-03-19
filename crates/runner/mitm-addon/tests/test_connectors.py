@@ -1,7 +1,7 @@
 """Tests for firewall subsystem: matching, caching, header injection, and HTTP fetching."""
 import json
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import mitm_addon
 from mitm_addon import FirewallAllow, FirewallBlock
@@ -381,14 +381,15 @@ class TestGetFirewallHeaders:
     def setup_method(self):
         mitm_addon._firewall_header_cache.clear()
 
-    def test_cache_miss_fetches_and_caches(self):
+    async def test_cache_miss_fetches_and_caches(self):
         mock_headers = {"Authorization": "Bearer fresh-token"}
         mock_result = {"headers": mock_headers}
         encrypted = "iv:tag:data"
         auth_templates = {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
 
-        with patch.object(mitm_addon, "fetch_firewall_headers", return_value=mock_result) as mock_fetch:
-            headers = mitm_addon.get_firewall_headers("run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz")
+        mock_fetch = AsyncMock(return_value=mock_result)
+        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
+            headers = await mitm_addon.get_firewall_headers("run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz")
 
         assert headers == mock_headers
         mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz", None)
@@ -398,20 +399,21 @@ class TestGetFirewallHeaders:
         assert cache_key in mitm_addon._firewall_header_cache
         assert mitm_addon._firewall_header_cache[cache_key]["headers"] == mock_headers
 
-    def test_cache_hit_returns_cached(self):
+    async def test_cache_hit_returns_cached(self):
         cache_key = ("run-1", "https://api.github.com")
         cached_headers = {"Authorization": "Bearer cached-token"}
         mitm_addon._firewall_header_cache[cache_key] = {
             "headers": cached_headers,
         }
 
-        with patch.object(mitm_addon, "fetch_firewall_headers") as mock_fetch:
-            headers = mitm_addon.get_firewall_headers("run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz")
+        mock_fetch = AsyncMock()
+        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
+            headers = await mitm_addon.get_firewall_headers("run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz")
 
         assert headers == cached_headers
         mock_fetch.assert_not_called()
 
-    def test_cache_hit_with_valid_ttl_returns_cached(self):
+    async def test_cache_hit_with_valid_ttl_returns_cached(self):
         """Cached entry with expiresAt in the future should be returned without fetching."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer valid-token"}
@@ -420,13 +422,14 @@ class TestGetFirewallHeaders:
             "expiresAt": time.time() + 3600,  # 1 hour from now
         }
 
-        with patch.object(mitm_addon, "fetch_firewall_headers") as mock_fetch:
-            headers = mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        mock_fetch = AsyncMock()
+        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
+            headers = await mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
         assert headers == cached_headers
         mock_fetch.assert_not_called()
 
-    def test_cache_evicted_when_ttl_expired(self):
+    async def test_cache_evicted_when_ttl_expired(self):
         """Cached entry with expiresAt in the past should trigger a re-fetch."""
         cache_key = ("run-1", "api-1")
         mitm_addon._firewall_header_cache[cache_key] = {
@@ -437,15 +440,16 @@ class TestGetFirewallHeaders:
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         mock_result = {"headers": fresh_headers, "expiresAt": time.time() + 3600}
 
-        with patch.object(mitm_addon, "fetch_firewall_headers", return_value=mock_result) as mock_fetch:
-            headers = mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        mock_fetch = AsyncMock(return_value=mock_result)
+        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
+            headers = await mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
         assert headers == fresh_headers
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
         assert mitm_addon._firewall_header_cache[cache_key]["headers"] == fresh_headers
 
-    def test_cache_with_null_expires_at_never_evicts(self):
+    async def test_cache_with_null_expires_at_never_evicts(self):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer permanent-token"}
@@ -454,8 +458,9 @@ class TestGetFirewallHeaders:
             "expiresAt": None,
         }
 
-        with patch.object(mitm_addon, "fetch_firewall_headers") as mock_fetch:
-            headers = mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+        mock_fetch = AsyncMock()
+        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
+            headers = await mitm_addon.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
         assert headers == cached_headers
         mock_fetch.assert_not_called()
@@ -470,7 +475,7 @@ class TestHandleFirewallRequest:
     def setup_method(self):
         mitm_addon._firewall_header_cache.clear()
 
-    def test_success_injects_headers_and_audit_metadata(self):
+    async def test_success_injects_headers_and_audit_metadata(self):
         flow = _make_http_flow()
         api_entry = {"id": "run-1:0", "base": "https://api.github.com", "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}}
         vm_info = {
@@ -483,10 +488,10 @@ class TestHandleFirewallRequest:
         resolved_headers = {"Authorization": "Bearer real-token", "X-Custom": "value"}
 
         with (
-            patch.object(mitm_addon, "get_firewall_headers", return_value=resolved_headers),
+            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=resolved_headers)),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         # Headers injected
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -506,7 +511,7 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
         assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
 
-    def test_failure_returns_502(self):
+    async def test_failure_returns_502(self):
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
         vm_info = {
@@ -520,12 +525,12 @@ class TestHandleFirewallRequest:
         with (
             patch.object(
                 mitm_addon, "get_firewall_headers",
-                side_effect=Exception("API unreachable"),
+                AsyncMock(side_effect=Exception("API unreachable")),
             ),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
             patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -536,7 +541,7 @@ class TestHandleFirewallRequest:
         assert "API unreachable" in body["message"]
         assert body["firewall"] == "github"
 
-    def test_no_response_set_on_success(self):
+    async def test_no_response_set_on_success(self):
         """On success, flow.response should remain None (request continues to origin)."""
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
@@ -544,14 +549,14 @@ class TestHandleFirewallRequest:
         match_info = {"name": "github", "ref": "github"}
 
         with (
-            patch.object(mitm_addon, "get_firewall_headers", return_value={"Auth": "tok"}),
+            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value={"Auth": "tok"})),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is None
 
-    def test_missing_encrypted_secrets_returns_502(self):
+    async def test_missing_encrypted_secrets_returns_502(self):
         """When encryptedSecrets is missing from vm_info, return 502."""
         flow = _make_http_flow()
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
@@ -559,7 +564,7 @@ class TestHandleFirewallRequest:
         match_info = {"name": "github", "ref": "github"}
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -585,7 +590,7 @@ class TestFetchFirewallHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", ""),
         ):
-            result = mitm_addon.fetch_firewall_headers("iv:tag:data", {"Authorization": "Bearer ${{ secrets.TOKEN }}"}, "tok-xyz")
+            result = mitm_addon._fetch_firewall_headers_sync("iv:tag:data", {"Authorization": "Bearer ${{ secrets.TOKEN }}"}, "tok-xyz")
 
         assert result == {"headers": {"Authorization": "Bearer tok"}}
 
@@ -613,7 +618,7 @@ class TestFetchFirewallHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", "secret-bypass-value"),
         ):
-            mitm_addon.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            mitm_addon._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz")
 
         mock_req_instance.add_header.assert_called_once_with("x-vercel-protection-bypass", "secret-bypass-value")
 
@@ -629,6 +634,6 @@ class TestFetchFirewallHeaders:
             patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
             patch.object(mitm_addon, "VERCEL_BYPASS", ""),
         ):
-            mitm_addon.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            mitm_addon._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz")
 
         mock_req_instance.add_header.assert_not_called()

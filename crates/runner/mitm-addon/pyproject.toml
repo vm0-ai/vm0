@@ -10,9 +10,11 @@ requires-python = ">=3.10"
 [project.optional-dependencies]
 test = [
     "pytest>=7.0",
+    "pytest-asyncio>=0.23",
     "mitmproxy>=10.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+asyncio_mode = "auto"

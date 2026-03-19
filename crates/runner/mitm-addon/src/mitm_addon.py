@@ -8,6 +8,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
 """
+import asyncio
 import os
 import json
 import time
@@ -255,13 +256,9 @@ def match_firewall_request(url: str, method: str, vm_firewalls: list | None) -> 
     return None
 
 
-def fetch_firewall_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
-                          secret_connector_map: dict | None = None) -> dict:
-    """Resolve auth headers via server-side decryption.
-
-    When secret_connector_map is provided, the auth endpoint can refresh
-    expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
-    """
+def _fetch_firewall_headers_sync(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
+                                 secret_connector_map: dict | None = None) -> dict:
+    """Synchronous helper — runs in a thread to avoid blocking the event loop."""
     api_url = get_api_url()
     url = f"{api_url}/api/webhooks/agent/firewall/auth"
     body: dict = {"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}
@@ -279,8 +276,22 @@ def fetch_firewall_headers(encrypted_secrets: str, auth_headers: dict, sandbox_t
     return json.loads(resp.read())
 
 
-def get_firewall_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict,
-                        sandbox_token: str, secret_connector_map: dict | None = None) -> dict:
+async def fetch_firewall_headers(encrypted_secrets: str, auth_headers: dict, sandbox_token: str,
+                                 secret_connector_map: dict | None = None) -> dict:
+    """Resolve auth headers via server-side decryption.
+
+    When secret_connector_map is provided, the auth endpoint can refresh
+    expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
+
+    Uses asyncio.to_thread to avoid blocking mitmproxy's event loop.
+    """
+    return await asyncio.to_thread(
+        _fetch_firewall_headers_sync, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
+    )
+
+
+async def get_firewall_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_headers: dict,
+                              sandbox_token: str, secret_connector_map: dict | None = None) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
     Cache is evicted when:
@@ -296,13 +307,13 @@ def get_firewall_headers(run_id: str, api_id: str, encrypted_secrets: str, auth_
             return cached["headers"]
         # Token expired — evict and re-fetch
 
-    result = fetch_firewall_headers(encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
+    result = await fetch_firewall_headers(encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
     headers = result["headers"]
     _firewall_header_cache[cache_key] = {"headers": headers, "expiresAt": result.get("expiresAt")}
     return headers
 
 
-def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict) -> None:
+async def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict) -> None:
     """Handle a firewall-matched request: fetch resolved headers, inject into request."""
     client_ip = flow.client_conn.peername[0]
     firewall_base = api_entry["base"]
@@ -332,7 +343,7 @@ def handle_firewall_request(flow: http.HTTPFlow, api_entry: dict, vm_info: dict,
         return
 
     try:
-        headers = get_firewall_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
+        headers = await get_firewall_headers(run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map)
     except Exception as e:
         ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
         flow.metadata["firewall_action"] = "DENY"
@@ -401,7 +412,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 # HTTP Request Handler (MITM mode)
 # ============================================================================
 
-def request(flow: http.HTTPFlow) -> None:
+async def request(flow: http.HTTPFlow) -> None:
     """
     Intercept request: inject firewall auth headers for configured firewall rules.
 
@@ -477,7 +488,7 @@ def request(flow: http.HTTPFlow) -> None:
             )
             return
         if isinstance(result, FirewallAllow):
-            handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
+            await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
             return
 
     # No firewall match — pass through directly
