@@ -286,8 +286,10 @@ else
   CONTINUE_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Continue"' || true)")
 
   echo "📧 Entering email: $EMAIL"
-  agent-browser fill "$EMAIL_REF" "$EMAIL"
+  agent-browser click "$EMAIL_REF"
   agent-browser wait 300
+  agent-browser type "$EMAIL_REF" "$EMAIL"
+  agent-browser wait 500
   agent-browser click "$CONTINUE_REF"
   agent-browser wait 5000
   step_screenshot "after-email-continue"
@@ -328,10 +330,14 @@ else
     PASS_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'textbox "Password"' || true)")
     CONTINUE_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Continue"' || true)")
 
-    agent-browser fill "$EMAIL_REF" "$EMAIL"
+    agent-browser click "$EMAIL_REF"
     agent-browser wait 300
-    agent-browser fill "$PASS_REF" "$SIGNUP_PASSWORD"
+    agent-browser type "$EMAIL_REF" "$EMAIL"
+    agent-browser wait 500
+    agent-browser click "$PASS_REF"
     agent-browser wait 300
+    agent-browser type "$PASS_REF" "$SIGNUP_PASSWORD"
+    agent-browser wait 500
     agent-browser click "$CONTINUE_REF"
     agent-browser wait 5000
     step_screenshot "after-sign-up-continue"
