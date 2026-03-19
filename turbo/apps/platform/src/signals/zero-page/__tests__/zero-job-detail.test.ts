@@ -855,7 +855,7 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       const skills = context.store.get(zeroJobAddedSkills$);
-      // Seed skills are always included, plus compose-specific "search"
+      // SEED_SKILLS are always included, plus agent-specific skills
       expect(skills).toStrictEqual([...SEED_SKILLS, "search"]);
       expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
     });
@@ -940,7 +940,7 @@ describe("zero-job-detail signals", () => {
       >;
       const mainAgent = agents["main"];
       const skills = mainAgent["skills"] as string[];
-      // All seed skills + "search" (from compose) + "gmail" (added)
+      // All SEED_SKILLS plus agent-specific skills are saved, converted to URLs
       expect(skills).toHaveLength(SEED_SKILLS.length + 2);
       // Skills should be converted to URLs via skillValueToUrl
       expect(skills).toContainEqual(expect.stringContaining("search"));

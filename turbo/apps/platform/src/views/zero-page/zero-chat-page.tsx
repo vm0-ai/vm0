@@ -881,6 +881,7 @@ export function ZeroChatPage({
             </Button>
             <button
               type="button"
+              aria-label="View agent profile"
               className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
               onClick={onAvatarClick}
             >
@@ -1055,6 +1056,7 @@ export function ZeroChatPage({
           <div className="flex items-center gap-4 w-full">
             <button
               type="button"
+              aria-label="View agent profile"
               className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
               onClick={onAvatarClick}
             >

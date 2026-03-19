@@ -60,7 +60,7 @@ describe("zeroAddedSkills$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     const skills = await context.store.get(zeroAddedSkills$);
-    // Seed skills are always included, plus compose-specific skills
+    // SEED_SKILLS are always included, plus compose-specific skills
     expect(skills).toStrictEqual([...SEED_SKILLS, "slack", "github"]);
   });
 
@@ -121,7 +121,7 @@ describe("zeroAddedSkills$", () => {
     });
 
     const skills = await context.store.get(zeroAddedSkills$);
-    // Seed skills + compose-specific "github" (not in seed)
+    // SEED_SKILLS are always included, plus sub-agent compose skills
     expect(skills).toStrictEqual([...SEED_SKILLS, "github"]);
   });
 });
