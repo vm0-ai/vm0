@@ -14,6 +14,7 @@ import { clerk$ } from "../auth.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
 import { getProviderShape } from "../../views/zero-page/components/settings/provider-ui-config.ts";
 import { skillValueToUrl } from "../../data/skills.ts";
+import { SEED_INSTRUCTIONS, SEED_SKILLS } from "../../data/the-seed.ts";
 import { triggerAndPollComposeJob } from "./compose-job.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -83,7 +84,7 @@ export const zeroHasModelProvider$ = computed(async (get) => {
 type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
 
 const internalStep$ = state<ZeroOnboardingStep>("1");
-const internalAgentName$ = state("zero");
+const internalAgentName$ = state("Zero");
 const internalProviderType$ = state<ModelProviderType>(
   "claude-code-oauth-token",
 );
@@ -316,18 +317,13 @@ export const completeZeroOnboarding$ = command(
       // Use a UUID as the agent identifier; the user-facing name goes into metadata
       const agentId = crypto.randomUUID();
 
-      // Build agent definition with optional skills and metadata
+      // Build agent definition with optional skills
       const agentDef: Record<string, unknown> = {
         framework: "claude-code",
         instructions: getInstructionsFilename("claude-code"),
-        metadata: {
-          displayName,
-          sound: "professional",
-        },
       };
-      if (selectedSkills.length > 0) {
-        agentDef.skills = selectedSkills.map(skillValueToUrl);
-      }
+      const allSkills = [...new Set([...SEED_SKILLS, ...selectedSkills])];
+      agentDef.skills = allSkills.map(skillValueToUrl);
 
       const content = {
         version: "1",
@@ -337,12 +333,33 @@ export const completeZeroOnboarding$ = command(
       };
 
       // Run compose job (CLI processes skills, uploads assets)
-      // Pass empty instructions so the server creates a CLAUDE.md with agent profile
-      const job = await triggerAndPollComposeJob(fetchFn, content, "");
+      const job = await triggerAndPollComposeJob(
+        fetchFn,
+        content,
+        SEED_INSTRUCTIONS,
+      );
       signal.throwIfAborted();
 
       if (!job.result) {
         throw new Error("Compose job completed without result");
+      }
+
+      // Write agent metadata (displayName, sound) directly to zero_agents
+      const metadataResp = await fetchFn(
+        `/api/agent/composes/${job.result.composeId}/metadata`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            displayName,
+            sound: "professional",
+          }),
+        },
+      );
+      signal.throwIfAborted();
+
+      if (!metadataResp.ok) {
+        throw new Error(`Failed to set agent metadata: ${metadataResp.status}`);
       }
 
       // Set as default agent

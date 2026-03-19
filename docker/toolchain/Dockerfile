@@ -94,8 +94,10 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
     && rm -rf /var/lib/apt/lists/*
 
 # Install agent-browser for browser automation
-RUN npm install -g agent-browser \
-    && agent-browser install --with-deps
+# Use system chromium instead of Chrome for Testing (no ARM64 builds)
+RUN apt-get update && apt-get install -y chromium-browser \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g agent-browser
 
 # Install AWS CLI v2
 RUN apt-get update && apt-get install -y unzip \

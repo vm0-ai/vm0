@@ -77,4 +77,26 @@ echo "🪝 Installing lefthook git hooks..."
 cd "$WORKSPACE_DIR/turbo" && lefthook install
 echo "✓ Lefthook hooks installed"
 
+# Start VNC stack (Xvfb + openbox + x11vnc + websockify) for headed browser automation
+echo "🖥️ Starting VNC stack..."
+MISSING=()
+command -v x11vnc >/dev/null 2>&1 || MISSING+=(x11vnc)
+command -v Xvfb >/dev/null 2>&1 || MISSING+=(xvfb)
+command -v openbox >/dev/null 2>&1 || MISSING+=(openbox)
+command -v websockify >/dev/null 2>&1 || MISSING+=(novnc)
+if [ ${#MISSING[@]} -gt 0 ]; then
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq "${MISSING[@]}"
+fi
+if ! pgrep -x Xvfb >/dev/null 2>&1; then
+  Xvfb :99 -screen 0 1344x840x24 >/dev/null 2>&1 &
+  sleep 1
+  DISPLAY=:99 openbox >/dev/null 2>&1 &
+  x11vnc -display :99 -nopw -forever -shared -rfbport 5900 >/dev/null 2>&1 &
+  websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900 >/dev/null 2>&1 &
+  echo "✓ VNC stack started (noVNC at http://localhost:6080/vnc.html)"
+else
+  echo "✓ VNC stack already running"
+fi
+
 echo "✅ Dev container setup complete!"

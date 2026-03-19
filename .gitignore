@@ -188,3 +188,4 @@ debug-*.png
 tmp/
 
 *.sarif
+junit.xml
