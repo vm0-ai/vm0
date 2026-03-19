@@ -2719,6 +2719,76 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  lark: {
+    label: "Lark",
+    helpText:
+      "Connect your Lark (Feishu) app to manage messages, documents, calendars, and workflows",
+    authMethods: {
+      "api-token": {
+        label: "App Credentials",
+        secrets: {
+          LARK_APP_SECRET: {
+            label: "App Secret",
+            required: true,
+            type: "secret",
+          },
+          LARK_APP_ID: {
+            label: "App ID",
+            required: true,
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  mailsac: {
+    label: "Mailsac",
+    helpText:
+      "Connect your Mailsac account to manage disposable email inboxes for testing",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        secrets: {
+          MAILSAC_API_KEY: {
+            label: "API Key",
+            required: true,
+            placeholder: "your-mailsac-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  minio: {
+    label: "MinIO",
+    helpText:
+      "Connect your MinIO instance to manage S3-compatible object storage buckets and objects",
+    authMethods: {
+      "api-token": {
+        label: "Access Credentials",
+        secrets: {
+          MINIO_ACCESS_KEY: {
+            label: "Access Key",
+            required: true,
+            type: "secret",
+          },
+          MINIO_SECRET_KEY: {
+            label: "Secret Key",
+            required: true,
+            type: "secret",
+          },
+          MINIO_ENDPOINT: {
+            label: "Endpoint URL",
+            required: true,
+            placeholder: "https://minio.example.com",
+            type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -2828,6 +2898,9 @@ export const connectorTypeSchema = z.enum([
   "bitrix",
   "brave-search",
   "cronlytic",
+  "lark",
+  "mailsac",
+  "minio",
 ]);
 
 /**

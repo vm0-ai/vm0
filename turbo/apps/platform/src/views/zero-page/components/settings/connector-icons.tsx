@@ -48,14 +48,17 @@ import googleCalendarIcon from "./icons/google-calendar.svg";
 import googleDocsIcon from "./icons/google-docs.svg";
 import googleDriveIcon from "./icons/google-drive.svg";
 import googleSheetsIcon from "./icons/google-sheets.svg";
+import larkIcon from "./icons/lark.svg";
 import lineIcon from "./icons/line.svg";
 import linearIcon from "./icons/linear.svg";
 import makeIcon from "./icons/make.svg";
 import metabaseIcon from "./icons/metabase.svg";
 import mailchimpIcon from "./icons/mailchimp.svg";
+import mailsacIcon from "./icons/mailsac.svg";
 import mercuryIcon from "./icons/mercury.svg";
 import metaAdsIcon from "./icons/meta-ads.svg";
 import minimaxIcon from "./icons/minimax.svg";
+import minioIcon from "./icons/minio.svg";
 import mondayIcon from "./icons/monday.svg";
 import neonIcon from "./icons/neon.svg";
 import notionIcon from "./icons/notion.svg";
@@ -152,14 +155,17 @@ const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> = Object.freeze({
   "intervals-icu": intervalsIcuIcon,
   jam: jamIcon,
   jotform: jotformIcon,
+  lark: larkIcon,
   line: lineIcon,
   linear: linearIcon,
   make: makeIcon,
   metabase: metabaseIcon,
   mailchimp: mailchimpIcon,
+  mailsac: mailsacIcon,
   mercury: mercuryIcon,
   "meta-ads": metaAdsIcon,
   minimax: minimaxIcon,
+  minio: minioIcon,
   monday: mondayIcon,
   neon: neonIcon,
   notion: notionIcon,
