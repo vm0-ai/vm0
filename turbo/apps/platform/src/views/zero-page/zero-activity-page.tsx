@@ -1,5 +1,5 @@
+import { useRef } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import {
   IconClock,
   IconChevronRight,
@@ -136,15 +136,11 @@ export function ZeroActivityPage() {
   const setRowsPerPage = useSet(setZeroActivityRowsPerPage$);
   const refresh = useSet(refreshZeroActivity$);
 
-  // Refresh activity data every time this tab is entered
-  const didRefresh$ = useCCState(false);
-  const didRefresh = useGet(didRefresh$);
-  const setDidRefresh = useSet(didRefresh$);
-  if (!didRefresh) {
-    queueMicrotask(() => {
-      setDidRefresh(true);
-      refresh();
-    });
+  // Refresh activity data once when this tab is entered
+  const refreshed = useRef(false);
+  if (!refreshed.current) {
+    refreshed.current = true;
+    queueMicrotask(() => refresh());
   }
 
   // URL-driven detail: /activity/:logId
