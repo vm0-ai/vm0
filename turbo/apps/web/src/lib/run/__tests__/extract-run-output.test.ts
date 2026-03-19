@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../axiom", () => ({
-  queryAxiom: vi.fn(),
-  getDatasetName: (base: string) => `test-${base}`,
-  DATASETS: { AGENT_RUN_EVENTS: "agent-run-events" },
+// Mock @axiomhq/js at the package boundary (not internal modules).
+// We provide a controllable `query` method that returns Axiom-shaped responses.
+const mockQuery = vi.fn();
+vi.mock("@axiomhq/js", () => ({
+  Axiom: vi.fn().mockImplementation(function () {
+    return { query: mockQuery };
+  }),
 }));
 
-import { queryAxiom } from "../../axiom";
+import { reloadEnv } from "../../../env";
 import {
   extractRunOutput,
   extractAllRunOutputs,
@@ -16,10 +19,26 @@ import {
   type RunOutput,
 } from "../extract-run-output";
 
-const mockQueryAxiom = vi.mocked(queryAxiom);
+/**
+ * Helper to build an Axiom query response in the shape returned by the SDK.
+ * Each item becomes a match entry with `_time` and `data`.
+ */
+function axiomResponse(events: Array<Record<string, unknown>>): {
+  matches: Array<{ _time: string; data: Record<string, unknown> }>;
+} {
+  return {
+    matches: events.map((data) => ({
+      _time: new Date().toISOString(),
+      data,
+    })),
+  };
+}
 
 beforeEach(() => {
-  mockQueryAxiom.mockReset();
+  vi.stubEnv("AXIOM_TOKEN_SESSIONS", "test-axiom-token");
+  // Reload env() cache after stubbing the token so the axiom client sees it
+  reloadEnv();
+  mockQuery.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -28,7 +47,7 @@ beforeEach(() => {
 
 describe("extractRunOutput", () => {
   it("returns empty output when no events found", async () => {
-    mockQueryAxiom.mockResolvedValue([]);
+    mockQuery.mockResolvedValue(axiomResponse([]));
 
     const output = await extractRunOutput("run-1");
 
@@ -41,20 +60,19 @@ describe("extractRunOutput", () => {
     });
   });
 
-  it("returns the last event when multiple exist", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      { eventData: { result: "first" } },
-      { eventData: { result: "second" } },
-      { eventData: { result: "last" } },
-    ]);
+  it("returns the result from the single event returned by the limit-1 query", async () => {
+    // queryResultEvent uses `limit 1 + order by desc` so Axiom returns only the latest event
+    mockQuery.mockResolvedValue(
+      axiomResponse([{ eventData: { result: "latest" } }]),
+    );
 
     const output = await extractRunOutput("run-1");
 
-    expect(output.result).toBe("last");
+    expect(output.result).toBe("latest");
   });
 
   it("passes error through", async () => {
-    mockQueryAxiom.mockResolvedValue([]);
+    mockQuery.mockResolvedValue(axiomResponse([]));
 
     const output = await extractRunOutput("run-1", "sandbox crashed");
 
@@ -63,9 +81,11 @@ describe("extractRunOutput", () => {
   });
 
   it("detects model provider issues in result text", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      { eventData: { result: "model provider not configured" } },
-    ]);
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        { eventData: { result: "model provider not configured" } },
+      ]),
+    );
 
     const output = await extractRunOutput("run-1");
 
@@ -74,9 +94,11 @@ describe("extractRunOutput", () => {
   });
 
   it("detects connector issues in result text", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      { eventData: { result: "missing variable for connector" } },
-    ]);
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        { eventData: { result: "missing variable for connector" } },
+      ]),
+    );
 
     const output = await extractRunOutput("run-1");
 
@@ -84,20 +106,22 @@ describe("extractRunOutput", () => {
   });
 
   it("filters AskUserQuestion denials from permission_denials", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      {
-        eventData: {
-          result: "done",
-          permission_denials: [
-            {
-              tool_name: "AskUserQuestion",
-              tool_input: { questions: [{ question: "Pick one" }] },
-            },
-            { tool_name: "Bash" },
-          ],
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        {
+          eventData: {
+            result: "done",
+            permission_denials: [
+              {
+                tool_name: "AskUserQuestion",
+                tool_input: { questions: [{ question: "Pick one" }] },
+              },
+              { tool_name: "Bash" },
+            ],
+          },
         },
-      },
-    ]);
+      ]),
+    );
 
     const output = await extractRunOutput("run-1");
 
@@ -112,7 +136,7 @@ describe("extractRunOutput", () => {
 
 describe("extractAllRunOutputs", () => {
   it("returns one empty output when no events found", async () => {
-    mockQueryAxiom.mockResolvedValue([]);
+    mockQuery.mockResolvedValue(axiomResponse([]));
 
     const outputs = await extractAllRunOutputs("run-1");
 
@@ -122,7 +146,7 @@ describe("extractAllRunOutputs", () => {
   });
 
   it("returns one empty output with error when no events found", async () => {
-    mockQueryAxiom.mockResolvedValue([]);
+    mockQuery.mockResolvedValue(axiomResponse([]));
 
     const outputs = await extractAllRunOutputs("run-1", "timeout");
 
@@ -131,11 +155,13 @@ describe("extractAllRunOutputs", () => {
   });
 
   it("returns one output per event in order", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      { eventData: { result: "step 1 done" } },
-      { eventData: { result: "step 2 done" } },
-      { eventData: { result: "final summary" } },
-    ]);
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        { eventData: { result: "step 1 done" } },
+        { eventData: { result: "step 2 done" } },
+        { eventData: { result: "final summary" } },
+      ]),
+    );
 
     const outputs = await extractAllRunOutputs("run-1");
 
@@ -148,10 +174,12 @@ describe("extractAllRunOutputs", () => {
   });
 
   it("handles events with missing result gracefully", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      { eventData: {} },
-      { eventData: { result: "has result" } },
-    ]);
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        { eventData: {} },
+        { eventData: { result: "has result" } },
+      ]),
+    );
 
     const outputs = await extractAllRunOutputs("run-1");
 
@@ -167,7 +195,7 @@ describe("extractAllRunOutputs", () => {
 
 describe("getAllRunOutputTexts", () => {
   it("returns empty array when all events have no result", async () => {
-    mockQueryAxiom.mockResolvedValue([{ eventData: {} }]);
+    mockQuery.mockResolvedValue(axiomResponse([{ eventData: {} }]));
 
     const texts = await getAllRunOutputTexts("run-1");
 
@@ -175,10 +203,12 @@ describe("getAllRunOutputTexts", () => {
   });
 
   it("returns text for each event with a result", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      { eventData: { result: "first result" } },
-      { eventData: { result: "second result" } },
-    ]);
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        { eventData: { result: "first result" } },
+        { eventData: { result: "second result" } },
+      ]),
+    );
 
     const texts = await getAllRunOutputTexts("run-1");
 
@@ -186,19 +216,21 @@ describe("getAllRunOutputTexts", () => {
   });
 
   it("skips events without result but includes those with denials only", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      { eventData: { result: "ok" } },
-      {
-        eventData: {
-          permission_denials: [
-            {
-              tool_name: "AskUserQuestion",
-              tool_input: { questions: [{ question: "Choose color" }] },
-            },
-          ],
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        { eventData: { result: "ok" } },
+        {
+          eventData: {
+            permission_denials: [
+              {
+                tool_name: "AskUserQuestion",
+                tool_input: { questions: [{ question: "Choose color" }] },
+              },
+            ],
+          },
         },
-      },
-    ]);
+      ]),
+    );
 
     const texts = await getAllRunOutputTexts("run-1");
 
@@ -208,19 +240,21 @@ describe("getAllRunOutputTexts", () => {
   });
 
   it("appends formatted denials to result text", async () => {
-    mockQueryAxiom.mockResolvedValue([
-      {
-        eventData: {
-          result: "Need input",
-          permission_denials: [
-            {
-              tool_name: "AskUserQuestion",
-              tool_input: { questions: [{ question: "Yes or no?" }] },
-            },
-          ],
+    mockQuery.mockResolvedValue(
+      axiomResponse([
+        {
+          eventData: {
+            result: "Need input",
+            permission_denials: [
+              {
+                tool_name: "AskUserQuestion",
+                tool_input: { questions: [{ question: "Yes or no?" }] },
+              },
+            ],
+          },
         },
-      },
-    ]);
+      ]),
+    );
 
     const texts = await getAllRunOutputTexts("run-1");
 

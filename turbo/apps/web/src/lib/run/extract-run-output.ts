@@ -44,8 +44,15 @@ interface ResultEvent {
 async function queryResultEvent(
   runId: string,
 ): Promise<ResultEvent | undefined> {
-  const events = await queryAllResultEvents(runId);
-  return events[events.length - 1];
+  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+  const apl = `['${dataset}']
+| where runId == "${runId}"
+| where eventType == "result"
+| order by sequenceNumber desc
+| limit 1`;
+
+  const events = await queryAxiom<ResultEvent>(apl);
+  return events[0];
 }
 
 async function queryAllResultEvents(runId: string): Promise<ResultEvent[]> {
