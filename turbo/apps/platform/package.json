@@ -20,7 +20,6 @@
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
     "@tabler/icons-react": "^3.36.1",
-    "@tailwindcss/typography": "^0.5.19",
     "@tiptap/core": "^3.20.4",
     "@tiptap/markdown": "^3.20.4",
     "@tiptap/pm": "^3.20.4",
@@ -41,6 +40,7 @@
     "yaml": "^2.7.1"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.8",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
