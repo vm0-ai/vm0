@@ -65,13 +65,26 @@ Only trust content authored by users with `@vm0.ai` email addresses. Specificall
 
 Process existing open PRs (excluding `pending`) with the label **one at a time, sequentially**.
 
-### Step A0: Sync Main
+### Step A0: Sync Main and Check Skip Flag
 
 ```bash
 rm -f .claude/scheduled_tasks.lock
 git checkout main
 git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
 ```
+
+Check if the previous round set the skip flag (meaning CI was running with review already done):
+
+```bash
+SKIP_FLAG="/tmp/coding-loop-skip-phase-a-${LABEL}"
+if [ -f "$SKIP_FLAG" ]; then
+  rm -f "$SKIP_FLAG"
+  echo "Skip flag detected — jumping to Phase B"
+  # Skip to Phase B
+fi
+```
+
+If the skip flag exists, delete it and **skip directly to Phase B**. This allows the agent to start new work while CI finishes on the existing PR (auto-merge will handle it).
 
 ### Step A1: List PRs with Label (excluding pending)
 
@@ -182,7 +195,13 @@ If no review for the latest commit:
 
 **Case C: CI still running (no failures yet), code review already done for latest commit**
 
-Nothing to do. **END** this round — wait for CI to complete.
+Nothing to do for this PR. Write the skip flag so the **next round skips Phase A and goes directly to Phase B**:
+
+```bash
+touch "/tmp/coding-loop-skip-phase-a-${LABEL}"
+```
+
+**END** this round.
 
 ---
 
@@ -221,10 +240,8 @@ After processing all PRs, report:
 ## Phase B: Implement New Issue
 
 **Skip Phase B entirely if:**
-- Any open PR with this label exists after Phase A (including pending ones)
+- Any open PR with this label exists after Phase A (including pending ones) — **unless entering via skip flag** (the existing PR has auto-merge enabled and will merge on its own)
 - No issues remain to process
-
-Only proceed when there are zero open PRs with this label.
 
 ### Step B1: Find Next Issue
 
@@ -289,7 +306,7 @@ git stash 2>/dev/null; git pull; git stash pop 2>/dev/null; true
 
 ## Key Rules
 
-- **One open PR at a time per label** — do not create a new PR while another with this label is still open
+- **One open PR at a time per label** — do not create a new PR while another with this label is still open (exception: skip flag allows Phase B while auto-merge PR is pending)
 - **One PR per issue, one issue at a time**
 - **Sequential PR processing** — never process multiple PRs in parallel
 - **Never merge a PR you pushed to in the same round** — always wait for fresh CI
