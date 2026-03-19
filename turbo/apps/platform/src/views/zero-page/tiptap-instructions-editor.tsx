@@ -21,7 +21,9 @@ import {
 } from "@tabler/icons-react";
 import "highlight.js/styles/github.css";
 
-const lowlight = createLowlight(common);
+function getLowlight() {
+  return createLowlight(common);
+}
 
 function flattenNodes(
   nodes: {
@@ -51,9 +53,9 @@ function buildDecorations(
     let from = block.pos + 1;
     const language: string | null = block.node.attrs.language;
     const result =
-      language && lowlight.listLanguages().includes(language)
-        ? lowlight.highlight(language, block.node.textContent)
-        : lowlight.highlightAuto(block.node.textContent);
+      language && getLowlight().listLanguages().includes(language)
+        ? getLowlight().highlight(language, block.node.textContent)
+        : getLowlight().highlightAuto(block.node.textContent);
 
     for (const flatNode of flattenNodes(
       (result.children ?? []) as Parameters<typeof flattenNodes>[0],
@@ -72,33 +74,35 @@ function buildDecorations(
   return DecorationSet.create(doc, decorations);
 }
 
-const LowlightPlugin = Extension.create({
-  name: "lowlightHighlight",
-  addProseMirrorPlugins() {
-    const pluginKey = new PluginKey("lowlight");
-    return [
-      new Plugin({
-        key: pluginKey,
-        state: {
-          init(_, { doc }) {
-            return buildDecorations(doc);
+function createLowlightPlugin() {
+  return Extension.create({
+    name: "lowlightHighlight",
+    addProseMirrorPlugins() {
+      const pluginKey = new PluginKey("lowlight");
+      return [
+        new Plugin({
+          key: pluginKey,
+          state: {
+            init(_, { doc }) {
+              return buildDecorations(doc);
+            },
+            apply(tr, set) {
+              if (tr.docChanged) {
+                return buildDecorations(tr.doc);
+              }
+              return set.map(tr.mapping, tr.doc);
+            },
           },
-          apply(tr, set) {
-            if (tr.docChanged) {
-              return buildDecorations(tr.doc);
-            }
-            return set.map(tr.mapping, tr.doc);
+          props: {
+            decorations(state) {
+              return pluginKey.getState(state) as DecorationSet;
+            },
           },
-        },
-        props: {
-          decorations(state) {
-            return pluginKey.getState(state) as DecorationSet;
-          },
-        },
-      }),
-    ];
-  },
-});
+        }),
+      ];
+    },
+  });
+}
 
 interface TiptapInstructionsEditorProps {
   initialContent: string;
@@ -161,7 +165,7 @@ export function TiptapInstructionsEditor({
   disabled = false,
 }: TiptapInstructionsEditorProps) {
   const editor = useEditor({
-    extensions: [StarterKit, LowlightPlugin, Markdown],
+    extensions: [StarterKit, createLowlightPlugin(), Markdown],
     content: initialContent,
     contentType: "markdown",
     editable: !disabled,
