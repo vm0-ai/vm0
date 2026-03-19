@@ -20,10 +20,11 @@ import {
 } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { SimpleLink } from "../router/link.tsx";
-import type {
-  LogStatus,
-  TriggerSource,
-  AgentEvent,
+import {
+  TRIGGER_SOURCE_LABELS,
+  type LogStatus,
+  type TriggerSource,
+  type AgentEvent,
 } from "../../signals/zero-page/log-types.ts";
 import { StatusBadge } from "./components/logs/status-badge.tsx";
 import {
@@ -61,16 +62,6 @@ function isVisibleMessage(
   }
   return (message.toolOperations?.length ?? 0) > 0;
 }
-
-const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
-  schedule: "Schedule",
-  web: "Web",
-  slack: "Slack",
-  email: "Email",
-  telegram: "Telegram",
-  github: "GitHub",
-  cli: "CLI",
-};
 
 const ACTIVITY_HREF = "/activity";
 

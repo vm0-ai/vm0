@@ -4,6 +4,8 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestRunInDb,
+  createTestSchedule,
   createTestZeroAgent,
   createTestRun,
   completeTestRun,
@@ -386,5 +388,98 @@ describe("GET /api/app/logs", () => {
 
     expect(response.status).toBe(400);
     expect(data.error.code).toBe("BAD_REQUEST");
+  });
+
+  describe("trigger source inference", () => {
+    let testComposeId: string;
+
+    beforeEach(async () => {
+      const { composeId } = await createTestCompose(
+        `trigger-src-${randomUUID().slice(0, 8)}`,
+      );
+      testComposeId = composeId;
+    });
+
+    it("should return explicit trigger source when set on run", async () => {
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+        triggerSource: "slack",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/app/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const run = data.data.find(
+        (r: { triggerSource: string }) => r.triggerSource === "slack",
+      );
+      expect(run).toBeDefined();
+      expect(run.triggerSource).toBe("slack");
+    });
+
+    it("should infer 'schedule' for old rows with scheduleId but no trigger_source", async () => {
+      const schedule = await createTestSchedule(
+        testComposeId,
+        `sched-${randomUUID().slice(0, 8)}`,
+      );
+
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+        scheduleId: schedule.id,
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/app/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const run = data.data.find(
+        (r: { triggerSource: string }) => r.triggerSource === "schedule",
+      );
+      expect(run).toBeDefined();
+      expect(run.triggerSource).toBe("schedule");
+    });
+
+    it("should infer 'web' for old rows with continuedFromSessionId but no trigger_source", async () => {
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+        continuedFromSessionId: randomUUID(),
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/app/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const run = data.data.find(
+        (r: { triggerSource: string }) => r.triggerSource === "web",
+      );
+      expect(run).toBeDefined();
+      expect(run.triggerSource).toBe("web");
+    });
+
+    it("should default to 'cli' for old rows with no trigger_source and no hints", async () => {
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/app/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.length).toBeGreaterThan(0);
+      // Runs without trigger_source, scheduleId, or continuedFromSessionId default to 'cli'
+      expect(data.data[0].triggerSource).toBe("cli");
+    });
   });
 });

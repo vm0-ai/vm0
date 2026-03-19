@@ -589,6 +589,8 @@ async function createTestRunDirect(
     status?: string;
     prompt?: string;
     continuedFromSessionId?: string;
+    scheduleId?: string;
+    triggerSource?: string;
     createdAt?: Date;
     startedAt?: Date;
     completedAt?: Date;
@@ -603,6 +605,8 @@ async function createTestRunDirect(
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
+      scheduleId: options?.scheduleId,
+      triggerSource: options?.triggerSource,
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
       ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
       ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
@@ -679,6 +683,8 @@ export async function createTestRunInDb(
     status?: string;
     prompt?: string;
     continuedFromSessionId?: string;
+    scheduleId?: string;
+    triggerSource?: string;
     createdAt?: Date;
     orgId?: string;
     startedAt?: Date;
@@ -705,6 +711,8 @@ export async function createTestRunInDb(
       status: options?.status ?? "pending",
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
+      scheduleId: options?.scheduleId,
+      triggerSource: options?.triggerSource,
       createdAt: options?.createdAt,
       startedAt: options?.startedAt,
       completedAt: options?.completedAt,

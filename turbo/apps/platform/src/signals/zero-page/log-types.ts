@@ -4,6 +4,17 @@ import type { LogStatus, TriggerSource } from "@vm0/core";
 // Re-export from core contract to stay in sync with the API schema
 export type { LogStatus, TriggerSource };
 
+/** Human-readable labels for each trigger source, shared across activity views. */
+export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
+  schedule: "Schedule",
+  web: "Web",
+  slack: "Slack",
+  email: "Email",
+  telegram: "Telegram",
+  github: "GitHub",
+  cli: "CLI",
+};
+
 // List response - contains basic fields for list display
 export interface LogEntry {
   id: string;

@@ -14,9 +14,9 @@ import {
   SelectValue,
   cn,
 } from "@vm0/ui";
-import type {
-  LogEntry,
-  TriggerSource,
+import {
+  TRIGGER_SOURCE_LABELS,
+  type LogEntry,
 } from "../../signals/zero-page/log-types.ts";
 import { StatusBadge } from "./components/logs/status-badge.tsx";
 import { Pagination } from "../components/pagination.tsx";
@@ -53,16 +53,6 @@ const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "timeout", label: "Timeout" },
   { value: "cancelled", label: "Cancelled" },
 ];
-
-const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
-  schedule: "Schedule",
-  web: "Web",
-  slack: "Slack",
-  email: "Email",
-  telegram: "Telegram",
-  github: "GitHub",
-  cli: "CLI",
-};
 
 const ROW_GRID =
   "grid grid-cols-[1fr_5rem_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
