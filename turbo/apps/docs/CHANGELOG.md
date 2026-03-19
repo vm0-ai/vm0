@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.28.0](https://github.com/vm0-ai/vm0/compare/docs-v2.27.0...docs-v2.28.0) (2026-03-19)
+
+
+### Features
+
+* add disallowed_tools to vm0.yaml schema and server pipeline ([#5576](https://github.com/vm0-ai/vm0/issues/5576)) ([6ac49d7](https://github.com/vm0-ai/vm0/commit/6ac49d7434b456e01df4d3fa6bf918923b07b2f5))
+
+
+### Refactoring
+
+* move disallowed_tools from vm0.yaml to run-time parameter ([#5625](https://github.com/vm0-ai/vm0/issues/5625)) ([63b431c](https://github.com/vm0-ai/vm0/commit/63b431c86fb4548c51a5b2b02bc9887a04d7dfa4)), closes [#5614](https://github.com/vm0-ai/vm0/issues/5614)
+
 ## [2.27.0](https://github.com/vm0-ai/vm0/compare/docs-v2.26.0...docs-v2.27.0) (2026-03-19)
 
 

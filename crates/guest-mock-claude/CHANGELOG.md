@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.14.3...guest-mock-claude-v0.15.0) (2026-03-19)
+
+
+### Features
+
+* **runner:** pass disallowed tools from execution context to claude cli ([#5577](https://github.com/vm0-ai/vm0/issues/5577)) ([cdc557a](https://github.com/vm0-ai/vm0/commit/cdc557a4ccb873b37b5df3cc3eb550d6f0849e79)), closes [#5564](https://github.com/vm0-ai/vm0/issues/5564)
+
 ## [0.14.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.14.2...guest-mock-claude-v0.14.3) (2026-03-17)
 
 

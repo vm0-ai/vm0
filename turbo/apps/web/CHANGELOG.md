@@ -1,5 +1,52 @@
 # Changelog
 
+## [12.132.0](https://github.com/vm0-ai/vm0/compare/web-v12.131.0...web-v12.132.0) (2026-03-19)
+
+
+### Features
+
+* add disallowed_tools to vm0.yaml schema and server pipeline ([#5576](https://github.com/vm0-ai/vm0/issues/5576)) ([6ac49d7](https://github.com/vm0-ai/vm0/commit/6ac49d7434b456e01df4d3fa6bf918923b07b2f5))
+* add storage version lineage table for artifact/memory parent tracking ([#5501](https://github.com/vm0-ai/vm0/issues/5501)) ([c2b3115](https://github.com/vm0-ai/vm0/commit/c2b311506f65889215730b27a4ad0d244c651747))
+* add zero agents rest api and remove compose jobs ([#5594](https://github.com/vm0-ai/vm0/issues/5594)) ([8e428bb](https://github.com/vm0-ai/vm0/commit/8e428bb40c663b50bb481928f708e004601ee1af))
+* **connectors:** add bitrix, brave-search, cronlytic connectors ([#5528](https://github.com/vm0-ai/vm0/issues/5528)) ([21821cd](https://github.com/vm0-ai/vm0/commit/21821cd973e36e7906aa7ef97329e9c751cee491))
+* **connectors:** add discord, discord-webhook, gitlab connectors ([#5542](https://github.com/vm0-ai/vm0/issues/5542)) ([99fb554](https://github.com/vm0-ai/vm0/commit/99fb5543059f62aa37625e3bb1ef3b405f787978)), closes [#5519](https://github.com/vm0-ai/vm0/issues/5519)
+* **connectors:** add htmlcsstoimage, imgur, instagram api token connectors ([#5538](https://github.com/vm0-ai/vm0/issues/5538)) ([7c75fce](https://github.com/vm0-ai/vm0/commit/7c75fce26c15ad1f6781c71bea15ef108ed067f6)), closes [#5520](https://github.com/vm0-ai/vm0/issues/5520)
+* **connectors:** add instantly, jira, and kommo API token connectors ([#5561](https://github.com/vm0-ai/vm0/issues/5561)) ([257b637](https://github.com/vm0-ai/vm0/commit/257b6377eb77b15db23dbdfd7ee66b129d082dc8))
+* **connectors:** add lark, mailsac, minio api token connectors ([#5543](https://github.com/vm0-ai/vm0/issues/5543)) ([bb81ced](https://github.com/vm0-ai/vm0/commit/bb81ced1c3c53ea78e428b0a737ce62b0f59b086))
+* **connectors:** add pdforge, slack-webhook, wix api token connectors ([#5545](https://github.com/vm0-ai/vm0/issues/5545)) ([5471a13](https://github.com/vm0-ai/vm0/commit/5471a1348897a4d045bbbdaa8cc8e5a4f8ed04e1)), closes [#5523](https://github.com/vm0-ai/vm0/issues/5523)
+* create org_members table and migrate preferences from Clerk ([#5539](https://github.com/vm0-ai/vm0/issues/5539)) ([16bd437](https://github.com/vm0-ai/vm0/commit/16bd437ecbe5c02417868a54aa1049d2510475a9))
+* **credit:** support multiple result events per run ([#5516](https://github.com/vm0-ai/vm0/issues/5516)) ([23ff198](https://github.com/vm0-ai/vm0/commit/23ff198501f2b4b814e0024ece1408f264c74597))
+* implement vm0 managed model provider with meta-provider resolution ([#5623](https://github.com/vm0-ai/vm0/issues/5623)) ([b20b330](https://github.com/vm0-ai/vm0/commit/b20b330d5f83d3cef4591866eaec460c9ebedef0))
+* inject agent identity metadata into web chat system prompt ([#5505](https://github.com/vm0-ai/vm0/issues/5505)) ([122cdfe](https://github.com/vm0-ai/vm0/commit/122cdfe78bdf28785b8e39115027b538be71fc78))
+* migrate email_unsubscribed from clerk metadata to users table ([#5532](https://github.com/vm0-ai/vm0/issues/5532)) ([f19a439](https://github.com/vm0-ai/vm0/commit/f19a4396f22b4537f4a941e58947037d488b30de))
+* **platform:** auto-pin on chat, remove pin limit, fix team nav ([#5536](https://github.com/vm0-ai/vm0/issues/5536)) ([f210650](https://github.com/vm0-ai/vm0/commit/f210650bc393fce2fb2d43156caab6c0a985a478))
+* **platform:** migrate org tier and default_agent_compose_id from clerk metadata to org table ([#5541](https://github.com/vm0-ai/vm0/issues/5541)) ([d9201e1](https://github.com/vm0-ai/vm0/commit/d9201e1c581c249b1aae0245964cf410f32b4ebb))
+* protect model provider tokens from sandbox exposure via firewall gateway ([#5464](https://github.com/vm0-ai/vm0/issues/5464)) ([5f3caee](https://github.com/vm0-ai/vm0/commit/5f3caeeddb8cf434976afe9fb8c03d637efc8443))
+* **run:** block incompatible provider switch on session continue ([#5531](https://github.com/vm0-ai/vm0/issues/5531)) ([e9e4499](https://github.com/vm0-ai/vm0/commit/e9e44993dee8ea28e907b27cbaffec2db51c520e))
+
+
+### Bug Fixes
+
+* add clerk lazy migration fallbacks for read paths ([#5591](https://github.com/vm0-ai/vm0/issues/5591)) ([#5600](https://github.com/vm0-ai/vm0/issues/5600)) ([1ecbb69](https://github.com/vm0-ai/vm0/commit/1ecbb6940d19077ededb2aefe6b884d171fe4062))
+* **api:** use upsert for default agent to handle missing org rows ([#5613](https://github.com/vm0-ai/vm0/issues/5613)) ([5234ddc](https://github.com/vm0-ai/vm0/commit/5234ddcf5e8118817aa8d3c760585b53c4ba45c6))
+* **test:** prevent race condition in compose idempotency test ([#5585](https://github.com/vm0-ai/vm0/issues/5585)) ([b91d14b](https://github.com/vm0-ai/vm0/commit/b91d14bb841adb5cac3de70e05bd325a7cf12d8c))
+
+
+### Refactoring
+
+* **cli:** remove metadata from compose types and clone whitelist ([#5497](https://github.com/vm0-ai/vm0/issues/5497)) ([3d61855](https://github.com/vm0-ai/vm0/commit/3d6185591a1ebbc6262298a9ddfa9e143c8b0026))
+* merge browser profile into default, install chromium in base rootfs ([#5568](https://github.com/vm0-ai/vm0/issues/5568)) ([e014dd1](https://github.com/vm0-ai/vm0/commit/e014dd1d9778d739b66844f2d67871ba61af9107)), closes [#5554](https://github.com/vm0-ai/vm0/issues/5554)
+* move disallowed_tools from vm0.yaml to run-time parameter ([#5625](https://github.com/vm0-ai/vm0/issues/5625)) ([63b431c](https://github.com/vm0-ai/vm0/commit/63b431c86fb4548c51a5b2b02bc9887a04d7dfa4)), closes [#5614](https://github.com/vm0-ai/vm0/issues/5614)
+* remove metadata field from compose pipeline ([#5549](https://github.com/vm0-ai/vm0/issues/5549)) ([#5566](https://github.com/vm0-ai/vm0/issues/5566)) ([aeaf504](https://github.com/vm0-ai/vm0/commit/aeaf504dc6b84dd32f09f9278c58fed417d4ecbf))
+* **slack:** move integration context from userPrompt to systemPrompt ([#5569](https://github.com/vm0-ai/vm0/issues/5569)) ([7e9469b](https://github.com/vm0-ai/vm0/commit/7e9469bef3da52a352900f58d02776c4b187ea7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.84.0
+
 ## [12.131.0](https://github.com/vm0-ai/vm0/compare/web-v12.130.1...web-v12.131.0) (2026-03-19)
 
 

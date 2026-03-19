@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.128.0](https://github.com/vm0-ai/vm0/compare/app-v0.127.0...app-v0.128.0) (2026-03-19)
+
+
+### Features
+
+* add email-based feature switch targeting ([#5588](https://github.com/vm0-ai/vm0/issues/5588)) ([096c5e4](https://github.com/vm0-ai/vm0/commit/096c5e4c8452b01f901d21c3e94b440bee432be4))
+* add zero agents rest api and remove compose jobs ([#5594](https://github.com/vm0-ai/vm0/issues/5594)) ([8e428bb](https://github.com/vm0-ai/vm0/commit/8e428bb40c663b50bb481928f708e004601ee1af))
+* **connectors:** add bitrix, brave-search, cronlytic connectors ([#5528](https://github.com/vm0-ai/vm0/issues/5528)) ([21821cd](https://github.com/vm0-ai/vm0/commit/21821cd973e36e7906aa7ef97329e9c751cee491))
+* **connectors:** add discord, discord-webhook, gitlab connectors ([#5542](https://github.com/vm0-ai/vm0/issues/5542)) ([99fb554](https://github.com/vm0-ai/vm0/commit/99fb5543059f62aa37625e3bb1ef3b405f787978)), closes [#5519](https://github.com/vm0-ai/vm0/issues/5519)
+* **connectors:** add htmlcsstoimage, imgur, instagram api token connectors ([#5538](https://github.com/vm0-ai/vm0/issues/5538)) ([7c75fce](https://github.com/vm0-ai/vm0/commit/7c75fce26c15ad1f6781c71bea15ef108ed067f6)), closes [#5520](https://github.com/vm0-ai/vm0/issues/5520)
+* **connectors:** add instantly, jira, and kommo API token connectors ([#5561](https://github.com/vm0-ai/vm0/issues/5561)) ([257b637](https://github.com/vm0-ai/vm0/commit/257b6377eb77b15db23dbdfd7ee66b129d082dc8))
+* **connectors:** add lark, mailsac, minio api token connectors ([#5543](https://github.com/vm0-ai/vm0/issues/5543)) ([bb81ced](https://github.com/vm0-ai/vm0/commit/bb81ced1c3c53ea78e428b0a737ce62b0f59b086))
+* **connectors:** add pdforge, slack-webhook, wix api token connectors ([#5545](https://github.com/vm0-ai/vm0/issues/5545)) ([5471a13](https://github.com/vm0-ai/vm0/commit/5471a1348897a4d045bbbdaa8cc8e5a4f8ed04e1)), closes [#5523](https://github.com/vm0-ai/vm0/issues/5523)
+* hide aws-bedrock and azure-foundry from model provider selection ([#5601](https://github.com/vm0-ai/vm0/issues/5601)) ([f3ffb11](https://github.com/vm0-ai/vm0/commit/f3ffb11cf2962f665e1aa4e2e14267ffc5542c97)), closes [#5599](https://github.com/vm0-ai/vm0/issues/5599)
+* implement vm0 managed model provider with meta-provider resolution ([#5623](https://github.com/vm0-ai/vm0/issues/5623)) ([b20b330](https://github.com/vm0-ai/vm0/commit/b20b330d5f83d3cef4591866eaec460c9ebedef0))
+* integrate the-seed default instructions and skills into zero onboarding ([#5506](https://github.com/vm0-ai/vm0/issues/5506)) ([09e14a3](https://github.com/vm0-ai/vm0/commit/09e14a3b3b841f8450cd9cd9bda58dc0689cb83a))
+* **platform:** add cancel button to queue page ([#5604](https://github.com/vm0-ai/vm0/issues/5604)) ([6644a67](https://github.com/vm0-ai/vm0/commit/6644a6766af36cd2dd06dbd4a7b31da2196daab7))
+* **platform:** auto-pin on chat, remove pin limit, fix team nav ([#5536](https://github.com/vm0-ai/vm0/issues/5536)) ([f210650](https://github.com/vm0-ai/vm0/commit/f210650bc393fce2fb2d43156caab6c0a985a478))
+* **platform:** improve mobile responsiveness across platform pages ([#5571](https://github.com/vm0-ai/vm0/issues/5571)) ([8f0e0a4](https://github.com/vm0-ai/vm0/commit/8f0e0a473b852bbb1f9aa54ed56a3dd05aa30754)), closes [#5567](https://github.com/vm0-ai/vm0/issues/5567)
+* **platform:** replace textarea with tiptap visual editor for instructions ([#5487](https://github.com/vm0-ai/vm0/issues/5487)) ([ece552b](https://github.com/vm0-ai/vm0/commit/ece552b7279c1f3e75f7397e8fd50ca30c218cbe))
+
+
+### Bug Fixes
+
+* always include seed skills and add chat avatar navigation ([#5572](https://github.com/vm0-ai/vm0/issues/5572)) ([f01df34](https://github.com/vm0-ai/vm0/commit/f01df342a8c42ac34782f49ea041c9b0e49afb1a))
+* **platform:** adjust activity detail page spacing for mobile layout ([#5558](https://github.com/vm0-ai/vm0/issues/5558)) ([1878aaa](https://github.com/vm0-ai/vm0/commit/1878aaa60fb64a8575db35baa8b166a24a9b95fe))
+* surface api error message on agent run creation failure ([#5590](https://github.com/vm0-ai/vm0/issues/5590)) ([297664c](https://github.com/vm0-ai/vm0/commit/297664cd8a009161028daa627aa440fa690bde39)), closes [#5565](https://github.com/vm0-ai/vm0/issues/5565)
+
+
+### Refactoring
+
+* remove metadata field from compose pipeline ([#5549](https://github.com/vm0-ai/vm0/issues/5549)) ([#5566](https://github.com/vm0-ai/vm0/issues/5566)) ([aeaf504](https://github.com/vm0-ai/vm0/commit/aeaf504dc6b84dd32f09f9278c58fed417d4ecbf))
+* **slack:** move integration context from userPrompt to systemPrompt ([#5569](https://github.com/vm0-ai/vm0/issues/5569)) ([7e9469b](https://github.com/vm0-ai/vm0/commit/7e9469bef3da52a352900f58d02776c4b187ea7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.84.0
+
 ## [0.127.0](https://github.com/vm0-ai/vm0/compare/app-v0.126.3...app-v0.127.0) (2026-03-19)
 
 

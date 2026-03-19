@@ -1,5 +1,27 @@
 # Changelog
 
+## [9.70.0](https://github.com/vm0-ai/vm0/compare/cli-v9.69.1...cli-v9.70.0) (2026-03-19)
+
+
+### Features
+
+* add zero agents rest api and remove compose jobs ([#5594](https://github.com/vm0-ai/vm0/issues/5594)) ([8e428bb](https://github.com/vm0-ai/vm0/commit/8e428bb40c663b50bb481928f708e004601ee1af))
+* hide aws-bedrock and azure-foundry from model provider selection ([#5601](https://github.com/vm0-ai/vm0/issues/5601)) ([f3ffb11](https://github.com/vm0-ai/vm0/commit/f3ffb11cf2962f665e1aa4e2e14267ffc5542c97)), closes [#5599](https://github.com/vm0-ai/vm0/issues/5599)
+* implement vm0 managed model provider with meta-provider resolution ([#5623](https://github.com/vm0-ai/vm0/issues/5623)) ([b20b330](https://github.com/vm0-ai/vm0/commit/b20b330d5f83d3cef4591866eaec460c9ebedef0))
+
+
+### Refactoring
+
+* **cli:** remove metadata from compose types and clone whitelist ([#5497](https://github.com/vm0-ai/vm0/issues/5497)) ([3d61855](https://github.com/vm0-ai/vm0/commit/3d6185591a1ebbc6262298a9ddfa9e143c8b0026))
+* move disallowed_tools from vm0.yaml to run-time parameter ([#5625](https://github.com/vm0-ai/vm0/issues/5625)) ([63b431c](https://github.com/vm0-ai/vm0/commit/63b431c86fb4548c51a5b2b02bc9887a04d7dfa4)), closes [#5614](https://github.com/vm0-ai/vm0/issues/5614)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.84.0
+
 ## [9.69.1](https://github.com/vm0-ai/vm0/compare/cli-v9.69.0...cli-v9.69.1) (2026-03-19)
 
 

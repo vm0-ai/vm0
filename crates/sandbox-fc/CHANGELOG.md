@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.13.1...sandbox-fc-v0.13.2) (2026-03-19)
+
+
+### Bug Fixes
+
+* intercept all outbound tcp in mitmproxy, not just port 80/443 ([#5573](https://github.com/vm0-ai/vm0/issues/5573)) ([781aa8b](https://github.com/vm0-ai/vm0/commit/781aa8bc17ee14121fc76ef926f5f2c0688623b8))
+
+
+### Refactoring
+
+* merge browser profile into default, install chromium in base rootfs ([#5568](https://github.com/vm0-ai/vm0/issues/5568)) ([e014dd1](https://github.com/vm0-ai/vm0/commit/e014dd1d9778d739b66844f2d67871ba61af9107)), closes [#5554](https://github.com/vm0-ai/vm0/issues/5554)
+
 ## [0.13.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.13.0...sandbox-fc-v0.13.1) (2026-03-19)
 
 

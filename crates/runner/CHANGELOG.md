@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.39.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.38.1...runner-rs-v0.39.0) (2026-03-19)
+
+
+### Features
+
+* add disallowed_tools to vm0.yaml schema and server pipeline ([#5576](https://github.com/vm0-ai/vm0/issues/5576)) ([6ac49d7](https://github.com/vm0-ai/vm0/commit/6ac49d7434b456e01df4d3fa6bf918923b07b2f5))
+* add zero agents rest api and remove compose jobs ([#5594](https://github.com/vm0-ai/vm0/issues/5594)) ([8e428bb](https://github.com/vm0-ai/vm0/commit/8e428bb40c663b50bb481928f708e004601ee1af))
+* **runner:** pass disallowed tools from execution context to claude cli ([#5577](https://github.com/vm0-ai/vm0/issues/5577)) ([cdc557a](https://github.com/vm0-ai/vm0/commit/cdc557a4ccb873b37b5df3cc3eb550d6f0849e79)), closes [#5564](https://github.com/vm0-ai/vm0/issues/5564)
+
+
+### Bug Fixes
+
+* override mitmproxy bundled certificate store with system ca bundle ([#5529](https://github.com/vm0-ai/vm0/issues/5529)) ([b4e665f](https://github.com/vm0-ai/vm0/commit/b4e665f1f34e2d51c9dc9bbc45e8df3ffba3a603)), closes [#5524](https://github.com/vm0-ai/vm0/issues/5524)
+* register vm in proxy before sandbox start to prevent missing network logs ([#5537](https://github.com/vm0-ai/vm0/issues/5537)) ([ebe67ba](https://github.com/vm0-ai/vm0/commit/ebe67ba9c895cd11915511c4c7d120916c78f5a7)), closes [#5535](https://github.com/vm0-ai/vm0/issues/5535)
+* **runner:** add user-agent to mitmproxy firewall auth requests ([#5632](https://github.com/vm0-ai/vm0/issues/5632)) ([a9d25c9](https://github.com/vm0-ai/vm0/commit/a9d25c9ea81d9a61a167f3210c8d83e926a8859a)), closes [#5630](https://github.com/vm0-ai/vm0/issues/5630)
+* **runner:** include runner log files in gc cleanup ([#5559](https://github.com/vm0-ai/vm0/issues/5559)) ([19f2985](https://github.com/vm0-ai/vm0/commit/19f29853615887101bb8dd0d8e5dff6da679fb0c)), closes [#5555](https://github.com/vm0-ai/vm0/issues/5555)
+* **runner:** remove duplicate disallowed_tools field in execution context ([#5608](https://github.com/vm0-ai/vm0/issues/5608)) ([efed47a](https://github.com/vm0-ai/vm0/commit/efed47aaff3d010763a3af1120de8326cb37e2b8))
+
+
+### Refactoring
+
+* merge browser profile into default, install chromium in base rootfs ([#5568](https://github.com/vm0-ai/vm0/issues/5568)) ([e014dd1](https://github.com/vm0-ai/vm0/commit/e014dd1d9778d739b66844f2d67871ba61af9107)), closes [#5554](https://github.com/vm0-ai/vm0/issues/5554)
+
 ## [0.38.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.38.0...runner-rs-v0.38.1) (2026-03-19)
 
 
