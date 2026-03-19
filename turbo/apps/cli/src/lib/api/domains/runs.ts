@@ -112,7 +112,7 @@ export async function getRunQueue(): Promise<QueueResponse> {
   const config = await getClientConfig();
   const client = initClient(runsQueueContract, config);
 
-  const result = await client.getQueue({});
+  const result = await client.getQueue({ headers: {} });
 
   if (result.status === 200) {
     return result.body;
