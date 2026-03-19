@@ -27,6 +27,7 @@ import { setupClaudeCommand } from "./commands/setup-claude";
 import { dashboardCommand } from "./commands/dashboard";
 import { preferenceCommand } from "./commands/preference";
 import { upgradeCommand } from "./commands/upgrade";
+import { whoamiCommand } from "./commands/whoami";
 
 const program = new Command();
 
@@ -61,6 +62,7 @@ program.addCommand(setupClaudeCommand);
 program.addCommand(dashboardCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);
+program.addCommand(whoamiCommand);
 
 export { program };
 

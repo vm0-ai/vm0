@@ -636,6 +636,20 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         );
     }
 
+    // Agent introspection — always inject when present (no capability gate)
+    if let Some(name) = &context.agent_name {
+        env.insert("VM0_AGENT_NAME".into(), name.clone());
+    }
+    if let Some(version) = &context.agent_compose_version_id {
+        env.insert("VM0_AGENT_VERSION".into(), version.clone());
+    }
+    if let Some(id) = &context.agent_compose_id {
+        env.insert("VM0_AGENT_COMPOSE_ID".into(), id.clone());
+    }
+    if let Some(slug) = &context.agent_org_slug {
+        env.insert("VM0_AGENT_ORG_SLUG".into(), slug.clone());
+    }
+
     // Resume session ID
     if let Some(session) = &context.resume_session {
         env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
@@ -689,6 +703,7 @@ mod tests {
             api_start_time: None,
             user_timezone: None,
             agent_name: None,
+            agent_compose_id: None,
             agent_org_slug: None,
             memory_name: None,
             experimental_firewalls: None,
@@ -1005,6 +1020,47 @@ mod tests {
         let env = build_env_json(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("VM0_ACTIVE_ORG").unwrap(), "my-org");
+    }
+
+    #[test]
+    fn build_env_json_agent_introspection_vars() {
+        let mut ctx = minimal_context();
+        ctx.agent_name = Some("my-agent".into());
+        ctx.agent_compose_version_id = Some("sha256-abc123".into());
+        ctx.agent_compose_id = Some("550e8400-e29b-41d4-a716-446655440000".into());
+        ctx.agent_org_slug = Some("acme-corp".into());
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_AGENT_NAME").unwrap(), "my-agent");
+        assert_eq!(env.get("VM0_AGENT_VERSION").unwrap(), "sha256-abc123");
+        assert_eq!(
+            env.get("VM0_AGENT_COMPOSE_ID").unwrap(),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert_eq!(env.get("VM0_AGENT_ORG_SLUG").unwrap(), "acme-corp");
+    }
+
+    #[test]
+    fn build_env_json_agent_introspection_absent_when_none() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_AGENT_NAME"));
+        assert!(!env.contains_key("VM0_AGENT_VERSION"));
+        assert!(!env.contains_key("VM0_AGENT_COMPOSE_ID"));
+        assert!(!env.contains_key("VM0_AGENT_ORG_SLUG"));
+    }
+
+    #[test]
+    fn build_env_json_agent_introspection_independent_of_capabilities() {
+        // Introspection vars should be injected even without capabilities
+        let mut ctx = minimal_context();
+        ctx.agent_name = Some("test-agent".into());
+        ctx.experimental_capabilities = None;
+
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_AGENT_NAME").unwrap(), "test-agent");
+        // VM0_TOKEN should NOT be set without capabilities
+        assert!(!env.contains_key("VM0_TOKEN"));
     }
 
     #[test]
