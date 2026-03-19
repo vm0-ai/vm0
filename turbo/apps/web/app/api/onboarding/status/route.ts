@@ -13,17 +13,22 @@ import {
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
 import { agentComposeApiContentSchema } from "@vm0/core";
-import { orgMembers } from "../../../../src/db/schema/org-members";
-import { org as orgTable } from "../../../../src/db/schema/org";
+import { orgMembersMetadata } from "../../../../src/db/schema/org-members";
+import { orgMetadata as orgTable } from "../../../../src/db/schema/org";
 
 async function isMemberOnboardingDone(
   orgId: string,
   userId: string,
 ): Promise<boolean> {
   const [row] = await globalThis.services.db
-    .select({ onboardingDone: orgMembers.onboardingDone })
-    .from(orgMembers)
-    .where(and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, userId)))
+    .select({ onboardingDone: orgMembersMetadata.onboardingDone })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    )
     .limit(1);
 
   return row?.onboardingDone ?? false;

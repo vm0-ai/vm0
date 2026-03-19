@@ -7,7 +7,7 @@ import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
-import { orgMembers } from "../../db/schema/org-members";
+import { orgMembersMetadata } from "../../db/schema/org-members";
 
 const log = logger("service:org-member");
 
@@ -185,8 +185,13 @@ async function cleanupOrgMember(userId: string, orgId: string): Promise<void> {
 
   // Delete member preferences
   await db
-    .delete(orgMembers)
-    .where(and(eq(orgMembers.userId, userId), eq(orgMembers.orgId, orgId)));
+    .delete(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.userId, userId),
+        eq(orgMembersMetadata.orgId, orgId),
+      ),
+    );
 }
 
 /**

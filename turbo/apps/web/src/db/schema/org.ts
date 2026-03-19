@@ -1,11 +1,11 @@
 import { bigint, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
- * org — stores per-org data that is owned by the platform (not Clerk).
+ * org_metadata — stores per-org data that is owned by the platform (not Clerk).
  * Holds credit balance, tier, and default agent configuration.
  * Clerk remains source of truth for slug and membership only.
  */
-export const org = pgTable("org", {
+export const orgMetadata = pgTable("org_metadata", {
   orgId: text("org_id").primaryKey(),
   credits: bigint("credits", { mode: "number" }).notNull().default(0),
   tier: text("tier").notNull().default("free"),

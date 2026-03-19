@@ -1,6 +1,6 @@
 {
-  "id": "c8e4af93-cc83-4beb-96c2-d6c4720d6969",
-  "prevId": "049bd664-cf02-4125-ac74-a21670bd4c2e",
+  "id": "049bd664-cf02-4125-ac74-a21670bd4c2e",
+  "prevId": "450d27f3-6c0f-4c48-81ca-0310b01e4582",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -569,18 +569,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "selected_model": {
-          "name": "selected_model",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "trigger_source": {
-          "name": "trigger_source",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -609,6 +597,12 @@
         "last_heartbeat_at": {
           "name": "last_heartbeat_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger_source": {
+          "name": "trigger_source",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
         }
@@ -3496,8 +3490,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.org_members": {
-      "name": "org_members",
+    "public.org_members_metadata": {
+      "name": "org_members_metadata",
       "schema": "",
       "columns": {
         "org_id": {
@@ -3571,8 +3565,8 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "org_members_org_id_user_id_pk": {
-          "name": "org_members_org_id_user_id_pk",
+        "org_members_metadata_org_id_user_id_pk": {
+          "name": "org_members_metadata_org_id_user_id_pk",
           "columns": ["org_id", "user_id"]
         }
       },
@@ -3581,8 +3575,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.org": {
-      "name": "org",
+    "public.org_metadata": {
+      "name": "org_metadata",
       "schema": "",
       "columns": {
         "org_id": {
@@ -3598,19 +3592,6 @@
           "notNull": true,
           "default": 0
         },
-        "tier": {
-          "name": "tier",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'free'"
-        },
-        "default_agent_compose_id": {
-          "name": "default_agent_compose_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -3624,6 +3605,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "tier": {
+          "name": "tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'free'"
+        },
+        "default_agent_compose_id": {
+          "name": "default_agent_compose_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -5656,80 +5650,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.vm0_api_keys": {
-      "name": "vm0_api_keys",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "vendor": {
-          "name": "vendor",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "model": {
-          "name": "model",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "api_key": {
-          "name": "api_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_vm0_api_keys_vendor": {
-          "name": "idx_vm0_api_keys_vendor",
-          "columns": [
-            {
-              "expression": "vendor",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.zero_agents": {
       "name": "zero_agents",
       "schema": "",
@@ -5813,6 +5733,80 @@
           "columns": [
             {
               "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.vm0_api_keys": {
+      "name": "vm0_api_keys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor": {
+          "name": "vendor",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "api_key": {
+          "name": "api_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_vm0_api_keys_vendor": {
+          "name": "idx_vm0_api_keys_vendor",
+          "columns": [
+            {
+              "expression": "vendor",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

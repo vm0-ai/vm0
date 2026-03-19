@@ -8,11 +8,11 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * org_members — source of truth for per-member preferences.
+ * org_members_metadata — source of truth for per-member preferences.
  * Replaces Clerk membership publicMetadata for preference storage.
  */
-export const orgMembers = pgTable(
-  "org_members",
+export const orgMembersMetadata = pgTable(
+  "org_members_metadata",
   {
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),

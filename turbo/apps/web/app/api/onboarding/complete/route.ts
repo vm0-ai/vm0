@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { orgMembers } from "../../../../src/db/schema/org-members";
+import { orgMembersMetadata } from "../../../../src/db/schema/org-members";
 
 /**
  * POST /api/onboarding/complete
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
   const now = new Date();
   await globalThis.services.db
-    .insert(orgMembers)
+    .insert(orgMembersMetadata)
     .values({
       orgId: org.orgId,
       userId,
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [orgMembers.orgId, orgMembers.userId],
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
       set: {
         onboardingDone: true,
         updatedAt: now,
