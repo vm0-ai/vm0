@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
-import type { SectionBlock, ActionsBlock } from "@slack/web-api";
+import type { SectionBlock, ActionsBlock, MarkdownBlock } from "@slack/web-api";
 import {
   buildAppHomeView,
   buildErrorMessage,
   buildLoginPromptMessage,
   buildHelpMessage,
   buildSuccessMessage,
+  buildAgentResponseMessage,
   detectDeepLinks,
 } from "../blocks";
 
@@ -111,6 +112,93 @@ describe("buildSuccessMessage", () => {
   });
 });
 
+describe("buildAgentResponseMessage", () => {
+  it("should use markdown block type for agent content", () => {
+    const blocks = buildAgentResponseMessage("Hello **world**");
+
+    const markdownBlock = blocks.find((b) => b.type === "markdown");
+    expect(markdownBlock).toBeDefined();
+    expect((markdownBlock as MarkdownBlock).text).toBe("Hello **world**");
+  });
+
+  it("should pass raw markdown without conversion", () => {
+    const content = "## Header\n\n| Col1 | Col2 |\n|------|------|\n| a | b |";
+    const blocks = buildAgentResponseMessage(content);
+
+    const markdownBlock = blocks.find(
+      (b) => b.type === "markdown",
+    ) as MarkdownBlock;
+    expect(markdownBlock.text).toBe(content);
+  });
+
+  it("should include context block with logs url when provided", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      "https://app.vm0.ai/audit/123",
+    );
+
+    const contextBlock = blocks.find((b) => b.type === "context");
+    expect(contextBlock).toBeDefined();
+    expect(contextBlock).toMatchObject({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: expect.stringContaining("Audit"),
+        },
+      ],
+    });
+  });
+
+  it("should include deep link context blocks when provided", () => {
+    const deepLinks = [
+      {
+        emoji: "\u{1F511}",
+        label: "Configure providers",
+        url: "https://app.vm0.ai/settings",
+      },
+    ];
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      undefined,
+      deepLinks,
+    );
+
+    const contextBlock = blocks.find((b) => b.type === "context");
+    expect(contextBlock).toBeDefined();
+    expect(contextBlock).toMatchObject({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: expect.stringContaining("Configure providers"),
+        },
+      ],
+    });
+  });
+
+  it("should truncate content exceeding 12000 characters", () => {
+    const longContent = "x".repeat(13000);
+    const blocks = buildAgentResponseMessage(longContent);
+
+    const markdownBlock = blocks.find(
+      (b) => b.type === "markdown",
+    ) as MarkdownBlock;
+    expect(markdownBlock.text.length).toBeLessThanOrEqual(12000);
+    expect(markdownBlock.text).toContain("truncated");
+  });
+
+  it("should not truncate content under 12000 characters", () => {
+    const content = "x".repeat(11000);
+    const blocks = buildAgentResponseMessage(content);
+
+    const markdownBlock = blocks.find(
+      (b) => b.type === "markdown",
+    ) as MarkdownBlock;
+    expect(markdownBlock.text).toBe(content);
+  });
+});
+
 describe("detectDeepLinks", () => {
   const appUrl = "https://app.vm0.ai";
 
@@ -126,7 +214,7 @@ describe("detectDeepLinks", () => {
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
-      emoji: "🔑",
+      emoji: "\u{1F511}",
       label: "Configure model providers",
       url: `${appUrl}/settings`,
     });
@@ -140,7 +228,7 @@ describe("detectDeepLinks", () => {
     );
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
-      emoji: "🔌",
+      emoji: "\u{1F50C}",
       label: "Configure connectors",
       url: `${appUrl}/team/my-agent?tab=connectors`,
     });
@@ -150,7 +238,7 @@ describe("detectDeepLinks", () => {
     const links = detectDeepLinks("The MCP server connection failed", appUrl);
     expect(links).toHaveLength(1);
     expect(links[0]).toEqual({
-      emoji: "🔌",
+      emoji: "\u{1F50C}",
       label: "Configure connectors",
       url: `${appUrl}/team`,
     });
