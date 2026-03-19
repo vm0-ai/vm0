@@ -234,24 +234,28 @@ async fn run_in_sandbox(
         .collect();
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 5. Spawn agent — append stdout+stderr to system log file
-    //    (guest-agent reads this back via telemetry for incremental upload)
-    let agent_cmd = format!("{} >> {log_file} 2>&1", guest::RUN_AGENT);
+    // 5. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
+    //    vsock-guest writes stdout to the guest log file (for telemetry) AND streams
+    //    chunks to the host where we write them to the host log file in real-time.
+    let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
     // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
     // (host-side watchdog) so neither side outlives the other.
     let t = Instant::now();
     let handle = sandbox
-        .spawn_watch(&ExecRequest {
-            cmd: &agent_cmd,
-            timeout: JOB_TIMEOUT,
-            env: &env_refs,
-            sudo: false,
-        })
+        .spawn_watch(
+            &ExecRequest {
+                cmd: &agent_cmd,
+                timeout: JOB_TIMEOUT,
+                env: &env_refs,
+                sudo: false,
+            },
+            Some(&log_file),
+        )
         .await;
 
-    let handle = match handle {
+    let mut handle = match handle {
         Ok(h) => h,
         Err(e) => {
             telemetry.record("agent_execute", t.elapsed(), false, Some(&e.to_string()));
@@ -259,8 +263,22 @@ async fn run_in_sandbox(
         }
     };
 
+    // Spawn background task to drain stdout chunks and write to host log file.
+    let host_log_path = config.log_paths.system_log(context.run_id);
+    let stream_task = handle
+        .stdout_rx
+        .take()
+        .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
+
     // 6. Wait for exit
     let result = sandbox.wait_exit(handle, JOB_TIMEOUT).await;
+
+    // Wait for streaming to finish (channel closes when process exits).
+    if let Some(task) = stream_task
+        && let Err(e) = task.await
+    {
+        warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+    }
     let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
     let err = result.as_ref().err().map(|e| e.to_string());
     telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
@@ -346,9 +364,37 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
     lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
 }
 
-/// Copy guest log files to the host log directory.
+/// Drain stdout chunks from the vsock receiver and write them to a host file.
+async fn drain_stdout_to_file(
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    path: std::path::PathBuf,
+) {
+    let file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .await;
+    let mut file = match file {
+        Ok(f) => f,
+        Err(e) => {
+            warn!(error = %e, path = %path.display(), "failed to open host log file for streaming");
+            return;
+        }
+    };
+    while let Some(chunk) = rx.recv().await {
+        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await {
+            warn!(error = %e, path = %path.display(), "failed to write stdout chunk to host log");
+            break;
+        }
+    }
+}
+
+/// Copy guest log files to host (best-effort, post-job).
 ///
-/// Best-effort: failures are logged but do not affect job outcome.
+/// The system log is also streamed to the host in real-time via vsock stdout
+/// streaming during the agent phase, but the final copy here overwrites with
+/// the complete file (includes download/restore output written before streaming
+/// started).
 async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_paths: &LogPaths) {
     let run_id = context.run_id;
     let files = [

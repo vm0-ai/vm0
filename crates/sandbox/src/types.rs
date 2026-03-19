@@ -22,6 +22,9 @@ pub struct ExecResult {
 
 pub struct SpawnHandle {
     pub pid: u32,
+    /// Receives stdout chunks in real-time when the guest streams them.
+    /// `None` when the backend does not support streaming.
+    pub stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
 }
 
 pub struct ProcessExit {

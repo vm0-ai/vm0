@@ -638,7 +638,11 @@ impl Sandbox for FirecrackerSandbox {
         }
     }
 
-    async fn spawn_watch(&self, request: &ExecRequest<'_>) -> sandbox::Result<SpawnHandle> {
+    async fn spawn_watch(
+        &self,
+        request: &ExecRequest<'_>,
+        stdout_log_path: Option<&str>,
+    ) -> sandbox::Result<SpawnHandle> {
         let guest = self.guest.lock().await.as_ref().cloned().ok_or_else(|| {
             SandboxError::ExecFailed(format!(
                 "sandbox not running (state: {})",
@@ -647,9 +651,9 @@ impl Sandbox for FirecrackerSandbox {
         })?;
 
         tokio::select! {
-            result = guest.spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo) => {
-                let pid = result.map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
-                Ok(SpawnHandle { pid })
+            result = guest.spawn_watch(request.cmd, request.timeout_ms(), request.env, request.sudo, stdout_log_path) => {
+                let (pid, stdout_rx) = result.map_err(|e| SandboxError::ExecFailed(e.to_string()))?;
+                Ok(SpawnHandle { pid, stdout_rx: Some(stdout_rx) })
             }
             _ = self.crash_notify.notified() => {
                 Err(SandboxError::ExecFailed("firecracker process crashed".into()))

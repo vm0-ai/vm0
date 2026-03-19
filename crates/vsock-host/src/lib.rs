@@ -32,8 +32,8 @@ use tokio::time::{self, Instant};
 
 use vsock_proto::{
     Decoder, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY,
-    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, RawMessage,
+    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
 const READ_BUF_SIZE: usize = 64 * 1024;
@@ -69,6 +69,9 @@ struct Shared {
     exits: std::sync::Mutex<HashMap<u32, ProcessExitEvent>>,
     /// Notified when a new exit event arrives.
     exit_notify: Notify,
+    /// Stdout chunk senders: pid → channel sender.
+    /// Registered by `spawn_watch`, fed by `reader_loop`.
+    stdout_senders: std::sync::Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
     /// Set to `true` when the reader task exits (before `closed.notify_waiters()`).
     /// Checked by `request` and `wait_for_exit` to detect a close that happened
     /// before their `Notified` futures were created.
@@ -143,10 +146,37 @@ async fn reader_loop(
             Err(_) => break,
         };
         for msg in messages {
-            if msg.msg_type == MSG_PROCESS_EXIT && msg.seq == 0 {
+            if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 0 {
+                if let Ok((pid, data)) = vsock_proto::decode_stdout_chunk(&msg.payload) {
+                    let sender = {
+                        shared
+                            .stdout_senders
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .get(&pid)
+                            .cloned()
+                    };
+                    if let Some(tx) = sender {
+                        // Best-effort: if receiver is dropped, remove sender.
+                        if tx.send(data.to_vec()).is_err() {
+                            shared
+                                .stdout_senders
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .remove(&pid);
+                        }
+                    }
+                }
+            } else if msg.msg_type == MSG_PROCESS_EXIT && msg.seq == 0 {
                 if let Ok((pid, exit_code, stdout, stderr)) =
                     vsock_proto::decode_process_exit(&msg.payload)
                 {
+                    // Close stdout channel for this pid (if any).
+                    shared
+                        .stdout_senders
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&pid);
                     let event = ProcessExitEvent {
                         pid,
                         exit_code,
@@ -173,6 +203,12 @@ async fn reader_loop(
     // Connection lost — drop all pending senders so receivers get RecvError.
     shared
         .pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear();
+    // Close all stdout channels so consumers see the stream end.
+    shared
+        .stdout_senders
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clear();
@@ -238,6 +274,7 @@ impl VsockHost {
             pending: std::sync::Mutex::new(HashMap::new()),
             exits: std::sync::Mutex::new(HashMap::new()),
             exit_notify: Notify::new(),
+            stdout_senders: std::sync::Mutex::new(HashMap::new()),
             is_closed: AtomicBool::new(false),
             closed: Notify::new(),
         });
@@ -456,16 +493,23 @@ impl VsockHost {
 
     /// Spawn a process on the guest and monitor for exit.
     ///
-    /// Returns immediately with the PID. Use [`wait_for_exit`](Self::wait_for_exit)
+    /// Returns immediately with `(pid, stdout_rx)`. Use [`wait_for_exit`](Self::wait_for_exit)
     /// to wait for completion.
+    ///
+    /// When `stdout_log_path` is `Some`, the guest tees stdout to the given
+    /// file path AND streams chunks to the host via `MSG_STDOUT_CHUNK`.
+    /// The `stdout_rx` channel is closed when the process exits or the
+    /// connection drops.
     pub async fn spawn_watch(
         &self,
         command: &str,
         timeout_ms: u32,
         env: &[(&str, &str)],
         sudo: bool,
-    ) -> io::Result<u32> {
-        let payload = vsock_proto::encode_exec(timeout_ms, command, env, sudo);
+        stdout_log_path: Option<&str>,
+    ) -> io::Result<(u32, tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>)> {
+        let payload =
+            vsock_proto::encode_spawn_watch(timeout_ms, command, env, sudo, stdout_log_path);
         let resp = self
             .request(MSG_SPAWN_WATCH, &payload, Duration::from_secs(30))
             .await?;
@@ -483,8 +527,20 @@ impl VsockHost {
             ));
         }
 
-        vsock_proto::decode_spawn_watch_result(&resp.payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+        let pid = vsock_proto::decode_spawn_watch_result(&resp.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+        // Register stdout channel for this pid.
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        {
+            self.shared
+                .stdout_senders
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(pid, tx);
+        }
+
+        Ok((pid, rx))
     }
 
     /// Wait for a spawned process to exit.
@@ -725,7 +781,10 @@ mod tests {
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
-        let pid = host.spawn_watch("sleep 1", 0, &[], false).await.unwrap();
+        let (pid, _stdout_rx) = host
+            .spawn_watch("sleep 1", 0, &[], false, None)
+            .await
+            .unwrap();
         assert_eq!(pid, 42);
 
         let event = host
@@ -768,7 +827,10 @@ mod tests {
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
-        let pid = host.spawn_watch("false", 0, &[], false).await.unwrap();
+        let (pid, _stdout_rx) = host
+            .spawn_watch("false", 0, &[], false, None)
+            .await
+            .unwrap();
         assert_eq!(pid, 99);
 
         let event = host
@@ -969,7 +1031,10 @@ mod tests {
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
-        let pid = host.spawn_watch("quick-exit", 0, &[], false).await.unwrap();
+        let (pid, _stdout_rx) = host
+            .spawn_watch("quick-exit", 0, &[], false, None)
+            .await
+            .unwrap();
         assert_eq!(pid, 88);
 
         // The exit event may already be cached OR still in-flight. Either way
@@ -1009,8 +1074,8 @@ mod tests {
         });
 
         let host = host_from_stream(host_stream).await.unwrap();
-        let pid = host
-            .spawn_watch("long-running", 0, &[], false)
+        let (pid, _stdout_rx) = host
+            .spawn_watch("long-running", 0, &[], false, None)
             .await
             .unwrap();
         assert_eq!(pid, 77);
@@ -1066,8 +1131,8 @@ mod tests {
         });
 
         let host = Arc::new(host_from_stream(host_stream).await.unwrap());
-        let pid = host
-            .spawn_watch("long-running", 0, &[], false)
+        let (pid, _stdout_rx) = host
+            .spawn_watch("long-running", 0, &[], false, None)
             .await
             .unwrap();
         assert_eq!(pid, 50);

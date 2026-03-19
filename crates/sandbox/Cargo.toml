@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 async-trait.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 uuid = { workspace = true, features = ["v4"] }
 
 [lints]

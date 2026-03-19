@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use vsock_proto::{
     self, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY,
-    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, ProtocolError, RawMessage,
+    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, ProtocolError, RawMessage,
 };
 
 /// Flag indicating shutdown was received (don't reconnect after shutdown).
@@ -38,6 +38,9 @@ const EXIT_CODE_TIMEOUT: i32 = 124;
 
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
+
+/// Buffer size for reading stdout chunks from a spawned process.
+const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
 
 /// Convert a ProtocolError to an io::Error
 fn to_io_error(e: ProtocolError) -> io::Error {
@@ -355,24 +358,30 @@ fn handle_shutdown(seq: u32) -> io::Result<Vec<u8>> {
     vsock_proto::encode(MSG_SHUTDOWN_ACK, seq, &[]).map_err(to_io_error)
 }
 
-/// Handle spawn_watch message - spawn process and monitor in background
-/// Returns immediate acknowledgment with PID, then sends process_exit when done
+/// Handle spawn_watch message - spawn process and monitor in background.
+///
+/// Returns immediate acknowledgment with PID, then sends process_exit when done.
+///
+/// When `stdout_log_path` is `Some`, stdout is streamed to the host via
+/// `MSG_STDOUT_CHUNK` messages AND teed to the specified file path inside the VM.
 fn handle_spawn_watch(
     timeout_ms: u32,
     command: &str,
     env: &[(&str, &str)],
     sudo: bool,
+    stdout_log_path: Option<&str>,
     seq: u32,
     writer: Arc<Mutex<UnixStream>>,
 ) -> io::Result<Vec<u8>> {
     log(
         "INFO",
         &format!(
-            "spawn_watch: {} (timeout={}ms, sudo={}, env_count={})",
+            "spawn_watch: {} (timeout={}ms, sudo={}, env_count={}, stream={})",
             truncate_preview(command),
             timeout_ms,
             sudo,
             env.len(),
+            stdout_log_path.is_some(),
         ),
     );
     let command = prepend_env(command, env);
@@ -394,54 +403,26 @@ fn handle_spawn_watch(
         .spawn();
 
     match child {
-        Ok(child) => {
+        Ok(mut child) => {
             let pid = child.id();
             log("INFO", &format!("spawn_watch: started pid={}", pid));
 
-            // Spawn background thread to monitor process exit
-            thread::spawn(move || {
-                let result = if timeout_ms > 0 {
-                    wait_with_timeout(child, timeout_ms)
-                } else {
-                    // No timeout - wait indefinitely
-                    match child.wait_with_output() {
-                        Ok(output) => (
-                            extract_exit_code(output.status),
-                            output.stdout,
-                            output.stderr,
-                        ),
-                        Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
-                    }
-                };
-
-                log(
-                    "INFO",
-                    &format!(
-                        "spawn_watch: pid={} exited with code={}, stdout_len={}, stderr_len={}",
-                        pid,
-                        result.0,
-                        result.1.len(),
-                        result.2.len()
-                    ),
+            if let Some(log_path) = stdout_log_path {
+                // Streaming mode: tee stdout to log file + vsock chunks.
+                // Take stdout from child so we can read it in a separate thread.
+                let stdout_pipe = child.stdout.take();
+                spawn_streaming_monitor(
+                    pid,
+                    child,
+                    timeout_ms,
+                    stdout_pipe,
+                    log_path.to_owned(),
+                    writer,
                 );
-
-                // Send process_exit notification
-                let payload = vsock_proto::encode_process_exit(pid, result.0, &result.1, &result.2);
-                // seq=0 for unsolicited messages
-                let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, 0, &payload) {
-                    Ok(msg) => msg,
-                    Err(e) => {
-                        log("ERROR", &format!("Failed to encode process_exit: {}", e));
-                        return;
-                    }
-                };
-                // Recover from poisoned mutex: a panicked thread shouldn't prevent
-                // us from sending the exit notification on a best-effort basis.
-                let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                if let Err(e) = w.write_all(&exit_msg) {
-                    log("ERROR", &format!("Failed to send process_exit: {}", e));
-                }
-            });
+            } else {
+                // Buffered mode: no streaming, collect stdout at exit.
+                spawn_buffered_monitor(pid, child, timeout_ms, writer);
+            }
 
             // Return immediate acknowledgment with PID
             let payload = vsock_proto::encode_spawn_watch_result(pid);
@@ -451,6 +432,203 @@ fn handle_spawn_watch(
             let payload = vsock_proto::encode_error(&format!("Failed to spawn: {}", e));
             vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)
         }
+    }
+}
+
+/// Streaming monitor: reads stdout in chunks, tees to file + vsock, then waits for exit.
+///
+/// The timeout killer is spawned BEFORE the stdout read loop so that a process
+/// producing output past the deadline is still killed. When the process is
+/// killed, the stdout pipe returns EOF (broken pipe), the loop exits, and we
+/// proceed to collect the exit status.
+fn spawn_streaming_monitor(
+    pid: u32,
+    mut child: std::process::Child,
+    timeout_ms: u32,
+    stdout_pipe: Option<std::process::ChildStdout>,
+    log_path: String,
+    writer: Arc<Mutex<UnixStream>>,
+) {
+    thread::spawn(move || {
+        // Set up timeout BEFORE the stdout loop — if the process runs past the
+        // deadline it must be killed even while we are still reading output.
+        let child_id = child.id();
+        let killed_by_timeout = Arc::new(AtomicBool::new(false));
+        let timeout_done_tx = if timeout_ms > 0 {
+            let killed_clone = Arc::clone(&killed_by_timeout);
+            let timeout = Duration::from_millis(timeout_ms as u64);
+            let (tx, rx) = std::sync::mpsc::channel::<()>();
+            thread::spawn(move || {
+                if rx.recv_timeout(timeout).is_err() {
+                    killed_clone.store(true, Ordering::SeqCst);
+                    // SAFETY: child_id is a valid PID. Negative pid kills the process group.
+                    unsafe {
+                        libc::kill(-(child_id as i32), libc::SIGKILL);
+                    }
+                }
+            });
+            Some(tx)
+        } else {
+            None
+        };
+
+        // Drain stderr in a background thread BEFORE the stdout loop.
+        // If we waited until after, a child producing >64KB of stderr could
+        // fill the pipe buffer and block — preventing further stdout writes
+        // and causing our stdout read loop to hang (deadlock).
+        let stderr_handle = child.stderr.take().map(|stderr| {
+            thread::spawn(move || {
+                let mut buf = Vec::new();
+                let mut reader = io::BufReader::new(stderr);
+                let _ = reader.read_to_end(&mut buf);
+                buf
+            })
+        });
+
+        // Stream stdout to file + vsock
+        if let Some(mut stdout) = stdout_pipe {
+            let log_file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path);
+            let mut log_file = match log_file {
+                Ok(f) => Some(f),
+                Err(e) => {
+                    log(
+                        "WARN",
+                        &format!("spawn_watch: failed to open log file {}: {}", log_path, e),
+                    );
+                    None
+                }
+            };
+
+            let mut buf = [0u8; STDOUT_CHUNK_SIZE];
+            loop {
+                let n = match stdout.read(&mut buf) {
+                    Ok(0) => break, // EOF
+                    Ok(n) => n,
+                    Err(e) => {
+                        log("WARN", &format!("spawn_watch: stdout read error: {}", e));
+                        break;
+                    }
+                };
+                let chunk = match buf.get(..n) {
+                    Some(c) => c,
+                    None => break,
+                };
+
+                // Write to log file (best-effort)
+                if let Some(ref mut f) = log_file {
+                    let _ = f.write_all(chunk);
+                }
+
+                // Send chunk via vsock (best-effort)
+                let payload = vsock_proto::encode_stdout_chunk(pid, chunk);
+                if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &payload) {
+                    let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Err(e) = w.write_all(&msg) {
+                        log(
+                            "WARN",
+                            &format!("spawn_watch: failed to send stdout chunk: {}", e),
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Wait for process exit (stdout + stderr already being drained)
+        let status = child.wait();
+
+        // Signal timeout thread that process completed.
+        // Must send() not drop — dropping disconnects the channel, which
+        // recv_timeout treats as an error and would fire the killer.
+        if let Some(tx) = timeout_done_tx {
+            let _ = tx.send(());
+        }
+
+        let stderr = stderr_handle
+            .and_then(|h| h.join().ok())
+            .unwrap_or_default();
+
+        let (exit_code, stderr) = if killed_by_timeout.load(Ordering::SeqCst) {
+            (EXIT_CODE_TIMEOUT, b"Timeout".to_vec())
+        } else {
+            match status {
+                Ok(s) => (extract_exit_code(s), stderr),
+                Err(e) => (1, format!("Failed to wait: {}", e).into_bytes()),
+            }
+        };
+
+        log(
+            "INFO",
+            &format!(
+                "spawn_watch: pid={} exited with code={}, stderr_len={} (streamed)",
+                pid,
+                exit_code,
+                stderr.len()
+            ),
+        );
+
+        send_process_exit(pid, exit_code, &[], &stderr, &writer);
+    });
+}
+
+/// Buffered monitor: waits for process exit, collects stdout/stderr at once.
+fn spawn_buffered_monitor(
+    pid: u32,
+    child: std::process::Child,
+    timeout_ms: u32,
+    writer: Arc<Mutex<UnixStream>>,
+) {
+    thread::spawn(move || {
+        let result = if timeout_ms > 0 {
+            wait_with_timeout(child, timeout_ms)
+        } else {
+            match child.wait_with_output() {
+                Ok(output) => (
+                    extract_exit_code(output.status),
+                    output.stdout,
+                    output.stderr,
+                ),
+                Err(e) => (1, Vec::new(), format!("Failed to wait: {}", e).into_bytes()),
+            }
+        };
+
+        log(
+            "INFO",
+            &format!(
+                "spawn_watch: pid={} exited with code={}, stdout_len={}, stderr_len={}",
+                pid,
+                result.0,
+                result.1.len(),
+                result.2.len()
+            ),
+        );
+
+        send_process_exit(pid, result.0, &result.1, &result.2, &writer);
+    });
+}
+
+/// Send a process_exit notification over vsock (best-effort).
+fn send_process_exit(
+    pid: u32,
+    exit_code: i32,
+    stdout: &[u8],
+    stderr: &[u8],
+    writer: &Arc<Mutex<UnixStream>>,
+) {
+    let payload = vsock_proto::encode_process_exit(pid, exit_code, stdout, stderr);
+    let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, 0, &payload) {
+        Ok(msg) => msg,
+        Err(e) => {
+            log("ERROR", &format!("Failed to encode process_exit: {}", e));
+            return;
+        }
+    };
+    let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+    if let Err(e) = w.write_all(&exit_msg) {
+        log("ERROR", &format!("Failed to send process_exit: {}", e));
     }
 }
 
@@ -580,12 +758,13 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
             // blocking the event loop. A blocking child process (e.g. reading a
             // pipe fd) would otherwise stall all subsequent messages.
             if msg.msg_type == MSG_SPAWN_WATCH {
-                let d = vsock_proto::decode_exec(&msg.payload).map_err(to_io_error)?;
+                let d = vsock_proto::decode_spawn_watch(&msg.payload).map_err(to_io_error)?;
                 let response = handle_spawn_watch(
-                    d.timeout_ms,
-                    d.command,
-                    &d.env,
-                    d.sudo,
+                    d.exec.timeout_ms,
+                    d.exec.command,
+                    &d.exec.env,
+                    d.exec.sudo,
+                    d.stdout_log_path,
                     msg.seq,
                     Arc::clone(&writer),
                 )?;

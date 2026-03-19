@@ -24,6 +24,10 @@ pub trait Sandbox: Send + Sync + Any {
     // -- operations --
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
-    async fn spawn_watch(&self, request: &ExecRequest<'_>) -> Result<SpawnHandle>;
+    async fn spawn_watch(
+        &self,
+        request: &ExecRequest<'_>,
+        stdout_log_path: Option<&str>,
+    ) -> Result<SpawnHandle>;
     async fn wait_exit(&self, handle: SpawnHandle, timeout: Duration) -> Result<ProcessExit>;
 }
