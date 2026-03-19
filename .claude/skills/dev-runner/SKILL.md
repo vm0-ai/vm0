@@ -82,7 +82,7 @@ cd "$PROJECT_ROOT/turbo" && pnpm runner
 Steps in progress:
 1. Cross-compile runner binary (aarch64-unknown-linux-musl)
 2. Upload to metal host via SSH
-3. Build rootfs + snapshot for all profiles (vm0/default, vm0/browser)
+3. Build rootfs + snapshot for all profiles (vm0/default)
 4. Start runner service
 
 Use `/dev-logs` pattern to monitor. You'll be notified when it completes.

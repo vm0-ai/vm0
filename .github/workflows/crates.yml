@@ -145,8 +145,6 @@ jobs:
       job-ref: ${{ steps.host.outputs.job-ref }}
       default-rootfs-hash: ${{ steps.build.outputs.default-rootfs-hash }}
       default-snapshot-hash: ${{ steps.build.outputs.default-snapshot-hash }}
-      browser-rootfs-hash: ${{ steps.build.outputs.browser-rootfs-hash }}
-      browser-snapshot-hash: ${{ steps.build.outputs.browser-snapshot-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -232,8 +230,8 @@ jobs:
           ssh $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
           scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
-          # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles)
-          ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 6"
+          # Clean up old rootfs/snapshots, keep the 3 most recent deploys
+          ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="
@@ -248,25 +246,12 @@ jobs:
           DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
           rm -f "$BUILD_LOG_DEFAULT"
 
-          echo "=== Building vm0/browser ==="
-          BUILD_LOG_BROWSER=$(mktemp)
-          ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/browser" | tee "$BUILD_LOG_BROWSER"
-          BROWSER_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_BROWSER" | cut -d= -f2)
-          BROWSER_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_BROWSER" | cut -d= -f2)
-          rm -f "$BUILD_LOG_BROWSER"
-
           if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
             echo "ERROR: Failed to extract default build hashes"
             exit 1
           fi
-          if [ -z "$BROWSER_ROOTFS_HASH" ] || [ -z "$BROWSER_SNAPSHOT_HASH" ]; then
-            echo "ERROR: Failed to extract browser build hashes"
-            exit 1
-          fi
           echo "default-rootfs-hash=${DEFAULT_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
           echo "default-snapshot-hash=${DEFAULT_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
-          echo "browser-rootfs-hash=${BROWSER_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
-          echo "browser-snapshot-hash=${BROWSER_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
 
   runner-benchmark:
     runs-on: ubuntu-latest
@@ -290,8 +275,6 @@ jobs:
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
-          BROWSER_ROOTFS_HASH: ${{ needs.runner-build.outputs.browser-rootfs-hash }}
-          BROWSER_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.browser-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
@@ -302,9 +285,6 @@ jobs:
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
-            --profile vm0/browser \
-            --rootfs-hash ${BROWSER_ROOTFS_HASH} \
-            --snapshot-hash ${BROWSER_SNAPSHOT_HASH} \
             --name ${JOB_REF}-bench \
             --group vm0/development-${JOB_REF} \
             --runner-dirname ${JOB_REF}-bench \
@@ -317,10 +297,10 @@ jobs:
             --profile vm0/default \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
-          echo "=== Running benchmark (browser) ==="
+          echo "=== Running benchmark (browser automation) ==="
           ssh $REMOTE "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
-            --profile vm0/browser \
+            --profile vm0/default \
             'agent-browser open https://github.com/ && agent-browser get title && agent-browser close'"
 
   runner-exec:

@@ -140,7 +140,7 @@ const agentDefinitionSchema = z.object({
     })
     .optional(),
   /**
-   * VM profile for resource allocation (e.g., "vm0/default", "vm0/browser").
+   * VM profile for resource allocation (e.g., "vm0/default").
    * Determines rootfs image and VM resources (vCPU, memory).
    * Defaults to "vm0/default" when omitted.
    */

@@ -85,11 +85,11 @@ cmd_deploy() {
   log "Running setup..."
   ssh_cmd "$RUNNER_BIN setup"
 
-  # Clean up old rootfs/snapshots (2 profiles × 3 deploys = 6)
-  ssh_cmd "$RUNNER_BIN gc --keep-latest 6"
+  # Clean up old rootfs/snapshots (keep 3 most recent deploys)
+  ssh_cmd "$RUNNER_BIN gc --keep-latest 3"
 
-  # Build rootfs + snapshot for all profiles
-  PROFILES=("vm0/default" "vm0/browser")
+  # Build rootfs + snapshot
+  PROFILES=("vm0/default")
   CONFIG_ARGS=""
 
   for PROFILE in "${PROFILES[@]}"; do

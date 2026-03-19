@@ -365,14 +365,14 @@ mod tests {
         let provider = LocalProvider::new(dir.path().to_path_buf(), cancel);
 
         let job_id = Uuid::new_v4();
-        write_job_with_profile(dir.path(), job_id, "browser job", Some("vm0/browser"));
+        write_job_with_profile(dir.path(), job_id, "profiled job", Some("vm0/default"));
 
         let (run_id, profile) = provider.discover().await.unwrap();
         assert_eq!(run_id, job_id);
-        assert_eq!(profile, "vm0/browser");
+        assert_eq!(profile, "vm0/default");
 
         let ctx = provider.claim(run_id).await.unwrap();
-        assert_eq!(ctx.experimental_profile.as_deref(), Some("vm0/browser"));
+        assert_eq!(ctx.experimental_profile.as_deref(), Some("vm0/default"));
     }
 
     #[tokio::test]

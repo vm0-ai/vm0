@@ -1,11 +1,12 @@
-# Firecracker VM rootfs image — default profile
+# Firecracker VM rootfs image
 # Based on Node.js 24 with Python 3.11+, guest-init, and agent CLIs
 #
 # Included CLIs:
 # - Claude Code CLI (@anthropic-ai/claude-code)
 # - GitHub CLI (gh)
+# - agent-browser (Chromium browser automation)
 #
-# Build: docker build -t vm0-rootfs-default .
+# Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
 
 FROM node:24-bookworm-slim
@@ -95,3 +96,12 @@ RUN userdel -r node 2>/dev/null || true \
 RUN mkdir -p /rom /rw /mnt/root
 
 ENV LANG=C.UTF-8
+
+# Install Chromium and agent-browser CLI for browser automation.
+# System Chromium is used on all architectures for version consistency.
+# squashfs is demand-paged so Chromium binaries don't consume memory unless launched.
+ARG AGENT_BROWSER_VERSION=0.21.0
+RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends chromium \
+    && rm -rf /var/lib/apt/lists/*

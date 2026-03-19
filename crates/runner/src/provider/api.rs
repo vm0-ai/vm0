@@ -42,7 +42,7 @@ const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
 pub struct ApiProvider {
     api: ApiClient,
     group: String,
-    /// Profile names this runner supports (e.g., ["vm0/default", "vm0/browser"]).
+    /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
     profiles: Vec<String>,
     /// Mutable discovery state, behind Mutex for `&self` compatibility.
@@ -562,14 +562,14 @@ mod tests {
     fn parse_job_notification_with_profile() {
         let msg = make_message(
             Some("job"),
-            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001", "profile": "vm0/browser" }),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001", "profile": "vm0/default" }),
         );
         let notif = parse_job_notification(&msg).unwrap();
         assert_eq!(
             notif.run_id.to_string(),
             "00000000-0000-0000-0000-000000000001"
         );
-        assert_eq!(notif.profile.as_deref(), Some("vm0/browser"));
+        assert_eq!(notif.profile.as_deref(), Some("vm0/default"));
     }
 
     #[test]

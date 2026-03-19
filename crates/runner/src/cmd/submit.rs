@@ -30,7 +30,7 @@ pub struct SubmitArgs {
     /// Agent type
     #[arg(long, default_value = "claude-code")]
     cli_agent_type: String,
-    /// VM profile to use (e.g. "vm0/default", "vm0/browser")
+    /// VM profile to use (e.g. "vm0/default")
     #[arg(long)]
     profile: Option<String>,
     /// Timeout in seconds waiting for a runner to complete the job
@@ -147,7 +147,7 @@ mod tests {
             prompt: "hello".into(),
             working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
-            profile: Some("vm0/browser".into()),
+            profile: Some("vm0/default".into()),
             timeout: 1,
         };
         // Should pass validation and fail later (HomePaths or timeout), not on profile.

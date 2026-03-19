@@ -128,7 +128,7 @@ export const storedExecutionContextSchema = z.object({
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
-  // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
+  // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: z.string().optional(),
 });
 
@@ -172,7 +172,7 @@ export const executionContextSchema = z.object({
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
   // Experimental capabilities for agent permission enforcement
   experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
-  // VM profile for resource allocation (e.g., "vm0/default", "vm0/browser")
+  // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: z.string().optional(),
 });
 

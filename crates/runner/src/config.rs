@@ -316,11 +316,6 @@ profiles:
     snapshot_hash: def456
     vcpu: 2
     memory_mb: 2048
-  vm0/browser:
-    rootfs_hash: fed987
-    snapshot_hash: cba654
-    vcpu: 4
-    memory_mb: 4096
 sandbox:
   max_concurrent: 8
   concurrency_factor: 2.0
@@ -334,24 +329,17 @@ server:
             kernel = kernel.display(),
         );
 
-        let home = test_home_with_artifacts(
-            dir.path(),
-            &[("abc123", Some("def456")), ("fed987", Some("cba654"))],
-        )
-        .await;
+        let home = test_home_with_artifacts(dir.path(), &[("abc123", Some("def456"))]).await;
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
         let config = load_with_home(&config_path, &home).await.unwrap();
         assert_eq!(config.name, "test-runner");
-        assert_eq!(config.profiles.len(), 2);
+        assert_eq!(config.profiles.len(), 1);
         let default = &config.profiles["vm0/default"];
         assert_eq!(default.vcpu, 2);
         assert_eq!(default.rootfs_hash, "abc123");
-        let browser = &config.profiles["vm0/browser"];
-        assert_eq!(browser.vcpu, 4);
-        assert_eq!(browser.memory_mb, 4096);
         assert_eq!(config.sandbox.max_concurrent, 8);
         assert!((config.sandbox.concurrency_factor - 2.0).abs() < f64::EPSILON);
         let server = config.server.unwrap();

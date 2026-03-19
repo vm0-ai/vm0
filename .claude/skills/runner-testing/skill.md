@@ -49,12 +49,11 @@ Web API generates sandbox JWT -> runner receives in `ExecutionContext.sandboxTok
 
 In local mode, webhooks go nowhere (no web server), but VM execution still works with mock Claude.
 
-## Profiles
+## Profile
 
 | Profile | vCPU | RAM | Use Case |
 |---------|------|-----|----------|
-| `vm0/default` | 2 | 2048 MB | CLI agent, code generation |
-| `vm0/browser` | 4 | 4096 MB | Chromium + agent-browser automation |
+| `vm0/default` | 2 | 2048 MB | CLI agent, code generation, browser automation |
 
 Profile definitions: `crates/runner/src/profile.rs`
 Runner config on host: `~/.vm0-runner/runners/<name>/runner.yaml`
@@ -76,10 +75,10 @@ This builds, uploads, and starts the runner with `--local` (file queue) and `USE
 pnpm runner:submit vm0/default "nproc && free -m"
 
 # Browser profile with Chromium
-pnpm runner:submit vm0/browser "agent-browser navigate https://example.com --screenshot /tmp/test.png && free -m"
+pnpm runner:submit vm0/default "agent-browser navigate https://example.com --screenshot /tmp/test.png && free -m"
 
 # Multiple pages to stress test memory
-pnpm runner:submit vm0/browser "agent-browser navigate https://news.ycombinator.com --screenshot /tmp/hn.png && agent-browser navigate https://github.com --screenshot /tmp/gh.png && free -m"
+pnpm runner:submit vm0/default "agent-browser navigate https://news.ycombinator.com --screenshot /tmp/hn.png && agent-browser navigate https://github.com --screenshot /tmp/gh.png && free -m"
 ```
 
 ### 3. Check Results
@@ -114,8 +113,6 @@ Runner uses resource-based admission control (`crates/runner/src/resource_budget
 
 Example: 16 vCPU / 32 GB host can run:
 - 8x default (16 vCPU / 16 GB)
-- 4x browser (16 vCPU / 16 GB)
-- 1x browser + 6x default (16 vCPU / 16 GB)
 
 ## Debugging
 

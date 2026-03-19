@@ -60,17 +60,6 @@
         default_rootfs_hash: "{{ default_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
         default_snapshot_hash: "{{ default_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
 
-    - name: Build browser rootfs and snapshot
-      command: >
-        {{ bin_dir }}/runner build
-        --profile vm0/browser
-      register: browser_build_output
-
-    - name: Parse browser build hashes
-      set_fact:
-        browser_rootfs_hash: "{{ browser_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
-        browser_snapshot_hash: "{{ browser_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
-
     # ========================================
     # Phase 3: Configure + Install
     # ========================================
@@ -80,9 +69,6 @@
         --profile vm0/default
         --rootfs-hash {{ default_rootfs_hash }}
         --snapshot-hash {{ default_snapshot_hash }}
-        --profile vm0/browser
-        --rootfs-hash {{ browser_rootfs_hash }}
-        --snapshot-hash {{ browser_snapshot_hash }}
         --name {{ runner_name }}
         --group {{ runner_group }}
         --runner-dirname {{ runner_name }}
