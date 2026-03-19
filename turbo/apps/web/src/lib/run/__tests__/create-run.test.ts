@@ -872,6 +872,39 @@ describe("createRun()", () => {
         ANTHROPIC_MODEL: "anthropic/claude-sonnet-4.6",
       });
     });
+
+    it("should store resolved model provider on run record when using org default", async () => {
+      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
+        skipDefaultApiKey: true,
+      });
+
+      await createTestOrgModelProvider("vercel-ai-gateway", "test-gateway-key");
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.modelProvider).toBe("vercel-ai-gateway");
+    });
+
+    it("should preserve explicit model provider on run record", async () => {
+      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
+        skipDefaultApiKey: true,
+      });
+
+      await createTestOrgModelProvider("vercel-ai-gateway", "test-gateway-key");
+
+      const result = await createRun(
+        baseParams({
+          agentComposeVersionId: noKeyCompose.versionId,
+          modelProvider: "vercel-ai-gateway",
+        }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.modelProvider).toBe("vercel-ai-gateway");
+    });
   });
 
   describe("Connector Secret Injection", () => {

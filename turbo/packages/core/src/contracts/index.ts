@@ -229,6 +229,9 @@ export {
   hasModelSelection,
   allowsCustomModel,
   getCustomModelPlaceholder,
+  // Provider compatibility
+  getProviderBaseUrl,
+  areProvidersCompatible,
   // Feature-gated provider support
   getProviderFeatureFlag,
   isProviderVisible,

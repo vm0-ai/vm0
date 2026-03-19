@@ -82,3 +82,74 @@ describe("userMessage line break rendering", () => {
     });
   });
 });
+
+describe("provider incompatibility error", () => {
+  it("should show friendly message for API-level provider incompatibility", async () => {
+    server.use(
+      http.get("*/api/chat-threads/:id", () => {
+        return HttpResponse.json({
+          id: "thread-provider-error",
+          title: null,
+          agentComposeId: "mock-compose-id",
+          chatMessages: [],
+          latestSessionId: null,
+          unsavedRuns: [
+            {
+              runId: "run-incompatible",
+              status: "failed",
+              prompt: "hello",
+              error:
+                "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key.",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      http.get("*/api/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/chat/thread-provider-error" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/different model provider/)).toBeInTheDocument();
+      expect(screen.getByText(/Start a new session/)).toBeInTheDocument();
+    });
+  });
+
+  it("should show friendly message for thinking block signature error", async () => {
+    server.use(
+      http.get("*/api/chat-threads/:id", () => {
+        return HttpResponse.json({
+          id: "thread-signature-error",
+          title: null,
+          agentComposeId: "mock-compose-id",
+          chatMessages: [],
+          latestSessionId: null,
+          unsavedRuns: [
+            {
+              runId: "run-signature",
+              status: "failed",
+              prompt: "hello",
+              error: "Invalid signature in thinking block",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      http.get("*/api/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/chat/thread-signature-error" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/different model provider/)).toBeInTheDocument();
+      expect(screen.getByText(/Start a new session/)).toBeInTheDocument();
+    });
+  });
+});

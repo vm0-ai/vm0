@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.6.0...sandbox-v0.6.1) (2026-03-19)
+
+
+### Refactoring
+
+* **sandbox:** remove dead use_proxy field from sandbox config ([#5483](https://github.com/vm0-ai/vm0/issues/5483)) ([97c8db8](https://github.com/vm0-ai/vm0/commit/97c8db89235175ba41f45817413b671c3d39fe3e)), closes [#5481](https://github.com/vm0-ai/vm0/issues/5481)
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.5.0...sandbox-v0.6.0) (2026-02-23)
 
 

@@ -7,19 +7,14 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "auth": "tsx cli-auth-automation.ts",
-    "sign-in": "npx playwright test sign-in.spec.ts"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@clerk/testing": "^2.0.4",
-    "@playwright/test": "^1.58.2",
     "@types/node": "^25.5.0",
-    "dotenv": "^17.3.1",
-    "playwright": "^1.58.2"
+    "dotenv": "^17.3.1"
   },
   "devDependencies": {
     "tsx": "^4.21.0"

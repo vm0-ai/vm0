@@ -2,10 +2,10 @@ import type {
   Block,
   KnownBlock,
   View,
-  SectionBlock,
   ActionsBlock,
   Button,
   Checkboxes,
+  MarkdownBlock,
   Option,
 } from "@slack/web-api";
 import { getAppUrl } from "../url";
@@ -383,77 +383,36 @@ export function buildSuccessMessage(message: string): (Block | KnownBlock)[] {
 }
 
 /**
- * Build markdown message blocks
- * Splits long content into multiple section blocks (Slack limit: 3000 chars per block)
+ * Build markdown message blocks using Slack's native markdown block type.
+ * Slack's markdown block accepts standard markdown (including tables, code blocks,
+ * lists, blockquotes) and handles rendering internally.
  *
- * @param content - Markdown content
+ * @see https://docs.slack.dev/reference/block-kit/blocks/markdown-block/
+ *
+ * @param content - Standard markdown content
  * @returns Block Kit blocks
  */
-/**
- * Convert standard Markdown to Slack mrkdwn format
- */
-function convertToSlackMarkdown(content: string): string {
-  let result = content;
-
-  // Convert headers (## Header -> *Header*)
-  result = result.replace(/^#{1,6}\s+(.+)$/gm, "*$1*");
-
-  // Convert bold (**text** -> *text*)
-  result = result.replace(/\*\*([^*]+)\*\*/g, "*$1*");
-
-  // Convert links [text](url) -> <url|text>
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<$2|$1>");
-
-  // Convert inline code (already works in Slack)
-  // `code` stays as `code`
-
-  // Convert horizontal rules (--- or ***) to divider-like text
-  result = result.replace(/^[-*]{3,}$/gm, "───────────────");
-
-  return result;
-}
+const MARKDOWN_BLOCK_MAX_LENGTH = 12000;
 
 function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
-  const MAX_BLOCK_LENGTH = 2900; // Leave some margin below 3000
-  const blocks: SectionBlock[] = [];
+  // Markdown blocks have a cumulative 12,000 character limit per message.
+  // If content exceeds that, truncate and indicate there is more.
+  const truncationSuffix =
+    "\n\n_(Response truncated. View the full output in audit logs.)_";
+  const truncated =
+    content.length > MARKDOWN_BLOCK_MAX_LENGTH
+      ? content.substring(
+          0,
+          MARKDOWN_BLOCK_MAX_LENGTH - truncationSuffix.length,
+        ) + truncationSuffix
+      : content;
 
-  // Convert standard Markdown to Slack mrkdwn
-  const slackContent = convertToSlackMarkdown(content);
+  const block: MarkdownBlock = {
+    type: "markdown",
+    text: truncated,
+  };
 
-  // Split content into chunks if too long
-  let remaining = slackContent;
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_BLOCK_LENGTH) {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: remaining,
-        },
-      });
-      break;
-    }
-
-    // Find a good split point (newline or space)
-    let splitIndex = remaining.lastIndexOf("\n", MAX_BLOCK_LENGTH);
-    if (splitIndex === -1 || splitIndex < MAX_BLOCK_LENGTH / 2) {
-      splitIndex = remaining.lastIndexOf(" ", MAX_BLOCK_LENGTH);
-    }
-    if (splitIndex === -1 || splitIndex < MAX_BLOCK_LENGTH / 2) {
-      splitIndex = MAX_BLOCK_LENGTH;
-    }
-
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: remaining.substring(0, splitIndex),
-      },
-    });
-    remaining = remaining.substring(splitIndex).trimStart();
-  }
-
-  return blocks;
+  return [block];
 }
 
 // ---------------------------------------------------------------------------

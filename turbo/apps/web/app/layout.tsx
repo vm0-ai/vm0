@@ -1,4 +1,4 @@
-// Root layout for the web application
+// Root layout for the web application (e2e-auth validated without Playwright)
 import type { Metadata } from "next";
 import Script from "next/script";
 import {

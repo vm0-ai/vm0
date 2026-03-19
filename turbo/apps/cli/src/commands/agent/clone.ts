@@ -35,6 +35,13 @@ function cleanComposeContent(
     if (agent.skills) cleaned.skills = agent.skills;
     if (agent.experimental_runner)
       cleaned.experimental_runner = agent.experimental_runner;
+    if (agent.experimental_profile)
+      cleaned.experimental_profile = agent.experimental_profile;
+    if (agent.experimental_capabilities)
+      cleaned.experimental_capabilities = agent.experimental_capabilities;
+    if (agent.experimental_firewalls)
+      cleaned.experimental_firewalls = agent.experimental_firewalls;
+    if (agent.metadata) cleaned.metadata = agent.metadata;
     agents[name] = cleaned;
   }
 

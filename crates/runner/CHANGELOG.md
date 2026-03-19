@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.38.0...runner-rs-v0.38.1) (2026-03-19)
+
+
+### Refactoring
+
+* **sandbox:** remove dead use_proxy field from sandbox config ([#5483](https://github.com/vm0-ai/vm0/issues/5483)) ([97c8db8](https://github.com/vm0-ai/vm0/commit/97c8db89235175ba41f45817413b671c3d39fe3e)), closes [#5481](https://github.com/vm0-ai/vm0/issues/5481)
+
 ## [0.38.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.37.0...runner-rs-v0.38.0) (2026-03-19)
 
 

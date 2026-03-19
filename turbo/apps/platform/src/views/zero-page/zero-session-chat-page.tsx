@@ -639,6 +639,9 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
     const isNoModelProvider = message.error.includes(
       "No model provider configured",
     );
+    const isProviderIncompatible =
+      message.error.includes("Cannot continue session") ||
+      message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[36px_1fr] gap-2.5 items-start">
@@ -664,6 +667,24 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                     <IconSettings size={13} />
                   </Link>{" "}
                   to get started.
+                </span>
+              </div>
+            ) : isProviderIncompatible ? (
+              <div className="flex items-start gap-2 text-foreground">
+                <IconAlertCircle
+                  size={16}
+                  className="shrink-0 mt-[3px] text-amber-500"
+                />
+                <span>
+                  This session was started with a different model provider and
+                  can&apos;t be continued with the current one.{" "}
+                  <Link
+                    pathname="/:tab"
+                    options={{ pathParams: { tab: "chat" } }}
+                    className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+                  >
+                    Start a new session
+                  </Link>
                 </span>
               </div>
             ) : (

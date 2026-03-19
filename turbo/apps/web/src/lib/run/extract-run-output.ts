@@ -55,6 +55,16 @@ async function queryResultEvent(
   return events[0];
 }
 
+async function queryAllResultEvents(runId: string): Promise<ResultEvent[]> {
+  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+  const apl = `['${dataset}']
+| where runId == "${runId}"
+| where eventType == "result"
+| order by sequenceNumber asc`;
+
+  return queryAxiom<ResultEvent>(apl);
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -73,31 +83,96 @@ export async function extractRunOutput(
   error?: string | null,
 ): Promise<RunOutput> {
   const event = await queryResultEvent(runId);
-  const result =
-    typeof event?.eventData?.result === "string"
-      ? event.eventData.result
-      : null;
 
-  const allDenials = event?.eventData?.permission_denials ?? [];
+  if (!event) {
+    return {
+      result: null,
+      askUserDenials: [],
+      modelProviderIssue: false,
+      connectorIssue: false,
+      error: error ?? null,
+    };
+  }
+
+  return buildRunOutput(event, error);
+}
+
+/**
+ * Extract ALL structured run outputs from Axiom (ordered by sequence number).
+ *
+ * A run may produce multiple result events (e.g. intermediate task
+ * notifications followed by a final summary). This returns one RunOutput
+ * per result event so callers can post each one individually.
+ */
+export async function extractAllRunOutputs(
+  runId: string,
+  error?: string | null,
+): Promise<RunOutput[]> {
+  const events = await queryAllResultEvents(runId);
+
+  if (events.length === 0) {
+    return [
+      {
+        result: null,
+        askUserDenials: [],
+        modelProviderIssue: false,
+        connectorIssue: false,
+        error: error ?? null,
+      },
+    ];
+  }
+
+  return events.map((event) => buildRunOutput(event, error));
+}
+
+function buildRunOutput(event: ResultEvent, error?: string | null): RunOutput {
+  const result =
+    typeof event.eventData?.result === "string" ? event.eventData.result : null;
+
+  const allDenials = event.eventData?.permission_denials ?? [];
   const askUserDenials = allDenials.filter(
     (d) => d.tool_name === "AskUserQuestion",
   );
 
-  // Detect issue flags from result text using keyword category matching
   const textToScan = result ?? error ?? "";
   const categories = textToScan
     ? detectIssueCategories(textToScan)
     : new Set<never>();
-  const modelProviderIssue = categories.has("provider");
-  const connectorIssue = categories.has("connector");
 
   return {
     result,
     askUserDenials,
-    modelProviderIssue,
-    connectorIssue,
+    modelProviderIssue: categories.has("provider"),
+    connectorIssue: categories.has("connector"),
     error: error ?? null,
   };
+}
+
+/**
+ * Get ALL formatted run output texts (one per result event).
+ *
+ * Convenience wrapper for channels that post each result as a separate message.
+ */
+export async function getAllRunOutputTexts(runId: string): Promise<string[]> {
+  const outputs = await extractAllRunOutputs(runId);
+  const texts: string[] = [];
+
+  for (const output of outputs) {
+    let text = output.result ?? undefined;
+
+    if (output.askUserDenials.length > 0) {
+      const formatted = formatAskUserDenials(output.askUserDenials);
+      if (formatted) {
+        text = text ? `${text}\n\n${formatted}` : formatted;
+      }
+    }
+
+    if (text) {
+      texts.push(text);
+    }
+  }
+
+  return texts;
 }
 
 /**

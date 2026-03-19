@@ -402,6 +402,28 @@ export function getEnvironmentMapping(
 }
 
 /**
+ * Get the ANTHROPIC_BASE_URL for a model provider type.
+ * Returns null for Anthropic-native providers (no base URL override).
+ */
+export function getProviderBaseUrl(type: ModelProviderType): string | null {
+  const config = MODEL_PROVIDER_TYPES[type];
+  if (!("environmentMapping" in config)) return null;
+  const url = config.environmentMapping["ANTHROPIC_BASE_URL"];
+  return url ?? null;
+}
+
+/**
+ * Check if two model providers are compatible for session continuation.
+ * Providers are compatible if they resolve to the same ANTHROPIC_BASE_URL.
+ */
+export function areProvidersCompatible(
+  a: ModelProviderType,
+  b: ModelProviderType,
+): boolean {
+  return getProviderBaseUrl(a) === getProviderBaseUrl(b);
+}
+
+/**
  * Get available models for a model provider type
  * Returns undefined for providers without model selection
  */

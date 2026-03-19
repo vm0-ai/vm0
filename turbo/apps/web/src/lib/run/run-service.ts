@@ -607,6 +607,7 @@ async function buildAndDispatchRun(opts: {
       context,
       runtimeOrg,
       timings: buildContextTimings,
+      resolvedModelProvider,
     } = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
@@ -639,9 +640,16 @@ async function buildAndDispatchRun(opts: {
     // Refresh heartbeat after the heaviest pipeline step to prevent the
     // cleanup cron from timing out runs whose dispatch takes > 5 minutes.
     // Status guard avoids touching runs cancelled/failed while in-flight.
+    // Also persist the resolved model provider type (when the user selected
+    // "Default", the INSERT stored null — this UPDATE writes the actual value).
     await globalThis.services.db
       .update(agentRuns)
-      .set({ lastHeartbeatAt: new Date() })
+      .set({
+        lastHeartbeatAt: new Date(),
+        ...(resolvedModelProvider
+          ? { modelProvider: resolvedModelProvider }
+          : {}),
+      })
       .where(
         and(
           eq(agentRuns.id, runId),

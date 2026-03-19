@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.69.1](https://github.com/vm0-ai/vm0/compare/cli-v9.69.0...cli-v9.69.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* **cli:** preserve experimental fields in agent clone ([#5471](https://github.com/vm0-ai/vm0/issues/5471)) ([fad4a25](https://github.com/vm0-ai/vm0/commit/fad4a25be52a4dbfb30baa23b66cbb2861f1dade)), closes [#5468](https://github.com/vm0-ai/vm0/issues/5468)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.83.0
+
 ## [9.69.0](https://github.com/vm0-ai/vm0/compare/cli-v9.68.0...cli-v9.69.0) (2026-03-19)
 
 
