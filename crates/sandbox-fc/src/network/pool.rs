@@ -367,10 +367,11 @@ async fn setup_host_iptables(
     Ok(())
 }
 
-/// Add proxy REDIRECT rules for HTTP/HTTPS traffic in PREROUTING chain.
+/// Add proxy REDIRECT rule for all outbound TCP traffic in PREROUTING chain.
 ///
-/// These rules redirect outbound port 80/443 traffic from the namespace's
-/// veth peer IP to the specified proxy port on the host.
+/// This rule redirects all outbound TCP traffic from the namespace's
+/// veth peer IP to the specified proxy port on the host. mitmproxy in
+/// transparent mode handles both HTTP/HTTPS and non-HTTP (raw TCP passthrough).
 async fn add_proxy_redirect_rules(name: &str, peer_ip: &str, proxy_port: u16) -> Result<()> {
     let src = format!("{peer_ip}/30");
     let port_str = proxy_port.to_string();
@@ -383,29 +384,6 @@ async fn add_proxy_redirect_rules(name: &str, peer_ip: &str, proxy_port: u16) ->
         &src,
         "-p",
         "tcp",
-        "--dport",
-        "80",
-        "-j",
-        "REDIRECT",
-        "--to-port",
-        &port_str,
-        "-m",
-        "comment",
-        "--comment",
-        name,
-    ])
-    .await?;
-    sudo_iptables(&[
-        "-t",
-        "nat",
-        "-A",
-        "PREROUTING",
-        "-s",
-        &src,
-        "-p",
-        "tcp",
-        "--dport",
-        "443",
         "-j",
         "REDIRECT",
         "--to-port",
