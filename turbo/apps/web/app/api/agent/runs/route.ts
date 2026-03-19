@@ -22,6 +22,7 @@ import {
   isBadRequest,
   isNotFound,
   isUnauthorized,
+  isProviderIncompatible,
 } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
@@ -57,6 +58,14 @@ function handleCreateRunError(error: unknown) {
     return {
       status: 403 as const,
       body: { error: { message: "Access denied", code: "FORBIDDEN" } },
+    };
+  }
+  if (isProviderIncompatible(error)) {
+    return {
+      status: 400 as const,
+      body: {
+        error: { message: error.message, code: "PROVIDER_INCOMPATIBLE" },
+      },
     };
   }
   if (isBadRequest(error)) {

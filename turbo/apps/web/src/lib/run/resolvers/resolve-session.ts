@@ -106,9 +106,12 @@ export async function resolveSession(
       conversation.cliAgentSessionHistoryHash,
       conversation.cliAgentSessionHistory,
     ),
-    // Last run vars as fallback for continue operations
+    // Last run vars and model provider as fallback for continue operations
     globalThis.services.db
-      .select({ vars: agentRuns.vars })
+      .select({
+        vars: agentRuns.vars,
+        modelProvider: agentRuns.modelProvider,
+      })
       .from(agentRuns)
       .where(eq(agentRuns.id, conversation.runId))
       .limit(1),
@@ -134,5 +137,6 @@ export async function resolveSession(
     vars: lastRunVars,
     volumeVersions: undefined,
     buildResumeArtifact: !!session.artifactName,
+    originalModelProvider: lastRun?.modelProvider ?? undefined,
   };
 }

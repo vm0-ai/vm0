@@ -53,6 +53,12 @@ interface ConcurrentRunLimitError extends ApiErrorBase {
   readonly code: "TOO_MANY_REQUESTS";
 }
 
+interface ProviderIncompatibleError extends ApiErrorBase {
+  readonly name: "ProviderIncompatibleError";
+  readonly statusCode: 400;
+  readonly code: "PROVIDER_INCOMPATIBLE";
+}
+
 // ============================================================================
 // Factory Functions
 // ============================================================================
@@ -117,6 +123,16 @@ export function concurrentRunLimit(
   return error;
 }
 
+export function providerIncompatible(
+  message: string,
+): ProviderIncompatibleError {
+  const error = new Error(message) as ProviderIncompatibleError;
+  (error as { name: string }).name = "ProviderIncompatibleError";
+  (error as { statusCode: number }).statusCode = 400;
+  (error as { code: string }).code = "PROVIDER_INCOMPATIBLE";
+  return error;
+}
+
 // ============================================================================
 // Type Guards
 // ============================================================================
@@ -147,4 +163,10 @@ export function isSchedulePast(e: unknown): e is SchedulePastError {
 
 export function isConcurrentRunLimit(e: unknown): e is ConcurrentRunLimitError {
   return e instanceof Error && e.name === "ConcurrentRunLimitError";
+}
+
+export function isProviderIncompatible(
+  e: unknown,
+): e is ProviderIncompatibleError {
+  return e instanceof Error && e.name === "ProviderIncompatibleError";
 }
