@@ -218,6 +218,53 @@ describe("agent clone command", () => {
       expect(yamlContent).toContain("vars.DEBUG");
     });
 
+    it("should preserve experimental_capabilities and experimental_firewalls", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("name") === "test-agent") {
+            return HttpResponse.json({
+              id: "cmp-123",
+              name: "test-agent",
+              headVersionId:
+                "abc123def456789012345678901234567890123456789012345678901234",
+              content: {
+                version: "1",
+                agents: {
+                  "test-agent": {
+                    framework: "claude-code",
+                    experimental_capabilities: [
+                      "artifact:read",
+                      "artifact:write",
+                    ],
+                    experimental_firewalls: {
+                      slack: { permissions: ["all"] },
+                    },
+                  },
+                },
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      const dest = path.join(tempDir, "test-agent");
+      await cloneCommand.parseAsync(["node", "cli", "test-agent", dest]);
+
+      const yamlContent = fs.readFileSync(path.join(dest, "vm0.yaml"), "utf8");
+      expect(yamlContent).toContain("experimental_capabilities:");
+      expect(yamlContent).toContain("artifact:read");
+      expect(yamlContent).toContain("artifact:write");
+      expect(yamlContent).toContain("experimental_firewalls:");
+      expect(yamlContent).toContain("slack:");
+    });
+
     it("should preserve volumes section", async () => {
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
