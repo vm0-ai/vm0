@@ -28,7 +28,8 @@
     "CARGO_HOME": "/home/vscode/.cache/cargo",
     "PATH": "/home/vscode/.cache/cargo/bin:/home/vscode/.local/bin:${containerWorkspaceFolder}/bin:${containerEnv:PATH}",
     "VM0_API_URL": "https://www.vm7.ai:8443",
-    "AGENT_BROWSER_HEADED": "1"
+    "AGENT_BROWSER_HEADED": "1",
+    "DISPLAY": ":99"
   },
   "mounts": [
     "source=config,target=/home/vscode/.config",

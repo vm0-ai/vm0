@@ -13,26 +13,13 @@ Parse the args to understand what the user wants to do in the browser (e.g., "co
 
 ## Prerequisites
 
-Before any browser interaction, ensure both the dev server and VNC+Chrome are running.
+Before any browser interaction, ensure the dev server is running. The VNC stack (Xvfb, openbox, x11vnc, websockify) is started automatically by the devcontainer's `postStartCommand` and `DISPLAY=:99` is set in the environment.
 
 ### Step 1: Start Dev Server
 
 Use the `/dev-start` skill to start the dev server if not already running. Wait for it to be ready.
 
-### Step 2: Start VNC + Chrome
-
-Start the VNC stack in the background using Bash `run_in_background`. The script stays alive and all child processes (Xvfb, Chrome, etc.) are cleaned up when the task is stopped.
-
-```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT" && scripts/start-vnc.sh
-```
-
-Run this command with `run_in_background: true`. It will output the noVNC URL.
-
-The browser is running in headed mode with noVNC. Use `dcvnc <current-hostname>` to connect the vnc in browser.
-
-### Step 3: Authenticate Browser
+### Step 2: Authenticate Browser
 
 Use the e2e auth automation script to log in to the platform app.
 
@@ -54,7 +41,7 @@ This will:
 - Skip login if the browser is already authenticated
 - Leave the browser open for agent-browser to use
 
-### Step 4: Start Video Recording
+### Step 3: Start Video Recording
 
 Before performing any browser actions, start recording the session. Use the task name (a short English description of what you're doing) and a timestamp for the filename:
 
