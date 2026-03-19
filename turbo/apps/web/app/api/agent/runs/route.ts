@@ -243,6 +243,7 @@ const router = tsr.router(runsMainContract, {
         artifactVersion: body.artifactVersion,
         memoryName: body.memoryName,
         volumeVersions: body.volumeVersions,
+        triggerSource: body.sessionId ? "chat" : "api",
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,

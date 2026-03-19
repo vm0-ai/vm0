@@ -1,5 +1,5 @@
 // API response types (matching app API contracts)
-import type { LogStatus } from "@vm0/core";
+import type { LogStatus, TriggerSource } from "@vm0/core";
 
 // Re-export from core contract to stay in sync with the API schema
 export type { LogStatus };
@@ -12,7 +12,7 @@ export interface LogEntry {
   displayName: string | null;
   orgSlug: string | null;
   framework: string | null;
-  modelProvider: string | null;
+  triggerSource: TriggerSource | null;
   status: LogStatus;
   createdAt: string;
   startedAt: string | null;

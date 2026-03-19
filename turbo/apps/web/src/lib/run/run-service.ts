@@ -35,7 +35,7 @@ import { canAccessCompose } from "../agent/compose-access";
 import { getVariableValues } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
-import { type OrgTier, orgTierSchema } from "@vm0/core";
+import { type OrgTier, type TriggerSource, orgTierSchema } from "@vm0/core";
 import { getOrgData } from "../org/org-cache-service";
 
 const log = logger("service:run");
@@ -312,6 +312,7 @@ export interface CreateRunParams {
   resumedFromCheckpointId?: string;
   agentName?: string;
   modelProvider?: string;
+  triggerSource?: TriggerSource;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   // Caller-resolved org context for variable/storage resolution.
@@ -360,6 +361,7 @@ export interface StartRunParams {
   scheduleId?: string;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   modelProvider?: string;
+  triggerSource?: TriggerSource;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
 }
@@ -928,6 +930,7 @@ export async function startRun(
     resumedFromCheckpointId: params.checkpointId,
     agentName: resolved.agentName,
     modelProvider: params.modelProvider,
+    triggerSource: params.triggerSource,
     debugNoMockClaude: params.debugNoMockClaude,
     checkEnv: params.checkEnv,
     orgSlug: orgData.slug,
@@ -1023,6 +1026,7 @@ export async function createRun(
           continuedFromSessionId: params.sessionId ?? null,
           scheduleId: params.scheduleId ?? null,
           modelProvider: params.modelProvider ?? null,
+          triggerSource: params.triggerSource ?? "api",
           lastHeartbeatAt: new Date(),
         })
         .returning();

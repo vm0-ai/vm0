@@ -37,6 +37,21 @@ const logStatusSchema = z.enum([
 ]);
 
 /**
+ * Trigger source enum — how the run was initiated
+ */
+export const triggerSourceSchema = z.enum([
+  "schedule",
+  "chat",
+  "slack",
+  "email",
+  "telegram",
+  "github",
+  "api",
+]);
+
+export type TriggerSource = z.infer<typeof triggerSourceSchema>;
+
+/**
  * Log entry in list response - includes basic fields for list display
  */
 const logEntrySchema = z.object({
@@ -46,6 +61,7 @@ const logEntrySchema = z.object({
   displayName: z.string().nullable(),
   orgSlug: z.string().nullable(),
   framework: z.string().nullable(),
+  triggerSource: triggerSourceSchema.nullable(),
   status: logStatusSchema,
   createdAt: z.string(),
   startedAt: z.string().nullable(),

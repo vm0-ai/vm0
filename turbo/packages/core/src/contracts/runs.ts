@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 
 const c = initContract();
@@ -586,7 +587,7 @@ const queueEntrySchema = z.object({
   isOwner: z.boolean(),
   runId: z.string().nullable(),
   prompt: z.string().nullable(),
-  triggerSource: z.enum(["schedule", "chat", "api"]).nullable(),
+  triggerSource: triggerSourceSchema.nullable(),
   sessionLink: z.string().nullable(),
 });
 

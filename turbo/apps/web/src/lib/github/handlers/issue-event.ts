@@ -499,6 +499,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       prompt: fullPrompt,
       composeId: compose.id,
       sessionId: existingSessionId,
+      triggerSource: "github",
       callbacks: [
         {
           url: callbackUrl,

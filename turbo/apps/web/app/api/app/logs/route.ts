@@ -8,7 +8,11 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { logsListContract, type LogStatus } from "@vm0/core";
+import {
+  logsListContract,
+  type LogStatus,
+  type TriggerSource,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -25,6 +29,18 @@ import { logger } from "../../../../src/lib/logger";
 import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
 
 const log = logger("api:app:logs");
+
+function inferTriggerSource(run: {
+  triggerSource: string | null;
+  scheduleId: string | null;
+  continuedFromSessionId: string | null;
+}): TriggerSource | null {
+  if (run.triggerSource) return run.triggerSource as TriggerSource;
+  // Fallback inference for old rows without trigger_source
+  if (run.scheduleId) return "schedule";
+  if (run.continuedFromSessionId) return "chat";
+  return "api";
+}
 
 // Minimal type for extracting framework from compose content
 interface AgentComposeContent {
@@ -184,6 +200,9 @@ const router = tsr.router(logsListContract, {
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
+        triggerSource: agentRuns.triggerSource,
+        scheduleId: agentRuns.scheduleId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
         composeName: agentComposes.name,
         orgId: agentComposes.orgId,
         sessionId: conversations.cliAgentSessionId,
@@ -254,7 +273,7 @@ const router = tsr.router(logsListContract, {
           displayName: run.displayName ?? null,
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
-          modelProvider: run.modelProvider ?? null,
+          triggerSource: inferTriggerSource(run),
           status: run.status as LogStatus,
           createdAt: run.createdAt.toISOString(),
           startedAt: run.startedAt?.toISOString() ?? null,

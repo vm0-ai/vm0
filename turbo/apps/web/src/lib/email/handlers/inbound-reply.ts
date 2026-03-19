@@ -183,6 +183,7 @@ export async function handleInboundEmailReply(
     prompt: fullPrompt,
     composeId: session.composeId,
     sessionId: session.agentSessionId,
+    triggerSource: "email",
     callbacks,
   });
 

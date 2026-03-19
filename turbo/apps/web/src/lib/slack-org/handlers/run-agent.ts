@@ -81,6 +81,7 @@ export async function runAgentForSlackOrg(
       prompt,
       appendSystemPrompt,
       sessionId,
+      triggerSource: "slack",
       callbacks: [
         {
           url: callbackUrl,

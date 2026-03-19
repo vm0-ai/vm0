@@ -1,5 +1,9 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import { runsQueueContract, orgTierSchema } from "@vm0/core";
+import {
+  runsQueueContract,
+  orgTierSchema,
+  type TriggerSource,
+} from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
@@ -31,9 +35,13 @@ const RECENT_RUNS_FOR_ETA = 20;
 const PROMPT_TRUNCATE_LENGTH = 200;
 
 function inferTriggerSource(run: {
+  triggerSource: string | null;
   scheduleId: string | null;
   continuedFromSessionId: string | null;
-}): "schedule" | "chat" | "api" {
+}): TriggerSource {
+  // Prefer explicit trigger source (set for new runs)
+  if (run.triggerSource) return run.triggerSource as TriggerSource;
+  // Fallback inference for old rows without trigger_source
   if (run.scheduleId) return "schedule";
   if (run.continuedFromSessionId) return "chat";
   return "api";
@@ -92,6 +100,7 @@ const router = tsr.router(runsQueueContract, {
         agentName: agentComposes.name,
         agentDisplayName: zeroAgents.displayName,
         prompt: agentRuns.prompt,
+        triggerSource: agentRuns.triggerSource,
         scheduleId: agentRuns.scheduleId,
         continuedFromSessionId: agentRuns.continuedFromSessionId,
       })

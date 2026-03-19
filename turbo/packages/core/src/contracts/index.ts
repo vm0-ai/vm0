@@ -369,6 +369,7 @@ export {
   artifactSchema,
   logDetailSchema,
   artifactDownloadResponseSchema,
+  triggerSourceSchema,
   type LogsListContract,
   type LogsByIdContract,
   type ArtifactDownloadContract,
@@ -380,6 +381,7 @@ export {
   type Artifact,
   type LogDetail,
   type ArtifactDownloadResponse,
+  type TriggerSource,
 } from "./logs";
 
 export {

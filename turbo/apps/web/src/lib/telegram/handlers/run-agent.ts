@@ -71,6 +71,7 @@ export async function runAgentForTelegram(
       composeId,
       prompt: fullPrompt,
       sessionId,
+      triggerSource: "telegram",
       callbacks: [
         {
           url: callbackUrl,

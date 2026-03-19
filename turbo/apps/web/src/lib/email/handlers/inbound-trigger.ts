@@ -280,6 +280,7 @@ export async function handleInboundEmailTrigger(
     userId,
     prompt: fullPrompt,
     composeId: compose.composeId,
+    triggerSource: "email",
     callbacks,
   });
 

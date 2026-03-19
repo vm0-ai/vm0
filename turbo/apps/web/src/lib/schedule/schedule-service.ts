@@ -851,6 +851,7 @@ async function executeSchedule(
       appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
       composeId: compose.id,
       scheduleId: schedule.id,
+      triggerSource: "schedule",
       artifactName: schedule.artifactName ?? undefined,
       artifactVersion: schedule.artifactVersion ?? undefined,
       volumeVersions: schedule.volumeVersions ?? undefined,

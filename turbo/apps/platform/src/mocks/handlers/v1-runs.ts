@@ -76,7 +76,7 @@ export const appLogsHandlers = [
         displayName: null,
         orgSlug: null,
         framework: log.framework,
-        modelProvider: log.modelProvider,
+        triggerSource: null,
         status: log.status,
         createdAt: log.createdAt,
         startedAt: log.startedAt,
