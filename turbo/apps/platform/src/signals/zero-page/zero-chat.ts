@@ -1018,7 +1018,10 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
   const runStatus = get(internalRunStatus$);
   const runError = get(internalRunError$);
   const messages = get(internalMessages$);
-  const isFailed = runStatus === "failed";
+  const isFailed =
+    runStatus === "failed" ||
+    runStatus === "timeout" ||
+    runStatus === "cancelled";
 
   const lastIdx = messages.length - 1;
   if (lastIdx >= 0 && messages[lastIdx].role === "assistant") {
@@ -1027,14 +1030,21 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       updated[lastIdx] = {
         ...updated[lastIdx],
         status: runStatus ?? undefined,
-        error: isFailed ? (runError ?? "Run failed") : undefined,
+        error: isFailed
+          ? (runError ??
+            (runStatus === "timeout"
+              ? "Run timed out"
+              : runStatus === "cancelled"
+                ? "Run cancelled."
+                : "Run failed"))
+          : undefined,
         runId,
       };
       return updated;
     });
   }
 
-  // If run failed, no need to extract result or persist
+  // If run failed/timeout/cancelled, no need to extract result or persist
   if (isFailed) {
     set(internalActiveRunId$, null);
     return;
