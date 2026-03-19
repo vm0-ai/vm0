@@ -55,19 +55,45 @@ gh run list --workflow turbo.yml --branch main --limit 10 \
   --jq '.[] | {id: .databaseId, conclusion, url, createdAt}'
 ```
 
-- If **all runs** have `conclusion == "success"`, report: "All green, no failures."
+Display a status line showing all 10 runs in order (most recent first), using ✅ for success and 🔴 for failure.
+
+- If **all runs** have `conclusion == "success"`, report: "全部通过，无失败"
 - If **any run** has `conclusion == "failure"`:
-  1. Get the failed job names for that run:
+  1. Identify the **most recent failed run** among the 10 results. Track its position (1-indexed, where 1 is the most recent run).
+  2. Get the failed job names for that run:
      ```bash
      gh run view <RUN_ID> --json jobs --jq '[.jobs[] | select(.conclusion == "failure") | .name]'
      ```
-  2. Post to Slack `#flaky-test` channel using the Slack MCP tool (`slack_send_message` to `#flaky-test`). Use Slack mrkdwn link syntax `<url|display text>` for all URLs so they render as clickable links. Example message format:
+  3. Calculate **success count since last failure** — the number of consecutive successful runs that occurred after (more recent than) the failed run. This equals `position - 1`.
+  4. Calculate **time elapsed since the failure** — compute a human-readable duration from the failed run's `createdAt` to now (e.g., "2 小时 15 分钟", "1 天 3 小时"). Use hours and minutes for durations under 24 hours, days and hours for longer durations.
+  5. Report the failure details in the dashboard output (see output format below).
+  6. Post to Slack `#flaky-test` channel using the Slack MCP tool (`slack_send_message` to `#flaky-test`). Use Slack mrkdwn link syntax `<url|display text>` for all URLs so they render as clickable links. Example message format:
      ```
      🔴 main CI failure
      Failed jobs: lint, test
      Run: <https://github.com/vm0-ai/vm0/actions/runs/12345|#12345>
      ```
-  3. Report the failure in the dashboard output.
+
+#### Pipeline Output Format
+
+When failures exist:
+```
+📊 主分支 CI 流水线（最近 10 次）
+✅✅✅🔴✅✅✅✅✅✅
+
+最近一次失败: 第 4/10 次
+  Run: https://github.com/vm0-ai/vm0/actions/runs/123456
+  失败 Jobs: deploy, cli-e2e
+  此后连续成功: 3 次
+  距今: 2 小时 15 分钟
+```
+
+When all green:
+```
+📊 主分支 CI 流水线（最近 10 次）
+✅✅✅✅✅✅✅✅✅✅
+全部通过，无失败
+```
 
 ### Step 3: Check Release Status
 
@@ -175,9 +201,14 @@ Combine results, sort by `mergedAt` descending, take the top 20.
 
 ```
 ---
-CI 流水线
+📊 主分支 CI 流水线（最近 10 次）
+✅✅✅🔴✅✅✅✅✅✅
 
-全部通过，无失败。
+最近一次失败: 第 4/10 次
+  Run: https://github.com/vm0-ai/vm0/actions/runs/123456
+  失败 Jobs: deploy, cli-e2e
+  此后连续成功: 3 次
+  距今: 2 小时 15 分钟
 
 Release 状态
 
