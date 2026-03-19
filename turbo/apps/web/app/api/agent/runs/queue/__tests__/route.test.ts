@@ -196,7 +196,7 @@ describe("GET /api/agent/runs/queue", () => {
 
     // Own run should include prompt
     expect(ownEntry.prompt).toBe("my-prompt-content");
-    expect(ownEntry.triggerSource).toBe("api");
+    expect(ownEntry.triggerSource).toBe("cli");
 
     // Other user's run should NOT include prompt
     expect(otherEntry.prompt).toBeNull();

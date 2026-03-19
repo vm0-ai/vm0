@@ -9,6 +9,7 @@ import {
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
 import { logsByIdContract } from "@vm0/core";
+import { inferTriggerSource } from "../../../../../src/lib/run/trigger-source";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {

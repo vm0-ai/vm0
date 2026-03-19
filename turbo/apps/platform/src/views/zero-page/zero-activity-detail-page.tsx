@@ -69,7 +69,7 @@ const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   email: "Email",
   telegram: "Telegram",
   github: "GitHub",
-  api: "API",
+  cli: "CLI",
 };
 
 const ACTIVITY_HREF = "/activity";

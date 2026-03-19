@@ -1026,7 +1026,7 @@ export async function createRun(
           continuedFromSessionId: params.sessionId ?? null,
           scheduleId: params.scheduleId ?? null,
           modelProvider: params.modelProvider ?? null,
-          triggerSource: params.triggerSource ?? "api",
+          triggerSource: params.triggerSource ?? "cli",
           lastHeartbeatAt: new Date(),
         })
         .returning();

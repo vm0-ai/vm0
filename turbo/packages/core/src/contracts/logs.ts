@@ -46,7 +46,7 @@ export const triggerSourceSchema = z.enum([
   "email",
   "telegram",
   "github",
-  "api",
+  "cli",
 ]);
 
 export type TriggerSource = z.infer<typeof triggerSourceSchema>;
