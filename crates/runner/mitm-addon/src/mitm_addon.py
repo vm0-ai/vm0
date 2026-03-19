@@ -271,6 +271,7 @@ def fetch_firewall_headers(encrypted_secrets: str, auth_headers: dict, sandbox_t
     req = urllib.request.Request(url, data=data, headers={
         "Authorization": f"Bearer {sandbox_token}",
         "Content-Type": "application/json",
+        "User-Agent": "vm0-mitm-addon/1.0",
     })
     if VERCEL_BYPASS:
         req.add_header("x-vercel-protection-bypass", VERCEL_BYPASS)
