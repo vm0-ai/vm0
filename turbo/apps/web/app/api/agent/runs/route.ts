@@ -24,7 +24,6 @@ import {
   isUnauthorized,
 } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { buildAgentIdentityPrompt } from "../../../../src/lib/agent-identity";
 
 const log = logger("api:runs");
 
@@ -212,23 +211,12 @@ const router = tsr.router(runsMainContract, {
       `Creating run - mode: ${body.checkpointId ? "checkpoint" : body.sessionId ? "session" : "new"}`,
     );
 
-    // Build agent identity system prompt from metadata (only for new runs with composeId)
-    let appendSystemPrompt = body.appendSystemPrompt;
-    if (body.agentComposeId) {
-      const identity = await buildAgentIdentityPrompt(body.agentComposeId);
-      if (identity) {
-        appendSystemPrompt = appendSystemPrompt
-          ? `${identity}\n\n${appendSystemPrompt}`
-          : identity;
-      }
-    }
-
     // Delegate all resolution, validation, and dispatch to startRun()
     try {
       const result = await startRun({
         userId,
         prompt: body.prompt,
-        appendSystemPrompt,
+        appendSystemPrompt: body.appendSystemPrompt,
         composeId: body.agentComposeId,
         agentComposeVersionId: body.agentComposeVersionId,
         checkpointId: body.checkpointId,

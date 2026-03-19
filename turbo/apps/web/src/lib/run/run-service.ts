@@ -17,6 +17,7 @@ import {
   isConcurrentRunLimit,
 } from "../errors";
 import { enqueueRun, drainOrgQueue } from "./run-queue-service";
+import { buildAgentIdentityPrompt } from "../agent-identity";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
@@ -885,12 +886,23 @@ export async function startRun(
   const orgData = await getOrgData(authOrgId);
   const orgTier = orgTierSchema.parse(orgData.tier);
 
-  // 4. Delegate to createRun with fully resolved params
+  // 4. Inject agent identity metadata into appendSystemPrompt
+  let { appendSystemPrompt } = params;
+  if (resolved.composeId) {
+    const identity = await buildAgentIdentityPrompt(resolved.composeId);
+    if (identity) {
+      appendSystemPrompt = appendSystemPrompt
+        ? `${identity}\n\n${appendSystemPrompt}`
+        : identity;
+    }
+  }
+
+  // 5. Delegate to createRun with fully resolved params
   return createRun({
     userId: params.userId,
     agentComposeVersionId: resolved.agentComposeVersionId,
     prompt: params.prompt,
-    appendSystemPrompt: params.appendSystemPrompt,
+    appendSystemPrompt,
     composeId: resolved.composeId,
     checkpointId: params.checkpointId,
     sessionId: params.sessionId,
