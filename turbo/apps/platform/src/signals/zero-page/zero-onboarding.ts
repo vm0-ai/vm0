@@ -84,7 +84,7 @@ export const zeroHasModelProvider$ = computed(async (get) => {
 type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
 
 const internalStep$ = state<ZeroOnboardingStep>("1");
-const internalAgentName$ = state("zero");
+const internalAgentName$ = state("Zero");
 const internalProviderType$ = state<ModelProviderType>(
   "claude-code-oauth-token",
 );
