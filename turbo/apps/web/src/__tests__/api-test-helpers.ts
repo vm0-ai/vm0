@@ -105,6 +105,8 @@ import {
 } from "../db/schema/agent-compose";
 import { conversations } from "../db/schema/conversation";
 import { uniqueId, uniqueNumericId } from "./test-helpers";
+import { vm0ApiKeys } from "../db/schema/vm0-api-key";
+import { getVm0ApiKey } from "../lib/vm0-key/vm0-key-service";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -3630,7 +3632,6 @@ export async function insertVm0ApiKeys(
   }>,
 ) {
   initServices();
-  const { vm0ApiKeys } = await import("../db/schema/vm0-api-key");
   await globalThis.services.db.insert(vm0ApiKeys).values(keys);
 }
 
@@ -3638,6 +3639,5 @@ export async function insertVm0ApiKeys(
  * Get a VM0 API key from the pool for a vendor.
  */
 export async function getTestVm0ApiKey(vendor: string) {
-  const { getVm0ApiKey } = await import("../lib/vm0-key/vm0-key-service");
   return getVm0ApiKey(vendor);
 }

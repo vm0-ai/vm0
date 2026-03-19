@@ -3,6 +3,7 @@ import {
   orgModelProvidersMainContract,
   createErrorResponse,
   hasAuthMethods,
+  VM0_ORG_SLUG,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
@@ -90,7 +91,7 @@ const router = tsr.router(orgModelProvidersMainContract, {
 
       if (type === "vm0") {
         // VM0 managed provider: org slug must be "vm0"
-        if (org.slug !== "vm0") {
+        if (org.slug !== VM0_ORG_SLUG) {
           return createErrorResponse(
             "FORBIDDEN",
             "VM0 managed provider is only available to the vm0 org",
