@@ -84,8 +84,8 @@ EOF
     run timeout 120 $CLI_COMMAND run "${AGENT_NAME}-mp" \
         --artifact-name "$ARTIFACT_NAME" \
         --debug-no-mock-claude \
-        "Compute 123+456 and reply with exactly: RESULT=<answer>"
+        "Compute 789+101 and reply with exactly: RESULT=<answer>"
 
     assert_success
-    assert_output --partial "RESULT=579"
+    assert_output --partial "RESULT=890"
 }
