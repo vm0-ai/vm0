@@ -105,6 +105,98 @@ function ActivityNotFound() {
   );
 }
 
+function ActivityHeaderCard({
+  agentName,
+  status,
+  detail,
+  duration,
+  time,
+  events,
+}: {
+  agentName: string;
+  status: LogStatus;
+  detail: {
+    id: string;
+    modelProvider?: string | null;
+    framework?: string | null;
+    error?: string | null;
+  };
+  duration: string | null | undefined;
+  time: string;
+  events: AgentEvent[];
+}) {
+  return (
+    <div className="zero-card shrink-0 px-4 py-3">
+      <div className="flex items-center gap-y-2 overflow-hidden">
+        <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3 shrink-0">
+          {agentName}
+        </h2>
+        <span
+          className="w-px h-3.5 shrink-0 bg-border self-center"
+          aria-hidden
+        />
+        <div className="flex items-center gap-x-0 text-sm min-w-0 overflow-x-auto">
+          <div className="flex items-center gap-1.5 pl-3 pr-3">
+            <span className="text-muted-foreground shrink-0">Status</span>
+            <StatusBadge status={status} zeroStyle />
+          </div>
+          <span
+            className="w-px h-3.5 shrink-0 bg-border self-center"
+            aria-hidden
+          />
+          {(detail.modelProvider || detail.framework) && (
+            <>
+              <div className="flex items-center gap-1.5 pl-3 pr-3">
+                <span className="text-muted-foreground shrink-0">Model</span>
+                <span className="text-foreground whitespace-nowrap">
+                  {detail.modelProvider
+                    ? (MODEL_PROVIDER_TYPES[
+                        detail.modelProvider as ModelProviderType
+                      ]?.label ?? detail.modelProvider)
+                    : detail.framework}
+                </span>
+              </div>
+              <span
+                className="w-px h-3.5 shrink-0 bg-border self-center"
+                aria-hidden
+              />
+            </>
+          )}
+          <div className="flex items-center gap-1.5 pl-3 pr-3">
+            <span className="text-muted-foreground shrink-0">Duration</span>
+            <span className="text-foreground whitespace-nowrap">
+              {duration ?? "—"}
+            </span>
+          </div>
+          <span
+            className="w-px h-3.5 shrink-0 bg-border self-center"
+            aria-hidden
+          />
+          <div className="flex items-center gap-1.5 pl-3 pr-3">
+            <span className="text-muted-foreground shrink-0">Time</span>
+            <span className="text-foreground whitespace-nowrap">{time}</span>
+          </div>
+        </div>
+        <div className="flex-1 min-w-0" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 shrink-0 gap-1 rounded-lg text-sm text-muted-foreground hover:text-foreground ml-auto"
+          onClick={() => downloadCsv(events, detail.id)}
+        >
+          <IconDownload size={14} stroke={1.5} />
+          Download
+        </Button>
+      </div>
+      {detail.error && status === "failed" && (
+        <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
+          {detail.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ZeroActivityDetailPage() {
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
@@ -161,81 +253,14 @@ export function ZeroActivityDetailPage() {
           </span>
         </nav>
         <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8">
-          {/* Compact header card */}
-          <div className="zero-card shrink-0 px-4 py-3">
-            <div className="flex items-center gap-y-2 overflow-hidden">
-              <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3 shrink-0">
-                {agentName}
-              </h2>
-              <span
-                className="w-px h-3.5 shrink-0 bg-border self-center"
-                aria-hidden
-              />
-              <div className="flex items-center gap-x-0 text-sm min-w-0 overflow-x-auto">
-                <div className="flex items-center gap-1.5 pl-3 pr-3">
-                  <span className="text-muted-foreground shrink-0">Status</span>
-                  <StatusBadge status={status} zeroStyle />
-                </div>
-                <span
-                  className="w-px h-3.5 shrink-0 bg-border self-center"
-                  aria-hidden
-                />
-                {(detail.modelProvider || detail.framework) && (
-                  <>
-                    <div className="flex items-center gap-1.5 pl-3 pr-3">
-                      <span className="text-muted-foreground shrink-0">
-                        Model
-                      </span>
-                      <span className="text-foreground whitespace-nowrap">
-                        {detail.modelProvider
-                          ? (MODEL_PROVIDER_TYPES[
-                              detail.modelProvider as ModelProviderType
-                            ]?.label ?? detail.modelProvider)
-                          : detail.framework}
-                      </span>
-                    </div>
-                    <span
-                      className="w-px h-3.5 shrink-0 bg-border self-center"
-                      aria-hidden
-                    />
-                  </>
-                )}
-                <div className="flex items-center gap-1.5 pl-3 pr-3">
-                  <span className="text-muted-foreground shrink-0">
-                    Duration
-                  </span>
-                  <span className="text-foreground whitespace-nowrap">
-                    {duration ?? "—"}
-                  </span>
-                </div>
-                <span
-                  className="w-px h-3.5 shrink-0 bg-border self-center"
-                  aria-hidden
-                />
-                <div className="flex items-center gap-1.5 pl-3 pr-3">
-                  <span className="text-muted-foreground shrink-0">Time</span>
-                  <span className="text-foreground whitespace-nowrap">
-                    {time}
-                  </span>
-                </div>
-              </div>
-              <div className="flex-1 min-w-0" />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 shrink-0 gap-1 rounded-lg text-sm text-muted-foreground hover:text-foreground ml-auto"
-                onClick={() => downloadCsv(events, detail.id)}
-              >
-                <IconDownload size={14} stroke={1.5} />
-                Download
-              </Button>
-            </div>
-            {detail.error && status === "failed" && (
-              <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
-                {detail.error}
-              </div>
-            )}
-          </div>
+          <ActivityHeaderCard
+            agentName={agentName}
+            status={status}
+            detail={detail}
+            duration={duration}
+            time={time}
+            events={events}
+          />
 
           {/* Steps section */}
           <div className="flex flex-col gap-4 flex-1 min-h-0 min-w-0 mt-6">
