@@ -70,8 +70,16 @@ struct Shared {
     /// Notified when a new exit event arrives.
     exit_notify: Notify,
     /// Stdout chunk senders: pid → channel sender.
-    /// Registered by `spawn_watch`, fed by `reader_loop`.
+    /// Populated by `reader_loop` when it processes `spawn_watch_result`,
+    /// fed by `reader_loop` when it processes `stdout_chunk`.
     stdout_senders: std::sync::Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
+    /// Pre-registered stdout senders: request seq → channel sender.
+    /// `spawn_watch` inserts here BEFORE sending the request so that
+    /// `reader_loop` can move the sender to `stdout_senders` atomically
+    /// when it processes the `spawn_watch_result` — before any `stdout_chunk`
+    /// for that pid is processed. This eliminates the race where early
+    /// chunks could be dropped.
+    pending_stdout: std::sync::Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
     /// Set to `true` when the reader task exits (before `closed.notify_waiters()`).
     /// Checked by `request` and `wait_for_exit` to detect a close that happened
     /// before their `Notified` futures were created.
@@ -190,6 +198,26 @@ async fn reader_loop(
                     shared.exit_notify.notify_waiters();
                 }
             } else {
+                // For spawn_watch_result: move the pre-registered stdout sender
+                // from pending_stdout to stdout_senders BEFORE dispatching the
+                // response. This ensures the channel is keyed by pid in
+                // stdout_senders before any subsequent MSG_STDOUT_CHUNK arrives.
+                if msg.msg_type == MSG_SPAWN_WATCH_RESULT
+                    && let Ok(pid) = vsock_proto::decode_spawn_watch_result(&msg.payload)
+                {
+                    let sender = shared
+                        .pending_stdout
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&msg.seq);
+                    if let Some(tx) = sender {
+                        shared
+                            .stdout_senders
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .insert(pid, tx);
+                    }
+                }
                 let sender = {
                     let mut pending = shared.pending.lock().unwrap_or_else(|e| e.into_inner());
                     pending.remove(&msg.seq)
@@ -209,6 +237,11 @@ async fn reader_loop(
     // Close all stdout channels so consumers see the stream end.
     shared
         .stdout_senders
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear();
+    shared
+        .pending_stdout
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clear();
@@ -275,6 +308,7 @@ impl VsockHost {
             exits: std::sync::Mutex::new(HashMap::new()),
             exit_notify: Notify::new(),
             stdout_senders: std::sync::Mutex::new(HashMap::new()),
+            pending_stdout: std::sync::Mutex::new(HashMap::new()),
             is_closed: AtomicBool::new(false),
             closed: Notify::new(),
         });
@@ -357,6 +391,20 @@ impl VsockHost {
         timeout: Duration,
     ) -> io::Result<RawMessage> {
         let seq = self.shared.next_seq();
+        self.request_raw(msg_type, seq, payload, timeout).await
+    }
+
+    /// Send a request with a pre-allocated sequence number.
+    ///
+    /// Used by [`spawn_watch`](Self::spawn_watch) which needs the seq to
+    /// pre-register the stdout channel before sending the request.
+    async fn request_raw(
+        &self,
+        msg_type: u8,
+        seq: u32,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> io::Result<RawMessage> {
         let data = vsock_proto::encode(msg_type, seq, payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
@@ -510,17 +558,54 @@ impl VsockHost {
     ) -> io::Result<(u32, tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>)> {
         let payload =
             vsock_proto::encode_spawn_watch(timeout_ms, command, env, sudo, stdout_log_path);
-        let resp = self
-            .request(MSG_SPAWN_WATCH, &payload, Duration::from_secs(30))
-            .await?;
+
+        // Pre-create the stdout channel and register it by seq number BEFORE
+        // sending the request. reader_loop will atomically move it from
+        // pending_stdout[seq] to stdout_senders[pid] when it processes the
+        // spawn_watch_result — before any stdout_chunk for that pid.
+        let (stdout_tx, stdout_rx) = tokio::sync::mpsc::unbounded_channel();
+        let seq = self.shared.next_seq();
+        {
+            self.shared
+                .pending_stdout
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(seq, stdout_tx);
+        }
+
+        let resp = match self
+            .request_raw(MSG_SPAWN_WATCH, seq, &payload, Duration::from_secs(30))
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                self.shared
+                    .pending_stdout
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&seq);
+                return Err(e);
+            }
+        };
 
         if resp.msg_type == MSG_ERROR {
+            // No pid assigned — clean up pending stdout sender.
+            self.shared
+                .pending_stdout
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&seq);
             let msg = vsock_proto::decode_error(&resp.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             return Err(io::Error::other(msg));
         }
 
         if resp.msg_type != MSG_SPAWN_WATCH_RESULT {
+            self.shared
+                .pending_stdout
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&seq);
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("unexpected response type: 0x{:02X}", resp.msg_type),
@@ -530,17 +615,8 @@ impl VsockHost {
         let pid = vsock_proto::decode_spawn_watch_result(&resp.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-        // Register stdout channel for this pid.
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        {
-            self.shared
-                .stdout_senders
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .insert(pid, tx);
-        }
-
-        Ok((pid, rx))
+        // Channel already moved from pending_stdout to stdout_senders by reader_loop.
+        Ok((pid, stdout_rx))
     }
 
     /// Wait for a spawned process to exit.
