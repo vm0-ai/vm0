@@ -22,8 +22,7 @@ import { reloadEnv } from "../../../../../src/env";
 // because this test file focuses on the webhook routing layer: signature
 // verification, event routing, trigger conditions, and callback context
 // construction.  Real run creation integration is covered by its own dedicated
-// tests in src/lib/run/__tests__/create-run.test.ts.  The same boundary is
-// used in the Slack webhook tests (slack/handlers/__tests__/run-agent.test.ts).
+// tests in src/lib/run/__tests__/create-run.test.ts.
 
 // Mock Next.js after() to capture callbacks for controlled execution
 const afterPromises: Promise<unknown>[] = [];
