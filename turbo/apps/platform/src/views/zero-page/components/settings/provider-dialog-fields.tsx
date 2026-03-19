@@ -231,6 +231,10 @@ export function NoSecretFields({
   onModelChange: (value: string) => void;
   onUseDefaultModelChange: (value: boolean) => void;
 }) {
+  if (!hasModelSelection(providerType)) {
+    return null;
+  }
+
   return (
     <ModelSelector
       providerType={providerType}
