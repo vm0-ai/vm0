@@ -251,6 +251,9 @@ export {
   // Multi-auth provider types
   type SecretFieldConfig,
   type AuthMethodConfig,
+  // Firewall gateway for model providers
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
+  getModelProviderFirewall,
 } from "./model-providers";
 export {
   sessionsContract,

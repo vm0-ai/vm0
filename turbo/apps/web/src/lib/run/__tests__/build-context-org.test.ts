@@ -58,8 +58,10 @@ describe("Org-Level Runtime Resolution", () => {
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
+      // Model provider token is replaced with placeholder (firewall gateway protects it)
       expect(job!.executionContext.environment).toMatchObject({
-        ANTHROPIC_API_KEY: "org-api-key",
+        ANTHROPIC_API_KEY:
+          "sk-ant-api03-vm0placeholder0000000000000000000000000000000000000000000000000000000000000000000000000000000AA",
       });
     });
 

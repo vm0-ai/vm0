@@ -11,7 +11,9 @@ import {
   connectorTypeSchema,
   MODEL_PROVIDER_TYPES,
   VALID_CAPABILITIES,
+  getModelProviderFirewall,
   type ExperimentalFirewalls,
+  type ExpandedFirewallConfig,
   type ConnectorType,
   type ModelProviderType,
   type ModelProviderFramework,
@@ -626,6 +628,7 @@ async function resolveSecretsAndEnvironment(
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
   resolvedModelProvider: string | undefined;
+  modelProviderFirewall: ExpandedFirewallConfig | undefined;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -690,6 +693,13 @@ async function resolveSecretsAndEnvironment(
     if (Object.keys(filtered).length) secretConnectorMap = filtered;
   }
 
+  // Auto-generate firewall entry for model provider (if applicable).
+  const modelProviderFirewall = modelProviderResult.resolvedModelProvider
+    ? getModelProviderFirewall(
+        modelProviderResult.resolvedModelProvider as ModelProviderType,
+      )
+    : undefined;
+
   // Expand environment variables from compose config.
   // Model provider env vars are passed as additionalEnvironment so they go through
   // the same servicePlaceholders logic (secret-derived values use ${{ secrets.X }} templates).
@@ -699,6 +709,7 @@ async function resolveSecretsAndEnvironment(
     secrets,
     checkEnv,
     modelProviderResult.injectedEnvironment,
+    modelProviderFirewall ? [modelProviderFirewall] : undefined,
   );
 
   return {
@@ -706,6 +717,7 @@ async function resolveSecretsAndEnvironment(
     environment,
     secretConnectorMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
+    modelProviderFirewall,
   };
 }
 
@@ -953,13 +965,25 @@ export async function buildExecutionContext(
   ]);
   const resolveSecretsEnd = Date.now();
 
-  const { secrets, environment, secretConnectorMap, resolvedModelProvider } =
+  const {
+    secrets,
+    environment,
+    secretConnectorMap,
+    resolvedModelProvider,
+    modelProviderFirewall,
+  } =
     secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
-  // Build experimental firewall manifest (base + auth entries for the runner)
+  // Build experimental firewall manifest (base + auth entries for the runner).
+  // Merge compose-declared firewalls with auto-generated model provider firewall.
+  const composeFirewalls = buildExperimentalFirewalls(agentCompose);
+  const allFirewalls = [
+    ...(composeFirewalls ?? []),
+    ...(modelProviderFirewall ? [modelProviderFirewall] : []),
+  ];
   const experimentalFirewalls =
-    buildExperimentalFirewalls(agentCompose) ?? undefined;
+    allFirewalls.length > 0 ? allFirewalls : undefined;
 
   // Build experimental capabilities list from compose
   const experimentalCapabilities = buildExperimentalCapabilities(agentCompose);
