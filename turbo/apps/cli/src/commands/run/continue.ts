@@ -41,6 +41,10 @@ export const continueCommand = new Command()
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
+  .option(
+    "--disallowed-tools <tools...>",
+    "Tools to disable in Claude CLI (e.g., CronCreate WebSearch)",
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -55,6 +59,7 @@ export const continueCommand = new Command()
           secrets: Record<string, string>;
           modelProvider?: string;
           appendSystemPrompt?: string;
+          disallowedTools?: string[];
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -69,6 +74,7 @@ export const continueCommand = new Command()
           secrets: Record<string, string>;
           modelProvider?: string;
           appendSystemPrompt?: string;
+          disallowedTools?: string[];
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -105,6 +111,7 @@ export const continueCommand = new Command()
           modelProvider: options.modelProvider || allOpts.modelProvider,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
+          disallowedTools: options.disallowedTools || allOpts.disallowedTools,
           checkEnv: options.checkEnv || allOpts.checkEnv || undefined,
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,

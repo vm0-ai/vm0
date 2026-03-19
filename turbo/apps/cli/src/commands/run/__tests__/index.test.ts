@@ -819,6 +819,38 @@ describe("run command", () => {
     });
   });
 
+  describe("--disallowed-tools flag", () => {
+    it("should pass disallowed-tools to API", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--disallowed-tools",
+        "CronCreate",
+        "WebSearch",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          disallowedTools: ["CronCreate", "WebSearch"],
+        }),
+      );
+    });
+  });
+
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
       server.use(

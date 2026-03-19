@@ -38,6 +38,8 @@ export async function createRun(body: {
   checkEnv?: boolean;
   // Append text to the agent's system prompt
   appendSystemPrompt?: string;
+  // Tools to disable in Claude CLI (passed as --disallowed-tools)
+  disallowedTools?: string[];
   // Required
   prompt: string;
 }): Promise<CreateRunResponse> {

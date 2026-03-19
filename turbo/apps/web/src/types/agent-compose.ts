@@ -59,11 +59,6 @@ interface AgentDefinition {
    * Validated at compose time against VALID_CAPABILITIES.
    */
   experimental_capabilities?: (typeof VALID_CAPABILITIES)[number][];
-  /**
-   * Tools that Claude Code cannot use.
-   * Each entry is a tool name (e.g., "CronCreate", "WebSearch").
-   */
-  disallowed_tools?: string[];
 }
 
 export interface AgentComposeYaml {

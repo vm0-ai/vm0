@@ -36,10 +36,6 @@ agents:
     experimental_capabilities:
       - artifact:read
       - artifact:write
-    disallowed_tools:
-      - CronCreate
-      - CronDelete
-      - CronList
     environment:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       MY_VAR: ${{ vars.MY_VAR }}
@@ -79,7 +75,6 @@ Each agent key must be a valid agent name: 3-64 characters, starting and ending 
 | `volumes`                | array  | No       | `[]`           | Volume mounts in format `name:path`. See [Volume](/docs/core-concept/volume)                      |
 | `environment`            | object | No       | `{}`           | Environment variables. See [Environment Variables](/docs/core-concept/environment-variable)       |
 | `experimental_capabilities` | array  | No       | `[]`           | Sandbox API access permissions. See [Capabilities](/docs/core-concept/capabilities)                       |
-| `disallowed_tools`       | array  | No       | `[]`           | List of Claude Code tool names to disable (e.g., `CronCreate`, `WebSearch`). These are passed as `--disallowed-tools` to the Claude CLI |
 | `experimental_runner`    | object | No       | -              | Self-hosted runner configuration. Object with `group` field in `org/name` format (e.g., `acme/production`) |
 
 ## Volume Fields

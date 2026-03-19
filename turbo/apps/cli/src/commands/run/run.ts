@@ -73,6 +73,10 @@ export const mainRunCommand = new Command()
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
+  .option(
+    "--disallowed-tools <tools...>",
+    "Tools to disable in Claude CLI (e.g., CronCreate WebSearch)",
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -93,6 +97,7 @@ export const mainRunCommand = new Command()
           conversation?: string;
           modelProvider?: string;
           appendSystemPrompt?: string;
+          disallowedTools?: string[];
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -177,6 +182,7 @@ export const mainRunCommand = new Command()
           conversationId: options.conversation,
           modelProvider: options.modelProvider,
           appendSystemPrompt: options.appendSystemPrompt,
+          disallowedTools: options.disallowedTools,
           checkEnv: options.checkEnv || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });

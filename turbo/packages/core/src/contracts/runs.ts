@@ -56,6 +56,9 @@ const unifiedRunRequestSchema = z.object({
 
   // Optional system prompt to append to the agent's system prompt
   appendSystemPrompt: z.string().optional(),
+
+  // Optional list of tools to disable in Claude CLI (passed as --disallowed-tools)
+  disallowedTools: z.array(z.string()).optional(),
 });
 
 /**

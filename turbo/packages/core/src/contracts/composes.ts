@@ -174,12 +174,6 @@ const agentDefinitionSchema = z.object({
       message: "Duplicate capabilities are not allowed",
     })
     .optional(),
-  /**
-   * Tools that Claude Code cannot use.
-   * Each entry is a tool name (e.g., "CronCreate", "WebSearch").
-   * These are passed as --disallowed-tools to the Claude CLI.
-   */
-  disallowed_tools: z.array(z.string()).optional(),
 });
 
 /**

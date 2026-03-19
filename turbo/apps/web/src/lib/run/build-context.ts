@@ -541,6 +541,7 @@ interface BuildContextParams {
   // Required
   prompt: string;
   appendSystemPrompt?: string;
+  disallowedTools?: string[];
   runId: string;
   sandboxToken: string;
   userId: string;
@@ -862,21 +863,6 @@ function buildExperimentalCapabilities(
 }
 
 /**
- * Extract disallowed_tools from the first agent in compose.
- * Returns undefined if not present or empty.
- */
-function extractDisallowedTools(agentCompose: unknown): string[] | undefined {
-  const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) return undefined;
-
-  const firstAgent = Object.values(compose.agents)[0];
-  const disallowedTools = firstAgent?.disallowed_tools;
-  if (!disallowedTools || disallowedTools.length === 0) return undefined;
-
-  return disallowedTools;
-}
-
-/**
  * Build unified execution context from various parameter sources.
  * Supports: new run, checkpoint resume, session continue.
  *
@@ -1021,8 +1007,8 @@ export async function buildExecutionContext(
   // Build experimental capabilities list from compose
   const experimentalCapabilities = buildExperimentalCapabilities(agentCompose);
 
-  // Build disallowed tools list from compose
-  const disallowedTools = extractDisallowedTools(agentCompose);
+  // Disallowed tools from run-time params (not compose)
+  const disallowedTools = params.disallowedTools;
 
   // Build final execution context
   return {

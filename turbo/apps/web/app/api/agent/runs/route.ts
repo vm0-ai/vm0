@@ -231,6 +231,7 @@ const router = tsr.router(runsMainContract, {
         userId,
         prompt: body.prompt,
         appendSystemPrompt: body.appendSystemPrompt,
+        disallowedTools: body.disallowedTools,
         composeId: body.agentComposeId,
         agentComposeVersionId: body.agentComposeVersionId,
         checkpointId: body.checkpointId,
