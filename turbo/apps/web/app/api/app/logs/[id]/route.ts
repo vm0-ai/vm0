@@ -180,6 +180,7 @@ const router = tsr.router(logsByIdContract, {
         displayName: agentDisplayName ?? null,
         framework: extractFramework(composeContent),
         modelProvider: run.modelProvider ?? null,
+        triggerSource: run.triggerSource ?? null,
         status: run.status as
           | "pending"
           | "running"

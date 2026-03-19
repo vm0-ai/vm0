@@ -93,6 +93,8 @@ const logDetailSchema = z.object({
   agentName: z.string(),
   displayName: z.string().nullable(),
   framework: z.string().nullable(),
+  modelProvider: z.string().nullable(),
+  triggerSource: triggerSourceSchema.nullable(),
   status: logStatusSchema,
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),

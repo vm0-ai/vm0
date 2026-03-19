@@ -2,7 +2,7 @@
 import type { LogStatus, TriggerSource } from "@vm0/core";
 
 // Re-export from core contract to stay in sync with the API schema
-export type { LogStatus };
+export type { LogStatus, TriggerSource };
 
 // List response - contains basic fields for list display
 export interface LogEntry {
@@ -41,6 +41,7 @@ export interface LogDetail {
   displayName: string | null;
   framework: string | null;
   modelProvider: string | null;
+  triggerSource: TriggerSource | null;
   status: LogStatus;
   prompt: string;
   appendSystemPrompt: string | null;

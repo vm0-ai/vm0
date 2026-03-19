@@ -22,6 +22,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { SimpleLink } from "../router/link.tsx";
 import type {
   LogStatus,
+  TriggerSource,
   AgentEvent,
 } from "../../signals/zero-page/log-types.ts";
 import { StatusBadge } from "./components/logs/status-badge.tsx";
@@ -60,6 +61,16 @@ function isVisibleMessage(
   }
   return (message.toolOperations?.length ?? 0) > 0;
 }
+
+const TRIGGER_SOURCE_LABELS: Record<TriggerSource, string> = {
+  schedule: "Schedule",
+  chat: "Chat",
+  slack: "Slack",
+  email: "Email",
+  telegram: "Telegram",
+  github: "GitHub",
+  api: "API",
+};
 
 const ACTIVITY_HREF = "/activity";
 
@@ -108,6 +119,7 @@ function ActivityNotFound() {
 function ActivityHeaderCard({
   agentName,
   status,
+  triggerSource,
   detail,
   duration,
   time,
@@ -115,6 +127,7 @@ function ActivityHeaderCard({
 }: {
   agentName: string;
   status: LogStatus;
+  triggerSource: TriggerSource | null;
   detail: {
     id: string;
     modelProvider?: string | null;
@@ -144,6 +157,20 @@ function ActivityHeaderCard({
             className="w-px h-3.5 shrink-0 bg-border self-center"
             aria-hidden
           />
+          {triggerSource && (
+            <>
+              <div className="flex items-center gap-1.5 pl-3 pr-3">
+                <span className="text-muted-foreground shrink-0">Source</span>
+                <span className="text-foreground whitespace-nowrap">
+                  {TRIGGER_SOURCE_LABELS[triggerSource]}
+                </span>
+              </div>
+              <span
+                className="w-px h-3.5 shrink-0 bg-border self-center"
+                aria-hidden
+              />
+            </>
+          )}
           {(detail.modelProvider || detail.framework) && (
             <>
               <div className="flex items-center gap-1.5 pl-3 pr-3">
@@ -256,6 +283,7 @@ export function ZeroActivityDetailPage() {
           <ActivityHeaderCard
             agentName={agentName}
             status={status}
+            triggerSource={detail.triggerSource ?? null}
             detail={detail}
             duration={duration}
             time={time}
