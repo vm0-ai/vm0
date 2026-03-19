@@ -2975,6 +2975,19 @@ export async function getOrgDefaultAgent(
 }
 
 /**
+ * Update the default_agent_compose_id for an org in the `org` table.
+ */
+export async function updateOrgDefaultAgent(
+  orgId: string,
+  composeId: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(org)
+    .set({ defaultAgentComposeId: composeId, updatedAt: new Date() })
+    .where(eq(org.orgId, orgId));
+}
+
+/**
  * Insert an org_members_cache entry for testing cache behavior.
  */
 export async function insertOrgMembersCacheEntry(entry: {
@@ -3589,4 +3602,18 @@ export async function insertTestUser(userId: string): Promise<void> {
     .insert(users)
     .values({ id: userId })
     .onConflictDoNothing();
+}
+
+/**
+ * Find an org_members entry by orgId and userId.
+ * Returns the full row or undefined.
+ */
+export async function findOrgMembersEntry(orgId: string, userId: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgMembers)
+    .where(and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, userId)))
+    .limit(1);
+  return row;
 }

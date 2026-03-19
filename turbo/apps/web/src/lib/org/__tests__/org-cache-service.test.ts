@@ -130,6 +130,75 @@ describe("getOrgData", () => {
     expect(result.tier).toBe("pro");
   });
 
+  it("falls back to Clerk tier on cache miss when DB has free", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+    });
+    await createTestOrg(slug);
+    const orgId = `org_mock_${slug}`;
+
+    // Ensure org row exists for this orgId (createTestOrg uses org_mock_${userId})
+    await ensureOrgRow(orgId);
+
+    // Delete cache to force Clerk fetch
+    await deleteOrgCacheEntry(orgId);
+
+    // Override getOrganization to return tier in publicMetadata
+    const client = await clerkClient();
+    vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
+      id: orgId,
+      slug,
+      name: slug,
+      publicMetadata: { tier: "pro" },
+    } as unknown as Awaited<
+      ReturnType<typeof client.organizations.getOrganization>
+    >);
+
+    const result = await getOrgData(orgId);
+    expect(result.tier).toBe("pro");
+
+    // Verify backfill (fire-and-forget, wait a tick)
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Re-read via getOrgData with fresh cache (just written above)
+    // to confirm the DB was updated
+    const recheck = await getOrgData(orgId);
+    expect(recheck.tier).toBe("pro");
+  });
+
+  it("returns DB tier directly when DB has non-free on cache miss", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({
+      userId,
+      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
+    });
+    const { id: orgId } = await createTestOrg(slug);
+
+    await updateOrgTier(orgId, "pro");
+
+    const result = await getOrgData(orgId);
+    expect(result.tier).toBe("pro");
+  });
+
+  it("returns free on cache hit when DB has free (no Clerk fallback)", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    // Cache is fresh (from createTestOrg), DB tier is "free"
+    // No Clerk call happens, so no fallback possible
+    const result = await getOrgData(orgId);
+    expect(result.tier).toBe("free");
+
+    const client = await clerkClient();
+    expect(client.organizations.getOrganization).not.toHaveBeenCalled();
+  });
+
   it("throws when Clerk org has no slug", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
