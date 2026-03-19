@@ -49,6 +49,7 @@ import { zeroAgents } from "../db/schema/zero-agent";
 import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
 import { creditPricing } from "../db/schema/credit-pricing";
+import { users } from "../db/schema/user";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
@@ -3538,4 +3539,15 @@ export async function getStorageVersionLineage(versionId: string) {
     .select()
     .from(storageVersionLineage)
     .where(eq(storageVersionLineage.versionId, versionId));
+}
+
+/**
+ * Insert a user row for testing.
+ * Uses onConflictDoNothing so it's safe to call multiple times.
+ */
+export async function insertTestUser(userId: string): Promise<void> {
+  await globalThis.services.db
+    .insert(users)
+    .values({ id: userId })
+    .onConflictDoNothing();
 }
