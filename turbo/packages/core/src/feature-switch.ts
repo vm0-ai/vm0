@@ -28,6 +28,14 @@ async function sha1(input: string): Promise<string> {
   return hex;
 }
 
+/**
+ * Compute the SHA-1 hash of an email address (lowercased).
+ * Used for email-based feature switch targeting.
+ */
+export async function computeEmailHash(email: string): Promise<string> {
+  return sha1(email.toLowerCase());
+}
+
 const STAFF_USER_HASHES: readonly string[] = [
   "afc25aa601481d794372ed765038148d3a160e2a",
   "1e7de00267c699185653df499f68e8383013ca08",
@@ -39,7 +47,6 @@ const STAFF_USER_HASHES: readonly string[] = [
 
 const GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES: readonly string[] = [
   "da04f6515e16a883d6e8c4b03932f51ccc362c10", // Google OAuth reviewer
-  "086eee0974906eb383d645ade1d76c806278ded1", // testreviewer@example.com — used by integration tests
 ];
 
 /**
