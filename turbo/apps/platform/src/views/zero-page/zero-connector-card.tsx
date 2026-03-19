@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@vm0/ui";
 
 interface ZeroConnectorCardProps {
@@ -15,10 +16,12 @@ interface ZeroConnectorCardProps {
   label: string;
   connector: ConnectorTypeWithStatus | null;
   pollingType: ConnectorType | null;
+  hasFirewall: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onRemove: () => void;
   onReviewScopes?: () => void;
+  onManagePermissions?: () => void;
 }
 
 export function ZeroConnectorCard({
@@ -26,10 +29,12 @@ export function ZeroConnectorCard({
   label,
   connector,
   pollingType,
+  hasFirewall,
   onConnect,
   onDisconnect,
   onRemove,
   onReviewScopes,
+  onManagePermissions,
 }: ZeroConnectorCardProps) {
   const isPolling = pollingType === name;
 
@@ -122,7 +127,15 @@ export function ZeroConnectorCard({
               <IconDotsVertical size={14} stroke={1.5} />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuContent align="end" className="w-44">
+            {hasFirewall && connector?.connected && (
+              <>
+                <DropdownMenuItem onClick={onManagePermissions}>
+                  Permissions
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {connector?.connected ? (
               <DropdownMenuItem onClick={onDisconnect}>
                 Disconnect

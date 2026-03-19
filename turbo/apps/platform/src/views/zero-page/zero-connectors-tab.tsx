@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
 import { IconPlus } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/core";
 import { ZeroConnectorCard } from "./zero-connector-card.tsx";
@@ -21,6 +22,11 @@ import {
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
+import { FirewallPermissionsDrawer } from "./components/settings/firewall-permissions-dialog.tsx";
+import {
+  hasFirewallConfig,
+  setFirewallPolicies$,
+} from "../../signals/zero-page/settings/firewalls.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -60,6 +66,11 @@ export function ZeroConnectorsTab({
 
   const scopeReviewType = useGet(scopeReviewType$);
   const setScopeReviewType = useSet(setScopeReviewType$);
+
+  const firewallType$ = useCCState<ConnectorType | null>(null);
+  const firewallType = useGet(firewallType$);
+  const setFirewallType = useSet(firewallType$);
+  const setFirewallPol = useSet(setFirewallPolicies$);
 
   const optimisticConnected = useGet(justConnectedTypes$);
 
@@ -144,6 +155,7 @@ export function ZeroConnectorsTab({
                 label={connectorMap.get(name as ConnectorType)?.label ?? name}
                 connector={effectiveConnector}
                 pollingType={pollingType}
+                hasFirewall={hasFirewallConfig(name as ConnectorType)}
                 onConnect={() => {
                   const ct = connectorMap.get(name as ConnectorType);
                   if (
@@ -167,6 +179,9 @@ export function ZeroConnectorsTab({
                 }}
                 onRemove={() => handleRemoveConnector(name)}
                 onReviewScopes={() => setScopeReviewType(name as ConnectorType)}
+                onManagePermissions={() =>
+                  setFirewallType(name as ConnectorType)
+                }
               />
             );
           })}
@@ -201,6 +216,19 @@ export function ZeroConnectorsTab({
             setScopeReviewType(null);
             detach(connect(type, signal), Reason.DomCallback);
           }}
+        />
+      )}
+
+      {firewallType && agentName && (
+        <FirewallPermissionsDrawer
+          connectorType={firewallType}
+          agentName={agentName}
+          initialPolicies={{}}
+          onApply={(ref, policies) => {
+            setFirewallPol(agentName, ref, policies);
+            toast.success("Permissions updated");
+          }}
+          onClose={() => setFirewallType(null)}
         />
       )}
 

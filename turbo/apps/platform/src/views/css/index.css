@@ -861,3 +861,33 @@ details[open] > summary > span:first-child {
 .tiptap:focus {
   outline: none;
 }
+
+/* Sheet / side drawer animations */
+@keyframes sheet-slide-in-right {
+  0% {
+    transform: translateX(100%);
+  }
+  70% {
+    transform: translateX(-2%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-slide-out-right {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.sheet-content[data-side="right"][data-state="open"] {
+  animation: sheet-slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.sheet-content[data-side="right"][data-state="closed"] {
+  animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}

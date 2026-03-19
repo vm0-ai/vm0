@@ -9,6 +9,7 @@ export * from "./components/ui/dialog";
 export * from "./components/ui/dropdown-menu";
 export * from "./components/ui/popover";
 export * from "./components/ui/select";
+export * from "./components/ui/sheet";
 export * from "./components/ui/skeleton";
 export * from "./components/ui/switch";
 export * from "./components/ui/table";
