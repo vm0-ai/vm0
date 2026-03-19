@@ -230,9 +230,6 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
     const json = await response.json();
     expect(json.success).toBe(true);
 
-    // Wait for best-effort lineage insert to complete
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     const lineageRows = await getStorageVersionLineage(versionId);
 
     expect(lineageRows).toHaveLength(1);
@@ -266,9 +263,6 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
 
     expect(response.status).toBe(200);
 
-    // Wait to ensure no async insert happens
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     const lineageRows = await getStorageVersionLineage(versionId);
 
     expect(lineageRows).toHaveLength(0);
@@ -298,9 +292,6 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
     );
 
     expect(response.status).toBe(200);
-
-    // Wait to ensure no async insert happens
-    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const lineageRows = await getStorageVersionLineage(versionId);
 

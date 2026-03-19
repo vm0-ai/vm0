@@ -296,27 +296,24 @@ const router = tsr.router(webhookStoragesCommitContract, {
         .where(eq(storages.id, storage.id));
     });
 
-    // Record lineage (best-effort — failure does not block commit)
+    // Record lineage (best-effort — failure does not block commit response)
     if (parentVersionId && storageType !== "volume") {
-      globalThis.services.db
-        .insert(storageVersionLineage)
-        .values({
+      try {
+        await globalThis.services.db.insert(storageVersionLineage).values({
           storageId: storage.id,
           versionId,
           parentVersionId,
           runId,
           storageType,
-        })
-        .then(() => {
-          log.debug(
-            `Recorded lineage: ${versionId} <- ${parentVersionId} (run ${runId})`,
-          );
-        })
-        .catch((err: unknown) => {
-          log.error(
-            `Failed to record lineage for ${versionId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
         });
+        log.debug(
+          `Recorded lineage: ${versionId} <- ${parentVersionId} (run ${runId})`,
+        );
+      } catch (err: unknown) {
+        log.error(
+          `Failed to record lineage for ${versionId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     log.debug(
