@@ -25,6 +25,18 @@ describe("isFeatureEnabled", () => {
     ).resolves.toBe(false);
   });
 
+  it("should return true for email-gated switch with matching email", async () => {
+    // testreviewer@example.com has SHA-1 086eee0974906eb383d645ade1d76c806278ded1
+    // which is in GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES
+    await expect(
+      isFeatureEnabled(
+        FeatureSwitchKey.GmailConnector,
+        undefined,
+        "testreviewer@example.com",
+      ),
+    ).resolves.toBe(true);
+  });
+
   it("should return false for email-gated switch with non-matching email", async () => {
     await expect(
       isFeatureEnabled(
@@ -53,18 +65,22 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should treat email case-insensitively by lowercasing before hashing", async () => {
-    // Both should produce the same result since email is lowercased
-    const resultLower = await isFeatureEnabled(
-      FeatureSwitchKey.GmailConnector,
-      undefined,
-      "test@example.com",
-    );
-    const resultUpper = await isFeatureEnabled(
-      FeatureSwitchKey.GmailConnector,
-      undefined,
-      "TEST@EXAMPLE.COM",
-    );
-    expect(resultLower).toBe(resultUpper);
+    // testreviewer@example.com matches a hash in GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES
+    // Both casing variants should return true, proving lowercasing works for matches
+    await expect(
+      isFeatureEnabled(
+        FeatureSwitchKey.GmailConnector,
+        undefined,
+        "testreviewer@example.com",
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      isFeatureEnabled(
+        FeatureSwitchKey.GmailConnector,
+        undefined,
+        "TESTREVIEWER@EXAMPLE.COM",
+      ),
+    ).resolves.toBe(true);
   });
 });
 
@@ -80,16 +96,23 @@ describe("getAllFeatureStates", () => {
 
   it("should evaluate email hashes when email is provided", async () => {
     const statesWithoutEmail = await getAllFeatureStates();
-    const statesWithEmail = await getAllFeatureStates(
+    const statesWithNonMatching = await getAllFeatureStates(
       undefined,
       "nonmatching@example.com",
     );
+    const statesWithMatching = await getAllFeatureStates(
+      undefined,
+      "testreviewer@example.com",
+    );
 
-    // Both should have same result for non-matching email
+    // Non-matching email should not enable email-gated switches
     expect(statesWithoutEmail[FeatureSwitchKey.GmailConnector]).toBe(false);
-    expect(statesWithEmail[FeatureSwitchKey.GmailConnector]).toBe(false);
+    expect(statesWithNonMatching[FeatureSwitchKey.GmailConnector]).toBe(false);
+
+    // Matching email should enable email-gated switches
+    expect(statesWithMatching[FeatureSwitchKey.GmailConnector]).toBe(true);
 
     // Globally enabled switches unaffected by email
-    expect(statesWithEmail[FeatureSwitchKey.Dummy]).toBe(true);
+    expect(statesWithMatching[FeatureSwitchKey.Dummy]).toBe(true);
   });
 });

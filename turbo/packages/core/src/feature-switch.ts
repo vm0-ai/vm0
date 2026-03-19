@@ -39,6 +39,7 @@ const STAFF_USER_HASHES: readonly string[] = [
 
 const GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES: readonly string[] = [
   "da04f6515e16a883d6e8c4b03932f51ccc362c10", // Google OAuth reviewer
+  "086eee0974906eb383d645ade1d76c806278ded1", // testreviewer@example.com — used by integration tests
 ];
 
 /**
