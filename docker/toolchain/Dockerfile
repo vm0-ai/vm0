@@ -167,5 +167,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+# Install cargo-llvm-cov for Rust test coverage
+RUN cargo install cargo-llvm-cov --locked \
+    && rustup component add llvm-tools-preview
+
 # Default command
 CMD ["/usr/bin/zsh"]
