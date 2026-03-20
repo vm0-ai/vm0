@@ -1,3 +1,4 @@
+import { command } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { mockLocation } from "../../location.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -9,6 +10,8 @@ import {
   zeroChatAgentId$,
   setZeroChatAgent$,
 } from "../zero-nav.ts";
+import { setRootSignal$ } from "../../root-signal.ts";
+import { initRoutes$ } from "../../route.ts";
 
 const context = testContext();
 
@@ -66,9 +69,24 @@ describe("zero-nav", () => {
   });
 
   describe("setZeroActiveId$", () => {
-    it("should navigate to / for 'chat'", () => {
+    async function setupNav() {
+      context.store.set(setRootSignal$, context.signal);
       const pushStateMock = createPushStateMock(context.signal);
       mockLocation({ pathname: "/", search: "" }, context.signal);
+      const noop$ = command(() => void 0);
+      await context.store.set(
+        initRoutes$,
+        [
+          { path: "/", setup: noop$ },
+          { path: "/:tab", setup: noop$ },
+        ],
+        context.signal,
+      );
+      return pushStateMock;
+    }
+
+    it("should navigate to / for 'chat'", async () => {
+      const pushStateMock = await setupNav();
 
       context.store.set(setZeroActiveId$, "chat");
 
@@ -76,9 +94,8 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("chat");
     });
 
-    it("should navigate to /schedule for 'schedule'", () => {
-      const pushStateMock = createPushStateMock(context.signal);
-      mockLocation({ pathname: "/", search: "" }, context.signal);
+    it("should navigate to /schedule for 'schedule'", async () => {
+      const pushStateMock = await setupNav();
 
       context.store.set(setZeroActiveId$, "schedule");
 
