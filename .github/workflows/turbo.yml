@@ -1061,6 +1061,14 @@ jobs:
           files: e2e/results/*.xml
           report_type: test_results
 
+      - name: Upload JUnit XML artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-serial-junit-xml
+          path: e2e/results/
+          retention-days: 7
+
       - name: Stop Cron Simulator
         if: always()
         run: |
@@ -1548,6 +1556,14 @@ jobs:
           flags: e2e-runner
           files: e2e/results/*.xml
           report_type: test_results
+
+      - name: Upload JUnit XML artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-runner-junit-xml-${{ matrix.index }}
+          path: e2e/results/
+          retention-days: 7
 
       - name: Stop Cron Simulator
         if: always()
