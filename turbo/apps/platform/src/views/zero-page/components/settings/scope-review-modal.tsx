@@ -51,10 +51,7 @@ export function ScopeReviewModal({
         if (result.status === 200) {
           setScopeDiff(result.body);
         } else {
-          L.error(
-            `Failed to fetch scope diff: ${result.status}`,
-            result.body,
-          );
+          L.error(`Failed to fetch scope diff: ${result.status}`, result.body);
         }
         setLoading(false);
       })
