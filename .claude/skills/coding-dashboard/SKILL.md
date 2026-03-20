@@ -106,9 +106,6 @@ gh api graphql -f query='
     mergeQueue(branch: "main") {
       entries(first: 20) {
         nodes {
-          position
-          state
-          enqueuedAt
           pullRequest {
             number
             title
@@ -120,16 +117,6 @@ gh api graphql -f query='
                 commit {
                   statusCheckRollup {
                     state
-                    contexts(first: 50) {
-                      nodes {
-                        __typename
-                        ... on CheckRun {
-                          name
-                          conclusion
-                          status
-                        }
-                      }
-                    }
                   }
                 }
               }
