@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";
+import type Stripe from "stripe";
 import type { schema } from "../db/db";
 import type { Env } from "../env";
 
@@ -14,6 +15,8 @@ export type Services = {
   db: Database;
   // Pool is only available in local development, not in Vercel serverless
   pool: Pool;
+  // Stripe client — lazy-initialized on first access, only when STRIPE_SECRET_KEY is set
+  stripe: Stripe;
 };
 
 declare global {

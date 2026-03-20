@@ -1,5 +1,6 @@
 import { Pool as PgPool } from "pg";
 import { Pool as NeonPool } from "@neondatabase/serverless";
+import Stripe from "stripe";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNeonServerless } from "drizzle-orm/neon-serverless";
 import { schema } from "../db/db";
@@ -14,6 +15,7 @@ let _db:
   | NodePgDatabase<typeof schema>
   | NeonDatabase<typeof schema>
   | undefined;
+let _stripe: Stripe | undefined;
 let _services: Services | undefined;
 
 /**
@@ -84,6 +86,14 @@ export function initServices(): void {
         }
       }
       return _db;
+    },
+    get stripe() {
+      if (!_stripe) {
+        const key = this.env.STRIPE_SECRET_KEY;
+        if (!key) throw new Error("STRIPE_SECRET_KEY is required for billing");
+        _stripe = new Stripe(key);
+      }
+      return _stripe;
     },
   };
 

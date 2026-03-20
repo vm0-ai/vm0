@@ -290,21 +290,12 @@ export async function handleSubscriptionUpdated(
 
   const priceId = subscription.items.data[0]?.price?.id;
 
-  // Determine tier from price ID if price changed (upgrade/downgrade via Billing Portal)
-  let tier: OrgTier | undefined;
-  if (priceId) {
-    try {
-      tier = tierFromPriceId(priceId);
-    } catch {
-      log.warn(
-        "subscription updated with unknown price ID — skipping tier change",
-        {
-          priceId,
-          subscriptionId: subscription.id,
-        },
-      );
-    }
-  }
+  // Determine tier from price ID if price changed (upgrade/downgrade via Billing Portal).
+  // Unknown price IDs propagate as errors so Stripe retries the webhook,
+  // alerting operators to a configuration mismatch.
+  const tier: OrgTier | undefined = priceId
+    ? tierFromPriceId(priceId)
+    : undefined;
 
   await db
     .update(orgMetadata)

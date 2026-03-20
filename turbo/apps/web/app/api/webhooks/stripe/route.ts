@@ -25,6 +25,8 @@ const log = logger("webhook:stripe");
  * - customer.subscription.deleted — downgrade to free
  */
 export async function POST(request: Request) {
+  initServices();
+
   const { STRIPE_WEBHOOK_SECRET } = env();
 
   if (!STRIPE_WEBHOOK_SECRET) {
@@ -61,8 +63,6 @@ export async function POST(request: Request) {
   }
 
   log.info("stripe webhook received", { type: event.type, id: event.id });
-
-  initServices();
 
   // Handlers run before the response so that failures return a non-200 status,
   // allowing Stripe to retry on transient errors (e.g. database outages).

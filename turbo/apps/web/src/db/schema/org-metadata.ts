@@ -17,6 +17,8 @@ export const orgMetadata = pgTable(
   "org_metadata",
   {
     orgId: text("org_id").primaryKey(),
+    // New orgs start with 2000 starter credits. Existing orgs retain their
+    // current balance (migration 0175 only changed the column DEFAULT, not rows).
     credits: bigint("credits", { mode: "number" }).notNull().default(2000),
     tier: text("tier").notNull().default("free"),
     defaultAgentComposeId: uuid("default_agent_compose_id"),
