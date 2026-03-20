@@ -18,49 +18,55 @@ import { handleOrgDirectMessage } from "../handlers/direct-message";
  * Mock @slack/web-api (external dependency).
  * vi.hoisted() ensures the mock fns are available when vi.mock is hoisted.
  */
-const { mockPostMessage, mockPostEphemeral, mockSetStatus, MockWebClient } =
-  vi.hoisted(() => {
-    const mockPostMessage = vi.fn().mockResolvedValue({ ok: true, ts: "1.1" });
-    const mockPostEphemeral = vi.fn().mockResolvedValue({ ok: true });
-    const mockSetStatus = vi.fn().mockResolvedValue({ ok: true });
-    const mockUsersInfo = vi.fn().mockResolvedValue({
-      ok: true,
-      user: { id: "U-test", profile: { display_name: "Test" }, tz: "UTC" },
-    });
-    const mockConversationsReplies = vi.fn().mockResolvedValue({
-      ok: true,
-      messages: [],
-    });
-    const mockConversationsHistory = vi.fn().mockResolvedValue({
-      ok: true,
-      messages: [],
-    });
-
-    class MockWebClient {
-      chat = {
-        postMessage: mockPostMessage,
-        postEphemeral: mockPostEphemeral,
-      };
-      assistant = {
-        threads: { setStatus: mockSetStatus },
-      };
-      users = { info: mockUsersInfo };
-      conversations = {
-        replies: mockConversationsReplies,
-        history: mockConversationsHistory,
-      };
-    }
-
-    return {
-      mockPostMessage,
-      mockPostEphemeral,
-      mockSetStatus,
-      MockWebClient,
-    };
+const {
+  mockPostMessage,
+  mockPostEphemeral,
+  mockSetStatus,
+  createMockWebClient,
+} = vi.hoisted(() => {
+  const mockPostMessage = vi.fn().mockResolvedValue({ ok: true, ts: "1.1" });
+  const mockPostEphemeral = vi.fn().mockResolvedValue({ ok: true });
+  const mockSetStatus = vi.fn().mockResolvedValue({ ok: true });
+  const mockUsersInfo = vi.fn().mockResolvedValue({
+    ok: true,
+    user: { id: "U-test", profile: { display_name: "Test" }, tz: "UTC" },
+  });
+  const mockConversationsReplies = vi.fn().mockResolvedValue({
+    ok: true,
+    messages: [],
+  });
+  const mockConversationsHistory = vi.fn().mockResolvedValue({
+    ok: true,
+    messages: [],
   });
 
+  function createMockWebClient() {
+    return {
+      chat: {
+        postMessage: mockPostMessage,
+        postEphemeral: mockPostEphemeral,
+      },
+      assistant: {
+        threads: { setStatus: mockSetStatus },
+      },
+      users: { info: mockUsersInfo },
+      conversations: {
+        replies: mockConversationsReplies,
+        history: mockConversationsHistory,
+      },
+    };
+  }
+
+  return {
+    mockPostMessage,
+    mockPostEphemeral,
+    mockSetStatus,
+    createMockWebClient,
+  };
+});
+
 vi.mock("@slack/web-api", () => ({
-  WebClient: MockWebClient,
+  WebClient: createMockWebClient,
 }));
 
 const context = testContext();
@@ -96,17 +102,6 @@ describe("Slack org error message deduplication", () => {
     return { workspaceId, slackUserId };
   }
 
-  /** Filter postMessage calls that contain the generic error text. */
-  function errorMessageCalls(): unknown[][] {
-    return mockPostMessage.mock.calls.filter((call: unknown[]) => {
-      const arg = call[0] as Record<string, unknown>;
-      return (
-        typeof arg.text === "string" &&
-        arg.text.includes("Something went wrong")
-      );
-    });
-  }
-
   describe("handleOrgMention", () => {
     it("should not post error when run was created (callback handles it)", async () => {
       // Set up a valid compose so the run IS created before dispatch fails
@@ -124,7 +119,7 @@ describe("Slack org error message deduplication", () => {
 
       // The run was created but dispatch failed → runId exists.
       // Handler should NOT post an error (callback will handle it).
-      expect(errorMessageCalls()).toHaveLength(0);
+      expect(mockPostMessage).not.toHaveBeenCalled();
     });
 
     it("should post error when run was not created (no callback)", async () => {
@@ -147,7 +142,7 @@ describe("Slack org error message deduplication", () => {
 
       // startRun failed before creating a run → no runId → no callback.
       // Handler should post the error message.
-      expect(errorMessageCalls()).toHaveLength(1);
+      expect(mockPostMessage).toHaveBeenCalledOnce();
     });
   });
 
@@ -165,7 +160,7 @@ describe("Slack org error message deduplication", () => {
         messageTs: "2000.001",
       });
 
-      expect(errorMessageCalls()).toHaveLength(0);
+      expect(mockPostMessage).not.toHaveBeenCalled();
     });
 
     it("should post error when run was not created (no callback)", async () => {
@@ -185,7 +180,7 @@ describe("Slack org error message deduplication", () => {
         messageTs: "2000.002",
       });
 
-      expect(errorMessageCalls()).toHaveLength(1);
+      expect(mockPostMessage).toHaveBeenCalledOnce();
     });
   });
 });
