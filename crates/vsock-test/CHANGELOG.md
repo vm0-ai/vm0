@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.6.5...vsock-test-v0.7.0) (2026-03-20)
+
+
+### Features
+
+* **vsock:** add real-time stdout streaming from guest to host ([#5574](https://github.com/vm0-ai/vm0/issues/5574)) ([2afc093](https://github.com/vm0-ai/vm0/commit/2afc0930657f6bbf1e1f4947383345d33de46819))
+
 ## [0.6.5](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.6.4...vsock-test-v0.6.5) (2026-03-19)
 
 ## [0.6.4](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.6.3...vsock-test-v0.6.4) (2026-03-07)

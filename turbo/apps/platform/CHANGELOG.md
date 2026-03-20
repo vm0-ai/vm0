@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.129.0](https://github.com/vm0-ai/vm0/compare/app-v0.128.0...app-v0.129.0) (2026-03-20)
+
+
+### Features
+
+* add no-secret provider shape for vm0 managed provider ([#5655](https://github.com/vm0-ai/vm0/issues/5655)) ([14b0d75](https://github.com/vm0-ai/vm0/commit/14b0d75a5cf5d6bb421d7ac0bf5659bb114f50ec))
+* add trigger_source column to agent_runs for fine-grained run origin tracking ([#5602](https://github.com/vm0-ai/vm0/issues/5602)) ([55fd4bf](https://github.com/vm0-ai/vm0/commit/55fd4bf4209ff92ca7ad8142e07dce7a91b67a4e))
+
+
+### Bug Fixes
+
+* bundle skill icons as local assets instead of external URLs ([#5660](https://github.com/vm0-ai/vm0/issues/5660)) ([ca7aefa](https://github.com/vm0-ai/vm0/commit/ca7aefa471d6690e1ece5131b8d5b16f9af127c3))
+* **docker:** grant non-root users access to chromium and sync lockfile ([#5636](https://github.com/vm0-ai/vm0/issues/5636)) ([d645321](https://github.com/vm0-ai/vm0/commit/d645321fc62a30cabb275e52524845d33835816d))
+* **platform:** refresh activity data on each tab re-entry instead of once globally ([#5669](https://github.com/vm0-ai/vm0/issues/5669)) ([9f1a4ed](https://github.com/vm0-ai/vm0/commit/9f1a4edd58d0bc3f4cc59a9ef7ab6e59287ff444))
+* **platform:** show error in chat for timeout and cancelled runs ([#5627](https://github.com/vm0-ai/vm0/issues/5627)) ([87b7a07](https://github.com/vm0-ai/vm0/commit/87b7a0738411190691bb2bc365e15ef09b730f58))
+
+
+### Refactoring
+
+* api layer separation phase 1 — foundation (infra-client + platform ts-rest) ([#5681](https://github.com/vm0-ai/vm0/issues/5681)) ([54d938f](https://github.com/vm0-ai/vm0/commit/54d938facc8df6d5f2486d18a2d8d25f45ef90f0))
+* api layer separation phase 2 — simple proxy domains (connectors, org) ([#5686](https://github.com/vm0-ai/vm0/issues/5686)) ([8534f59](https://github.com/vm0-ai/vm0/commit/8534f5957817e3576845971c1a536c2a117457ab))
+* **slack:** use structured sender block in context formatting ([#5639](https://github.com/vm0-ai/vm0/issues/5639)) ([dfca766](https://github.com/vm0-ai/vm0/commit/dfca76616ac7e4b4e1904f105f2225d05e1fe0fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.85.0
+
 ## [0.128.0](https://github.com/vm0-ai/vm0/compare/app-v0.127.0...app-v0.128.0) (2026-03-19)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.13.2...sandbox-fc-v0.14.0) (2026-03-20)
+
+
+### Features
+
+* **vsock:** add real-time stdout streaming from guest to host ([#5574](https://github.com/vm0-ai/vm0/issues/5574)) ([2afc093](https://github.com/vm0-ai/vm0/commit/2afc0930657f6bbf1e1f4947383345d33de46819))
+
 ## [0.13.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.13.1...sandbox-fc-v0.13.2) (2026-03-19)
 
 
