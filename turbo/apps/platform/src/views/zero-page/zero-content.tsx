@@ -82,7 +82,6 @@ export function ZeroContent({
     return (
       <ZeroChatPage
         onSendMessage={onSendMessage}
-        onNavigateToSchedule={onNavigateToSchedule}
         onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
         chatAgentName={chatAgentName}
