@@ -2,7 +2,6 @@ import { startRun, isRunDispatchError } from "../../run";
 import {
   buildIntegrationContext,
   buildScheduleGuidance,
-  DISALLOWED_CRON_TOOLS,
 } from "../../integration-context";
 import { isConcurrentRunLimit } from "../../errors";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
@@ -88,7 +87,6 @@ export async function runAgentForSlackOrg(
       composeId,
       prompt,
       appendSystemPrompt,
-      disallowedTools: [...DISALLOWED_CRON_TOOLS],
       sessionId,
       triggerSource: "slack",
       callbacks: [

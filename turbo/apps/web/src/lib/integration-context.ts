@@ -19,15 +19,6 @@ export function buildIntegrationContext(
 }
 
 /**
- * Cron tools to disallow when schedule guidance is active.
- */
-export const DISALLOWED_CRON_TOOLS = [
-  "CronCreate",
-  "CronList",
-  "CronDelete",
-] as const;
-
-/**
  * Build schedule guidance prompt that redirects agents from ephemeral cron
  * tools to vm0's persistent schedule system.
  */
