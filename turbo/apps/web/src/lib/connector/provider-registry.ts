@@ -24,6 +24,7 @@ import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { cloudinaryHandler } from "./providers/cloudinary-handler";
 import { closeHandler } from "./providers/close-handler";
 import { cronlyticHandler } from "./providers/cronlytic-handler";
+import { customerIoHandler } from "./providers/customer-io-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { discordHandler } from "./providers/discord-handler";
 import { discordWebhookHandler } from "./providers/discord-webhook-handler";
@@ -149,6 +150,7 @@ export const PROVIDER_HANDLERS: Record<
   cloudinary: cloudinaryHandler,
   close: closeHandler,
   cronlytic: cronlyticHandler,
+  "customer-io": customerIoHandler,
   deel: deelHandler,
   discord: discordHandler,
   "discord-webhook": discordWebhookHandler,

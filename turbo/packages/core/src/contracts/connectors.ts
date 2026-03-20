@@ -1074,6 +1074,23 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  "customer-io": {
+    label: "Customer.io",
+    helpText:
+      "Connect your Customer.io account to send behavioral emails, SMS, and push notifications triggered by user events",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          CUSTOMERIO_APP_TOKEN: {
+            label: "App API Key",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   dify: {
     label: "Dify",
     helpText:
@@ -3238,6 +3255,7 @@ export const connectorTypeSchema = z.enum([
   "slack-webhook",
   "wix",
   "v0",
+  "customer-io",
 ]);
 
 /**
