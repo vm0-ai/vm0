@@ -1256,6 +1256,24 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  salesforce: {
+    label: "Salesforce",
+    helpText:
+      "Connect your Salesforce account to manage CRM data, contacts, leads, and sales workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          SALESFORCE_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "00D...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   reddit: {
     label: "Reddit",
     featureFlag: FeatureSwitchKey.RedditConnector,
@@ -3277,6 +3295,7 @@ export const connectorTypeSchema = z.enum([
   "wix",
   "v0",
   "customer-io",
+  "salesforce",
 ]);
 
 /**

@@ -79,6 +79,7 @@ import { redditHandler } from "./providers/reddit-handler";
 import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
 import { runwayHandler } from "./providers/runway-handler";
+import { salesforceHandler } from "./providers/salesforce-handler";
 import { shortioHandler } from "./providers/shortio-handler";
 import { streakHandler } from "./providers/streak-handler";
 import { supadataHandler } from "./providers/supadata-handler";
@@ -238,6 +239,7 @@ export const PROVIDER_HANDLERS: Record<
   xero: xeroHandler,
   zeptomail: zeptomailHandler,
   runway: runwayHandler,
+  salesforce: salesforceHandler,
   shortio: shortioHandler,
   streak: streakHandler,
   supadata: supadataHandler,
