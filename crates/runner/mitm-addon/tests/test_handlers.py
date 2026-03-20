@@ -1,6 +1,7 @@
-"""Tests for HTTP/TLS handlers."""
+"""Tests for HTTP/TLS/TCP handlers."""
 
 import json
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -516,3 +517,142 @@ class TestTlsClienthello:
 
         # All registered VMs use MITM — should NOT set ignore_connection
         assert data.ignore_connection is False
+
+
+def _make_tcp_flow(client_ip="10.200.0.1"):
+    """Create a mock TCP flow."""
+    flow = MagicMock()
+    flow.client_conn.peername = (client_ip, 12345)
+    flow.server_conn.address = ("140.82.116.3", 22)
+    flow.metadata = {}
+    flow.error = None
+    # Two messages: one from client, one from server
+    client_msg = MagicMock()
+    client_msg.content = b"hello"
+    client_msg.from_client = True
+    server_msg = MagicMock()
+    server_msg.content = b"SSH-2.0-babeld"
+    server_msg.from_client = False
+    flow.messages = [client_msg, server_msg]
+    return flow
+
+
+class TestTcpStart:
+    def setup_method(self):
+        _reset()
+
+    def test_sets_metadata_for_registered_vm(self, registry_file):
+        flow = _make_tcp_flow(client_ip="10.200.0.1")
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+        ):
+            mitm_addon.tcp_start(flow)
+
+        assert flow.metadata["vm_run_id"] == "run-abc-123"
+        assert "vm_network_log_path" in flow.metadata
+        assert "tcp_start_time" in flow.metadata
+
+    def test_skips_when_no_client_ip(self, registry_file):
+        flow = _make_tcp_flow()
+        flow.client_conn.peername = None
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+        ):
+            mitm_addon.tcp_start(flow)
+
+        assert "vm_run_id" not in flow.metadata
+
+    def test_skips_when_vm_not_registered(self, registry_file):
+        flow = _make_tcp_flow(client_ip="192.168.99.99")
+
+        with (
+            patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+        ):
+            mitm_addon.tcp_start(flow)
+
+        assert "vm_run_id" not in flow.metadata
+
+
+class TestTcpLog:
+    def setup_method(self):
+        _reset()
+
+    def test_logs_tcp_connection(self, registry_file, tmp_path):
+        flow = _make_tcp_flow(client_ip="10.200.0.1")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["tcp_start_time"] = time.time() - 0.05
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.tcp_end(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["type"] == "tcp"
+        assert entry["host"] == "140.82.116.3"
+        assert entry["port"] == 22
+        assert entry["latency_ms"] > 0
+        assert entry["request_size"] == 5  # b"hello"
+        assert entry["response_size"] == 14  # b"SSH-2.0-babeld"
+        assert "error" not in entry
+
+    def test_logs_tcp_error(self, registry_file, tmp_path):
+        flow = _make_tcp_flow(client_ip="10.200.0.1")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["tcp_start_time"] = time.time()
+        flow.error = MagicMock()
+        flow.error.msg = "connection reset by peer"
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.tcp_error(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["type"] == "tcp"
+        assert entry["error"] == "connection reset by peer"
+
+    def test_skips_when_no_run_id(self, tmp_path):
+        flow = _make_tcp_flow()
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_network_log_path"] = log_path
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.tcp_end(flow)
+
+        assert not Path(log_path).exists()
+
+    def test_handles_missing_server_addr(self, tmp_path):
+        flow = _make_tcp_flow()
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["tcp_start_time"] = time.time()
+        flow.server_conn = None
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.tcp_end(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["host"] == "unknown"
+        assert entry["port"] == 0
+
+    def test_handles_missing_start_time(self, tmp_path):
+        flow = _make_tcp_flow()
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.tcp_end(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["latency_ms"] == 0

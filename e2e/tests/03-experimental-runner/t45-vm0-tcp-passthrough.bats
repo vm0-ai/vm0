@@ -47,4 +47,18 @@ EOF
     assert_output --partial "● Bash("
     assert_output --partial "PORT22=SSH-2.0"
     assert_output --partial "PORT443=SSH-2.0"
+
+    # Verify TCP connections appear in network logs
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+    assert_success
+    # TCP connections show as IP:port (DNS resolved before TCP layer)
+    assert_output --partial "TCP"
+    assert_output --partial ":22"
+    assert_output --partial ":443"
 }

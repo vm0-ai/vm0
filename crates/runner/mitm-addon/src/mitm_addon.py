@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 from typing import NamedTuple
 
-from mitmproxy import ctx, http, tls
+from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -590,6 +590,7 @@ def response(flow: http.HTTPFlow) -> None:
     if run_id and network_log_path:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+            "type": "http",
             "action": firewall_action,
             "host": host,
             "port": port,
@@ -639,5 +640,76 @@ def error(flow: http.HTTPFlow) -> None:
     _request_start_times.pop(flow.id, None)
 
 
+# ============================================================================
+# TCP Connection Handlers
+# ============================================================================
+
+
+def tcp_start(flow: tcp.TCPFlow) -> None:
+    """Track TCP connection start time and look up VM info."""
+    client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
+    if not client_ip:
+        return
+
+    vm_info = get_vm_info(client_ip)
+    if not vm_info:
+        return
+
+    flow.metadata["vm_run_id"] = vm_info.get("runId", "")
+    flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
+    flow.metadata["tcp_start_time"] = time.time()
+
+
+def tcp_end(flow: tcp.TCPFlow) -> None:
+    """Log TCP connection details when it closes."""
+    _log_tcp(flow)
+
+
+def tcp_error(flow: tcp.TCPFlow) -> None:
+    """Log TCP connection errors."""
+    _log_tcp(flow)
+
+
+def _log_tcp(flow: tcp.TCPFlow) -> None:
+    run_id = flow.metadata.get("vm_run_id", "")
+    network_log_path = flow.metadata.get("vm_network_log_path", "")
+    if not run_id or not network_log_path:
+        return
+
+    start_time = flow.metadata.get("tcp_start_time")
+    latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
+
+    request_size = sum(len(m.content) for m in flow.messages if m.from_client)
+    response_size = sum(len(m.content) for m in flow.messages if not m.from_client)
+
+    server_addr = flow.server_conn.address if flow.server_conn else None
+    host = server_addr[0] if server_addr else "unknown"
+    port = server_addr[1] if server_addr else 0
+
+    log_entry = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+        "type": "tcp",
+        "host": host,
+        "port": port,
+        "latency_ms": latency_ms,
+        "request_size": request_size,
+        "response_size": response_size,
+    }
+
+    if flow.error:
+        log_entry["error"] = flow.error.msg
+
+    log_network_entry(network_log_path, log_entry)
+
+
 # mitmproxy addon registration
-addons = [tls_clienthello, request, responseheaders, response, error]
+addons = [
+    tls_clienthello,
+    request,
+    responseheaders,
+    response,
+    error,
+    tcp_start,
+    tcp_end,
+    tcp_error,
+]

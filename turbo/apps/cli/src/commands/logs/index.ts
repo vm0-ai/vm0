@@ -115,9 +115,24 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
 }
 
 /**
+ * Format a TCP connection log entry
+ */
+function formatNetworkTcp(entry: NetworkLogEntry): string {
+  const host = entry.host || "unknown";
+  const port = entry.port || 0;
+  const requestSize = entry.request_size || 0;
+  const responseSize = entry.response_size || 0;
+  const latencyMs = entry.latency_ms || 0;
+  const error = entry.error ? ` ${chalk.red(entry.error)}` : "";
+
+  return `[${entry.timestamp}] ${chalk.blue("TCP")}   ${latencyMs}ms ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(`${host}:${port}`)}${error}`;
+}
+
+/**
  * Format a network log entry
  */
 function formatNetworkLog(entry: NetworkLogEntry): string {
+  if (entry.type === "tcp") return formatNetworkTcp(entry);
   if (entry.action === "DENY") return formatNetworkDeny(entry);
   return formatNetworkRequest(entry);
 }

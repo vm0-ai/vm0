@@ -801,6 +801,69 @@ describe("logs command", () => {
       expect(logCalls).toContain("auth_failed");
     });
 
+    it("should display TCP connection logs", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  type: "tcp",
+                  host: "redis.example.com",
+                  port: 6379,
+                  latency_ms: 5000,
+                  request_size: 1024,
+                  response_size: 2048,
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("TCP");
+      expect(logCalls).toContain("redis.example.com:6379");
+      expect(logCalls).toContain("5000ms");
+    });
+
+    it("should display TCP error logs", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  type: "tcp",
+                  host: "db.example.com",
+                  port: 5432,
+                  latency_ms: 3000,
+                  request_size: 0,
+                  response_size: 0,
+                  error: "connection reset by peer",
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("TCP");
+      expect(logCalls).toContain("db.example.com:5432");
+      expect(logCalls).toContain("connection reset by peer");
+    });
+
     it("should handle empty network logs", async () => {
       server.use(
         http.get(
