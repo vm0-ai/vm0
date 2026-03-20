@@ -1,12 +1,19 @@
-import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import {
-  orgModelProvidersMainContract,
+  createHandler,
+  createSafeErrorHandler,
+  tsr,
+} from "../../../../src/lib/ts-rest-handler";
+import {
+  zeroModelProvidersMainContract,
   createErrorResponse,
   hasAuthMethods,
   VM0_ORG_SLUG,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   listOrgModelProviders,
@@ -17,20 +24,14 @@ import {
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
 
-const log = logger("api:org-model-providers");
+const log = logger("api:zero-model-providers");
 
-const router = tsr.router(orgModelProvidersMainContract, {
-  /**
-   * GET /api/org/model-providers - List org-level model providers
-   * Any org member can list.
-   */
+const router = tsr.router(zeroModelProvidersMainContract, {
   list: async ({ headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
@@ -55,17 +56,11 @@ const router = tsr.router(orgModelProvidersMainContract, {
     };
   },
 
-  /**
-   * PUT /api/org/model-providers - Create or update an org-level model provider
-   * Admin only.
-   */
   upsert: async ({ body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org, member } = await resolveOrg(authCtx, orgSlug);
@@ -90,7 +85,6 @@ const router = tsr.router(orgModelProvidersMainContract, {
       let created: boolean;
 
       if (type === "vm0") {
-        // VM0 managed provider: org slug must be "vm0"
         if (org.slug !== VM0_ORG_SLUG) {
           return createErrorResponse(
             "FORBIDDEN",
@@ -164,6 +158,8 @@ const router = tsr.router(orgModelProvidersMainContract, {
   },
 });
 
-const handler = createHandler(orgModelProvidersMainContract, router);
+const handler = createHandler(zeroModelProvidersMainContract, router, {
+  errorHandler: createSafeErrorHandler("zero-model-providers"),
+});
 
-export { handler as GET, handler as PUT };
+export { handler as GET, handler as POST };

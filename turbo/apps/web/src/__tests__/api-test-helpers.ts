@@ -62,7 +62,7 @@ import { POST as createComposeRoute } from "../../app/api/agent/composes/route";
 // POST /api/org removed in 5b-5 — org creation is now Clerk's responsibility
 import { POST as createRunRoute } from "../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
-import { PUT as upsertOrgModelProviderRoute } from "../../app/api/org/model-providers/route";
+import { POST as upsertOrgModelProviderRoute } from "../../app/api/zero/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
 import {
@@ -439,9 +439,9 @@ export async function createTestOrgModelProvider(
   selectedModel?: string,
 ): Promise<{ id: string; type: string; selectedModel: string | null }> {
   const request = createTestRequest(
-    "http://localhost:3000/api/org/model-providers",
+    "http://localhost:3000/api/zero/model-providers",
     {
-      method: "PUT",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type,
@@ -484,9 +484,9 @@ export async function createTestOrgMultiAuthModelProvider(
   selectedModel: string | null;
 }> {
   const request = createTestRequest(
-    "http://localhost:3000/api/org/model-providers",
+    "http://localhost:3000/api/zero/model-providers",
     {
-      method: "PUT",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type,

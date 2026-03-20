@@ -1,0 +1,66 @@
+import {
+  createHandler,
+  createSafeErrorHandler,
+  tsr,
+} from "../../../../src/lib/ts-rest-handler";
+import { zeroSecretsContract, createErrorResponse } from "@vm0/core";
+import { initServices } from "../../../../src/lib/init-services";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { setSecret } from "../../../../src/lib/secret/secret-service";
+import { logger } from "../../../../src/lib/logger";
+import { isBadRequest } from "../../../../src/lib/errors";
+
+const log = logger("api:zero-secrets");
+
+const router = tsr.router(zeroSecretsContract, {
+  set: async ({ body, headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const { name, value, description } = body;
+
+    log.debug("setting secret", { userId, name });
+
+    try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org } = await resolveOrg(authCtx, orgSlug);
+      const secret = await setSecret(
+        org.orgId,
+        userId,
+        name,
+        value,
+        description,
+      );
+
+      return {
+        status: 200 as const,
+        body: {
+          id: secret.id,
+          name: secret.name,
+          description: secret.description,
+          type: secret.type,
+          createdAt: secret.createdAt.toISOString(),
+          updatedAt: secret.updatedAt.toISOString(),
+        },
+      };
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
+      }
+      throw error;
+    }
+  },
+});
+
+const handler = createHandler(zeroSecretsContract, router, {
+  errorHandler: createSafeErrorHandler("zero-secrets"),
+});
+
+export { handler as POST };

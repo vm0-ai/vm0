@@ -579,3 +579,21 @@ export {
   type ZeroSchedulesByNameContract,
   type ZeroSchedulesEnableContract,
 } from "./zero-schedules";
+export {
+  zeroModelProvidersMainContract,
+  zeroModelProvidersByTypeContract,
+  zeroModelProvidersDefaultContract,
+  type ZeroModelProvidersMainContract,
+  type ZeroModelProvidersByTypeContract,
+  type ZeroModelProvidersDefaultContract,
+} from "./zero-model-providers";
+export {
+  zeroUserPreferencesContract,
+  type ZeroUserPreferencesContract,
+} from "./zero-user-preferences";
+export {
+  zeroSecretsContract,
+  zeroVariablesContract,
+  type ZeroSecretsContract,
+  type ZeroVariablesContract,
+} from "./zero-secrets";

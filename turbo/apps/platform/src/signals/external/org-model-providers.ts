@@ -1,10 +1,11 @@
 import { command, computed, state } from "ccstate";
-import { fetch$ } from "../fetch";
-import type {
-  ModelProviderListResponse,
-  UpsertModelProviderRequest,
-  UpsertModelProviderResponse,
+import {
+  zeroModelProvidersMainContract,
+  zeroModelProvidersByTypeContract,
+  zeroModelProvidersDefaultContract,
+  type UpsertModelProviderRequest,
 } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 
 /**
  * Reload trigger for org model provider signals.
@@ -17,9 +18,13 @@ const internalReloadOrgModelProviders$ = state(0);
  */
 export const orgModelProviders$ = computed(async (get) => {
   get(internalReloadOrgModelProviders$);
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/org/model-providers");
-  return (await resp.json()) as ModelProviderListResponse;
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroModelProvidersMainContract);
+  const result = await client.list();
+  if (result.status === 200) {
+    return result.body;
+  }
+  throw new Error(`Failed to list org model providers: ${result.status}`);
 });
 
 /**
@@ -27,24 +32,17 @@ export const orgModelProviders$ = computed(async (get) => {
  */
 export const createOrgModelProvider$ = command(
   async ({ get, set }, request: UpsertModelProviderRequest) => {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/org/model-providers", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-    });
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroModelProvidersMainContract);
+    const result = await client.upsert({ body: request });
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to create org model provider: ${response.status}`,
-      );
+    if (result.status !== 200 && result.status !== 201) {
+      throw new Error(`Failed to create org model provider: ${result.status}`);
     }
-
-    const result = (await response.json()) as UpsertModelProviderResponse;
 
     set(internalReloadOrgModelProviders$, (x) => x + 1);
 
-    return result;
+    return result.body;
   },
 );
 
@@ -53,15 +51,16 @@ export const createOrgModelProvider$ = command(
  */
 export const setDefaultOrgModelProvider$ = command(
   async ({ get, set }, type: string) => {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/org/model-providers/${type}/set-default`,
-      { method: "POST" },
-    );
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroModelProvidersDefaultContract);
+    const result = await client.setDefault({
+      params: { type },
+      body: undefined,
+    });
 
-    if (!response.ok) {
+    if (result.status !== 200) {
       throw new Error(
-        `Failed to set default org model provider: ${response.status}`,
+        `Failed to set default org model provider: ${result.status}`,
       );
     }
 
@@ -74,15 +73,12 @@ export const setDefaultOrgModelProvider$ = command(
  */
 export const deleteOrgModelProvider$ = command(
   async ({ get, set }, type: string) => {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(`/api/org/model-providers/${type}`, {
-      method: "DELETE",
-    });
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroModelProvidersByTypeContract);
+    const result = await client.delete({ params: { type } });
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to delete org model provider: ${response.status}`,
-      );
+    if (result.status !== 204) {
+      throw new Error(`Failed to delete org model provider: ${result.status}`);
     }
 
     set(internalReloadOrgModelProviders$, (x) => x + 1);
