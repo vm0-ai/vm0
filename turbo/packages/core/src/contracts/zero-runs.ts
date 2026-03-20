@@ -10,6 +10,14 @@ import {
   unifiedRunRequestSchema,
 } from "./runs";
 
+/**
+ * Zero run request schema — same as unified but without triggerSource
+ * (the proxy injects triggerSource: "web" automatically).
+ */
+const zeroRunRequestSchema = unifiedRunRequestSchema.omit({
+  triggerSource: true,
+});
+
 const c = initContract();
 
 /**
@@ -21,7 +29,7 @@ export const zeroRunsMainContract = c.router({
     method: "POST",
     path: "/api/zero/runs",
     headers: authHeadersSchema,
-    body: unifiedRunRequestSchema,
+    body: zeroRunRequestSchema,
     responses: {
       201: createRunResponseSchema,
       400: apiErrorSchema,

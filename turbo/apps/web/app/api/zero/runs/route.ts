@@ -14,7 +14,9 @@ const router = tsr.router(zeroRunsMainContract, {
   create: async ({ body, headers }) => {
     initServices();
     const client = createInfraClient(runsMainContract, headers.authorization);
-    const result = await client.create({ body });
+    const result = await client.create({
+      body: { ...body, triggerSource: "web" },
+    });
     return forwardInfra(result);
   },
 });
