@@ -14,6 +14,9 @@ import {
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
+import { logger } from "../../../../signals/log.ts";
+
+const L = logger("ScopeReviewModal");
 
 interface ScopeReviewModalProps {
   connectorType: ConnectorType | null;
@@ -47,10 +50,16 @@ export function ScopeReviewModal({
         .then((result) => {
           if (result.status === 200) {
             setScopeDiff(result.body);
+          } else {
+            L.error(
+              `Failed to fetch scope diff: ${result.status}`,
+              result.body,
+            );
           }
           setLoading(false);
         })
-        .catch(() => {
+        .catch((error: unknown) => {
+          L.error("Failed to fetch scope diff:", error);
           setLoading(false);
         });
     }),
