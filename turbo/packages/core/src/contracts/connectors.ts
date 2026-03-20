@@ -1612,6 +1612,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  calendly: {
+    label: "Calendly",
+    helpText:
+      "Connect your Calendly account to access scheduling data, event types, and invitee information",
+    authMethods: {
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Log in to [Calendly](https://calendly.com)\n2. Go to **Integrations > API & Webhooks**\n3. Generate a Personal Access Token\n4. Copy the token",
+        secrets: {
+          CALENDLY_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "your-calendly-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   canva: {
     label: "Canva",
     featureFlag: FeatureSwitchKey.CanvaConnector,
@@ -3078,6 +3098,7 @@ export const connectorTypeSchema = z.enum([
   "axiom",
   "airtable",
   "asana",
+  "calendly",
   "canva",
   "clickup",
   "cloudflare",
