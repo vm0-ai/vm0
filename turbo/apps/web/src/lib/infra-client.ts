@@ -80,24 +80,27 @@ export function createInfraClient<T extends AppRouter>(
 
 /**
  * Distribute a union status into a discriminated union of response objects.
- * { status: A | B | C; body: X } → { status: A; body: X } | { status: B; body: X } | …
+ * Uses `never` for body so the result is assignable to any expected body type
+ * (never is the bottom type — assignable to everything).
  */
-type DistributeResponse<S extends number, B> = S extends S
-  ? { status: S; body: B }
+type DistributeResponse<S extends number> = S extends S
+  ? { status: S; body: never }
   : never;
 
 /**
  * Forward an infra client result to a zero route handler.
  *
  * ts-rest initClient returns { status: HTTPStatusCode; body: unknown } but
- * tsr.router handlers expect a discriminated union of response types.
- * This helper distributes the broad status union into discriminated form.
+ * tsr.router handlers expect a discriminated union with specific body types.
+ * This helper distributes the status union and erases the body type so the
+ * result is assignable to the handler's expected return type.
+ * Safe for proxy routes where infra and zero contracts share response shapes.
  */
-export function forwardInfra<S extends number, B>(result: {
+export function forwardInfra<S extends number>(result: {
   status: S;
-  body: B;
-}): DistributeResponse<S, B> {
-  return result as DistributeResponse<S, B>;
+  body: unknown;
+}): DistributeResponse<S> {
+  return result as DistributeResponse<S>;
 }
 
 /**
