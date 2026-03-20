@@ -2,6 +2,7 @@ name: Security Scanning
 
 on:
   pull_request:
+  merge_group:
   push:
     branches:
       - main
@@ -155,3 +156,42 @@ jobs:
           else
             gitleaks detect --source . --log-opts="HEAD~1..HEAD" --verbose --redact
           fi
+
+  ci-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - semgrep
+      - codeql
+      - pnpm-audit
+      - actionlint
+      - gitleaks
+    # Always run so the gate reports an explicit result (not "skipped").
+    # Skip on release-please PRs and commits — GitHub treats "skipped" as passing.
+    if: >-
+      always() &&
+      !startsWith(github.head_ref || '', 'release-please--branches--') &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release'))
+    steps:
+      - name: Validate CI results
+        run: |
+          echo "::group::CI Gate Results"
+          FAILED=0
+
+          check_result() {
+            local job="$1" result="$2"
+            if [ "$result" = "success" ]; then
+              echo "✅ $job: $result"
+            else
+              echo "::error::$job: expected success, got $result"
+              FAILED=1
+            fi
+          }
+
+          check_result "semgrep" "${{ needs.semgrep.result }}"
+          check_result "codeql" "${{ needs.codeql.result }}"
+          check_result "pnpm-audit" "${{ needs.pnpm-audit.result }}"
+          check_result "actionlint" "${{ needs.actionlint.result }}"
+          check_result "gitleaks" "${{ needs.gitleaks.result }}"
+
+          echo "::endgroup::"
+          exit $FAILED
