@@ -883,6 +883,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  loops: {
+    label: "Loops",
+    helpText:
+      "Connect your Loops account to send behavioral and transactional emails for your SaaS product",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Loops](https://app.loops.so)\n2. Go to **Settings** → **API**\n3. Click **Generate key**\n4. Copy the generated API key",
+        secrets: {
+          LOOPS_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "d2d561f5ff80136f69b4b5a31b9fb3c9",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   make: {
     label: "Make",
     helpText:
@@ -1023,6 +1043,35 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  cloudinary: {
+    label: "Cloudinary",
+    helpText:
+      "Connect your Cloudinary account to manage images, videos, and media assets with CDN delivery and transformations",
+    authMethods: {
+      "api-token": {
+        label: "API Credentials",
+        helpText:
+          "1. Log in to the [Cloudinary Console](https://console.cloudinary.com/settings/api-keys)\n2. Go to **Settings** → **API Keys**\n3. Copy your **Cloud Name**, **API Key**, and **API Secret**",
+        secrets: {
+          CLOUDINARY_TOKEN: {
+            label: "API Key",
+            required: true,
+          },
+          CLOUDINARY_API_SECRET: {
+            label: "API Secret",
+            required: true,
+          },
+          CLOUDINARY_CLOUD_NAME: {
+            label: "Cloud Name",
+            required: true,
+            type: "variable",
+            placeholder: "your-cloud-name",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   cronlytic: {
     label: "Cronlytic",
     helpText:
@@ -1039,6 +1088,23 @@ const CONNECTOR_TYPES_DEF = {
             label: "User ID",
             required: true,
             type: "variable",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  "customer-io": {
+    label: "Customer.io",
+    helpText:
+      "Connect your Customer.io account to send behavioral emails, SMS, and push notifications triggered by user events",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          CUSTOMERIO_APP_TOKEN: {
+            label: "App API Key",
+            required: true,
           },
         },
       },
@@ -1204,6 +1270,24 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Key",
             required: true,
             placeholder: "your-serpapi-api-key",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  salesforce: {
+    label: "Salesforce",
+    helpText:
+      "Connect your Salesforce account to manage CRM data, contacts, leads, and sales workflows",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          SALESFORCE_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "00D...",
           },
         },
       },
@@ -1612,6 +1696,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  calendly: {
+    label: "Calendly",
+    helpText:
+      "Connect your Calendly account to access scheduling data, event types, and invitee information",
+    authMethods: {
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Log in to [Calendly](https://calendly.com)\n2. Go to **Integrations > API & Webhooks**\n3. Generate a Personal Access Token\n4. Copy the token",
+        secrets: {
+          CALENDLY_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "your-calendly-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   canva: {
     label: "Canva",
     featureFlag: FeatureSwitchKey.CanvaConnector,
@@ -1655,6 +1759,26 @@ const CONNECTOR_TYPES_DEF = {
         CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
       },
     } as ConnectorOAuthConfig,
+  },
+  "cal-com": {
+    label: "Cal.com",
+    helpText:
+      "Connect your Cal.com account to manage scheduling, bookings, and calendar events",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Cal.com](https://app.cal.com)\n2. Go to **Settings** → **Developer** → **API Keys**\n3. Click **Create API Key**\n4. Copy the generated key",
+        secrets: {
+          CALCOM_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "cal_live_xxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   xero: {
     label: "Xero",
@@ -2252,6 +2376,26 @@ const CONNECTOR_TYPES_DEF = {
             label: "Webhook URL",
             required: true,
             placeholder: "https://your-domain.bitrix24.com/rest/1/xxx/",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
+  brevo: {
+    label: "Brevo",
+    helpText:
+      "Connect your Brevo account to manage email campaigns, transactional emails, and CRM contacts",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Brevo](https://app.brevo.com)\n2. Go to **Settings** → **SMTP & API** → **API Keys**\n3. Copy your API key",
+        secrets: {
+          BREVO_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "xkeysib-...",
           },
         },
       },
@@ -3065,6 +3209,26 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  v0: {
+    label: "v0",
+    helpText:
+      "Connect your v0 account to generate UI components, chat completions, and iterate on React and Next.js code with the v0 Platform API",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [v0](https://v0.dev)\n2. Go to **Settings** → **Keys** ([direct link](https://v0.dev/chat/settings/keys))\n3. Create a new API key\n4. Copy the generated token",
+        secrets: {
+          V0_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "v0-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -3078,9 +3242,11 @@ export const connectorTypeSchema = z.enum([
   "axiom",
   "airtable",
   "asana",
+  "calendly",
   "canva",
   "clickup",
   "cloudflare",
+  "cloudinary",
   "close",
   "github",
   "gmail",
@@ -3159,6 +3325,7 @@ export const connectorTypeSchema = z.enum([
   "serpapi",
   "zeptomail",
   "runway",
+  "salesforce",
   "shortio",
   "streak",
   "supadata",
@@ -3189,6 +3356,11 @@ export const connectorTypeSchema = z.enum([
   "pdforge",
   "slack-webhook",
   "wix",
+  "cal-com",
+  "v0",
+  "brevo",
+  "customer-io",
+  "loops",
 ]);
 
 /**

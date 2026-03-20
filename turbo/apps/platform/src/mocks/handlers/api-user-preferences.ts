@@ -1,7 +1,7 @@
 /**
  * User Preferences API Handlers
  *
- * Mock handlers for /api/user/preferences endpoint.
+ * Mock handlers for /api/zero/user-preferences endpoint.
  */
 
 import { http, HttpResponse } from "msw";
@@ -26,13 +26,13 @@ export function resetMockUserPreferences(): void {
 }
 
 export const apiUserPreferencesHandlers = [
-  // GET /api/user/preferences
-  http.get("/api/user/preferences", () => {
+  // GET /api/zero/user-preferences
+  http.get("/api/zero/user-preferences", () => {
     return HttpResponse.json(mockPreferences);
   }),
 
-  // PUT /api/user/preferences
-  http.put("/api/user/preferences", async ({ request }) => {
+  // POST /api/zero/user-preferences
+  http.post("/api/zero/user-preferences", async ({ request }) => {
     const body = (await request.json()) as Partial<UserPreferencesResponse>;
 
     if (body.notifyEmail !== undefined) {

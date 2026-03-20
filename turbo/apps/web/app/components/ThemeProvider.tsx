@@ -4,7 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -26,51 +26,57 @@ export function useTheme() {
   return context;
 }
 
+function subscribeToThemeChanges(callback: () => void): () => void {
+  window.addEventListener("storage", callback);
+  const mql = window.matchMedia("(prefers-color-scheme: dark)");
+  mql.addEventListener("change", callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    mql.removeEventListener("change", callback);
+  };
+}
+
+function getThemeSnapshot(): Theme {
+  const saved = localStorage.getItem("theme") as Theme | null;
+  if (saved === "light" || saved === "dark") {
+    return saved;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function getServerThemeSnapshot(): Theme {
+  return "dark";
+}
+
 interface ThemeProviderProps {
   children: ReactNode;
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
+  const theme = useSyncExternalStore(
+    subscribeToThemeChanges,
+    getThemeSnapshot,
+    getServerThemeSnapshot,
+  );
 
   useEffect(() => {
-    setMounted(true);
-    // Check localStorage first, then system preference
-    const savedTheme = localStorage.getItem("theme") as Theme | null;
-    if (savedTheme && (savedTheme === "light" || savedTheme === "dark")) {
-      setThemeState(savedTheme);
-      document.documentElement.setAttribute("data-theme", savedTheme);
-    } else {
-      // Check system preference
-      const prefersDark = window.matchMedia(
-        "(prefers-color-scheme: dark)",
-      ).matches;
-      const systemTheme = prefersDark ? "dark" : "light";
-      setThemeState(systemTheme);
-      document.documentElement.setAttribute("data-theme", systemTheme);
-    }
-  }, []);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
     localStorage.setItem("theme", newTheme);
     document.documentElement.setAttribute("data-theme", newTheme);
+    // localStorage.setItem doesn't fire storage events in the same tab,
+    // so dispatch manually to trigger useSyncExternalStore re-read
+    window.dispatchEvent(new Event("storage"));
   };
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
   };
-
-  // Prevent flash of wrong theme
-  if (!mounted) {
-    return (
-      <ThemeContext.Provider value={{ theme: "dark", toggleTheme, setTheme }}>
-        {children}
-      </ThemeContext.Provider>
-    );
-  }
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>

@@ -1,7 +1,23 @@
-import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
+/**
+ * Backward-compatible route for /api/user/preferences.
+ *
+ * The CLI still uses the old contract (userPreferencesContract) with
+ * GET and PUT methods at this path. This route delegates to the shared
+ * service layer (same as /api/zero/user-preferences).
+ *
+ * Will be removed once the CLI contracts are migrated.
+ */
+import {
+  createHandler,
+  createSafeErrorHandler,
+  tsr,
+} from "../../../../src/lib/ts-rest-handler";
 import { userPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   getUserPreferences,
@@ -10,21 +26,16 @@ import {
 import { isBadRequest } from "../../../../src/lib/errors";
 
 const router = tsr.router(userPreferencesContract, {
-  /**
-   * GET /api/user/preferences - Get user preferences
-   */
   get: async ({ headers }, { request }) => {
     initServices();
 
-    const ctx = await getAuthContext(headers.authorization);
-    if (!ctx) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(ctx, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
-    const prefs = await getUserPreferences(org.orgId, ctx.userId);
+    const prefs = await getUserPreferences(org.orgId, authCtx.userId);
 
     return {
       status: 200 as const,
@@ -38,22 +49,17 @@ const router = tsr.router(userPreferencesContract, {
     };
   },
 
-  /**
-   * PUT /api/user/preferences - Update user preferences
-   */
   update: async ({ body, headers }, { request }) => {
     initServices();
 
-    const ctx = await getAuthContext(headers.authorization);
-    if (!ctx) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(ctx, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     try {
-      const prefs = await updateUserPreferences(org.orgId, ctx.userId, {
+      const prefs = await updateUserPreferences(org.orgId, authCtx.userId, {
         timezone: body.timezone,
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,
@@ -80,6 +86,8 @@ const router = tsr.router(userPreferencesContract, {
   },
 });
 
-const handler = createHandler(userPreferencesContract, router);
+const handler = createHandler(userPreferencesContract, router, {
+  errorHandler: createSafeErrorHandler("user-preferences-compat"),
+});
 
 export { handler as GET, handler as PUT };

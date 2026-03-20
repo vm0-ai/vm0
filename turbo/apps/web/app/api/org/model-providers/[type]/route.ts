@@ -1,29 +1,38 @@
-import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
+/**
+ * Backward-compatible route for DELETE /api/org/model-providers/:type.
+ *
+ * The CLI still uses the old contract (orgModelProvidersByTypeContract)
+ * at this path. This route delegates to the shared service layer.
+ *
+ * Will be removed once the CLI contracts are migrated.
+ */
+import {
+  createHandler,
+  createSafeErrorHandler,
+  tsr,
+} from "../../../../../src/lib/ts-rest-handler";
 import {
   orgModelProvidersByTypeContract,
   createErrorResponse,
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { deleteOrgModelProvider } from "../../../../../src/lib/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
 
-const log = logger("api:org-model-providers");
+const log = logger("api:org-model-providers-compat");
 
 const router = tsr.router(orgModelProvidersByTypeContract, {
-  /**
-   * DELETE /api/org/model-providers/:type - Delete an org-level model provider
-   * Admin only.
-   */
   delete: async ({ params, headers }, { request }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
-      return createErrorResponse("UNAUTHORIZED", "Not authenticated");
-    }
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org, member } = await resolveOrg(authCtx, orgSlug);
@@ -35,7 +44,7 @@ const router = tsr.router(orgModelProvidersByTypeContract, {
       );
     }
 
-    log.debug("deleting org model provider", {
+    log.debug("deleting org model provider (compat)", {
       orgId: org.orgId,
       type: params.type,
     });
@@ -56,6 +65,8 @@ const router = tsr.router(orgModelProvidersByTypeContract, {
   },
 });
 
-const handler = createHandler(orgModelProvidersByTypeContract, router);
+const handler = createHandler(orgModelProvidersByTypeContract, router, {
+  errorHandler: createSafeErrorHandler("org-model-providers-compat"),
+});
 
 export { handler as DELETE };

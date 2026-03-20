@@ -1,7 +1,7 @@
 import { Component } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import { detach, onRef, Reason } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconPlug,
@@ -115,7 +115,7 @@ function getStreamedScenarios(agentName: string): readonly Readonly<{
   ];
 }
 
-const STREAM_DELAY_MS = 1400;
+const INITIAL_TAGLINE_INDEX = Math.floor(Math.random() * 18);
 
 function getTagline(
   agentName: string,
@@ -788,43 +788,9 @@ export function ZeroChatPage({
   const commandAllowed$ = useCCState(false);
   const commandAllowed = useGet(commandAllowed$);
   const setCommandAllowed = useSet(commandAllowed$);
-  const taglineIndex$ = useCCState(Math.floor(Math.random() * 18));
+  const taglineIndex$ = useCCState(INITIAL_TAGLINE_INDEX);
   const taglineIndex = useGet(taglineIndex$);
   const tagline = getTagline(agentName, userName, taglineIndex);
-  // Stream tick — schedules the next streamed message after a delay
-  const streamTimeoutId$ = useCCState<number | null>(null);
-  const scheduleStreamTick$ = useCommand(({ get, set }) => {
-    const active = get(conversationActive$);
-    const count = get(streamedCount$);
-    if (!active || count >= 6) {
-      return;
-    }
-    const id = window.setTimeout(() => {
-      set(streamTimeoutId$, null);
-      set(streamedCount$, (c: number) => Math.min(c + 1, 6));
-      // Auto-scroll conversation end into view
-      const el = get(conversationEndEl$);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth" });
-      }
-      // Schedule next tick
-      set(scheduleStreamTick$);
-    }, STREAM_DELAY_MS);
-    set(streamTimeoutId$, id);
-  });
-  // Clean up pending stream timeout on unmount
-  const streamCleanup$ = useCommand(
-    ({ get }, _el: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        const id = get(streamTimeoutId$);
-        if (id !== null) {
-          window.clearTimeout(id);
-        }
-      });
-    },
-  );
-  const streamCleanupRef$ = onRef(streamCleanup$);
-  const streamCleanupRef = useSet(streamCleanupRef$);
 
   // Pin pill — show when chatting with an unpinned subagent
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -836,7 +802,10 @@ export function ZeroChatPage({
     currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
-      detach(savePinnedIds([...pinnedIds, currentChatAgentId]), Reason.DomCallback);
+      detach(
+        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        Reason.DomCallback,
+      );
     }
   };
 
@@ -858,10 +827,7 @@ export function ZeroChatPage({
 
   if (showConversation && scenariosToShow.length > 0) {
     return (
-      <div
-        ref={streamCleanupRef}
-        className="flex flex-1 flex-col min-h-0 bg-transparent"
-      >
+      <div className="flex flex-1 flex-col min-h-0 bg-transparent">
         <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative shrink-0">

@@ -1,7 +1,7 @@
 /**
  * Secrets API Handlers
  *
- * Mock handlers for /api/secrets endpoint.
+ * Mock handlers for /api/secrets and /api/zero/secrets endpoints.
  */
 
 import { http, HttpResponse } from "msw";
@@ -11,6 +11,33 @@ let mockSecrets: SecretResponse[] = [];
 
 export function resetMockSecrets(): void {
   mockSecrets = [];
+}
+
+function handleSetSecret(body: {
+  name: string;
+  value: string;
+  description?: string;
+}) {
+  const now = new Date().toISOString();
+  const existing = mockSecrets.find((s) => s.name === body.name);
+  const created = !existing;
+
+  const secret: SecretResponse = {
+    id: existing?.id ?? crypto.randomUUID(),
+    name: body.name,
+    description: body.description ?? null,
+    type: "user",
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+
+  if (existing) {
+    mockSecrets = mockSecrets.map((s) => (s.name === body.name ? secret : s));
+  } else {
+    mockSecrets.push(secret);
+  }
+
+  return HttpResponse.json(secret, { status: created ? 201 : 200 });
 }
 
 export const apiSecretsHandlers = [
@@ -29,27 +56,17 @@ export const apiSecretsHandlers = [
       value: string;
       description?: string;
     };
+    return handleSetSecret(body);
+  }),
 
-    const now = new Date().toISOString();
-    const existing = mockSecrets.find((s) => s.name === body.name);
-    const created = !existing;
-
-    const secret: SecretResponse = {
-      id: existing?.id ?? crypto.randomUUID(),
-      name: body.name,
-      description: body.description ?? null,
-      type: "user",
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
+  // POST /api/zero/secrets - Create or update a secret (zero proxy)
+  http.post("/api/zero/secrets", async ({ request }) => {
+    const body = (await request.json()) as {
+      name: string;
+      value: string;
+      description?: string;
     };
-
-    if (existing) {
-      mockSecrets = mockSecrets.map((s) => (s.name === body.name ? secret : s));
-    } else {
-      mockSecrets.push(secret);
-    }
-
-    return HttpResponse.json(secret, { status: created ? 201 : 200 });
+    return handleSetSecret(body);
   }),
 
   // DELETE /api/secrets/:name - Delete a secret

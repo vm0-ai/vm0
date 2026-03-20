@@ -25,7 +25,7 @@ jobs:
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
     outputs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
@@ -88,7 +88,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
     needs: [detect]
     if: needs.detect.outputs.any-changed == 'true'
     steps:
@@ -163,7 +163,7 @@ jobs:
   runner-build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
     needs: [detect]
     if: |
       needs.detect.outputs.ci-changed == 'true' ||

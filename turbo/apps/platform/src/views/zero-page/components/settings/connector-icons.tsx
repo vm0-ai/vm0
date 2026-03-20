@@ -46,6 +46,7 @@ const MONOCHROME_ICONS: Readonly<Record<string, true>> = Object.freeze({
   openai: true,
   pdforge: true,
   wix: true,
+  v0: true,
   x: true,
 });
 

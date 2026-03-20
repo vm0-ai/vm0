@@ -3,12 +3,15 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
   hasRequiredScopes,
+  zeroSecretsContract,
+  zeroVariablesContract,
   type ConnectorType,
   type ConnectorResponse,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
-import { apiBaseForNavigation$, fetch$ } from "../../fetch.ts";
+import { apiBaseForNavigation$ } from "../../fetch.ts";
+import { zeroClient$ } from "../../api-client.ts";
 import { throwIfAbort } from "../../utils.ts";
 import { delay } from "signal-timers";
 import { localStorageSignals } from "../../external/local-storage.ts";
@@ -187,24 +190,27 @@ export const submitApiToken$ = command(
     inputSecrets: Record<string, string>,
     signal: AbortSignal,
   ) => {
-    const fetchFn = get(fetch$);
+    const createClient = get(zeroClient$);
+    const secretsClient = createClient(zeroSecretsContract);
+    const variablesClient = createClient(zeroVariablesContract);
     const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
     for (const [name, value] of Object.entries(inputSecrets)) {
       if (!value) {
         continue;
       }
       const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
-      const endpoint = isVariable ? "/api/variables" : "/api/secrets";
-      const resp = await fetchFn(endpoint, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, value }),
-      });
+      const result = isVariable
+        ? await variablesClient.set({ body: { name, value } })
+        : await secretsClient.set({ body: { name, value } });
       signal.throwIfAborted();
-      if (!resp.ok) {
-        const data = (await resp.json()) as { error?: { message?: string } };
+      if (
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 500
+      ) {
         throw new Error(
-          data?.error?.message ?? `Failed to save ${name} (${resp.status})`,
+          result.body.error.message ??
+            `Failed to save ${name} (${result.status})`,
         );
       }
     }

@@ -42,6 +42,7 @@ export const agentRuns = pgTable(
     result: jsonb("result"),
     error: text("error"),
     modelProvider: varchar("model_provider", { length: 100 }),
+    selectedModel: varchar("selected_model", { length: 255 }),
     triggerSource: varchar("trigger_source", { length: 20 }),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

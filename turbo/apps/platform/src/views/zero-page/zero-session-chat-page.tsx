@@ -20,7 +20,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
-import { delay } from "signal-timers";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
@@ -76,9 +75,6 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-  const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
-  const messagesEndEl = useGet(messagesEndEl$);
-  const setMessagesEndEl = useSet(messagesEndEl$);
 
   // Pin pill — show when chatting with an unpinned subagent
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -90,19 +86,19 @@ export function ZeroSessionChatPage({
     currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
-      detach(savePinnedIds([...pinnedIds, currentChatAgentId]), Reason.DomCallback);
+      detach(
+        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        Reason.DomCallback,
+      );
     }
   };
 
-  // Auto-scroll when messages change (deferred to avoid side effect during render)
-  if (messagesEndEl && messages.length > 0) {
-    detach(
-      delay(0).then(() => {
-        messagesEndEl.scrollIntoView({ behavior: "smooth" });
-      }),
-      Reason.DomCallback,
-    );
-  }
+  // Auto-scroll when messages change — ref callback runs at commit time
+  const scrollAnchorRef = (el: HTMLDivElement | null) => {
+    if (el && messages.length > 0) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
     clearInput();
@@ -181,7 +177,7 @@ export function ZeroSessionChatPage({
                 zeroAvatarSrc={zeroAvatarSrc}
               />
             ))}
-            <div ref={setMessagesEndEl} />
+            <div ref={scrollAnchorRef} />
           </div>
         </main>
 
@@ -386,6 +382,10 @@ const THINKING_MESSAGES = [
   "Just a moment...",
 ] as const;
 
+const INITIAL_THINKING_INDEX = Math.floor(
+  Math.random() * THINKING_MESSAGES.length,
+);
+
 function RunActivityLine() {
   const summariesLoadable = useLastLoadable(zeroChatRunSummaries$);
   const rawSummaries =
@@ -394,9 +394,7 @@ function RunActivityLine() {
   const queuePosition = useGet(zeroChatQueuePosition$);
   const isQueued = runStatus === "queued";
 
-  const thinkingIndex$ = useCCState(
-    Math.floor(Math.random() * THINKING_MESSAGES.length),
-  );
+  const thinkingIndex$ = useCCState(INITIAL_THINKING_INDEX);
   const thinkingIndex = useGet(thinkingIndex$);
   const thinkingMsg = THINKING_MESSAGES[thinkingIndex]!;
 

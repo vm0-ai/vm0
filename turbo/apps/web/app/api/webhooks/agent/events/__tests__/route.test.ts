@@ -14,6 +14,7 @@ import {
   createTestSandboxToken,
   findTestCreditUsagesByRunId,
   setTestRunModelProvider,
+  setTestRunSelectedModel,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -649,9 +650,52 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(record.costUsd).toBe("0.11752625");
     });
 
-    it("should store modelProvider from agent run in credit_usage", async () => {
-      // Set modelProvider on the existing test run
+    it("should store modelProvider and selectedModel from agent run in credit_usage", async () => {
+      // Set modelProvider and selectedModel on the existing test run
       await setTestRunModelProvider(testRunId, "anthropic-api-key");
+      await setTestRunSelectedModel(testRunId, "claude-sonnet-4.6");
+
+      // In production, result events arrive in separate requests from system.init
+      const resultUuid = randomUUID();
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "result",
+                uuid: resultUuid,
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                usage: {
+                  input_tokens: 100,
+                  output_tokens: 50,
+                },
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.model).toBe("claude-sonnet-4.6");
+      expect(record.modelProvider).toBe("anthropic-api-key");
+    });
+
+    it("should prefer run.selectedModel over system.init model", async () => {
+      await setTestRunSelectedModel(testRunId, "claude-sonnet-4.6");
 
       const resultUuid = randomUUID();
       const request = createTestRequest(
@@ -694,9 +738,53 @@ describe("POST /api/webhooks/agent/events", () => {
 
       const records = await findTestCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(1);
-      const record = records[0]!;
-      expect(record.model).toBe("claude-sonnet-4-20250514");
-      expect(record.modelProvider).toBe("anthropic-api-key");
+      expect(records[0]!.model).toBe("claude-sonnet-4.6");
+    });
+
+    it("should fall back to system.init model when no selectedModel on run", async () => {
+      // No selectedModel set on run — should fall back to extractModel from events
+      const resultUuid = randomUUID();
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "system",
+                subtype: "init",
+                model: "claude-sonnet-4-20250514",
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                data: {},
+              },
+              {
+                type: "result",
+                uuid: resultUuid,
+                sequenceNumber: 1,
+                timestamp: Date.now(),
+                usage: {
+                  input_tokens: 100,
+                  output_tokens: 50,
+                },
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const records = await findTestCreditUsagesByRunId(testRunId);
+      expect(records).toHaveLength(1);
+      expect(records[0]!.model).toBe("claude-sonnet-4-20250514");
     });
 
     it("should use 'unknown' model when no init event in batch", async () => {

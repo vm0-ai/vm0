@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { GET, PUT } from "../route";
+import { GET, POST } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -8,7 +8,7 @@ vi.mock("@axiomhq/logging");
 
 const context = testContext();
 
-describe("GET /api/user/preferences", () => {
+describe("GET /api/zero/user-preferences", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -17,7 +17,7 @@ describe("GET /api/user/preferences", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -31,7 +31,7 @@ describe("GET /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -48,20 +48,20 @@ describe("GET /api/user/preferences", () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
-    // Set timezone via PUT
-    const putRequest = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+    // Set timezone via POST
+    const postRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "Asia/Shanghai" }),
       },
     );
-    await PUT(putRequest);
+    await POST(postRequest);
 
-    // Get preferences — reads from org_members table
+    // Get preferences
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -75,7 +75,7 @@ describe("GET /api/user/preferences", () => {
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(request);
 
@@ -83,7 +83,7 @@ describe("GET /api/user/preferences", () => {
   });
 });
 
-describe("PUT /api/user/preferences", () => {
+describe("POST /api/zero/user-preferences", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -92,14 +92,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "America/New_York" }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -111,14 +111,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "America/New_York" }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
 
     expect(response.status).toBe(200);
   });
@@ -128,14 +128,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "Europe/London" }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -147,14 +147,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "Invalid/Timezone" }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(400);
@@ -166,14 +166,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "" }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
 
     expect(response.status).toBe(400);
   });
@@ -184,26 +184,26 @@ describe("PUT /api/user/preferences", () => {
 
     // First update
     const request1 = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "Asia/Tokyo" }),
       },
     );
-    const response1 = await PUT(request1);
+    const response1 = await POST(request1);
     expect(response1.status).toBe(200);
 
     // Second update
     const request2 = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "America/Los_Angeles" }),
       },
     );
-    const response2 = await PUT(request2);
+    const response2 = await POST(request2);
     const data2 = await response2.json();
 
     expect(response2.status).toBe(200);
@@ -215,14 +215,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notifyEmail: true }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -234,9 +234,9 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           timezone: "Asia/Shanghai",
@@ -244,7 +244,7 @@ describe("PUT /api/user/preferences", () => {
         }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -257,26 +257,26 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     // Set timezone first
-    const putTz = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+    const setupReq = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "Europe/Berlin" }),
       },
     );
-    await PUT(putTz);
+    await POST(setupReq);
 
     // Update only notifyEmail
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notifyEmail: true }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -289,14 +289,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notifySlack: false }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -309,25 +309,25 @@ describe("PUT /api/user/preferences", () => {
 
     // Set timezone and notifyEmail first
     const setup = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "Europe/Berlin", notifyEmail: true }),
       },
     );
-    await PUT(setup);
+    await POST(setup);
 
     // Update only notifySlack
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notifySlack: false }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -341,14 +341,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
 
     expect(response.status).toBe(400);
   });
@@ -358,14 +358,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pinnedAgentIds: ["agent-1", "agent-2"] }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -377,7 +377,7 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -386,25 +386,25 @@ describe("PUT /api/user/preferences", () => {
     expect(data.pinnedAgentIds).toEqual([]);
   });
 
-  it("should persist pinnedAgentIds across GET after PUT", async () => {
+  it("should persist pinnedAgentIds across GET after POST", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     // Update pinnedAgentIds
-    const putRequest = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+    const postRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pinnedAgentIds: ["agent-a", "agent-b", "agent-c"],
         }),
       },
     );
-    await PUT(putRequest);
+    await POST(postRequest);
 
     const getRequest = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(getRequest);
     const data = await response.json();
@@ -418,16 +418,16 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pinnedAgentIds: ["a1", "a2", "a3", "a4", "a5"],
         }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -440,25 +440,25 @@ describe("PUT /api/user/preferences", () => {
 
     // Set timezone first
     const setupReq = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: "America/New_York" }),
       },
     );
-    await PUT(setupReq);
+    await POST(setupReq);
 
     // Update only pinnedAgentIds
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pinnedAgentIds: ["agent-x"] }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -471,14 +471,14 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sendMode: "cmd-enter" }),
       },
     );
-    const response = await PUT(request);
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -490,7 +490,7 @@ describe("PUT /api/user/preferences", () => {
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -499,23 +499,23 @@ describe("PUT /api/user/preferences", () => {
     expect(data.sendMode).toBe("enter");
   });
 
-  it("should persist sendMode across GET after PUT", async () => {
+  it("should persist sendMode across GET after POST", async () => {
     const user = await context.setupUser();
     mockClerk({ userId: user.userId, orgId: user.orgId });
 
     // Update sendMode
-    const putRequest = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+    const postRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
       {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sendMode: "cmd-enter" }),
       },
     );
-    await PUT(putRequest);
+    await POST(postRequest);
 
     const getRequest = createTestRequest(
-      "http://localhost:3000/api/user/preferences",
+      "http://localhost:3000/api/zero/user-preferences",
     );
     const response = await GET(getRequest);
     const data = await response.json();

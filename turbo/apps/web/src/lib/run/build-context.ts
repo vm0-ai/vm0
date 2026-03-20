@@ -185,6 +185,9 @@ interface ModelProviderSecretResult {
   /** For meta-providers like "vm0", the concrete provider type resolved at build time.
    *  Used for firewall lookup instead of the meta-provider type. */
   concreteProviderType?: ModelProviderType;
+  /** The logical model name selected by the user (e.g. "claude-sonnet-4.6").
+   *  Used for credit usage billing. */
+  selectedModel?: string;
 }
 
 /**
@@ -220,6 +223,7 @@ async function resolveVm0Provider(
     injectedEnvironment,
     resolvedModelProvider: "vm0",
     concreteProviderType: concreteType,
+    selectedModel,
   };
 }
 
@@ -280,6 +284,7 @@ async function resolveModelProviderSecrets(
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
+        selectedModel,
       };
     }
 
@@ -291,6 +296,7 @@ async function resolveModelProviderSecrets(
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
+        selectedModel,
       };
     }
 
@@ -318,6 +324,7 @@ async function resolveModelProviderSecrets(
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
+        selectedModel,
       };
     }
 
@@ -342,6 +349,7 @@ async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment,
       resolvedModelProvider: providerType,
+      selectedModel,
     };
   }
 
@@ -352,6 +360,7 @@ async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      selectedModel,
     };
   }
 
@@ -367,6 +376,7 @@ async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      selectedModel,
     };
   }
 
@@ -385,7 +395,12 @@ async function resolveModelProviderSecrets(
     `Resolved model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
   );
 
-  return { secrets, injectedEnvironment, resolvedModelProvider: providerType };
+  return {
+    secrets,
+    injectedEnvironment,
+    resolvedModelProvider: providerType,
+    selectedModel,
+  };
 }
 
 /**
@@ -681,6 +696,7 @@ async function resolveSecretsAndEnvironment(
   secretConnectorMap: Record<string, string> | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
   modelProviderFirewall: ExpandedFirewallConfig | undefined;
+  selectedModel: string | undefined;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -772,6 +788,7 @@ async function resolveSecretsAndEnvironment(
     secretConnectorMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
     modelProviderFirewall,
+    selectedModel: modelProviderResult.selectedModel,
   };
 }
 
@@ -867,6 +884,8 @@ interface BuildContextResult {
   timings: BuildContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** The logical model name selected by the user, for credit usage billing. */
+  selectedModel: string | undefined;
 }
 
 /**
@@ -1025,6 +1044,7 @@ export async function buildExecutionContext(
     secretConnectorMap,
     resolvedModelProvider,
     modelProviderFirewall,
+    selectedModel,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
@@ -1103,5 +1123,6 @@ export async function buildExecutionContext(
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
     },
     resolvedModelProvider,
+    selectedModel,
   };
 }

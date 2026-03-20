@@ -12,6 +12,7 @@
  * - test-context-in-hooks: Ensure testContext() in test hooks
  * - computed-const-args-package-scope: Enforce package scope for constant functions
  * - no-store-in-params: Prevent Store type in function params
+ * - no-side-effect-in-render: Prevent side-effect calls (set, detach) directly in render
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -25,6 +26,7 @@ import testContextInHooks from "./rules/test-context-in-hooks.ts";
 import computedConstArgsPackageScope from "./rules/computed-const-args-package-scope.ts";
 import noStoreInParams from "./rules/no-store-in-params.ts";
 import setupPageRender from "./rules/setup-page-render.ts";
+import noSideEffectInRender from "./rules/no-side-effect-in-render.ts";
 
 const plugin = {
   meta: {
@@ -43,6 +45,7 @@ const plugin = {
     "computed-const-args-package-scope": computedConstArgsPackageScope,
     "no-store-in-params": noStoreInParams,
     "setup-page-render": setupPageRender,
+    "no-side-effect-in-render": noSideEffectInRender,
   },
 };
 

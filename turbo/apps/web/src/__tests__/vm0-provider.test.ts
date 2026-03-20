@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { PUT } from "../../app/api/org/model-providers/route";
+import { POST } from "../../app/api/zero/model-providers/route";
 import {
   createTestRequest,
   createTestOrg,
@@ -37,7 +37,7 @@ async function setupOrg(
 }
 
 function orgUrl(slug: string): string {
-  return `http://localhost:3000/api/org/model-providers?org=${slug}`;
+  return `http://localhost:3000/api/zero/model-providers?org=${slug}`;
 }
 
 describe("VM0 managed model provider", () => {
@@ -50,9 +50,9 @@ describe("VM0 managed model provider", () => {
       const userId = uniqueId("vm0-create");
       const { slug } = await setupOrg(userId, "org:admin", "vm0");
 
-      const response = await PUT(
+      const response = await POST(
         createTestRequest(orgUrl(slug), {
-          method: "PUT",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "vm0",
@@ -74,9 +74,9 @@ describe("VM0 managed model provider", () => {
       const userId = uniqueId("vm0-forbid");
       const { slug } = await setupOrg(userId, "org:admin", "my-org");
 
-      const response = await PUT(
+      const response = await POST(
         createTestRequest(orgUrl(slug), {
-          method: "PUT",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "vm0",

@@ -1,7 +1,7 @@
 /**
  * Org Model Providers API Handlers
  *
- * Mock handlers for /api/org/model-providers endpoint.
+ * Mock handlers for /api/zero/model-providers endpoint.
  */
 
 import { http, HttpResponse } from "msw";
@@ -21,16 +21,16 @@ export function resetMockOrgModelProviders(): void {
 }
 
 export const apiOrgModelProvidersHandlers = [
-  // GET /api/org/model-providers - List all org model providers
-  http.get("/api/org/model-providers", () => {
+  // GET /api/zero/model-providers - List all org model providers
+  http.get("/api/zero/model-providers", () => {
     const response: ModelProviderListResponse = {
       modelProviders: mockOrgModelProviders,
     };
     return HttpResponse.json(response);
   }),
 
-  // PUT /api/org/model-providers - Create or update org model provider
-  http.put("/api/org/model-providers", async ({ request }) => {
+  // POST /api/zero/model-providers - Create or update org model provider
+  http.post("/api/zero/model-providers", async ({ request }) => {
     const body = (await request.json()) as {
       type: ModelProviderResponse["type"];
       secret?: string;
@@ -74,8 +74,8 @@ export const apiOrgModelProvidersHandlers = [
     );
   }),
 
-  // POST /api/org/model-providers/:type/set-default - Set default provider
-  http.post("/api/org/model-providers/:type/set-default", ({ params }) => {
+  // POST /api/zero/model-providers/:type/default - Set default provider
+  http.post("/api/zero/model-providers/:type/default", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];
     const existing = mockOrgModelProviders.find((p) => p.type === type);
 
@@ -94,8 +94,8 @@ export const apiOrgModelProvidersHandlers = [
     return HttpResponse.json({ ...existing, isDefault: true });
   }),
 
-  // DELETE /api/org/model-providers/:type - Delete org model provider
-  http.delete("/api/org/model-providers/:type", ({ params }) => {
+  // DELETE /api/zero/model-providers/:type - Delete org model provider
+  http.delete("/api/zero/model-providers/:type", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];
     const existing = mockOrgModelProviders.find((p) => p.type === type);
 
