@@ -482,6 +482,8 @@ function RecentChatSection({
   recentSessionsError,
   selectedRecentId,
   onRecentSelect,
+  onNewChat,
+  currentAgent,
 }: {
   agentLabel: string;
   recentSessions: ChatThreadListItem[];
@@ -489,6 +491,8 @@ function RecentChatSection({
   recentSessionsError: string | null;
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
+  onNewChat?: (agent: { id: string; name: string } | null) => void;
+  currentAgent: { id: string; name: string } | null;
 }) {
   const searchOpen$ = useCCState(false);
   const searchOpen = useGet(searchOpen$);
@@ -547,15 +551,39 @@ function RecentChatSection({
           <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate">
             Chats with {agentLabel}
           </span>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              aria-label="Search chats"
-            >
-              <IconSearch size={14} />
-            </button>
+          <div className="flex items-center gap-0.5 -mr-0.5">
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setSearchOpen(true)}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                    aria-label={`Search chat with ${agentLabel}`}
+                  >
+                    <IconSearch size={14} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  Search chat with {agentLabel}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onNewChat?.(currentAgent)}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                    aria-label={`New chat with ${agentLabel}`}
+                  >
+                    <IconPlus size={14} stroke={2} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  New chat with {agentLabel}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       )}
@@ -1132,6 +1160,10 @@ export function ZeroSidebar({
             recentSessionsError={recentSessionsError}
             selectedRecentId={selectedRecentId}
             onRecentSelect={onRecentSelect}
+            onNewChat={onNewChat}
+            currentAgent={
+              selectedAgent ? { id: selectedAgent.id, name: selectedAgent.name } : null
+            }
           />
         </nav>
 
