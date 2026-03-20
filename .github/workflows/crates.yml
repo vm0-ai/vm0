@@ -234,7 +234,7 @@ jobs:
               exit 1
             fi
           else
-            JOB_REF="main-test"
+            JOB_REF="staging-test"
           fi
 
           HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep .)
