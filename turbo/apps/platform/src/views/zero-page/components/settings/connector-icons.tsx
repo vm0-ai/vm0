@@ -1,19 +1,36 @@
-import type { ConnectorType } from "@vm0/core";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { cn } from "@vm0/ui";
 
-const CONNECTOR_ICONS: Readonly<Record<string, string>> = Object.freeze(
-  Object.fromEntries(
-    Object.entries(
-      import.meta.glob<string>("./icons/*.svg", {
-        eager: true,
-        import: "default",
-      }),
-    ).map(([path, url]) => {
-      const name = path.replace("./icons/", "").replace(".svg", "");
-      return [name, url];
-    }),
-  ),
-);
+const iconModules = import.meta.glob<string>("./icons/*.svg", {
+  eager: true,
+  import: "default",
+});
+
+const iconEntries = Object.entries(iconModules).map(([path, url]) => {
+  const name = path.replace("./icons/", "").replace(".svg", "");
+  return [name, url] as const;
+});
+
+const iconMap = Object.fromEntries(iconEntries) as Record<
+  ConnectorType,
+  string
+>;
+
+// Validate at dev time that every connector type has a matching icon file
+if (import.meta.env.DEV) {
+  const missingIcons = Object.keys(CONNECTOR_TYPES).filter(
+    (type) => !(type in iconMap),
+  );
+  if (missingIcons.length > 0) {
+    console.error(
+      `Missing connector icons for: ${missingIcons.join(", ")}. ` +
+        `Add SVG files to the icons/ directory with matching names.`,
+    );
+  }
+}
+
+const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
+  Object.freeze(iconMap);
 
 const MONOCHROME_ICONS: Readonly<Record<string, true>> = Object.freeze({
   agentmail: true,
