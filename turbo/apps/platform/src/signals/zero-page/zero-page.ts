@@ -13,10 +13,6 @@ import { refreshScheduleIfActive$ } from "./zero-schedule.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { zeroChatAgentName$, zeroInChat$ } from "./zero-nav.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
-import {
-  pinnedAgentIds$,
-  updatePinnedAgentIds$,
-} from "./zero-pinned-agents.ts";
 import { logger } from "../log.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
@@ -77,14 +73,6 @@ async function resolveAndSwitchAgent(
       const agent = subagents.find((a) => a.name === agentName);
       if (agent) {
         set(switchActiveAgent$, { id: agent.id, name: agent.name });
-        // Auto-pin agent if not already pinned
-        const pinned = await get(pinnedAgentIds$);
-        if (!pinned.includes(agent.id)) {
-          detach(
-            set(updatePinnedAgentIds$, [...pinned, agent.id]),
-            Reason.DomCallback,
-          );
-        }
       } else {
         // Unknown agent → redirect to default
         set(switchActiveAgent$, null);
@@ -97,10 +85,8 @@ async function resolveAndSwitchAgent(
         }
       }
     }
-  } else {
-    // Non-talk, non-chat URL (e.g. /schedule)
-    set(switchActiveAgent$, null);
   }
+  // Non-talk, non-chat URL (e.g. /schedule): preserve current agent, do not clear
 }
 
 export const setupZeroPage$ = command(
