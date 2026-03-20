@@ -18,6 +18,7 @@ import { brightDataHandler } from "./providers/bright-data-handler";
 import { browserbaseHandler } from "./providers/browserbase-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
 import { calComHandler } from "./providers/cal-com-handler";
+import { calendlyHandler } from "./providers/calendly-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
 import { clickupHandler } from "./providers/clickup-handler";
@@ -25,6 +26,7 @@ import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { cloudinaryHandler } from "./providers/cloudinary-handler";
 import { closeHandler } from "./providers/close-handler";
 import { cronlyticHandler } from "./providers/cronlytic-handler";
+import { customerIoHandler } from "./providers/customer-io-handler";
 import { deelHandler } from "./providers/deel-handler";
 import { discordHandler } from "./providers/discord-handler";
 import { discordWebhookHandler } from "./providers/discord-webhook-handler";
@@ -144,6 +146,7 @@ export const PROVIDER_HANDLERS: Record<
   browserbase: browserbaseHandler,
   browserless: browserlessHandler,
   "cal-com": calComHandler,
+  calendly: calendlyHandler,
   canva: canvaHandler,
   chatwoot: chatwootHandler,
   clickup: clickupHandler,
@@ -151,6 +154,7 @@ export const PROVIDER_HANDLERS: Record<
   cloudinary: cloudinaryHandler,
   close: closeHandler,
   cronlytic: cronlyticHandler,
+  "customer-io": customerIoHandler,
   deel: deelHandler,
   discord: discordHandler,
   "discord-webhook": discordWebhookHandler,

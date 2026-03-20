@@ -43,7 +43,6 @@ import {
   AddConnectionDialog,
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
-import { skills$ } from "../../data/skills.ts";
 import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
@@ -92,22 +91,18 @@ function buildModelOpts(model: string): { modelProvider: string } | undefined {
 interface ComposerConnectorItem {
   type: string;
   label: string;
-  iconUrl?: string;
   connected: boolean;
 }
 
 function buildConnectorItem(
   name: string,
-  skillMap: Map<string, { label: string; icon?: string }>,
   connectorMap: Map<ConnectorType, { label: string; connected: boolean }>,
   optimistic: Set<string>,
 ): ComposerConnectorItem {
-  const skill = skillMap.get(name);
   const connector = connectorMap.get(name as ConnectorType);
   return {
     type: name,
-    label: skill?.label ?? connector?.label ?? name,
-    iconUrl: skill?.icon,
+    label: connector?.label ?? name,
     connected: optimistic.has(name) ? true : (connector?.connected ?? false),
   };
 }
@@ -130,14 +125,9 @@ function maybeClearOptimistic(
 
 function resolveConnectorLabel(
   type: string,
-  skillMap: Map<string, { label: string }>,
   connectorMap: Map<ConnectorType, { label: string }>,
 ): string {
-  return (
-    skillMap.get(type)?.label ??
-    connectorMap.get(type as ConnectorType)?.label ??
-    type
-  );
+  return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
 function startConnectorFlow(
@@ -190,11 +180,7 @@ function ConnectorTriggerIcons({
           )}
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
         >
-          {c.iconUrl ? (
-            <img src={c.iconUrl} alt="" className="h-4 w-4" />
-          ) : (
-            <ConnectorIcon type={c.type as ConnectorType} size={16} />
-          )}
+          <ConnectorIcon type={c.type as ConnectorType} size={16} />
           {hasDisconnected && i === connected.length - 1 && (
             <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 z-10" />
           )}
@@ -216,11 +202,7 @@ function ConnectorRow({
   const row = (
     <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors">
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        {item.iconUrl ? (
-          <img src={item.iconUrl} alt="" className="h-4 w-4" />
-        ) : (
-          <ConnectorIcon type={item.type as ConnectorType} size={16} />
-        )}
+        <ConnectorIcon type={item.type as ConnectorType} size={16} />
       </span>
       <span
         className={cn(
@@ -410,7 +392,6 @@ export function ZeroChatComposer({
   const isOnboarding =
     (onboardingActive.state === "hasData" && onboardingActive.data) ||
     (memberOnboardingActive.state === "hasData" && memberOnboardingActive.data);
-  const allSkills = useGet(skills$);
   const addSkill = useSet(addZeroSkill$);
   const saveSkills = useSet(saveZeroSkills$);
   const optimisticConnected = useGet(justConnectedTypes$);
@@ -423,20 +404,17 @@ export function ZeroChatComposer({
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
   maybeClearOptimistic(optimisticConnected, connectorMap, clearOptimistic);
-  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
   const addedSkills =
     addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
   const addedSet = new Set(addedSkills);
 
   const agentConnectors: ComposerConnectorItem[] = addedSkills
     .filter((name) => connectorMap.has(name as ConnectorType))
-    .map((name) =>
-      buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
-    )
+    .map((name) => buildConnectorItem(name, connectorMap, optimisticConnected))
     .sort((a, b) => Number(a.connected) - Number(b.connected));
 
   const handleConnectSuccess = (type: string) => {
-    const label = resolveConnectorLabel(type, skillMap, connectorMap);
+    const label = resolveConnectorLabel(type, connectorMap);
     detach(
       (async () => {
         await addSkill(type);
