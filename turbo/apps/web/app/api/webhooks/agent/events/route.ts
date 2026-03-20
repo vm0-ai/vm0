@@ -96,6 +96,7 @@ const router = tsr.router(webhookEventsContract, {
         userId,
         body.events,
         run.modelProvider ?? undefined,
+        run.selectedModel ?? undefined,
       );
     } catch (err) {
       log.error("Failed to upsert credit usage", {

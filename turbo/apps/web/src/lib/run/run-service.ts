@@ -619,6 +619,7 @@ async function buildAndDispatchRun(opts: {
       runtimeOrg,
       timings: buildContextTimings,
       resolvedModelProvider,
+      selectedModel,
     } = await buildContext({
       checkpointId: params.checkpointId,
       sessionId: params.sessionId,
@@ -661,6 +662,7 @@ async function buildAndDispatchRun(opts: {
         ...(resolvedModelProvider
           ? { modelProvider: resolvedModelProvider }
           : {}),
+        ...(selectedModel ? { selectedModel } : {}),
       })
       .where(
         and(

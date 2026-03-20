@@ -2686,6 +2686,16 @@ export async function setTestRunModelProvider(
     .where(eq(agentRuns.id, runId));
 }
 
+export async function setTestRunSelectedModel(
+  runId: string,
+  selectedModel: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ selectedModel })
+    .where(eq(agentRuns.id, runId));
+}
+
 export async function expireQueueEntry(runId: string) {
   // Set expiresAt far enough in the past to avoid any timing issues in CI
   await globalThis.services.db
