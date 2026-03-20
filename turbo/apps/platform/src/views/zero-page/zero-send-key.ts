@@ -1,21 +1,38 @@
-import type { KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent } from "react";
 import { useLastLoadable } from "ccstate-react";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import type { SendMode } from "@vm0/core";
 
 /**
- * Returns a keydown handler for the chat textarea that respects the
- * user's send-mode preference.
+ * Returns keyboard and composition event handlers for the chat textarea
+ * that respect the user's send-mode preference and IME composition state.
  *
  * - "enter": Enter sends, Shift+Enter inserts newline
  * - "cmd-enter": Cmd/Ctrl+Enter sends, Enter inserts newline
+ *
+ * Uses a manual composition ref because on Chrome macOS the `compositionend`
+ * event fires *before* the confirming `keydown`, making
+ * `KeyboardEvent.isComposing` unreliable at that point.
  */
 export function useSendKeyHandler(onSend: () => void) {
   const loadable = useLastLoadable(sendMode$);
   const mode: SendMode = loadable.state === "hasData" ? loadable.data : "enter";
+  const composingRef = useRef(false);
 
-  return (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) {
+  const onCompositionStart = () => {
+    composingRef.current = true;
+  };
+
+  const onCompositionEnd = () => {
+    // Delay clearing so the Enter keydown that immediately follows
+    // compositionend still sees the composing flag.
+    requestAnimationFrame(() => {
+      composingRef.current = false;
+    });
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (composingRef.current || e.nativeEvent.isComposing) {
       return;
     }
     if (e.key !== "Enter") {
@@ -30,4 +47,6 @@ export function useSendKeyHandler(onSend: () => void) {
       onSend();
     }
   };
+
+  return { onKeyDown, onCompositionStart, onCompositionEnd };
 }

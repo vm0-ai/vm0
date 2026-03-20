@@ -471,7 +471,11 @@ export function ZeroChatComposer({
     onSend(trimmed, buildModelOpts(selectedModel));
   };
 
-  const handleKeyDown = useSendKeyHandler(handleSend);
+  const {
+    onKeyDown: handleKeyDown,
+    onCompositionStart,
+    onCompositionEnd,
+  } = useSendKeyHandler(handleSend);
 
   const handleFileSelect = () => {
     fileInputEl?.click();
@@ -523,6 +527,8 @@ export function ZeroChatComposer({
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyDown={handleKeyDown}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
               onPaste={handlePaste}
               disabled={sending}
             />
