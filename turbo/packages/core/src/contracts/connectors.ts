@@ -1023,6 +1023,35 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  cloudinary: {
+    label: "Cloudinary",
+    helpText:
+      "Connect your Cloudinary account to manage images, videos, and media assets with CDN delivery and transformations",
+    authMethods: {
+      "api-token": {
+        label: "API Credentials",
+        helpText:
+          "1. Log in to the [Cloudinary Console](https://console.cloudinary.com/settings/api-keys)\n2. Go to **Settings** → **API Keys**\n3. Copy your **Cloud Name**, **API Key**, and **API Secret**",
+        secrets: {
+          CLOUDINARY_TOKEN: {
+            label: "API Key",
+            required: true,
+          },
+          CLOUDINARY_API_SECRET: {
+            label: "API Secret",
+            required: true,
+          },
+          CLOUDINARY_CLOUD_NAME: {
+            label: "Cloud Name",
+            required: true,
+            type: "variable",
+            placeholder: "your-cloud-name",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   cronlytic: {
     label: "Cronlytic",
     helpText:
@@ -3081,6 +3110,7 @@ export const connectorTypeSchema = z.enum([
   "canva",
   "clickup",
   "cloudflare",
+  "cloudinary",
   "close",
   "github",
   "gmail",

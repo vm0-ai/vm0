@@ -21,6 +21,7 @@ import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
 import { clickupHandler } from "./providers/clickup-handler";
 import { cloudflareHandler } from "./providers/cloudflare-handler";
+import { cloudinaryHandler } from "./providers/cloudinary-handler";
 import { closeHandler } from "./providers/close-handler";
 import { cronlyticHandler } from "./providers/cronlytic-handler";
 import { deelHandler } from "./providers/deel-handler";
@@ -144,6 +145,7 @@ export const PROVIDER_HANDLERS: Record<
   chatwoot: chatwootHandler,
   clickup: clickupHandler,
   cloudflare: cloudflareHandler,
+  cloudinary: cloudinaryHandler,
   close: closeHandler,
   cronlytic: cronlyticHandler,
   deel: deelHandler,
