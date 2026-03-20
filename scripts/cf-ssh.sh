@@ -1,8 +1,11 @@
 #!/bin/bash
 # SSH to metal machines via Cloudflare Tunnel.
 #
-# Reads CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET from .env.local
-# (same pattern as other project scripts).
+# For dev-* hosts: reads CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET
+# from scripts/.env.local (same pattern as other project scripts).
+#
+# For prod-* hosts: uses CF_ACCESS_CLIENT_ID_PROD and CF_ACCESS_CLIENT_SECRET_PROD
+# from environment variables.
 #
 # Hostname conversion must match parse_host() in scripts/cloudflared-ssh.sh:
 #   dev-1.aws.vm3.ai -> dev-1-aws-ssh.vm3.ai
@@ -14,6 +17,7 @@
 #   scripts/cf-ssh.sh dev-1.aws.vm3.ai
 #   scripts/cf-ssh.sh dev-1.aws.vm3.ai -L 8080:localhost:8080
 #   scripts/cf-ssh.sh dev-1.aws.vm3.ai -- ls -la
+#   scripts/cf-ssh.sh prod-1.aws.vm3.ai -- uptime
 
 set -euo pipefail
 
@@ -35,12 +39,6 @@ if [[ -f "$ENV_FILE" ]]; then
   done < "$ENV_FILE"
 fi
 
-if [[ -z "${CF_ACCESS_CLIENT_ID:-}" || -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-  echo "Error: CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set" >&2
-  echo "Add them to $ENV_FILE or export as environment variables" >&2
-  exit 1
-fi
-
 # --- Args ---
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <host> [ssh-args...]" >&2
@@ -51,6 +49,24 @@ fi
 HOST="$1"
 shift
 
+# --- Select credentials based on host prefix ---
+if [[ "$HOST" == prod-* ]]; then
+  CF_ID="${CF_ACCESS_CLIENT_ID_PROD:-}"
+  CF_SECRET="${CF_ACCESS_CLIENT_SECRET_PROD:-}"
+  if [[ -z "$CF_ID" || -z "$CF_SECRET" ]]; then
+    echo "Error: CF_ACCESS_CLIENT_ID_PROD and CF_ACCESS_CLIENT_SECRET_PROD must be set for prod hosts" >&2
+    exit 1
+  fi
+else
+  CF_ID="${CF_ACCESS_CLIENT_ID:-}"
+  CF_SECRET="${CF_ACCESS_CLIENT_SECRET:-}"
+  if [[ -z "$CF_ID" || -z "$CF_SECRET" ]]; then
+    echo "Error: CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set" >&2
+    echo "Add them to $ENV_FILE or export as environment variables" >&2
+    exit 1
+  fi
+fi
+
 # --- Convert hostname to tunnel hostname ---
 # Must match parse_host() in scripts/cloudflared-ssh.sh
 SUB="${HOST%.${DOMAIN}}"
@@ -59,5 +75,5 @@ TUNNEL_HOST="${SUB//./-}-ssh.${DOMAIN}"
 exec ssh \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null \
-  -o ProxyCommand="cloudflared access ssh --hostname $TUNNEL_HOST --id $CF_ACCESS_CLIENT_ID --secret $CF_ACCESS_CLIENT_SECRET" \
+  -o ProxyCommand="cloudflared access ssh --hostname $TUNNEL_HOST --id $CF_ID --secret $CF_SECRET" \
   "$HOST" "$@"
