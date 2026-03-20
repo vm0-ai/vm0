@@ -6,14 +6,14 @@ import {
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
 import { insertTestUser } from "../../../../../src/__tests__/api-test-helpers";
-import { reloadEnv } from "../../../../../src/env";
+import { env, reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
 
 /** Generate a valid HMAC-signed unsubscribe token for testing */
 function generateToken(userId: string): string {
   const hmac = crypto
-    .createHmac("sha256", process.env.SECRETS_ENCRYPTION_KEY!)
+    .createHmac("sha256", env().SECRETS_ENCRYPTION_KEY)
     .update(`unsubscribe:${userId}`)
     .digest("hex")
     .slice(0, 32);

@@ -1,5 +1,5 @@
 import { createHmac } from "crypto";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   testContext,
   uniqueId,
