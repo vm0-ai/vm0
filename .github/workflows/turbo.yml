@@ -1190,15 +1190,15 @@ jobs:
 
           # Greedy bin-packing: assign each file to the chunk with lowest total weight
           declare -a CHUNK_FILES CHUNK_WEIGHTS
-          for ((i=0; i<NUM_CHUNKS; i++)); do CHUNK_FILES[$i]=""; CHUNK_WEIGHTS[$i]=0; done
+          for ((i=0; i<NUM_CHUNKS; i++)); do CHUNK_FILES[i]=""; CHUNK_WEIGHTS[i]=0; done
           for f in "${FILES[@]}"; do
             # Find lightest chunk
             min_idx=0
             for ((i=1; i<NUM_CHUNKS; i++)); do
-              [ "${CHUNK_WEIGHTS[$i]}" -lt "${CHUNK_WEIGHTS[$min_idx]}" ] && min_idx=$i
+              [ "${CHUNK_WEIGHTS[i]}" -lt "${CHUNK_WEIGHTS[min_idx]}" ] && min_idx=$i
             done
-            CHUNK_FILES[$min_idx]="${CHUNK_FILES[$min_idx]:+${CHUNK_FILES[$min_idx]} }$f"
-            CHUNK_WEIGHTS[$min_idx]=$(( CHUNK_WEIGHTS[min_idx] + WEIGHTS[$f] ))
+            CHUNK_FILES[min_idx]="${CHUNK_FILES[min_idx]:+${CHUNK_FILES[min_idx]} }$f"
+            CHUNK_WEIGHTS[min_idx]=$(( CHUNK_WEIGHTS[min_idx] + WEIGHTS[$f] ))
           done
 
           CHUNKS="["
@@ -1753,12 +1753,14 @@ jobs:
     if: always()
     steps:
       - name: Validate CI results
+        env:
+          HEAD_REF: ${{ github.head_ref || '' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           # Auto-pass for release-please PRs (only version bumps and changelogs)
-          HEAD_REF="${{ github.head_ref || '' }}"
-          COMMIT_MSG="${{ github.event.head_commit.message || '' }}"
           if [[ "$HEAD_REF" == release-please--branches--* ]] || \
-             { [[ "${{ github.event_name }}" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; }; then
+             { [[ "$EVENT_NAME" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; }; then
             echo "✅ Release-please PR — skipping CI gate"
             exit 0
           fi
