@@ -30,7 +30,7 @@ describe("org model-provider remove command", () => {
     it("should show success message on successful removal", async () => {
       server.use(
         http.delete(
-          "http://localhost:3000/api/org/model-providers/:type",
+          "http://localhost:3000/api/zero/model-providers/:type",
           () => {
             return new HttpResponse(null, { status: 204 });
           },
@@ -68,7 +68,7 @@ describe("org model-provider remove command", () => {
     it("should handle not found error", async () => {
       server.use(
         http.delete(
-          "http://localhost:3000/api/org/model-providers/:type",
+          "http://localhost:3000/api/zero/model-providers/:type",
           () => {
             return HttpResponse.json(
               {
@@ -96,7 +96,7 @@ describe("org model-provider remove command", () => {
     it("should handle forbidden error for non-admin", async () => {
       server.use(
         http.delete(
-          "http://localhost:3000/api/org/model-providers/:type",
+          "http://localhost:3000/api/zero/model-providers/:type",
           () => {
             return HttpResponse.json(
               {
@@ -124,7 +124,7 @@ describe("org model-provider remove command", () => {
     it("should handle authentication error", async () => {
       server.use(
         http.delete(
-          "http://localhost:3000/api/org/model-providers/:type",
+          "http://localhost:3000/api/zero/model-providers/:type",
           () => {
             return HttpResponse.json(
               {

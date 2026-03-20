@@ -65,7 +65,7 @@ describe("preference command", () => {
   describe("display preferences (no flags)", () => {
     it("should display current preferences when no flags provided", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({
               timezone: "America/New_York",
@@ -87,7 +87,7 @@ describe("preference command", () => {
 
     it("should show 'not set' when timezone is null", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );
@@ -100,7 +100,7 @@ describe("preference command", () => {
 
     it("should show timezone hint in non-interactive mode when timezone not set", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );
@@ -113,7 +113,7 @@ describe("preference command", () => {
 
     it("should not show timezone hint when timezone is already set", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({ timezone: "Asia/Shanghai" }),
           );
@@ -130,8 +130,8 @@ describe("preference command", () => {
   describe("--timezone flag", () => {
     it("should update timezone with a valid IANA timezone", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { timezone?: string };
             expect(body.timezone).toBe("America/New_York");
@@ -174,8 +174,8 @@ describe("preference command", () => {
   describe("--notify-email flag", () => {
     it("should enable email notifications with 'on'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(true);
@@ -197,8 +197,8 @@ describe("preference command", () => {
 
     it("should disable email notifications with 'off'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(false);
@@ -239,8 +239,8 @@ describe("preference command", () => {
   describe("--notify-slack flag", () => {
     it("should enable slack notifications with 'on'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifySlack?: boolean };
             expect(body.notifySlack).toBe(true);
@@ -262,8 +262,8 @@ describe("preference command", () => {
 
     it("should disable slack notifications with 'off'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifySlack?: boolean };
             expect(body.notifySlack).toBe(false);
@@ -289,8 +289,8 @@ describe("preference command", () => {
   describe("multiple flags", () => {
     it("should update timezone and email notifications together", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as {
               timezone?: string;
@@ -327,8 +327,8 @@ describe("preference command", () => {
   describe("on/off value parsing", () => {
     it("should accept 'true' as on", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(true);
@@ -350,8 +350,8 @@ describe("preference command", () => {
 
     it("should accept 'false' as off", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(false);
@@ -375,7 +375,7 @@ describe("preference command", () => {
 
     it("should accept '1' as on", async () => {
       server.use(
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences({ notifySlack: true }));
         }),
       );
@@ -393,7 +393,7 @@ describe("preference command", () => {
 
     it("should accept '0' as off", async () => {
       server.use(
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences({ notifySlack: false }));
         }),
       );
@@ -419,11 +419,11 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { timezone?: string };
             expect(body.timezone).toBe("Europe/London");
@@ -454,12 +454,12 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({ timezone: "Asia/Tokyo" }),
           );
         }),
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({ timezone: "Asia/Tokyo", notifyEmail: true }),
           );
@@ -483,7 +483,7 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({
               timezone: "America/Chicago",
@@ -508,7 +508,7 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );
@@ -526,7 +526,7 @@ describe("preference command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             {
               error: {
@@ -550,7 +550,7 @@ describe("preference command", () => {
 
     it("should handle API error when updating preferences", async () => {
       server.use(
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             {
               error: {
@@ -585,7 +585,7 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );

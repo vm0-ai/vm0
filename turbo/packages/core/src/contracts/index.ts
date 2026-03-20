@@ -361,18 +361,15 @@ export {
 export {
   logsListContract,
   logsByIdContract,
-  artifactDownloadContract,
   logStatusSchema,
   logEntrySchema,
   paginationSchema,
   logsListResponseSchema,
   artifactSchema,
   logDetailSchema,
-  artifactDownloadResponseSchema,
   triggerSourceSchema,
   type LogsListContract,
   type LogsByIdContract,
-  type ArtifactDownloadContract,
   // Inferred types
   type LogStatus,
   type LogEntry,
@@ -380,7 +377,6 @@ export {
   type LogsListResponse,
   type Artifact,
   type LogDetail,
-  type ArtifactDownloadResponse,
   type TriggerSource,
 } from "./logs";
 
@@ -460,10 +456,8 @@ export {
 } from "./firewall-expander";
 
 export {
-  userPreferencesContract,
   userPreferencesResponseSchema,
   updateUserPreferencesRequestSchema,
-  type UserPreferencesContract,
   type UserPreferencesResponse,
   type UpdateUserPreferencesRequest,
   sendModeSchema,
@@ -504,16 +498,6 @@ export {
   skillFrontmatterSchema,
   type SkillsResolveContract,
 } from "./skills";
-export {
-  orgModelProvidersMainContract,
-  orgModelProvidersByTypeContract,
-  orgModelProvidersSetDefaultContract,
-  orgModelProvidersUpdateModelContract,
-  type OrgModelProvidersMainContract,
-  type OrgModelProvidersByTypeContract,
-  type OrgModelProvidersSetDefaultContract,
-  type OrgModelProvidersUpdateModelContract,
-} from "./org-model-providers";
 export {
   orgSecretsMainContract,
   orgSecretsByNameContract,
@@ -583,9 +567,11 @@ export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
+  zeroModelProvidersUpdateModelContract,
   type ZeroModelProvidersMainContract,
   type ZeroModelProvidersByTypeContract,
   type ZeroModelProvidersDefaultContract,
+  type ZeroModelProvidersUpdateModelContract,
 } from "./zero-model-providers";
 export {
   zeroUserPreferencesContract,

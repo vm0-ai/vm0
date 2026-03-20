@@ -104,7 +104,7 @@ describe("onboard command", () => {
 
     // Default MSW handler for model providers (provider exists)
     server.use(
-      http.get("http://localhost:3000/api/org/model-providers", () => {
+      http.get("http://localhost:3000/api/zero/model-providers", () => {
         return HttpResponse.json({
           modelProviders: [
             {
@@ -144,12 +144,12 @@ describe("onboard command", () => {
     // Default MSW handlers for model provider setup
     server.use(
       http.get(
-        "http://localhost:3000/api/org/model-providers/check/:type",
+        "http://localhost:3000/api/zero/model-providers/check/:type",
         () => {
           return HttpResponse.json({ exists: false });
         },
       ),
-      http.put("http://localhost:3000/api/org/model-providers", () => {
+      http.post("http://localhost:3000/api/zero/model-providers", () => {
         return HttpResponse.json({
           provider: {
             id: "new-provider-id",
@@ -261,7 +261,7 @@ describe("onboard command", () => {
 
     it("should show error in non-interactive mode when no providers and user is admin", async () => {
       server.use(
-        http.get("http://localhost:3000/api/org/model-providers", () => {
+        http.get("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json({ modelProviders: [] });
         }),
       );
@@ -288,7 +288,7 @@ describe("onboard command", () => {
 
     it("should show friendly message when no providers and user is not admin", async () => {
       server.use(
-        http.get("http://localhost:3000/api/org/model-providers", () => {
+        http.get("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json({ modelProviders: [] });
         }),
         http.get("http://localhost:3000/api/org", () => {

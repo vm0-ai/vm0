@@ -31,7 +31,7 @@ describe("org model-provider list command", () => {
   describe("successful list", () => {
     it("should list org model providers grouped by framework", async () => {
       server.use(
-        http.get("http://localhost:3000/api/org/model-providers", () => {
+        http.get("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json({
             modelProviders: [
               {
@@ -72,7 +72,7 @@ describe("org model-provider list command", () => {
 
     it("should show empty state when no org providers configured", async () => {
       server.use(
-        http.get("http://localhost:3000/api/org/model-providers", () => {
+        http.get("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json({ modelProviders: [] });
         }),
       );
@@ -88,7 +88,7 @@ describe("org model-provider list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/org/model-providers", () => {
+        http.get("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json(
             {
               error: {
@@ -113,7 +113,7 @@ describe("org model-provider list command", () => {
 
     it("should handle generic API error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/org/model-providers", () => {
+        http.get("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json(
             {
               error: {

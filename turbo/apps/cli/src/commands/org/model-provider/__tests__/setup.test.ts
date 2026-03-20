@@ -31,7 +31,7 @@ describe("org model-provider setup command", () => {
   describe("non-interactive mode", () => {
     it("should create single-secret provider", async () => {
       server.use(
-        http.put("http://localhost:3000/api/org/model-providers", () => {
+        http.post("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json(
             {
               provider: {
@@ -69,7 +69,7 @@ describe("org model-provider setup command", () => {
 
     it("should create provider with model selection", async () => {
       server.use(
-        http.put("http://localhost:3000/api/org/model-providers", () => {
+        http.post("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json(
             {
               provider: {
@@ -112,7 +112,7 @@ describe("org model-provider setup command", () => {
 
     it("should update existing provider", async () => {
       server.use(
-        http.put("http://localhost:3000/api/org/model-providers", () => {
+        http.post("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json({
             provider: {
               id: "1",
@@ -185,7 +185,7 @@ describe("org model-provider setup command", () => {
   describe("error handling", () => {
     it("should handle forbidden error for non-admin", async () => {
       server.use(
-        http.put("http://localhost:3000/api/org/model-providers", () => {
+        http.post("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json(
             {
               error: {
@@ -217,7 +217,7 @@ describe("org model-provider setup command", () => {
 
     it("should handle authentication error", async () => {
       server.use(
-        http.put("http://localhost:3000/api/org/model-providers", () => {
+        http.post("http://localhost:3000/api/zero/model-providers", () => {
           return HttpResponse.json(
             {
               error: {

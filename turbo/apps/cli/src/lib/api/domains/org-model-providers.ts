@@ -1,9 +1,9 @@
 import { initClient } from "@ts-rest/core";
 import {
-  orgModelProvidersMainContract,
-  orgModelProvidersByTypeContract,
-  orgModelProvidersSetDefaultContract,
-  orgModelProvidersUpdateModelContract,
+  zeroModelProvidersMainContract,
+  zeroModelProvidersByTypeContract,
+  zeroModelProvidersDefaultContract,
+  zeroModelProvidersUpdateModelContract,
   type ModelProviderType,
   type ModelProviderListResponse,
   type ModelProviderResponse,
@@ -16,7 +16,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
  */
 export async function listOrgModelProviders(): Promise<ModelProviderListResponse> {
   const config = await getClientConfig();
-  const client = initClient(orgModelProvidersMainContract, config);
+  const client = initClient(zeroModelProvidersMainContract, config);
 
   const result = await client.list({ headers: {} });
 
@@ -38,7 +38,7 @@ export async function upsertOrgModelProvider(body: {
   selectedModel?: string;
 }): Promise<UpsertModelProviderResponse> {
   const config = await getClientConfig();
-  const client = initClient(orgModelProvidersMainContract, config);
+  const client = initClient(zeroModelProvidersMainContract, config);
 
   const result = await client.upsert({ body });
 
@@ -56,7 +56,7 @@ export async function deleteOrgModelProvider(
   type: ModelProviderType,
 ): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(orgModelProvidersByTypeContract, config);
+  const client = initClient(zeroModelProvidersByTypeContract, config);
 
   const result = await client.delete({
     params: { type },
@@ -76,7 +76,7 @@ export async function setOrgModelProviderDefault(
   type: ModelProviderType,
 ): Promise<ModelProviderResponse> {
   const config = await getClientConfig();
-  const client = initClient(orgModelProvidersSetDefaultContract, config);
+  const client = initClient(zeroModelProvidersDefaultContract, config);
 
   const result = await client.setDefault({
     params: { type },
@@ -97,7 +97,7 @@ export async function updateOrgModelProviderModel(
   selectedModel?: string,
 ): Promise<ModelProviderResponse> {
   const config = await getClientConfig();
-  const client = initClient(orgModelProvidersUpdateModelContract, config);
+  const client = initClient(zeroModelProvidersUpdateModelContract, config);
 
   const result = await client.updateModel({
     params: { type },

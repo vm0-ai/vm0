@@ -30,7 +30,7 @@ describe("org model-provider set-default command", () => {
     it("should show success message with framework", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/org/model-providers/:type/set-default",
+          "http://localhost:3000/api/zero/model-providers/:type/default",
           () => {
             return HttpResponse.json({
               id: "1",
@@ -76,7 +76,7 @@ describe("org model-provider set-default command", () => {
     it("should handle not found error", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/org/model-providers/:type/set-default",
+          "http://localhost:3000/api/zero/model-providers/:type/default",
           () => {
             return HttpResponse.json(
               {
@@ -108,7 +108,7 @@ describe("org model-provider set-default command", () => {
     it("should handle forbidden error for non-admin", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/org/model-providers/:type/set-default",
+          "http://localhost:3000/api/zero/model-providers/:type/default",
           () => {
             return HttpResponse.json(
               {

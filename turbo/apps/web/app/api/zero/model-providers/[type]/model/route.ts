@@ -1,18 +1,10 @@
-/**
- * Backward-compatible route for PATCH /api/org/model-providers/:type/model.
- *
- * The CLI still uses the old contract (orgModelProvidersUpdateModelContract)
- * at this path. This route delegates to the shared service layer.
- *
- * Will be removed once the CLI contracts are migrated.
- */
 import {
   createHandler,
   createSafeErrorHandler,
   tsr,
 } from "../../../../../../src/lib/ts-rest-handler";
 import {
-  orgModelProvidersUpdateModelContract,
+  zeroModelProvidersUpdateModelContract,
   createErrorResponse,
 } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -25,9 +17,9 @@ import { updateOrgModelProviderModel } from "../../../../../../src/lib/model-pro
 import { logger } from "../../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../../src/lib/errors";
 
-const log = logger("api:org-model-providers-compat");
+const log = logger("api:zero-model-providers");
 
-const router = tsr.router(orgModelProvidersUpdateModelContract, {
+const router = tsr.router(zeroModelProvidersUpdateModelContract, {
   updateModel: async ({ params, body, headers }, { request }) => {
     initServices();
 
@@ -44,7 +36,7 @@ const router = tsr.router(orgModelProvidersUpdateModelContract, {
       );
     }
 
-    log.debug("updating org model provider model (compat)", {
+    log.debug("updating org model provider model", {
       orgId: org.orgId,
       type: params.type,
       selectedModel: body.selectedModel,
@@ -81,8 +73,8 @@ const router = tsr.router(orgModelProvidersUpdateModelContract, {
   },
 });
 
-const handler = createHandler(orgModelProvidersUpdateModelContract, router, {
-  errorHandler: createSafeErrorHandler("org-model-providers-compat"),
+const handler = createHandler(zeroModelProvidersUpdateModelContract, router, {
+  errorHandler: createSafeErrorHandler("zero-model-providers"),
 });
 
 export { handler as PATCH };

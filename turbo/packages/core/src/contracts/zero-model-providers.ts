@@ -7,6 +7,7 @@ import {
   upsertModelProviderResponseSchema,
   modelProviderResponseSchema,
   modelProviderTypeSchema,
+  updateModelRequestSchema,
 } from "./model-providers";
 
 const c = initContract();
@@ -103,3 +104,31 @@ export const zeroModelProvidersDefaultContract = c.router({
 
 export type ZeroModelProvidersDefaultContract =
   typeof zeroModelProvidersDefaultContract;
+
+/**
+ * Zero model providers update model contract for /api/zero/model-providers/:type/model
+ *
+ * PATCH: Update model selection for org-level provider (admin only)
+ */
+export const zeroModelProvidersUpdateModelContract = c.router({
+  updateModel: {
+    method: "PATCH",
+    path: "/api/zero/model-providers/:type/model",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: modelProviderTypeSchema,
+    }),
+    body: updateModelRequestSchema,
+    responses: {
+      200: modelProviderResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Update model selection for org-level provider (admin only)",
+  },
+});
+
+export type ZeroModelProvidersUpdateModelContract =
+  typeof zeroModelProvidersUpdateModelContract;
