@@ -125,8 +125,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install actionlint
+        run: bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
       - name: Run actionlint
-        uses: rhysd/actionlint@v1.7.11
+        run: ./actionlint
 
   gitleaks:
     name: Gitleaks Secrets Detection
