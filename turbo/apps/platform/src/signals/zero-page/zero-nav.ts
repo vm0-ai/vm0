@@ -119,4 +119,3 @@ export const zeroTabSub$ = computed((get): string | null => {
 export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
   set(updatePathname$, `/chat/${sessionId}`);
 });
-
