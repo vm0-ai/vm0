@@ -2,6 +2,9 @@ import { useGet, useSet } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import { IconExternalLink, IconCrown } from "@tabler/icons-react";
 import { Button, Dialog, DialogContent, Switch } from "@vm0/ui";
+import planFreeImg from "./assets/plan-free.png";
+import planProImg from "./assets/plan-pro.png";
+import planMaxImg from "./assets/plan-max.png";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 
@@ -24,7 +27,7 @@ const PLANS = [
     period: "/month",
     description: "Get started with your AI teammate for free.",
     cta: "Current plan",
-    image: "/images/plan-free.png",
+    image: planFreeImg,
     features: [
       "500 credits / month",
       "1 active agent",
@@ -41,7 +44,7 @@ const PLANS = [
     cta: "Upgrade to Pro",
     primary: true,
     badge: "Popular",
-    image: "/images/plan-pro.png",
+    image: planProImg,
     features: [
       "5,000 credits / month",
       "2 active agents",
@@ -57,7 +60,7 @@ const PLANS = [
     period: "/month",
     description: "Scale fast with zero friction and full flexibility.",
     cta: "Upgrade to Max",
-    image: "/images/plan-max.png",
+    image: planMaxImg,
     features: [
       "25,000 credits / month",
       "5 active agents",
@@ -224,6 +227,47 @@ function PricingDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function BillingTabSkeleton() {
+  return (
+    <div className="flex flex-col gap-8">
+      {/* Plan section */}
+      <section className="flex flex-col gap-3">
+        <div className="h-4 w-10 rounded bg-muted/50 animate-pulse" />
+        <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="min-w-0 flex flex-col gap-1.5">
+              <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
+              <div className="h-3 w-28 rounded bg-muted/30 animate-pulse" />
+            </div>
+            <div className="h-8 w-20 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
+          </div>
+        </div>
+      </section>
+      {/* Add-ons section */}
+      <section className="flex flex-col gap-3">
+        <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
+        <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="min-w-0 flex flex-col gap-1.5">
+              <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
+              <div className="h-3 w-56 rounded bg-muted/30 animate-pulse" />
+            </div>
+            <div className="h-8 w-16 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
+          </div>
+          <div className="h-px bg-border/40 mx-5" />
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="min-w-0 flex flex-col gap-1.5">
+              <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
+              <div className="h-3 w-56 rounded bg-muted/30 animate-pulse" />
+            </div>
+            <div className="h-8 w-16 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 

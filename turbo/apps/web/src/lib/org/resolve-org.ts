@@ -61,6 +61,7 @@ export async function getOrgDataOrNull(
 export interface ResolvedOrg {
   orgId: string;
   slug: string;
+  name: string;
   tier: string;
 }
 

@@ -1,8 +1,10 @@
-import { computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { zeroOrgContract, type OrgResponse } from "@vm0/core";
 import { user$ } from "./auth.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { logger } from "./log.ts";
+
+const reloadOrg$ = state(0);
 
 const L = logger("Org");
 
@@ -16,6 +18,7 @@ export type Org = OrgResponse;
  * Returns undefined if user has no org or is not authenticated.
  */
 export const org$ = computed(async (get) => {
+  get(reloadOrg$);
   const user = await get(user$);
   if (!user) {
     return undefined;
@@ -61,4 +64,11 @@ export const orgRole$ = computed(async (get) => {
 export const isOrgAdmin$ = computed(async (get) => {
   const role = await get(orgRole$);
   return role === "admin";
+});
+
+/**
+ * Trigger a re-fetch of the org signal.
+ */
+export const refreshOrg$ = command(({ set }) => {
+  set(reloadOrg$, (x) => x + 1);
 });

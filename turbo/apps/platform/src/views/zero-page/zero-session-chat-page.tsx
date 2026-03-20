@@ -83,7 +83,6 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   // Auto-scroll when messages change — ref callback runs at commit time
   const scrollAnchorRef = (el: HTMLDivElement | null) => {
     if (el && messages.length > 0) {
@@ -565,6 +564,7 @@ interface AssistantMessageProps {
 }
 
 function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
+  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img

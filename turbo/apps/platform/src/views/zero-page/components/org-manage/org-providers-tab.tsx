@@ -275,6 +275,37 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+export function ProvidersTabSkeleton() {
+  return (
+    <div className="flex flex-col gap-8">
+      {/* Default provider section */}
+      <section className="flex flex-col gap-3">
+        <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="min-w-0">
+              <div className="h-4 w-28 rounded bg-muted/50 animate-pulse" />
+              <div className="h-3 w-48 rounded bg-muted/30 animate-pulse mt-1.5" />
+            </div>
+            <div className="w-[280px] h-9 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
+          </div>
+        </div>
+      </section>
+      {/* Provider list section */}
+      <div className="flex flex-col gap-3">
+        <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <ProviderSkeleton />
+          <ProviderSkeleton />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProviderSkeleton() {
   return (
     <div

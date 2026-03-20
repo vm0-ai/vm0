@@ -12,6 +12,7 @@ const CACHE_TTL_MS = 60_000; // 1 minute
 interface OrgData {
   orgId: string;
   slug: string;
+  name: string;
   tier: string;
 }
 
@@ -80,7 +81,7 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
     // Cache hit — no Clerk metadata available for tier fallback
     const tier = await readTier(orgId);
-    return { orgId, slug: cached.slug, tier };
+    return { orgId, slug: cached.slug, name: cached.name, tier };
   }
 
   // Cache miss — fetch from Clerk (source of truth for slug)
@@ -93,6 +94,7 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
     throw new Error(`Clerk organization ${orgId} has no slug — cannot cache`);
   }
   const slug = clerkOrg.slug;
+  const name = clerkOrg.name;
 
   // Read tier with Clerk metadata fallback (lazy migration)
   const tier = await readTier(
@@ -104,15 +106,15 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId, slug, cachedAt: now })
+    .values({ orgId, slug, name, cachedAt: now })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, cachedAt: now },
+      set: { slug, name, cachedAt: now },
     });
 
   log.debug("org cache refreshed", { orgId, slug, tier });
 
-  return { orgId, slug, tier };
+  return { orgId, slug, name, tier };
 }
 
 /**
@@ -146,7 +148,7 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
     // Cache hit — no Clerk metadata available for tier fallback
     const tier = await readTier(cached.orgId);
-    return { orgId: cached.orgId, slug: cached.slug, tier };
+    return { orgId: cached.orgId, slug: cached.slug, name: cached.name, tier };
   }
 
   // Fetch from Clerk by slug
@@ -173,10 +175,15 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId: clerkOrg.id, slug: clerkOrg.slug, cachedAt: now })
+    .values({
+      orgId: clerkOrg.id,
+      slug: clerkOrg.slug,
+      name: clerkOrg.name,
+      cachedAt: now,
+    })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: clerkOrg.slug, cachedAt: now },
+      set: { slug: clerkOrg.slug, name: clerkOrg.name, cachedAt: now },
     });
 
   log.debug("org cache refreshed (by slug)", {
@@ -185,5 +192,5 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
     tier,
   });
 
-  return { orgId: clerkOrg.id, slug: clerkOrg.slug, tier };
+  return { orgId: clerkOrg.id, slug: clerkOrg.slug, name: clerkOrg.name, tier };
 }

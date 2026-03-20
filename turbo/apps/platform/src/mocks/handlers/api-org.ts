@@ -12,6 +12,7 @@ import type { Org } from "../../signals/org.ts";
 const mockOrg: Org = {
   id: "org_1",
   slug: "user-12345678",
+  name: "User 12345678",
   role: "admin",
 };
 

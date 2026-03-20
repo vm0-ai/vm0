@@ -38,6 +38,7 @@ describe("getOrgData", () => {
     expect(result).toEqual({
       orgId,
       slug,
+      name: slug,
       tier: "free",
     });
 
@@ -71,6 +72,7 @@ describe("getOrgData", () => {
     expect(result).toEqual({
       orgId,
       slug: "cached-slug",
+      name: "cached-slug",
       tier: "free",
     });
 
@@ -246,6 +248,7 @@ describe("getOrgBySlug", () => {
     expect(result).toEqual({
       orgId,
       slug,
+      name: slug,
       tier: "free",
     });
 
@@ -278,7 +281,7 @@ describe("getOrgBySlug", () => {
 
     const result = await getOrgBySlug(slug);
 
-    expect(result).toEqual({ orgId, slug, tier: "pro" });
+    expect(result).toEqual({ orgId, slug, name: slug, tier: "pro" });
 
     // Clerk API should NOT have been called
     const client = await clerkClient();

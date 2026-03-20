@@ -33,6 +33,7 @@ export const orgSlugSchema = z
 export const orgResponseSchema = z.object({
   id: z.string(),
   slug: z.string(),
+  name: z.string(),
   tier: z.string().optional(),
   role: orgRoleSchema.optional(),
 });
@@ -43,7 +44,8 @@ export type OrgResponse = z.infer<typeof orgResponseSchema>;
  * Update org request schema
  */
 export const updateOrgRequestSchema = z.object({
-  slug: orgSlugSchema,
+  slug: orgSlugSchema.optional(),
+  name: z.string().min(1).max(128).optional(),
   force: z.boolean().optional().default(false),
 });
 

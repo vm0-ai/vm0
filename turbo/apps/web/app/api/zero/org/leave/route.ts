@@ -1,0 +1,54 @@
+import {
+  createHandler,
+  createSafeErrorHandler,
+  tsr,
+} from "../../../../../src/lib/ts-rest-handler";
+import { zeroOrgLeaveContract, createErrorResponse } from "@vm0/core";
+import { initServices } from "../../../../../src/lib/init-services";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { leaveOrg } from "../../../../../src/lib/org/org-member-service";
+import {
+  isBadRequest,
+  isForbidden,
+  isNotFound,
+} from "../../../../../src/lib/errors";
+
+const router = tsr.router(zeroOrgLeaveContract, {
+  leave: async ({ headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+
+    try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      await leaveOrg(authCtx.userId, org.orgId, member.role);
+      return { status: 200 as const, body: { message: "Left org" } };
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
+      }
+      if (isForbidden(error)) {
+        return createErrorResponse(
+          "FORBIDDEN",
+          "Admins cannot leave the organization",
+        );
+      }
+      if (isNotFound(error)) {
+        return createErrorResponse("NOT_FOUND", "Resource not found");
+      }
+      throw error;
+    }
+  },
+});
+
+const handler = createHandler(zeroOrgLeaveContract, router, {
+  errorHandler: createSafeErrorHandler("zero-org-leave"),
+});
+
+export { handler as POST };
