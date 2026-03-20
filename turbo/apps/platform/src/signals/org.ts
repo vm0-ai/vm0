@@ -1,20 +1,15 @@
 import { computed } from "ccstate";
+import { zeroOrgContract, type OrgResponse } from "@vm0/core";
 import { user$ } from "./auth.ts";
-import { fetch$ } from "./fetch.ts";
+import { zeroClient$ } from "./api-client.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Org");
 
 /**
- * Org response type from API
+ * Re-export for backward compatibility with mocks and consumers.
  */
-export interface Org {
-  id: string;
-  slug: string;
-  createdAt: string;
-  updatedAt: string;
-  role?: "admin" | "member";
-}
+export type Org = OrgResponse;
 
 /**
  * Current user's default org.
@@ -26,19 +21,21 @@ export const org$ = computed(async (get) => {
     return undefined;
   }
 
-  const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/org");
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroOrgContract);
+  const result = await client.get();
 
-  L.debug(`Fetched /api/org with status ${response.status}`);
-  if (response.status === 404) {
+  L.debug(`Fetched /api/zero/org with status ${result.status}`);
+
+  if (result.status === 404) {
     return undefined;
   }
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch org: ${response.status}`);
+  if (result.status === 200) {
+    return result.body;
   }
 
-  return (await response.json()) as Org;
+  throw new Error(`Failed to fetch org: ${result.status}`);
 });
 
 /**

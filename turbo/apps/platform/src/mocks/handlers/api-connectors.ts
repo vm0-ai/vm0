@@ -1,7 +1,7 @@
 /**
  * Connectors API Handlers
  *
- * Mock handlers for /api/connectors endpoint.
+ * Mock handlers for /api/zero/connectors endpoint (connectors via zero layer).
  */
 
 import { http, HttpResponse } from "msw";
@@ -21,8 +21,8 @@ export function resetMockConnectors(): void {
 }
 
 export const apiConnectorsHandlers = [
-  // GET /api/connectors - List all connectors
-  http.get("/api/connectors", () => {
+  // GET /api/zero/connectors - List all connectors (zero proxy)
+  http.get("*/api/zero/connectors", () => {
     const response: ConnectorListResponse = {
       connectors: mockConnectors,
       configuredTypes: ALL_CONNECTOR_TYPES,
@@ -31,8 +31,8 @@ export const apiConnectorsHandlers = [
     return HttpResponse.json(response);
   }),
 
-  // DELETE /api/connectors/:type - Disconnect a connector
-  http.delete("/api/connectors/:type", ({ params }) => {
+  // DELETE /api/zero/connectors/:type - Disconnect a connector (zero proxy)
+  http.delete("*/api/zero/connectors/:type", ({ params }) => {
     const type = params.type as string;
     const existing = mockConnectors.find((c) => c.type === type);
 

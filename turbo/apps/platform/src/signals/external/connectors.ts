@@ -1,6 +1,11 @@
 import { command, computed, state } from "ccstate";
-import { fetch$ } from "../fetch";
-import type { ConnectorListResponse } from "@vm0/core";
+import {
+  zeroConnectorsMainContract,
+  zeroConnectorsByTypeContract,
+  type ConnectorListResponse,
+  type ConnectorType,
+} from "@vm0/core";
+import { zeroClient$ } from "../api-client";
 
 /**
  * Reload trigger for connector signals.
@@ -13,9 +18,15 @@ const internalReloadConnectors$ = state(0);
  */
 export const connectors$ = computed(async (get) => {
   get(internalReloadConnectors$);
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/connectors");
-  return (await resp.json()) as ConnectorListResponse;
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroConnectorsMainContract);
+  const result = await client.list();
+
+  if (result.status === 200) {
+    return result.body as ConnectorListResponse;
+  }
+
+  throw new Error(`Failed to fetch connectors: ${result.status}`);
 });
 
 /**
@@ -28,15 +39,16 @@ export const reloadConnectors$ = command(({ set }) => {
 /**
  * Delete a connector by type.
  */
-export const deleteConnector$ = command(async ({ get, set }, type: string) => {
-  const fetchFn = get(fetch$);
-  const response = await fetchFn(`/api/connectors/${type}`, {
-    method: "DELETE",
-  });
+export const deleteConnector$ = command(
+  async ({ get, set }, type: ConnectorType) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroConnectorsByTypeContract);
+    const result = await client.delete({ params: { type } });
 
-  if (!response.ok) {
-    throw new Error(`Failed to delete connector: ${response.status}`);
-  }
+    if (result.status !== 204) {
+      throw new Error(`Failed to delete connector: ${result.status}`);
+    }
 
-  set(internalReloadConnectors$, (x) => x + 1);
-});
+    set(internalReloadConnectors$, (x) => x + 1);
+  },
+);
