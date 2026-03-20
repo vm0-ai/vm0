@@ -18,7 +18,7 @@ jobs:
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
@@ -224,7 +224,7 @@ jobs:
     # Skip for release-please PRs and release-please commits
     if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -237,7 +237,7 @@ jobs:
     # Skip for release-please PRs and release-please commits
     if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -250,7 +250,7 @@ jobs:
     # Skip for release-please PRs and release-please commits
     if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -263,7 +263,7 @@ jobs:
     # Skip for release-please PRs and release-please commits
     if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -281,7 +281,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     services:
       postgres:
         image: postgres:17-alpine
@@ -327,7 +327,7 @@ jobs:
     # Only run when migration or schema files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     services:
       postgres:
         image: postgres:17-alpine
@@ -352,7 +352,7 @@ jobs:
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -380,7 +380,7 @@ jobs:
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -408,7 +408,7 @@ jobs:
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
@@ -435,7 +435,7 @@ jobs:
   deploy-web:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and web, CLI, runner, or platform changed
     if: |
@@ -820,7 +820,7 @@ jobs:
   deploy-docs:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and docs changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true' }}"
@@ -862,7 +862,7 @@ jobs:
   deploy-app:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     needs: [prepare]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and platform changed
     if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true' }}"
@@ -954,7 +954,7 @@ jobs:
   build-cli:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     needs: [prepare]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1075,7 +1075,7 @@ jobs:
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
     needs: [prepare]
     timeout-minutes: 10
     env:
@@ -1562,7 +1562,7 @@ jobs:
   build-e2b-template:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260310
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     needs: [prepare]
     # Build on PR or main push when E2B templates changed, skip release-please commits
     if: |
