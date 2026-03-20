@@ -5,28 +5,6 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async rewrites() {
-    return [
-      // Backward-compatible rewrites: old API paths → new /api/zero/ paths.
-      // The CLI still references the old contracts; these rewrites keep them
-      // working until the CLI contracts are migrated in a follow-up.
-      //
-      // Note: rewrites only change the URL path, NOT the HTTP method.
-      // Routes where the old contract uses a different method (PUT → POST)
-      // have dedicated backward-compat route files instead of rewrites:
-      //   - /api/org/model-providers/route.ts (old: PUT, new: POST)
-      //   - /api/user/preferences/route.ts    (old: PUT, new: POST)
-      {
-        source: "/api/org/model-providers/:type/set-default",
-        destination: "/api/zero/model-providers/:type/default",
-      },
-      {
-        source: "/api/org/model-providers/:type",
-        destination: "/api/zero/model-providers/:type",
-      },
-    ];
-  },
-
   async headers() {
     return [
       {
