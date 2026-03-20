@@ -219,8 +219,24 @@ jobs:
         id: host
         env:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ github.event_name == 'pull_request' && format('pr-{0}-test', github.event.pull_request.number) || 'main-test' }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
         run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            JOB_REF="pr-${PR_NUMBER}-test"
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            MQ_PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [ -n "$MQ_PR_NUM" ]; then
+              JOB_REF="pr-${MQ_PR_NUM}-merge-queue-test"
+            else
+              echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_HEAD_REF"
+              exit 1
+            fi
+          else
+            JOB_REF="main-test"
+          fi
+
           HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep .)
           NUM_HOSTS=$(echo "$HOSTS" | grep -c .)
           if [ "$NUM_HOSTS" -lt 1 ]; then
@@ -232,7 +248,7 @@ jobs:
           HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
           echo "host=${HOST}" >> "$GITHUB_OUTPUT"
           echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
-          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS})"
+          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS}, job-ref: ${JOB_REF})"
 
       - name: Deploy and build on metal host
         id: build

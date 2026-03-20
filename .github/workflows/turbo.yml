@@ -149,8 +149,15 @@ jobs:
             echo "job-ref=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
             echo "Job ref set to: pr-${{ github.event.pull_request.number }}"
           elif [ "${{ github.event_name }}" = "merge_group" ]; then
-            echo "job-ref=" >> $GITHUB_OUTPUT
-            echo "Job ref set to: (empty - merge_group will skip deployments)"
+            MQ_REF="${{ github.event.merge_group.head_ref }}"
+            PR_NUM=$(echo "$MQ_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [ -n "$PR_NUM" ]; then
+              echo "job-ref=pr-${PR_NUM}-merge-queue" >> $GITHUB_OUTPUT
+              echo "Job ref set to: pr-${PR_NUM}-merge-queue"
+            else
+              echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_REF"
+              exit 1
+            fi
           else
             echo "job-ref=staging" >> $GITHUB_OUTPUT
             echo "Job ref set to: staging"
