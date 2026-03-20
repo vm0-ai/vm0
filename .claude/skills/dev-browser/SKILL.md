@@ -153,3 +153,4 @@ Video:
 - **Verify page state with snapshot** — use `agent-browser snapshot -i` after navigation instead of `wait --load networkidle` (which frequently times out)
 - **Scroll within modals** — use `agent-browser scroll down 500 --selector "<modal-selector>"` for content inside modals, not plain `scroll down`
 - **Handle modals/dialogs** — check snapshot output for unexpected modals and close them before proceeding
+- **Onboarding model provider API key** — if the onboarding flow asks for a model provider API key, enter any random string to skip past it
