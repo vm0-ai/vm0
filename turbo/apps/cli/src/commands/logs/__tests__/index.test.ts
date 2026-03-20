@@ -735,6 +735,71 @@ describe("logs command", () => {
       expect(logCalls).toContain("150ms");
     });
 
+    it("should display DENY action without HTTP details", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  action: "DENY",
+                  method: "POST",
+                  url: "https://api.stripe.com/v1/charges",
+                  firewall_name: "stripe",
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("DENY");
+      expect(logCalls).toContain("POST");
+      expect(logCalls).toContain("[stripe]");
+      expect(logCalls).not.toContain("200");
+      expect(logCalls).not.toContain("ms");
+    });
+
+    it("should display ERROR action with auth failed suffix", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  action: "ERROR",
+                  method: "GET",
+                  status: 502,
+                  latency_ms: 5,
+                  request_size: 0,
+                  response_size: 100,
+                  url: "https://api.stripe.com/v1/users",
+                  firewall_name: "stripe",
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("502");
+      expect(logCalls).toContain("5ms");
+      expect(logCalls).toContain("[stripe]");
+      expect(logCalls).toContain("auth failed");
+    });
+
     it("should handle empty network logs", async () => {
       server.use(
         http.get(
