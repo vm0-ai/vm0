@@ -364,7 +364,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
 
   const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
   const {
-    navigateInReact,
+    navigateInReact: _navigateInReact,
     handleNavigateToSchedule,
     handleNavigateToMeet,
     handleChatAvatarClick,
