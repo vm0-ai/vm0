@@ -12,7 +12,7 @@ const context = testContext();
 
 function mockOnboardingStatus(overrides: Record<string, unknown>) {
   server.use(
-    http.get("*/api/onboarding/status", () => {
+    http.get("*/api/zero/onboarding/status", () => {
       return HttpResponse.json({
         needsOnboarding: false,
         isAdmin: true,

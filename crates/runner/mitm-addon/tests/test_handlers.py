@@ -67,7 +67,6 @@ class TestRequestHandler:
             await mitm_addon.request(flow)
 
         assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_rule"] == "vm0-api"
 
     async def test_tracks_start_time(self, registry_file):
         flow = _make_http_flow(host="api.anthropic.com")
@@ -217,7 +216,7 @@ class TestRequestHandler:
         assert flow.response is not None
         assert flow.response.status_code == 403
         assert flow.metadata["firewall_action"] == "DENY"
-        assert flow.metadata["firewall_rule"] == "firewall:https://api.github.com"
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
         body = json.loads(flow.response.content)
         assert body["error"] == "firewall_permission_denied"
         assert body["method"] == "GET"
@@ -371,7 +370,6 @@ class TestResponseHandler:
 
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_rule"] = "domain:*.anthropic.com"
         flow.metadata["original_url"] = "https://api.anthropic.com/"
 
         # Add response
@@ -401,19 +399,15 @@ class TestResponseHandler:
         assert entry["host"] == "api.anthropic.com"
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
-        assert entry["resp_content_type"] == "application/json"
-        assert entry["resp_content_encoding"] == "gzip"
-        assert entry["resp_transfer_encoding"] == "chunked"
 
     def test_401_firewall_cache_invalidation(self):
-        """401 response with firewall firewall_rule pops the cache entry."""
+        """401 response with firewall_base pops the cache entry."""
         flow = _make_http_flow(host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-1"
         flow.metadata["vm_client_ip"] = "10.200.0.5"
 
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["firewall_rule"] = "firewall:https://api.github.com"
         flow.metadata["firewall_base"] = "https://api.github.com"
         flow.metadata["firewall_api_id"] = "run-conn-1:0"
         flow.metadata["original_url"] = "https://api.github.com/repos"

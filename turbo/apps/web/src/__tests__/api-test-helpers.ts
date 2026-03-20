@@ -38,10 +38,10 @@ import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
-import { org } from "../db/schema/org";
+import { orgMetadata } from "../db/schema/org-metadata";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
-import { orgMembers } from "../db/schema/org-members";
+import { orgMembersMetadata } from "../db/schema/org-members-metadata";
 import { zeroAgents } from "../db/schema/zero-agent";
 import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
@@ -2878,9 +2878,9 @@ export async function getOrgCacheEntry(orgId: string) {
  */
 export async function getOrgCredits(orgId: string): Promise<number | null> {
   const [row] = await globalThis.services.db
-    .select({ credits: org.credits })
-    .from(org)
-    .where(eq(org.orgId, orgId))
+    .select({ credits: orgMetadata.credits })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   return row?.credits ?? null;
 }
@@ -2891,7 +2891,7 @@ export async function getOrgCredits(orgId: string): Promise<number | null> {
  */
 export async function ensureOrgRow(orgId: string): Promise<void> {
   await globalThis.services.db
-    .insert(org)
+    .insert(orgMetadata)
     .values({ orgId })
     .onConflictDoNothing();
 }
@@ -2901,7 +2901,9 @@ export async function ensureOrgRow(orgId: string): Promise<void> {
  * Useful for testing scenarios where the org row does not exist.
  */
 export async function deleteOrgRow(orgId: string): Promise<void> {
-  await globalThis.services.db.delete(org).where(eq(org.orgId, orgId));
+  await globalThis.services.db
+    .delete(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId));
 }
 
 /**
@@ -2912,9 +2914,9 @@ export async function updateOrgTier(
   tier: string,
 ): Promise<void> {
   await globalThis.services.db
-    .update(org)
+    .update(orgMetadata)
     .set({ tier, updatedAt: new Date() })
-    .where(eq(org.orgId, orgId));
+    .where(eq(orgMetadata.orgId, orgId));
 }
 
 /**
@@ -2924,9 +2926,9 @@ export async function getOrgDefaultAgent(
   orgId: string,
 ): Promise<string | null> {
   const [row] = await globalThis.services.db
-    .select({ defaultAgentComposeId: org.defaultAgentComposeId })
-    .from(org)
-    .where(eq(org.orgId, orgId))
+    .select({ defaultAgentComposeId: orgMetadata.defaultAgentComposeId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   return row?.defaultAgentComposeId ?? null;
 }
@@ -2939,9 +2941,9 @@ export async function updateOrgDefaultAgent(
   composeId: string,
 ): Promise<void> {
   await globalThis.services.db
-    .update(org)
+    .update(orgMetadata)
     .set({ defaultAgentComposeId: composeId, updatedAt: new Date() })
-    .where(eq(org.orgId, orgId));
+    .where(eq(orgMetadata.orgId, orgId));
 }
 
 /**
@@ -2999,7 +3001,7 @@ export async function insertOrgMembersEntry(entry: {
   initServices();
   const now = new Date();
   await globalThis.services.db
-    .insert(orgMembers)
+    .insert(orgMembersMetadata)
     .values({
       orgId: entry.orgId,
       userId: entry.userId,
@@ -3013,7 +3015,7 @@ export async function insertOrgMembersEntry(entry: {
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [orgMembers.orgId, orgMembers.userId],
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
       set: {
         ...(entry.timezone !== undefined && { timezone: entry.timezone }),
         ...(entry.notifyEmail !== undefined && {
@@ -3569,8 +3571,13 @@ export async function findOrgMembersEntry(orgId: string, userId: string) {
   initServices();
   const [row] = await globalThis.services.db
     .select()
-    .from(orgMembers)
-    .where(and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, userId)))
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    )
     .limit(1);
   return row;
 }

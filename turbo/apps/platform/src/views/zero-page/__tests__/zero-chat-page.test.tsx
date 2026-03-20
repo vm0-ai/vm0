@@ -9,7 +9,7 @@ const context = testContext();
 
 function mockChatAPI() {
   server.use(
-    http.get("*/api/chat-threads", () => {
+    http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
   );

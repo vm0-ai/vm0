@@ -24,7 +24,9 @@ const router = tsr.router(zeroAgentsMainContract, {
   create: async ({ body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:write",
+    });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 

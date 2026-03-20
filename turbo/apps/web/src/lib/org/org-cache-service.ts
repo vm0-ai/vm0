@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { orgCache } from "../../db/schema/org-cache";
-import { org } from "../../db/schema/org";
+import { orgMetadata } from "../../db/schema/org-metadata";
 import { logger } from "../logger";
 
 const log = logger("service:org-cache");
@@ -29,9 +29,9 @@ async function readTier(
 ): Promise<string> {
   const db = globalThis.services.db;
   const [orgRow] = await db
-    .select({ tier: org.tier })
-    .from(org)
-    .where(eq(org.orgId, orgId))
+    .select({ tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   const dbTier = orgRow?.tier ?? "free";
 
@@ -45,10 +45,10 @@ async function readTier(
     if (typeof clerkTier === "string" && clerkTier !== "free") {
       log.info("lazy migration: tier from Clerk", { orgId, clerkTier });
       void db
-        .insert(org)
+        .insert(orgMetadata)
         .values({ orgId, tier: clerkTier })
         .onConflictDoUpdate({
-          target: org.orgId,
+          target: orgMetadata.orgId,
           set: { tier: clerkTier, updatedAt: new Date() },
         })
         .catch((err: unknown) =>

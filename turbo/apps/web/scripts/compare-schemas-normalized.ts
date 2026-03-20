@@ -48,14 +48,17 @@ const DB2_URL: string = db2Url;
 async function getTableColumns(client: Client): Promise<TableColumn[]> {
   const result = await client.query<TableColumn>(`
     SELECT
-      table_name,
-      column_name,
-      data_type,
-      is_nullable,
-      column_default
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-    ORDER BY table_name, column_name
+      c.table_name,
+      c.column_name,
+      c.data_type,
+      c.is_nullable,
+      c.column_default
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON c.table_schema = t.table_schema AND c.table_name = t.table_name
+    WHERE c.table_schema = 'public'
+      AND t.table_type = 'BASE TABLE'
+    ORDER BY c.table_name, c.column_name
   `);
   return result.rows;
 }

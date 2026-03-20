@@ -58,7 +58,7 @@ export function ZeroSlackConnectPage() {
       set(status$, "checking");
       detach(
         (async () => {
-          const res = await fetchFn("/api/integrations/slack/org/connect");
+          const res = await fetchFn("/api/zero/integrations/slack/connect");
           if (res.ok) {
             const data = (await res.json()) as { isConnected?: boolean };
             if (data.isConnected) {
@@ -93,7 +93,7 @@ export function ZeroSlackConnectPage() {
       (async () => {
         const channelId = params.get("c");
         const threadTs = params.get("t");
-        const res = await fetchFn("/api/integrations/slack/org/connect", {
+        const res = await fetchFn("/api/zero/integrations/slack/connect", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

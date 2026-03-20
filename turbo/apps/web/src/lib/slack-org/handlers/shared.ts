@@ -5,7 +5,7 @@ import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { zeroAgents } from "../../../db/schema/zero-agent";
-import { org as orgTable } from "../../../db/schema/org";
+import { orgMetadata as orgTable } from "../../../db/schema/org-metadata";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
 import { ensureStorageExists } from "../../storage/storage-service";

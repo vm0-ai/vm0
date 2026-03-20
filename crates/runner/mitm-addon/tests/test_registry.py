@@ -101,11 +101,10 @@ class TestGetVmInfo:
 class TestLogNetworkEntry:
     def test_writes_jsonl(self, tmp_path):
         log_path = str(tmp_path / "net.jsonl")
-        vm_info = {"networkLogPath": log_path}
         entry = {"action": "ALLOW", "host": "example.com"}
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            mitm_addon.log_network_entry(vm_info, entry)
+            mitm_addon.log_network_entry(log_path, entry)
 
         lines = Path(log_path).read_text().splitlines()
         assert len(lines) == 1
@@ -115,15 +114,14 @@ class TestLogNetworkEntry:
 
     def test_appends_multiple(self, tmp_path):
         log_path = str(tmp_path / "net.jsonl")
-        vm_info = {"networkLogPath": log_path}
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            mitm_addon.log_network_entry(vm_info, {"n": 1})
-            mitm_addon.log_network_entry(vm_info, {"n": 2})
+            mitm_addon.log_network_entry(log_path, {"n": 1})
+            mitm_addon.log_network_entry(log_path, {"n": 2})
 
         lines = Path(log_path).read_text().splitlines()
         assert len(lines) == 2
 
     def test_no_path_is_noop(self):
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            mitm_addon.log_network_entry({}, {"action": "ALLOW"})
+            mitm_addon.log_network_entry("", {"action": "ALLOW"})

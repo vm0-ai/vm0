@@ -12,7 +12,7 @@ import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
 import { orgCache } from "../../db/schema/org-cache";
-import { org } from "../../db/schema/org";
+import { orgMetadata } from "../../db/schema/org-metadata";
 import {
   agentComposes,
   agentComposeVersions,
@@ -68,7 +68,7 @@ export async function givenGitHubInstallation(
 
   // Ensure org row exists (source of truth for tier and default agent)
   await globalThis.services.db
-    .insert(org)
+    .insert(orgMetadata)
     .values({ orgId })
     .onConflictDoNothing();
 

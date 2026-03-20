@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
-import { orgMembers } from "../../db/schema/org-members";
+import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { badRequest } from "../errors";
 import { logger } from "../logger";
 
@@ -64,8 +64,13 @@ export async function getUserPreferences(
 
   const [row] = await db
     .select()
-    .from(orgMembers)
-    .where(and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, userId)))
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    )
     .limit(1);
 
   if (row) {
@@ -109,7 +114,7 @@ export async function getUserPreferences(
     });
     const now = new Date();
     void db
-      .insert(orgMembers)
+      .insert(orgMembersMetadata)
       .values({
         orgId,
         userId,
@@ -179,7 +184,7 @@ export async function updateUserPreferences(
 
   const now = new Date();
   await db
-    .insert(orgMembers)
+    .insert(orgMembersMetadata)
     .values({
       orgId,
       userId,
@@ -192,7 +197,7 @@ export async function updateUserPreferences(
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [orgMembers.orgId, orgMembers.userId],
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
       set: {
         ...(prefs.timezone !== undefined && { timezone: prefs.timezone }),
         ...(prefs.notifyEmail !== undefined && {

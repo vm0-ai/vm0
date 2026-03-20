@@ -1,5 +1,48 @@
 # Changelog
 
+## [12.136.0](https://github.com/vm0-ai/vm0/compare/web-v12.135.0...web-v12.136.0) (2026-03-20)
+
+
+### Features
+
+* add firewall fields to network logs and improve action handling ([#5745](https://github.com/vm0-ai/vm0/issues/5745)) ([ff2d271](https://github.com/vm0-ai/vm0/commit/ff2d271d7040f6367dd19a7f0e6f21fdd35a19c1))
+* add sandbox token capability enforcement to /api/zero/agents endpoints ([#5746](https://github.com/vm0-ai/vm0/issues/5746)) ([ef77fa2](https://github.com/vm0-ai/vm0/commit/ef77fa2c75fbf7c1e0cc673f6dd4f73df02468ab))
+
+
+### Refactoring
+
+* api layer separation phase 5 — application-layer endpoint migration ([#5721](https://github.com/vm0-ai/vm0/issues/5721)) ([3ec2080](https://github.com/vm0-ai/vm0/commit/3ec2080b722dc02d1dc07caeabbd780b4f87c93f))
+* rename org and org_members tables to org_metadata and org_members_metadata ([#5634](https://github.com/vm0-ai/vm0/issues/5634)) ([08e8599](https://github.com/vm0-ai/vm0/commit/08e85999e7a89e7ef5527a93166d3140e4500fc8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.88.0
+
+## [12.135.0](https://github.com/vm0-ai/vm0/compare/web-v12.134.0...web-v12.135.0) (2026-03-20)
+
+
+### Features
+
+* add brevo api-token connector ([#5734](https://github.com/vm0-ai/vm0/issues/5734)) ([dd1cb42](https://github.com/vm0-ai/vm0/commit/dd1cb4262e948fad5a585ea474f9583d59800499)), closes [#5712](https://github.com/vm0-ai/vm0/issues/5712)
+* add cal-com api-token connector ([#5729](https://github.com/vm0-ai/vm0/issues/5729)) ([9a8165a](https://github.com/vm0-ai/vm0/commit/9a8165ad65920f19271769f9ae06f4f8d66b335c)), closes [#5713](https://github.com/vm0-ai/vm0/issues/5713)
+* add loops api-token connector ([#5744](https://github.com/vm0-ai/vm0/issues/5744)) ([62895ea](https://github.com/vm0-ai/vm0/commit/62895eaa443aa23910181d15255dff2a3c2ea6d9)), closes [#5717](https://github.com/vm0-ai/vm0/issues/5717)
+* add salesforce api-token connector ([#5735](https://github.com/vm0-ai/vm0/issues/5735)) ([2b5866f](https://github.com/vm0-ai/vm0/commit/2b5866f1e43d29fa966edddf6eabb90c2e66d5ee))
+
+
+### Bug Fixes
+
+* store selectedModel on agent_runs for credit usage billing ([#5739](https://github.com/vm0-ai/vm0/issues/5739)) ([e8e33ce](https://github.com/vm0-ai/vm0/commit/e8e33ceba5acb77c5d17b64c48db6a0c2d1e80c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.87.0
+
 ## [12.134.0](https://github.com/vm0-ai/vm0/compare/web-v12.133.0...web-v12.134.0) (2026-03-20)
 
 

@@ -1,7 +1,7 @@
 /**
  * App Logs API Handlers
  *
- * Mock handlers for /api/app/logs endpoints
+ * Mock handlers for /api/zero/logs endpoints
  */
 
 import { http, HttpResponse } from "msw";
@@ -55,8 +55,8 @@ const mockLogDetails: LogDetail[] = [
 ];
 
 export const appLogsHandlers = [
-  // GET /api/app/logs - List logs with basic fields
-  http.get("*/api/app/logs", ({ request }) => {
+  // GET /api/zero/logs - List logs with basic fields
+  http.get("*/api/zero/logs", ({ request }) => {
     const url = new URL(request.url);
     const cursor = url.searchParams.get("cursor");
     const limit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
@@ -94,8 +94,8 @@ export const appLogsHandlers = [
     return HttpResponse.json(response);
   }),
 
-  // GET /api/app/logs/:id - Get log detail
-  http.get("*/api/app/logs/:id", ({ params }) => {
+  // GET /api/zero/logs/:id - Get log detail
+  http.get("*/api/zero/logs/:id", ({ params }) => {
     const { id } = params;
     const logDetail = mockLogDetails.find((log) => log.id === id);
 

@@ -30,12 +30,12 @@ export type OnboardingStatusResponse = z.infer<
 >;
 
 /**
- * Onboarding status contract for GET /api/onboarding/status
+ * Onboarding status contract for GET /api/zero/onboarding/status
  */
 export const onboardingStatusContract = c.router({
   getStatus: {
     method: "GET",
-    path: "/api/onboarding/status",
+    path: "/api/zero/onboarding/status",
     headers: authHeadersSchema,
     responses: {
       200: onboardingStatusResponseSchema,

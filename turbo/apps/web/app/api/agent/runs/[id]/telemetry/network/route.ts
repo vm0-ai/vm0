@@ -21,17 +21,21 @@ interface AxiomNetworkEvent {
   _time: string;
   runId: string;
   userId: string;
-  mode?: "mitm";
-  action?: "ALLOW" | "DENY";
+  action?: "ALLOW" | "DENY" | "ERROR";
   host?: string;
   port?: number;
-  rule_matched?: string | null;
   method?: string;
   url?: string;
   status?: number;
   latency_ms?: number;
   request_size?: number;
   response_size?: number;
+  firewall_base?: string;
+  firewall_name?: string;
+  firewall_ref?: string;
+  firewall_permission?: string;
+  firewall_rule_match?: string;
+  firewall_params?: Record<string, string>;
 }
 
 const router = tsr.router(runNetworkLogsContract, {
@@ -98,17 +102,21 @@ ${sinceFilter}
 
     const networkLogs = records.map((e) => ({
       timestamp: e._time,
-      mode: e.mode,
       action: e.action,
       host: e.host,
       port: e.port,
-      rule_matched: e.rule_matched,
       method: e.method,
       url: e.url,
       status: e.status,
       latency_ms: e.latency_ms,
       request_size: e.request_size,
       response_size: e.response_size,
+      firewall_base: e.firewall_base,
+      firewall_name: e.firewall_name,
+      firewall_ref: e.firewall_ref,
+      firewall_permission: e.firewall_permission,
+      firewall_rule_match: e.firewall_rule_match,
+      firewall_params: e.firewall_params,
     }));
 
     return {

@@ -2,7 +2,7 @@ import { eq, lt, and, or, count, gt, sql, inArray } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { transitionRunStatus } from "./run-status";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
-import { org } from "../../db/schema/org";
+import { orgMetadata } from "../../db/schema/org-metadata";
 import { env } from "../../env";
 import { logger } from "../logger";
 import { isConcurrentRunLimit } from "../errors";
@@ -198,9 +198,9 @@ async function dequeueNextAtomic(
       // Look up org tier from org table (source of truth).
       // Falls back to "free" (most conservative limit) if row is missing.
       const [orgRow] = await tx
-        .select({ tier: org.tier })
-        .from(org)
-        .where(eq(org.orgId, orgId))
+        .select({ tier: orgMetadata.tier })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.orgId, orgId))
         .limit(1);
       const orgTier = parseOrgTier(orgRow?.tier);
 

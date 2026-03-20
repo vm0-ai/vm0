@@ -20,7 +20,7 @@ def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, pat
     flow.request.method = "GET"
     flow.request.content = b""
     flow.request.headers = {}
-    flow.metadata = {}
+    flow.metadata = {"vm_run_id": "test-run"}
     flow.response = None
     return flow
 
@@ -130,7 +130,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallBlock)
         assert result.base == "https://api.github.com"
-        assert result.firewall_ref == "github"
+        assert result.ref == "github"
         assert result.method == "GET"
         assert result.path == "/repos"
 
@@ -660,10 +660,8 @@ class TestHandleFirewallRequest:
 
         # Core metadata
         assert flow.metadata["firewall_action"] == "ALLOW"
-        assert flow.metadata["firewall_rule"] == "firewall:https://api.github.com"
         assert flow.metadata["firewall_base"] == "https://api.github.com"
         assert flow.metadata["firewall_api_id"] == "run-1:0"
-        assert flow.metadata["vm_run_id"] == "run-1"
 
         # Audit metadata
         assert flow.metadata["firewall_name"] == "github"
@@ -696,8 +694,7 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "DENY"
-        assert flow.metadata["firewall_rule"] == "firewall:https://api.github.com"
+        assert flow.metadata["firewall_action"] == "ERROR"
         body = json.loads(flow.response.content)
         assert body["error"] == "firewall_auth_failed"
         assert "API unreachable" in body["message"]
@@ -737,7 +734,7 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "DENY"
+        assert flow.metadata["firewall_action"] == "ERROR"
         body = json.loads(flow.response.content)
         assert body["error"] == "firewall_auth_unavailable"
         assert body["firewall"] == "github"

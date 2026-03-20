@@ -35,16 +35,16 @@ async function setup() {
 /** Default chat-threads handlers used by most send tests. */
 function useChatThreadHandlers() {
   server.use(
-    http.post("*/api/chat-threads", () => {
+    http.post("*/api/zero/chat-threads", () => {
       return HttpResponse.json(
         { id: "thread-1", createdAt: "2026-03-10T00:00:00Z" },
         { status: 201 },
       );
     }),
-    http.post("*/api/chat-threads/:id/runs", () => {
+    http.post("*/api/zero/chat-threads/:id/runs", () => {
       return new HttpResponse(null, { status: 204 });
     }),
-    http.get("*/api/chat-threads", () => {
+    http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
   );
@@ -66,7 +66,7 @@ describe("zero-chat signals", () => {
   describe("fetchZeroSessionList$", () => {
     it("should fetch and store thread list", async () => {
       server.use(
-        http.get("*/api/chat-threads", () => {
+        http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({
             threads: [
               {
@@ -101,7 +101,7 @@ describe("zero-chat signals", () => {
 
     it("should set error on API failure", async () => {
       server.use(
-        http.get("*/api/chat-threads", () => {
+        http.get("*/api/zero/chat-threads", () => {
           return new HttpResponse(null, {
             status: 500,
             statusText: "Internal Server Error",
@@ -121,7 +121,7 @@ describe("zero-chat signals", () => {
     it("should pass agentComposeId as query parameter", async () => {
       let capturedUrl = "";
       server.use(
-        http.get("*/api/chat-threads", ({ request }) => {
+        http.get("*/api/zero/chat-threads", ({ request }) => {
           capturedUrl = request.url;
           return HttpResponse.json({ threads: [] });
         }),
@@ -138,7 +138,7 @@ describe("zero-chat signals", () => {
   describe("switchZeroSession$", () => {
     it("should set thread id and load messages from thread API", async () => {
       server.use(
-        http.get("*/api/chat-threads/:id", () => {
+        http.get("*/api/zero/chat-threads/:id", () => {
           return HttpResponse.json({
             id: "thread-abc",
             title: null,
@@ -180,13 +180,13 @@ describe("zero-chat signals", () => {
 
     it("should set error on API failure", async () => {
       server.use(
-        http.get("*/api/chat-threads/:id", () => {
+        http.get("*/api/zero/chat-threads/:id", () => {
           return new HttpResponse(null, {
             status: 404,
             statusText: "Not Found",
           });
         }),
-        http.get("*/api/agent/sessions/:id", () => {
+        http.get("*/api/zero/sessions/:id", () => {
           return new HttpResponse(null, {
             status: 404,
             statusText: "Not Found",
@@ -215,7 +215,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/app/logs/:runId", () => {
+        http.get("*/api/zero/logs/:runId", () => {
           pollCount++;
           return HttpResponse.json({
             id: "run-old",
@@ -227,7 +227,7 @@ describe("zero-chat signals", () => {
             completedAt: null,
           });
         }),
-        http.get("*/api/chat-threads/:id", () => {
+        http.get("*/api/zero/chat-threads/:id", () => {
           return HttpResponse.json({
             id: "new-thread",
             title: null,
@@ -271,7 +271,7 @@ describe("zero-chat signals", () => {
 
     it("should clear previous messages when switching", async () => {
       server.use(
-        http.get("*/api/chat-threads/:id", () => {
+        http.get("*/api/zero/chat-threads/:id", () => {
           return HttpResponse.json({
             id: "thread-1",
             title: null,
@@ -321,7 +321,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/app/logs/:runId", () => {
+        http.get("*/api/zero/logs/:runId", () => {
           pollCount++;
           return HttpResponse.json({
             id: "run-poll",
@@ -364,18 +364,18 @@ describe("zero-chat signals", () => {
       let threadCreated = false;
       let runAssociated = false;
       server.use(
-        http.post("*/api/chat-threads", () => {
+        http.post("*/api/zero/chat-threads", () => {
           threadCreated = true;
           return HttpResponse.json(
             { id: "thread-new", createdAt: "2026-03-10T00:00:00Z" },
             { status: 201 },
           );
         }),
-        http.post("*/api/chat-threads/:id/runs", () => {
+        http.post("*/api/zero/chat-threads/:id/runs", () => {
           runAssociated = true;
           return new HttpResponse(null, { status: 204 });
         }),
-        http.get("*/api/chat-threads", () => {
+        http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
         http.post("*/api/zero/runs", async ({ request }) => {
@@ -389,7 +389,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/app/logs/:runId", () => {
+        http.get("*/api/zero/logs/:runId", () => {
           return HttpResponse.json({
             id: "run-123",
             status: "completed",
@@ -495,7 +495,7 @@ describe("zero-chat signals", () => {
 
     it("should set error on thread creation failure", async () => {
       server.use(
-        http.post("*/api/chat-threads", () => {
+        http.post("*/api/zero/chat-threads", () => {
           return new HttpResponse(null, { status: 500 });
         }),
       );
@@ -529,7 +529,7 @@ describe("zero-chat signals", () => {
       let capturedRunBody: Record<string, string> | null = null;
       let threadCreateCalled = false;
       server.use(
-        http.get("*/api/chat-threads/:id", () => {
+        http.get("*/api/zero/chat-threads/:id", () => {
           return HttpResponse.json({
             id: "thread-existing",
             title: null,
@@ -540,17 +540,17 @@ describe("zero-chat signals", () => {
             updatedAt: "2026-03-10T00:00:00Z",
           });
         }),
-        http.post("*/api/chat-threads", () => {
+        http.post("*/api/zero/chat-threads", () => {
           threadCreateCalled = true;
           return HttpResponse.json(
             { id: "should-not-create", createdAt: "2026-03-10T00:00:00Z" },
             { status: 201 },
           );
         }),
-        http.post("*/api/chat-threads/:id/runs", () => {
+        http.post("*/api/zero/chat-threads/:id/runs", () => {
           return new HttpResponse(null, { status: 204 });
         }),
-        http.get("*/api/chat-threads", () => {
+        http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
         http.post("*/api/zero/runs", async ({ request }) => {
@@ -564,7 +564,7 @@ describe("zero-chat signals", () => {
             framework: "claude-code",
           });
         }),
-        http.get("*/api/app/logs/:runId", () => {
+        http.get("*/api/zero/logs/:runId", () => {
           return HttpResponse.json({
             id: "run-456",
             status: "completed",

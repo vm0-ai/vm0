@@ -76,7 +76,7 @@ describe("zero-activity signals", () => {
   describe("zeroActivityData$", () => {
     it("should fetch logs for all agents in org", async () => {
       server.use(
-        http.get("http://localhost:3000/api/app/logs", ({ request }) => {
+        http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
           const url = new URL(request.url);
           // No name filter → returns all agents' logs
           expect(url.searchParams.has("name")).toBeFalsy();
@@ -98,7 +98,7 @@ describe("zero-activity signals", () => {
 
     it("should handle empty response", async () => {
       server.use(
-        http.get("http://localhost:3000/api/app/logs", () => {
+        http.get("http://localhost:3000/api/zero/logs", () => {
           return HttpResponse.json({
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
@@ -115,7 +115,7 @@ describe("zero-activity signals", () => {
 
     it("should throw on API error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/app/logs", () => {
+        http.get("http://localhost:3000/api/zero/logs", () => {
           return new HttpResponse(null, { status: 500 });
         }),
       );
@@ -130,7 +130,7 @@ describe("zero-activity signals", () => {
 
     it("should report hasPrev as false on first page", async () => {
       server.use(
-        http.get("http://localhost:3000/api/app/logs", () => {
+        http.get("http://localhost:3000/api/zero/logs", () => {
           return HttpResponse.json({
             data: createMockLogs(),
             pagination: {
@@ -153,7 +153,7 @@ describe("zero-activity signals", () => {
     it("should pass status filter to API query params", async () => {
       const captured: { status: string | null } = { status: null };
       server.use(
-        http.get("http://localhost:3000/api/app/logs", ({ request }) => {
+        http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
           const url = new URL(request.url);
           captured.status = url.searchParams.get("status");
           return HttpResponse.json({
@@ -176,7 +176,7 @@ describe("zero-activity signals", () => {
   describe("zeroActivityDetail$", () => {
     it("should fetch log detail for selected log", async () => {
       server.use(
-        http.get("http://localhost:3000/api/app/logs/:logId", ({ params }) => {
+        http.get("http://localhost:3000/api/zero/logs/:logId", ({ params }) => {
           if (params["logId"] === "log-1") {
             return HttpResponse.json(createMockLogDetail());
           }

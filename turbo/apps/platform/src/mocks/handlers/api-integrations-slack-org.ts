@@ -1,7 +1,7 @@
 /**
  * Org-aware Slack Integration API Handlers
  *
- * Mock handlers for /api/integrations/slack/org endpoint.
+ * Mock handlers for /api/zero/integrations/slack endpoint.
  * Default behavior: user has a connected org Slack workspace.
  */
 
@@ -57,13 +57,13 @@ export function resetMockSlackOrgIntegration(): void {
 }
 
 export const apiIntegrationsSlackOrgHandlers = [
-  // GET /api/integrations/slack/org
-  http.get("/api/integrations/slack/org", () => {
+  // GET /api/zero/integrations/slack
+  http.get("/api/zero/integrations/slack", () => {
     return HttpResponse.json(mockSlackOrgData);
   }),
 
-  // DELETE /api/integrations/slack/org
-  http.delete("/api/integrations/slack/org", () => {
+  // DELETE /api/zero/integrations/slack
+  http.delete("/api/zero/integrations/slack", () => {
     mockSlackOrgData = { ...mockSlackOrgData, isConnected: false };
     return HttpResponse.json({ ok: true });
   }),

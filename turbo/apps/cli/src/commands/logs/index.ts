@@ -63,10 +63,21 @@ function formatMetric(metric: TelemetryMetric): string {
 }
 
 /**
- * Format a network log entry with full HTTP details
+ * Format a denied network request (blocked by firewall permission)
  */
-function formatNetworkLog(entry: NetworkLogEntry): string {
-  // Color status code based on HTTP status
+function formatNetworkDeny(entry: NetworkLogEntry): string {
+  const method = entry.method || "???";
+  const url = entry.url || entry.host || "unknown";
+  const firewall = entry.firewall_name
+    ? ` ${chalk.cyan(`[${entry.firewall_name}]`)}`
+    : "";
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${firewall}`;
+}
+
+/**
+ * Format an ALLOW or ERROR network request with full HTTP details
+ */
+function formatNetworkRequest(entry: NetworkLogEntry): string {
   let statusColor: typeof chalk.green;
   const status = entry.status || 0;
   if (status >= 200 && status < 300) {
@@ -79,7 +90,6 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
     statusColor = chalk.gray;
   }
 
-  // Format latency with color
   let latencyColor: typeof chalk.green;
   const latencyMs = entry.latency_ms || 0;
   if (latencyMs < 500) {
@@ -94,8 +104,20 @@ function formatNetworkLog(entry: NetworkLogEntry): string {
   const requestSize = entry.request_size || 0;
   const responseSize = entry.response_size || 0;
   const url = entry.url || entry.host || "unknown";
+  const firewall = entry.firewall_name
+    ? ` ${chalk.cyan(`[${entry.firewall_name}]`)}`
+    : "";
+  const error = entry.action === "ERROR" ? ` ${chalk.red("auth failed")}` : "";
 
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}`;
+}
+
+/**
+ * Format a network log entry
+ */
+function formatNetworkLog(entry: NetworkLogEntry): string {
+  if (entry.action === "DENY") return formatNetworkDeny(entry);
+  return formatNetworkRequest(entry);
 }
 
 /**

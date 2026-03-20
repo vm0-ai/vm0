@@ -109,7 +109,7 @@ async function fetchQueuePosition(
   runId: string,
 ): Promise<number> {
   const resp = await fetchFn(
-    `/api/app/queue-position?runId=${encodeURIComponent(runId)}`,
+    `/api/zero/queue-position?runId=${encodeURIComponent(runId)}`,
   );
   if (!resp.ok) {
     return 0;
@@ -175,7 +175,7 @@ async function createChatThread(
   agentComposeId: string,
   title?: string,
 ): Promise<string | null> {
-  const response = await fetchFn("/api/chat-threads", {
+  const response = await fetchFn("/api/zero/chat-threads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agentComposeId, title }),
@@ -192,7 +192,7 @@ async function addRunToThread(
   threadId: string,
   runId: string,
 ): Promise<void> {
-  const response = await fetchFn(`/api/chat-threads/${threadId}/runs`, {
+  const response = await fetchFn(`/api/zero/chat-threads/${threadId}/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ runId }),
@@ -538,7 +538,7 @@ export const uploadZeroAttachment$ = command(
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetchFn("/api/agent/uploads", {
+      const res = await fetchFn("/api/zero/uploads", {
         method: "POST",
         body: formData,
       });
@@ -600,7 +600,7 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
   try {
     const fetchFn = get(fetch$);
     const res = await fetchFn(
-      `/api/chat-threads?agentComposeId=${encodeURIComponent(composeId)}`,
+      `/api/zero/chat-threads?agentComposeId=${encodeURIComponent(composeId)}`,
     );
     if (!res.ok) {
       set(internalSessionListError$, `Failed to load chats: ${res.statusText}`);
@@ -685,10 +685,10 @@ export const switchZeroSession$ = command(
 
       // Try chat-threads API first; fall back to legacy sessions API
       L.info("loading thread:", threadId);
-      let res = await fetchFn(`/api/chat-threads/${threadId}`);
+      let res = await fetchFn(`/api/zero/chat-threads/${threadId}`);
       let isLegacySession = false;
       if (!res.ok) {
-        res = await fetchFn(`/api/agent/sessions/${threadId}`);
+        res = await fetchFn(`/api/zero/sessions/${threadId}`);
         isLegacySession = true;
       }
       if (!res.ok) {

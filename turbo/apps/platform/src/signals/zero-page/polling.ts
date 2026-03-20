@@ -137,7 +137,7 @@ export const setupPollingLoop$ = command(
     // Phase 2: Check if already terminal
     try {
       const fetchFn = get(fetch$);
-      const response = await fetchFn(`/api/app/logs/${runId}`);
+      const response = await fetchFn(`/api/zero/logs/${runId}`);
       signal.throwIfAborted();
       if (response.ok) {
         const detail = (await response.json()) as LogDetail;
@@ -170,7 +170,7 @@ export const setupPollingLoop$ = command(
 
       try {
         const fetchFn = get(fetch$);
-        const response = await fetchFn(`/api/app/logs/${runId}`);
+        const response = await fetchFn(`/api/zero/logs/${runId}`);
         signal.throwIfAborted();
 
         if (response.ok) {

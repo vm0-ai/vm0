@@ -33,7 +33,7 @@ export const reloadOnboardingStatus$ = command(({ set }) => {
 export const zeroOnboardingStatus$ = computed(async (get) => {
   get(internalReload$);
   const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/onboarding/status");
+  const resp = await fetchFn("/api/zero/onboarding/status");
   if (!resp.ok) {
     throw new Error(`Failed to fetch onboarding status: ${resp.status}`);
   }
@@ -66,7 +66,7 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
  */
 export const completeMemberOnboarding$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
-  await fetchFn("/api/onboarding/complete", { method: "POST" });
+  await fetchFn("/api/zero/onboarding/complete", { method: "POST" });
   set(internalReload$, (x) => x + 1);
 });
 
@@ -366,7 +366,7 @@ export const completeZeroOnboarding$ = command(
       }
 
       // Set as default agent
-      const defaultResp = await fetchFn("/api/orgs/default-agent", {
+      const defaultResp = await fetchFn("/api/zero/default-agent", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

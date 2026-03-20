@@ -156,9 +156,9 @@ export async function deductOrgCredits(
   amount: number,
 ): Promise<void> {
   await tx.execute(
-    sql`INSERT INTO org (org_id, credits, created_at, updated_at)
+    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
         VALUES (${orgId}, ${-amount}, now(), now())
         ON CONFLICT (org_id)
-        DO UPDATE SET credits = org.credits - ${amount}, updated_at = now()`,
+        DO UPDATE SET credits = org_metadata.credits - ${amount}, updated_at = now()`,
   );
 }
