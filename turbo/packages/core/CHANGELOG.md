@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.86.0](https://github.com/vm0-ai/vm0/compare/core-v8.85.0...core-v8.86.0) (2026-03-20)
+
+
+### Features
+
+* add calendly api-token connector ([#5727](https://github.com/vm0-ai/vm0/issues/5727)) ([b11325d](https://github.com/vm0-ai/vm0/commit/b11325d7696d67f823b2b5c48509b674eab017df)), closes [#5714](https://github.com/vm0-ai/vm0/issues/5714)
+* add cloudinary api-token connector ([#5724](https://github.com/vm0-ai/vm0/issues/5724)) ([d1734d1](https://github.com/vm0-ai/vm0/commit/d1734d19408bc5e3c5eddfd9b44e2bfbff8b354e))
+* add customer-io api-token connector ([#5730](https://github.com/vm0-ai/vm0/issues/5730)) ([04e85a7](https://github.com/vm0-ai/vm0/commit/04e85a7d01da9472a9f4f11e742fa5a0db10a9e7))
+* add v0 api-token connector ([#5725](https://github.com/vm0-ai/vm0/issues/5725)) ([ce9481f](https://github.com/vm0-ai/vm0/commit/ce9481fd0fcfdd3e089c36773572ef680c07384b)), closes [#5710](https://github.com/vm0-ai/vm0/issues/5710)
+
+
+### Refactoring
+
+* api layer separation phase 3 — core domain proxies ([#5694](https://github.com/vm0-ai/vm0/issues/5694)) ([9e94027](https://github.com/vm0-ai/vm0/commit/9e940274deab747aa8bf72de1c55a5c918f25e12))
+* unify inconsistent api paths for model-providers, user-preferences, secrets ([#5689](https://github.com/vm0-ai/vm0/issues/5689)) ([cb986be](https://github.com/vm0-ai/vm0/commit/cb986beb3a9d103f51c967cb200b85c50507c0ca))
+
 ## [8.85.0](https://github.com/vm0-ai/vm0/compare/core-v8.84.0...core-v8.85.0) (2026-03-20)
 
 
