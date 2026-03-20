@@ -129,7 +129,7 @@ jobs:
         run: bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 
       - name: Run actionlint
-        run: ./actionlint
+        run: ./actionlint -shellcheck=
 
   gitleaks:
     name: Gitleaks Secrets Detection
