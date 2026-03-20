@@ -192,6 +192,19 @@ export async function prepareForExecution(
 }
 
 /**
+ * Extract optional metadata fields from ExecutionContext, coalescing to null
+ */
+function extractMetadata(context: ExecutionContext) {
+  return {
+    agentName: context.agentName || null,
+    resumedFromCheckpointId: context.resumedFromCheckpointId || null,
+    continuedFromSessionId: context.continuedFromSessionId || null,
+    apiStartTime: context.apiStartTime ?? null,
+    userTimezone: context.userTimezone || null,
+  };
+}
+
+/**
  * Build PreparedContext from ExecutionContext and extracted configuration
  */
 function buildPreparedContext(
@@ -204,6 +217,8 @@ function buildPreparedContext(
   agentOrgSlug: string | null,
   agentComposeId: string,
 ): PreparedContext {
+  const metadata = extractMetadata(context);
+
   return {
     // Identity
     runId: context.runId,
@@ -255,19 +270,11 @@ function buildPreparedContext(
     runnerGroup,
 
     // Metadata
-    agentName: context.agentName || null,
+    ...metadata,
     agentComposeId,
     agentOrgSlug,
-    resumedFromCheckpointId: context.resumedFromCheckpointId || null,
-    continuedFromSessionId: context.continuedFromSessionId || null,
 
     // Debug flag
     debugNoMockClaude: context.debugNoMockClaude || false,
-
-    // API start time for E2E timing metrics
-    apiStartTime: context.apiStartTime ?? null,
-
-    // User timezone preference
-    userTimezone: context.userTimezone || null,
   };
 }
