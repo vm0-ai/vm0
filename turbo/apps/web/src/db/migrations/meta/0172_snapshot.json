@@ -600,6 +600,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "selected_model": {
+          "name": "selected_model",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "trigger_source": {
           "name": "trigger_source",
           "type": "varchar(20)",
