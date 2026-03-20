@@ -1,6 +1,6 @@
 /* eslint-disable ccstate/no-use-ccstate-in-views */
 import { Component } from "react";
-import { useCCState, useCommand } from "ccstate-react/experimental";
+import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { user$ } from "../../signals/auth.ts";
