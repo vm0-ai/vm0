@@ -110,10 +110,10 @@ jobs:
       - name: Run tests with coverage
         run: |
           cd crates
-          cargo llvm-cov --all-targets --lcov --output-path lcov.info
+          cargo llvm-cov --all-targets --all-features --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
-        if: always()
+        if: success() || failure()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
