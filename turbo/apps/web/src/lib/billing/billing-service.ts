@@ -109,6 +109,18 @@ export async function handleCheckoutCompleted(
     return;
   }
 
+  const customerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : session.customer?.id;
+
+  if (!customerId) {
+    log.warn("checkout.session.completed without customer ID", {
+      sessionId: session.id,
+    });
+    return;
+  }
+
   const stripe = getStripe();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   const priceId = subscription.items.data[0]?.price?.id;
@@ -125,7 +137,7 @@ export async function handleCheckoutCompleted(
   const [existing] = await db
     .select({ stripeSubscriptionId: orgMetadata.stripeSubscriptionId })
     .from(orgMetadata)
-    .where(eq(orgMetadata.stripeCustomerId, session.customer as string))
+    .where(eq(orgMetadata.stripeCustomerId, customerId))
     .limit(1);
 
   if (existing?.stripeSubscriptionId === subscriptionId) {
@@ -156,12 +168,12 @@ export async function handleCheckoutCompleted(
       ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(orgMetadata.stripeCustomerId, session.customer as string));
+    .where(eq(orgMetadata.stripeCustomerId, customerId));
 
   log.info("subscription activated via checkout", {
     tier,
     subscriptionId,
-    customerId: session.customer,
+    customerId,
   });
 }
 
@@ -277,24 +289,25 @@ export async function handleSubscriptionUpdated(
   const db = globalThis.services.db;
 
   const priceId = subscription.items.data[0]?.price?.id;
-  const updateFields: Record<string, unknown> = {
-    subscriptionStatus: subscription.status,
-    updatedAt: new Date(),
-  };
 
-  // If price changed (upgrade/downgrade via Billing Portal), update tier
+  // Determine tier from price ID if price changed (upgrade/downgrade via Billing Portal)
+  let tier: string | undefined;
   if (priceId) {
     const e = env();
     if (priceId === e.STRIPE_PRICE_ID_PRO) {
-      updateFields.tier = "pro";
+      tier = "pro";
     } else if (priceId === e.STRIPE_PRICE_ID_MAX) {
-      updateFields.tier = "max";
+      tier = "max";
     }
   }
 
   await db
     .update(orgMetadata)
-    .set(updateFields)
+    .set({
+      subscriptionStatus: subscription.status,
+      updatedAt: new Date(),
+      ...(tier ? { tier } : {}),
+    })
     .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
 
   log.info("subscription updated", {

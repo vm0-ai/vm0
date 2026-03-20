@@ -1,4 +1,4 @@
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getStripe } from "../../../../src/lib/stripe";
@@ -64,38 +64,16 @@ export async function POST(request: Request) {
 
   initServices();
 
+  // Handlers run before the response so that failures return a non-200 status,
+  // allowing Stripe to retry on transient errors (e.g. database outages).
   if (event.type === "checkout.session.completed") {
-    after(
-      handleCheckoutCompleted(
-        event.data.object as Stripe.Checkout.Session,
-      ).catch((error: unknown) => {
-        log.error("error handling checkout.session.completed", { error });
-      }),
-    );
+    await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
   } else if (event.type === "invoice.paid") {
-    after(
-      handleInvoicePaid(event.data.object as Stripe.Invoice).catch(
-        (error: unknown) => {
-          log.error("error handling invoice.paid", { error });
-        },
-      ),
-    );
+    await handleInvoicePaid(event.data.object as Stripe.Invoice);
   } else if (event.type === "customer.subscription.updated") {
-    after(
-      handleSubscriptionUpdated(event.data.object as Stripe.Subscription).catch(
-        (error: unknown) => {
-          log.error("error handling customer.subscription.updated", { error });
-        },
-      ),
-    );
+    await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
   } else if (event.type === "customer.subscription.deleted") {
-    after(
-      handleSubscriptionDeleted(event.data.object as Stripe.Subscription).catch(
-        (error: unknown) => {
-          log.error("error handling customer.subscription.deleted", { error });
-        },
-      ),
-    );
+    await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
   } else {
     log.debug("ignoring unhandled Stripe event", { type: event.type });
   }

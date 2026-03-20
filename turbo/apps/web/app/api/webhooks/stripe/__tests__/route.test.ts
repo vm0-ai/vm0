@@ -5,15 +5,10 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
-// Mock Next.js after() to capture callbacks for controlled execution
-const afterPromises: Promise<unknown>[] = [];
 vi.mock("next/server", async (importOriginal) => {
   const original = await importOriginal<typeof import("next/server")>();
   return {
     ...original,
-    after: (promise: Promise<unknown>) => {
-      afterPromises.push(promise);
-    },
   };
 });
 
@@ -67,7 +62,6 @@ function createStripeWebhookRequest(
 describe("POST /api/webhooks/stripe", () => {
   beforeEach(() => {
     context.setupMocks();
-    afterPromises.length = 0;
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET);
@@ -167,8 +161,6 @@ describe("POST /api/webhooks/stripe", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    // No after() callbacks should be queued for unhandled events
-    expect(afterPromises).toHaveLength(0);
   });
 
   it("passes correct arguments to constructEvent", async () => {
