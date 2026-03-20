@@ -1,5 +1,6 @@
-import { useRef, type KeyboardEvent } from "react";
-import { useLastLoadable } from "ccstate-react";
+import type { KeyboardEvent } from "react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useCCState } from "ccstate-react/experimental";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import type { SendMode } from "@vm0/core";
 
@@ -10,29 +11,30 @@ import type { SendMode } from "@vm0/core";
  * - "enter": Enter sends, Shift+Enter inserts newline
  * - "cmd-enter": Cmd/Ctrl+Enter sends, Enter inserts newline
  *
- * Uses a manual composition ref because on Chrome macOS the `compositionend`
- * event fires *before* the confirming `keydown`, making
- * `KeyboardEvent.isComposing` unreliable at that point.
+ * Uses component-scoped composition state because on Chrome macOS the
+ * `compositionend` event fires *before* the confirming `keydown`, making
+ * `KeyboardEvent.isComposing` unreliable at that point.  With reactive
+ * state the `composing` value captured in the render closure stays `true`
+ * until the next render, so the keydown that follows compositionend in the
+ * same tick is still correctly blocked.
  */
 export function useSendKeyHandler(onSend: () => void) {
   const loadable = useLastLoadable(sendMode$);
   const mode: SendMode = loadable.state === "hasData" ? loadable.data : "enter";
-  const composingRef = useRef(false);
+  const composing$ = useCCState(false);
+  const composing = useGet(composing$);
+  const setComposing = useSet(composing$);
 
   const onCompositionStart = () => {
-    composingRef.current = true;
+    setComposing(true);
   };
 
   const onCompositionEnd = () => {
-    // Delay clearing so the Enter keydown that immediately follows
-    // compositionend still sees the composing flag.
-    requestAnimationFrame(() => {
-      composingRef.current = false;
-    });
+    setComposing(false);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (composingRef.current || e.nativeEvent.isComposing) {
+    if (composing || e.nativeEvent.isComposing) {
       return;
     }
     if (e.key !== "Enter") {
