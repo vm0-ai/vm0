@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@vm0/ui";
-import { org$ } from "../../../../signals/org.ts";
+import { org$, type Org } from "../../../../signals/org.ts";
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
@@ -26,20 +26,6 @@ export function OrgGeneralTab() {
   const org = orgLoadable.state === "hasData" ? orgLoadable.data : undefined;
   const isLoading = orgLoadable.state === "loading";
 
-  const name$ = useCCState(org?.slug ?? "");
-  const name = useGet(name$);
-  const setName = useSet(name$);
-
-  const prevSlug$ = useCCState<string | undefined>(undefined);
-  const prevSlug = useGet(prevSlug$);
-  const setPrevSlug = useSet(prevSlug$);
-  if (org?.slug && prevSlug !== org.slug) {
-    setPrevSlug(org.slug);
-    setName(org.slug);
-  }
-
-  const hasChanges = name !== (org?.slug ?? "");
-
   if (isLoading) {
     return (
       <div className="flex flex-col gap-8">
@@ -48,6 +34,19 @@ export function OrgGeneralTab() {
       </div>
     );
   }
+
+  if (!org) {
+    return null;
+  }
+
+  return <OrgGeneralContent key={org.slug} org={org} />;
+}
+
+function OrgGeneralContent({ org }: { org: Org }) {
+  const name$ = useCCState(org.slug);
+  const name = useGet(name$);
+  const setName = useSet(name$);
+  const hasChanges = name !== org.slug;
 
   return (
     <div className="flex flex-col gap-8">
@@ -68,7 +67,7 @@ export function OrgGeneralTab() {
             </div>
             <div className="flex items-center gap-3 shrink-0">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted/50 text-sm font-semibold text-muted-foreground">
-                {(org?.slug ?? "O").charAt(0).toUpperCase()}
+                {org.slug.charAt(0).toUpperCase()}
               </div>
               <Button
                 variant="outline"
@@ -114,7 +113,7 @@ export function OrgGeneralTab() {
               variant="ghost"
               size="sm"
               className="rounded-lg text-muted-foreground"
-              onClick={() => setName(org?.slug ?? "")}
+              onClick={() => setName(org.slug)}
             >
               Discard
             </Button>
