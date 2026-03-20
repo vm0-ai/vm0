@@ -173,6 +173,18 @@ fn init_tracing_stderr() {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // Initialize Sentry panic reporting before anything else.
+    // Disabled (zero overhead) when SENTRY_DSN is not set.
+    let _sentry_guard = sentry::init((
+        std::env::var("SENTRY_DSN").unwrap_or_default(),
+        sentry::ClientOptions {
+            release: Some(env!("CARGO_PKG_VERSION").into()),
+            default_integrations: false,
+            ..Default::default()
+        }
+        .add_integration(sentry::integrations::panic::PanicIntegration::default()),
+    ));
+
     if nix::unistd::getuid().is_root() {
         eprintln!("error: runner must not be run as root (it calls sudo internally as needed)");
         return ExitCode::FAILURE;

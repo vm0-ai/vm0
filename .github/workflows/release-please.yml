@@ -748,6 +748,7 @@ jobs:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          SENTRY_DSN_RUNNER: ${{ secrets.SENTRY_DSN_RUNNER }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
@@ -775,6 +776,7 @@ jobs:
             playbooks/deploy-runner.yml \
             -e "ansible_user=${AWS_METAL_RUNNER_USER}" \
             -e "official_runner_secret=${OFFICIAL_RUNNER_SECRET}" \
+            -e "sentry_dsn=${SENTRY_DSN_RUNNER}" \
             -e "api_url=https://www.vm0.ai" \
             -e "runner_version=${RUNNER_VERSION}" \
             -v

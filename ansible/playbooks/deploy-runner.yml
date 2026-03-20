@@ -80,6 +80,9 @@
         {{ bin_dir }}/runner service install
         --name {{ runner_name }}
         --config {{ runner_dir }}/runner.yaml
+        {% if sentry_dsn is defined and sentry_dsn %}
+        --env SENTRY_DSN={{ sentry_dsn }}
+        {% endif %}
 
     # ========================================
     # Phase 4: Health check
