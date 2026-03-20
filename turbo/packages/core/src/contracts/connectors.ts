@@ -3065,6 +3065,24 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  v0: {
+    label: "v0",
+    helpText:
+      "Connect your v0 account to generate and iterate on React and Next.js UI components with AI",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          V0_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "v0-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
 } satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
@@ -3189,6 +3207,7 @@ export const connectorTypeSchema = z.enum([
   "pdforge",
   "slack-webhook",
   "wix",
+  "v0",
 ]);
 
 /**
