@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.85.0](https://github.com/vm0-ai/vm0/compare/core-v8.84.0...core-v8.85.0) (2026-03-20)
+
+
+### Features
+
+* add files:write scope to Slack connector ([#5666](https://github.com/vm0-ai/vm0/issues/5666)) ([32adabf](https://github.com/vm0-ai/vm0/commit/32adabffe9fc967c7e052e3b64940d9292e5191f))
+* add trigger_source column to agent_runs for fine-grained run origin tracking ([#5602](https://github.com/vm0-ai/vm0/issues/5602)) ([55fd4bf](https://github.com/vm0-ai/vm0/commit/55fd4bf4209ff92ca7ad8142e07dce7a91b67a4e))
+
+
+### Bug Fixes
+
+* **platform:** show error in chat for timeout and cancelled runs ([#5627](https://github.com/vm0-ai/vm0/issues/5627)) ([87b7a07](https://github.com/vm0-ai/vm0/commit/87b7a0738411190691bb2bc365e15ef09b730f58))
+
+
+### Refactoring
+
+* api layer separation phase 2 — simple proxy domains (connectors, org) ([#5686](https://github.com/vm0-ai/vm0/issues/5686)) ([8534f59](https://github.com/vm0-ai/vm0/commit/8534f5957817e3576845971c1a536c2a117457ab))
+
 ## [8.84.0](https://github.com/vm0-ai/vm0/compare/core-v8.83.0...core-v8.84.0) (2026-03-19)
 
 

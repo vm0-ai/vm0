@@ -117,6 +117,20 @@ jobs:
           cat audit-output.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+  actionlint:
+    name: Workflow Lint
+    # Skip for release-please PRs (only version bumps and changelogs)
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install actionlint
+        run: bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
+      - name: Run actionlint
+        run: ./actionlint -shellcheck=
+
   gitleaks:
     name: Gitleaks Secrets Detection
     # Skip for release-please PRs (only version bumps and changelogs)

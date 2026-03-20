@@ -33,7 +33,7 @@ function makeConnector(
 
 function mockConnectors(connectors: ConnectorResponse[]) {
   server.use(
-    http.get("*/api/connectors", () => {
+    http.get("*/api/zero/connectors", () => {
       return HttpResponse.json({
         connectors,
         configuredTypes: Object.keys(CONNECTOR_TYPES),
@@ -257,7 +257,7 @@ describe("zero skill card scope review modal", () => {
     ]);
 
     server.use(
-      http.get("*/api/connectors/github/scope-diff", () => {
+      http.get("*/api/zero/connectors/github/scope-diff", () => {
         return HttpResponse.json({
           addedScopes: ["project"],
           removedScopes: [],
@@ -295,7 +295,7 @@ describe("zero skill card scope review modal", () => {
     ]);
 
     server.use(
-      http.get("*/api/connectors/github/scope-diff", () => {
+      http.get("*/api/zero/connectors/github/scope-diff", () => {
         return HttpResponse.json({
           addedScopes: ["project"],
           removedScopes: [],

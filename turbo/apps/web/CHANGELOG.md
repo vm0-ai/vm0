@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.133.0](https://github.com/vm0-ai/vm0/compare/web-v12.132.0...web-v12.133.0) (2026-03-20)
+
+
+### Features
+
+* add trigger_source column to agent_runs for fine-grained run origin tracking ([#5602](https://github.com/vm0-ai/vm0/issues/5602)) ([55fd4bf](https://github.com/vm0-ai/vm0/commit/55fd4bf4209ff92ca7ad8142e07dce7a91b67a4e))
+
+
+### Bug Fixes
+
+* deduplicate slack error messages on run dispatch failure ([#5678](https://github.com/vm0-ai/vm0/issues/5678)) ([7a90f53](https://github.com/vm0-ai/vm0/commit/7a90f53123b66c1cc201dff704c5933f7d0963d4))
+* persist trigger source when enqueueing runs ([#5667](https://github.com/vm0-ai/vm0/issues/5667)) ([de2a280](https://github.com/vm0-ai/vm0/commit/de2a280cd8c841a9d8834cea9889df017ff6f0bd))
+* **platform:** show error in chat for timeout and cancelled runs ([#5627](https://github.com/vm0-ai/vm0/issues/5627)) ([87b7a07](https://github.com/vm0-ai/vm0/commit/87b7a0738411190691bb2bc365e15ef09b730f58))
+
+
+### Refactoring
+
+* api layer separation phase 1 — foundation (infra-client + platform ts-rest) ([#5681](https://github.com/vm0-ai/vm0/issues/5681)) ([54d938f](https://github.com/vm0-ai/vm0/commit/54d938facc8df6d5f2486d18a2d8d25f45ef90f0))
+* api layer separation phase 2 — simple proxy domains (connectors, org) ([#5686](https://github.com/vm0-ai/vm0/issues/5686)) ([8534f59](https://github.com/vm0-ai/vm0/commit/8534f5957817e3576845971c1a536c2a117457ab))
+* extract workspace cleanup into reusable service function ([#5652](https://github.com/vm0-ai/vm0/issues/5652)) ([57540ef](https://github.com/vm0-ai/vm0/commit/57540ef4b5c7fbc4e2f29b58a637b87011462815))
+* **slack:** use structured sender block in context formatting ([#5639](https://github.com/vm0-ai/vm0/issues/5639)) ([dfca766](https://github.com/vm0-ai/vm0/commit/dfca76616ac7e4b4e1904f105f2225d05e1fe0fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.85.0
+
 ## [12.132.0](https://github.com/vm0-ai/vm0/compare/web-v12.131.0...web-v12.132.0) (2026-03-19)
 
 

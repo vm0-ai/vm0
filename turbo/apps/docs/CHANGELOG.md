@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.28.1](https://github.com/vm0-ai/vm0/compare/docs-v2.28.0...docs-v2.28.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* **docker:** grant non-root users access to chromium and sync lockfile ([#5636](https://github.com/vm0-ai/vm0/issues/5636)) ([d645321](https://github.com/vm0-ai/vm0/commit/d645321fc62a30cabb275e52524845d33835816d))
+
 ## [2.28.0](https://github.com/vm0-ai/vm0/compare/docs-v2.27.0...docs-v2.28.0) (2026-03-19)
 
 

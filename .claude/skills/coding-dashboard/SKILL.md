@@ -1,12 +1,12 @@
 ---
 name: coding-dashboard
-description: Dashboard view of CI pipeline, open issues/PRs by worker lane, and recently merged PRs.
+description: Dashboard view of CI pipeline, merge queue, open issues/PRs by worker lane, and recently merged PRs.
 context: fork
 ---
 
 # Coding Dashboard
 
-Provides a consolidated view of CI pipeline health, open issues/PRs by worker lane, and recently merged PRs.
+Provides a consolidated view of CI pipeline health, merge queue status, open issues/PRs by worker lane, and recently merged PRs.
 
 ## Arguments
 
@@ -95,11 +95,71 @@ When all green:
 全部通过，无失败
 ```
 
-### Step 3: Check Release Status
+### Step 3: Check Merge Queue Status
+
+Query the merge queue for the `main` branch using the GitHub GraphQL API:
+
+```bash
+gh api graphql -f query='
+{
+  repository(owner: "vm0-ai", name: "vm0") {
+    mergeQueue(branch: "main") {
+      entries(first: 20) {
+        nodes {
+          pullRequest {
+            number
+            title
+            author {
+              login
+            }
+            commits(last: 1) {
+              nodes {
+                commit {
+                  statusCheckRollup {
+                    state
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}'
+```
+
+For each entry in the merge queue, determine the CI status:
+- **All checks passed** → ✅
+- **Any check failed** → 🔴
+- **Checks still running or pending** → ⏳
+
+Use `statusCheckRollup.state`:
+- `SUCCESS` → ✅
+- `FAILURE` or `ERROR` → 🔴
+- `PENDING` or `EXPECTED` or missing → ⏳
+
+#### Merge Queue Output Format
+
+When merge queue has entries:
+```
+🚦 Merge Queue
+
+- ✅ #5680 — feat: add files:write scope to Slack connector (e7h4n)
+- ⏳ #5685 — fix: persist trigger source when enqueueing runs (e7h4n)
+```
+
+When merge queue is empty:
+```
+🚦 Merge Queue
+无排队 PR
+```
+
+### Step 4: Check Release Status
 
 Query release-related information to show pending and in-progress releases.
 
-#### Step 3a: Check Open Release PR
+#### Step 4a: Check Open Release PR
 
 Find the open release PR created by the github-actions bot (title: "chore: release main") and extract its changelog:
 
@@ -118,7 +178,7 @@ gh pr view <PR_NUMBER> --repo vm0-ai/vm0 --json body \
   --jq '.body' | grep -E '^\* ' | grep -v 'The following workspace dependencies were updated' | sort -u | sed 's/^\* /- /'
 ```
 
-#### Step 3b: Check In-Progress Release Deployment
+#### Step 4b: Check In-Progress Release Deployment
 
 Check if the `release-please.yml` workflow has an in-progress run, and if so, extract the changes being deployed:
 
@@ -135,13 +195,13 @@ If an in-progress run exists, get the release commit's changes. The release comm
 gh api repos/vm0-ai/vm0/git/commits/<HEAD_SHA> --jq '.message' | grep -E '^\* ' | sed 's/^\* /- /'
 ```
 
-#### Step 3c: Output
+#### Step 4c: Output
 
 - If an open release PR exists, show its number and list of change titles
 - If a release-please workflow is in-progress, show the changes being deployed
 - If neither exists, skip this section entirely (do not show "Release Status" header)
 
-### Step 4: Check Open Issues per Lane
+### Step 5: Check Open Issues per Lane
 
 For each lane `vm01` through `vm0N`:
 
@@ -161,7 +221,7 @@ gh issue list --repo vm0-ai/vm0 --label "$LANE" --author "$ME" --state open \
 
 Deduplicate by issue number. Mark items with `pending` label as `[Pending]`.
 
-### Step 5: Check Open PRs per Lane
+### Step 6: Check Open PRs per Lane
 
 For each lane `vm01` through `vm0N`:
 
@@ -173,7 +233,7 @@ gh pr list --repo vm0-ai/vm0 --label "$LANE" --author "$ME" --state open \
 
 Mark items with `pending` label as `[Pending]`.
 
-### Step 6: List Recently Merged PRs
+### Step 7: List Recently Merged PRs
 
 Query the last 20 merged PRs across all lanes:
 
@@ -209,6 +269,11 @@ Combine results, sort by `mergedAt` descending, take the top 20.
   失败 Jobs: deploy, cli-e2e
   此后连续成功: 3 次
   距今: 2 小时 15 分钟
+
+🚦 Merge Queue
+
+- ✅ #5680 — feat: add files:write scope to Slack connector (e7h4n)
+- ⏳ #5685 — fix: persist trigger source when enqueueing runs (e7h4n)
 
 Release 状态
 

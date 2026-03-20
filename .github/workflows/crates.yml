@@ -104,10 +104,21 @@ jobs:
           cd crates
           cargo clippy --all-targets --all-features
 
-      - name: Run tests
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run tests with coverage
         run: |
           cd crates
-          cargo test --all-targets
+          cargo llvm-cov --all-targets --all-features --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        if: success() || failure()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: crates/lcov.info
+          flags: rust
 
       - name: Run ably-subscriber smoke test
         if: |

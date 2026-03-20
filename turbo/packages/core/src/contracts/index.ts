@@ -542,3 +542,12 @@ export {
   type ZeroAgentInstructionsResponse,
   type ZeroAgentInstructionsRequest,
 } from "./zero-agents";
+export {
+  zeroConnectorsMainContract,
+  zeroConnectorsByTypeContract,
+  zeroConnectorScopeDiffContract,
+  type ZeroConnectorsMainContract,
+  type ZeroConnectorsByTypeContract,
+  type ZeroConnectorScopeDiffContract,
+} from "./zero-connectors";
+export { zeroOrgContract, type ZeroOrgContract } from "./zero-org";

@@ -6,9 +6,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { CONNECTOR_TYPES, type ConnectorType, type ScopeDiff } from "@vm0/core";
+import {
+  CONNECTOR_TYPES,
+  zeroConnectorScopeDiffContract,
+  type ConnectorType,
+  type ScopeDiff,
+} from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import { fetch$ } from "../../../../signals/fetch.ts";
+import { zeroClient$ } from "../../../../signals/api-client.ts";
+import { logger } from "../../../../signals/log.ts";
+
+const L = logger("ScopeReviewModal");
 
 interface ScopeReviewModalProps {
   connectorType: ConnectorType | null;
@@ -21,7 +29,7 @@ export function ScopeReviewModal({
   onClose,
   onReconnect,
 }: ScopeReviewModalProps) {
-  const fetchFn = useGet(fetch$);
+  const createClient = useGet(zeroClient$);
   const scopeDiff$ = useCCState<ScopeDiff | null>(null);
   const loading$ = useCCState(false);
   const scopeDiff = useGet(scopeDiff$);
@@ -36,13 +44,22 @@ export function ScopeReviewModal({
         return;
       }
       set(loading$, true);
-      fetchFn(`/api/connectors/${connectorType}/scope-diff`)
-        .then((resp) => resp.json())
-        .then((data: ScopeDiff) => {
-          setScopeDiff(data);
+      const client = createClient(zeroConnectorScopeDiffContract);
+      client
+        .getScopeDiff({ params: { type: connectorType } })
+        .then((result) => {
+          if (result.status === 200) {
+            setScopeDiff(result.body);
+          } else {
+            L.error(
+              `Failed to fetch scope diff: ${result.status}`,
+              result.body,
+            );
+          }
           setLoading(false);
         })
-        .catch(() => {
+        .catch((error: unknown) => {
+          L.error("Failed to fetch scope diff:", error);
           setLoading(false);
         });
     }),

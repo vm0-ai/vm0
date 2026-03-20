@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.40.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.39.0...runner-rs-v0.40.0) (2026-03-20)
+
+
+### Features
+
+* **vsock:** add real-time stdout streaming from guest to host ([#5574](https://github.com/vm0-ai/vm0/issues/5574)) ([2afc093](https://github.com/vm0-ai/vm0/commit/2afc0930657f6bbf1e1f4947383345d33de46819))
+
+
+### Performance Improvements
+
+* **mitm-addon:** use asyncio.to_thread for blocking firewall auth requests ([#5638](https://github.com/vm0-ai/vm0/issues/5638)) ([e7a29b9](https://github.com/vm0-ai/vm0/commit/e7a29b9f94692400fd9ac592cefd30640b116199)), closes [#5635](https://github.com/vm0-ai/vm0/issues/5635)
+
 ## [0.39.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.38.1...runner-rs-v0.39.0) (2026-03-19)
 
 
