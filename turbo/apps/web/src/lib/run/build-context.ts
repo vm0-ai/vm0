@@ -607,6 +607,9 @@ interface BuildContextParams {
   prompt: string;
   appendSystemPrompt?: string;
   disallowedTools?: string[];
+  tools?: string[];
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings?: string;
   runId: string;
   sandboxToken: string;
   userId: string;
@@ -1084,6 +1087,9 @@ export async function buildExecutionContext(
   // Disallowed tools from run-time params (not compose)
   const disallowedTools = params.disallowedTools;
 
+  // Tools to make available from run-time params (not compose)
+  const tools = params.tools;
+
   // Build final execution context
   return {
     runtimeOrg,
@@ -1107,6 +1113,8 @@ export async function buildExecutionContext(
       experimentalFirewalls,
       experimentalCapabilities,
       disallowedTools,
+      tools,
+      settings: params.settings,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event

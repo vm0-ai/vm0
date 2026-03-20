@@ -50,6 +50,14 @@ export const resumeCommand = new Command()
     "--disallowed-tools <tools...>",
     "Tools to disable in Claude CLI (e.g., CronCreate WebSearch)",
   )
+  .option(
+    "--tools <tools...>",
+    "Built-in tools to make available in Claude CLI (e.g., Bash Edit Read)",
+  )
+  .option(
+    "--settings <json>",
+    "Settings JSON to pass to Claude CLI (e.g., hooks, permissions)",
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -65,6 +73,8 @@ export const resumeCommand = new Command()
           modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
+          tools?: string[];
+          settings?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -81,6 +91,8 @@ export const resumeCommand = new Command()
           modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
+          tools?: string[];
+          settings?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -122,6 +134,8 @@ export const resumeCommand = new Command()
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,
+          tools: options.tools || allOpts.tools,
+          settings: options.settings || allOpts.settings,
           checkEnv: options.checkEnv || allOpts.checkEnv || undefined,
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,

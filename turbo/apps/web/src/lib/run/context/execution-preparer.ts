@@ -191,6 +191,24 @@ export async function prepareForExecution(
   return { context: preparedContext, timings };
 }
 
+/** Convert undefined to null (reduces branching in buildPreparedContext) */
+function toNullable<T>(value: T | undefined | null): T | null {
+  return value ?? null;
+}
+
+/**
+ * Extract optional metadata fields from ExecutionContext, coalescing to null
+ */
+function extractMetadata(context: ExecutionContext) {
+  return {
+    agentName: context.agentName || null,
+    resumedFromCheckpointId: context.resumedFromCheckpointId || null,
+    continuedFromSessionId: context.continuedFromSessionId || null,
+    apiStartTime: context.apiStartTime ?? null,
+    userTimezone: context.userTimezone || null,
+  };
+}
+
 /**
  * Build PreparedContext from ExecutionContext and extracted configuration
  */
@@ -204,6 +222,8 @@ function buildPreparedContext(
   agentOrgSlug: string | null,
   agentComposeId: string,
 ): PreparedContext {
+  const metadata = extractMetadata(context);
+
   return {
     // Identity
     runId: context.runId,
@@ -212,7 +232,7 @@ function buildPreparedContext(
 
     // What to run
     prompt: context.prompt,
-    appendSystemPrompt: context.appendSystemPrompt ?? null,
+    appendSystemPrompt: toNullable(context.appendSystemPrompt),
     agentComposeVersionId: context.agentComposeVersionId,
     agentCompose: context.agentCompose,
     cliAgentType,
@@ -237,13 +257,19 @@ function buildPreparedContext(
     memoryName: context.memoryName || null,
 
     // Experimental firewall for proxy-side token replacement
-    experimentalFirewalls: context.experimentalFirewalls ?? null,
+    experimentalFirewalls: toNullable(context.experimentalFirewalls),
 
     // Experimental capabilities
-    experimentalCapabilities: context.experimentalCapabilities ?? null,
+    experimentalCapabilities: toNullable(context.experimentalCapabilities),
 
     // Disallowed tools
-    disallowedTools: context.disallowedTools ?? null,
+    disallowedTools: toNullable(context.disallowedTools),
+
+    // Settings JSON
+    settings: toNullable(context.settings),
+
+    // Tools
+    tools: context.tools ?? null,
 
     // Experimental profile
     experimentalProfile: profile,
@@ -252,19 +278,11 @@ function buildPreparedContext(
     runnerGroup,
 
     // Metadata
-    agentName: context.agentName || null,
+    ...metadata,
     agentComposeId,
     agentOrgSlug,
-    resumedFromCheckpointId: context.resumedFromCheckpointId || null,
-    continuedFromSessionId: context.continuedFromSessionId || null,
 
     // Debug flag
     debugNoMockClaude: context.debugNoMockClaude || false,
-
-    // API start time for E2E timing metrics
-    apiStartTime: context.apiStartTime ?? null,
-
-    // User timezone preference
-    userTimezone: context.userTimezone || null,
   };
 }

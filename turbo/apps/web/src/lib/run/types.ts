@@ -87,6 +87,12 @@ export interface ExecutionContext {
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools?: string[];
 
+  // Tools to make available in Claude CLI (passed as --tools)
+  tools?: string[];
+
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings?: string;
+
   // Resume-specific (optional)
   resumeSession?: ResumeSession;
   resumeArtifact?: ArtifactSnapshot;

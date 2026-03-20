@@ -851,6 +851,69 @@ describe("run command", () => {
     });
   });
 
+  describe("--tools flag", () => {
+    it("should pass tools to API", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--tools",
+        "Bash",
+        "Edit",
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          tools: ["Bash", "Edit"],
+        }),
+      );
+    });
+  });
+
+  describe("--settings flag", () => {
+    it("should pass settings to API", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/agent/runs",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(defaultRunResponse, { status: 201 });
+          },
+        ),
+      );
+
+      await runCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "test prompt",
+        "--settings",
+        '{"hooks":{}}',
+      ]);
+
+      expect(capturedBody).toEqual(
+        expect.objectContaining({
+          settings: '{"hooks":{}}',
+        }),
+      );
+    });
+  });
+
   describe("error handling", () => {
     it("should handle authentication errors", async () => {
       server.use(
