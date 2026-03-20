@@ -24,7 +24,27 @@ setLogErrorHandler((loggerName, args) => {
   }
 });
 
+function handleBillingRedirect() {
+  const url = new URL(window.location.href);
+  const billing = url.searchParams.get("billing");
+  if (!billing) return;
+
+  url.searchParams.delete("billing");
+  window.history.replaceState(null, "", url.toString());
+
+  // Defer toast until Toaster component is mounted
+  if (billing === "success") {
+    setTimeout(() => {
+      import("@vm0/ui/components/ui/sonner").then(({ toast }) => {
+        toast.success("Upgraded to Max! Your credits have been added.");
+      });
+    }, 1000);
+  }
+}
+
 async function main(rootEl: HTMLDivElement, signal: AbortSignal) {
+  handleBillingRedirect();
+
   // Initialize theme before bootstrap
   detach(appStore.set(initTheme$), Reason.Entrance);
 

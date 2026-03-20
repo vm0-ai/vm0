@@ -211,6 +211,7 @@ export function ZeroWorksPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">

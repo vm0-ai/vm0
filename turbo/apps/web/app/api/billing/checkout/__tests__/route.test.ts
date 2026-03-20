@@ -46,8 +46,8 @@ describe("POST /api/billing/checkout", () => {
     await context.setupUser();
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
-    vi.stubEnv("STRIPE_PRICE_ID_PRO", TEST_PRICE_PRO);
-    vi.stubEnv("STRIPE_PRICE_ID_MAX", TEST_PRICE_MAX);
+    vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
+    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_MAX);
     reloadEnv();
 
     stripeMocks.checkoutSessionsCreate.mockReset();
@@ -63,7 +63,11 @@ describe("POST /api/billing/checkout", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "pro" }),
+        body: JSON.stringify({
+          tier: "pro",
+          successUrl: "https://app.vm7.ai/billing?billing=success",
+          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+        }),
       },
     );
     const response = await POST(request);
@@ -81,7 +85,11 @@ describe("POST /api/billing/checkout", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "pro" }),
+        body: JSON.stringify({
+          tier: "pro",
+          successUrl: "https://app.vm7.ai/billing?billing=success",
+          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+        }),
       },
     );
     const response = await POST(request);
@@ -95,14 +103,18 @@ describe("POST /api/billing/checkout", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "enterprise" }),
+        body: JSON.stringify({
+          tier: "enterprise",
+          successUrl: "https://app.vm7.ai/?billing=success",
+          cancelUrl: "https://app.vm7.ai/?billing=canceled",
+        }),
       },
     );
     const response = await POST(request);
 
     expect(response.status).toBe(400);
     const data = await response.json();
-    expect(data.error).toContain("Invalid tier");
+    expect(data.error).toContain("Invalid body");
   });
 
   it("returns checkout URL on success", async () => {
@@ -118,7 +130,11 @@ describe("POST /api/billing/checkout", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: "pro" }),
+        body: JSON.stringify({
+          tier: "pro",
+          successUrl: "https://app.vm7.ai/billing?billing=success",
+          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+        }),
       },
     );
     const response = await POST(request);

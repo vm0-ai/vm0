@@ -60,8 +60,8 @@ describe("billing-service", () => {
     user = await context.setupUser();
 
     // Set up env vars for price IDs
-    vi.stubEnv("STRIPE_PRICE_ID_PRO", TEST_PRICE_PRO);
-    vi.stubEnv("STRIPE_PRICE_ID_MAX", TEST_PRICE_MAX);
+    vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
+    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_MAX);
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     reloadEnv();
 

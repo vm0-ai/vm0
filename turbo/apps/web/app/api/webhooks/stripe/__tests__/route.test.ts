@@ -65,7 +65,7 @@ describe("POST /api/webhooks/stripe", () => {
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET);
-    vi.stubEnv("STRIPE_PRICE_ID_PRO", TEST_PRICE_PRO);
+    vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
     reloadEnv();
 
     stripeMocks.constructEvent.mockReset();

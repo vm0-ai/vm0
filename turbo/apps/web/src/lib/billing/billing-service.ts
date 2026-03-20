@@ -51,8 +51,8 @@ const TIER_MONTHLY_CREDITS: Record<OrgTier, number> = {
 
 export function tierFromPriceId(priceId: string): OrgTier {
   const e = env();
-  if (priceId === e.STRIPE_PRICE_ID_PRO) return "pro";
-  if (priceId === e.STRIPE_PRICE_ID_MAX) return "max";
+  if (priceId === e.ZERO_PRO_PLAN_PRICE_ID) return "pro";
+  if (priceId === e.ZERO_MAX_PLAN_PRICE_ID) return "max";
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
 

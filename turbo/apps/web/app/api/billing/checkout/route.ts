@@ -11,6 +11,8 @@ import { createCheckoutSession } from "../../../../src/lib/billing/billing-servi
 
 const checkoutBodySchema = z.object({
   tier: z.enum(["pro", "max"]),
+  successUrl: z.string().url(),
+  cancelUrl: z.string().url(),
 });
 
 /**
@@ -23,7 +25,8 @@ const checkoutBodySchema = z.object({
 export async function POST(request: Request) {
   initServices();
 
-  const { STRIPE_SECRET_KEY, STRIPE_PRICE_ID_PRO, STRIPE_PRICE_ID_MAX } = env();
+  const { STRIPE_SECRET_KEY, ZERO_PRO_PLAN_PRICE_ID, ZERO_MAX_PLAN_PRICE_ID } =
+    env();
 
   if (!STRIPE_SECRET_KEY) {
     return NextResponse.json(
@@ -45,13 +48,17 @@ export async function POST(request: Request) {
   const parsed = checkoutBodySchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Invalid tier — must be "pro" or "max"' },
+      {
+        error:
+          'Invalid body — requires tier ("pro"|"max"), successUrl, cancelUrl',
+      },
       { status: 400 },
     );
   }
-  const { tier } = parsed.data;
+  const { tier, successUrl, cancelUrl } = parsed.data;
 
-  const priceId = tier === "pro" ? STRIPE_PRICE_ID_PRO : STRIPE_PRICE_ID_MAX;
+  const priceId =
+    tier === "pro" ? ZERO_PRO_PLAN_PRICE_ID : ZERO_MAX_PLAN_PRICE_ID;
   if (!priceId) {
     return NextResponse.json(
       { error: `Price not configured for ${tier} tier` },
@@ -59,13 +66,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const origin = new URL(request.url).origin;
   const url = await createCheckoutSession(
     org.orgId,
     org.slug,
     priceId,
-    `${origin}/settings/billing?success=true`,
-    `${origin}/settings/billing?canceled=true`,
+    successUrl,
+    cancelUrl,
   );
 
   return NextResponse.json({ url });

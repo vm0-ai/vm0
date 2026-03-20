@@ -84,6 +84,12 @@ import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatar
 import { Link, SimpleLink } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
+import {
+  billingStatus$,
+  openBillingDialog$,
+  fetchBillingStatus$,
+} from "../../signals/zero-page/billing.ts";
+import { BillingDialog } from "./billing-dialog.tsx";
 
 export const AGENT_AVATARS = [
   avatar1Img,
@@ -964,6 +970,22 @@ export function ZeroSidebar({
   const managePinnedOpen = useGet(managePinnedOpen$);
   const setManagePinnedOpen = useSet(managePinnedOpen$);
 
+  // Billing
+  const features = useLastResolved(featureSwitch$);
+  const showPricing = features?.[FeatureSwitchKey.Pricing] ?? false;
+  const billing = useGet(billingStatus$);
+  const openBilling = useSet(openBillingDialog$);
+  const fetchBilling = useSet(fetchBillingStatus$);
+
+  // Fetch billing status on mount when pricing is enabled
+  const billingFetched$ = useCCState(false);
+  const billingFetched = useGet(billingFetched$);
+  const setBillingFetched = useSet(billingFetched$);
+  if (showPricing && !billingFetched && !billing) {
+    setBillingFetched(true);
+    detach(fetchBilling(), Reason.DomCallback);
+  }
+
   // Resolve the selected agent label
   const selectedAgent = currentChatAgentId
     ? subagents.find((a) => a.id === currentChatAgentId)
@@ -1138,6 +1160,19 @@ export function ZeroSidebar({
         {/* Footer nav */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
+            {showPricing && billing && (
+              <button
+                type="button"
+                onClick={() => openBilling()}
+                className="flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 text-sidebar-foreground hover:bg-sidebar-accent"
+              >
+                <IconCrown size={16} className="shrink-0 text-primary" />
+                <span className="truncate capitalize">{billing.tier}</span>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {billing.credits.toLocaleString()}
+                </span>
+              </button>
+            )}
             {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
               <Link
                 key={id}
@@ -1188,6 +1223,9 @@ export function ZeroSidebar({
         onPinnedIdsChange={setPinnedIds}
         saving={savingPinned}
       />
+
+      {/* Billing dialog */}
+      {showPricing && <BillingDialog />}
     </VM0ClerkProvider>
   );
 }

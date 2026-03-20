@@ -32,6 +32,7 @@ import {
   resetMockUserPreferences,
 } from "./api-user-preferences.ts";
 import { apiOnboardingHandlers } from "./api-onboarding.ts";
+import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 
 export const handlers = [
   ...apiConnectorsHandlers,
@@ -46,6 +47,7 @@ export const handlers = [
   ...apiAgentsHandlers,
   ...apiUserPreferencesHandlers,
   ...apiOnboardingHandlers,
+  ...apiBillingHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -56,4 +58,5 @@ export function resetAllMockHandlers(): void {
   resetMockTelegramIntegration();
   resetMockUserPreferences();
   resetMockOrgModelProviders();
+  resetMockBilling();
 }
