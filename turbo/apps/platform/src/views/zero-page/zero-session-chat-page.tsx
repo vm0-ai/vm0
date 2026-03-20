@@ -13,7 +13,6 @@ import {
   IconChevronDown,
   IconCopy,
   IconCheck,
-  IconSettings,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -49,6 +48,7 @@ import {
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import zeroAvatarImg from "./assets/zero-avatar.png";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,7 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
+  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   // Auto-scroll when messages change — ref callback runs at commit time
   const scrollAnchorRef = (el: HTMLDivElement | null) => {
     if (el && messages.length > 0) {
@@ -666,14 +667,13 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                 />
                 <span>
                   No model provider configured yet.{" "}
-                  <Link
-                    pathname="/:tab"
-                    options={{ pathParams: { tab: "settings" } }}
+                  <button
+                    type="button"
                     className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+                    onClick={() => setOrgManageOpen(true)}
                   >
-                    Set one up in Settings
-                    <IconSettings size={13} />
-                  </Link>{" "}
+                    Set one up in Organization Settings
+                  </button>{" "}
                   to get started.
                 </span>
               </div>

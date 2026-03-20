@@ -16,10 +16,23 @@ export type OrgRole = z.infer<typeof orgRoleSchema>;
 export const orgMemberSchema = z.object({
   userId: z.string(),
   email: z.string(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  imageUrl: z.string(),
   role: orgRoleSchema,
   joinedAt: z.string(),
 });
 export type OrgMember = z.infer<typeof orgMemberSchema>;
+
+/**
+ * Pending invitation schema
+ */
+export const orgPendingInvitationSchema = z.object({
+  email: z.string(),
+  role: orgRoleSchema,
+  createdAt: z.string(),
+});
+export type OrgPendingInvitation = z.infer<typeof orgPendingInvitationSchema>;
 
 /**
  * Org members response schema (status + members list)
@@ -28,6 +41,7 @@ export const orgMembersResponseSchema = z.object({
   slug: z.string(),
   role: orgRoleSchema,
   members: z.array(orgMemberSchema),
+  pendingInvitations: z.array(orgPendingInvitationSchema).optional(),
   createdAt: z.string(),
 });
 export type OrgMembersResponse = z.infer<typeof orgMembersResponseSchema>;
@@ -50,6 +64,17 @@ export const removeOrgMemberRequestSchema = z.object({
 });
 export type RemoveOrgMemberRequest = z.infer<
   typeof removeOrgMemberRequestSchema
+>;
+
+/**
+ * Update member role request schema
+ */
+export const updateOrgMemberRoleRequestSchema = z.object({
+  email: z.string().email(),
+  role: orgRoleSchema,
+});
+export type UpdateOrgMemberRoleRequest = z.infer<
+  typeof updateOrgMemberRoleRequestSchema
 >;
 
 /**

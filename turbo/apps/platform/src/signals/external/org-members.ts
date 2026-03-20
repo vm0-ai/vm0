@@ -1,38 +1,44 @@
-import { computed } from "ccstate";
-import { fetch$ } from "../fetch";
+import { command, computed, state } from "ccstate";
+import {
+  zeroOrgMembersContract,
+  type OrgMember,
+  type OrgPendingInvitation,
+} from "@vm0/core";
 import { org$ } from "../org";
+import { zeroClient$ } from "../api-client";
 
-export interface OrgMember {
-  userId: string;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-  imageUrl: string;
-  role: "admin" | "member";
-  joinedAt: string;
-}
+export type { OrgMember, OrgPendingInvitation };
 
-interface OrgMembersResponse {
-  slug: string;
-  role: "admin" | "member";
-  members: OrgMember[];
-  createdAt: string;
-}
+const orgMembersVersion$ = state(0);
 
-export const orgMembers$ = computed(async (get) => {
+const orgMembersResponse$ = computed(async (get) => {
+  get(orgMembersVersion$);
   const org = await get(org$);
   if (!org) {
-    return [];
+    return null;
   }
 
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn(
-    `/api/org/members?org=${encodeURIComponent(org.slug)}`,
-  );
-  if (!resp.ok) {
-    return [];
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroOrgMembersContract);
+  const result = await client.members();
+
+  if (result.status === 200) {
+    return result.body;
   }
 
-  const data = (await resp.json()) as OrgMembersResponse;
-  return data.members;
+  return null;
+});
+
+export const orgMembers$ = computed(async (get) => {
+  const response = await get(orgMembersResponse$);
+  return response?.members ?? [];
+});
+
+export const orgPendingInvitations$ = computed(async (get) => {
+  const response = await get(orgMembersResponse$);
+  return response?.pendingInvitations ?? [];
+});
+
+export const refreshOrgMembers$ = command(({ get, set }) => {
+  set(orgMembersVersion$, get(orgMembersVersion$) + 1);
 });

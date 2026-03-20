@@ -12,7 +12,6 @@ function isValidTab(tab: string): tab is ZeroNavId {
     tab === "team" ||
     tab === "activity" ||
     tab === "works" ||
-    tab === "settings" ||
     tab === "preferences" ||
     tab === "queue"
   );

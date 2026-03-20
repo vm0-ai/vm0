@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { type ReactNode, lazy, Suspense } from "react";
+import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import { Dialog, DialogContent, cn } from "@vm0/ui";
 import {
@@ -11,12 +11,35 @@ import {
   IconFileInvoice,
 } from "@tabler/icons-react";
 
-import { OrgGeneralTab } from "./org-general-tab.tsx";
-import { OrgProvidersTab } from "./org-providers-tab.tsx";
-import { OrgMembersTab } from "./org-members-tab.tsx";
-import { OrgBillingTab } from "./org-billing-tab.tsx";
-import { OrgCreditsTab } from "./org-credits-tab.tsx";
-import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
+import { GeneralTabSkeleton } from "./org-general-tab.tsx";
+import { ProvidersTabSkeleton } from "./org-providers-tab.tsx";
+import { MembersTabSkeleton } from "./org-members-tab.tsx";
+import { BillingTabSkeleton } from "./org-billing-tab.tsx";
+import { CreditsTabSkeleton } from "./org-credits-tab.tsx";
+import { InvoicesTabSkeleton } from "./org-invoices-tab.tsx";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { isOrgAdmin$ } from "../../../../signals/org.ts";
+
+const OrgGeneralTab = lazy(() =>
+  import("./org-general-tab.tsx").then((m) => ({ default: m.OrgGeneralTab })),
+);
+const OrgProvidersTab = lazy(() =>
+  import("./org-providers-tab.tsx").then((m) => ({
+    default: m.OrgProvidersTab,
+  })),
+);
+const OrgMembersTab = lazy(() =>
+  import("./org-members-tab.tsx").then((m) => ({ default: m.OrgMembersTab })),
+);
+const OrgBillingTab = lazy(() =>
+  import("./org-billing-tab.tsx").then((m) => ({ default: m.OrgBillingTab })),
+);
+const OrgCreditsTab = lazy(() =>
+  import("./org-credits-tab.tsx").then((m) => ({ default: m.OrgCreditsTab })),
+);
+const OrgInvoicesTab = lazy(() =>
+  import("./org-invoices-tab.tsx").then((m) => ({ default: m.OrgInvoicesTab })),
+);
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -60,82 +83,87 @@ const TAB_META = {
   },
 } as const;
 
-const SIDEBAR_GROUPS = [
+interface SidebarGroup {
+  label: string;
+  items: readonly { id: OrgManageTab; label: string; icon: NavIcon }[];
+}
+
+const BILLING_GROUP: SidebarGroup = {
+  label: "Access & billing",
+  items: [
+    { id: "billing", label: "Billing", icon: IconCreditCard as NavIcon },
+    { id: "credits", label: "Credits", icon: IconCoins as NavIcon },
+    { id: "invoices", label: "Invoices", icon: IconFileInvoice as NavIcon },
+  ],
+};
+
+const CONFIGURATION_GROUP: SidebarGroup = {
+  label: "Configuration",
+  items: [
+    {
+      id: "providers",
+      label: "Model Providers",
+      icon: IconCpu as NavIcon,
+    },
+  ],
+};
+
+const BASE_SIDEBAR_GROUPS: readonly SidebarGroup[] = [
   {
     label: "Organization",
-    items: [
-      {
-        id: "general" as const,
-        label: "General",
-        icon: IconBuilding as NavIcon,
-      },
-    ],
-  },
-  {
-    label: "Configuration",
-    items: [
-      {
-        id: "providers" as const,
-        label: "Model Providers",
-        icon: IconCpu as NavIcon,
-      },
-    ],
+    items: [{ id: "general", label: "General", icon: IconBuilding as NavIcon }],
   },
   {
     label: "People",
-    items: [
-      {
-        id: "members" as const,
-        label: "Members",
-        icon: IconUsers as NavIcon,
-      },
-    ],
+    items: [{ id: "members", label: "Members", icon: IconUsers as NavIcon }],
   },
-  {
-    label: "Access & billing",
-    items: [
-      {
-        id: "billing" as const,
-        label: "Billing",
-        icon: IconCreditCard as NavIcon,
-      },
-      {
-        id: "credits" as const,
-        label: "Credits",
-        icon: IconCoins as NavIcon,
-      },
-      {
-        id: "invoices" as const,
-        label: "Invoices",
-        icon: IconFileInvoice as NavIcon,
-      },
-    ],
-  },
-] as const;
+];
+
+const TAB_SKELETONS: Record<OrgManageTab, ReactNode> = {
+  general: <GeneralTabSkeleton />,
+  providers: <ProvidersTabSkeleton />,
+  members: <MembersTabSkeleton />,
+  billing: <BillingTabSkeleton />,
+  credits: <CreditsTabSkeleton />,
+  invoices: <InvoicesTabSkeleton />,
+};
+
+const TAB_COMPONENTS: Record<OrgManageTab, () => ReactNode> = {
+  general: () => <OrgGeneralTab />,
+  providers: () => <OrgProvidersTab />,
+  members: () => <OrgMembersTab />,
+  billing: () => <OrgBillingTab />,
+  credits: () => <OrgCreditsTab />,
+  invoices: () => <OrgInvoicesTab />,
+};
 
 function TabContent({ tab }: { tab: OrgManageTab }) {
-  if (tab === "general") {
-    return <OrgGeneralTab />;
-  }
-  if (tab === "providers") {
-    return <OrgProvidersTab />;
-  }
-  if (tab === "members") {
-    return <OrgMembersTab />;
-  }
-  if (tab === "billing") {
-    return <OrgBillingTab />;
-  }
-  if (tab === "credits") {
-    return <OrgCreditsTab />;
-  }
-  return <OrgInvoicesTab />;
+  const Content = TAB_COMPONENTS[tab];
+  return (
+    <Suspense fallback={TAB_SKELETONS[tab]}>
+      <Content />
+    </Suspense>
+  );
 }
 
 export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const activeTab$ = useCCState<OrgManageTab>("general");
   const activeTab = useGet(activeTab$);
   const setActiveTab = useSet(activeTab$);
+
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+
+  const featuresLoadable = useLastLoadable(featureSwitch$);
+  const pricingEnabled =
+    featuresLoadable.state === "hasData" && !!featuresLoadable.data?.pricing;
+  const sidebarGroups = [
+    ...BASE_SIDEBAR_GROUPS.slice(0, 1),
+    ...(isAdmin ? [CONFIGURATION_GROUP] : []),
+    ...BASE_SIDEBAR_GROUPS.slice(1),
+    ...(pricingEnabled ? [BILLING_GROUP] : []),
+  ];
 
   const meta = TAB_META[activeTab];
 
@@ -161,7 +189,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
               backgroundColor: "hsl(var(--gray-0))",
             }}
           >
-            {SIDEBAR_GROUPS.map((group) => (
+            {sidebarGroups.map((group) => (
               <div key={group.label} className="shrink-0">
                 <div className="h-7 flex items-center pl-2">
                   <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
