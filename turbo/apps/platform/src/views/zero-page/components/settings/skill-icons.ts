@@ -38,7 +38,7 @@ import tavilyIcon from "./skill-icons/tavily.svg";
 import vm0Icon from "./skill-icons/vm0.svg";
 import zapsignIcon from "./skill-icons/zapsign.svg";
 
-export const SKILL_ICONS: Record<string, string> = {
+export const SKILL_ICONS: Readonly<Record<string, string>> = Object.freeze({
   apify: apifyIcon,
   bitrix: bitrixIcon,
   "brave-search": braveIcon,
@@ -83,4 +83,4 @@ export const SKILL_ICONS: Record<string, string> = {
   "vm0-cli": vm0Icon,
   "vm0-computer": vm0Icon,
   zapsign: zapsignIcon,
-};
+});
