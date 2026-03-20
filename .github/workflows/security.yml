@@ -113,9 +113,11 @@ jobs:
           set -o pipefail
           echo "## pnpm audit results" >> "$GITHUB_STEP_SUMMARY"
           pnpm audit --prod 2>&1 | tee audit-output.txt
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cat audit-output.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```'
+            cat audit-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   actionlint:
     name: Workflow Lint
@@ -129,7 +131,7 @@ jobs:
         run: bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
 
       - name: Run actionlint
-        run: ./actionlint -shellcheck=
+        run: ./actionlint
 
   gitleaks:
     name: Gitleaks Secrets Detection

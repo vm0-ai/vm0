@@ -61,9 +61,15 @@ jobs:
 
           # scripts/crate-changed.sh: exit 0=changed, 1=not changed, 2+=error
           check_crate() {
-            ./scripts/crate-changed.sh "$1" "$BASE_REF" && echo "$1-changed=true" >> "$GITHUB_OUTPUT" || {
-              rc=$?; [ $rc -eq 1 ] && echo "$1-changed=false" >> "$GITHUB_OUTPUT" || exit $rc
-            }
+            local rc=0
+            ./scripts/crate-changed.sh "$1" "$BASE_REF" && rc=0 || rc=$?
+            if [ $rc -eq 0 ]; then
+              echo "$1-changed=true" >> "$GITHUB_OUTPUT"
+            elif [ $rc -eq 1 ]; then
+              echo "$1-changed=false" >> "$GITHUB_OUTPUT"
+            else
+              exit $rc
+            fi
           }
           check_crate ably-subscriber
           check_crate runner
@@ -198,17 +204,17 @@ jobs:
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
-          cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE \
+          cargo build --profile "$CARGO_PROFILE" --target "$TARGET_TRIPLE" \
             -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
           cd crates
-          GUEST_AGENT_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-agent \
-          GUEST_DOWNLOAD_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-download \
-          GUEST_INIT_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-init \
-          GUEST_MOCK_CLAUDE_PATH=target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude \
-          cargo build --profile $CARGO_PROFILE --target $TARGET_TRIPLE -p runner
+          GUEST_AGENT_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-agent" \
+          GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-download" \
+          GUEST_INIT_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-init" \
+          GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude" \
+          cargo build --profile "$CARGO_PROFILE" --target "$TARGET_TRIPLE" -p runner
 
       - name: Setup SSH via Cloudflare Tunnel
         uses: ./.github/actions/setup-ssh-tunnel
@@ -269,26 +275,31 @@ jobs:
           JOB_REF: ${{ steps.host.outputs.job-ref }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
 
           # Clean previous run artifacts and upload runner (guests are embedded)
           echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
-          ssh $REMOTE "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
           scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
 
           # Clean up old rootfs/snapshots, keep the 3 most recent deploys
-          ssh $REMOTE "${BIN_DIR}/runner gc --keep-latest 3"
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner gc --keep-latest 3"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="
-          ssh $REMOTE "${BIN_DIR}/runner setup"
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner setup"
 
           # Run build (rootfs via Docker + snapshot via Firecracker)
           # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Building vm0/default ==="
           BUILD_LOG_DEFAULT=$(mktemp)
-          ssh $REMOTE "${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
           DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
           DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
           rm -f "$BUILD_LOG_DEFAULT"
@@ -324,11 +335,14 @@ jobs:
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          # shellcheck disable=SC2088
           RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}-bench"
 
           echo "=== Generating config ==="
-          ssh $REMOTE "${BIN_DIR}/runner config \
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner config \
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -339,13 +353,15 @@ jobs:
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
           echo "=== Running benchmark (default) ==="
-          ssh $REMOTE "${BIN_DIR}/runner benchmark \
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             --profile vm0/default \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
           echo "=== Running benchmark (browser automation) ==="
-          ssh $REMOTE "${BIN_DIR}/runner benchmark \
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             --profile vm0/default \
             'agent-browser open https://github.com/ && agent-browser get title && agent-browser close'"
@@ -374,10 +390,12 @@ jobs:
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
-          ssh $REMOTE "${BIN_DIR}/runner config \
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner config \
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -389,7 +407,7 @@ jobs:
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
           echo "=== Running exec test ==="
-          ssh $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2
           RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-exec"
           SVC="${JOB_REF}-exec"
@@ -475,10 +493,12 @@ jobs:
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
-          ssh $REMOTE "${BIN_DIR}/runner config \
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner config \
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -490,7 +510,7 @@ jobs:
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
           echo "=== Running balloon test ==="
-          ssh $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2
           RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-balloon"
           SVC="${JOB_REF}-balloon"
@@ -653,12 +673,14 @@ jobs:
           DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
           BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
           GROUP="vm0/upgrade-${JOB_REF}"
 
           echo "=== Generating configs for runner A and B ==="
           for SUFFIX in upgrade-a upgrade-b; do
-            ssh $REMOTE "${BIN_DIR}/runner config \
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "${BIN_DIR}/runner config \
               --profile vm0/default \
               --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
               --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -671,7 +693,7 @@ jobs:
           done
 
           echo "=== Running upgrade test ==="
-          ssh $REMOTE bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2; GROUP=$3
           RUNNER_DIR_A="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-a"
           RUNNER_DIR_B="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-b"

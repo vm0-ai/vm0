@@ -24,9 +24,9 @@ jobs:
         run: |
           if [ -z "$SSH_KEY" ] || [ -z "$METAL_HOSTS" ]; then
             echo "Metal secrets not available, skipping runner cleanup"
-            echo "should-cleanup=false" >> $GITHUB_OUTPUT
+            echo "should-cleanup=false" >> "$GITHUB_OUTPUT"
           else
-            echo "should-cleanup=true" >> $GITHUB_OUTPUT
+            echo "should-cleanup=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install Ansible

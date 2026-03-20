@@ -42,8 +42,8 @@ jobs:
       - name: Extract metadata
         id: meta
         run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push toolchain image
         uses: docker/build-push-action@v7

@@ -76,14 +76,14 @@ jobs:
 
       - name: Record start time
         id: timer
-        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Get Production Database URL
         id: get-db-url
         run: |
           # Get the main branch database URL (production)
           DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
-          echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
@@ -104,7 +104,7 @@ jobs:
           if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
           elif [ $m -gt 0 ]; then text="${m}m ${s}s"
           else text="${s}s"; fi
-          echo "text=$text" >> $GITHUB_OUTPUT
+          echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
@@ -174,14 +174,14 @@ jobs:
 
       - name: Record start time
         id: timer
-        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Get Production Database URL
         id: get-db-url
         run: |
           # Get the main branch database URL (production)
           DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
-          echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
@@ -308,7 +308,7 @@ jobs:
           if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
           elif [ $m -gt 0 ]; then text="${m}m ${s}s"
           else text="${s}s"; fi
-          echo "text=$text" >> $GITHUB_OUTPUT
+          echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
@@ -375,7 +375,7 @@ jobs:
 
       - name: Record start time
         id: timer
-        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Docs to Vercel Production
         id: deploy
@@ -396,7 +396,7 @@ jobs:
           if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
           elif [ $m -gt 0 ]; then text="${m}m ${s}s"
           else text="${s}s"; fi
-          echo "text=$text" >> $GITHUB_OUTPUT
+          echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
@@ -463,7 +463,7 @@ jobs:
 
       - name: Record start time
         id: timer
-        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy App to Vercel Production
         id: deploy
@@ -491,7 +491,7 @@ jobs:
           if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
           elif [ $m -gt 0 ]; then text="${m}m ${s}s"
           else text="${s}s"; fi
-          echo "text=$text" >> $GITHUB_OUTPUT
+          echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
@@ -554,7 +554,7 @@ jobs:
 
       - name: Record start time
         id: timer
-        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v6
         with:
@@ -587,7 +587,7 @@ jobs:
           if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
           elif [ $m -gt 0 ]; then text="${m}m ${s}s"
           else text="${s}s"; fi
-          echo "text=$text" >> $GITHUB_OUTPUT
+          echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
@@ -658,7 +658,7 @@ jobs:
 
       - name: Record start time
         id: timer
-        run: echo "start=$(date +%s)" >> $GITHUB_OUTPUT
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       # Cross-compile Rust binaries for ARM64 (metal runners are ARM64)
       - name: Cross-compile guest binaries for ARM64
@@ -763,7 +763,7 @@ jobs:
           if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
           elif [ $m -gt 0 ]; then text="${m}m ${s}s"
           else text="${s}s"; fi
-          echo "text=$text" >> $GITHUB_OUTPUT
+          echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}
