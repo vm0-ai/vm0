@@ -21,7 +21,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
-import { delay } from "signal-timers";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
@@ -91,7 +90,10 @@ export function ZeroSessionChatPage({
     currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
-      detach(savePinnedIds([...pinnedIds, currentChatAgentId]), Reason.DomCallback);
+      detach(
+        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        Reason.DomCallback,
+      );
     }
   };
 

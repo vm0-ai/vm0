@@ -27,6 +27,7 @@ import {
   IconArrowsMove,
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
+  IconCrown,
   IconPin,
 } from "@tabler/icons-react";
 import {
@@ -63,6 +64,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  Button,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
 import avatar1Img from "./assets/avatar-1.png";
@@ -74,6 +76,7 @@ import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   pinnedAgentIds$,
+  savingPinnedAgents$,
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
@@ -1201,7 +1204,6 @@ function TalkToSection({
   pinnedIds,
   onPinnedIdsChange,
   onNewChat,
-  onManagePinned,
 }: {
   activeId: ZeroNavId | "chat";
   currentChatAgentId: string | null;
@@ -1215,7 +1217,6 @@ function TalkToSection({
   pinnedIds: string[];
   onPinnedIdsChange: (ids: string[]) => void;
   onNewChat?: (agent: { id: string; name: string } | null) => void;
-  onManagePinned?: () => void;
 }) {
   const dialogOpen$ = useCCState(false);
   const dialogOpen = useGet(dialogOpen$);
@@ -1228,25 +1229,6 @@ function TalkToSection({
           Pinned
         </span>
         <div className="flex shrink-0 items-center gap-0.5">
-          {onManagePinned && (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-                    aria-label="Manage pinned agents"
-                    onClick={onManagePinned}
-                  >
-                    <IconPin size={15} stroke={2.5} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p className="text-xs">Manage pinned agents</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1412,6 +1394,7 @@ export function ZeroSidebar({
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
+  const savingPinned = useGet(savingPinnedAgents$);
   const savePinnedIds = useSet(updatePinnedAgentIds$);
   const setPinnedIds = (ids: string[]) => {
     detach(savePinnedIds(ids), Reason.DomCallback);
@@ -1434,7 +1417,9 @@ export function ZeroSidebar({
   const selectedAgentIdFromChat: string | null | undefined = selectedRecentId
     ? (() => {
         const thread = recentSessions.find((s) => s.id === selectedRecentId);
-        if (!thread) return undefined;
+        if (!thread) {
+          return undefined;
+        }
         return subagentIds.has(thread.agentComposeId)
           ? thread.agentComposeId
           : null;
@@ -1591,7 +1576,6 @@ export function ZeroSidebar({
             pinnedIds={pinnedIds}
             onPinnedIdsChange={setPinnedIds}
             onNewChat={onNewChat}
-            onManagePinned={() => setManagePinnedOpen(true)}
           />
 
           {/* Recent chat sessions */}

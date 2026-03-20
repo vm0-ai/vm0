@@ -839,7 +839,10 @@ export function ZeroChatPage({
     currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
-      detach(savePinnedIds([...pinnedIds, currentChatAgentId]), Reason.DomCallback);
+      detach(
+        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        Reason.DomCallback,
+      );
     }
   };
 
