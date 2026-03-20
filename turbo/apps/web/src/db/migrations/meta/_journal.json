@@ -1219,6 +1219,13 @@
       "when": 1774051200017,
       "tag": "0173_rename_org_to_org_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1774051200018,
+      "tag": "0174_drop_org_compat_views",
+      "breakpoints": true
     }
   ]
 }
