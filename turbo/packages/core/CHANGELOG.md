@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.90.0](https://github.com/vm0-ai/vm0/compare/core-v8.89.0...core-v8.90.0) (2026-03-20)
+
+
+### Features
+
+* enable pricing feature switch for staff users ([#5784](https://github.com/vm0-ai/vm0/issues/5784)) ([1e9cd9e](https://github.com/vm0-ai/vm0/commit/1e9cd9ede3573b2536e405f759023b78ca03f901))
+
 ## [8.89.0](https://github.com/vm0-ai/vm0/compare/core-v8.88.0...core-v8.89.0) (2026-03-20)
 
 

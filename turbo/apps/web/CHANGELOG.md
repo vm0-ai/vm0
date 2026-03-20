@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.138.0](https://github.com/vm0-ai/vm0/compare/web-v12.137.1...web-v12.138.0) (2026-03-20)
+
+
+### Features
+
+* add billing dialog and rename stripe price env vars ([#5782](https://github.com/vm0-ai/vm0/issues/5782)) ([f6ea54d](https://github.com/vm0-ai/vm0/commit/f6ea54d138d6f65e7a1cf03262e6e71372a7fd82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.90.0
+
 ## [12.137.1](https://github.com/vm0-ai/vm0/compare/web-v12.137.0...web-v12.137.1) (2026-03-20)
 
 
