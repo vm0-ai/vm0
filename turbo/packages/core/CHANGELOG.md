@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.89.0](https://github.com/vm0-ai/vm0/compare/core-v8.88.0...core-v8.89.0) (2026-03-20)
+
+
+### Features
+
+* support --settings flag for vm0 run ([#5663](https://github.com/vm0-ai/vm0/issues/5663)) ([#5753](https://github.com/vm0-ai/vm0/issues/5753)) ([d0aad87](https://github.com/vm0-ai/vm0/commit/d0aad87539c31ae4664d41b1cca46b556b3de66e))
+* support --tools cli parameter across full pipeline ([#5752](https://github.com/vm0-ai/vm0/issues/5752)) ([b0cf364](https://github.com/vm0-ai/vm0/commit/b0cf364a8598dcd36ed1a6ffffdb8c1e03d1841c))
+
+
+### Refactoring
+
+* separate auth error from firewall action in network logs ([#5756](https://github.com/vm0-ai/vm0/issues/5756)) ([7b56aed](https://github.com/vm0-ai/vm0/commit/7b56aedb93ba323a4076af6ca19fb43a520aa6e1)), closes [#5754](https://github.com/vm0-ai/vm0/issues/5754)
+
 ## [8.88.0](https://github.com/vm0-ai/vm0/compare/core-v8.87.0...core-v8.88.0) (2026-03-20)
 
 
