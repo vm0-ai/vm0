@@ -162,6 +162,7 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
       className={`!bg-transparent !text-foreground text-sm ${className ?? ""}`}
       style={{
         backgroundColor: "transparent",
+        color: "hsl(var(--foreground))",
         fontSize: "0.875rem",
         lineHeight: "1.5",
         fontFamily: "var(--font-family-sans)",
