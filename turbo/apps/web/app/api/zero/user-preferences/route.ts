@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import {
   createHandler,
   createSafeErrorHandler,
@@ -81,6 +82,17 @@ const handler = createHandler(zeroUserPreferencesContract, router, {
   errorHandler: createSafeErrorHandler("zero-user-preferences"),
 });
 
-// PUT exported for backward compatibility: the old CLI contract uses PUT,
+// PUT handler for backward compatibility: the old CLI contract uses PUT for update,
 // and next.config.js rewrites /api/user/preferences → this route.
-export { handler as GET, handler as POST, handler as PUT };
+// ts-rest validates the HTTP method against the contract, so we convert PUT → POST.
+async function putHandler(request: NextRequest) {
+  const postRequest = new NextRequest(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: request.body,
+    duplex: "half",
+  });
+  return handler(postRequest);
+}
+
+export { handler as GET, handler as POST, putHandler as PUT };
