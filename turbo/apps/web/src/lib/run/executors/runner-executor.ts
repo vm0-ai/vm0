@@ -61,6 +61,7 @@ export async function executeRunnerJob(
     experimentalFirewalls: context.experimentalFirewalls ?? undefined,
     experimentalCapabilities: context.experimentalCapabilities ?? undefined,
     disallowedTools: context.disallowedTools ?? undefined,
+    tools: context.tools ?? undefined,
     experimentalProfile: profile,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,

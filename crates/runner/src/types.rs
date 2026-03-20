@@ -89,6 +89,9 @@ pub struct ExecutionContext {
     pub disallowed_tools: Option<Vec<String>>,
     #[allow(dead_code)]
     #[serde(default)]
+    pub tools: Option<Vec<String>>,
+    #[allow(dead_code)]
+    #[serde(default)]
     pub experimental_profile: Option<String>,
 }
 

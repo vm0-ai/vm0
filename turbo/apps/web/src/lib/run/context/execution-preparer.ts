@@ -245,6 +245,9 @@ function buildPreparedContext(
     // Disallowed tools
     disallowedTools: context.disallowedTools ?? null,
 
+    // Tools
+    tools: context.tools ?? null,
+
     // Experimental profile
     experimentalProfile: profile,
 

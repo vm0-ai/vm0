@@ -290,6 +290,7 @@ export interface CreateRunParams {
   prompt: string;
   appendSystemPrompt?: string;
   disallowedTools?: string[];
+  tools?: string[];
 
   // Optional — caller-resolved compose ID
   // When provided, createRun() uses this to load the compose instead of
@@ -351,6 +352,7 @@ export interface StartRunParams {
   // --- Optional params (forwarded to createRun) ---
   appendSystemPrompt?: string;
   disallowedTools?: string[];
+  tools?: string[];
   conversationId?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
@@ -596,6 +598,7 @@ async function buildAndDispatchRun(opts: {
     prompt,
     appendSystemPrompt,
     disallowedTools,
+    tools,
   } = params;
 
   try {
@@ -635,6 +638,7 @@ async function buildAndDispatchRun(opts: {
       prompt,
       appendSystemPrompt,
       disallowedTools,
+      tools,
       runId,
       sandboxToken,
       userId,
@@ -917,6 +921,7 @@ export async function startRun(
     prompt: params.prompt,
     appendSystemPrompt,
     disallowedTools: params.disallowedTools,
+    tools: params.tools,
     composeId: resolved.composeId,
     checkpointId: params.checkpointId,
     sessionId: params.sessionId,

@@ -61,6 +61,9 @@ const unifiedRunRequestSchema = z.object({
   // Optional list of tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
 
+  // Optional list of tools to make available in Claude CLI (passed as --tools)
+  tools: z.array(z.string()).optional(),
+
   // How the run was triggered (defaults to "cli" on the server if not provided)
   triggerSource: triggerSourceSchema.optional(),
 });
