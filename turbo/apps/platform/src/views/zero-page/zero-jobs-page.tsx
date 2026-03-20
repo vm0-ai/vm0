@@ -1,6 +1,16 @@
-import { useGet, useLastResolved, useLoadable } from "ccstate-react";
-import { IconCrown, IconMessageCircle, IconUsers } from "@tabler/icons-react";
-import { Card, CardContent } from "@vm0/ui";
+import { useCCState } from "ccstate-react/experimental";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { IconCrown, IconPlus, IconUsers } from "@tabler/icons-react";
+import {
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Button,
+  Input,
+} from "@vm0/ui";
 import {
   zeroSubagents$,
   agentsLoading$,
@@ -10,9 +20,15 @@ import {
   agentDisplayName$,
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  sendZeroChatMessage$,
+  startNewZeroSession$,
+} from "../../signals/zero-page/zero-chat.ts";
+import { updatePathname$ } from "../../signals/route.ts";
 import { Link } from "../router/link.tsx";
 import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
-import { useAgentAvatar } from "./zero-sidebar.tsx";
+import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
 import zeroAvatarImg from "./assets/zero-avatar.png";
 import emptyChatImg from "./assets/empty-chat.png";
 
@@ -36,6 +52,32 @@ export function ZeroJobsPage({
   const agents = useLastResolved(zeroSubagents$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
+
+  const createDialogOpen$ = useCCState(false);
+  const createDialogOpen = useGet(createDialogOpen$);
+  const setCreateDialogOpen = useSet(createDialogOpen$);
+  const newName$ = useCCState("");
+  const newName = useGet(newName$);
+  const setNewName = useSet(newName$);
+
+  const navigate = useSet(updatePathname$);
+  const startNewSession = useSet(startNewZeroSession$);
+  const sendMessage = useSet(sendZeroChatMessage$);
+
+  const handleCreateTeammate = () => {
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      return;
+    }
+    setCreateDialogOpen(false);
+    navigate("/");
+    startNewSession();
+    detach(
+      sendMessage(`Create a new sub-agent called "${trimmed}"`),
+      Reason.DomCallback,
+    );
+    setNewName("");
+  };
 
   const isDefaultAgent = selectedAgentName === rawAgentName;
 
@@ -188,22 +230,29 @@ export function ZeroJobsPage({
 
           {agents && agents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Create teammate — col-span-full */}
-              <Link
-                pathname="/"
-                className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] px-4 py-3.5 transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group col-span-full"
+              <button
+                type="button"
+                onClick={() => setCreateDialogOpen(true)}
+                className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group text-left"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
-                  <IconMessageCircle
-                    size={16}
-                    stroke={1.5}
-                    className="text-foreground/50 group-hover:text-foreground transition-colors"
-                  />
-                </span>
-                <span className="text-sm text-foreground/60 group-hover:text-foreground transition-colors">
-                  Start a chat to create a new teammate&hellip;
-                </span>
-              </Link>
+                <div className="flex h-14 items-center gap-2.5 px-5">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                    <IconPlus
+                      size={18}
+                      stroke={2}
+                      className="text-muted-foreground group-hover:text-foreground"
+                    />
+                  </span>
+                  <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
+                    Create teammate
+                  </span>
+                </div>
+                <div className="flex h-11 items-center border-t border-dashed border-[hsl(var(--gray-400))] px-5 group-hover:border-[hsl(var(--gray-400))]">
+                  <span className="text-xs text-muted-foreground/70">
+                    Chat with {agentName} to create a sub-agent
+                  </span>
+                </div>
+              </button>
 
               {agents.map((agent) => (
                 <Link
@@ -217,6 +266,14 @@ export function ZeroJobsPage({
               ))}
             </div>
           )}
+
+          <CreateTeammateDialog
+            open={createDialogOpen}
+            onOpenChange={setCreateDialogOpen}
+            name={newName}
+            onNameChange={setNewName}
+            onConfirm={handleCreateTeammate}
+          />
         </div>
       </main>
     </div>
@@ -262,5 +319,81 @@ function AgentCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function CreateTeammateDialog({
+  open,
+  onOpenChange,
+  name,
+  onNameChange,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  name: string;
+  onNameChange: (name: string) => void;
+  onConfirm: () => void;
+}) {
+  const avatarSrc = AGENT_AVATARS[0];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="zero-app sm:max-w-[480px] h-[min(360px,80dvh)] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg"
+        aria-describedby={undefined}
+      >
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Create teammate</DialogTitle>
+          </DialogHeader>
+          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl mb-5">
+            <img
+              src={avatarSrc}
+              alt=""
+              role="presentation"
+              className="h-16 w-16 rounded-full object-cover object-top"
+            />
+          </div>
+          <h2 className="text-xl font-semibold tracking-tight mb-2">
+            Create a new teammate
+          </h2>
+          <p className="text-sm text-muted-foreground leading-relaxed max-w-[320px] mb-6">
+            Name your sub-agent to get started.
+          </p>
+          <Input
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                onConfirm();
+              }
+            }}
+            placeholder="Teammate name"
+            className="max-w-[280px] text-center text-base border-[0.7px] border-[hsl(var(--gray-400))] focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+            autoFocus
+          />
+        </div>
+        <div
+          className="shrink-0 h-16 flex items-center justify-end gap-2 px-8"
+          style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+        >
+          <Button
+            variant="ghost"
+            className="rounded-lg text-muted-foreground"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            className="rounded-lg min-w-[100px]"
+            disabled={!name.trim()}
+          >
+            Create
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -4,9 +4,6 @@ import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconAlertCircle,
   IconLoader2,
-  IconArrowLeft,
-  IconUsers,
-  IconCalendar,
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
@@ -14,9 +11,9 @@ import {
   IconCopy,
   IconCheck,
   IconSettings,
+  IconPin,
 } from "@tabler/icons-react";
 import {
-  Button,
   Skeleton,
   Tooltip,
   TooltipContent,
@@ -42,6 +39,11 @@ import {
   zeroChatQueuePosition$,
   cancelActiveRun$,
 } from "../../signals/zero-page/zero-chat.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  pinnedAgentIds$,
+  updatePinnedAgentIds$,
+} from "../../signals/zero-page/zero-pinned-agents.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.png";
@@ -52,16 +54,12 @@ import zeroAvatarImg from "./assets/zero-avatar.png";
 
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
-  onBack?: () => void;
-  onNavigateToSchedule?: () => void;
   onAvatarClick?: () => void;
   chatAgentName?: string;
 }
 
 export function ZeroSessionChatPage({
   zeroAvatarSrc = zeroAvatarImg,
-  onBack,
-  onNavigateToSchedule,
   onAvatarClick,
   chatAgentName,
 }: ZeroSessionChatPageProps) {
@@ -78,12 +76,30 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-  // Auto-scroll when messages change — ref callback runs at commit time
-  const scrollAnchorRef = (el: HTMLDivElement | null) => {
-    if (el && messages.length > 0) {
-      el.scrollIntoView({ behavior: "smooth" });
+  const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
+  const messagesEndEl = useGet(messagesEndEl$);
+  const setMessagesEndEl = useSet(messagesEndEl$);
+
+  // Pin pill — show when chatting with an unpinned subagent
+  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
+  const pinnedIds =
+    pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
+  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const showPinPill =
+    currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
+  const handlePin = () => {
+    if (currentChatAgentId) {
+      savePinnedIds([...pinnedIds, currentChatAgentId]);
     }
   };
+
+  // Auto-scroll when messages change (deferred to avoid side effect during render)
+  if (messagesEndEl && messages.length > 0) {
+    queueMicrotask(() => {
+      messagesEndEl.scrollIntoView({ behavior: "smooth" });
+    });
+  }
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
     clearInput();
@@ -95,48 +111,41 @@ export function ZeroSessionChatPage({
       {/* Header */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 -ml-2"
-            onClick={onBack}
-            aria-label="Back to chat home"
-          >
-            <IconArrowLeft size={20} stroke={1.5} />
-          </Button>
-          <button
-            type="button"
-            onClick={onAvatarClick}
-            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="View agent profile"
-          >
-            <img
-              src={zeroAvatarSrc}
-              alt=""
-              role="presentation"
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
-          </button>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={onAvatarClick}
+              className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="View agent profile"
+            >
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-8 w-8 rounded-full object-cover object-top"
+              />
+            </button>
+            {showPinPill && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handlePin}
+                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                      aria-label="Pin to sidebar"
+                    >
+                      <IconPin size={10} stroke={2} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Pin to sidebar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
           <span className="font-semibold text-foreground">{agentName}</span>
-        </div>
-        <div className="flex items-center gap-0.5">
-          <Link
-            pathname="/:tab"
-            options={{ pathParams: { tab: "team" } }}
-            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
-            aria-label="Sub-agents"
-          >
-            <IconUsers size={18} stroke={1.5} />
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={onNavigateToSchedule}
-            aria-label="Scheduled"
-          >
-            <IconCalendar size={18} stroke={1.5} />
-          </Button>
         </div>
       </header>
 
@@ -169,7 +178,7 @@ export function ZeroSessionChatPage({
                 zeroAvatarSrc={zeroAvatarSrc}
               />
             ))}
-            <div ref={scrollAnchorRef} />
+            <div ref={setMessagesEndEl} />
           </div>
         </main>
 
@@ -178,15 +187,17 @@ export function ZeroSessionChatPage({
           <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
           <div className="mx-auto max-w-[900px] grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
             <div className="w-9 shrink-0" />
-            <ZeroChatComposer
-              className="w-full min-w-0"
-              input={input}
-              onInputChange={setInput}
-              onSend={handleSend}
-              sending={sending}
-              onCancel={() => void cancelRun()}
-              agentName={agentName}
-            />
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <ZeroChatComposer
+                className="w-full min-w-0"
+                input={input}
+                onInputChange={setInput}
+                onSend={handleSend}
+                sending={sending}
+                onCancel={() => void cancelRun()}
+                agentName={agentName}
+              />
+            </div>
           </div>
         </footer>
       </div>
