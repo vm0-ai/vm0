@@ -15,7 +15,9 @@ import { env } from "../env";
  * Priority:
  * 1. VM0_API_URL if explicitly set (e.g. tunnel URL in dev)
  * 2. Vercel deployment URL in production/preview
- * 3. localhost:3000 fallback for local development
+ * 3. localhost:3000 fallback for local development only
+ *
+ * Throws in non-development environments if neither URL is configured.
  */
 function getInfraBaseUrl(): string {
   const e = env();
@@ -24,7 +26,9 @@ function getInfraBaseUrl(): string {
 
   if (e.VERCEL_URL) return `https://${e.VERCEL_URL}`;
 
-  return "http://localhost:3000";
+  if (e.NODE_ENV === "development") return "http://localhost:3000";
+
+  throw new Error("VM0_API_URL or VERCEL_URL must be configured in production");
 }
 
 /**
