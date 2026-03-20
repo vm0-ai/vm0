@@ -109,6 +109,11 @@ function initEnv() {
       // Strava OAuth (for connector)
       STRAVA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRAVA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+      // Stripe Billing (platform subscription billing — separate from the Stripe connector)
+      STRIPE_SECRET_KEY: z.string().min(1).optional(),
+      STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+      STRIPE_PRICE_ID_PRO: z.string().min(1).optional(),
+      STRIPE_PRICE_ID_MAX: z.string().min(1).optional(),
       // Stripe OAuth (for connector)
       STRIPE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRIPE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -273,6 +278,10 @@ function initEnv() {
       STRAVA_OAUTH_CLIENT_SECRET: process.env.STRAVA_OAUTH_CLIENT_SECRET,
       POSTHOG_OAUTH_CLIENT_ID: process.env.POSTHOG_OAUTH_CLIENT_ID,
       POSTHOG_OAUTH_CLIENT_SECRET: process.env.POSTHOG_OAUTH_CLIENT_SECRET,
+      STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+      STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+      STRIPE_PRICE_ID_PRO: process.env.STRIPE_PRICE_ID_PRO,
+      STRIPE_PRICE_ID_MAX: process.env.STRIPE_PRICE_ID_MAX,
       STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
       STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:

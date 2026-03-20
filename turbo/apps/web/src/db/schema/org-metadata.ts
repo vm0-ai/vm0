@@ -1,15 +1,33 @@
-import { bigint, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 
 /**
  * org_metadata — stores per-org data that is owned by the platform (not Clerk).
- * Holds credit balance, tier, and default agent configuration.
+ * Holds credit balance, tier, default agent configuration, and Stripe billing fields.
  * Clerk remains source of truth for slug and membership only.
  */
-export const orgMetadata = pgTable("org_metadata", {
-  orgId: text("org_id").primaryKey(),
-  credits: bigint("credits", { mode: "number" }).notNull().default(0),
-  tier: text("tier").notNull().default("free"),
-  defaultAgentComposeId: uuid("default_agent_compose_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const orgMetadata = pgTable(
+  "org_metadata",
+  {
+    orgId: text("org_id").primaryKey(),
+    credits: bigint("credits", { mode: "number" }).notNull().default(2000),
+    tier: text("tier").notNull().default("free"),
+    defaultAgentComposeId: uuid("default_agent_compose_id"),
+    // Stripe billing fields
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    subscriptionStatus: varchar("subscription_status", { length: 20 }),
+    currentPeriodEnd: timestamp("current_period_end"),
+    lastProcessedInvoiceId: text("last_processed_invoice_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("uq_org_stripe_customer").on(table.stripeCustomerId)],
+);

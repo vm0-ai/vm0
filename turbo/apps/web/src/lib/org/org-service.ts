@@ -162,3 +162,22 @@ export async function deductOrgCredits(
         DO UPDATE SET credits = org_metadata.credits - ${amount}, updated_at = now()`,
   );
 }
+
+/**
+ * Atomically grant credits to an org's balance (inverse of deductOrgCredits).
+ *
+ * Credits rollover (accumulate) — adds to existing balance.
+ * Uses the same INSERT ON CONFLICT pattern as deductOrgCredits.
+ */
+export async function grantOrgCredits(
+  tx: Parameters<Parameters<typeof globalThis.services.db.transaction>[0]>[0],
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  await tx.execute(
+    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
+        VALUES (${orgId}, ${amount}, now(), now())
+        ON CONFLICT (org_id)
+        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
+  );
+}

@@ -3729,3 +3729,64 @@ export async function countSlackOrgPendingQuestions(
     .where(eq(slackOrgPendingQuestions.connectionId, connectionId));
   return rows.length;
 }
+
+// ---------------------------------------------------------------------------
+// org credit helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Grant credits to an org atomically. Wraps grantOrgCredits in a transaction.
+ */
+export async function grantCreditsToOrg(
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  const { grantOrgCredits } = await import("../lib/org/org-service");
+  await globalThis.services.db.transaction(async (tx) => {
+    await grantOrgCredits(tx, orgId, amount);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Stripe billing helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Set Stripe billing fields on an org in the `org_metadata` table.
+ */
+export async function updateOrgStripeFields(
+  orgId: string,
+  fields: {
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    subscriptionStatus?: string | null;
+    currentPeriodEnd?: Date | null;
+    lastProcessedInvoiceId?: string | null;
+    tier?: string;
+  },
+): Promise<void> {
+  await globalThis.services.db
+    .update(orgMetadata)
+    .set({ ...fields, updatedAt: new Date() })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+/**
+ * Read all billing-related fields from an org in the `org_metadata` table.
+ */
+export async function getOrgBillingFields(orgId: string) {
+  const [row] = await globalThis.services.db
+    .select({
+      tier: orgMetadata.tier,
+      credits: orgMetadata.credits,
+      stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
+      currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return row ?? null;
+}
