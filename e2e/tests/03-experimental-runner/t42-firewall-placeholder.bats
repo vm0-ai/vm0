@@ -157,4 +157,17 @@ EOF
 
     assert_output --partial "ALLOWED_STATUS=200"
     assert_output --partial "BLOCKED_STATUS=403"
+
+    # Verify network logs capture firewall activity
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+    assert_success
+    assert_output --partial "200"
+    assert_output --partial "[github]"
+    assert_output --partial "DENY"
 }

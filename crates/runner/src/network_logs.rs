@@ -7,38 +7,14 @@ use uuid::Uuid;
 
 use crate::http::HttpClient;
 
+/// Network log entry from mitmproxy JSONL.
+///
+/// Uses a transparent `serde_json::Value` wrapper so all fields pass through
+/// to Axiom without needing a struct field for each one. This avoids silently
+/// dropping new fields added to the Python addon.
 #[derive(Serialize, Deserialize, Clone)]
-struct NetworkLog {
-    timestamp: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    mode: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    action: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    port: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rule_matched: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    method: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    latency_ms: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    request_size: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    response_size: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    resp_content_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    resp_content_encoding: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    resp_transfer_encoding: Option<String>,
-}
+#[serde(transparent)]
+struct NetworkLog(serde_json::Value);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,26 +88,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn network_log_deserializes_mitm() {
-        let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"mitm","action":"ALLOW","host":"api.example.com","port":443,"rule_matched":"domain:*.example.com","method":"GET","url":"https://api.example.com/data","status":200,"latency_ms":150,"request_size":0,"response_size":1024,"resp_content_type":"application/json","resp_content_encoding":"gzip","resp_transfer_encoding":"chunked"}"#;
+    fn network_log_preserves_all_fields() {
+        let json = r#"{"timestamp":"2026-02-15T10:00:00","action":"ALLOW","host":"api.github.com","port":443,"method":"GET","url":"https://api.github.com/repos/vm0-ai/vm0","status":200,"latency_ms":150,"request_size":0,"response_size":1024,"firewall_base":"https://api.github.com","firewall_name":"github","firewall_ref":"github","firewall_permission":"metadata:read","firewall_rule_match":"GET /repos/{owner}/{repo}"}"#;
         let log: NetworkLog = serde_json::from_str(json).unwrap();
-        assert_eq!(log.method.as_deref(), Some("GET"));
-        assert_eq!(log.status, Some(200));
-        assert_eq!(log.latency_ms, Some(150));
-        assert_eq!(log.resp_content_type.as_deref(), Some("application/json"));
-        assert_eq!(log.resp_content_encoding.as_deref(), Some("gzip"));
-        assert_eq!(log.resp_transfer_encoding.as_deref(), Some("chunked"));
+        let v = &log.0;
+        assert_eq!(v["method"], "GET");
+        assert_eq!(v["status"], 200);
+        assert_eq!(v["firewall_name"], "github");
+        assert_eq!(v["firewall_permission"], "metadata:read");
     }
 
     #[test]
     fn network_log_round_trip() {
-        let json = r#"{"timestamp":"2026-02-15T10:00:00","mode":"mitm","action":"DENY","host":"evil.com","port":443,"rule_matched":"final","method":"GET","url":"https://evil.com","status":403,"latency_ms":5,"request_size":0,"response_size":0}"#;
+        let json = r#"{"timestamp":"2026-02-15T10:00:00","action":"DENY","host":"evil.com","port":443,"method":"GET","url":"https://evil.com","status":403,"latency_ms":5,"request_size":0,"response_size":0,"firewall_base":"https://evil.com","firewall_name":"blocked"}"#;
         let log: NetworkLog = serde_json::from_str(json).unwrap();
         let reserialized = serde_json::to_value(&log).unwrap();
-        assert_eq!(reserialized["timestamp"], "2026-02-15T10:00:00");
         assert_eq!(reserialized["action"], "DENY");
-        assert_eq!(reserialized["mode"], "mitm");
-        assert_eq!(reserialized["method"], "GET");
+        assert_eq!(reserialized["firewall_name"], "blocked");
     }
 
     #[test]
