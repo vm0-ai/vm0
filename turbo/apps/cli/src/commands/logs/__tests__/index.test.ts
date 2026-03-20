@@ -712,7 +712,7 @@ describe("logs command", () => {
               networkLogs: [
                 {
                   timestamp: "2024-01-15T10:30:00Z",
-                  mode: "mitm",
+                  action: "ALLOW",
                   method: "GET",
                   status: 200,
                   latency_ms: 150,
@@ -1033,12 +1033,11 @@ describe("logs command", () => {
               networkLogs: [
                 {
                   timestamp: "2024-01-15T10:30:00Z",
-                  mode: "mitm",
+                  action: "ALLOW",
                   method: "GET",
                   status: 200,
                   host: "api.example.com",
                   port: 443,
-                  action: "ALLOW",
                 },
               ],
               hasMore: false,

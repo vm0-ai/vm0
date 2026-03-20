@@ -94,9 +94,8 @@ def get_vm_info(client_ip: str) -> dict | None:
     return registry.get(client_ip)
 
 
-def log_network_entry(vm_info: dict, entry: dict) -> None:
+def log_network_entry(log_path: str, entry: dict) -> None:
     """Write a network log entry to the per-run JSONL file."""
-    log_path = vm_info.get("networkLogPath")
     if not log_path:
         return
     try:
@@ -185,7 +184,8 @@ class FirewallBlock(NamedTuple):
     """Base URL matched but no permission granted — return 403."""
 
     base: str
-    firewall_ref: str
+    ref: str
+    name: str
     method: str
     path: str
 
@@ -208,6 +208,7 @@ def match_firewall_request(
     # first matched base is recorded — subsequent base matches don't overwrite.
     blocked_base = None
     blocked_ref = ""
+    blocked_name = ""
 
     upper_method = method.upper()
 
@@ -226,6 +227,7 @@ def match_firewall_request(
             if blocked_base is None:
                 blocked_base = base
                 blocked_ref = fw_ref
+                blocked_name = fw_name
 
             permissions = api_entry.get("permissions")
             if not permissions:
@@ -261,7 +263,7 @@ def match_firewall_request(
         # Extract relative path for the error message
         rest = url[len(blocked_base) :]
         rel_path = rest.split("?")[0].split("#")[0] or "/"
-        return FirewallBlock(blocked_base, blocked_ref, upper_method, rel_path)
+        return FirewallBlock(blocked_base, blocked_ref, blocked_name, upper_method, rel_path)
     return None
 
 
@@ -350,31 +352,36 @@ async def handle_firewall_request(
     flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict
 ) -> None:
     """Handle a firewall-matched request: fetch resolved headers, inject into request."""
-    client_ip = flow.client_conn.peername[0]
     firewall_base = api_entry["base"]
-    api_id = api_entry.get("id", firewall_base)  # fallback to base for backward compat
-    run_id = vm_info.get("runId", "")
+    api_id = api_entry.get("id", firewall_base)
+    run_id = flow.metadata.get("vm_run_id", "")
     sandbox_token = vm_info.get("sandboxToken", "")
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
     secret_connector_map = vm_info.get("secretConnectorMap")
 
+    # Store metadata upfront — shared across ALLOW/ERROR paths
+    flow.metadata["firewall_base"] = firewall_base
+    flow.metadata["firewall_api_id"] = api_id
+    flow.metadata["firewall_name"] = match_info.get("name", "")
+    flow.metadata["firewall_ref"] = match_info.get("ref", "")
+    flow.metadata["firewall_permission"] = match_info.get("permission", "")
+    flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
+    flow.metadata["firewall_params"] = match_info.get("params", {})
+
     if not encrypted_secrets:
         ctx.log.error(f"[{run_id}] No encryptedSecrets for firewall rule {firewall_base}")
-        flow.metadata["firewall_action"] = "DENY"
-        flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
-        flow.metadata["original_url"] = get_original_url(flow)
-        error_body = json.dumps(
-            {
-                "error": "firewall_auth_unavailable",
-                "message": "Firewall auth secrets not configured",
-                "firewall": match_info.get("ref", ""),
-                "base": firewall_base,
-            }
-        )
+        flow.metadata["firewall_action"] = "ERROR"
         flow.response = http.Response.make(
             502,
-            error_body.encode(),
+            json.dumps(
+                {
+                    "error": "firewall_auth_unavailable",
+                    "message": "Firewall auth secrets not configured",
+                    "firewall": match_info.get("ref", ""),
+                    "base": firewall_base,
+                }
+            ).encode(),
             {"Content-Type": "application/json"},
         )
         return
@@ -385,20 +392,17 @@ async def handle_firewall_request(
         )
     except Exception as e:
         ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
-        flow.metadata["firewall_action"] = "DENY"
-        flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
-        flow.metadata["original_url"] = get_original_url(flow)
-        error_body = json.dumps(
-            {
-                "error": "firewall_auth_failed",
-                "message": f"Failed to resolve firewall auth headers: {e}",
-                "firewall": match_info.get("ref", ""),
-                "base": firewall_base,
-            }
-        )
+        flow.metadata["firewall_action"] = "ERROR"
         flow.response = http.Response.make(
             502,
-            error_body.encode(),
+            json.dumps(
+                {
+                    "error": "firewall_auth_failed",
+                    "message": f"Failed to resolve firewall auth headers: {e}",
+                    "firewall": match_info.get("ref", ""),
+                    "base": firewall_base,
+                }
+            ).encode(),
             {"Content-Type": "application/json"},
         )
         return
@@ -407,20 +411,7 @@ async def handle_firewall_request(
     for header_name, header_value in headers.items():
         flow.request.headers[header_name] = header_value
 
-    # Store metadata for logging and auditing
     flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["firewall_rule"] = f"firewall:{firewall_base}"
-    flow.metadata["firewall_base"] = firewall_base
-    flow.metadata["firewall_api_id"] = api_id
-    flow.metadata["firewall_name"] = match_info.get("name", "")
-    flow.metadata["firewall_ref"] = match_info.get("ref", "")
-    flow.metadata["firewall_permission"] = match_info.get("permission", "")
-    flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
-    flow.metadata["firewall_params"] = match_info.get("params", {})
-    flow.metadata["original_url"] = get_original_url(flow)
-    flow.metadata["vm_run_id"] = run_id
-    flow.metadata["vm_client_ip"] = client_ip
-    flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
 
     ctx.log.info(f"[{run_id}] Firewall {firewall_base}: {flow.request.pretty_host}")
 
@@ -463,9 +454,6 @@ async def request(flow: http.HTTPFlow) -> None:
     1. VM0 API auto-allow (agent must always reach the platform)
     2. Firewall match (inject auth headers for allowed requests)
     """
-    # Track request start time
-    _request_start_times[flow.id] = time.time()
-
     # Get client IP (source VM)
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
 
@@ -483,7 +471,13 @@ async def request(flow: http.HTTPFlow) -> None:
 
     run_id = vm_info.get("runId", "")
 
+    # Track request start time (after early returns to avoid leaking entries)
+    _request_start_times[flow.id] = time.time()
+
+    original_url = get_original_url(flow)
+
     # Store info for response handler
+    flow.metadata["original_url"] = original_url
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
@@ -500,35 +494,33 @@ async def request(flow: http.HTTPFlow) -> None:
         if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
             ctx.log.info(f"[{run_id}] Auto-allow VM0 API: {hostname}")
             flow.metadata["firewall_action"] = "ALLOW"
-            flow.metadata["firewall_rule"] = "vm0-api"
-            flow.metadata["original_url"] = get_original_url(flow)
             return
 
     # --- Step 2: Firewall match with permission check ---
     # Match base URL, then check permission rules before injecting auth headers.
     vm_firewalls = vm_info.get("firewalls")
     if vm_firewalls:
-        original_url = get_original_url(flow)
         result = match_firewall_request(original_url, flow.request.method, vm_firewalls)
         if isinstance(result, FirewallBlock):
             ctx.log.warn(
-                f"[{run_id}] Firewall {result.firewall_ref}: "
+                f"[{run_id}] Firewall {result.ref}: "
                 f"no matching permission for {result.method} {result.path}"
             )
             flow.metadata["firewall_action"] = "DENY"
-            flow.metadata["firewall_rule"] = f"firewall:{result.base}"
-            flow.metadata["original_url"] = original_url
+            flow.metadata["firewall_base"] = result.base
+            flow.metadata["firewall_name"] = result.name
+            flow.metadata["firewall_ref"] = result.ref
             error_body = json.dumps(
                 {
                     "error": "firewall_permission_denied",
                     "message": "Request blocked: no matching permission rule",
                     "method": result.method,
                     "path": result.path,
-                    "firewall": result.firewall_ref,
+                    "firewall": result.ref,
                     "base": result.base,
                     "hint": (
                         f"Add a permission rule for '{result.method} {result.path}'"
-                        f" to the {result.firewall_ref} firewall in vm0.yaml"
+                        f" to the {result.ref} firewall in vm0.yaml"
                     ),
                 }
             )
@@ -544,7 +536,6 @@ async def request(flow: http.HTTPFlow) -> None:
 
     # No firewall match — pass through directly
     flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["original_url"] = get_original_url(flow)
     ctx.log.info(f"[{run_id}] ALLOW: {hostname}")
 
 
@@ -576,7 +567,6 @@ def response(flow: http.HTTPFlow) -> None:
     run_id = flow.metadata.get("vm_run_id", "")
     original_url = flow.metadata.get("original_url", flow.request.pretty_url)
     firewall_action = flow.metadata.get("firewall_action", "ALLOW")
-    firewall_rule = flow.metadata.get("firewall_rule")
 
     # Calculate sizes
     request_size = len(flow.request.content) if flow.request.content else 0
@@ -597,13 +587,10 @@ def response(flow: http.HTTPFlow) -> None:
     if run_id and network_log_path:
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-            "mode": "mitm",
             "action": firewall_action,
             "host": host,
             "port": port,
-            "rule_matched": firewall_rule,
             "method": flow.request.method,
-            "path": flow.request.path.split("?")[0],  # Path without query
             "url": original_url,
             "status": status_code,
             "latency_ms": latency_ms,
@@ -612,31 +599,26 @@ def response(flow: http.HTTPFlow) -> None:
         }
 
         # Add firewall match info if this was a firewall request
-        svc_base = flow.metadata.get("firewall_base")
-        if svc_base:
-            log_entry["firewall_base"] = svc_base
+        firewall_base = flow.metadata.get("firewall_base")
+        if firewall_base:
+            log_entry["firewall_base"] = firewall_base
             log_entry["firewall_name"] = flow.metadata.get("firewall_name", "")
             log_entry["firewall_ref"] = flow.metadata.get("firewall_ref", "")
             log_entry["firewall_permission"] = flow.metadata.get("firewall_permission", "")
             log_entry["firewall_rule_match"] = flow.metadata.get("firewall_rule_match", "")
+            params = flow.metadata.get("firewall_params")
+            if params:
+                log_entry["firewall_params"] = params
 
-        # Add response headers useful for debugging gzip/encoding issues
-        if flow.response:
-            for h in ("content-type", "content-encoding", "transfer-encoding"):
-                v = flow.response.headers.get(h)
-                if v:
-                    log_entry[f"resp_{h.replace('-', '_')}"] = v
-
-        log_network_entry({"networkLogPath": network_log_path}, log_entry)
+        log_network_entry(network_log_path, log_entry)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers
-    if flow.response and flow.response.status_code == 401 and firewall_rule:
-        if firewall_rule.startswith("firewall:"):
-            api_id = flow.metadata.get("firewall_api_id", "")
-            if api_id:
-                cache_key = (run_id, api_id)
-                if _firewall_header_cache.pop(cache_key, None):
-                    ctx.log.info(f"[{run_id}] Firewall {api_id}: 401 - cleared header cache")
+    if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
+        api_id = flow.metadata.get("firewall_api_id", "")
+        if api_id:
+            cache_key = (run_id, api_id)
+            if _firewall_header_cache.pop(cache_key, None):
+                ctx.log.info(f"[{run_id}] Firewall {api_id}: 401 - cleared header cache")
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:

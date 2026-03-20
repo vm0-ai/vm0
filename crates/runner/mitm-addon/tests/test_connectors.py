@@ -130,7 +130,7 @@ class TestMatchFirewallRequest:
         )
         assert isinstance(result, FirewallBlock)
         assert result.base == "https://api.github.com"
-        assert result.firewall_ref == "github"
+        assert result.ref == "github"
         assert result.method == "GET"
         assert result.path == "/repos"
 
