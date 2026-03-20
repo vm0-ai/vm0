@@ -1736,14 +1736,20 @@ jobs:
       - lighthouse-web
       - lighthouse-app
     # Always run so the gate reports an explicit result (not "skipped").
-    # Skip on release-please PRs and commits — GitHub treats "skipped" as passing.
-    if: >-
-      always() &&
-      !startsWith(github.head_ref || '', 'release-please--branches--') &&
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release'))
+    # Release-please PRs skip CI jobs — auto-pass the gate for them.
+    if: always()
     steps:
       - name: Validate CI results
         run: |
+          # Auto-pass for release-please PRs (only version bumps and changelogs)
+          HEAD_REF="${{ github.head_ref || '' }}"
+          COMMIT_MSG="${{ github.event.head_commit.message || '' }}"
+          if [[ "$HEAD_REF" == release-please--branches--* ]] || \
+             { [[ "${{ github.event_name }}" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; }; then
+            echo "✅ Release-please PR — skipping CI gate"
+            exit 0
+          fi
+
           echo "::group::CI Gate Results"
           FAILED=0
 
