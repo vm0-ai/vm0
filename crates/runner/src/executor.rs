@@ -721,6 +721,13 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_TOOLS".into(), tools.join(","));
     }
 
+    // Settings JSON (passed directly as single string)
+    if let Some(settings) = &context.settings
+        && !settings.is_empty()
+    {
+        env.insert("VM0_SETTINGS".into(), settings.clone());
+    }
+
     env
 }
 
@@ -761,6 +768,7 @@ mod tests {
             experimental_capabilities: None,
             disallowed_tools: None,
             tools: None,
+            settings: None,
             experimental_profile: None,
         }
     }
@@ -1291,5 +1299,28 @@ mod tests {
         let ctx = minimal_context();
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_TOOLS"));
+    }
+
+    #[test]
+    fn build_env_json_with_settings() {
+        let mut ctx = minimal_context();
+        ctx.settings = Some(r#"{"hooks":{}}"#.into());
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
+    }
+
+    #[test]
+    fn build_env_json_empty_settings_omitted() {
+        let mut ctx = minimal_context();
+        ctx.settings = Some("".into());
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_SETTINGS"));
+    }
+
+    #[test]
+    fn build_env_json_no_settings() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_SETTINGS"));
     }
 }

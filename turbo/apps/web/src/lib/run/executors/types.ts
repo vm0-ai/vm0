@@ -55,6 +55,9 @@ export interface PreparedContext {
   // Tools to make available in Claude CLI (passed as --tools)
   tools: string[] | null;
 
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings: string | null;
+
   // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: string | null;
 

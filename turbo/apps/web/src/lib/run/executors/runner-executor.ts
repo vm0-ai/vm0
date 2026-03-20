@@ -62,6 +62,7 @@ export async function executeRunnerJob(
     experimentalCapabilities: context.experimentalCapabilities ?? undefined,
     disallowedTools: context.disallowedTools ?? undefined,
     tools: context.tools ?? undefined,
+    settings: context.settings ?? undefined,
     experimentalProfile: profile,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,

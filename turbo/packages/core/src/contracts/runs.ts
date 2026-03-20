@@ -64,6 +64,9 @@ const unifiedRunRequestSchema = z.object({
   // Optional list of tools to make available in Claude CLI (passed as --tools)
   tools: z.array(z.string()).optional(),
 
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings: z.string().optional(),
+
   // How the run was triggered (defaults to "cli" on the server if not provided)
   triggerSource: triggerSourceSchema.optional(),
 });

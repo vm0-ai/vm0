@@ -42,6 +42,8 @@ export async function createRun(body: {
   disallowedTools?: string[];
   // Tools to make available in Claude CLI (passed as --tools)
   tools?: string[];
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings?: string;
   // Required
   prompt: string;
 }): Promise<CreateRunResponse> {

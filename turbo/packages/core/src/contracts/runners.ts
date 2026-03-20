@@ -132,6 +132,8 @@ export const storedExecutionContextSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
   tools: z.array(z.string()).optional(),
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings: z.string().optional(),
   // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: z.string().optional(),
 });
@@ -180,6 +182,8 @@ export const executionContextSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
   tools: z.array(z.string()).optional(),
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings: z.string().optional(),
   // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: z.string().optional(),
 });

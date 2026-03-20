@@ -191,6 +191,11 @@ export async function prepareForExecution(
   return { context: preparedContext, timings };
 }
 
+/** Convert undefined to null (reduces branching in buildPreparedContext) */
+function toNullable<T>(value: T | undefined | null): T | null {
+  return value ?? null;
+}
+
 /**
  * Extract optional metadata fields from ExecutionContext, coalescing to null
  */
@@ -227,7 +232,7 @@ function buildPreparedContext(
 
     // What to run
     prompt: context.prompt,
-    appendSystemPrompt: context.appendSystemPrompt ?? null,
+    appendSystemPrompt: toNullable(context.appendSystemPrompt),
     agentComposeVersionId: context.agentComposeVersionId,
     agentCompose: context.agentCompose,
     cliAgentType,
@@ -252,13 +257,16 @@ function buildPreparedContext(
     memoryName: context.memoryName || null,
 
     // Experimental firewall for proxy-side token replacement
-    experimentalFirewalls: context.experimentalFirewalls ?? null,
+    experimentalFirewalls: toNullable(context.experimentalFirewalls),
 
     // Experimental capabilities
-    experimentalCapabilities: context.experimentalCapabilities ?? null,
+    experimentalCapabilities: toNullable(context.experimentalCapabilities),
 
     // Disallowed tools
-    disallowedTools: context.disallowedTools ?? null,
+    disallowedTools: toNullable(context.disallowedTools),
+
+    // Settings JSON
+    settings: toNullable(context.settings),
 
     // Tools
     tools: context.tools ?? null,

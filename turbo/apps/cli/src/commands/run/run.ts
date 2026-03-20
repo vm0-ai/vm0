@@ -81,6 +81,10 @@ export const mainRunCommand = new Command()
     "--tools <tools...>",
     "Built-in tools to make available in Claude CLI (e.g., Bash Edit Read)",
   )
+  .option(
+    "--settings <json>",
+    "Settings JSON to pass to Claude CLI (e.g., hooks, permissions)",
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -103,6 +107,7 @@ export const mainRunCommand = new Command()
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
+          settings?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -189,6 +194,7 @@ export const mainRunCommand = new Command()
           appendSystemPrompt: options.appendSystemPrompt,
           disallowedTools: options.disallowedTools,
           tools: options.tools,
+          settings: options.settings,
           checkEnv: options.checkEnv || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });

@@ -50,6 +50,14 @@ fn parse_args(args: &[String]) -> ParsedArgs {
                 // and prompt is extracted as last remaining arg
                 i += 1;
             }
+            "--settings" => {
+                // Skip the flag and its single JSON value argument
+                if args.get(i + 1).is_some() {
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
             "--print" | "--verbose" | "--dangerously-skip-permissions" => {
                 i += 1;
             }

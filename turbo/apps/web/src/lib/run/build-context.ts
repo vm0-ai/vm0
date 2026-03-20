@@ -608,6 +608,8 @@ interface BuildContextParams {
   appendSystemPrompt?: string;
   disallowedTools?: string[];
   tools?: string[];
+  // Settings JSON to pass to Claude CLI (passed as --settings)
+  settings?: string;
   runId: string;
   sandboxToken: string;
   userId: string;
@@ -1112,6 +1114,7 @@ export async function buildExecutionContext(
       experimentalCapabilities,
       disallowedTools,
       tools,
+      settings: params.settings,
       resumeSession,
       resumeArtifact,
       // Metadata for vm0_start event
