@@ -1656,6 +1656,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  "cal-com": {
+    label: "Cal.com",
+    helpText:
+      "Connect your Cal.com account to manage scheduling, bookings, and calendar events",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        helpText:
+          "1. Log in to [Cal.com](https://app.cal.com)\n2. Go to **Settings** → **Developer** → **API Keys**\n3. Click **Create API Key**\n4. Copy the generated key",
+        secrets: {
+          CALCOM_TOKEN: {
+            label: "API Token",
+            required: true,
+            placeholder: "cal_live_xxxxxxxx",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   xero: {
     label: "Xero",
     helpText:
@@ -3189,6 +3209,7 @@ export const connectorTypeSchema = z.enum([
   "pdforge",
   "slack-webhook",
   "wix",
+  "cal-com",
 ]);
 
 /**
