@@ -10,13 +10,12 @@ export default [
     ...pluginReact.configs.flat.recommended,
     settings: { react: { version: "detect" } },
   },
+  pluginReactHooks.configs.flat["recommended-latest"],
   {
     plugins: {
-      "react-hooks": pluginReactHooks,
       ccstate: ccstatePlugin,
     },
     rules: {
-      ...pluginReactHooks.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
       // Non-type-aware rules
       "ccstate/signal-dollar-suffix": "error",

@@ -72,37 +72,6 @@ export function ZeroSettingsTab({
     tone: initialSound,
   });
   const savedSettings = useGet(savedSettings$);
-  const setSavedSettings = useSet(savedSettings$);
-
-  // Sync local state when props change (e.g. metadata finishes loading)
-  const prevProps$ = useCCState({
-    name: resolvedAgentName,
-    description: initialDescription,
-    tone: initialSound,
-  });
-  const prevProps = useGet(prevProps$);
-  const setPrevProps = useSet(prevProps$);
-  if (
-    resolvedAgentName !== prevProps.name ||
-    initialDescription !== prevProps.description ||
-    initialSound !== prevProps.tone
-  ) {
-    queueMicrotask(() => {
-      setPrevProps({
-        name: resolvedAgentName,
-        description: initialDescription,
-        tone: initialSound,
-      });
-      setAgentName(resolvedAgentName);
-      setDesc(initialDescription);
-      setTone(initialSound);
-      setSavedSettings({
-        name: resolvedAgentName,
-        description: initialDescription,
-        tone: initialSound,
-      });
-    });
-  }
 
   const isSettingsDirty =
     agentName !== savedSettings.name ||

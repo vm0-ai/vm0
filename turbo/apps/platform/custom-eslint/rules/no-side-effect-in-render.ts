@@ -32,7 +32,7 @@ const createRule = ESLintUtils.RuleCreator(
 type MessageIds = "noSetInRender" | "noSideEffectInRender";
 type Options = [{ forbiddenCalls?: string[] }];
 
-const DEFAULT_FORBIDDEN_CALLS = ["detach"];
+const DEFAULT_FORBIDDEN_CALLS = ["detach", "queueMicrotask"];
 
 function isComponentOrHookFunction(
   node:
