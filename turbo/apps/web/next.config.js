@@ -5,6 +5,30 @@ const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async rewrites() {
+    return [
+      // Backward-compatible rewrites: old API paths → new /api/zero/ paths.
+      // The CLI still references the old contracts; these rewrites keep them
+      // working until the CLI contracts are migrated in a follow-up.
+      {
+        source: "/api/org/model-providers/:type/set-default",
+        destination: "/api/zero/model-providers/:type/default",
+      },
+      {
+        source: "/api/org/model-providers/:type",
+        destination: "/api/zero/model-providers/:type",
+      },
+      {
+        source: "/api/org/model-providers",
+        destination: "/api/zero/model-providers",
+      },
+      {
+        source: "/api/user/preferences",
+        destination: "/api/zero/user-preferences",
+      },
+    ];
+  },
+
   async headers() {
     return [
       {
