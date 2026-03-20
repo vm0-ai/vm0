@@ -14,6 +14,7 @@ import { asanaHandler } from "./providers/asana-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
 import { bitrixHandler } from "./providers/bitrix-handler";
 import { braveSearchHandler } from "./providers/brave-search-handler";
+import { brevoHandler } from "./providers/brevo-handler";
 import { brightDataHandler } from "./providers/bright-data-handler";
 import { browserbaseHandler } from "./providers/browserbase-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
@@ -139,6 +140,7 @@ export const PROVIDER_HANDLERS: Record<
   atlassian: atlassianHandler,
   bitrix: bitrixHandler,
   "brave-search": braveSearchHandler,
+  brevo: brevoHandler,
   "bright-data": brightDataHandler,
   browserbase: browserbaseHandler,
   browserless: browserlessHandler,
