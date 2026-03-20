@@ -46,9 +46,16 @@ fn parse_args(args: &[String]) -> ParsedArgs {
                 }
             }
             "--disallowed-tools" | "--tools" => {
-                // Skip the flag; tool names fall through to remaining
-                // and prompt is extracted as last remaining arg
+                // Variadic: consume all following non-option args until "--"
+                // or next "--flag". Matches Commander.js behavior where
+                // <tools...> greedily consumes subsequent positional args.
                 i += 1;
+                while let Some(next) = args.get(i) {
+                    if next == "--" || next.starts_with("--") {
+                        break;
+                    }
+                    i += 1; // skip tool name
+                }
             }
             "--settings" => {
                 // Skip the flag and its single JSON value argument
@@ -60,6 +67,14 @@ fn parse_args(args: &[String]) -> ParsedArgs {
             }
             "--print" | "--verbose" | "--dangerously-skip-permissions" => {
                 i += 1;
+            }
+            "--" => {
+                // End of options — everything after is positional
+                i += 1;
+                for trailing in args.get(i..).unwrap_or_default() {
+                    remaining.push(trailing.clone());
+                }
+                break;
             }
             _ => {
                 if !arg.is_empty() {
@@ -472,8 +487,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_args_tools_skipped() {
-        let args: Vec<String> = vec!["--tools", "Bash", "Read", "echo hello"]
+    fn parse_args_tools_with_separator() {
+        let args: Vec<String> = vec!["--tools", "Bash", "Read", "--", "echo hello"]
             .into_iter()
             .map(String::from)
             .collect();
@@ -482,7 +497,25 @@ mod tests {
     }
 
     #[test]
-    fn parse_args_disallowed_tools_skipped() {
+    fn parse_args_disallowed_tools_with_separator() {
+        let args: Vec<String> = vec![
+            "--disallowed-tools",
+            "CronCreate",
+            "CronDelete",
+            "--",
+            "echo hello",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hello");
+    }
+
+    #[test]
+    fn parse_args_variadic_without_separator_swallows_prompt() {
+        // Without "--", variadic --disallowed-tools consumes the prompt
+        // (matches Commander.js behavior that caused the production bug)
         let args: Vec<String> = vec![
             "--disallowed-tools",
             "CronCreate",
@@ -493,6 +526,29 @@ mod tests {
         .map(String::from)
         .collect();
         let result = parse_args(&args);
+        assert!(
+            result.prompt.is_empty(),
+            "prompt should be empty without '--' separator, got: {:?}",
+            result.prompt,
+        );
+    }
+
+    #[test]
+    fn parse_args_separator_after_option_flag() {
+        // "--" after another --flag correctly separates prompt
+        let args: Vec<String> = vec![
+            "--disallowed-tools",
+            "CronCreate",
+            "--output-format",
+            "stream-json",
+            "--",
+            "echo hello",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.output_format, "stream-json");
         assert_eq!(result.prompt, "echo hello");
     }
 }

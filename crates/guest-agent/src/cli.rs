@@ -76,7 +76,9 @@ fn build_claude_args(
         args.push(settings.to_string());
     }
 
-    // Prompt must be the last positional argument
+    // "--" terminates option parsing so Commander.js variadic options
+    // (--disallowed-tools, --tools) do not consume the prompt.
+    args.push("--".to_string());
     args.push(prompt.to_string());
     args
 }
@@ -353,12 +355,24 @@ pub async fn execute_cli(
 mod tests {
     use super::*;
 
+    /// Assert prompt is last and preceded by "--" separator.
+    fn assert_prompt_with_separator(args: &[String], expected_prompt: &str) {
+        let len = args.len();
+        assert!(len >= 2, "args too short: {args:?}");
+        assert_eq!(
+            args[len - 2],
+            "--",
+            "second-to-last arg must be '--': {args:?}"
+        );
+        assert_eq!(args[len - 1], expected_prompt);
+    }
+
     #[test]
     fn build_claude_args_basic() {
         let args = build_claude_args("", "", "", "", "", "hello world");
         assert!(args.contains(&"--print".to_string()));
         assert!(args.contains(&"--dangerously-skip-permissions".to_string()));
-        assert_eq!(args.last().unwrap(), "hello world");
+        assert_prompt_with_separator(&args, "hello world");
         assert!(!args.contains(&"--append-system-prompt".to_string()));
         assert!(!args.contains(&"--resume".to_string()));
     }
@@ -371,10 +385,7 @@ mod tests {
             .position(|a| a == "--append-system-prompt")
             .unwrap();
         assert_eq!(args[asp_idx + 1], "Your name is Aria.");
-        // Prompt must be AFTER --append-system-prompt value
-        let prompt_idx = args.iter().position(|a| a == "analyze this").unwrap();
-        assert!(prompt_idx > asp_idx + 1);
-        assert_eq!(args.last().unwrap(), "analyze this");
+        assert_prompt_with_separator(&args, "analyze this");
     }
 
     #[test]
@@ -388,7 +399,7 @@ mod tests {
         let args = build_claude_args("sess-123", "Be helpful.", "", "", "", "prompt");
         assert!(args.contains(&"--resume".to_string()));
         assert!(args.contains(&"--append-system-prompt".to_string()));
-        assert_eq!(args.last().unwrap(), "prompt");
+        assert_prompt_with_separator(&args, "prompt");
     }
 
     #[test]
@@ -410,8 +421,8 @@ mod tests {
         assert_eq!(args[dt_idx + 1], "CronCreate");
         assert_eq!(args[dt_idx + 2], "CronDelete");
         assert_eq!(args[dt_idx + 3], "CronList");
-        // Prompt must be last
-        assert_eq!(args.last().unwrap(), "hello");
+        // "--" must separate variadic tools from the prompt
+        assert_prompt_with_separator(&args, "hello");
     }
 
     #[test]
@@ -427,8 +438,8 @@ mod tests {
         assert_eq!(args[t_idx + 1], "Bash");
         assert_eq!(args[t_idx + 2], "Edit");
         assert_eq!(args[t_idx + 3], "Read");
-        // Prompt must be last
-        assert_eq!(args.last().unwrap(), "hello");
+        // "--" must separate variadic tools from the prompt
+        assert_prompt_with_separator(&args, "hello");
     }
 
     #[test]
@@ -442,8 +453,7 @@ mod tests {
         let args = build_claude_args("", "", "", "", r#"{"hooks":{}}"#, "hello");
         let s_idx = args.iter().position(|a| a == "--settings").unwrap();
         assert_eq!(args[s_idx + 1], r#"{"hooks":{}}"#);
-        // Prompt must be last
-        assert_eq!(args.last().unwrap(), "hello");
+        assert_prompt_with_separator(&args, "hello");
     }
 
     #[test]
