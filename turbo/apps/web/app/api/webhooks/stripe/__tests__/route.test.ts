@@ -5,13 +5,6 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
-vi.mock("next/server", async (importOriginal) => {
-  const original = await importOriginal<typeof import("next/server")>();
-  return {
-    ...original,
-  };
-});
-
 // Mock stripe module (external dependency)
 const mockConstructEvent = vi.fn();
 const mockSubscriptionsRetrieve = vi.fn();
