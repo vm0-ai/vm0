@@ -1,7 +1,7 @@
 import { Component } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import { onRef } from "../../signals/utils.ts";
+import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconPlug,
@@ -738,7 +738,6 @@ function filterScenariosToShow(
 
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
-  onClearScenario?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (
     message: string,
@@ -753,7 +752,6 @@ interface ZeroChatPageProps {
 
 export function ZeroChatPage({
   initialScenarioId,
-  onClearScenario: _onClearScenario,
   onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,
@@ -838,7 +836,7 @@ export function ZeroChatPage({
     currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
-      savePinnedIds([...pinnedIds, currentChatAgentId]);
+      detach(savePinnedIds([...pinnedIds, currentChatAgentId]), Reason.DomCallback);
     }
   };
 

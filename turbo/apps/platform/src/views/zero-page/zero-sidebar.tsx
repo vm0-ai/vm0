@@ -1135,7 +1135,9 @@ export function ZeroSidebar({
   const selectedAgentIdFromChat: string | null | undefined = selectedRecentId
     ? (() => {
         const thread = recentSessions.find((s) => s.id === selectedRecentId);
-        if (!thread) return undefined;
+        if (!thread) {
+          return undefined;
+        }
         return subagentIds.has(thread.agentComposeId)
           ? thread.agentComposeId
           : null;

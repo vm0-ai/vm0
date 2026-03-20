@@ -37,9 +37,6 @@ export const pinnedAgentIds$ = computed((get) => {
  * Whether a pinned agents update is in flight.
  */
 const internalSavingPinned$ = state(false);
-export const savingPinnedAgents$ = computed((get) =>
-  get(internalSavingPinned$),
-);
 
 /**
  * Update pinned agent IDs on the server with optimistic UI.
