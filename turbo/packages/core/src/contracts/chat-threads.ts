@@ -40,12 +40,12 @@ const chatThreadDetailSchema = z.object({
 });
 
 /**
- * Chat threads list route contract (/api/zero/chat-threads)
+ * Chat threads list route contract (/api/chat-threads)
  */
 export const chatThreadsContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/chat-threads",
+    path: "/api/chat-threads",
     headers: authHeadersSchema,
     body: z.object({
       agentComposeId: z.string().min(1),
@@ -59,7 +59,7 @@ export const chatThreadsContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/zero/chat-threads",
+    path: "/api/chat-threads",
     headers: authHeadersSchema,
     query: z.object({
       agentComposeId: z.string().min(1, "agentComposeId is required"),
@@ -73,12 +73,12 @@ export const chatThreadsContract = c.router({
 });
 
 /**
- * Chat thread by ID route contract (/api/zero/chat-threads/[id])
+ * Chat thread by ID route contract (/api/chat-threads/[id])
  */
 export const chatThreadByIdContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/chat-threads/:id",
+    path: "/api/chat-threads/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string() }),
     responses: {
@@ -91,12 +91,12 @@ export const chatThreadByIdContract = c.router({
 });
 
 /**
- * Chat thread runs route contract (/api/zero/chat-threads/[id]/runs)
+ * Chat thread runs route contract (/api/chat-threads/[id]/runs)
  */
 export const chatThreadRunsContract = c.router({
   addRun: {
     method: "POST",
-    path: "/api/zero/chat-threads/:id/runs",
+    path: "/api/chat-threads/:id/runs",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string() }),
     body: z.object({

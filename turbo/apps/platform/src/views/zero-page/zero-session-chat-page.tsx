@@ -97,12 +97,9 @@ export function ZeroSessionChatPage({
 
   // Auto-scroll when messages change (deferred to avoid side effect during render)
   if (messagesEndEl && messages.length > 0) {
-    detach(
-      delay(0).then(() => {
-        messagesEndEl.scrollIntoView({ behavior: "smooth" });
-      }),
-      Reason.DomCallback,
-    );
+    queueMicrotask(() => {
+      messagesEndEl.scrollIntoView({ behavior: "smooth" });
+    });
   }
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
@@ -200,6 +197,7 @@ export function ZeroSessionChatPage({
                 sending={sending}
                 onCancel={() => void cancelRun()}
                 agentName={agentName}
+                autoFocus={messages.length === 0}
               />
             </div>
           </div>
@@ -387,10 +385,6 @@ const THINKING_MESSAGES = [
   "Just a moment...",
 ] as const;
 
-const INITIAL_THINKING_INDEX = Math.floor(
-  Math.random() * THINKING_MESSAGES.length,
-);
-
 function RunActivityLine() {
   const summariesLoadable = useLastLoadable(zeroChatRunSummaries$);
   const rawSummaries =
@@ -399,7 +393,9 @@ function RunActivityLine() {
   const queuePosition = useGet(zeroChatQueuePosition$);
   const isQueued = runStatus === "queued";
 
-  const thinkingIndex$ = useCCState(INITIAL_THINKING_INDEX);
+  const thinkingIndex$ = useCCState(
+    Math.floor(Math.random() * THINKING_MESSAGES.length),
+  );
   const thinkingIndex = useGet(thinkingIndex$);
   const thinkingMsg = THINKING_MESSAGES[thinkingIndex]!;
 
