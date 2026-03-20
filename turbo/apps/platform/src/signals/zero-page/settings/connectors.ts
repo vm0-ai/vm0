@@ -203,10 +203,13 @@ export const submitApiToken$ = command(
         ? await variablesClient.set({ body: { name, value } })
         : await secretsClient.set({ body: { name, value } });
       signal.throwIfAborted();
-      if (result.status !== 200 && result.status !== 201) {
-        const errorBody = result.body as { error?: { message?: string } };
+      if (
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 500
+      ) {
         throw new Error(
-          errorBody?.error?.message ??
+          result.body.error.message ??
             `Failed to save ${name} (${result.status})`,
         );
       }

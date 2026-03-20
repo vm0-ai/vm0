@@ -368,12 +368,12 @@ export const orgConfirmDelete$ = command(
       return;
     }
 
+    const providerType = deleteState.providerType;
     const providerLabel =
-      MODEL_PROVIDER_TYPES[deleteState.providerType]?.label ??
-      deleteState.providerType;
+      MODEL_PROVIDER_TYPES[providerType]?.label ?? providerType;
 
     const promise = (async () => {
-      await set(deleteOrgModelProvider$, deleteState.providerType as string);
+      await set(deleteOrgModelProvider$, providerType);
       signal.throwIfAborted();
       toast.success(`${providerLabel} removed successfully`);
       set(internalOrgDeleteDialogState$, { open: false, providerType: null });

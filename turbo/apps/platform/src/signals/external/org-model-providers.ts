@@ -4,6 +4,7 @@ import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
   type UpsertModelProviderRequest,
+  type ModelProviderType,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 
@@ -50,12 +51,11 @@ export const createOrgModelProvider$ = command(
  * Set an org model provider as the default (admin only).
  */
 export const setDefaultOrgModelProvider$ = command(
-  async ({ get, set }, type: string) => {
+  async ({ get, set }, type: ModelProviderType) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersDefaultContract);
     const result = await client.setDefault({
       params: { type },
-      body: undefined,
     });
 
     if (result.status !== 200) {
@@ -72,7 +72,7 @@ export const setDefaultOrgModelProvider$ = command(
  * Delete an org model provider by type (admin only).
  */
 export const deleteOrgModelProvider$ = command(
-  async ({ get, set }, type: string) => {
+  async ({ get, set }, type: ModelProviderType) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersByTypeContract);
     const result = await client.delete({ params: { type } });
