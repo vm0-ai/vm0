@@ -13,7 +13,6 @@ import {
   setSelectedConnectorType$,
   pollingConnectorType$,
   justConnectedTypes$,
-  clearJustConnectedTypes$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -66,13 +65,9 @@ export function ZeroSkillsTab({
   const allSkills = useGet(skills$);
 
   const optimisticConnected = useGet(justConnectedTypes$);
-  const clearOptimistic = useSet(clearJustConnectedTypes$);
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  if (allTypesLoadable.state === "hasData" && optimisticConnected.size > 0) {
-    clearOptimistic();
-  }
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
   const skillMap = new Map(allSkills.map((s) => [s.value, s]));
   const addedSet = new Set(addedSkills);

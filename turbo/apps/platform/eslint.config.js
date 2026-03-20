@@ -26,6 +26,7 @@ export default [
       "ccstate/no-catch-abort": "error",
       "ccstate/test-context-in-hooks": "error",
       "ccstate/setup-page-render": "error",
+      "ccstate/no-side-effect-in-render": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)
