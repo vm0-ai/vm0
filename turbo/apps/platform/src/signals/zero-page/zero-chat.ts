@@ -831,7 +831,7 @@ export const focusChatInputRequest$ = computed((get) =>
   get(focusChatInputRequestState$),
 );
 
-export const requestFocusChatInput$ = command(({ set }) => {
+const requestFocusChatInput$ = command(({ set }) => {
   set(focusChatInputRequestState$, true);
 });
 

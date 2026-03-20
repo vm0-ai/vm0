@@ -1003,7 +1003,9 @@ export function ZeroSidebar({
   // Pinned agents resolved from IDs
   const pinnedAgents = pinnedIds
     .map((id) => subagents.find((a) => a.id === id))
-    .filter((a): a is SubagentInfo => a !== undefined);
+    .filter(
+      (a: SubagentInfo | undefined): a is SubagentInfo => a !== undefined,
+    );
 
   const manageNav = MANAGE_NAV.map((item) => ({
     ...item,
@@ -1162,7 +1164,9 @@ export function ZeroSidebar({
             onRecentSelect={onRecentSelect}
             onNewChat={onNewChat}
             currentAgent={
-              selectedAgent ? { id: selectedAgent.id, name: selectedAgent.name } : null
+              selectedAgent
+                ? { id: selectedAgent.id, name: selectedAgent.name }
+                : null
             }
           />
         </nav>
