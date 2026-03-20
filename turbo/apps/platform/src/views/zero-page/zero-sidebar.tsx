@@ -952,7 +952,7 @@ function SidebarBillingButton() {
   return (
     <button
       type="button"
-      onClick={() => openBilling()}
+      onClick={() => detach(openBilling(), Reason.DomCallback)}
       className="flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 text-sidebar-foreground hover:bg-sidebar-accent"
     >
       <IconCrown size={16} className="shrink-0 text-primary" />
