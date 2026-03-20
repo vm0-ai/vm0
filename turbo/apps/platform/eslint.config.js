@@ -10,13 +10,12 @@ export default [
     ...pluginReact.configs.flat.recommended,
     settings: { react: { version: "detect" } },
   },
+  pluginReactHooks.configs.flat["recommended-latest"],
   {
     plugins: {
-      "react-hooks": pluginReactHooks,
       ccstate: ccstatePlugin,
     },
     rules: {
-      ...pluginReactHooks.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
       // Non-type-aware rules
       "ccstate/signal-dollar-suffix": "error",
@@ -26,6 +25,7 @@ export default [
       "ccstate/no-catch-abort": "error",
       "ccstate/test-context-in-hooks": "error",
       "ccstate/setup-page-render": "error",
+      "ccstate/no-side-effect-in-render": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)

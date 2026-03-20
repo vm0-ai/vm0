@@ -679,16 +679,6 @@ function ManagePinnedAgentsDialog({
   const draftIds = useGet(draftIds$);
   const setDraftIds = useSet(draftIds$);
 
-  const prevOpen$ = useCCState(false);
-  const prevOpen = useGet(prevOpen$);
-  const setPrevOpen = useSet(prevOpen$);
-  if (open && !prevOpen) {
-    setDraftIds(pinnedIds);
-  }
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-  }
-
   const orderedPinned = draftIds
     .map((id) => subagents.find((a) => a.id === id))
     .filter((a): a is SubagentInfo => a !== undefined);
@@ -1188,6 +1178,7 @@ export function ZeroSidebar({
 
       {/* Manage pinned agents dialog */}
       <ManagePinnedAgentsDialog
+        key={managePinnedOpen ? "open" : "closed"}
         open={managePinnedOpen}
         onOpenChange={setManagePinnedOpen}
         zeroAvatarSrc={zeroAvatarSrc}

@@ -15,6 +15,7 @@ import {
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
 import { logger } from "../../../../signals/log.ts";
+import { onRef } from "../../../../signals/utils.ts";
 
 const L = logger("ScopeReviewModal");
 
@@ -37,38 +38,44 @@ export function ScopeReviewModal({
   const setLoading = useSet(loading$);
   const setScopeDiff = useSet(scopeDiff$);
 
-  const loadScopeDiff = useSet(
-    useCommand(({ set }) => {
-      if (!connectorType) {
-        set(scopeDiff$, null);
-        return;
-      }
-      set(loading$, true);
-      const client = createClient(zeroConnectorScopeDiffContract);
-      client
-        .getScopeDiff({ params: { type: connectorType } })
-        .then((result) => {
-          if (result.status === 200) {
-            setScopeDiff(result.body);
-          } else {
-            L.error(
-              `Failed to fetch scope diff: ${result.status}`,
-              result.body,
-            );
-          }
-          setLoading(false);
-        })
-        .catch((error: unknown) => {
-          L.error("Failed to fetch scope diff:", error);
-          setLoading(false);
-        });
-    }),
-  );
+  // Guard: onRef() creates a new atom each render, so if the command
+  // synchronously changes state the component reads (loading$), the re-render
+  // produces a new ref callback → React re-attaches → onRef fires again → loop.
+  // The guard ensures the load only executes once.
+  const hasStartedLoad$ = useCCState(false);
+  const loadScopeDiffCmd$ = useCommand(({ get, set }) => {
+    if (get(hasStartedLoad$)) {
+      return;
+    }
+    set(hasStartedLoad$, true);
+    if (!connectorType) {
+      set(scopeDiff$, null);
+      return;
+    }
+    set(loading$, true);
+    const client = createClient(zeroConnectorScopeDiffContract);
+    client
+      .getScopeDiff({ params: { type: connectorType } })
+      .then((result) => {
+        if (result.status === 200) {
+          setScopeDiff(result.body);
+        } else {
+          L.error(`Failed to fetch scope diff: ${result.status}`, result.body);
+        }
+        setLoading(false);
+      })
+      .catch((error: unknown) => {
+        L.error("Failed to fetch scope diff:", error);
+        setLoading(false);
+      });
+  });
 
-  // Load on first render when connectorType is set
-  if (connectorType && !scopeDiff && !loading) {
-    loadScopeDiff();
-  }
+  // Load on mount when connectorType is set
+  const initLoad$ = useCommand(({ set }) => {
+    set(loadScopeDiffCmd$);
+  });
+  const initRef$ = onRef(initLoad$);
+  const initRef = useSet(initRef$);
 
   if (!connectorType) {
     return null;
@@ -78,7 +85,11 @@ export function ScopeReviewModal({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent
+        ref={initRef}
+        className="max-w-md"
+        aria-describedby={undefined}
+      >
         <DialogHeader>
           <div className="flex items-center gap-3">
             <ConnectorIcon type={connectorType} size={28} />

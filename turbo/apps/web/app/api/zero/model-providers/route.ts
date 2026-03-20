@@ -1,19 +1,10 @@
-/**
- * Backward-compatible route for /api/org/model-providers.
- *
- * The CLI still uses the old contract (orgModelProvidersMainContract) with
- * GET and PUT methods at this path. This route delegates to the shared
- * service layer (same as /api/zero/model-providers).
- *
- * Will be removed once the CLI contracts are migrated.
- */
 import {
   createHandler,
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
 import {
-  orgModelProvidersMainContract,
+  zeroModelProvidersMainContract,
   createErrorResponse,
   hasAuthMethods,
   VM0_ORG_SLUG,
@@ -33,9 +24,9 @@ import {
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
 
-const log = logger("api:org-model-providers-compat");
+const log = logger("api:zero-model-providers");
 
-const router = tsr.router(orgModelProvidersMainContract, {
+const router = tsr.router(zeroModelProvidersMainContract, {
   list: async ({ headers }, { request }) => {
     initServices();
 
@@ -83,7 +74,7 @@ const router = tsr.router(orgModelProvidersMainContract, {
 
     const { type, secret, authMethod, secrets, selectedModel } = body;
 
-    log.debug("upserting org model provider (compat)", {
+    log.debug("upserting org model provider", {
       orgId: org.orgId,
       type,
       selectedModel,
@@ -167,8 +158,8 @@ const router = tsr.router(orgModelProvidersMainContract, {
   },
 });
 
-const handler = createHandler(orgModelProvidersMainContract, router, {
-  errorHandler: createSafeErrorHandler("org-model-providers-compat"),
+const handler = createHandler(zeroModelProvidersMainContract, router, {
+  errorHandler: createSafeErrorHandler("zero-model-providers"),
 });
 
-export { handler as GET, handler as PUT };
+export { handler as GET, handler as POST };

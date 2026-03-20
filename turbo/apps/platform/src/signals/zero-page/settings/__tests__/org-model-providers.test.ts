@@ -25,7 +25,7 @@ describe("org-model-providers vm0 provider", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.put("*/api/org/model-providers", async ({ request }) => {
+      http.post("*/api/zero/model-providers", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
           {
@@ -68,7 +68,7 @@ describe("org-model-providers vm0 provider", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.put("*/api/org/model-providers", async ({ request }) => {
+      http.post("*/api/zero/model-providers", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
           {
@@ -111,7 +111,7 @@ describe("org-model-providers vm0 provider", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.put("*/api/org/model-providers", async ({ request }) => {
+      http.post("*/api/zero/model-providers", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(
           {

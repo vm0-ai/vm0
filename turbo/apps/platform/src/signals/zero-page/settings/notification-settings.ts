@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type {
-  UserPreferencesResponse,
-  UpdateUserPreferencesRequest,
+import {
+  zeroUserPreferencesContract,
+  type UpdateUserPreferencesRequest,
 } from "@vm0/core";
-import { fetch$ } from "../../fetch.ts";
+import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
 
 // ---------------------------------------------------------------------------
@@ -19,10 +19,13 @@ const internalReloadPreferences$ = state(0);
 
 export const notificationPreferences$ = computed(async (get) => {
   get(internalReloadPreferences$);
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/user/preferences");
-  const data = (await resp.json()) as UserPreferencesResponse;
-  return data;
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroUserPreferencesContract);
+  const result = await client.get();
+  if (result.status === 200) {
+    return result.body;
+  }
+  throw new Error(`Failed to fetch user preferences: ${result.status}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -31,14 +34,11 @@ export const notificationPreferences$ = computed(async (get) => {
 
 export const updateNotificationPreference$ = command(
   async ({ get, set }, update: UpdateUserPreferencesRequest) => {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/user/preferences", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(update),
-    });
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroUserPreferencesContract);
+    const result = await client.update({ body: update });
 
-    if (!response.ok) {
+    if (result.status !== 200) {
       toast.error("Failed to update notification preference");
       return;
     }

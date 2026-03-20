@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type { UserPreferencesResponse } from "@vm0/core";
-import { fetch$ } from "../fetch.ts";
+import { zeroUserPreferencesContract } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
 
 const reloadPinned$ = state(0);
@@ -16,10 +16,13 @@ const optimisticPinnedIds$ = state<string[] | null>(null);
  */
 const serverPinnedIds$ = computed(async (get) => {
   get(reloadPinned$);
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/user/preferences");
-  const data = (await resp.json()) as UserPreferencesResponse;
-  return data.pinnedAgentIds;
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroUserPreferencesContract);
+  const result = await client.get();
+  if (result.status === 200) {
+    return result.body.pinnedAgentIds;
+  }
+  throw new Error(`Failed to fetch user preferences: ${result.status}`);
 });
 
 /**
@@ -50,14 +53,11 @@ export const updatePinnedAgentIds$ = command(
     set(optimisticPinnedIds$, ids);
     set(internalSavingPinned$, true);
     try {
-      const fetchFn = get(fetch$);
-      const response = await fetchFn("/api/user/preferences", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinnedAgentIds: ids }),
-      });
+      const createClient = get(zeroClient$);
+      const client = createClient(zeroUserPreferencesContract);
+      const result = await client.update({ body: { pinnedAgentIds: ids } });
 
-      if (!response.ok) {
+      if (result.status !== 200) {
         toast.error("Failed to update pinned agents");
         return;
       }

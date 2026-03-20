@@ -1,18 +1,10 @@
-/**
- * Backward-compatible route for DELETE /api/org/model-providers/:type.
- *
- * The CLI still uses the old contract (orgModelProvidersByTypeContract)
- * at this path. This route delegates to the shared service layer.
- *
- * Will be removed once the CLI contracts are migrated.
- */
 import {
   createHandler,
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
 import {
-  orgModelProvidersByTypeContract,
+  zeroModelProvidersByTypeContract,
   createErrorResponse,
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -25,9 +17,9 @@ import { deleteOrgModelProvider } from "../../../../../src/lib/model-provider/mo
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
 
-const log = logger("api:org-model-providers-compat");
+const log = logger("api:zero-model-providers");
 
-const router = tsr.router(orgModelProvidersByTypeContract, {
+const router = tsr.router(zeroModelProvidersByTypeContract, {
   delete: async ({ params, headers }, { request }) => {
     initServices();
 
@@ -44,7 +36,7 @@ const router = tsr.router(orgModelProvidersByTypeContract, {
       );
     }
 
-    log.debug("deleting org model provider (compat)", {
+    log.debug("deleting org model provider", {
       orgId: org.orgId,
       type: params.type,
     });
@@ -65,8 +57,8 @@ const router = tsr.router(orgModelProvidersByTypeContract, {
   },
 });
 
-const handler = createHandler(orgModelProvidersByTypeContract, router, {
-  errorHandler: createSafeErrorHandler("org-model-providers-compat"),
+const handler = createHandler(zeroModelProvidersByTypeContract, router, {
+  errorHandler: createSafeErrorHandler("zero-model-providers"),
 });
 
 export { handler as DELETE };

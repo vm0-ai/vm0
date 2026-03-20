@@ -1,4 +1,4 @@
-import { useCCState } from "ccstate-react/experimental";
+import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
 import {
   IconBrandSlack,
@@ -9,7 +9,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { fetch$ } from "../../signals/fetch.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 
 function BackLink() {
@@ -52,46 +52,36 @@ export function ZeroSlackConnectPage() {
   const initialError = params.get("error");
   const workspaceName = params.get("workspace");
 
-  // Check if already connected on mount
-  const checked$ = useCCState(false);
-  const checked = useGet(checked$);
-  const setChecked = useSet(checked$);
-  const alreadyConnected$ = useCCState(false);
-  const alreadyConnected = useGet(alreadyConnected$);
-  const setAlreadyConnected = useSet(alreadyConnected$);
-
-  if (!checked && !initialStatus && !initialError && workspaceId) {
-    queueMicrotask(() => {
-      setChecked(true);
-      setStatus("checking");
+  // Check connection on mount + auto-redirect on initial success
+  const initPage$ = useCommand(({ set }) => {
+    if (!initialStatus && !initialError && workspaceId) {
+      set(status$, "checking");
       detach(
         (async () => {
           const res = await fetchFn("/api/integrations/slack/org/connect");
           if (res.ok) {
             const data = (await res.json()) as { isConnected?: boolean };
             if (data.isConnected) {
-              setAlreadyConnected(true);
-              setStatus("success");
+              set(status$, "success");
               return;
             }
           }
-          setStatus("idle");
+          set(status$, "idle");
         })(),
         Reason.DomCallback,
       );
-    });
-  }
+    }
+    // Auto-open Slack when arriving with status=connected (post-install redirect)
+    if (initialStatus === "connected") {
+      window.location.href = "slack://open";
+    }
+  });
+  const initRef$ = onRef(initPage$);
+  const initRef = useSet(initRef$);
 
   const effectiveStatus =
     initialStatus === "connected" ? "success" : initialError ? "error" : status;
   const effectiveError = initialError ?? errorMsg;
-
-  // Auto-open Slack on success (redirect or connect button, not initial check)
-  if (effectiveStatus === "success" && !alreadyConnected) {
-    queueMicrotask(() => {
-      window.location.href = "slack://open";
-    });
-  }
 
   const handleConnect = () => {
     if (!workspaceId || !slackUserId) {
@@ -116,6 +106,7 @@ export function ZeroSlackConnectPage() {
 
         if (res.ok) {
           setStatus("success");
+          window.location.href = "slack://open";
         } else {
           const body = (await res.json().catch(() => ({}))) as {
             error?: { message?: string };
@@ -131,7 +122,10 @@ export function ZeroSlackConnectPage() {
   };
 
   return (
-    <div className="zero-app flex h-dvh w-full bg-background zero-workspace-bg">
+    <div
+      ref={initRef}
+      className="zero-app flex h-dvh w-full bg-background zero-workspace-bg"
+    >
       <div className="flex flex-1 items-center justify-center p-4">
         <div className="zero-card w-full max-w-sm rounded-xl border border-border bg-card p-5 sm:p-8 flex flex-col items-center gap-6">
           <PageContent

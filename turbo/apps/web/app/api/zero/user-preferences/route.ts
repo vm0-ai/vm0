@@ -1,18 +1,9 @@
-/**
- * Backward-compatible route for /api/user/preferences.
- *
- * The CLI still uses the old contract (userPreferencesContract) with
- * GET and PUT methods at this path. This route delegates to the shared
- * service layer (same as /api/zero/user-preferences).
- *
- * Will be removed once the CLI contracts are migrated.
- */
 import {
   createHandler,
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { userPreferencesContract, createErrorResponse } from "@vm0/core";
+import { zeroUserPreferencesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -25,7 +16,7 @@ import {
 } from "../../../../src/lib/user/user-preferences-service";
 import { isBadRequest } from "../../../../src/lib/errors";
 
-const router = tsr.router(userPreferencesContract, {
+const router = tsr.router(zeroUserPreferencesContract, {
   get: async ({ headers }, { request }) => {
     initServices();
 
@@ -86,8 +77,8 @@ const router = tsr.router(userPreferencesContract, {
   },
 });
 
-const handler = createHandler(userPreferencesContract, router, {
-  errorHandler: createSafeErrorHandler("user-preferences-compat"),
+const handler = createHandler(zeroUserPreferencesContract, router, {
+  errorHandler: createSafeErrorHandler("zero-user-preferences"),
 });
 
-export { handler as GET, handler as PUT };
+export { handler as GET, handler as POST };

@@ -485,6 +485,7 @@ export function ZeroJobDetailPage({
 
         {activeTab === "profile" && (
           <ZeroSettingsTab
+            key={`${displayName}\0${description}\0${resolvedSound}`}
             agentName={displayName}
             description={description ?? ""}
             sound={resolvedSound}

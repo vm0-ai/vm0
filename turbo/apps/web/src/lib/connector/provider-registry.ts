@@ -22,6 +22,7 @@ import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
 import { clickupHandler } from "./providers/clickup-handler";
 import { cloudflareHandler } from "./providers/cloudflare-handler";
+import { cloudinaryHandler } from "./providers/cloudinary-handler";
 import { closeHandler } from "./providers/close-handler";
 import { cronlyticHandler } from "./providers/cronlytic-handler";
 import { deelHandler } from "./providers/deel-handler";
@@ -120,6 +121,7 @@ import { wrikeHandler } from "./providers/wrike-handler";
 import { xeroHandler } from "./providers/xero-handler";
 import { pdforgeHandler } from "./providers/pdforge-handler";
 import { slackWebhookHandler } from "./providers/slack-webhook-handler";
+import { v0Handler } from "./providers/v0-handler";
 import { wixHandler } from "./providers/wix-handler";
 import { zeptomailHandler } from "./providers/zeptomail-handler";
 
@@ -146,6 +148,7 @@ export const PROVIDER_HANDLERS: Record<
   chatwoot: chatwootHandler,
   clickup: clickupHandler,
   cloudflare: cloudflareHandler,
+  cloudinary: cloudinaryHandler,
   close: closeHandler,
   cronlytic: cronlyticHandler,
   deel: deelHandler,
@@ -245,6 +248,7 @@ export const PROVIDER_HANDLERS: Record<
   zendesk: zendeskHandler,
   pdforge: pdforgeHandler,
   "slack-webhook": slackWebhookHandler,
+  v0: v0Handler,
   wix: wixHandler,
 };
 
