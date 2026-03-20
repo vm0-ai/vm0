@@ -3565,25 +3565,6 @@ export async function insertTestUser(userId: string): Promise<void> {
 }
 
 /**
- * Find an org_members entry by orgId and userId.
- * Returns the full row or undefined.
- */
-export async function findOrgMembersEntry(orgId: string, userId: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-  return row;
-}
-
-/**
  * Insert test VM0 API keys into the key pool.
  */
 export async function insertVm0ApiKeys(

@@ -33,7 +33,7 @@ export async function isUserUnsubscribed(userId: string): Promise<boolean> {
 
   if (clerkValue) {
     log.info("lazy migration: email_unsubscribed from Clerk", { userId });
-    void globalThis.services.db
+    await globalThis.services.db
       .insert(users)
       .values({ id: userId, emailUnsubscribed: true })
       .onConflictDoUpdate({

@@ -49,7 +49,7 @@ const TIER_MONTHLY_CREDITS: Record<OrgTier, number> = {
   max: 80_000,
 };
 
-export function tierFromPriceId(priceId: string): OrgTier {
+function tierFromPriceId(priceId: string): OrgTier {
   const e = env();
   if (priceId === e.STRIPE_PRICE_ID_PRO) return "pro";
   if (priceId === e.STRIPE_PRICE_ID_MAX) return "max";

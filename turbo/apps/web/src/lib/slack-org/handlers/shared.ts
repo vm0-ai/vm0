@@ -98,7 +98,7 @@ export async function resolveDefaultComposeId(
 
   if (typeof clerkComposeId === "string" && clerkComposeId) {
     log.info("lazy migration: default_agent_compose_id from Clerk", { orgId });
-    void globalThis.services.db
+    await globalThis.services.db
       .insert(orgTable)
       .values({ orgId, defaultAgentComposeId: clerkComposeId })
       .onConflictDoUpdate({
