@@ -8,7 +8,10 @@ import {
   schedulesByNameContract,
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { createInfraClient } from "../../../../../src/lib/infra-client";
+import {
+  createInfraClient,
+  forwardInfra,
+} from "../../../../../src/lib/infra-client";
 
 const router = tsr.router(zeroSchedulesByNameContract, {
   delete: async ({ params, query, headers }) => {
@@ -18,7 +21,7 @@ const router = tsr.router(zeroSchedulesByNameContract, {
       headers.authorization,
     );
     const result = await client.delete({ params, query });
-    return { status: result.status, body: result.body };
+    return forwardInfra(result);
   },
 });
 

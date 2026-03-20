@@ -5,7 +5,10 @@ import {
 } from "../../../../../src/lib/ts-rest-handler";
 import { zeroComposesByIdContract, composesByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { createInfraClient } from "../../../../../src/lib/infra-client";
+import {
+  createInfraClient,
+  forwardInfra,
+} from "../../../../../src/lib/infra-client";
 
 const router = tsr.router(zeroComposesByIdContract, {
   getById: async ({ params, headers }) => {
@@ -15,7 +18,7 @@ const router = tsr.router(zeroComposesByIdContract, {
       headers.authorization,
     );
     const result = await client.getById({ params });
-    return { status: result.status, body: result.body };
+    return forwardInfra(result);
   },
   delete: async ({ params, headers }) => {
     initServices();
@@ -24,7 +27,7 @@ const router = tsr.router(zeroComposesByIdContract, {
       headers.authorization,
     );
     const result = await client.delete({ params, body: null });
-    return { status: result.status, body: result.body };
+    return forwardInfra(result);
   },
 });
 

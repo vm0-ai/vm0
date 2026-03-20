@@ -5,7 +5,10 @@ import {
 } from "../../../../../../../src/lib/ts-rest-handler";
 import { zeroRunAgentEventsContract, runAgentEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
-import { createInfraClient } from "../../../../../../../src/lib/infra-client";
+import {
+  createInfraClient,
+  forwardInfra,
+} from "../../../../../../../src/lib/infra-client";
 
 const router = tsr.router(zeroRunAgentEventsContract, {
   getAgentEvents: async ({ params, query, headers }) => {
@@ -15,7 +18,7 @@ const router = tsr.router(zeroRunAgentEventsContract, {
       headers.authorization,
     );
     const result = await client.getAgentEvents({ params, query });
-    return { status: result.status, body: result.body };
+    return forwardInfra(result);
   },
 });
 

@@ -5,14 +5,17 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import { zeroRunsMainContract, runsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { createInfraClient } from "../../../../src/lib/infra-client";
+import {
+  createInfraClient,
+  forwardInfra,
+} from "../../../../src/lib/infra-client";
 
 const router = tsr.router(zeroRunsMainContract, {
   create: async ({ body, headers }) => {
     initServices();
     const client = createInfraClient(runsMainContract, headers.authorization);
     const result = await client.create({ body });
-    return { status: result.status, body: result.body };
+    return forwardInfra(result);
   },
 });
 

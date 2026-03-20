@@ -5,7 +5,10 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import { zeroSchedulesMainContract, schedulesMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { createInfraClient } from "../../../../src/lib/infra-client";
+import {
+  createInfraClient,
+  forwardInfra,
+} from "../../../../src/lib/infra-client";
 
 const router = tsr.router(zeroSchedulesMainContract, {
   deploy: async ({ body, headers }) => {
@@ -15,7 +18,7 @@ const router = tsr.router(zeroSchedulesMainContract, {
       headers.authorization,
     );
     const result = await client.deploy({ body });
-    return { status: result.status, body: result.body };
+    return forwardInfra(result);
   },
   list: async ({ headers }) => {
     initServices();
@@ -24,13 +27,7 @@ const router = tsr.router(zeroSchedulesMainContract, {
       headers.authorization,
     );
     const result = await client.list({ headers: {} });
-    if (result.status === 200)
-      return { status: 200 as const, body: result.body };
-    if (result.status === 401)
-      return { status: 401 as const, body: result.body };
-    if (result.status === 403)
-      return { status: 403 as const, body: result.body };
-    return { status: result.status, body: result.body };
+    return forwardInfra(result);
   },
 });
 
