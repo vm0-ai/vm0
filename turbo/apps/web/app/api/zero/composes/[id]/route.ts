@@ -26,7 +26,7 @@ const router = tsr.router(zeroComposesByIdContract, {
       composesByIdContract,
       headers.authorization,
     );
-    const result = await client.delete({ params, body: null });
+    const result = await client.delete({ params });
     return forwardInfra(result);
   },
 });

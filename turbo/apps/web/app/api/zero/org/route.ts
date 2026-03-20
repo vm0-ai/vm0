@@ -3,9 +3,12 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroOrgContract, orgContract, type ApiErrorResponse } from "@vm0/core";
+import { zeroOrgContract, orgContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import { createInfraClient } from "../../../../src/lib/infra-client";
+import {
+  createInfraClient,
+  forwardInfra,
+} from "../../../../src/lib/infra-client";
 
 const router = tsr.router(zeroOrgContract, {
   get: async ({ headers }, { request }) => {
@@ -18,21 +21,8 @@ const router = tsr.router(zeroOrgContract, {
       orgSlug ? { query: { org: orgSlug } } : undefined,
     );
 
-    const result = await client.get();
-
-    if (result.status === 200) {
-      return { status: 200 as const, body: result.body };
-    }
-    if (result.status === 401) {
-      return {
-        status: 401 as const,
-        body: result.body as ApiErrorResponse,
-      };
-    }
-    return {
-      status: 404 as const,
-      body: result.body as ApiErrorResponse,
-    };
+    const result = await client.get({ headers: {} });
+    return forwardInfra(result);
   },
 });
 
