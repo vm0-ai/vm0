@@ -38,7 +38,16 @@ export function ScopeReviewModal({
   const setLoading = useSet(loading$);
   const setScopeDiff = useSet(scopeDiff$);
 
-  const loadScopeDiffCmd$ = useCommand(({ set }) => {
+  // Guard: onRef() creates a new atom each render, so if the command
+  // synchronously changes state the component reads (loading$), the re-render
+  // produces a new ref callback → React re-attaches → onRef fires again → loop.
+  // The guard ensures the load only executes once.
+  const hasStartedLoad$ = useCCState(false);
+  const loadScopeDiffCmd$ = useCommand(({ get, set }) => {
+    if (get(hasStartedLoad$)) {
+      return;
+    }
+    set(hasStartedLoad$, true);
     if (!connectorType) {
       set(scopeDiff$, null);
       return;
