@@ -1074,6 +1074,23 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  "customer-io": {
+    label: "Customer.io",
+    helpText:
+      "Connect your Customer.io account to send behavioral emails, SMS, and push notifications triggered by user events",
+    authMethods: {
+      "api-token": {
+        label: "API Token",
+        secrets: {
+          CUSTOMERIO_APP_TOKEN: {
+            label: "App API Key",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   dify: {
     label: "Dify",
     helpText:
@@ -1640,6 +1657,26 @@ const CONNECTOR_TYPES_DEF = {
         MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
       },
     } as ConnectorOAuthConfig,
+  },
+  calendly: {
+    label: "Calendly",
+    helpText:
+      "Connect your Calendly account to access scheduling data, event types, and invitee information",
+    authMethods: {
+      "api-token": {
+        label: "Personal Access Token",
+        helpText:
+          "1. Log in to [Calendly](https://calendly.com)\n2. Go to **Integrations > API & Webhooks**\n3. Generate a Personal Access Token\n4. Copy the token",
+        secrets: {
+          CALENDLY_TOKEN: {
+            label: "Personal Access Token",
+            required: true,
+            placeholder: "your-calendly-token",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
   },
   canva: {
     label: "Canva",
@@ -3145,6 +3182,7 @@ export const connectorTypeSchema = z.enum([
   "axiom",
   "airtable",
   "asana",
+  "calendly",
   "canva",
   "clickup",
   "cloudflare",
@@ -3259,6 +3297,7 @@ export const connectorTypeSchema = z.enum([
   "wix",
   "v0",
   "brevo",
+  "customer-io",
 ]);
 
 /**
