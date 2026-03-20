@@ -4,6 +4,7 @@ import {
   buildScheduleGuidance,
   DISALLOWED_CRON_TOOLS,
 } from "../../integration-context";
+import { isConcurrentRunLimit } from "../../errors";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { logger } from "../../logger";
 
@@ -104,6 +105,19 @@ export async function runAgentForSlackOrg(
 
     return { status, runId: result.runId };
   } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      log.warn("Concurrent run limit reached", {
+        composeId,
+        agentName,
+        userId,
+      });
+      return {
+        status: "failed",
+        response:
+          "You have too many concurrent runs. Please wait for existing runs to complete.",
+        runId: undefined,
+      };
+    }
     const runId = isRunDispatchError(error) ? error.runId : undefined;
     log.error("Error running agent for Slack org:", error);
     return {
