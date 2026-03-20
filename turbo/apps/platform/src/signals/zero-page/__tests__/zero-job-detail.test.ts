@@ -104,7 +104,7 @@ describe("zero-job-detail signals", () => {
     it("should fetch detail, instructions, and schedules successfully", async () => {
       const agentResponse = mockAgentResponse();
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(agentResponse);
         }),
         http.get(
@@ -113,7 +113,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -150,7 +150,7 @@ describe("zero-job-detail signals", () => {
 
     it("should set error state when detail API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(
             { error: "Not Found" },
             { status: 404, statusText: "Not Found" },
@@ -172,7 +172,7 @@ describe("zero-job-detail signals", () => {
 
     it("should set instructions error when instructions API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -184,7 +184,7 @@ describe("zero-job-detail signals", () => {
             );
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -206,7 +206,7 @@ describe("zero-job-detail signals", () => {
 
     it("should set schedule error when schedules API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -215,7 +215,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(
             { error: "Forbidden" },
             { status: 403, statusText: "Forbidden" },
@@ -239,7 +239,7 @@ describe("zero-job-detail signals", () => {
 
     it("should pass agent name directly to API", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
+        http.get("http://localhost:3000/api/zero/composes", ({ request }) => {
           const url = new URL(request.url);
           const name = url.searchParams.get("name");
 
@@ -256,7 +256,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -272,7 +272,7 @@ describe("zero-job-detail signals", () => {
   describe("saveZeroJobSchedule$", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -281,7 +281,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -297,13 +297,13 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules",
+          "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ id: "new-sched" });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -336,13 +336,13 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules",
+          "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ id: "new-sched" });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -372,7 +372,7 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.post("http://localhost:3000/api/agent/schedules", () => {
+        http.post("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(
             { error: { message: "Quota exceeded" } },
             { status: 429, statusText: "Too Many Requests" },
@@ -401,7 +401,7 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
 
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -410,7 +410,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -420,20 +420,20 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.delete(
-          "http://localhost:3000/api/agent/schedules/:name",
+          "http://localhost:3000/api/zero/schedules/:name",
           ({ request }) => {
             capturedUrl = request.url;
             return new HttpResponse(null, { status: 204 });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
 
       await context.store.set(deleteZeroJobSchedule$, "daily-run");
 
-      expect(capturedUrl).toContain("/api/agent/schedules/daily-run");
+      expect(capturedUrl).toContain("/api/zero/schedules/daily-run");
       expect(capturedUrl).toContain("composeId=compose-1");
 
       const entries = await context.store.get(zeroJobScheduleEntries$);
@@ -442,7 +442,7 @@ describe("zero-job-detail signals", () => {
 
     it("should throw when delete API returns error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -451,7 +451,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -460,7 +460,7 @@ describe("zero-job-detail signals", () => {
       await context.store.set(fetchZeroJobData$, "my-agent");
 
       server.use(
-        http.delete("http://localhost:3000/api/agent/schedules/:name", () => {
+        http.delete("http://localhost:3000/api/zero/schedules/:name", () => {
           return HttpResponse.json(
             { error: { message: "Not found" } },
             { status: 404, statusText: "Not Found" },
@@ -479,7 +479,7 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
 
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -488,7 +488,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -498,13 +498,13 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules/:name/:action",
+          "http://localhost:3000/api/zero/schedules/:name/:action",
           ({ request }) => {
             capturedUrl = request.url;
             return HttpResponse.json({ ok: true });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -514,14 +514,14 @@ describe("zero-job-detail signals", () => {
         enabled: true,
       });
 
-      expect(capturedUrl).toContain("/api/agent/schedules/daily-run/enable");
+      expect(capturedUrl).toContain("/api/zero/schedules/daily-run/enable");
     });
 
     it("should send disable request for a schedule", async () => {
       let capturedUrl = "";
 
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -530,7 +530,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -540,13 +540,13 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules/:name/:action",
+          "http://localhost:3000/api/zero/schedules/:name/:action",
           ({ request }) => {
             capturedUrl = request.url;
             return HttpResponse.json({ ok: true });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -556,12 +556,12 @@ describe("zero-job-detail signals", () => {
         enabled: false,
       });
 
-      expect(capturedUrl).toContain("/api/agent/schedules/daily-run/disable");
+      expect(capturedUrl).toContain("/api/zero/schedules/daily-run/disable");
     });
 
     it("should show toast error when toggle API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -570,7 +570,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(mockSchedules());
         }),
       );
@@ -580,7 +580,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules/:name/:action",
+          "http://localhost:3000/api/zero/schedules/:name/:action",
           () => {
             return HttpResponse.json(
               { error: { message: "Server error" } },
@@ -602,7 +602,7 @@ describe("zero-job-detail signals", () => {
   describe("instructions editing", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -611,7 +611,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -664,7 +664,7 @@ describe("zero-job-detail signals", () => {
             });
           },
         ),
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );
@@ -748,7 +748,7 @@ describe("zero-job-detail signals", () => {
   describe("zeroJobUpdateSettings$", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -757,7 +757,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -773,13 +773,13 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.patch(
-          "http://localhost:3000/api/agent/composes/compose-1/metadata",
+          "http://localhost:3000/api/zero/composes/compose-1/metadata",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return new HttpResponse(null, { status: 204 });
           },
         ),
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );
@@ -804,13 +804,13 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.patch(
-          "http://localhost:3000/api/agent/composes/compose-1/metadata",
+          "http://localhost:3000/api/zero/composes/compose-1/metadata",
           () => {
             patchCalled = true;
             return new HttpResponse(null, { status: 204 });
           },
         ),
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );
@@ -827,7 +827,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.patch(
-          "http://localhost:3000/api/agent/composes/compose-1/metadata",
+          "http://localhost:3000/api/zero/composes/compose-1/metadata",
           () => {
             return new HttpResponse("Internal error", { status: 500 });
           },
@@ -846,7 +846,7 @@ describe("zero-job-detail signals", () => {
   describe("skills management", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -855,7 +855,7 @@ describe("zero-job-detail signals", () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -929,7 +929,7 @@ describe("zero-job-detail signals", () => {
             });
           },
         ),
-        http.get("http://localhost:3000/api/agent/composes", () => {
+        http.get("http://localhost:3000/api/zero/composes", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );

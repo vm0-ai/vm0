@@ -31,11 +31,11 @@ describe("cancelQueueRun$", () => {
     let queueFetchCount = 0;
 
     server.use(
-      http.get("*/api/agent/runs/queue", () => {
+      http.get("*/api/zero/runs/queue", () => {
         queueFetchCount++;
         return HttpResponse.json(mockQueueResponse());
       }),
-      http.post("*/api/agent/runs/:runId/cancel", ({ params }) => {
+      http.post("*/api/zero/runs/:runId/cancel", ({ params }) => {
         cancelCalledWith = params.runId as string;
         return HttpResponse.json({ ok: true });
       }),
@@ -59,10 +59,10 @@ describe("cancelQueueRun$", () => {
 
   it("should throw on non-ok cancel response", async () => {
     server.use(
-      http.get("*/api/agent/runs/queue", () => {
+      http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(mockQueueResponse());
       }),
-      http.post("*/api/agent/runs/:runId/cancel", () => {
+      http.post("*/api/zero/runs/:runId/cancel", () => {
         return new HttpResponse(null, {
           status: 403,
           statusText: "Forbidden",

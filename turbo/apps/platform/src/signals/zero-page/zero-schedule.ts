@@ -164,7 +164,7 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/agent/schedules");
+    const response = await fetchFn("/api/zero/schedules");
 
     if (!response.ok) {
       set(internalSchedules$, []);
@@ -273,7 +273,7 @@ export const saveZeroSchedule$ = command(
       body = { ...base, cronExpression };
     }
 
-    const response = await fetchFn("/api/agent/schedules", {
+    const response = await fetchFn("/api/zero/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -308,7 +308,7 @@ export const toggleZeroScheduleEnabled$ = command(
     const fetchFn = get(fetch$);
     const action = params.enabled ? "enable" : "disable";
     const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(params.name)}/${action}`,
+      `/api/zero/schedules/${encodeURIComponent(params.name)}/${action}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -345,7 +345,7 @@ export const deleteZeroSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(composeId)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(composeId)}`,
       { method: "DELETE" },
     );
 
@@ -423,7 +423,7 @@ export const refreshScheduleIfActive$ = command(({ get, set }) => {
 const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   try {
-    const response = await fetchFn("/api/agent/schedules");
+    const response = await fetchFn("/api/zero/schedules");
     if (!response.ok) {
       set(internalAllSchedules$, []);
       return;
@@ -502,7 +502,7 @@ export const saveOrgSchedule$ = command(
       body = { ...base, cronExpression };
     }
 
-    const response = await fetchFn("/api/agent/schedules", {
+    const response = await fetchFn("/api/zero/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -530,7 +530,7 @@ export const toggleOrgScheduleEnabled$ = command(
     const fetchFn = get(fetch$);
     const action = params.enabled ? "enable" : "disable";
     const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(params.name)}/${action}`,
+      `/api/zero/schedules/${encodeURIComponent(params.name)}/${action}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -557,7 +557,7 @@ export const deleteOrgSchedule$ = command(
   async ({ get, set }, params: { name: string; composeId: string }) => {
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(params.name)}?composeId=${encodeURIComponent(params.composeId)}`,
+      `/api/zero/schedules/${encodeURIComponent(params.name)}?composeId=${encodeURIComponent(params.composeId)}`,
       { method: "DELETE" },
     );
 

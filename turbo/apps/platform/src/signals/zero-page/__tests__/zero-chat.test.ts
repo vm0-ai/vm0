@@ -205,10 +205,10 @@ describe("zero-chat signals", () => {
     it("should abort in-flight polling when switching threads", async () => {
       let pollCount = 0;
       server.use(
-        http.post("*/api/agent/runs", () => {
+        http.post("*/api/zero/runs", () => {
           return HttpResponse.json({ runId: "run-old" });
         }),
-        http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
             events: [],
             hasMore: false,
@@ -311,10 +311,10 @@ describe("zero-chat signals", () => {
     it("should abort in-flight polling when starting a new session", async () => {
       let pollCount = 0;
       server.use(
-        http.post("*/api/agent/runs", () => {
+        http.post("*/api/zero/runs", () => {
           return HttpResponse.json({ runId: "run-poll" });
         }),
-        http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
             events: [],
             hasMore: false,
@@ -378,11 +378,11 @@ describe("zero-chat signals", () => {
         http.get("*/api/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
-        http.post("*/api/agent/runs", async ({ request }) => {
+        http.post("*/api/zero/runs", async ({ request }) => {
           capturedRunBody = (await request.json()) as Record<string, string>;
           return HttpResponse.json({ runId: "run-123" });
         }),
-        http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
             events: [],
             hasMore: false,
@@ -400,7 +400,7 @@ describe("zero-chat signals", () => {
             completedAt: "2026-03-10T00:00:02Z",
           });
         }),
-        http.get("*/api/agent/runs/:runId", () => {
+        http.get("*/api/zero/runs/:runId", () => {
           return HttpResponse.json({
             result: { agentSessionId: "new-session-id" },
           });
@@ -431,7 +431,7 @@ describe("zero-chat signals", () => {
     it("should surface API error message on run creation failure", async () => {
       useChatThreadHandlers();
       server.use(
-        http.post("*/api/agent/runs", () => {
+        http.post("*/api/zero/runs", () => {
           return HttpResponse.json(
             { error: { message: "Some API error", code: "BAD_REQUEST" } },
             { status: 400 },
@@ -451,7 +451,7 @@ describe("zero-chat signals", () => {
     it("should surface provider incompatibility error message", async () => {
       useChatThreadHandlers();
       server.use(
-        http.post("*/api/agent/runs", () => {
+        http.post("*/api/zero/runs", () => {
           return HttpResponse.json(
             {
               error: {
@@ -479,7 +479,7 @@ describe("zero-chat signals", () => {
     it("should fall back to generic message when error body is unparseable", async () => {
       useChatThreadHandlers();
       server.use(
-        http.post("*/api/agent/runs", () => {
+        http.post("*/api/zero/runs", () => {
           return new HttpResponse("Bad Gateway", { status: 502 });
         }),
       );
@@ -512,7 +512,7 @@ describe("zero-chat signals", () => {
     it("should not send empty messages", async () => {
       let runCalled = false;
       server.use(
-        http.post("*/api/agent/runs", () => {
+        http.post("*/api/zero/runs", () => {
           runCalled = true;
           return HttpResponse.json({ runId: "run-123" });
         }),
@@ -553,11 +553,11 @@ describe("zero-chat signals", () => {
         http.get("*/api/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
-        http.post("*/api/agent/runs", async ({ request }) => {
+        http.post("*/api/zero/runs", async ({ request }) => {
           capturedRunBody = (await request.json()) as Record<string, string>;
           return HttpResponse.json({ runId: "run-456" });
         }),
-        http.get("*/api/agent/runs/:runId/telemetry/agent", () => {
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
             events: [],
             hasMore: false,
@@ -575,7 +575,7 @@ describe("zero-chat signals", () => {
             completedAt: "2026-03-10T00:00:02Z",
           });
         }),
-        http.get("*/api/agent/runs/:runId", () => {
+        http.get("*/api/zero/runs/:runId", () => {
           return HttpResponse.json({
             result: { agentSessionId: "existing-session" },
           });

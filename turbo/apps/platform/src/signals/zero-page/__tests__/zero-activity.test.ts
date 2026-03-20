@@ -183,7 +183,7 @@ describe("zero-activity signals", () => {
           return new HttpResponse(null, { status: 404 });
         }),
         http.get(
-          "http://localhost:3000/api/agent/runs/:runId/telemetry/agent",
+          "http://localhost:3000/api/zero/runs/:runId/telemetry/agent",
           () => {
             return HttpResponse.json({
               events: [],

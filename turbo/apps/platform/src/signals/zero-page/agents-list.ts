@@ -53,7 +53,7 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
     // Fetch schedules (optional - don't fail if schedules API is unavailable)
     let schedules: Schedule[] = [];
     try {
-      const schedulesResponse = await fetchFn("/api/agent/schedules");
+      const schedulesResponse = await fetchFn("/api/zero/schedules");
       if (schedulesResponse.ok) {
         const schedulesData = (await schedulesResponse.json()) as {
           schedules: Schedule[];

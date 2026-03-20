@@ -74,7 +74,7 @@ function createMockSchedules() {
 
 function mockScheduleAPI(schedules = createMockSchedules()) {
   server.use(
-    http.get("*/api/agent/schedules", () => {
+    http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
     }),
     http.get("*/api/chat-threads", () => {
@@ -192,10 +192,10 @@ describe("zero schedule page - create dialog", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.get("*/api/agent/schedules", () => {
+      http.get("*/api/zero/schedules", () => {
         return HttpResponse.json({ schedules: createMockSchedules() });
       }),
-      http.post("*/api/agent/schedules", async ({ request }) => {
+      http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ success: true });
       }),
@@ -240,10 +240,10 @@ describe("zero schedule page - toggle enabled", () => {
     let capturedAction: string | null = null;
 
     server.use(
-      http.get("*/api/agent/schedules", () => {
+      http.get("*/api/zero/schedules", () => {
         return HttpResponse.json({ schedules: createMockSchedules() });
       }),
-      http.post("*/api/agent/schedules/:name/:action", ({ params }) => {
+      http.post("*/api/zero/schedules/:name/:action", ({ params }) => {
         capturedAction = params["action"] as string;
         return HttpResponse.json({ success: true });
       }),

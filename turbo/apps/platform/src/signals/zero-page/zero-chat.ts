@@ -154,7 +154,7 @@ async function startAgentRun(
     body.modelProvider = modelProvider;
   }
 
-  const response = await fetchFn("/api/agent/runs", {
+  const response = await fetchFn("/api/zero/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -284,7 +284,7 @@ export const cancelActiveRun$ = command(async ({ get, set }) => {
   set(internalRunStatus$, null);
 
   const fetchFn = get(fetch$);
-  await fetchFn(`/api/agent/runs/${runId}/cancel`, { method: "POST" });
+  await fetchFn(`/api/zero/runs/${runId}/cancel`, { method: "POST" });
 });
 
 /** Queue position for the active run (0 = not queued). */
@@ -1057,7 +1057,7 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
 
   try {
     const fetchFn = get(fetch$);
-    const res = await fetchFn(`/api/agent/runs/${runId}`);
+    const res = await fetchFn(`/api/zero/runs/${runId}`);
     if (res.ok) {
       const data = (await res.json()) as {
         result?: { output?: string; agentSessionId?: string };

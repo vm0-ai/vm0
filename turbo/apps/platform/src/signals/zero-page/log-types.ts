@@ -71,7 +71,7 @@ export interface AgentEvent {
   createdAt: string;
 }
 
-// Agent events response from /api/agent/runs/[id]/telemetry/agent
+// Agent events response from /api/zero/runs/[id]/telemetry/agent
 export interface AgentEventsResponse {
   events: AgentEvent[];
   hasMore: boolean;

@@ -23,7 +23,7 @@ function queueResponse(overrides?: {
 describe("queue page", () => {
   it("should show cancel button for owner's running tasks", async () => {
     server.use(
-      http.get("*/api/agent/runs/queue", () => {
+      http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(
           queueResponse({
             runningTasks: [
@@ -54,7 +54,7 @@ describe("queue page", () => {
 
   it("should not show cancel button for non-owner running tasks", async () => {
     server.use(
-      http.get("*/api/agent/runs/queue", () => {
+      http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(
           queueResponse({
             runningTasks: [
@@ -84,7 +84,7 @@ describe("queue page", () => {
 
   it("should show cancel button for owner's queued entries", async () => {
     server.use(
-      http.get("*/api/agent/runs/queue", () => {
+      http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(
           queueResponse({
             queue: [
@@ -118,7 +118,7 @@ describe("queue page", () => {
 
   it("should not show cancel button when runId is null", async () => {
     server.use(
-      http.get("*/api/agent/runs/queue", () => {
+      http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(
           queueResponse({
             runningTasks: [
@@ -150,7 +150,7 @@ describe("queue page", () => {
     let cancelledRunId: string | null = null;
 
     server.use(
-      http.get("*/api/agent/runs/queue", () => {
+      http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(
           queueResponse({
             runningTasks: [
@@ -166,7 +166,7 @@ describe("queue page", () => {
           }),
         );
       }),
-      http.post("*/api/agent/runs/:runId/cancel", ({ params }) => {
+      http.post("*/api/zero/runs/:runId/cancel", ({ params }) => {
         cancelledRunId = params.runId as string;
         return HttpResponse.json({ ok: true });
       }),

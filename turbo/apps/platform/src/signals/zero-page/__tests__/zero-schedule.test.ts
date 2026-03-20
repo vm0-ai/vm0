@@ -84,7 +84,7 @@ describe("zero-schedule signals", () => {
   describe("fetchZeroSchedules$", () => {
     it("should fetch and filter schedules for the default agent", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: createMockSchedules() });
         }),
       );
@@ -100,7 +100,7 @@ describe("zero-schedule signals", () => {
 
     it("should convert cron schedule to display string", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: createMockSchedules() });
         }),
       );
@@ -114,7 +114,7 @@ describe("zero-schedule signals", () => {
 
     it("should convert loop schedule to display string", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: createMockSchedules() });
         }),
       );
@@ -128,7 +128,7 @@ describe("zero-schedule signals", () => {
 
     it("should handle empty response", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -142,7 +142,7 @@ describe("zero-schedule signals", () => {
 
     it("should handle API error gracefully", async () => {
       server.use(
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return new HttpResponse(null, { status: 500 });
         }),
       );
@@ -161,13 +161,13 @@ describe("zero-schedule signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules",
+          "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ success: true });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -196,13 +196,13 @@ describe("zero-schedule signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules",
+          "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ success: true });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -227,13 +227,13 @@ describe("zero-schedule signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules",
+          "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ success: true });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -264,14 +264,14 @@ describe("zero-schedule signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules/:name/:action",
+          "http://localhost:3000/api/zero/schedules/:name/:action",
           async ({ params, request }) => {
             captured.action = params["action"] as string;
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ success: true });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -291,13 +291,13 @@ describe("zero-schedule signals", () => {
 
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules/:name/:action",
+          "http://localhost:3000/api/zero/schedules/:name/:action",
           ({ params }) => {
             captured.action = params["action"] as string;
             return HttpResponse.json({ success: true });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
@@ -314,7 +314,7 @@ describe("zero-schedule signals", () => {
     it("should throw and show toast on API error", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/agent/schedules/:name/:action",
+          "http://localhost:3000/api/zero/schedules/:name/:action",
           () => {
             return HttpResponse.json(
               { error: { message: "Schedule not found" } },
@@ -341,7 +341,7 @@ describe("zero-schedule signals", () => {
 
       server.use(
         http.delete(
-          "http://localhost:3000/api/agent/schedules/:name",
+          "http://localhost:3000/api/zero/schedules/:name",
           ({ params, request }) => {
             deletedName = params["name"] as string;
             const url = new URL(request.url);
@@ -349,7 +349,7 @@ describe("zero-schedule signals", () => {
             return new HttpResponse(null, { status: 204 });
           },
         ),
-        http.get("http://localhost:3000/api/agent/schedules", () => {
+        http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );

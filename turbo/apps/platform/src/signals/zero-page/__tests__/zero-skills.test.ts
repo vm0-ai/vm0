@@ -23,7 +23,7 @@ function mockComposeApi(content: {
   >;
 }) {
   server.use(
-    http.get("*/api/agent/composes/mock-compose-id", () => {
+    http.get("*/api/zero/composes/mock-compose-id", () => {
       return HttpResponse.json({
         id: "mock-compose-id",
         name: "test-compose",
@@ -81,7 +81,7 @@ describe("zeroAddedSkills$", () => {
 
     // Sub-agent has github only
     server.use(
-      http.get(`*/api/agent/composes/${subAgentComposeId}`, () => {
+      http.get(`*/api/zero/composes/${subAgentComposeId}`, () => {
         return HttpResponse.json({
           id: subAgentComposeId,
           name: "cycling-coach",

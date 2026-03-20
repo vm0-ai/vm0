@@ -77,3 +77,41 @@ export function createInfraClient<T extends AppRouter>(
       : undefined,
   });
 }
+
+/**
+ * Proxy a raw HTTP request to an infra endpoint.
+ *
+ * Used for infra endpoints that don't have ts-rest contracts
+ * (e.g. metadata PATCH, schedule enable/disable).
+ */
+export async function proxyToInfra(
+  infraPath: string,
+  request: Request,
+): Promise<Response> {
+  const baseUrl = getInfraBaseUrl();
+  const incomingUrl = new URL(request.url);
+  const targetUrl = new URL(infraPath, baseUrl);
+
+  // Forward query parameters
+  incomingUrl.searchParams.forEach((value, key) => {
+    targetUrl.searchParams.set(key, value);
+  });
+
+  const headers: Record<string, string> = {};
+  const contentType = request.headers.get("content-type");
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+  }
+  const auth = request.headers.get("authorization");
+  if (auth) {
+    headers["Authorization"] = auth;
+  }
+
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+
+  return fetch(targetUrl, {
+    method: request.method,
+    headers,
+    body: hasBody ? await request.text() : undefined,
+  });
+}

@@ -50,7 +50,7 @@ function mockConnectors(connectors: ConnectorResponse[]) {
 async function renderTeamPage(skills: string[]) {
   // Mock the agent compose lookup (fetched by name query param)
   server.use(
-    http.get("*/api/agent/composes", () => {
+    http.get("*/api/zero/composes", () => {
       return HttpResponse.json({
         id: "compose-1",
         name: "zero",

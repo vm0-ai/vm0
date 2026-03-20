@@ -62,7 +62,7 @@ const fetchZeroJobDetail$ = command(async ({ get, set }) => {
     const fetchFn = get(fetch$);
     const params = new URLSearchParams({ name });
 
-    const response = await fetchFn(`/api/agent/composes?${params.toString()}`);
+    const response = await fetchFn(`/api/zero/composes?${params.toString()}`);
     if (!response.ok) {
       const status = response.status;
       const text = response.statusText || `HTTP ${status}`;
@@ -251,7 +251,7 @@ export const zeroJobUpdateSettings$ = command(
     try {
       const fetchFn = get(fetch$);
       const response = await fetchFn(
-        `/api/agent/composes/${detail.id}/metadata`,
+        `/api/zero/composes/${detail.id}/metadata`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -507,7 +507,7 @@ const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/agent/schedules");
+    const response = await fetchFn("/api/zero/schedules");
     if (!response.ok) {
       throw new Error(`Failed to fetch schedules: ${response.statusText}`);
     }
@@ -600,7 +600,7 @@ export const saveZeroJobSchedule$ = command(
       body = { ...base, cronExpression };
     }
 
-    const response = await fetchFn("/api/agent/schedules", {
+    const response = await fetchFn("/api/zero/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -630,7 +630,7 @@ export const toggleZeroJobScheduleEnabled$ = command(
     const fetchFn = get(fetch$);
     const action = params.enabled ? "enable" : "disable";
     const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(params.name)}/${action}`,
+      `/api/zero/schedules/${encodeURIComponent(params.name)}/${action}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -662,7 +662,7 @@ export const deleteZeroJobSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/agent/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(detail.id)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(detail.id)}`,
       { method: "DELETE" },
     );
 
@@ -691,7 +691,7 @@ export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
   }
 
   const fetchFn = get(fetch$);
-  const response = await fetchFn(`/api/agent/composes/${detail.id}`, {
+  const response = await fetchFn(`/api/zero/composes/${detail.id}`, {
     method: "DELETE",
   });
 

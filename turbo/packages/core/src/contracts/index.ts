@@ -551,3 +551,31 @@ export {
   type ZeroConnectorScopeDiffContract,
 } from "./zero-connectors";
 export { zeroOrgContract, type ZeroOrgContract } from "./zero-org";
+export {
+  zeroComposesMainContract,
+  zeroComposesByIdContract,
+  zeroComposesListContract,
+  type ZeroComposesMainContract,
+  type ZeroComposesByIdContract,
+  type ZeroComposesListContract,
+} from "./zero-composes";
+export {
+  zeroRunsMainContract,
+  zeroRunsByIdContract,
+  zeroRunsCancelContract,
+  zeroRunsQueueContract,
+  zeroRunAgentEventsContract,
+  type ZeroRunsMainContract,
+  type ZeroRunsByIdContract,
+  type ZeroRunsCancelContract,
+  type ZeroRunsQueueContract,
+  type ZeroRunAgentEventsContract,
+} from "./zero-runs";
+export {
+  zeroSchedulesMainContract,
+  zeroSchedulesByNameContract,
+  zeroSchedulesEnableContract,
+  type ZeroSchedulesMainContract,
+  type ZeroSchedulesByNameContract,
+  type ZeroSchedulesEnableContract,
+} from "./zero-schedules";

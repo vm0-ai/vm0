@@ -49,7 +49,7 @@ function createEventPageComputed(
       params.set("since", String(new Date(since).getTime()));
     }
     const response = await fetchFn(
-      `/api/agent/runs/${runId}/telemetry/agent?${params.toString()}`,
+      `/api/zero/runs/${runId}/telemetry/agent?${params.toString()}`,
     );
     if (!response.ok) {
       throw new Error(`Failed to fetch agent events: ${response.statusText}`);

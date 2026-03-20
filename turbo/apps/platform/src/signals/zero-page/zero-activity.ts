@@ -49,7 +49,7 @@ export const zeroActivityOrgAgents$ = computed((get) =>
 
 const fetchOrgAgents$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/agent/composes/list");
+  const resp = await fetchFn("/api/zero/composes/list");
   if (!resp.ok) {
     throw new Error(`Failed to fetch org agents: ${resp.statusText}`);
   }
@@ -281,7 +281,7 @@ function createEventPageComputed(
       params.set("since", String(new Date(since).getTime()));
     }
     const response = await fetchFn(
-      `/api/agent/runs/${runId}/telemetry/agent?${params.toString()}`,
+      `/api/zero/runs/${runId}/telemetry/agent?${params.toString()}`,
     );
     if (!response.ok) {
       throw new Error(`Failed to fetch agent events: ${response.statusText}`);

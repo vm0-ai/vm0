@@ -20,7 +20,7 @@ export const queueData$ = computed((get) => get(internalQueueData$));
 
 const fetchQueueData$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/agent/runs/queue");
+  const response = await fetchFn("/api/zero/runs/queue");
   if (!response.ok) {
     throw new Error(`Failed to fetch queue: ${response.statusText}`);
   }
@@ -57,7 +57,7 @@ export const queuePollingRef$ = onRef(startPolling$);
 
 export const cancelQueueRun$ = command(async ({ get, set }, runId: string) => {
   const fetchFn = get(fetch$);
-  const response = await fetchFn(`/api/agent/runs/${runId}/cancel`, {
+  const response = await fetchFn(`/api/zero/runs/${runId}/cancel`, {
     method: "POST",
   });
   if (!response.ok) {

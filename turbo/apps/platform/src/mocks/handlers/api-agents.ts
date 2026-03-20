@@ -24,8 +24,8 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/agent/composes/list
-  http.get("/api/agent/composes/list", () => {
+  // GET /api/zero/composes/list
+  http.get("/api/zero/composes/list", () => {
     return HttpResponse.json({
       composes: [
         {
@@ -39,8 +39,8 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/agent/composes/:id
-  http.get("/api/agent/composes/:id", ({ params }) => {
+  // GET /api/zero/composes/:id
+  http.get("/api/zero/composes/:id", ({ params }) => {
     // Skip if it matches a sub-route like "list"
     if (params.id === "list") {
       return;
@@ -67,8 +67,8 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/agent/schedules
-  http.get("/api/agent/schedules", () => {
+  // GET /api/zero/schedules
+  http.get("/api/zero/schedules", () => {
     return HttpResponse.json({ schedules: [] });
   }),
 
