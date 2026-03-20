@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.137.1](https://github.com/vm0-ai/vm0/compare/web-v12.137.0...web-v12.137.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* **slack:** remove disallowed-tools param to unblock agent runs ([#5783](https://github.com/vm0-ai/vm0/issues/5783)) ([cba9918](https://github.com/vm0-ai/vm0/commit/cba9918904814c6ea2aa5c706e945c01bcd091e2))
+
 ## [12.137.0](https://github.com/vm0-ai/vm0/compare/web-v12.136.0...web-v12.137.0) (2026-03-20)
 
 
