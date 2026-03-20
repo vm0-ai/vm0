@@ -67,6 +67,7 @@ import { kommoHandler } from "./providers/kommo-handler";
 import { larkHandler } from "./providers/lark-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
+import { loopsHandler } from "./providers/loops-handler";
 import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
 import { metabaseHandler } from "./providers/metabase-handler";
@@ -192,6 +193,7 @@ export const PROVIDER_HANDLERS: Record<
   lark: larkHandler,
   line: lineHandler,
   linear: linearHandler,
+  loops: loopsHandler,
   mailsac: mailsacHandler,
   make: makeHandler,
   metabase: metabaseHandler,
