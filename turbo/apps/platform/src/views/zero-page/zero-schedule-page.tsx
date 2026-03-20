@@ -57,7 +57,6 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
-  fetchAllOrgSchedules$,
   saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
@@ -1095,19 +1094,9 @@ export function ZeroSchedulePage() {
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;
 
-  const fetchSchedules = useSet(fetchAllOrgSchedules$);
   const saveSchedule = useSet(saveOrgSchedule$);
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
-
-  // Fetch on mount
-  const initialized$ = useCCState(false);
-  const initialized = useGet(initialized$);
-  const setInitialized = useSet(initialized$);
-  if (!initialized) {
-    setInitialized(true);
-    detach(fetchSchedules(), Reason.DomCallback);
-  }
 
   const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
   const scheduleViewMode = useGet(scheduleViewMode$);

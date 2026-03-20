@@ -1,4 +1,4 @@
-import { command, computed, state, type Computed, type State } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import type {
   LogDetail,
   AgentEvent,
@@ -11,7 +11,7 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { zeroTabSub$ } from "./zero-nav.ts";
+import { zeroActiveId$, zeroTabSub$ } from "./zero-nav.ts";
 import { delay } from "signal-timers";
 
 const EVENTS_PAGE_LIMIT = 30;
@@ -130,24 +130,17 @@ export const {
 });
 
 /**
- * Refresh activity data once per visit to the activity tab.
- * Safe to call from render — subsequent calls within the same visit are no-ops.
- *
- * Accepts a component-scoped `guard$` state (created via `useCCState(false)`).
- * On the first call per mount the guard is `false`, so a refresh fires and the
- * guard flips to `true`.  Re-renders within the same mount are then no-ops.
- * When the component unmounts (user navigates away) the guard is discarded, so
- * the next mount gets a fresh `false` and triggers another refresh.
+ * Refresh activity data if the current tab is "activity".
+ * Called from `setupZeroPage$` on every route entry so that each visit
+ * to the activity tab triggers a fresh fetch.
  */
-export const refreshZeroActivityOnce$ = command(
-  ({ get, set }, guard$: State<boolean>) => {
-    if (get(guard$)) {
-      return;
-    }
-    set(guard$, true);
-    detach(set(refreshZeroActivity$), Reason.Entrance);
-  },
-);
+export const refreshZeroActivityIfActive$ = command(({ get, set }) => {
+  const activeTab = get(zeroActiveId$);
+  if (activeTab !== "activity") {
+    return;
+  }
+  detach(set(refreshZeroActivity$), Reason.Entrance);
+});
 
 /** Update a filter — resets pagination and writes to URL. */
 export const setZeroActivityFilter$ = command(

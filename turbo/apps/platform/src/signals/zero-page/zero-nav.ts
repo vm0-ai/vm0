@@ -75,21 +75,11 @@ export const zeroChatAgentId$ = computed((get): string | null => {
  * Navigate to a zero tab — updates the URL path to `/:tab`.
  * "chat" maps to `/` (the default, no suffix needed).
  */
-export const setZeroActiveId$ = command(({ get, set }, id: ZeroNavId) => {
-  const currentPath = get(pathname$);
-  const currentSegments = currentPath.split("/").filter(Boolean);
-  // When the current path has a sub-segment (e.g. /team/:name), use full
-  // navigation so the route handler re-runs. For flat paths (e.g. /team →
-  // /schedule) a lightweight pathname update suffices.
-  if (currentSegments.length >= 2) {
-    if (id === "chat") {
-      set(navigateInReact$, "/");
-    } else {
-      set(navigateInReact$, "/:tab", { pathParams: { tab: id } });
-    }
+export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
+  if (id === "chat") {
+    set(navigateInReact$, "/");
   } else {
-    const newPath = id === "chat" ? "/" : `/${id}`;
-    set(updatePathname$, newPath);
+    set(navigateInReact$, "/:tab", { pathParams: { tab: id } });
   }
 });
 
