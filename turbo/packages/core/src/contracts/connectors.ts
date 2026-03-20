@@ -590,6 +590,7 @@ const CONNECTOR_TYPES_DEF = {
         "users:read",
         "users:read.email",
         "files:read",
+        "files:write",
       ],
       environmentMapping: {
         SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
