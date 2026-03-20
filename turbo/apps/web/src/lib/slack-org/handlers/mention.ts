@@ -17,7 +17,6 @@ import {
   enrichMessageContent,
   fetchConversationContexts,
   buildOrgConnectUrl,
-  buildLogsUrl,
   buildAgentLogsUrl,
   getWorkspaceAgent,
   resolveSessionCompose,
@@ -212,16 +211,23 @@ export async function handleOrgMention(
       ],
     });
   } else if (status === "failed") {
-    log.error("Failed to dispatch agent run", { response });
-    const errorText = response ?? "Sorry, an error occurred. Please try again.";
-    const logsUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
-    const deepLinks = detectDeepLinks(errorText, getAppUrl(), agentName);
-    await client.chat.postMessage({
-      channel: context.channelId,
-      thread_ts: threadTs,
-      text: errorText,
-      blocks: buildAgentResponseMessage(errorText, logsUrl, deepLinks),
-    });
+    log.error("Failed to dispatch agent run", { response, runId });
+
+    // When the run was created (runId exists), the completion callback
+    // will post the error to Slack — skip here to avoid duplicate messages.
+    if (!runId) {
+      const errorText =
+        response ?? "Sorry, an error occurred. Please try again.";
+      const logsUrl = buildAgentLogsUrl();
+      const deepLinks = detectDeepLinks(errorText, getAppUrl(), agentName);
+      await client.chat.postMessage({
+        channel: context.channelId,
+        thread_ts: threadTs,
+        text: errorText,
+        blocks: buildAgentResponseMessage(errorText, logsUrl, deepLinks),
+      });
+    }
+
     await setThreadStatus(client, context.channelId, threadTs, "").catch(
       (err) => log.warn("Failed to clear thread status", { error: err }),
     );
