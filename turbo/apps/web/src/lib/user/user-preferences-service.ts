@@ -1,6 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
-import { orgMembersMetadata } from "../../db/schema/org-members";
+import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { badRequest } from "../errors";
 import { logger } from "../logger";
 

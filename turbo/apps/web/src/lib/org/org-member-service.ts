@@ -7,7 +7,7 @@ import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
-import { orgMembersMetadata } from "../../db/schema/org-members";
+import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 
 const log = logger("service:org-member");
 

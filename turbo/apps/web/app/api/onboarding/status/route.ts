@@ -13,8 +13,8 @@ import {
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
 import { agentComposeApiContentSchema } from "@vm0/core";
-import { orgMembersMetadata } from "../../../../src/db/schema/org-members";
-import { orgMetadata as orgTable } from "../../../../src/db/schema/org";
+import { orgMembersMetadata } from "../../../../src/db/schema/org-members-metadata";
+import { orgMetadata as orgTable } from "../../../../src/db/schema/org-metadata";
 
 async function isMemberOnboardingDone(
   orgId: string,
