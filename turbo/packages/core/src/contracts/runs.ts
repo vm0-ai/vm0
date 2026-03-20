@@ -346,7 +346,7 @@ const agentEventsResponseSchema = z.object({
  */
 const networkLogEntrySchema = z.object({
   timestamp: z.string(),
-  action: z.enum(["ALLOW", "DENY", "ERROR"]).optional(),
+  action: z.enum(["ALLOW", "DENY"]).optional(),
   host: z.string().optional(),
   port: z.number().optional(),
   method: z.string().optional(),
@@ -361,6 +361,7 @@ const networkLogEntrySchema = z.object({
   firewall_permission: z.string().optional(),
   firewall_rule_match: z.string().optional(),
   firewall_params: z.record(z.string(), z.string()).optional(),
+  firewall_error: z.string().optional(),
 });
 
 /**

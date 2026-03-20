@@ -21,7 +21,7 @@ interface AxiomNetworkEvent {
   _time: string;
   runId: string;
   userId: string;
-  action?: "ALLOW" | "DENY" | "ERROR";
+  action?: "ALLOW" | "DENY";
   host?: string;
   port?: number;
   method?: string;
@@ -36,6 +36,7 @@ interface AxiomNetworkEvent {
   firewall_permission?: string;
   firewall_rule_match?: string;
   firewall_params?: Record<string, string>;
+  firewall_error?: string;
 }
 
 const router = tsr.router(runNetworkLogsContract, {
@@ -117,6 +118,7 @@ ${sinceFilter}
       firewall_permission: e.firewall_permission,
       firewall_rule_match: e.firewall_rule_match,
       firewall_params: e.firewall_params,
+      firewall_error: e.firewall_error,
     }));
 
     return {

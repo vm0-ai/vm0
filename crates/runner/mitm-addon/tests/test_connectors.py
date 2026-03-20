@@ -694,7 +694,8 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ERROR"
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_failed"
         body = json.loads(flow.response.content)
         assert body["error"] == "firewall_auth_failed"
         assert "API unreachable" in body["message"]
@@ -734,7 +735,8 @@ class TestHandleFirewallRequest:
 
         assert flow.response is not None
         assert flow.response.status_code == 502
-        assert flow.metadata["firewall_action"] == "ERROR"
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_unavailable"
         body = json.loads(flow.response.content)
         assert body["error"] == "firewall_auth_unavailable"
         assert body["firewall"] == "github"

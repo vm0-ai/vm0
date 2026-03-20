@@ -775,7 +775,7 @@ describe("logs command", () => {
               networkLogs: [
                 {
                   timestamp: "2024-01-15T10:30:00Z",
-                  action: "ERROR",
+                  action: "ALLOW",
                   method: "GET",
                   status: 502,
                   latency_ms: 5,
@@ -783,6 +783,7 @@ describe("logs command", () => {
                   response_size: 100,
                   url: "https://api.stripe.com/v1/users",
                   firewall_name: "stripe",
+                  firewall_error: "auth_failed",
                 },
               ],
               hasMore: false,
@@ -797,7 +798,7 @@ describe("logs command", () => {
       expect(logCalls).toContain("502");
       expect(logCalls).toContain("5ms");
       expect(logCalls).toContain("[stripe]");
-      expect(logCalls).toContain("auth failed");
+      expect(logCalls).toContain("auth_failed");
     });
 
     it("should handle empty network logs", async () => {

@@ -371,7 +371,8 @@ async def handle_firewall_request(
 
     if not encrypted_secrets:
         ctx.log.error(f"[{run_id}] No encryptedSecrets for firewall rule {firewall_base}")
-        flow.metadata["firewall_action"] = "ERROR"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_error"] = "auth_unavailable"
         flow.response = http.Response.make(
             502,
             json.dumps(
@@ -392,7 +393,8 @@ async def handle_firewall_request(
         )
     except Exception as e:
         ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
-        flow.metadata["firewall_action"] = "ERROR"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_error"] = "auth_failed"
         flow.response = http.Response.make(
             502,
             json.dumps(
@@ -609,6 +611,9 @@ def response(flow: http.HTTPFlow) -> None:
             params = flow.metadata.get("firewall_params")
             if params:
                 log_entry["firewall_params"] = params
+            error = flow.metadata.get("firewall_error")
+            if error:
+                log_entry["firewall_error"] = error
 
         log_network_entry(network_log_path, log_entry)
 

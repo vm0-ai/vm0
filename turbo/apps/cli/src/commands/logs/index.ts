@@ -107,7 +107,9 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
   const firewall = entry.firewall_name
     ? ` ${chalk.cyan(`[${entry.firewall_name}]`)}`
     : "";
-  const error = entry.action === "ERROR" ? ` ${chalk.red("auth failed")}` : "";
+  const error = entry.firewall_error
+    ? ` ${chalk.red(entry.firewall_error)}`
+    : "";
 
   return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}`;
 }
