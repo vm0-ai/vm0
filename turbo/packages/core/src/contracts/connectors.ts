@@ -3263,6 +3263,7 @@ export const connectorTypeSchema = z.enum([
   "serpapi",
   "zeptomail",
   "runway",
+  "salesforce",
   "shortio",
   "streak",
   "supadata",
@@ -3295,7 +3296,6 @@ export const connectorTypeSchema = z.enum([
   "wix",
   "v0",
   "customer-io",
-  "salesforce",
 ]);
 
 /**
