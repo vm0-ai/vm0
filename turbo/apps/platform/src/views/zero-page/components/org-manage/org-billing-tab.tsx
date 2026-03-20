@@ -230,47 +230,6 @@ function PricingDialog({
   );
 }
 
-export function BillingTabSkeleton() {
-  return (
-    <div className="flex flex-col gap-8">
-      {/* Plan section */}
-      <section className="flex flex-col gap-3">
-        <div className="h-4 w-10 rounded bg-muted/50 animate-pulse" />
-        <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0 flex flex-col gap-1.5">
-              <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
-              <div className="h-3 w-28 rounded bg-muted/30 animate-pulse" />
-            </div>
-            <div className="h-8 w-20 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
-          </div>
-        </div>
-      </section>
-      {/* Add-ons section */}
-      <section className="flex flex-col gap-3">
-        <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
-        <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0 flex flex-col gap-1.5">
-              <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
-              <div className="h-3 w-56 rounded bg-muted/30 animate-pulse" />
-            </div>
-            <div className="h-8 w-16 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
-          </div>
-          <div className="h-px bg-border/40 mx-5" />
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0 flex flex-col gap-1.5">
-              <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
-              <div className="h-3 w-56 rounded bg-muted/30 animate-pulse" />
-            </div>
-            <div className="h-8 w-16 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 export function OrgBillingTab() {
   const isPro$ = useCCState(false);
   const isPro = useGet(isPro$);

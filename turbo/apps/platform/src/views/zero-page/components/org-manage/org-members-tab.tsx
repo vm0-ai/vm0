@@ -40,6 +40,7 @@ import {
 import { isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { user$, clerk$ } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 
@@ -175,7 +176,13 @@ export function OrgMembersTab() {
             className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
           />
         </div>
-        {isAdmin && <InviteDialog onInvite={handleInvite} />}
+        {isAdmin && (
+          <InviteDialog
+            onInvite={(email) =>
+              detach(handleInvite(email), Reason.DomCallback)
+            }
+          />
+        )}
       </div>
 
       <div
@@ -221,8 +228,12 @@ export function OrgMembersTab() {
                 member={m}
                 isCurrentUser={m.userId === currentUserId}
                 isAdmin={isAdmin}
-                onRoleChange={handleRoleChange}
-                onRemove={handleRemove}
+                onRoleChange={(email, role) =>
+                  detach(handleRoleChange(email, role), Reason.DomCallback)
+                }
+                onRemove={(email) =>
+                  detach(handleRemove(email), Reason.DomCallback)
+                }
               />
             </div>
           ))}
@@ -241,15 +252,13 @@ export function OrgMembersTab() {
   );
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function InviteDialog({ onInvite }: { onInvite: (email: string) => void }) {
   const email$ = useCCState("");
   const email = useGet(email$);
   const setEmail = useSet(email$);
 
   const trimmed = email.trim();
-  const isValid = EMAIL_RE.test(trimmed);
+  const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 
   const touched$ = useCCState(false);
   const touched = useGet(touched$);
@@ -551,36 +560,6 @@ function MemberAvatar({
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground">
       {initial}
-    </div>
-  );
-}
-
-export function MembersTabSkeleton() {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-80 rounded-lg bg-muted/30 animate-pulse" />
-      </div>
-      <div
-        className="overflow-hidden rounded-[10px] bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
-        <div
-          className={cn(
-            ROW_GRID,
-            "sticky top-0 z-10 px-4 py-3 text-sm font-medium text-foreground bg-card",
-          )}
-        >
-          <div className="text-left">User</div>
-          <div className="text-left">Joined</div>
-          <div className="text-left">Role</div>
-          <div />
-        </div>
-        <div className="h-px bg-border/40 mx-4" />
-        <MemberRowSkeleton />
-        <MemberRowSkeleton />
-        <MemberRowSkeleton />
-      </div>
     </div>
   );
 }

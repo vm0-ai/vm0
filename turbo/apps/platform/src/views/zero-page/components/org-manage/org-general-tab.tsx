@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { useLoadable, useGet, useSet } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import { IconUpload } from "@tabler/icons-react";
@@ -19,45 +18,60 @@ import {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
+  type OrgResponse,
 } from "@vm0/core";
 import { org$, isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { clerk$ } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
 import { fetch$ } from "../../../../signals/fetch.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-export function OrgGeneralTab() {
-  const orgLoadable = useLoadable(org$);
-  const org = orgLoadable.state === "hasData" ? orgLoadable.data : undefined;
-  const isLoading = orgLoadable.state === "loading";
-  const isAdminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin =
-    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+function extractErrorMessage(
+  result: { status: number; body: unknown },
+  fallback: string,
+): string {
+  const body = result.body as { error?: { message?: string } } | undefined;
+  return body?.error?.message ?? fallback;
+}
 
-  const canLeave = !isAdmin;
+async function uploadLogo(
+  fetchFn: typeof fetch,
+  file: File,
+): Promise<{ logoUrl: string | null } | null> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const resp = await fetchFn("/api/zero/org/logo", {
+    method: "POST",
+    body: formData,
+  });
+  if (!resp.ok) {
+    const data = (await resp.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    toast.error(data?.error?.message ?? "Failed to upload logo");
+    return null;
+  }
+  return (await resp.json()) as { logoUrl: string | null };
+}
 
-  const name$ = useCCState(org?.name ?? "");
+function ProfileSection({
+  org,
+  isAdmin,
+}: {
+  org: OrgResponse;
+  isAdmin: boolean;
+}) {
+  const name$ = useCCState(org.name ?? "");
   const name = useGet(name$);
   const setName = useSet(name$);
 
   const saving$ = useCCState(false);
   const saving = useGet(saving$);
   const setSaving = useSet(saving$);
-
-  const leaving$ = useCCState(false);
-  const leaving = useGet(leaving$);
-  const setLeaving = useSet(leaving$);
-
-  const deleting$ = useCCState(false);
-  const deleting = useGet(deleting$);
-  const setDeleting = useSet(deleting$);
-
-  const deleteConfirm$ = useCCState("");
-  const deleteConfirm = useGet(deleteConfirm$);
-  const setDeleteConfirm = useSet(deleteConfirm$);
 
   const logoUrl$ = useCCState<string | null>(null);
   const logoUrl = useGet(logoUrl$);
@@ -71,38 +85,22 @@ export function OrgGeneralTab() {
   const pendingLogoPreview = useGet(pendingLogoPreview$);
   const setPendingLogoPreview = useSet(pendingLogoPreview$);
 
-  const logoLoaded$ = useCCState(false);
-  const logoLoaded = useGet(logoLoaded$);
-  const setLogoLoaded = useSet(logoLoaded$);
+  const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
+  const fileInputEl = useGet(fileInputEl$);
+  const setFileInputEl = useSet(fileInputEl$);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const fetchFn = useGet(fetch$);
   const refreshOrg = useSet(refreshOrg$);
   const clerkLoadable = useLoadable(clerk$);
   const clerk =
     clerkLoadable.state === "hasData" ? clerkLoadable.data : undefined;
 
-  const prevName$ = useCCState<string | undefined>(undefined);
-  const prevName = useGet(prevName$);
-  const setPrevName = useSet(prevName$);
-  if (org?.name && prevName !== org.name) {
-    setPrevName(org.name);
-    setName(org.name);
-  }
-
-  // Fetch logo URL on mount
-  if (org && !logoLoaded) {
-    setLogoLoaded(true);
-    fetchFn("/api/zero/org/logo")
-      .then((r) => r.json())
-      .then((data: { logoUrl: string | null }) => {
-        if (data.logoUrl) setLogoUrl(data.logoUrl);
-      })
-      .catch(() => {});
-  }
+  const logoLoaded$ = useCCState(false);
+  const logoLoaded = useGet(logoLoaded$);
+  const setLogoLoaded = useSet(logoLoaded$);
 
   const createClient = useGet(zeroClient$);
-  const hasNameChange = name !== (org?.name ?? "");
+  const hasNameChange = name !== (org.name ?? "");
   const hasChanges = hasNameChange || !!pendingLogoFile;
 
   const handleFileSelect = (file: File) => {
@@ -111,77 +109,210 @@ export function OrgGeneralTab() {
   };
 
   const handleDiscard = () => {
-    setName(org?.name ?? "");
-    if (pendingLogoPreview) URL.revokeObjectURL(pendingLogoPreview);
+    setName(org.name ?? "");
+    if (pendingLogoPreview) {
+      URL.revokeObjectURL(pendingLogoPreview);
+    }
     setPendingLogoFile(null);
     setPendingLogoPreview(null);
   };
 
   const handleSave = async () => {
-    if (!org || !hasChanges || saving) return;
+    if (!hasChanges || saving) {
+      return;
+    }
     setSaving(true);
     try {
-      // Upload logo if pending
       if (pendingLogoFile) {
-        const formData = new FormData();
-        formData.append("file", pendingLogoFile);
-        const resp = await fetchFn("/api/zero/org/logo", {
-          method: "POST",
-          body: formData,
-        });
-        if (!resp.ok) {
-          const data = (await resp.json().catch(() => null)) as {
-            error?: { message?: string };
-          } | null;
-          toast.error(data?.error?.message ?? "Failed to upload logo");
+        const result = await uploadLogo(fetchFn, pendingLogoFile);
+        if (!result) {
           setSaving(false);
           return;
         }
-        const data = (await resp.json()) as { logoUrl: string | null };
-        setLogoUrl(data.logoUrl);
+        setLogoUrl(result.logoUrl);
       }
 
-      // Update name if changed
       if (hasNameChange) {
         const client = createClient(zeroOrgContract);
-        const result = await client.update({
-          body: { name },
-        });
+        const result = await client.update({ body: { name } });
         if (result.status !== 200) {
-          const msg =
-            result.status === 400 ||
-            result.status === 401 ||
-            result.status === 403 ||
-            result.status === 404 ||
-            result.status === 409 ||
-            result.status === 500
-              ? result.body.error.message
-              : undefined;
-          toast.error(msg ?? `Failed to update (${result.status})`);
+          toast.error(
+            extractErrorMessage(result, `Failed to update (${result.status})`),
+          );
           setSaving(false);
           return;
         }
       }
 
-      // Clear pending state
-      if (pendingLogoPreview) URL.revokeObjectURL(pendingLogoPreview);
+      if (pendingLogoPreview) {
+        URL.revokeObjectURL(pendingLogoPreview);
+      }
       setPendingLogoFile(null);
       setPendingLogoPreview(null);
-
-      // Refresh org signal so UI updates without reload
       refreshOrg();
-
-      // Refresh Clerk organization so sidebar avatar updates
       await clerk?.organization?.reload();
-
       toast.success("Organization updated");
     } finally {
       setSaving(false);
     }
   };
 
+  const handleLogoLoad = () => {
+    if (logoLoaded) {
+      return;
+    }
+    setLogoLoaded(true);
+    fetchFn("/api/zero/org/logo")
+      .then((r) => r.json())
+      .then((data: { logoUrl: string | null }) => {
+        if (data.logoUrl) {
+          setLogoUrl(data.logoUrl);
+        }
+      })
+      .catch(() => {
+        // Logo fetch is best-effort; the UI works without it
+      });
+  };
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-sm font-medium text-foreground">Profile</h3>
+      <div
+        className="overflow-hidden rounded-xl bg-card"
+        style={sectionCardStyle}
+      >
+        {/* Logo row */}
+        <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Logo</p>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
+              Organization avatar displayed across the app
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {isAdmin && (
+              <input
+                ref={(el) => {
+                  setFileInputEl(el);
+                  if (el) {
+                    handleLogoLoad();
+                  }
+                }}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    handleFileSelect(file);
+                  }
+                  e.target.value = "";
+                }}
+              />
+            )}
+            <button
+              type="button"
+              className="group relative h-9 w-9 shrink-0 rounded-lg overflow-hidden"
+              disabled={!isAdmin}
+              onClick={() => {
+                if (isAdmin) {
+                  fileInputEl?.click();
+                }
+              }}
+            >
+              {(pendingLogoPreview ?? logoUrl) ? (
+                <img
+                  src={(pendingLogoPreview ?? logoUrl)!}
+                  alt={org.slug ?? "Org"}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full bg-muted/50" />
+              )}
+              {isAdmin && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <IconUpload size={14} stroke={2} className="text-white" />
+                </div>
+              )}
+            </button>
+          </div>
+        </div>
+        <div className="h-px bg-border/40 mx-5" />
+        {/* Name row */}
+        <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Name</p>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
+              Used to identify this organization
+            </p>
+          </div>
+          {isAdmin ? (
+            <Input
+              id="org-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Organization name"
+              className="h-9 w-[220px] shrink-0 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]"
+            />
+          ) : (
+            <span className="text-sm text-foreground shrink-0">
+              {org.name ?? ""}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {hasChanges && isAdmin && (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            className="rounded-lg"
+            onClick={() => detach(handleSave(), Reason.DomCallback)}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save changes"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-lg text-muted-foreground"
+            onClick={handleDiscard}
+            disabled={saving}
+          >
+            Discard
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DangerZoneSection({
+  org,
+  isAdmin,
+}: {
+  org: OrgResponse;
+  isAdmin: boolean;
+}) {
+  const createClient = useGet(zeroClient$);
+  const canLeave = !isAdmin;
+
+  const leaving$ = useCCState(false);
+  const leaving = useGet(leaving$);
+  const setLeaving = useSet(leaving$);
+
+  const deleting$ = useCCState(false);
+  const deleting = useGet(deleting$);
+  const setDeleting = useSet(deleting$);
+
+  const deleteConfirm$ = useCCState("");
+  const deleteConfirm = useGet(deleteConfirm$);
+  const setDeleteConfirm = useSet(deleteConfirm$);
+
   const handleLeave = async () => {
-    if (!org || leaving) return;
+    if (leaving) {
+      return;
+    }
     setLeaving(true);
     try {
       const client = createClient(zeroOrgLeaveContract);
@@ -190,13 +321,9 @@ export function OrgGeneralTab() {
         toast.success("You have left the organization");
         window.location.reload();
       } else {
-        const msg =
-          result.status === 401 ||
-          result.status === 403 ||
-          result.status === 500
-            ? result.body.error.message
-            : undefined;
-        toast.error(msg ?? `Failed to leave (${result.status})`);
+        toast.error(
+          extractErrorMessage(result, `Failed to leave (${result.status})`),
+        );
       }
     } finally {
       setLeaving(false);
@@ -204,7 +331,9 @@ export function OrgGeneralTab() {
   };
 
   const handleDelete = async () => {
-    if (!org || deleting || deleteConfirm !== org.slug) return;
+    if (deleting || deleteConfirm !== org.slug) {
+      return;
+    }
     setDeleting(true);
     try {
       const client = createClient(zeroOrgDeleteContract);
@@ -213,251 +342,159 @@ export function OrgGeneralTab() {
         toast.success("Organization deleted");
         window.location.reload();
       } else {
-        const msg =
-          result.status === 400 ||
-          result.status === 401 ||
-          result.status === 403 ||
-          result.status === 500
-            ? result.body.error.message
-            : undefined;
-        toast.error(msg ?? `Failed to delete (${result.status})`);
+        toast.error(
+          extractErrorMessage(result, `Failed to delete (${result.status})`),
+        );
       }
     } finally {
       setDeleting(false);
     }
   };
 
-  if (isLoading) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-sm font-medium text-foreground">Danger zone</h3>
+      <div
+        className="overflow-hidden rounded-xl bg-card"
+        style={sectionCardStyle}
+      >
+        {canLeave && (
+          <>
+            {/* Leave organization */}
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  Leave organization
+                </p>
+                <p className="text-[13px] text-muted-foreground mt-0.5">
+                  You will lose access to this organization and its resources.
+                </p>
+              </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                  >
+                    Leave
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Leave organization?</DialogTitle>
+                    <DialogDescription>
+                      You will no longer have access to this organization. You
+                      can rejoin only if an admin invites you again.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="outline" size="sm">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => detach(handleLeave(), Reason.DomCallback)}
+                      disabled={leaving}
+                    >
+                      {leaving ? "Leaving..." : "Leave"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </>
+        )}
+        {isAdmin && (
+          <>
+            {canLeave && <div className="h-px bg-border/40 mx-5" />}
+            {/* Delete organization */}
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  Delete organization
+                </p>
+                <p className="text-[13px] text-muted-foreground mt-0.5">
+                  Permanently delete this organization and all its data. This
+                  action cannot be undone.
+                </p>
+              </div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                  >
+                    Delete
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Delete organization?</DialogTitle>
+                    <DialogDescription>
+                      This will permanently delete{" "}
+                      <span className="font-semibold text-foreground">
+                        {org.slug}
+                      </span>{" "}
+                      and all its data. This action cannot be undone. Type the
+                      organization name to confirm.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <Input
+                    placeholder={org.slug}
+                    value={deleteConfirm}
+                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                  />
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="outline" size="sm">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => detach(handleDelete(), Reason.DomCallback)}
+                      disabled={deleting || deleteConfirm !== org.slug}
+                    >
+                      {deleting ? "Deleting..." : "Delete organization"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function OrgGeneralTab() {
+  const orgLoadable = useLoadable(org$);
+  const org = orgLoadable.state === "hasData" ? orgLoadable.data : undefined;
+  const isLoading = orgLoadable.state === "loading";
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+
+  if (isLoading || !org) {
     return <GeneralTabSkeleton />;
   }
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Profile section */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Profile</h3>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
-          {/* Logo row */}
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">Logo</p>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
-                Organization avatar displayed across the app
-              </p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {isAdmin && (
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/gif,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileSelect(file);
-                    e.target.value = "";
-                  }}
-                />
-              )}
-              <button
-                type="button"
-                className="group relative h-9 w-9 shrink-0 rounded-lg overflow-hidden"
-                disabled={!isAdmin}
-                onClick={() => isAdmin && fileInputRef.current?.click()}
-              >
-                {(pendingLogoPreview ?? logoUrl) ? (
-                  <img
-                    src={(pendingLogoPreview ?? logoUrl)!}
-                    alt={org?.slug ?? "Org"}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="h-full w-full bg-muted/50" />
-                )}
-                {isAdmin && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <IconUpload size={14} stroke={2} className="text-white" />
-                  </div>
-                )}
-              </button>
-            </div>
-          </div>
-          <div className="h-px bg-border/40 mx-5" />
-          {/* Name row */}
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">Name</p>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
-                Used to identify this organization
-              </p>
-            </div>
-            {isAdmin ? (
-              <Input
-                id="org-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Organization name"
-                className="h-9 w-[220px] shrink-0 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]"
-              />
-            ) : (
-              <span className="text-sm text-foreground shrink-0">
-                {org?.name ?? ""}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {hasChanges && isAdmin && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              className="rounded-lg"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? "Saving..." : "Save changes"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="rounded-lg text-muted-foreground"
-              onClick={handleDiscard}
-              disabled={saving}
-            >
-              Discard
-            </Button>
-          </div>
-        )}
-      </section>
-
-      {/* Danger zone */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Danger zone</h3>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
-          {canLeave && (
-            <>
-              {/* Leave organization */}
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    Leave organization
-                  </p>
-                  <p className="text-[13px] text-muted-foreground mt-0.5">
-                    You will lose access to this organization and its resources.
-                  </p>
-                </div>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="shrink-0 gap-1.5"
-                    >
-                      Leave
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Leave organization?</DialogTitle>
-                      <DialogDescription>
-                        You will no longer have access to this organization. You
-                        can rejoin only if an admin invites you again.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                      <DialogClose asChild>
-                        <Button variant="outline" size="sm">
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={handleLeave}
-                        disabled={leaving}
-                      >
-                        {leaving ? "Leaving..." : "Leave"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </>
-          )}
-          {isAdmin && (
-            <>
-              {canLeave && <div className="h-px bg-border/40 mx-5" />}
-              {/* Delete organization */}
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    Delete organization
-                  </p>
-                  <p className="text-[13px] text-muted-foreground mt-0.5">
-                    Permanently delete this organization and all its data. This
-                    action cannot be undone.
-                  </p>
-                </div>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="shrink-0 gap-1.5"
-                    >
-                      Delete
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Delete organization?</DialogTitle>
-                      <DialogDescription>
-                        This will permanently delete{" "}
-                        <span className="font-semibold text-foreground">
-                          {org?.slug}
-                        </span>{" "}
-                        and all its data. This action cannot be undone. Type the
-                        organization name to confirm.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <Input
-                      placeholder={org?.slug}
-                      value={deleteConfirm}
-                      onChange={(e) => setDeleteConfirm(e.target.value)}
-                    />
-                    <DialogFooter>
-                      <DialogClose asChild>
-                        <Button variant="outline" size="sm">
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={handleDelete}
-                        disabled={deleting || deleteConfirm !== org?.slug}
-                      >
-                        {deleting ? "Deleting..." : "Delete organization"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
+      <ProfileSection org={org} isAdmin={isAdmin} />
+      <DangerZoneSection org={org} isAdmin={isAdmin} />
     </div>
   );
 }
 
-export function GeneralTabSkeleton() {
+function GeneralTabSkeleton() {
   return (
     <div className="flex flex-col gap-8">
       {/* Profile section skeleton */}

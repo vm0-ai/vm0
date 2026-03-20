@@ -1,4 +1,4 @@
-import { type ReactNode, lazy, Suspense } from "react";
+import type { ReactNode } from "react";
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";
 import { Dialog, DialogContent, cn } from "@vm0/ui";
@@ -11,35 +11,14 @@ import {
   IconFileInvoice,
 } from "@tabler/icons-react";
 
-import { GeneralTabSkeleton } from "./org-general-tab.tsx";
-import { ProvidersTabSkeleton } from "./org-providers-tab.tsx";
-import { MembersTabSkeleton } from "./org-members-tab.tsx";
-import { BillingTabSkeleton } from "./org-billing-tab.tsx";
-import { CreditsTabSkeleton } from "./org-credits-tab.tsx";
-import { InvoicesTabSkeleton } from "./org-invoices-tab.tsx";
+import { OrgGeneralTab } from "./org-general-tab.tsx";
+import { OrgProvidersTab } from "./org-providers-tab.tsx";
+import { OrgMembersTab } from "./org-members-tab.tsx";
+import { OrgBillingTab } from "./org-billing-tab.tsx";
+import { OrgCreditsTab } from "./org-credits-tab.tsx";
+import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
-
-const OrgGeneralTab = lazy(() =>
-  import("./org-general-tab.tsx").then((m) => ({ default: m.OrgGeneralTab })),
-);
-const OrgProvidersTab = lazy(() =>
-  import("./org-providers-tab.tsx").then((m) => ({
-    default: m.OrgProvidersTab,
-  })),
-);
-const OrgMembersTab = lazy(() =>
-  import("./org-members-tab.tsx").then((m) => ({ default: m.OrgMembersTab })),
-);
-const OrgBillingTab = lazy(() =>
-  import("./org-billing-tab.tsx").then((m) => ({ default: m.OrgBillingTab })),
-);
-const OrgCreditsTab = lazy(() =>
-  import("./org-credits-tab.tsx").then((m) => ({ default: m.OrgCreditsTab })),
-);
-const OrgInvoicesTab = lazy(() =>
-  import("./org-invoices-tab.tsx").then((m) => ({ default: m.OrgInvoicesTab })),
-);
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -88,16 +67,16 @@ interface SidebarGroup {
   items: readonly { id: OrgManageTab; label: string; icon: NavIcon }[];
 }
 
-const BILLING_GROUP: SidebarGroup = {
+const BILLING_GROUP = {
   label: "Access & billing",
   items: [
     { id: "billing", label: "Billing", icon: IconCreditCard as NavIcon },
     { id: "credits", label: "Credits", icon: IconCoins as NavIcon },
     { id: "invoices", label: "Invoices", icon: IconFileInvoice as NavIcon },
   ],
-};
+} as const satisfies SidebarGroup;
 
-const CONFIGURATION_GROUP: SidebarGroup = {
+const CONFIGURATION_GROUP = {
   label: "Configuration",
   items: [
     {
@@ -106,9 +85,9 @@ const CONFIGURATION_GROUP: SidebarGroup = {
       icon: IconCpu as NavIcon,
     },
   ],
-};
+} as const satisfies SidebarGroup;
 
-const BASE_SIDEBAR_GROUPS: readonly SidebarGroup[] = [
+const BASE_SIDEBAR_GROUPS = [
   {
     label: "Organization",
     items: [{ id: "general", label: "General", icon: IconBuilding as NavIcon }],
@@ -117,33 +96,20 @@ const BASE_SIDEBAR_GROUPS: readonly SidebarGroup[] = [
     label: "People",
     items: [{ id: "members", label: "Members", icon: IconUsers as NavIcon }],
   },
-];
+] as const satisfies readonly SidebarGroup[];
 
-const TAB_SKELETONS: Record<OrgManageTab, ReactNode> = {
-  general: <GeneralTabSkeleton />,
-  providers: <ProvidersTabSkeleton />,
-  members: <MembersTabSkeleton />,
-  billing: <BillingTabSkeleton />,
-  credits: <CreditsTabSkeleton />,
-  invoices: <InvoicesTabSkeleton />,
-};
-
-const TAB_COMPONENTS: Record<OrgManageTab, () => ReactNode> = {
+const TAB_COMPONENTS = {
   general: () => <OrgGeneralTab />,
   providers: () => <OrgProvidersTab />,
   members: () => <OrgMembersTab />,
   billing: () => <OrgBillingTab />,
   credits: () => <OrgCreditsTab />,
   invoices: () => <OrgInvoicesTab />,
-};
+} as const satisfies Record<OrgManageTab, () => ReactNode>;
 
 function TabContent({ tab }: { tab: OrgManageTab }) {
   const Content = TAB_COMPONENTS[tab];
-  return (
-    <Suspense fallback={TAB_SKELETONS[tab]}>
-      <Content />
-    </Suspense>
-  );
+  return <Content />;
 }
 
 export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {

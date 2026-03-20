@@ -2,38 +2,6 @@ const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-export function CreditsTabSkeleton() {
-  return (
-    <div className="flex flex-col gap-8">
-      {/* Usage section */}
-      <section className="flex flex-col gap-3">
-        <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0 flex flex-col gap-1.5">
-              <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
-              <div className="h-3 w-40 rounded bg-muted/30 animate-pulse" />
-            </div>
-            <div className="h-5 w-8 shrink-0 rounded bg-muted/30 animate-pulse" />
-          </div>
-          <div className="h-px bg-border/40 mx-5" />
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="min-w-0 flex flex-col gap-1.5">
-              <div className="h-4 w-28 rounded bg-muted/50 animate-pulse" />
-              <div className="h-3 w-52 rounded bg-muted/30 animate-pulse" />
-            </div>
-            <div className="h-4 w-16 shrink-0 rounded bg-muted/30 animate-pulse" />
-          </div>
-        </div>
-      </section>
-      <div className="h-3 w-44 rounded bg-muted/30 animate-pulse" />
-    </div>
-  );
-}
-
 export function OrgCreditsTab() {
   return (
     <div className="flex flex-col gap-8">

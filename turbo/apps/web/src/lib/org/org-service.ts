@@ -105,18 +105,6 @@ export async function updateOrg(
 }
 
 /**
- * @deprecated Use updateOrg instead
- */
-export async function updateOrgSlug(
-  orgId: string,
-  newSlug: string,
-  userId: string,
-  force: boolean = false,
-): Promise<ResolvedOrg> {
-  return updateOrg(orgId, userId, { slug: newSlug, force });
-}
-
-/**
  * Check if a runner group belongs to the official vm0 org.
  * Official runner groups (vm0/production, vm0/development) can be used by any user.
  *

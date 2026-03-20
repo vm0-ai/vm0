@@ -13,51 +13,6 @@ const MOCK_INVOICES = [
   { id: "INV-2025-011", date: "11/1/2025", amount: "$29.00", status: "Paid" },
 ] as const;
 
-function InvoiceRowSkeleton() {
-  return (
-    <div className={cn(ROW_GRID, "px-4 py-3 animate-pulse")}>
-      <div className="flex items-center gap-3">
-        <div className="h-4 w-24 rounded bg-muted/50" />
-        <div className="h-5 w-12 rounded bg-muted/30" />
-      </div>
-      <div className="h-4 w-16 rounded bg-muted/30" />
-      <div className="h-4 w-14 rounded bg-muted/30" />
-      <div className="flex justify-end">
-        <div className="h-7 w-7 rounded-lg bg-muted/30" />
-      </div>
-    </div>
-  );
-}
-
-export function InvoicesTabSkeleton() {
-  return (
-    <div className="flex flex-col gap-4">
-      <div
-        className="overflow-hidden rounded-[10px] bg-card"
-        style={cardBorder}
-      >
-        <div
-          className={cn(
-            ROW_GRID,
-            "sticky top-0 z-10 px-4 py-3 text-sm font-medium text-foreground bg-card",
-          )}
-        >
-          <div className="text-left">Invoice</div>
-          <div className="text-left">Date</div>
-          <div className="text-left">Amount</div>
-          <div />
-        </div>
-        <div className="h-px bg-border/40 mx-4" />
-        <InvoiceRowSkeleton />
-        <div className="h-px bg-border/40 mx-4" />
-        <InvoiceRowSkeleton />
-        <div className="h-px bg-border/40 mx-4" />
-        <InvoiceRowSkeleton />
-      </div>
-    </div>
-  );
-}
-
 export function OrgInvoicesTab() {
   return (
     <div className="flex flex-col gap-4">
