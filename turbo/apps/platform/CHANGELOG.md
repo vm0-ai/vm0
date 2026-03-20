@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.131.0](https://github.com/vm0-ai/vm0/compare/app-v0.130.0...app-v0.131.0) (2026-03-20)
+
+
+### Features
+
+* add brevo api-token connector ([#5734](https://github.com/vm0-ai/vm0/issues/5734)) ([dd1cb42](https://github.com/vm0-ai/vm0/commit/dd1cb4262e948fad5a585ea474f9583d59800499)), closes [#5712](https://github.com/vm0-ai/vm0/issues/5712)
+* add cal-com api-token connector ([#5729](https://github.com/vm0-ai/vm0/issues/5729)) ([9a8165a](https://github.com/vm0-ai/vm0/commit/9a8165ad65920f19271769f9ae06f4f8d66b335c)), closes [#5713](https://github.com/vm0-ai/vm0/issues/5713)
+* add loops api-token connector ([#5744](https://github.com/vm0-ai/vm0/issues/5744)) ([62895ea](https://github.com/vm0-ai/vm0/commit/62895eaa443aa23910181d15255dff2a3c2ea6d9)), closes [#5717](https://github.com/vm0-ai/vm0/issues/5717)
+* add salesforce api-token connector ([#5735](https://github.com/vm0-ai/vm0/issues/5735)) ([2b5866f](https://github.com/vm0-ai/vm0/commit/2b5866f1e43d29fa966edddf6eabb90c2e66d5ee))
+
+
+### Bug Fixes
+
+* update v0 connector icon with correct logo ([#5738](https://github.com/vm0-ai/vm0/issues/5738)) ([1c2c030](https://github.com/vm0-ai/vm0/commit/1c2c030d23be6b5facd9ce7bf8f850384b3ba67e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.87.0
+
 ## [0.130.0](https://github.com/vm0-ai/vm0/compare/app-v0.129.0...app-v0.130.0) (2026-03-20)
 
 
