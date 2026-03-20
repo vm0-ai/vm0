@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { Markdown } from "../components/markdown.tsx";
+import { delay } from "signal-timers";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
@@ -90,15 +91,18 @@ export function ZeroSessionChatPage({
     currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
-      savePinnedIds([...pinnedIds, currentChatAgentId]);
+      detach(savePinnedIds([...pinnedIds, currentChatAgentId]), Reason.DomCallback);
     }
   };
 
   // Auto-scroll when messages change (deferred to avoid side effect during render)
   if (messagesEndEl && messages.length > 0) {
-    queueMicrotask(() => {
-      messagesEndEl.scrollIntoView({ behavior: "smooth" });
-    });
+    detach(
+      delay(0).then(() => {
+        messagesEndEl.scrollIntoView({ behavior: "smooth" });
+      }),
+      Reason.DomCallback,
+    );
   }
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {

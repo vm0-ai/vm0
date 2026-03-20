@@ -120,9 +120,3 @@ export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
   set(updatePathname$, `/chat/${sessionId}`);
 });
 
-/**
- * Navigate back from a chat session to the previous route in browser history.
- */
-export const navigateFromZeroSession$ = command(() => {
-  window.history.back();
-});
