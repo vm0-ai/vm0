@@ -9,7 +9,7 @@ const context = testContext();
 
 function mockOnboardingNeeded() {
   server.use(
-    http.get("*/api/onboarding/status", () => {
+    http.get("*/api/zero/onboarding/status", () => {
       return HttpResponse.json({
         needsOnboarding: true,
         isAdmin: true,
@@ -160,7 +160,7 @@ describe("zero onboarding - step 2: model provider", () => {
 describe("zero onboarding - skip model provider when already set", () => {
   it("should skip step 2 and go directly to step 3 if model provider exists", async () => {
     server.use(
-      http.get("*/api/onboarding/status", () => {
+      http.get("*/api/zero/onboarding/status", () => {
         return HttpResponse.json({
           needsOnboarding: true,
           isAdmin: true,
@@ -200,7 +200,7 @@ describe("zero onboarding - step 3: connectors", () => {
 
     // Mock model provider existing so we can navigate through step 2
     server.use(
-      http.get("*/api/onboarding/status", () => {
+      http.get("*/api/zero/onboarding/status", () => {
         return HttpResponse.json({
           needsOnboarding: true,
           isAdmin: true,

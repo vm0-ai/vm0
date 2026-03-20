@@ -77,7 +77,7 @@ function mockScheduleAPI(schedules = createMockSchedules()) {
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
     }),
-    http.get("*/api/chat-threads", () => {
+    http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
   );
@@ -199,7 +199,7 @@ describe("zero schedule page - create dialog", () => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ success: true });
       }),
-      http.get("*/api/chat-threads", () => {
+      http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );
@@ -247,7 +247,7 @@ describe("zero schedule page - toggle enabled", () => {
         capturedAction = params["action"] as string;
         return HttpResponse.json({ success: true });
       }),
-      http.get("*/api/chat-threads", () => {
+      http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );

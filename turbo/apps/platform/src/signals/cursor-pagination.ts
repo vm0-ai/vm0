@@ -126,7 +126,7 @@ function createNavigationCommands(deps: PaginationDeps) {
 
     const fetchFn = get(fetch$);
     const resp2 = await fetchFn(
-      `/api/app/logs?${intermediateParams.toString()}`,
+      `/api/zero/logs?${intermediateParams.toString()}`,
     );
 
     if (!resp2.ok) {
@@ -211,7 +211,7 @@ export function createCursorPagination(config: CursorPaginationConfig) {
       } satisfies LogsListResponse;
     }
 
-    const response = await fetchFn(`/api/app/logs?${params.toString()}`);
+    const response = await fetchFn(`/api/zero/logs?${params.toString()}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch logs: ${response.statusText}`);
     }

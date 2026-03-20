@@ -597,3 +597,7 @@ export {
   type ZeroSecretsContract,
   type ZeroVariablesContract,
 } from "./zero-secrets";
+export {
+  zeroSessionsByIdContract,
+  type ZeroSessionsByIdContract,
+} from "./zero-sessions";

@@ -61,7 +61,7 @@ describe("completeZeroOnboarding$", () => {
           });
         },
       ),
-      http.put("*/api/orgs/default-agent", () => {
+      http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
@@ -109,7 +109,7 @@ describe("completeZeroOnboarding$", () => {
           connectors: [],
         });
       }),
-      http.put("*/api/orgs/default-agent", () => {
+      http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
@@ -151,7 +151,7 @@ describe("completeZeroOnboarding$", () => {
           connectors: [],
         });
       }),
-      http.put("*/api/orgs/default-agent", async ({ request }) => {
+      http.put("*/api/zero/default-agent", async ({ request }) => {
         defaultAgentBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ ok: true });
       }),
@@ -188,7 +188,7 @@ describe("completeZeroOnboarding$", () => {
           connectors: [],
         });
       }),
-      http.put("*/api/orgs/default-agent", () => {
+      http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
@@ -265,7 +265,7 @@ describe("completeZeroOnboarding$", () => {
           connectors: [],
         });
       }),
-      http.put("*/api/orgs/default-agent", () => {
+      http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
     );

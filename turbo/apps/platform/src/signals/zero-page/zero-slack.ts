@@ -42,7 +42,7 @@ const fetchSlackOrg$ = command(async ({ get, set }) => {
   }));
 
   const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/integrations/slack/org");
+  const response = await fetchFn("/api/zero/integrations/slack");
 
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as {
@@ -67,7 +67,7 @@ const fetchSlackOrg$ = command(async ({ get, set }) => {
 
 export const disconnectSlackOrg$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/integrations/slack/org", {
+  const response = await fetchFn("/api/zero/integrations/slack", {
     method: "DELETE",
   });
 
@@ -83,7 +83,7 @@ export const disconnectSlackOrg$ = command(async ({ get, set }) => {
 export const uninstallSlackOrg$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn(
-    "/api/integrations/slack/org?action=uninstall",
+    "/api/zero/integrations/slack?action=uninstall",
     { method: "DELETE" },
   );
 
@@ -115,7 +115,7 @@ export const pollSlackConnection$ = command(
       await delay(POLL_INTERVAL_MS, { signal });
 
       const fetchFn = get(fetch$);
-      const res = await fetchFn("/api/integrations/slack/org", { signal });
+      const res = await fetchFn("/api/zero/integrations/slack", { signal });
       if (!res.ok) {
         continue;
       }

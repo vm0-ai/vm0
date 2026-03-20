@@ -10,7 +10,7 @@ const context = testContext();
 describe("userMessage line break rendering", () => {
   it("should preserve newlines between words in user messages", async () => {
     server.use(
-      http.get("*/api/chat-threads/:id", () => {
+      http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-multiline",
           title: null,
@@ -27,7 +27,7 @@ describe("userMessage line break rendering", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/chat-threads", () => {
+      http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );
@@ -49,7 +49,7 @@ describe("userMessage line break rendering", () => {
 
   it("should not alter single-line user messages", async () => {
     server.use(
-      http.get("*/api/chat-threads/:id", () => {
+      http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-singleline",
           title: null,
@@ -66,7 +66,7 @@ describe("userMessage line break rendering", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/chat-threads", () => {
+      http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );
@@ -86,7 +86,7 @@ describe("userMessage line break rendering", () => {
 describe("provider incompatibility error", () => {
   it("should show friendly message for API-level provider incompatibility", async () => {
     server.use(
-      http.get("*/api/chat-threads/:id", () => {
+      http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-provider-error",
           title: null,
@@ -106,7 +106,7 @@ describe("provider incompatibility error", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/chat-threads", () => {
+      http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );
@@ -121,7 +121,7 @@ describe("provider incompatibility error", () => {
 
   it("should show friendly message for thinking block signature error", async () => {
     server.use(
-      http.get("*/api/chat-threads/:id", () => {
+      http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-signature-error",
           title: null,
@@ -140,7 +140,7 @@ describe("provider incompatibility error", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/chat-threads", () => {
+      http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );

@@ -107,12 +107,12 @@ const logDetailSchema = z.object({
 
 /**
  * Logs list contract
- * GET /api/app/logs
+ * GET /api/zero/logs
  */
 export const logsListContract = c.router({
   list: {
     method: "GET",
-    path: "/api/app/logs",
+    path: "/api/zero/logs",
     query: listQuerySchema.extend({
       search: z.string().optional(),
       agent: z.string().optional(),
@@ -130,12 +130,12 @@ export const logsListContract = c.router({
 
 /**
  * Logs by ID contract
- * GET /api/app/logs/:id
+ * GET /api/zero/logs/:id
  */
 export const logsByIdContract = c.router({
   getById: {
     method: "GET",
-    path: "/api/app/logs/:id",
+    path: "/api/zero/logs/:id",
     headers: authHeadersSchema,
     pathParams: z.object({
       id: z.string().uuid("Invalid log ID"),
