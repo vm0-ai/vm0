@@ -45,7 +45,7 @@ fn parse_args(args: &[String]) -> ParsedArgs {
                     i += 1;
                 }
             }
-            "--disallowed-tools" => {
+            "--disallowed-tools" | "--tools" => {
                 // Skip the flag; tool names fall through to remaining
                 // and prompt is extracted as last remaining arg
                 i += 1;
@@ -469,6 +469,16 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(1));
         let id2 = generate_session_id();
         assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn parse_args_tools_skipped() {
+        let args: Vec<String> = vec!["--tools", "Bash", "Read", "echo hello"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let result = parse_args(&args);
+        assert_eq!(result.prompt, "echo hello");
     }
 
     #[test]
