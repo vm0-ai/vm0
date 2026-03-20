@@ -56,6 +56,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Pricing]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
   },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@vm0.ai",
