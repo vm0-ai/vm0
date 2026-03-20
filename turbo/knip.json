@@ -94,6 +94,7 @@
     "**/drizzle.config.ts",
     "**/custom-eslint/**",
     "apps/platform/src/mocks/mock-log-detail-data.ts",
+    "apps/platform/src/views/zero-page/zero-mock-data.ts",
     "apps/platform/src/signals/location.ts",
     "apps/platform/src/signals/log.ts",
     "apps/platform/src/signals/page-signal.ts",

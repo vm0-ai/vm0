@@ -375,11 +375,8 @@ class FocusableTextarea extends Component<FocusableTextareaProps> {
   }
 
   override render() {
-    const {
-      focusRequest: _focusRequest,
-      onFocusHandled: _onFocusHandled,
-      ...rest
-    } = this.props;
+    const { focusRequest, onFocusHandled, ...rest } = this.props;
+    void [focusRequest, onFocusHandled]; // consumed in componentDidUpdate
     return (
       <textarea
         ref={(el) => {
