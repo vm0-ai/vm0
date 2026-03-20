@@ -15,7 +15,7 @@ import { logger } from "../../../../../src/lib/logger";
 const log = logger("slack-org:connect");
 
 /**
- * GET /api/slack/org/connect?w={workspaceId}&u={slackUserId}&c={channelId}
+ * GET /api/zero/slack/connect?w={workspaceId}&u={slackUserId}&c={channelId}
  *
  * Browser-based connect flow triggered from Slack.
  * Uses Clerk session cookie to identify the VM0 user,

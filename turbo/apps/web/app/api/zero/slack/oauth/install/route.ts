@@ -5,7 +5,7 @@ import { getSlackRedirectBaseUrl } from "../../../../../../src/lib/slack";
 /**
  * Org-aware Slack OAuth Install Endpoint
  *
- * GET /api/slack/org/oauth/install
+ * GET /api/zero/slack/oauth/install
  *
  * Redirects to Slack's OAuth authorization page.
  *
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const baseUrl = getSlackRedirectBaseUrl(request.url);
-  const redirectUri = `${baseUrl}/api/slack/org/oauth/callback`;
+  const redirectUri = `${baseUrl}/api/zero/slack/oauth/callback`;
 
   const orgId = url.searchParams.get("orgId");
   const vm0UserId = url.searchParams.get("vm0UserId");

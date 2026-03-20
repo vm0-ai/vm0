@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     // Build install URL for admins when no workspace is installed
     let installUrl: string | null = null;
     if (isAdmin && !installation && baseUrl) {
-      const url = new URL(`${baseUrl}/api/slack/org/oauth/install`);
+      const url = new URL(`${baseUrl}/api/zero/slack/oauth/install`);
       url.searchParams.set("orgId", org.orgId);
       url.searchParams.set("vm0UserId", userId);
       installUrl = url.toString();
@@ -108,7 +108,7 @@ export async function GET(request: Request) {
     // Uses the OAuth connect flow to identify the user's Slack account.
     let connectUrl: string | null = null;
     if (installation && baseUrl) {
-      const url = new URL(`${baseUrl}/api/slack/org/oauth/connect`);
+      const url = new URL(`${baseUrl}/api/zero/slack/oauth/connect`);
       url.searchParams.set("orgId", org.orgId);
       url.searchParams.set("vm0UserId", userId);
       connectUrl = url.toString();

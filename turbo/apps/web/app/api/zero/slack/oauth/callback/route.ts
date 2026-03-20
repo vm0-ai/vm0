@@ -50,7 +50,7 @@ function parseOAuthState(state: string | null): OAuthState {
 /**
  * Org-aware Slack OAuth Callback
  *
- * GET /api/slack/org/oauth/callback
+ * GET /api/zero/slack/oauth/callback
  *
  * Handles OAuth redirects from Slack for two flows:
  *
@@ -98,7 +98,7 @@ export async function GET(request: Request) {
   }
 
   const state = parseOAuthState(url.searchParams.get("state"));
-  const redirectUri = `${baseUrl}/api/slack/org/oauth/callback`;
+  const redirectUri = `${baseUrl}/api/zero/slack/oauth/callback`;
 
   // Connect flow uses a lightweight exchange that may not return bot tokens.
   // We use a separate helper that tolerates missing bot fields.

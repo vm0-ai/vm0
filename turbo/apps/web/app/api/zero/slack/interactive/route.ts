@@ -86,7 +86,7 @@ interface SlackInteractivePayload {
 }
 
 /**
- * POST /api/slack/org/interactive
+ * POST /api/zero/slack/interactive
  *
  * Org-aware interactive component handler.
  */

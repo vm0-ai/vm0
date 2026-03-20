@@ -3,10 +3,10 @@ import { GET } from "../route";
 import { createTestRequest } from "../../../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../../../src/env";
 
-describe("/api/slack/org/oauth/install", () => {
+describe("/api/zero/slack/oauth/install", () => {
   it("should redirect to Slack OAuth URL with correct parameters", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/install",
+      "http://localhost:3000/api/zero/slack/oauth/install",
     );
     const response = await GET(request);
 
@@ -22,13 +22,13 @@ describe("/api/slack/org/oauth/install", () => {
       "test-slack-client-id",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      "https://test.example.com/api/slack/org/oauth/callback",
+      "https://test.example.com/api/zero/slack/oauth/callback",
     );
   });
 
   it("should include all required bot scopes", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/install",
+      "http://localhost:3000/api/zero/slack/oauth/install",
     );
     const response = await GET(request);
 
@@ -49,7 +49,7 @@ describe("/api/slack/org/oauth/install", () => {
 
   it("should pass orgId and vm0UserId in state for platform flow", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/install?orgId=org_123&vm0UserId=user_456",
+      "http://localhost:3000/api/zero/slack/oauth/install?orgId=org_123&vm0UserId=user_456",
     );
     const response = await GET(request);
 
@@ -63,7 +63,7 @@ describe("/api/slack/org/oauth/install", () => {
 
   it("should not include state parameter for slack-initiated flow", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/install",
+      "http://localhost:3000/api/zero/slack/oauth/install",
     );
     const response = await GET(request);
 
@@ -78,14 +78,14 @@ describe("/api/slack/org/oauth/install", () => {
     reloadEnv();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/install",
+      "http://localhost:3000/api/zero/slack/oauth/install",
     );
     const response = await GET(request);
 
     const locationHeader = response.headers.get("Location");
     const redirectUrl = new URL(locationHeader!);
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      "https://tunnel.example.com/api/slack/org/oauth/callback",
+      "https://tunnel.example.com/api/zero/slack/oauth/callback",
     );
   });
 
@@ -94,7 +94,7 @@ describe("/api/slack/org/oauth/install", () => {
     reloadEnv();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/install",
+      "http://localhost:3000/api/zero/slack/oauth/install",
     );
     const response = await GET(request);
 

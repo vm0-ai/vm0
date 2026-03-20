@@ -175,7 +175,7 @@ function handleEventCallback(payload: SlackEventCallback) {
 }
 
 /**
- * POST /api/slack/org/events
+ * POST /api/zero/slack/events
  *
  * Org-aware Slack Events API endpoint.
  * Must respond within 3 seconds to avoid Slack retries.

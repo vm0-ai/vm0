@@ -8,7 +8,7 @@ import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org
 /**
  * Org-aware Slack OAuth Connect Endpoint
  *
- * GET /api/slack/org/oauth/connect?orgId=<orgId>&vm0UserId=<userId>
+ * GET /api/zero/slack/oauth/connect?orgId=<orgId>&vm0UserId=<userId>
  *
  * Redirects to Slack's OAuth authorization page so that a non-admin org member
  * can identify their Slack account.  The OAuth callback extracts the
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   }
 
   const baseUrl = getSlackRedirectBaseUrl(request.url);
-  const redirectUri = `${baseUrl}/api/slack/org/oauth/callback`;
+  const redirectUri = `${baseUrl}/api/zero/slack/oauth/callback`;
 
   const state = JSON.stringify({ orgId, vm0UserId, flow: "connect" });
 

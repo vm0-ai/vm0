@@ -39,14 +39,14 @@ function mockOAuthSuccess(overrides?: {
   return mockClient;
 }
 
-describe("/api/slack/org/oauth/callback", () => {
+describe("/api/zero/slack/oauth/callback", () => {
   beforeEach(() => {
     context.setupMocks();
   });
 
   it("should redirect to failed page when error parameter is present", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/callback?error=access_denied",
+      "http://localhost:3000/api/zero/slack/oauth/callback?error=access_denied",
     );
     const response = await GET(request);
 
@@ -59,7 +59,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
   it("should return 400 when code parameter is missing", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/callback",
+      "http://localhost:3000/api/zero/slack/oauth/callback",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -83,7 +83,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
     const request = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
     );
     const response = await GET(request);
 
@@ -133,7 +133,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const state = JSON.stringify({ orgId, vm0UserId: userId });
     const request = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
     );
     const response = await GET(request);
 
@@ -156,7 +156,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const state = JSON.stringify({ orgId, vm0UserId: userId });
     const request = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
     );
 
     // requireOrgMember throws ForbiddenError — let it propagate to framework
@@ -173,7 +173,7 @@ describe("/api/slack/org/oauth/callback", () => {
     });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/callback?code=valid-code",
+      "http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code",
     );
     const response = await GET(request);
 
@@ -211,7 +211,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
     const firstRequest = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
     );
     await GET(firstRequest);
 
@@ -225,7 +225,7 @@ describe("/api/slack/org/oauth/callback", () => {
     });
 
     const secondRequest = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=second-code`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=second-code`,
     );
     const response = await GET(secondRequest);
 
@@ -257,7 +257,7 @@ describe("/api/slack/org/oauth/callback", () => {
     } as never);
 
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/callback?code=expired-code",
+      "http://localhost:3000/api/zero/slack/oauth/callback?code=expired-code",
     );
     const response = await GET(request);
 
@@ -288,7 +288,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const stateA = JSON.stringify({ orgId: orgA, vm0UserId: orgAAdmin });
     const requestA = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=code-a&state=${encodeURIComponent(stateA)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=code-a&state=${encodeURIComponent(stateA)}`,
     );
     const responseA = await GET(requestA);
     expect(responseA.status).toBe(307);
@@ -311,7 +311,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const stateB = JSON.stringify({ orgId: orgB, vm0UserId: orgBAdmin });
     const requestB = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=code-b&state=${encodeURIComponent(stateB)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=code-b&state=${encodeURIComponent(stateB)}`,
     );
     const responseB = await GET(requestB);
 
@@ -362,7 +362,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
     const firstRequest = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=first&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=first&state=${encodeURIComponent(state)}`,
     );
     await GET(firstRequest);
 
@@ -374,7 +374,7 @@ describe("/api/slack/org/oauth/callback", () => {
     });
 
     const secondRequest = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=second&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=second&state=${encodeURIComponent(state)}`,
     );
     const response = await GET(secondRequest);
 
@@ -412,7 +412,7 @@ describe("/api/slack/org/oauth/callback", () => {
 
     const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
     const firstRequest = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
     );
     await GET(firstRequest);
 
@@ -423,7 +423,7 @@ describe("/api/slack/org/oauth/callback", () => {
     });
 
     const secondRequest = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/callback?code=second-code&state=${encodeURIComponent(state)}`,
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=second-code&state=${encodeURIComponent(state)}`,
     );
     const response = await GET(secondRequest);
 

@@ -213,7 +213,7 @@ async function handleSettings(
 }
 
 /**
- * POST /api/slack/org/commands
+ * POST /api/zero/slack/commands
  *
  * Org-aware slash commands handler.
  * Handles /vm0 connect, disconnect, settings, help.

@@ -12,7 +12,7 @@ import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
-describe("/api/slack/org/oauth/connect", () => {
+describe("/api/zero/slack/oauth/connect", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -24,7 +24,7 @@ describe("/api/slack/org/oauth/connect", () => {
     await createTestSlackOrgInstallation({ workspaceId, orgId });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/connect?orgId=${orgId}&vm0UserId=user_123`,
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_123`,
     );
     const response = await GET(request);
 
@@ -50,7 +50,7 @@ describe("/api/slack/org/oauth/connect", () => {
     await createTestSlackOrgInstallation({ workspaceId, orgId });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/connect?orgId=${orgId}&vm0UserId=user_456`,
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_456`,
     );
     const response = await GET(request);
 
@@ -67,7 +67,7 @@ describe("/api/slack/org/oauth/connect", () => {
     const orgId = uniqueId("org");
 
     const request = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/connect?orgId=${orgId}&vm0UserId=user_123`,
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_123`,
     );
     const response = await GET(request);
 
@@ -80,7 +80,7 @@ describe("/api/slack/org/oauth/connect", () => {
 
   it("should return 400 when orgId is missing", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/connect?vm0UserId=user_123",
+      "http://localhost:3000/api/zero/slack/oauth/connect?vm0UserId=user_123",
     );
     const response = await GET(request);
 
@@ -91,7 +91,7 @@ describe("/api/slack/org/oauth/connect", () => {
 
   it("should return 400 when vm0UserId is missing", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/connect?orgId=org_123",
+      "http://localhost:3000/api/zero/slack/oauth/connect?orgId=org_123",
     );
     const response = await GET(request);
 
@@ -105,7 +105,7 @@ describe("/api/slack/org/oauth/connect", () => {
     reloadEnv();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/slack/org/oauth/connect?orgId=org_123&vm0UserId=user_123",
+      "http://localhost:3000/api/zero/slack/oauth/connect?orgId=org_123&vm0UserId=user_123",
     );
     const response = await GET(request);
 
@@ -124,14 +124,14 @@ describe("/api/slack/org/oauth/connect", () => {
     await createTestSlackOrgInstallation({ workspaceId, orgId });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/slack/org/oauth/connect?orgId=${orgId}&vm0UserId=user_123`,
+      `http://localhost:3000/api/zero/slack/oauth/connect?orgId=${orgId}&vm0UserId=user_123`,
     );
     const response = await GET(request);
 
     const locationHeader = response.headers.get("Location");
     const redirectUrl = new URL(locationHeader!);
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      "https://tunnel.example.com/api/slack/org/oauth/callback",
+      "https://tunnel.example.com/api/zero/slack/oauth/callback",
     );
   });
 });
