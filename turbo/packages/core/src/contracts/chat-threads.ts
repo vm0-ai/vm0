@@ -8,6 +8,7 @@ const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   preview: z.string().nullable(),
+  agentComposeId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

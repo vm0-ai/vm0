@@ -1,21 +1,32 @@
 /* eslint-disable ccstate/no-use-ccstate-in-views */
 import { Component } from "react";
 import { useCCState, useCommand } from "ccstate-react/experimental";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { onRef } from "../../signals/utils.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconPlug,
   IconUser,
   IconUsers,
   IconCheck,
-  IconArrowLeft,
   IconArrowUpRight,
   IconChartLine,
-  IconCalendar,
+  IconPin,
 } from "@tabler/icons-react";
-import { Button, cn } from "@vm0/ui";
-import { ZERO_TEAM_JOBS } from "./zero-mock-data";
+import {
+  Button,
+  cn,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  pinnedAgentIds$,
+  updatePinnedAgentIds$,
+} from "../../signals/zero-page/zero-pinned-agents.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
 import chatFolderImg from "./assets/chat-folder.png";
@@ -729,7 +740,6 @@ function filterScenariosToShow(
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
   onClearScenario?: () => void;
-  onNavigateToSchedule?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (
     message: string,
@@ -744,8 +754,7 @@ interface ZeroChatPageProps {
 
 export function ZeroChatPage({
   initialScenarioId,
-  onClearScenario,
-  onNavigateToSchedule,
+  onClearScenario: _onClearScenario,
   onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,
@@ -763,13 +772,10 @@ export function ZeroChatPage({
   const setInput = useSet(input$);
   const conversationActive$ = useCCState(false);
   const conversationActive = useGet(conversationActive$);
-  const setConversationActive = useSet(conversationActive$);
   const streamedCount$ = useCCState(0);
   const streamedCount = useGet(streamedCount$);
   const conversationEndEl$ = useCCState<HTMLDivElement | null>(null);
   const setConversationEndEl = useSet(conversationEndEl$);
-  const subAgentListEl$ = useCCState<HTMLDivElement | null>(null);
-  const setSubAgentListEl = useSet(subAgentListEl$);
   const approveDone$ = useCCState(false);
   const approveDone = useGet(approveDone$);
   const setApproveDone = useSet(approveDone$);
@@ -785,27 +791,23 @@ export function ZeroChatPage({
   const commandAllowed$ = useCCState(false);
   const commandAllowed = useGet(commandAllowed$);
   const setCommandAllowed = useSet(commandAllowed$);
-  const showSubAgentList$ = useCCState(false);
-  const showSubAgentList = useGet(showSubAgentList$);
-  const taglineIndex$ = useCCState(INITIAL_TAGLINE_INDEX);
+  const taglineIndex$ = useCCState(Math.floor(Math.random() * 18));
   const taglineIndex = useGet(taglineIndex$);
   const tagline = getTagline(agentName, userName, taglineIndex);
 
-  // Toggle sub-agent list with auto-scroll when opening
-  const toggleSubAgentList$ = useCommand(({ get, set }) => {
-    const current = get(showSubAgentList$);
-    set(showSubAgentList$, !current);
-    if (!current) {
-      // Becoming visible — scroll into view after next paint
-      window.requestAnimationFrame(() => {
-        const el = get(subAgentListEl$);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth" });
-        }
-      });
+  // Pin pill — show when chatting with an unpinned subagent
+  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
+  const pinnedIds =
+    pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
+  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const showPinPill =
+    currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
+  const handlePin = () => {
+    if (currentChatAgentId) {
+      savePinnedIds([...pinnedIds, currentChatAgentId]);
     }
-  });
-  const toggleSubAgentList = useSet(toggleSubAgentList$);
+  };
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
     setInput("");
@@ -824,61 +826,45 @@ export function ZeroChatPage({
     conversationActive;
 
   if (showConversation && scenariosToShow.length > 0) {
-    const isScenarioFromSidebar = initialScenarioId !== undefined;
     return (
       <div className="flex flex-1 flex-col min-h-0 bg-transparent">
         <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 -ml-2"
-              onClick={() =>
-                isScenarioFromSidebar
-                  ? onClearScenario?.()
-                  : setConversationActive(false)
-              }
-              aria-label="Back to chat home"
-            >
-              <IconArrowLeft size={20} stroke={1.5} />
-            </Button>
-            <button
-              type="button"
-              aria-label="View agent profile"
-              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
-              onClick={onAvatarClick}
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-8 w-8 rounded-full object-cover object-top"
-              />
-            </button>
-            <span className="font-semibold text-foreground">{agentName}</span>
-          </div>
-          <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 text-muted-foreground hover:text-foreground",
-                showSubAgentList && "bg-muted/60 text-foreground",
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="View agent profile"
+                className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
+                onClick={onAvatarClick}
+              >
+                <img
+                  src={zeroAvatarSrc}
+                  alt=""
+                  role="presentation"
+                  className="h-8 w-8 rounded-full object-cover object-top"
+                />
+              </button>
+              {showPinPill && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handlePin}
+                        className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                        aria-label="Pin to sidebar"
+                      >
+                        <IconPin size={10} stroke={2} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Pin to sidebar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
-              onClick={() => toggleSubAgentList()}
-              aria-label={`${ZERO_TEAM_JOBS.length} sub-agents`}
-            >
-              <IconUsers size={18} stroke={1.5} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={onNavigateToSchedule}
-              aria-label={`${agentName} scheduled tasks`}
-            >
-              <IconCalendar size={18} stroke={1.5} />
-            </Button>
+            </div>
+            <span className="font-semibold text-foreground">{agentName}</span>
           </div>
         </header>
         <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">
@@ -909,97 +895,22 @@ export function ZeroChatPage({
                 />
               ),
             )}
-            {showSubAgentList && (
-              <div
-                ref={setSubAgentListEl}
-                className="grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
-              >
-                <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
-                  <img
-                    src={zeroAvatarSrc}
-                    alt=""
-                    role="presentation"
-                    className="h-9 w-9 rounded-full object-cover object-top"
-                  />
-                </div>
-                <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm overflow-hidden min-w-0 flex flex-col">
-                  <div className="px-4 pt-4 pb-2">
-                    <p className="text-sm text-foreground leading-relaxed">
-                      You have {ZERO_TEAM_JOBS.length} sub-agents with different
-                      expertise. Assign tasks as needed—I’ll route them and
-                      return the results.
-                    </p>
-                  </div>
-                  <div className="px-4 py-2.5 border-t border-border/50">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Sub-agents ({ZERO_TEAM_JOBS.length})
-                    </span>
-                  </div>
-                  <ul role="list">
-                    {ZERO_TEAM_JOBS.map((job) => (
-                      <li
-                        key={job.id}
-                        className="hover:bg-muted/20 transition-colors"
-                      >
-                        <div className="min-w-0 py-3 mx-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm text-muted-foreground">
-                              {job.agentName}
-                            </span>
-                            <span className="text-muted-foreground/60">·</span>
-                            <span className="text-sm font-medium text-foreground">
-                              {job.title}
-                            </span>
-                            <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-0.5 text-xs font-medium">
-                              {job.scope === "team" ? (
-                                <IconUsers
-                                  size={12}
-                                  stroke={1.5}
-                                  className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
-                                />
-                              ) : (
-                                <IconUser
-                                  size={12}
-                                  stroke={1.5}
-                                  className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
-                                />
-                              )}
-                              {job.scope === "team" ? "Team" : "Personal"}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                            {job.description}
-                          </p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="border-t border-border/50 px-4 py-3">
-                    <Link
-                      pathname="/:tab"
-                      options={{ pathParams: { tab: "team" } }}
-                      className="zero-btn-morandi inline-flex items-center w-fit rounded-lg h-8 px-3 text-sm font-medium border"
-                    >
-                      Manage in {agentName}&apos;s team
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={setConversationEndEl} />
           </div>
         </main>
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
           <div className="mx-auto max-w-[900px] grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3">
             <div className="w-9 shrink-0" />
-            <ZeroChatComposer
-              className="w-full min-w-0"
-              input={input}
-              onInputChange={setInput}
-              onSend={handleSend}
-              agentName={agentName}
-              onManageConnectors={() => onNavigateToMeet?.("connectors")}
-            />
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <ZeroChatComposer
+                className="w-full min-w-0"
+                input={input}
+                onInputChange={setInput}
+                onSend={handleSend}
+                agentName={agentName}
+                onManageConnectors={() => onNavigateToMeet?.("connectors")}
+              />
+            </div>
           </div>
         </footer>
       </div>
@@ -1017,19 +928,40 @@ export function ZeroChatPage({
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
-            <button
-              type="button"
-              aria-label="View agent profile"
-              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
-              onClick={onAvatarClick}
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-              />
-            </button>
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="View agent profile"
+                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 cursor-pointer"
+                onClick={onAvatarClick}
+              >
+                <img
+                  src={zeroAvatarSrc}
+                  alt=""
+                  role="presentation"
+                  className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                />
+              </button>
+              {showPinPill && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handlePin}
+                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                        aria-label="Pin to sidebar"
+                      >
+                        <IconPin size={12} stroke={2} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Pin to sidebar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
                 <TypewriterText text={tagline} />
@@ -1038,14 +970,16 @@ export function ZeroChatPage({
           </div>
 
           {/* Composer */}
-          <ZeroChatComposer
-            className="w-full"
-            input={input}
-            onInputChange={setInput}
-            onSend={handleSend}
-            agentName={agentName}
-            onManageConnectors={() => onNavigateToMeet?.("connectors")}
-          />
+          <div className="flex flex-col gap-1.5 w-full">
+            <ZeroChatComposer
+              className="w-full"
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSend}
+              agentName={agentName}
+              onManageConnectors={() => onNavigateToMeet?.("connectors")}
+            />
+          </div>
 
           {/* Suggested prompts */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">

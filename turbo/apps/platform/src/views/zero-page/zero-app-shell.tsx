@@ -32,7 +32,6 @@ import {
   zeroTalkAgentResolved$,
   setZeroActiveId$,
   navigateToZeroSession$,
-  navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { updatePathname$, navigateInReact$ } from "../../signals/route.ts";
 import {
@@ -225,15 +224,6 @@ function useContentNavigation(resolvedAgentName: string | null) {
   const navigate = useSet(updatePathname$);
   const navigateInReact = useSet(navigateInReact$);
 
-  const handleNavigateToSchedule = () => {
-    if (resolvedAgentName) {
-      navigateInReact("/team/:name", {
-        pathParams: { name: resolvedAgentName },
-        searchParams: new URLSearchParams({ tab: "schedule" }),
-      });
-    }
-  };
-
   const handleNavigateToMeet = (tab?: string) => {
     if (resolvedAgentName) {
       const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
@@ -255,7 +245,6 @@ function useContentNavigation(resolvedAgentName: string | null) {
   return {
     navigate,
     navigateInReact,
-    handleNavigateToSchedule,
     handleNavigateToMeet,
     handleChatAvatarClick,
   };
@@ -363,12 +352,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
 
   const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
-  const {
-    navigateInReact,
-    handleNavigateToSchedule,
-    handleNavigateToMeet,
-    handleChatAvatarClick,
-  } = useContentNavigation(resolvedAgentName);
+  const { navigateInReact, handleNavigateToMeet, handleChatAvatarClick } =
+    useContentNavigation(resolvedAgentName);
 
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
     set(navigateToZeroSession$, sessionId);
@@ -396,11 +381,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     },
   );
   const handleSendFromDemo = useSet(handleSendFromDemo$);
-
-  const handleBackFromSession$ = useCommand(({ set }) => {
-    set(navigateFromZeroSession$);
-  });
-  const handleBackFromSession = useSet(handleBackFromSession$);
 
   const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
     set(setZeroActiveId$, id);
@@ -475,9 +455,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
             selectedAgentName={initialJobAgent}
-            onNavigateToSchedule={handleNavigateToSchedule}
             onNavigateToMeet={handleNavigateToMeet}
-            onBackFromSession={handleBackFromSession}
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}
