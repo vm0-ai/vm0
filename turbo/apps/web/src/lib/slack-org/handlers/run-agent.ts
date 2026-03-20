@@ -1,5 +1,9 @@
 import { startRun, isRunDispatchError } from "../../run";
-import { buildIntegrationContext } from "../../integration-context";
+import {
+  buildIntegrationContext,
+  buildScheduleGuidance,
+  DISALLOWED_CRON_TOOLS,
+} from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { logger } from "../../logger";
 
@@ -69,6 +73,7 @@ export async function runAgentForSlackOrg(
       buildIntegrationContext("Slack", { botUserId }),
       threadContext,
       userContext,
+      buildScheduleGuidance(),
     ].filter(Boolean);
     const appendSystemPrompt =
       contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
@@ -82,6 +87,7 @@ export async function runAgentForSlackOrg(
       composeId,
       prompt,
       appendSystemPrompt,
+      disallowedTools: [...DISALLOWED_CRON_TOOLS],
       sessionId,
       triggerSource: "slack",
       callbacks: [
