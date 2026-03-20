@@ -10,7 +10,12 @@ export default [
     ...pluginReact.configs.flat.recommended,
     settings: { react: { version: "detect" } },
   },
-  pluginReactHooks.configs["recommended-latest"],
+  {
+    plugins: {
+      "react-hooks": pluginReactHooks,
+    },
+    rules: pluginReactHooks.configs["recommended-latest"].rules,
+  },
   {
     plugins: {
       ccstate: ccstatePlugin,
