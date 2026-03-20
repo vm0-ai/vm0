@@ -134,6 +134,12 @@ STRIPE_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_OAUTH_CLIENT_SECRET
 # Optional: Stripe Billing (Vercel AI Gateway metering)
 STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY
 
+# Optional: Stripe Billing (subscription + credits)
+STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
+ZERO_PRO_PLAN_PRICE_ID=op://Development/stripe/ZERO_PRO_PLAN_PRICE_ID
+ZERO_MAX_PLAN_PRICE_ID=op://Development/stripe/ZERO_MAX_PLAN_PRICE_ID
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/ngrok/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io

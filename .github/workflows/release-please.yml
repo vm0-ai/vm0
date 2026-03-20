@@ -310,6 +310,10 @@ jobs:
             POSTHOG_OAUTH_CLIENT_SECRET=${{ secrets.POSTHOG_OAUTH_CLIENT_SECRET }}
             STRIPE_OAUTH_CLIENT_ID=${{ vars.STRIPE_OAUTH_CLIENT_ID }}
             STRIPE_OAUTH_CLIENT_SECRET=${{ secrets.STRIPE_OAUTH_CLIENT_SECRET }}
+            STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+            STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+            ZERO_PRO_PLAN_PRICE_ID=${{ secrets.ZERO_PRO_PLAN_PRICE_ID }}
+            ZERO_MAX_PLAN_PRICE_ID=${{ secrets.ZERO_MAX_PLAN_PRICE_ID }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             APP_URL=https://app.vm0.ai
