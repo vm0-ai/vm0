@@ -71,6 +71,7 @@ export async function enqueueRun(
         continuedFromSessionId: params.sessionId ?? null,
         scheduleId: params.scheduleId ?? null,
         modelProvider: params.modelProvider ?? null,
+        triggerSource: params.triggerSource ?? "cli",
         lastHeartbeatAt: new Date(),
       })
       .returning();

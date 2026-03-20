@@ -71,6 +71,22 @@ describe("run-queue-service", () => {
       expect(queueEntry!.expiresAt).toBeInstanceOf(Date);
     });
 
+    it("should persist triggerSource on the queued run record", async () => {
+      const result = await enqueueRun(
+        baseParams({ prompt: "Web run", triggerSource: "web" }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.triggerSource).toBe("web");
+    });
+
+    it("should default triggerSource to cli when not provided", async () => {
+      const result = await enqueueRun(baseParams({ prompt: "No source" }));
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run!.triggerSource).toBe("cli");
+    });
+
     it("should store encrypted params that can be decrypted", async () => {
       const secrets = { API_KEY: "sk-secret-123" };
       const result = await enqueueRun(
