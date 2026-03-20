@@ -41,6 +41,7 @@ import {
   zeroChatThreadId$,
   switchZeroSession$,
   startNewZeroSession$,
+  createNewChatAndNavigate$,
   sendZeroChatMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 
@@ -352,7 +353,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
 
   const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
-  const { navigateInReact, handleNavigateToMeet, handleChatAvatarClick } =
+  const { handleNavigateToMeet, handleChatAvatarClick } =
     useContentNavigation(resolvedAgentName);
 
   const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
@@ -360,17 +361,10 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   });
   const handleRecentSelect = useSet(handleRecentSelect$);
 
+  const createNewChatAndNavigate = useSet(createNewChatAndNavigate$);
+
   const handleNewChat = (agent: { id: string; name: string } | null) => {
-    startNewSession();
-    // navigateInReact triggers loadRoute$ → setupZeroPage$ → resolveAndSwitchAgent
-    // which sets the agent and fetches the session list.
-    if (agent) {
-      navigateInReact("/talk/:name", {
-        pathParams: { name: agent.name },
-      });
-    } else {
-      navigateInReact("/");
-    }
+    detach(createNewChatAndNavigate(agent?.id ?? null), Reason.DomCallback);
   };
 
   const handleSendFromDemo$ = useCommand(
