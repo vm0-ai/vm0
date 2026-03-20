@@ -1,4 +1,8 @@
-import type { ChangeEvent } from "react";
+import {
+  Component,
+  type ChangeEvent,
+  type TextareaHTMLAttributes,
+} from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
@@ -32,6 +36,8 @@ import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
+  focusChatInputRequest$,
+  clearFocusChatInputRequest$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
@@ -349,6 +355,43 @@ function ConnectorsPopoverButton({
 }
 
 // ---------------------------------------------------------------------------
+// Focusable textarea (class component for focus-on-request without hooks)
+// ---------------------------------------------------------------------------
+
+interface FocusableTextareaProps
+  extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  focusRequest: boolean;
+  onFocusHandled: () => void;
+}
+
+class FocusableTextarea extends Component<FocusableTextareaProps> {
+  private textareaRef: HTMLTextAreaElement | null = null;
+
+  override componentDidUpdate(prevProps: FocusableTextareaProps): void {
+    if (this.props.focusRequest && !prevProps.focusRequest) {
+      this.textareaRef?.focus();
+      this.props.onFocusHandled();
+    }
+  }
+
+  override render() {
+    const {
+      focusRequest: _focusRequest,
+      onFocusHandled: _onFocusHandled,
+      ...rest
+    } = this.props;
+    return (
+      <textarea
+        ref={(el) => {
+          this.textareaRef = el;
+        }}
+        {...rest}
+      />
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
 
@@ -455,6 +498,9 @@ export function ZeroChatComposer({
     onCompositionEnd,
   } = useSendKeyHandler(handleSend);
 
+  const focusRequest = useGet(focusChatInputRequest$);
+  const clearFocusRequest = useSet(clearFocusChatInputRequest$);
+
   const handleFileSelect = () => {
     fileInputEl?.click();
   };
@@ -498,7 +544,9 @@ export function ZeroChatComposer({
                 onRemove={removeAttachment}
               />
             )}
-            <textarea
+            <FocusableTextarea
+              focusRequest={focusRequest}
+              onFocusHandled={clearFocusRequest}
               className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
               rows={3}
               placeholder="Ask me to automate workflows, manage tasks..."
