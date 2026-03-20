@@ -77,6 +77,7 @@ import { POST as enableScheduleRoute } from "../../app/api/agent/schedules/[name
 import { POST as disableScheduleRoute } from "../../app/api/agent/schedules/[name]/disable/route";
 import { GET as getScheduleRunsRoute } from "../../app/api/agent/schedules/[name]/runs/route";
 import type { ScheduleResponse } from "../lib/schedule/schedule-service";
+import { grantOrgCredits } from "../lib/org/org-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
 import { PUT as setSecretRoute } from "../../app/api/secrets/route";
@@ -3741,7 +3742,6 @@ export async function grantCreditsToOrg(
   orgId: string,
   amount: number,
 ): Promise<void> {
-  const { grantOrgCredits } = await import("../lib/org/org-service");
   await globalThis.services.db.transaction(async (tx) => {
     await grantOrgCredits(tx, orgId, amount);
   });
