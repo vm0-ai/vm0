@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { KeyboardEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useCCState } from "ccstate-react/experimental";

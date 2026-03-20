@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";

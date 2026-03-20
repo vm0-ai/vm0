@@ -26,6 +26,7 @@ export default [
       "ccstate/test-context-in-hooks": "error",
       "ccstate/setup-page-render": "error",
       "ccstate/no-side-effect-in-render": "error",
+      "ccstate/no-use-ccstate-in-views": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)

@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { ClipboardEvent, DragEvent } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
