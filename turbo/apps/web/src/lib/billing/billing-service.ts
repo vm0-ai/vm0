@@ -1,4 +1,3 @@
-import type Stripe from "stripe";
 import { eq } from "drizzle-orm";
 import type { OrgTier } from "@vm0/core";
 import { getStripe } from "../stripe";
@@ -8,6 +7,41 @@ import { grantOrgCredits } from "../org/org-service";
 import { logger } from "../logger";
 
 const log = logger("billing");
+
+// ---------------------------------------------------------------------------
+// Narrow input types — only the fields actually used by each handler.
+// Accepts both string IDs and expanded Stripe objects (which have `.id`).
+// ---------------------------------------------------------------------------
+
+/** Fields read by {@link handleCheckoutCompleted}. */
+interface CheckoutSessionInput {
+  id: string;
+  subscription: string | { id: string } | null;
+  customer: string | { id: string } | null;
+}
+
+/** Fields read by {@link handleInvoicePaid}. */
+interface InvoiceInput {
+  id: string;
+  customer: string | { id: string } | null;
+  parent: {
+    subscription_details: {
+      subscription: string | { id: string };
+    } | null;
+  } | null;
+}
+
+/** Fields read by {@link handleSubscriptionUpdated}. */
+interface SubscriptionInput {
+  id: string;
+  status: string;
+  items: { data: Array<{ price: { id: string } }> };
+}
+
+/** Fields read by {@link handleSubscriptionDeleted}. */
+interface SubscriptionDeletedInput {
+  id: string;
+}
 
 const TIER_MONTHLY_CREDITS: Record<OrgTier, number> = {
   free: 0,
@@ -95,7 +129,7 @@ export async function createCheckoutSession(
  * Does NOT grant credits (single code path via invoice.paid).
  */
 export async function handleCheckoutCompleted(
-  session: Stripe.Checkout.Session,
+  session: CheckoutSessionInput,
 ): Promise<void> {
   const subscriptionId =
     typeof session.subscription === "string"
@@ -182,9 +216,7 @@ export async function handleCheckoutCompleted(
  * Handles both initial subscription and renewals.
  * Idempotent: checks last_processed_invoice_id.
  */
-export async function handleInvoicePaid(
-  invoice: Stripe.Invoice,
-): Promise<void> {
+export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
   // In Stripe v2025 API, subscription is under parent.subscription_details
   const subDetails = invoice.parent?.subscription_details;
   const subscriptionId = subDetails
@@ -284,7 +316,7 @@ export async function handleInvoicePaid(
  * Handle customer.subscription.updated — sync status, period end, tier.
  */
 export async function handleSubscriptionUpdated(
-  subscription: Stripe.Subscription,
+  subscription: SubscriptionInput,
 ): Promise<void> {
   const db = globalThis.services.db;
 
@@ -316,7 +348,7 @@ export async function handleSubscriptionUpdated(
  * Handle customer.subscription.deleted — downgrade to free.
  */
 export async function handleSubscriptionDeleted(
-  subscription: Stripe.Subscription,
+  subscription: SubscriptionDeletedInput,
 ): Promise<void> {
   const db = globalThis.services.db;
 

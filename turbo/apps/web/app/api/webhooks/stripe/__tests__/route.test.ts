@@ -3,26 +3,33 @@ import {
   testContext,
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
+import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
 
 // Mock stripe module (external dependency)
-const mockConstructEvent = vi.fn();
-const mockSubscriptionsRetrieve = vi.fn();
-const mockInvoicesRetrieve = vi.fn();
+const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
+  subscriptionsRetrieve: vi.fn(),
+  invoicesRetrieve: vi.fn(),
+  customersCreate: vi.fn(),
+  checkoutSessionsCreate: vi.fn(),
+  billingPortalSessionsCreate: vi.fn(),
+  constructEvent: vi.fn(),
+}));
 
-vi.mock("stripe", () => {
-  function MockStripe() {
+vi.mock("stripe", () => ({
+  default: function MockStripe() {
     return {
-      subscriptions: { retrieve: mockSubscriptionsRetrieve },
-      invoices: { retrieve: mockInvoicesRetrieve },
-      customers: { create: vi.fn() },
-      checkout: { sessions: { create: vi.fn() } },
-      billingPortal: { sessions: { create: vi.fn() } },
-      webhooks: { constructEvent: mockConstructEvent },
+      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      invoices: { retrieve: stripeMocks.invoicesRetrieve },
+      customers: { create: stripeMocks.customersCreate },
+      checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
+      billingPortal: {
+        sessions: { create: stripeMocks.billingPortalSessionsCreate },
+      },
+      webhooks: { constructEvent: stripeMocks.constructEvent },
     };
-  }
-  return { default: MockStripe };
-});
+  },
+}));
 
 // Import route handler AFTER mocks are set up
 import { POST } from "../route";
@@ -61,9 +68,9 @@ describe("POST /api/webhooks/stripe", () => {
     vi.stubEnv("STRIPE_PRICE_ID_PRO", TEST_PRICE_PRO);
     reloadEnv();
 
-    mockConstructEvent.mockReset();
-    mockSubscriptionsRetrieve.mockReset();
-    mockInvoicesRetrieve.mockReset();
+    stripeMocks.constructEvent.mockReset();
+    stripeMocks.subscriptionsRetrieve.mockReset();
+    stripeMocks.invoicesRetrieve.mockReset();
   });
 
   it("returns 503 when STRIPE_WEBHOOK_SECRET is not configured", async () => {
@@ -90,7 +97,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   it("returns 401 when signature verification fails", async () => {
-    mockConstructEvent.mockImplementation(() => {
+    stripeMocks.constructEvent.mockImplementation(() => {
       throw new Error("Invalid signature");
     });
 
@@ -108,7 +115,7 @@ describe("POST /api/webhooks/stripe", () => {
     const cusId = uniqueId("cus");
     const subId = uniqueId("sub");
 
-    mockConstructEvent.mockReturnValue({
+    stripeMocks.constructEvent.mockReturnValue({
       id: uniqueId("evt"),
       type: "checkout.session.completed",
       data: {
@@ -120,14 +127,14 @@ describe("POST /api/webhooks/stripe", () => {
       },
     });
 
-    mockSubscriptionsRetrieve.mockResolvedValue({
+    stripeMocks.subscriptionsRetrieve.mockResolvedValue({
       id: subId,
       status: "active",
       items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
       latest_invoice: uniqueId("inv"),
     });
 
-    mockInvoicesRetrieve.mockResolvedValue({
+    stripeMocks.invoicesRetrieve.mockResolvedValue({
       id: uniqueId("inv"),
       period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
     });
@@ -142,7 +149,7 @@ describe("POST /api/webhooks/stripe", () => {
   });
 
   it("returns 200 for unhandled event types without processing", async () => {
-    mockConstructEvent.mockReturnValue({
+    stripeMocks.constructEvent.mockReturnValue({
       id: uniqueId("evt"),
       type: "payment_intent.created",
       data: { object: {} },
@@ -159,7 +166,7 @@ describe("POST /api/webhooks/stripe", () => {
   it("passes correct arguments to constructEvent", async () => {
     const body = JSON.stringify({ type: "checkout.session.completed" });
 
-    mockConstructEvent.mockReturnValue({
+    stripeMocks.constructEvent.mockReturnValue({
       id: uniqueId("evt"),
       type: "checkout.session.completed",
       data: {
@@ -174,7 +181,7 @@ describe("POST /api/webhooks/stripe", () => {
     const request = createStripeWebhookRequest(body);
     await POST(request);
 
-    expect(mockConstructEvent).toHaveBeenCalledWith(
+    expect(stripeMocks.constructEvent).toHaveBeenCalledWith(
       body,
       "t=123,v1=abc",
       TEST_WEBHOOK_SECRET,

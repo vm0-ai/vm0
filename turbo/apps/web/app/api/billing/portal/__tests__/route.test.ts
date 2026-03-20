@@ -5,27 +5,37 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
 
 // Mock stripe module (external dependency)
-const mockBillingPortalSessionsCreate = vi.fn();
+const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
+  subscriptionsRetrieve: vi.fn(),
+  invoicesRetrieve: vi.fn(),
+  customersCreate: vi.fn(),
+  checkoutSessionsCreate: vi.fn(),
+  billingPortalSessionsCreate: vi.fn(),
+  constructEvent: vi.fn(),
+}));
 
-vi.mock("stripe", () => {
-  function MockStripe() {
+vi.mock("stripe", () => ({
+  default: function MockStripe() {
     return {
-      subscriptions: { retrieve: vi.fn() },
-      invoices: { retrieve: vi.fn() },
-      customers: { create: vi.fn() },
-      checkout: { sessions: { create: vi.fn() } },
-      billingPortal: { sessions: { create: mockBillingPortalSessionsCreate } },
-      webhooks: { constructEvent: vi.fn() },
+      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      invoices: { retrieve: stripeMocks.invoicesRetrieve },
+      customers: { create: stripeMocks.customersCreate },
+      checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
+      billingPortal: {
+        sessions: { create: stripeMocks.billingPortalSessionsCreate },
+      },
+      webhooks: { constructEvent: stripeMocks.constructEvent },
     };
-  }
-  return { default: MockStripe };
-});
+  },
+}));
 
 import { POST } from "../route";
 
@@ -41,7 +51,7 @@ describe("POST /api/billing/portal", () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     reloadEnv();
 
-    mockBillingPortalSessionsCreate.mockReset();
+    stripeMocks.billingPortalSessionsCreate.mockReset();
   });
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
@@ -98,10 +108,10 @@ describe("POST /api/billing/portal", () => {
   it("returns portal URL on success", async () => {
     // Set up org with a Stripe customer
     await updateOrgStripeFields(user.orgId, {
-      stripeCustomerId: "cus_portal_test",
+      stripeCustomerId: uniqueId("cus-portal"),
     });
 
-    mockBillingPortalSessionsCreate.mockResolvedValue({
+    stripeMocks.billingPortalSessionsCreate.mockResolvedValue({
       url: "https://billing.stripe.com/session/test",
     });
 

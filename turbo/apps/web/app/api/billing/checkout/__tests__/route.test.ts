@@ -1,26 +1,37 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
 
 // Mock stripe module (external dependency)
-const mockCheckoutSessionsCreate = vi.fn();
-const mockCustomersCreate = vi.fn();
+const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
+  subscriptionsRetrieve: vi.fn(),
+  invoicesRetrieve: vi.fn(),
+  customersCreate: vi.fn(),
+  checkoutSessionsCreate: vi.fn(),
+  billingPortalSessionsCreate: vi.fn(),
+  constructEvent: vi.fn(),
+}));
 
-vi.mock("stripe", () => {
-  function MockStripe() {
+vi.mock("stripe", () => ({
+  default: function MockStripe() {
     return {
-      subscriptions: { retrieve: vi.fn() },
-      invoices: { retrieve: vi.fn() },
-      customers: { create: mockCustomersCreate },
-      checkout: { sessions: { create: mockCheckoutSessionsCreate } },
-      billingPortal: { sessions: { create: vi.fn() } },
-      webhooks: { constructEvent: vi.fn() },
+      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      invoices: { retrieve: stripeMocks.invoicesRetrieve },
+      customers: { create: stripeMocks.customersCreate },
+      checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
+      billingPortal: {
+        sessions: { create: stripeMocks.billingPortalSessionsCreate },
+      },
+      webhooks: { constructEvent: stripeMocks.constructEvent },
     };
-  }
-  return { default: MockStripe };
-});
+  },
+}));
 
 import { POST } from "../route";
 
@@ -39,8 +50,8 @@ describe("POST /api/billing/checkout", () => {
     vi.stubEnv("STRIPE_PRICE_ID_MAX", TEST_PRICE_MAX);
     reloadEnv();
 
-    mockCheckoutSessionsCreate.mockReset();
-    mockCustomersCreate.mockReset();
+    stripeMocks.checkoutSessionsCreate.mockReset();
+    stripeMocks.customersCreate.mockReset();
   });
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
@@ -95,8 +106,10 @@ describe("POST /api/billing/checkout", () => {
   });
 
   it("returns checkout URL on success", async () => {
-    mockCustomersCreate.mockResolvedValue({ id: "cus_test_123" });
-    mockCheckoutSessionsCreate.mockResolvedValue({
+    stripeMocks.customersCreate.mockResolvedValue({
+      id: uniqueId("cus-checkout"),
+    });
+    stripeMocks.checkoutSessionsCreate.mockResolvedValue({
       url: "https://checkout.stripe.com/session/test",
     });
 

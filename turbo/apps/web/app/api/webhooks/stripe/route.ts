@@ -66,16 +66,23 @@ export async function POST(request: Request) {
 
   // Handlers run before the response so that failures return a non-200 status,
   // allowing Stripe to retry on transient errors (e.g. database outages).
-  if (event.type === "checkout.session.completed") {
-    await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
-  } else if (event.type === "invoice.paid") {
-    await handleInvoicePaid(event.data.object as Stripe.Invoice);
-  } else if (event.type === "customer.subscription.updated") {
-    await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
-  } else if (event.type === "customer.subscription.deleted") {
-    await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
-  } else {
-    log.debug("ignoring unhandled Stripe event", { type: event.type });
+  // Stripe.Event is a discriminated union — narrowing on `type` gives the
+  // correct `data.object` type without explicit casts.
+  switch (event.type) {
+    case "checkout.session.completed":
+      await handleCheckoutCompleted(event.data.object);
+      break;
+    case "invoice.paid":
+      await handleInvoicePaid(event.data.object);
+      break;
+    case "customer.subscription.updated":
+      await handleSubscriptionUpdated(event.data.object);
+      break;
+    case "customer.subscription.deleted":
+      await handleSubscriptionDeleted(event.data.object);
+      break;
+    default:
+      log.debug("ignoring unhandled Stripe event", { type: event.type });
   }
 
   return new Response("OK", { status: 200 });

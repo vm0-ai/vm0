@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type Stripe from "stripe";
 import {
   testContext,
   uniqueId,
@@ -12,6 +11,7 @@ import {
   getOrgBillingFields,
   grantCreditsToOrg,
 } from "../../../__tests__/api-test-helpers";
+import type { StripeMockFns } from "../../../__tests__/stripe-mock";
 import { reloadEnv } from "../../../env";
 import {
   handleCheckoutCompleted,
@@ -23,23 +23,29 @@ import {
 } from "../billing-service";
 
 // Mock stripe module (external dependency)
-const mockSubscriptionsRetrieve = vi.fn();
-const mockInvoicesRetrieve = vi.fn();
+const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
+  subscriptionsRetrieve: vi.fn(),
+  invoicesRetrieve: vi.fn(),
+  customersCreate: vi.fn(),
+  checkoutSessionsCreate: vi.fn(),
+  billingPortalSessionsCreate: vi.fn(),
+  constructEvent: vi.fn(),
+}));
 
-vi.mock("stripe", () => {
-  // Use a constructor function so `new Stripe(key)` works
-  function MockStripe() {
+vi.mock("stripe", () => ({
+  default: function MockStripe() {
     return {
-      subscriptions: { retrieve: mockSubscriptionsRetrieve },
-      invoices: { retrieve: mockInvoicesRetrieve },
-      customers: { create: vi.fn() },
-      checkout: { sessions: { create: vi.fn() } },
-      billingPortal: { sessions: { create: vi.fn() } },
-      webhooks: { constructEvent: vi.fn() },
+      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      invoices: { retrieve: stripeMocks.invoicesRetrieve },
+      customers: { create: stripeMocks.customersCreate },
+      checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
+      billingPortal: {
+        sessions: { create: stripeMocks.billingPortalSessionsCreate },
+      },
+      webhooks: { constructEvent: stripeMocks.constructEvent },
     };
-  }
-  return { default: MockStripe };
-});
+  },
+}));
 
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_MAX = "price_test_max";
@@ -60,8 +66,8 @@ describe("billing-service", () => {
     reloadEnv();
 
     // Reset mocks
-    mockSubscriptionsRetrieve.mockReset();
-    mockInvoicesRetrieve.mockReset();
+    stripeMocks.subscriptionsRetrieve.mockReset();
+    stripeMocks.invoicesRetrieve.mockReset();
   });
 
   describe("tierFromPriceId", () => {
@@ -110,14 +116,14 @@ describe("billing-service", () => {
         stripeCustomerId: cusId,
       });
 
-      mockSubscriptionsRetrieve.mockResolvedValue({
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
         id: subId,
         status: "active",
         items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
         latest_invoice: invId,
       });
 
-      mockInvoicesRetrieve.mockResolvedValue({
+      stripeMocks.invoicesRetrieve.mockResolvedValue({
         id: invId,
         period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
       });
@@ -126,7 +132,7 @@ describe("billing-service", () => {
         id: uniqueId("cs"),
         subscription: subId,
         customer: cusId,
-      } as unknown as Stripe.Checkout.Session;
+      };
 
       await handleCheckoutCompleted(session);
 
@@ -151,9 +157,9 @@ describe("billing-service", () => {
         id: uniqueId("cs"),
         subscription: subId,
         customer: cusId,
-      } as unknown as Stripe.Checkout.Session;
+      };
 
-      mockSubscriptionsRetrieve.mockResolvedValue({
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
         id: subId,
         status: "active",
         items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
@@ -178,7 +184,7 @@ describe("billing-service", () => {
         stripeSubscriptionId: subId,
       });
 
-      mockSubscriptionsRetrieve.mockResolvedValue({
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
         id: subId,
         items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
       });
@@ -191,7 +197,7 @@ describe("billing-service", () => {
             subscription: subId,
           },
         },
-      } as unknown as Stripe.Invoice;
+      };
 
       const creditsBefore = await getOrgCredits(user.orgId);
       await handleInvoicePaid(invoice);
@@ -213,7 +219,7 @@ describe("billing-service", () => {
         stripeSubscriptionId: subId,
       });
 
-      mockSubscriptionsRetrieve.mockResolvedValue({
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
         id: subId,
         items: { data: [{ price: { id: TEST_PRICE_MAX } }] },
       });
@@ -226,7 +232,7 @@ describe("billing-service", () => {
             subscription: subId,
           },
         },
-      } as unknown as Stripe.Invoice;
+      };
 
       const creditsBefore = await getOrgCredits(user.orgId);
       await handleInvoicePaid(invoice);
@@ -247,7 +253,7 @@ describe("billing-service", () => {
         stripeSubscriptionId: subId,
       });
 
-      mockSubscriptionsRetrieve.mockResolvedValue({
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
         id: subId,
         items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
       });
@@ -260,7 +266,7 @@ describe("billing-service", () => {
             subscription: subId,
           },
         },
-      } as unknown as Stripe.Invoice;
+      };
 
       const creditsBefore = await getOrgCredits(user.orgId);
       await handleInvoicePaid(invoice);
@@ -288,7 +294,7 @@ describe("billing-service", () => {
             subscription: subId,
           },
         },
-      } as unknown as Stripe.Invoice;
+      };
 
       const creditsBefore = await getOrgCredits(user.orgId);
       await handleInvoicePaid(invoice);
@@ -302,7 +308,7 @@ describe("billing-service", () => {
         id: uniqueId("inv-nosub"),
         customer: uniqueId("cus-nosub"),
         parent: null,
-      } as unknown as Stripe.Invoice;
+      };
 
       await handleInvoicePaid(invoice);
     });
@@ -324,7 +330,7 @@ describe("billing-service", () => {
         id: subId,
         status: "past_due",
         items: { data: [{ price: { id: TEST_PRICE_MAX } }] },
-      } as unknown as Stripe.Subscription;
+      };
 
       await handleSubscriptionUpdated(subscription);
 
@@ -348,8 +354,7 @@ describe("billing-service", () => {
 
       const subscription = {
         id: subId,
-        status: "canceled",
-      } as unknown as Stripe.Subscription;
+      };
 
       await handleSubscriptionDeleted(subscription);
 

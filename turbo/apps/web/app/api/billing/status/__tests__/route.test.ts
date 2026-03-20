@@ -2,20 +2,32 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 
-vi.mock("stripe", () => {
-  function MockStripe() {
+// Mock stripe module (external dependency)
+const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
+  subscriptionsRetrieve: vi.fn(),
+  invoicesRetrieve: vi.fn(),
+  customersCreate: vi.fn(),
+  checkoutSessionsCreate: vi.fn(),
+  billingPortalSessionsCreate: vi.fn(),
+  constructEvent: vi.fn(),
+}));
+
+vi.mock("stripe", () => ({
+  default: function MockStripe() {
     return {
-      subscriptions: { retrieve: vi.fn() },
-      invoices: { retrieve: vi.fn() },
-      customers: { create: vi.fn() },
-      checkout: { sessions: { create: vi.fn() } },
-      billingPortal: { sessions: { create: vi.fn() } },
-      webhooks: { constructEvent: vi.fn() },
+      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      invoices: { retrieve: stripeMocks.invoicesRetrieve },
+      customers: { create: stripeMocks.customersCreate },
+      checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
+      billingPortal: {
+        sessions: { create: stripeMocks.billingPortalSessionsCreate },
+      },
+      webhooks: { constructEvent: stripeMocks.constructEvent },
     };
-  }
-  return { default: MockStripe };
-});
+  },
+}));
 
 import { GET } from "../route";
 
