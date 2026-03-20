@@ -162,4 +162,6 @@ const handler = createHandler(zeroModelProvidersMainContract, router, {
   errorHandler: createSafeErrorHandler("zero-model-providers"),
 });
 
-export { handler as GET, handler as POST };
+// PUT exported for backward compatibility: the old CLI contract uses PUT,
+// and next.config.js rewrites /api/org/model-providers → this route.
+export { handler as GET, handler as POST, handler as PUT };

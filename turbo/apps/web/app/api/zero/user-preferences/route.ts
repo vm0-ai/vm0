@@ -81,4 +81,6 @@ const handler = createHandler(zeroUserPreferencesContract, router, {
   errorHandler: createSafeErrorHandler("zero-user-preferences"),
 });
 
-export { handler as GET, handler as POST };
+// PUT exported for backward compatibility: the old CLI contract uses PUT,
+// and next.config.js rewrites /api/user/preferences → this route.
+export { handler as GET, handler as POST, handler as PUT };
