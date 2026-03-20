@@ -273,6 +273,38 @@ describe("Zero Agents API", () => {
       expect(data.sound).toBe("casual");
     });
 
+    it("should preserve metadata when only connectors are updated", async () => {
+      // Create agent with metadata
+      const createResponse = await postAgent(
+        {
+          connectors: [],
+          displayName: "My Agent",
+          description: "A helpful agent",
+          sound: "professional",
+        },
+        testCliToken,
+        testOrgSlug,
+      );
+      const created = await createResponse.json();
+
+      // Update only connectors — no metadata fields
+      const updateResponse = await putAgent(
+        created.name,
+        { connectors: [] },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(updateResponse.status).toBe(200);
+
+      // Verify metadata is preserved
+      const getRes = await getAgent(created.name, testCliToken, testOrgSlug);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+      expect(fetched.displayName).toBe("My Agent");
+      expect(fetched.description).toBe("A helpful agent");
+      expect(fetched.sound).toBe("professional");
+    });
+
     it("should return 404 for unknown agent", async () => {
       const response = await putAgent(
         "nonexistent-agent",
