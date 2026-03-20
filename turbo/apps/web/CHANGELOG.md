@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.136.0](https://github.com/vm0-ai/vm0/compare/web-v12.135.0...web-v12.136.0) (2026-03-20)
+
+
+### Features
+
+* add firewall fields to network logs and improve action handling ([#5745](https://github.com/vm0-ai/vm0/issues/5745)) ([ff2d271](https://github.com/vm0-ai/vm0/commit/ff2d271d7040f6367dd19a7f0e6f21fdd35a19c1))
+* add sandbox token capability enforcement to /api/zero/agents endpoints ([#5746](https://github.com/vm0-ai/vm0/issues/5746)) ([ef77fa2](https://github.com/vm0-ai/vm0/commit/ef77fa2c75fbf7c1e0cc673f6dd4f73df02468ab))
+
+
+### Refactoring
+
+* api layer separation phase 5 — application-layer endpoint migration ([#5721](https://github.com/vm0-ai/vm0/issues/5721)) ([3ec2080](https://github.com/vm0-ai/vm0/commit/3ec2080b722dc02d1dc07caeabbd780b4f87c93f))
+* rename org and org_members tables to org_metadata and org_members_metadata ([#5634](https://github.com/vm0-ai/vm0/issues/5634)) ([08e8599](https://github.com/vm0-ai/vm0/commit/08e85999e7a89e7ef5527a93166d3140e4500fc8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.88.0
+
 ## [12.135.0](https://github.com/vm0-ai/vm0/compare/web-v12.134.0...web-v12.135.0) (2026-03-20)
 
 

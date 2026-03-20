@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.88.0](https://github.com/vm0-ai/vm0/compare/core-v8.87.0...core-v8.88.0) (2026-03-20)
+
+
+### Features
+
+* add firewall fields to network logs and improve action handling ([#5745](https://github.com/vm0-ai/vm0/issues/5745)) ([ff2d271](https://github.com/vm0-ai/vm0/commit/ff2d271d7040f6367dd19a7f0e6f21fdd35a19c1))
+
+
+### Refactoring
+
+* api layer separation phase 5 — application-layer endpoint migration ([#5721](https://github.com/vm0-ai/vm0/issues/5721)) ([3ec2080](https://github.com/vm0-ai/vm0/commit/3ec2080b722dc02d1dc07caeabbd780b4f87c93f))
+
 ## [8.87.0](https://github.com/vm0-ai/vm0/compare/core-v8.86.0...core-v8.87.0) (2026-03-20)
 
 

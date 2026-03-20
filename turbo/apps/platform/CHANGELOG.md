@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.131.1](https://github.com/vm0-ai/vm0/compare/app-v0.131.0...app-v0.131.1) (2026-03-20)
+
+
+### Refactoring
+
+* api layer separation phase 5 — application-layer endpoint migration ([#5721](https://github.com/vm0-ai/vm0/issues/5721)) ([3ec2080](https://github.com/vm0-ai/vm0/commit/3ec2080b722dc02d1dc07caeabbd780b4f87c93f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.88.0
+
 ## [0.131.0](https://github.com/vm0-ai/vm0/compare/app-v0.130.0...app-v0.131.0) (2026-03-20)
 
 

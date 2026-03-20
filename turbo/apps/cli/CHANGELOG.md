@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.71.0](https://github.com/vm0-ai/vm0/compare/cli-v9.70.3...cli-v9.71.0) (2026-03-20)
+
+
+### Features
+
+* add firewall fields to network logs and improve action handling ([#5745](https://github.com/vm0-ai/vm0/issues/5745)) ([ff2d271](https://github.com/vm0-ai/vm0/commit/ff2d271d7040f6367dd19a7f0e6f21fdd35a19c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.88.0
+
 ## [9.70.3](https://github.com/vm0-ai/vm0/compare/cli-v9.70.2...cli-v9.70.3) (2026-03-20)
 
 
