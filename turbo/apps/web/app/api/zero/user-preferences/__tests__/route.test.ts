@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import { GET, POST } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -522,5 +523,83 @@ describe("POST /api/zero/user-preferences", () => {
 
     expect(response.status).toBe(200);
     expect(data.sendMode).toBe("cmd-enter");
+  });
+
+  describe("Clerk fallback and backfill", () => {
+    it("should fall back to Clerk metadata when no DB row, then backfill", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Override Clerk membership list to return metadata (one-shot)
+      const client = await clerkClient();
+      vi.mocked(
+        client.organizations.getOrganizationMembershipList,
+      ).mockResolvedValueOnce({
+        data: [
+          {
+            publicUserData: { userId: user.userId },
+            publicMetadata: {
+              timezone: "Europe/London",
+              notify_email: true,
+              notify_slack: false,
+              pinned_agent_ids: ["pinned-1", "pinned-2"],
+              send_mode: "cmd-enter",
+            },
+          },
+        ],
+      } as unknown as Awaited<
+        ReturnType<typeof client.organizations.getOrganizationMembershipList>
+      >);
+
+      // First GET: falls back to Clerk and backfills DB
+      const request1 = createTestRequest(
+        "http://localhost:3000/api/zero/user-preferences",
+      );
+      const response1 = await GET(request1);
+      const data1 = await response1.json();
+
+      expect(response1.status).toBe(200);
+      expect(data1).toEqual({
+        timezone: "Europe/London",
+        notifyEmail: true,
+        notifySlack: false,
+        pinnedAgentIds: ["pinned-1", "pinned-2"],
+        sendMode: "cmd-enter",
+      });
+
+      // Second GET: should return from DB (Clerk mock exhausted)
+      const request2 = createTestRequest(
+        "http://localhost:3000/api/zero/user-preferences",
+      );
+      const response2 = await GET(request2);
+      const data2 = await response2.json();
+
+      expect(response2.status).toBe(200);
+      expect(data2.timezone).toBe("Europe/London");
+      expect(data2.notifyEmail).toBe(true);
+      expect(data2.notifySlack).toBe(false);
+      expect(data2.sendMode).toBe("cmd-enter");
+    });
+
+    it("should return defaults when no DB row and Clerk has empty metadata", async () => {
+      const user = await context.setupUser();
+      mockClerk({ userId: user.userId, orgId: user.orgId });
+
+      // Default Clerk mock returns empty publicMetadata
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/user-preferences",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data).toEqual({
+        timezone: null,
+        notifyEmail: false,
+        notifySlack: true,
+        pinnedAgentIds: [],
+        sendMode: "enter",
+      });
+    });
   });
 });

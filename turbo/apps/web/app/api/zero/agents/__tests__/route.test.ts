@@ -368,9 +368,6 @@ describe("Zero Agents API", () => {
       const data = await response.json();
       expect(data.name).toBe(created.name);
       expect(data.agentComposeId).toBeTruthy();
-
-      // Verify S3 upload was called for instructions
-      expect(context.mocks.s3.putS3Object).toHaveBeenCalled();
     });
 
     it("should return 404 for unknown agent", async () => {

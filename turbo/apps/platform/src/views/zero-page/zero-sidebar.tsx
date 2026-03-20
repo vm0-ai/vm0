@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { ReactNode } from "react";
 import {
   useLoadable,

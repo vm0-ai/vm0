@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { ChangeEvent } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";

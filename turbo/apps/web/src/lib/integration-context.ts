@@ -17,3 +17,29 @@ export function buildIntegrationContext(
   }
   return context;
 }
+
+/**
+ * Cron tools to disallow when schedule guidance is active.
+ */
+export const DISALLOWED_CRON_TOOLS = [
+  "CronCreate",
+  "CronList",
+  "CronDelete",
+] as const;
+
+/**
+ * Build schedule guidance prompt that redirects agents from ephemeral cron
+ * tools to vm0's persistent schedule system.
+ */
+export function buildScheduleGuidance(): string {
+  return [
+    "# Scheduling Tasks",
+    "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
+    "For recurring or scheduled tasks, use the vm0 schedule CLI:",
+    "- Create: vm0 schedule setup $VM0_AGENT_NAME",
+    "- List: vm0 schedule list",
+    "- Delete: vm0 schedule delete $VM0_AGENT_NAME --name <schedule-name>",
+    "- Enable/Disable: vm0 schedule enable/disable $VM0_AGENT_NAME --name <schedule-name>",
+    'Choose a short, descriptive schedule name based on the task (e.g., "deploy-check", "daily-report").',
+  ].join("\n");
+}

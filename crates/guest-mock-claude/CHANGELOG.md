@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.15.0...guest-mock-claude-v0.16.0) (2026-03-20)
+
+
+### Features
+
+* support --settings flag for vm0 run ([#5663](https://github.com/vm0-ai/vm0/issues/5663)) ([#5753](https://github.com/vm0-ai/vm0/issues/5753)) ([d0aad87](https://github.com/vm0-ai/vm0/commit/d0aad87539c31ae4664d41b1cca46b556b3de66e))
+
+
+### Bug Fixes
+
+* **mock-claude:** add --tools flag to parse_args match arm ([#5773](https://github.com/vm0-ai/vm0/issues/5773)) ([3602c51](https://github.com/vm0-ai/vm0/commit/3602c5100822774b71956c41c210e1794dcdd7c9))
+
 ## [0.15.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.14.3...guest-mock-claude-v0.15.0) (2026-03-19)
 
 

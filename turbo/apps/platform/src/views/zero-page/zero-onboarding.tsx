@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { Component } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import {

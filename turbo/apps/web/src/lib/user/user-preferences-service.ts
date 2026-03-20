@@ -113,7 +113,7 @@ export async function getUserPreferences(
       userId,
     });
     const now = new Date();
-    void db
+    await db
       .insert(orgMembersMetadata)
       .values({
         orgId,
