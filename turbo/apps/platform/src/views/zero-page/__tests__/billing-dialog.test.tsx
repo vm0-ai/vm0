@@ -37,7 +37,7 @@ describe("billing in sidebar", () => {
   });
 
   it("should show max tier with correct credits", async () => {
-    setMockBillingStatus({ tier: "max", credits: 82000 });
+    setMockBillingStatus({ tier: "max", credits: 82_000 });
 
     await setupPage({
       context,
@@ -68,13 +68,15 @@ describe("billing in sidebar", () => {
       fireEvent.click(billingButton);
     });
 
-    expect(await screen.findByText("Choose your plan")).toBeInTheDocument();
+    await expect(
+      screen.findByText("Choose your plan"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("should highlight current plan in dialog", async () => {
     setMockBillingStatus({
       tier: "pro",
-      credits: 20000,
+      credits: 20_000,
       subscriptionStatus: "active",
       hasSubscription: true,
     });
@@ -127,7 +129,7 @@ describe("billing in sidebar", () => {
   it("should show manage subscription button when pro user selects free", async () => {
     setMockBillingStatus({
       tier: "pro",
-      credits: 20000,
+      credits: 20_000,
       subscriptionStatus: "active",
       hasSubscription: true,
     });
@@ -158,7 +160,7 @@ describe("billing in sidebar", () => {
   it("should show manage subscription when max user selects pro (downgrade)", async () => {
     setMockBillingStatus({
       tier: "max",
-      credits: 80000,
+      credits: 80_000,
       subscriptionStatus: "active",
       hasSubscription: true,
     });
@@ -214,7 +216,7 @@ describe("billing in sidebar", () => {
   it("should show correct description with credits", async () => {
     setMockBillingStatus({
       tier: "max",
-      credits: 82000,
+      credits: 82_000,
       subscriptionStatus: "active",
       hasSubscription: true,
     });
@@ -230,8 +232,8 @@ describe("billing in sidebar", () => {
       fireEvent.click(billingButton);
     });
 
-    expect(
-      await screen.findByText(/You are on the Max plan with 82,000 credits/),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(/You are on the Max plan with 82,000 credits/),
+    ).resolves.toBeInTheDocument();
   });
 });

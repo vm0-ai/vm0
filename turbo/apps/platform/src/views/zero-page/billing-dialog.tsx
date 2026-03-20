@@ -1,4 +1,5 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   Dialog,
   DialogContent,
@@ -12,48 +13,45 @@ import {
   type BillingTier,
   billingDialogOpen$,
   billingDialogLoading$,
-  billingStatus$,
+  billingStatusAsync$,
   closeBillingDialog$,
   startCheckout$,
   startDowngrade$,
 } from "../../signals/zero-page/billing.ts";
-import { selectedPlanTier$ } from "../../signals/zero-page/billing-dialog-state.ts";
+import {
+  selectedPlanTier$,
+  setSelectedPlanTier$,
+} from "../../signals/zero-page/billing-dialog-state.ts";
 
-const PLANS: {
-  tier: BillingTier;
-  name: string;
-  price: string;
-  period: string;
-  features: string[];
-}[] = [
+const PLANS = [
   {
-    tier: "free",
+    tier: "free" as const,
     name: "Free",
     price: "$0",
     period: "/month",
     features: ["2,000 starter credits", "Community support"],
   },
   {
-    tier: "pro",
+    tier: "pro" as const,
     name: "Pro",
     price: "$29",
     period: "/month",
     features: ["20,000 credits/month", "Credits rollover", "Priority support"],
   },
   {
-    tier: "max",
+    tier: "max" as const,
     name: "Max",
     price: "$99",
     period: "/month",
     features: ["80,000 credits/month", "Credits rollover", "Priority support"],
   },
-];
+] as const;
 
-const TIER_ORDER: Record<BillingTier, number> = {
+const TIER_ORDER = {
   free: 0,
   pro: 1,
   max: 2,
-};
+} as const satisfies Record<BillingTier, number>;
 
 function PlanCard({
   plan,
@@ -110,12 +108,14 @@ function PlanCard({
 export function BillingDialog() {
   const open = useGet(billingDialogOpen$);
   const loading = useGet(billingDialogLoading$);
-  const status = useGet(billingStatus$);
+  const statusLoadable = useLastLoadable(billingStatusAsync$);
+  const status =
+    statusLoadable.state === "hasData" ? statusLoadable.data : null;
   const close = useSet(closeBillingDialog$);
   const checkout = useSet(startCheckout$);
   const downgrade = useSet(startDowngrade$);
   const selectedTier = useGet(selectedPlanTier$);
-  const setSelectedTier = useSet(selectedPlanTier$);
+  const setSelectedTier = useSet(setSelectedPlanTier$);
 
   const currentTier: BillingTier = (status?.tier as BillingTier) ?? "free";
 
@@ -126,9 +126,9 @@ export function BillingDialog() {
 
   const handleAction = () => {
     if (isUpgrade) {
-      checkout(selectedTier as "pro" | "max");
+      detach(checkout(selectedTier as "pro" | "max"), Reason.DomCallback);
     } else if (isDowngrade) {
-      downgrade();
+      detach(downgrade(), Reason.DomCallback);
     }
   };
 

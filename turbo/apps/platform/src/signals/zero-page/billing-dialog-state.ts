@@ -1,8 +1,10 @@
-import { state } from "ccstate";
+import { command, computed, state } from "ccstate";
 import type { BillingTier } from "./billing.ts";
 
-/**
- * Selected tier in the billing dialog.
- * Writable state atom — views use useGet/useSet directly.
- */
-export const selectedPlanTier$ = state<BillingTier>("free");
+const internalSelectedTier$ = state<BillingTier>("free");
+
+export const selectedPlanTier$ = computed((get) => get(internalSelectedTier$));
+
+export const setSelectedPlanTier$ = command(({ set }, tier: BillingTier) => {
+  set(internalSelectedTier$, tier);
+});

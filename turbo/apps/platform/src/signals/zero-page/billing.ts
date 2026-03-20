@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { fetch$ } from "../fetch.ts";
 import { logger } from "../log.ts";
-import { selectedPlanTier$ } from "./billing-dialog-state.ts";
+import { setSelectedPlanTier$ } from "./billing-dialog-state.ts";
 
 const log = logger("billing");
 
@@ -23,17 +23,6 @@ export interface BillingStatus {
 // State
 // ---------------------------------------------------------------------------
 
-interface BillingState {
-  data: BillingStatus | null;
-  loading: boolean;
-}
-
-const internalBillingState$ = state<BillingState>({
-  data: null,
-  loading: false,
-});
-
-// Dialog state
 const internalDialogOpen$ = state(false);
 const internalDialogLoading$ = state(false);
 
@@ -41,39 +30,34 @@ const internalDialogLoading$ = state(false);
 // Selectors
 // ---------------------------------------------------------------------------
 
-export const billingStatus$ = computed(
-  (get) => get(internalBillingState$).data,
-);
-const billingLoading$ = computed((get) => get(internalBillingState$).loading);
 export const billingDialogOpen$ = computed((get) => get(internalDialogOpen$));
 export const billingDialogLoading$ = computed((get) =>
   get(internalDialogLoading$),
 );
 
+/**
+ * Async computed signal that fetches billing status on first access.
+ * Use with useLastLoadable() in views for automatic loading.
+ */
+export const billingStatusAsync$ = computed(async (get) => {
+  const fetchFn = await get(fetch$);
+  const response = await fetchFn("/api/billing/status");
+  if (!response.ok) {
+    log.error("Failed to fetch billing status", response.status);
+    return null;
+  }
+  const data = (await response.json()) as BillingStatus;
+  return data;
+});
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 
-export const fetchBillingStatus$ = command(async ({ get, set }) => {
-  set(internalBillingState$, (prev) => ({ ...prev, loading: true }));
-
-  const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/billing/status");
-
-  if (!response.ok) {
-    log.error("Failed to fetch billing status", response.status);
-    set(internalBillingState$, (prev) => ({ ...prev, loading: false }));
-    return;
-  }
-
-  const data = (await response.json()) as BillingStatus;
-  set(internalBillingState$, { data, loading: false });
-});
-
-export const openBillingDialog$ = command(({ get, set }) => {
-  const status = get(internalBillingState$).data;
+export const openBillingDialog$ = command(async ({ get, set }) => {
+  const status = await get(billingStatusAsync$);
   const currentTier = (status?.tier as BillingTier) ?? "free";
-  set(selectedPlanTier$, currentTier);
+  set(setSelectedPlanTier$, currentTier);
   set(internalDialogOpen$, true);
 });
 
