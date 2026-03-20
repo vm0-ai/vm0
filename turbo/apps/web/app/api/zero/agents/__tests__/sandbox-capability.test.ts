@@ -6,6 +6,7 @@ import {
   PUT as putInstructions,
 } from "../[name]/instructions/route";
 import {
+  createTestCliToken,
   createTestRequest,
   insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -84,9 +85,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
     it("sandbox token with agent:read can get agent", async () => {
       // First create an agent with a regular CLI token
       const cliUser = await context.setupUser();
-      const { createTestCliToken } = await import(
-        "../../../../../src/__tests__/api-test-helpers"
-      );
+
       const cliToken = await createTestCliToken(cliUser.userId);
       const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
 
@@ -151,9 +150,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
     it("sandbox token with agent:write can update agent", async () => {
       // First create an agent with a regular CLI token
       const cliUser = await context.setupUser();
-      const { createTestCliToken } = await import(
-        "../../../../../src/__tests__/api-test-helpers"
-      );
+
       const cliToken = await createTestCliToken(cliUser.userId);
       const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
 
@@ -231,9 +228,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
     it("sandbox token with agent:read can get instructions", async () => {
       // First create an agent with a regular CLI token
       const cliUser = await context.setupUser();
-      const { createTestCliToken } = await import(
-        "../../../../../src/__tests__/api-test-helpers"
-      );
+
       const cliToken = await createTestCliToken(cliUser.userId);
       const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
 
@@ -298,9 +293,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
     it("sandbox token with agent:write can update instructions", async () => {
       // First create an agent with a regular CLI token
       const cliUser = await context.setupUser();
-      const { createTestCliToken } = await import(
-        "../../../../../src/__tests__/api-test-helpers"
-      );
+
       const cliToken = await createTestCliToken(cliUser.userId);
       const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
 
