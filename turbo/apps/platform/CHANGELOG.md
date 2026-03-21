@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.132.2](https://github.com/vm0-ai/vm0/compare/app-v0.132.1...app-v0.132.2) (2026-03-21)
+
+
+### Refactoring
+
+* remove ccstate-react/experimental from activity views ([#5824](https://github.com/vm0-ai/vm0/issues/5824)) ([7b30b37](https://github.com/vm0-ai/vm0/commit/7b30b37ed68032afd8ee55b550caf5b968875b00)), closes [#5805](https://github.com/vm0-ai/vm0/issues/5805)
+* remove ccstate-react/experimental from zero-app-shell.tsx ([#5827](https://github.com/vm0-ai/vm0/issues/5827)) ([214b238](https://github.com/vm0-ai/vm0/commit/214b2382c95be21f7956c99f72b81d7fe7a803a8))
+
 ## [0.132.1](https://github.com/vm0-ai/vm0/compare/app-v0.132.0...app-v0.132.1) (2026-03-21)
 
 
