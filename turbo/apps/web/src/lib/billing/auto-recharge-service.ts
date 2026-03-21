@@ -78,10 +78,42 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
   const stripe = getStripe();
 
   try {
+    // Resolve the payment method from the customer's subscription or default
+    const customer = await stripe.customers.retrieve(org.stripeCustomerId);
+    if (customer.deleted) {
+      log.warn("Stripe customer is deleted, skipping auto-recharge", { orgId });
+      await db
+        .update(orgMetadata)
+        .set({ autoRechargePendingAt: null, updatedAt: new Date() })
+        .where(eq(orgMetadata.orgId, orgId));
+      return;
+    }
+
+    const paymentMethodId =
+      (typeof customer.invoice_settings?.default_payment_method === "string"
+        ? customer.invoice_settings.default_payment_method
+        : customer.invoice_settings?.default_payment_method?.id) ?? null;
+
+    if (!paymentMethodId) {
+      log.warn(
+        "No default payment method on customer, skipping auto-recharge",
+        {
+          orgId,
+          customerId: org.stripeCustomerId,
+        },
+      );
+      await db
+        .update(orgMetadata)
+        .set({ autoRechargePendingAt: null, updatedAt: new Date() })
+        .where(eq(orgMetadata.orgId, orgId));
+      return;
+    }
+
     // Create a one-time invoice with metadata for webhook identification
     const invoice = await stripe.invoices.create({
       customer: org.stripeCustomerId,
       auto_advance: false,
+      default_payment_method: paymentMethodId,
       metadata: {
         type: "auto_recharge",
         orgId,

@@ -18,6 +18,7 @@ const stripeMocks = vi.hoisted(() => ({
   invoiceItemsCreate: vi.fn(),
   invoicesFinalize: vi.fn(),
   invoicesPay: vi.fn(),
+  customersRetrieve: vi.fn(),
 }));
 
 vi.mock("stripe", () => ({
@@ -31,7 +32,10 @@ vi.mock("stripe", () => ({
       invoiceItems: { create: stripeMocks.invoiceItemsCreate },
       // Stubs for other services that may be initialized
       subscriptions: { retrieve: vi.fn() },
-      customers: { create: vi.fn() },
+      customers: {
+        create: stripeMocks.customersRetrieve,
+        retrieve: stripeMocks.customersRetrieve,
+      },
       checkout: { sessions: { create: vi.fn() } },
       billingPortal: { sessions: { create: vi.fn() } },
       webhooks: { constructEvent: vi.fn() },
@@ -61,8 +65,14 @@ describe("auto-recharge-service", () => {
     stripeMocks.invoiceItemsCreate.mockReset();
     stripeMocks.invoicesFinalize.mockReset();
     stripeMocks.invoicesPay.mockReset();
+    stripeMocks.customersRetrieve.mockReset();
 
     // Default: Stripe calls succeed
+    stripeMocks.customersRetrieve.mockResolvedValue({
+      id: "cus_test",
+      deleted: false,
+      invoice_settings: { default_payment_method: "pm_test_default" },
+    });
     stripeMocks.invoicesCreate.mockResolvedValue({ id: "inv_auto_test" });
     stripeMocks.invoiceItemsCreate.mockResolvedValue({});
     stripeMocks.invoicesFinalize.mockResolvedValue({});
