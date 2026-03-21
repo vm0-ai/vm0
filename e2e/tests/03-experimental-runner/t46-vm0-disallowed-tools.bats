@@ -58,9 +58,11 @@ teardown_file() {
 }
 
 @test "t46-1: run with --disallowed-tools succeeds" {
+    # "--" separates variadic --disallowed-tools from the prompt
+    # (Commander.js <tools...> would otherwise swallow the prompt)
     run $CLI_COMMAND run "$AGENT_NAME" \
         --disallowed-tools CronCreate CronList CronDelete \
-        "echo hello"
+        -- "echo hello"
 
     assert_success
     assert_output --partial "● Bash("
@@ -69,9 +71,10 @@ teardown_file() {
 }
 
 @test "t46-2: run with --tools succeeds" {
+    # "--" separates variadic --tools from the prompt
     run $CLI_COMMAND run "$AGENT_NAME" \
         --tools Bash \
-        "echo hello"
+        -- "echo hello"
 
     assert_success
     assert_output --partial "● Bash("

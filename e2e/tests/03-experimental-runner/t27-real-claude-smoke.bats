@@ -36,8 +36,8 @@ VOLEOF
     $CLI_COMMAND org model-provider setup \
         --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY"
 
-    # Compose agents (one for basic, one for flags test)
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
+    # Compose agents separately (only one agent per compose is supported)
+    cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
@@ -46,6 +46,15 @@ agents:
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: $VOLUME_NAME
+    version: latest
+EOF
+
+    cat > "$TEST_DIR/vm0-flags.yaml" <<EOF
+version: "1.0"
+agents:
   ${AGENT_NAME}-flags:
     description: "Real Claude flags test"
     framework: claude-code
@@ -58,7 +67,8 @@ volumes:
     version: latest
 EOF
 
-    $CLI_COMMAND compose "$TEST_DIR/vm0.yaml" >/dev/null
+    $CLI_COMMAND compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
+    $CLI_COMMAND compose "$TEST_DIR/vm0-flags.yaml" >/dev/null
 }
 
 teardown_file() {
@@ -104,13 +114,15 @@ teardown_file() {
     # PreToolUse hook: write sentinel before each Bash tool execution
     local SETTINGS='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo HOOK_OK > /tmp/hook-sentinel"}]}]}}'
 
+    # "--" separates variadic --disallowed-tools from the prompt
+    # (Commander.js <tools...> would otherwise swallow subsequent args)
     run timeout 120 $CLI_COMMAND run "${AGENT_NAME}-flags" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
         --disallowed-tools CronCreate CronList CronDelete \
         --settings "$SETTINGS" \
-        "Do these two steps using the Bash tool: Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook-sentinel'. Include all outputs."
+        -- "Do these two steps using the Bash tool: Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook-sentinel'. Include all outputs."
 
     assert_success
     assert_output --partial "◆ Claude Code Completed"
