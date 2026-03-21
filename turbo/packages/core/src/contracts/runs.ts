@@ -349,9 +349,11 @@ const agentEventsResponseSchema = z.object({
 
 /**
  * Network log entry schema (MITM proxy)
+ * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
  */
 const networkLogEntrySchema = z.object({
   timestamp: z.string(),
+  type: z.enum(["http", "tcp"]).optional(),
   action: z.enum(["ALLOW", "DENY"]).optional(),
   host: z.string().optional(),
   port: z.number().optional(),
@@ -368,6 +370,7 @@ const networkLogEntrySchema = z.object({
   firewall_rule_match: z.string().optional(),
   firewall_params: z.record(z.string(), z.string()).optional(),
   firewall_error: z.string().optional(),
+  error: z.string().optional(),
 });
 
 /**

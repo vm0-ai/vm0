@@ -585,6 +585,7 @@ def response(flow: http.HTTPFlow) -> None:
         port = flow.request.port
 
     # Log network entry for this run (always MITM mode with full HTTP details)
+    # [NETWORK_LOG_FIELDS] — source of truth for network log fields
     network_log_path = flow.metadata.get("vm_network_log_path", "")
     if run_id and network_log_path:
         log_entry = {

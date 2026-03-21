@@ -15,6 +15,7 @@ import { randomUUID } from "crypto";
 
 const context = testContext();
 
+// [NETWORK_LOG_FIELDS] — subset for testing; see route.ts for full definition
 interface AxiomNetworkEvent {
   _time: string;
   runId: string;

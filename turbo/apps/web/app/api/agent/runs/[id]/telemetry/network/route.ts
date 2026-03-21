@@ -16,11 +16,13 @@ import {
 } from "../../../../../../../src/lib/axiom";
 /**
  * Axiom network event (MITM proxy)
+ * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
  */
 interface AxiomNetworkEvent {
   _time: string;
   runId: string;
   userId: string;
+  type?: "http" | "tcp";
   action?: "ALLOW" | "DENY";
   host?: string;
   port?: number;
@@ -37,6 +39,7 @@ interface AxiomNetworkEvent {
   firewall_rule_match?: string;
   firewall_params?: Record<string, string>;
   firewall_error?: string;
+  error?: string;
 }
 
 const router = tsr.router(runNetworkLogsContract, {
@@ -103,6 +106,7 @@ ${sinceFilter}
 
     const networkLogs = records.map((e) => ({
       timestamp: e._time,
+      type: e.type,
       action: e.action,
       host: e.host,
       port: e.port,
@@ -119,6 +123,7 @@ ${sinceFilter}
       firewall_rule_match: e.firewall_rule_match,
       firewall_params: e.firewall_params,
       firewall_error: e.firewall_error,
+      error: e.error,
     }));
 
     return {

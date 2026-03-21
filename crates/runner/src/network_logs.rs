@@ -9,6 +9,7 @@ use crate::http::HttpClient;
 
 /// Network log entry from mitmproxy JSONL.
 ///
+/// [NETWORK_LOG_FIELDS] — fields are defined in mitm_addon.py (source of truth).
 /// Uses a transparent `serde_json::Value` wrapper so all fields pass through
 /// to Axiom without needing a struct field for each one. This avoids silently
 /// dropping new fields added to the Python addon.

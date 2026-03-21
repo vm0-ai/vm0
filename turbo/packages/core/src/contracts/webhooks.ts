@@ -288,14 +288,14 @@ const sandboxOperationSchema = z.object({
 
 /**
  * Network log entry schema (from mitmproxy addon)
+ * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
  */
 const networkLogSchema = z.object({
   timestamp: z.string(),
-  mode: z.literal("mitm").optional(),
+  type: z.enum(["http", "tcp"]).optional(),
   action: z.enum(["ALLOW", "DENY"]).optional(),
   host: z.string().optional(),
   port: z.number().optional(),
-  rule_matched: z.string().nullable().optional(),
   method: z.string().optional(),
   url: z.string().optional(),
   status: z.number().optional(),
@@ -310,7 +310,6 @@ const networkLogSchema = z.object({
   firewall_params: z.record(z.string(), z.string()).optional(),
   firewall_error: z.string().optional(),
   error: z.string().optional(),
-  type: z.enum(["http", "tcp"]).optional(),
 });
 
 /**
