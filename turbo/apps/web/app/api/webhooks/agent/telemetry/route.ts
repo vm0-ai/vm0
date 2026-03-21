@@ -111,9 +111,9 @@ const router = tsr.router(webhookTelemetryContract, {
     if (body.networkLogs && body.networkLogs.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
       const axiomEvents = body.networkLogs.map(
-        (netLog: Record<string, unknown>) => ({
-          ...netLog,
-          _time: netLog.timestamp,
+        ({ timestamp, ...rest }: Record<string, unknown>) => ({
+          ...rest,
+          _time: timestamp,
           runId: body.runId,
           userId: auth.userId,
         }),
