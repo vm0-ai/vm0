@@ -43,7 +43,6 @@ import { reloadEnv } from "../../../env";
 import {
   triggerAutoRecharge,
   handleAutoRechargeInvoicePaid,
-  CREDITS_PER_DOLLAR,
 } from "../auto-recharge-service";
 
 const context = testContext();
@@ -286,12 +285,6 @@ describe("auto-recharge-service", () => {
 
       const fields = await getOrgAutoRechargeFields(user.orgId);
       expect(fields?.autoRechargePendingAt).toBeNull();
-    });
-  });
-
-  describe("CREDITS_PER_DOLLAR", () => {
-    it("is 1000", () => {
-      expect(CREDITS_PER_DOLLAR).toBe(1000);
     });
   });
 });
