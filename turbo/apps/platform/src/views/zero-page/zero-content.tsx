@@ -3,6 +3,7 @@ import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
 import { ZeroPreferencesPage } from "./zero-account-page.tsx";
 import { ZeroActivityPage } from "./zero-activity-page.tsx";
+import { ZeroJobsPage } from "./zero-jobs-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { QueuePage } from "../queue-page/queue-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
@@ -18,6 +19,7 @@ interface ZeroContentProps {
     options?: { modelProvider?: string },
   ) => void;
   onNavigateToSchedule?: () => void;
+  selectedAgentName?: string | null;
   onNavigateToMeet?: (tab?: string) => void;
   onBackFromSession?: () => void;
   zeroAvatarSrc?: string;
@@ -27,6 +29,8 @@ interface ZeroContentProps {
   chatAvatarSrc?: string;
   /** Navigate to agent profile — clicking chat header avatar. */
   onChatAvatarClick?: () => void;
+  /** Cycle the default agent (Zero) avatar. */
+  onCycleZeroAvatar?: () => void;
 }
 
 export function ZeroContent({
@@ -34,12 +38,14 @@ export function ZeroContent({
   inSession = false,
   onSendMessage,
   onNavigateToSchedule,
+  selectedAgentName,
   onNavigateToMeet,
   onBackFromSession,
   zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
   chatAvatarSrc,
   onChatAvatarClick,
+  onCycleZeroAvatar,
 }: ZeroContentProps) {
   if (sectionId === "chat") {
     if (inSession) {
@@ -69,6 +75,15 @@ export function ZeroContent({
   }
   if (sectionId === "activity") {
     return <ZeroActivityPage />;
+  }
+  if (sectionId === "team") {
+    return (
+      <ZeroJobsPage
+        selectedAgentName={selectedAgentName}
+        zeroAvatarSrc={zeroAvatarSrc}
+        onCycleZeroAvatar={onCycleZeroAvatar}
+      />
+    );
   }
   if (sectionId === "works") {
     return <ZeroWorksPage />;

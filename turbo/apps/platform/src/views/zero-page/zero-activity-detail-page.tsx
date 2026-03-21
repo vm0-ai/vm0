@@ -18,7 +18,7 @@ import {
   type ModelProviderType,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { SimpleLink } from "../router/link.tsx";
+import { Link } from "../router/link.tsx";
 import {
   TRIGGER_SOURCE_LABELS,
   type LogStatus,
@@ -33,7 +33,7 @@ import {
   setZeroActivityStepSearch$,
   formatLogTime,
   formatDuration,
-} from "../../signals/zero-page/zero-activity.ts";
+} from "../../signals/activity-page/activity-signals.ts";
 import {
   groupEventsIntoMessages,
   groupedMessageMatchesSearch,
@@ -64,17 +64,15 @@ function isVisibleMessage(
   return (message.toolOperations?.length ?? 0) > 0;
 }
 
-const ACTIVITY_HREF = "/activity";
-
 function ActivityBreadcrumbLink() {
   return (
-    <SimpleLink
-      href={ACTIVITY_HREF}
+    <Link
+      pathname="/activity"
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
     >
       <IconChartLine size={14} stroke={1.5} className="shrink-0" />
       Activity
-    </SimpleLink>
+    </Link>
   );
 }
 
@@ -97,12 +95,12 @@ function ActivityNotFound() {
           This log doesn&apos;t exist or you don&apos;t have permission to view
           it in the current organization.
         </p>
-        <SimpleLink
-          href={ACTIVITY_HREF}
+        <Link
+          pathname="/activity"
           className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
         >
           Back to activity
-        </SimpleLink>
+        </Link>
       </div>
     </div>
   );
