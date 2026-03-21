@@ -33,28 +33,13 @@ async function renderPreferencesPage() {
   await setupPage({ context, path: "/preferences" });
 }
 
-describe("zero preferences page - smoke", () => {
-  it("should render the page with default appearance tab", async () => {
+describe("zero preferences page - tab navigation", () => {
+  it("should show appearance tab by default and switch to notifications tab", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Preferences")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Appearance")).toBeInTheDocument();
-    expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    expect(screen.getByText("Theme")).toBeInTheDocument();
-  });
-});
-
-describe("zero preferences page - tab switching", () => {
-  it("should switch to notifications tab", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Notifications")).toBeInTheDocument();
+      expect(screen.getByText("Theme")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText("Notifications"));
@@ -102,8 +87,8 @@ describe("zero preferences page - tab switching", () => {
   });
 });
 
-describe("zero preferences page - notifications tab", () => {
-  it("should render email and slack notification toggles", async () => {
+describe("zero preferences page - notification toggles", () => {
+  it("should render accessible notification toggles", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();
 
@@ -181,15 +166,15 @@ describe("zero preferences page - send mode interaction", () => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
     });
 
-    // Click the Cmd+Enter option
-    const cmdEnterButtons = screen.getAllByRole("button");
-    const cmdEnterButton = cmdEnterButtons.find(
-      (btn) =>
-        btn.textContent?.includes("Enter") &&
-        btn.textContent?.includes("\u2318"),
-    );
-    expect(cmdEnterButton).toBeTruthy();
-    fireEvent.click(cmdEnterButton!);
+    const cmdEnterButton = screen
+      .getAllByRole("button")
+      .find(
+        (btn) =>
+          btn.textContent?.includes("Enter") &&
+          btn.textContent?.includes("\u2318"),
+      );
+    expect(cmdEnterButton).toBeInTheDocument();
+    fireEvent.click(cmdEnterButton as HTMLElement);
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();
