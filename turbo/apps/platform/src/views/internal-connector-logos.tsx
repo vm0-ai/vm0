@@ -1,5 +1,4 @@
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
-import { Fragment } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { CONNECTOR_ICONS } from "./zero-page/components/settings/connector-icons.tsx";
 import {
@@ -10,11 +9,21 @@ import {
 } from "../signals/internal-connector-logos-setup.ts";
 
 function getIconType(url: string): string {
-  if (url.startsWith("data:image/svg+xml")) return "SVG (inline)";
-  if (url.endsWith(".svg")) return "SVG";
-  if (url.endsWith(".png")) return "PNG";
-  if (url.endsWith(".jpg") || url.endsWith(".jpeg")) return "JPEG";
-  if (url.endsWith(".webp")) return "WebP";
+  if (url.startsWith("data:image/svg+xml")) {
+    return "SVG (inline)";
+  }
+  if (url.endsWith(".svg")) {
+    return "SVG";
+  }
+  if (url.endsWith(".png")) {
+    return "PNG";
+  }
+  if (url.endsWith(".jpg") || url.endsWith(".jpeg")) {
+    return "JPEG";
+  }
+  if (url.endsWith(".webp")) {
+    return "WebP";
+  }
   return "unknown";
 }
 
@@ -139,7 +148,7 @@ export function InternalConnectorLogos() {
           const iconUrl = CONNECTOR_ICONS[type];
           const iconType = getIconType(iconUrl);
           return (
-            <Fragment key={type}>
+            <div key={type} style={{ display: "contents" }}>
               <IconBox src={iconUrl} size={size} shape="square" bg="#fff" />
               <IconBox src={iconUrl} size={size} shape="square" bg="#7c3aed" />
               <IconBox src={iconUrl} size={size} shape="circle" bg="#fff" />
@@ -151,7 +160,7 @@ export function InternalConnectorLogos() {
                 <span style={{ fontSize: 12, color: "#999" }}>{type}</span>
                 <span style={{ fontSize: 12, color: "#666" }}>{iconType}</span>
               </div>
-            </Fragment>
+            </div>
           );
         })}
       </div>
