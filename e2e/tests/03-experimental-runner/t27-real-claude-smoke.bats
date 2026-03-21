@@ -79,6 +79,24 @@ teardown_file() {
     fi
 }
 
+# Test 0: Print sandbox Claude Code version for debugging
+@test "t27-0: print sandbox claude version" {
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        skip "ANTHROPIC_API_KEY not set"
+    fi
+
+    # Run claude --version inside the sandbox to confirm which binary is installed
+    run timeout 60 $CLI_COMMAND run "$AGENT_NAME" \
+        --model-provider "anthropic-api-key" \
+        --debug-no-mock-claude \
+        "Run 'claude --version' with the Bash tool and include the exact output"
+
+    assert_success
+    # Print output for CI log inspection
+    echo "# Sandbox Claude version output:"
+    echo "$output"
+}
+
 # Test 1: Baseline — real Claude CLI processes a prompt and returns correct result
 @test "t27-1: basic run with real claude" {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
