@@ -237,3 +237,110 @@ describe("billing in sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 });
+
+describe("auto-recharge in billing dialog", () => {
+  async function openBillingDialog(tier: "free" | "pro" | "max") {
+    await setupPage({
+      context,
+      path: "/works",
+      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
+    });
+
+    const billingButton = await screen.findByText(tier, {}, { timeout: 3000 });
+    await act(() => {
+      fireEvent.click(billingButton);
+    });
+
+    await screen.findByText("Choose your plan");
+  }
+
+  it("should not show auto-recharge section for free tier", async () => {
+    setMockBillingStatus({
+      tier: "free",
+      credits: 2000,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingDialog("free");
+
+    expect(screen.queryByText("Auto-recharge")).not.toBeInTheDocument();
+  });
+
+  it("should show auto-recharge section for pro tier", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingDialog("pro");
+
+    expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+  });
+
+  it("should show auto-recharge section for max tier", async () => {
+    setMockBillingStatus({
+      tier: "max",
+      credits: 80_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingDialog("max");
+
+    expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+  });
+
+  it("should show threshold and amount inputs when auto-recharge is toggled on", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingDialog("pro");
+
+    // Toggle auto-recharge on
+    const toggle = screen.getByRole("switch");
+    await act(() => {
+      fireEvent.click(toggle);
+    });
+
+    expect(screen.getByText("When credits drop below")).toBeInTheDocument();
+    expect(screen.getByText("Recharge amount")).toBeInTheDocument();
+  });
+
+  it("should display dollar amount preview for recharge input", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 1000, amount: 10000 },
+    });
+
+    await openBillingDialog("pro");
+
+    // $10.00 for 10,000 credits ($1 = 1,000 credits)
+    expect(screen.getByText("= $10.00")).toBeInTheDocument();
+  });
+
+  it("should show Save button that calls the auto-recharge API", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingDialog("pro");
+
+    expect(screen.getByText("Save")).toBeInTheDocument();
+  });
+});
