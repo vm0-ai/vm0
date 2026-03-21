@@ -1,5 +1,3 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
   Select,
@@ -15,6 +13,10 @@ import {
   notificationPreferences$,
   updateNotificationPreference$,
 } from "../../../../signals/zero-page/settings/notification-settings.ts";
+import {
+  timezoneSaving$,
+  setTimezoneSaving$,
+} from "../../../../signals/zero-page/settings/preferences-page.ts";
 
 function getCommonTimezones() {
   return [
@@ -42,9 +44,8 @@ export function TimezoneSettings() {
   const preferences = useLastResolved(notificationPreferences$);
   const updatePreference = useSet(updateNotificationPreference$);
 
-  const loading$ = useCCState(false);
-  const loading = useGet(loading$);
-  const setLoading = useSet(loading$);
+  const loading = useGet(timezoneSaving$);
+  const setLoading = useSet(setTimezoneSaving$);
 
   const handleChange = (value: string) => {
     setLoading(true);

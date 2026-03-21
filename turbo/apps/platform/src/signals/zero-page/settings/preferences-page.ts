@@ -24,3 +24,15 @@ export const sendModeSaving$ = computed((get) => get(internalSendModeSaving$));
 export const setSendModeSaving$ = command(({ set }, value: SendMode | null) => {
   set(internalSendModeSaving$, value);
 });
+
+// ---------------------------------------------------------------------------
+// Timezone saving state
+// ---------------------------------------------------------------------------
+
+const internalTimezoneSaving$ = state(false);
+
+export const timezoneSaving$ = computed((get) => get(internalTimezoneSaving$));
+
+export const setTimezoneSaving$ = command(({ set }, value: boolean) => {
+  set(internalTimezoneSaving$, value);
+});
