@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { ChangeEvent } from "react";
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconSend,
@@ -33,6 +31,10 @@ import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
+  composerFileInput$,
+  setComposerFileInput$,
+  composerAddDialogOpen$,
+  setComposerAddDialogOpen$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
@@ -370,9 +372,8 @@ export function ZeroChatComposer({
   const removeAttachment = useSet(removeZeroAttachment$);
 
   // File picker
-  const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
-  const fileInputEl = useGet(fileInputEl$);
-  const setFileInputEl = useSet(fileInputEl$);
+  const fileInputEl = useGet(composerFileInput$);
+  const setFileInputEl = useSet(setComposerFileInput$);
 
   // File upload (paste / drag-drop)
   const { dragOver, handlePaste, handleDrop, handleDragOver, handleDragLeave } =
@@ -398,9 +399,8 @@ export function ZeroChatComposer({
   const saveSkills = useSet(saveZeroSkills$);
   const optimisticConnected = useGet(justConnectedTypes$);
   const clearOptimistic = useSet(clearJustConnectedTypes$);
-  const addDialogOpen$ = useCCState(false);
-  const addDialogOpen = useGet(addDialogOpen$);
-  const setAddDialogOpen = useSet(addDialogOpen$);
+  const addDialogOpen = useGet(composerAddDialogOpen$);
+  const setAddDialogOpen = useSet(setComposerAddDialogOpen$);
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];

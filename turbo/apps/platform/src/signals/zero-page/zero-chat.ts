@@ -522,6 +522,12 @@ export const zeroChatAttachments$ = computed((get) =>
   get(internalAttachments$),
 );
 
+const internalDragOver$ = state(false);
+export const zeroDragOver$ = computed((get) => get(internalDragOver$));
+export const setZeroDragOver$ = command(({ set }, value: boolean) => {
+  set(internalDragOver$, value);
+});
+
 export const uploadZeroAttachment$ = command(
   async ({ get, set }, file: File) => {
     const id = crypto.randomUUID();
@@ -1136,4 +1142,34 @@ export const syncUrlSession$ = command(async ({ get, set }) => {
     return;
   }
   await set(switchZeroSession$, urlSessionId);
+});
+
+// ---------------------------------------------------------------------------
+// Composer local UI state
+// ---------------------------------------------------------------------------
+
+const internalComposerFileInput$ = state<HTMLElement | null>(null);
+
+/** The file input element used by the composer attach button. */
+export const composerFileInput$ = computed((get) =>
+  get(internalComposerFileInput$),
+);
+
+/** Store a reference to the composer file input element. */
+export const setComposerFileInput$ = command(
+  ({ set }, el: HTMLElement | null) => {
+    set(internalComposerFileInput$, el);
+  },
+);
+
+const internalComposerAddDialogOpen$ = state(false);
+
+/** Whether the "Add connector" dialog in the composer is open. */
+export const composerAddDialogOpen$ = computed((get) =>
+  get(internalComposerAddDialogOpen$),
+);
+
+/** Toggle the "Add connector" dialog open state. */
+export const setComposerAddDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalComposerAddDialogOpen$, open);
 });

@@ -71,6 +71,24 @@ export const completeMemberOnboarding$ = command(async ({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Member welcome step state
+// ---------------------------------------------------------------------------
+
+type MemberWelcomeStep = "welcome" | "connectors" | "where";
+
+const internalMemberWelcomeStep$ = state<MemberWelcomeStep>("welcome");
+
+export const memberWelcomeStep$ = computed((get) =>
+  get(internalMemberWelcomeStep$),
+);
+
+export const setMemberWelcomeStep$ = command(
+  ({ set }, step: MemberWelcomeStep) => {
+    set(internalMemberWelcomeStep$, step);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Onboarding form state
 // ---------------------------------------------------------------------------
 

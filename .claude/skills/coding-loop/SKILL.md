@@ -89,9 +89,9 @@ If the skip flag exists, delete it and **skip directly to Phase B**. This allows
 ### Step A1: List PRs with Label (excluding pending)
 
 ```bash
-gh pr list --state open --label "$LABEL" --author "@me" \
-  --json number,title,mergeable,headRefName,headRefOid,labels \
-  --jq '[.[] | select(([.labels[].name] | any(. == "pending")) | not)] | .[] | {number, title, mergeable, head: .headRefOid[:7]}'
+LANE_DATA=$(scripts/lane-status.sh "$LABEL")
+# Extract non-pending PRs from the output
+echo "$LANE_DATA" | jq '.[0].prs | [.[] | select(.pending | not)]'
 ```
 
 If no non-pending open PRs with this label, skip to **Phase B**.
@@ -100,13 +100,22 @@ If no non-pending open PRs with this label, skip to **Phase B**.
 
 For each non-pending PR (one at a time, never parallel):
 
-#### Step A2.1: Check Merge Conflict Status
+#### Step A2.1: Get PR Status
+
+Run the status check script to get conflict/CI/review status in one call:
 
 ```bash
-gh pr view <PR> --json mergeable --jq '.mergeable'
+PR_STATUS=$(scripts/pr-status.sh <PR_NUMBER>)
+STATUS=$(echo "$PR_STATUS" | jq -r '.status')
 ```
 
-**If merge conflict:** Resolve and **END this round**.
+The `status` field classifies the PR into one of: `conflict`, `ci_failing`, `ci_running_no_review`, `ci_running_reviewed`, `ci_passed`.
+
+#### Step A2.2: Handle Based on Status
+
+---
+
+**If `status == "conflict"`:** Resolve and **END this round**.
 
 1. Disable auto-merge:
    ```bash
@@ -133,21 +142,13 @@ gh pr view <PR> --json mergeable --jq '.mergeable'
 
 The pushed conflict resolution needs a fresh CI run. End this round.
 
-#### Step A2.2: Check CI Status
-
-```bash
-gh pr checks <PR> --json name,state,conclusion
-```
-
-Classify into one of these cases:
-
 ---
 
-**Case A: CI has failures**
+**If `status == "ci_failing"`:**
 
+Check the failed jobs from `PR_STATUS`:
 ```bash
-gh pr checks <PR> --json name,state,conclusion \
-  --jq '.[] | select(.conclusion == "failure")'
+echo "$PR_STATUS" | jq '.ci.failed_jobs'
 ```
 
 - **If runner/e2e failures:** Post to Slack channel (channelId: `C0ALXC1SHHN`) with the failed job URL. Do NOT mention or @ any users.
@@ -159,25 +160,11 @@ gh pr checks <PR> --json name,state,conclusion \
 
 ---
 
-**Case B: CI still running (no failures yet), code review NOT done for latest commit**
-
-Check if a code review comment exists for the latest commit:
-
-```bash
-# Get latest commit SHA
-HEAD_SHA=$(gh pr view <PR> --json headRefOid --jq '.headRefOid[:7]')
-
-# Check if a review comment exists that references this commit
-gh api "repos/vm0-ai/vm0/issues/<PR>/comments" \
-  --jq "[.[] | select(.body | test(\"## Code Review\")) | select(.body | test(\"$HEAD_SHA\"))] | length"
-```
-
-If no review for the latest commit:
+**If `status == "ci_running_no_review"`:**
 
 1. **Delete old review comments** (from previous commits):
    ```bash
-   gh api "repos/vm0-ai/vm0/issues/<PR>/comments" \
-     --jq '.[] | select(.body | test("## Code Review")) | .id' | \
+   echo "$PR_STATUS" | jq -r '.review.review_comment_ids[]' | \
      while read id; do gh api -X DELETE "repos/vm0-ai/vm0/issues/comments/$id"; done
    ```
 
@@ -193,7 +180,7 @@ If no review for the latest commit:
 
 ---
 
-**Case C: CI still running (no failures yet), code review already done for latest commit**
+**If `status == "ci_running_reviewed"`:**
 
 Nothing to do for this PR. Write the skip flag so the **next round skips Phase A and goes directly to Phase B**:
 
@@ -205,9 +192,9 @@ touch "/tmp/coding-loop-skip-phase-a-${LABEL}"
 
 ---
 
-**Case D: CI all passing, no P0/P1 issues**
+**If `status == "ci_passed"`:**
 
-The PR should already have auto-merge enabled from Case B. It will enter the merge queue automatically. **END** this round.
+The PR should already have auto-merge enabled. It will enter the merge queue automatically. **END** this round.
 
 If auto-merge is somehow not enabled, enable it:
 ```bash
@@ -245,22 +232,13 @@ After processing all PRs, report:
 
 ### Step B1: Find Next Issue
 
-1. List open issues with the label, assigned to current user, excluding `pending`:
-   ```bash
-   # Get current GitHub username
-   ME=$(gh api user --jq '.login')
+```bash
+NEXT_ISSUE=$(scripts/next-issue.sh "$LABEL")
+```
 
-   gh issue list --repo vm0-ai/vm0 --label "$LABEL" --assignee "$ME" --state open \
-     --json number,title,labels,closedByPullRequestsReferences --limit 50 \
-     --jq '[.[] | select(([.labels[].name] | any(. == "pending")) | not) | select(.closedByPullRequestsReferences | length == 0)] | sort_by(.number) | .[0]'
-   ```
+This script finds the first non-pending, non-PR-linked issue assigned to the current user for this label, and verifies no open PR already covers it.
 
-2. If no unlinked, non-pending issues remain, end.
-
-3. Verify no existing open PR exists for this issue:
-   ```bash
-   gh api "repos/vm0-ai/vm0/pulls?state=open&per_page=100" --jq '.[].title'
-   ```
+If no output (empty), no actionable issues remain — end.
 
 ### Step B2: Read Issue Content (with Security Filtering)
 

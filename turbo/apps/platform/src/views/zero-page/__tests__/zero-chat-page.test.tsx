@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -130,6 +130,54 @@ describe("zero chat page - composer", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
+    });
+  });
+});
+
+describe("zero chat page - file input ref", () => {
+  it("should open file picker when Attach button is clicked", async () => {
+    await renderChatPage();
+
+    const attachButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Attach" }),
+    );
+
+    // The hidden file input should exist in the DOM
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).toBeInTheDocument();
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+
+    // Mock the click method to verify it gets called
+    const clickSpy = vi.fn();
+    fileInput.click = clickSpy;
+
+    fireEvent.click(attachButton);
+
+    expect(clickSpy).toHaveBeenCalledOnce();
+  });
+});
+
+describe("zero chat page - add connector dialog", () => {
+  it("should open add connector dialog when clicking Add connector in popover", async () => {
+    await renderChatPage();
+
+    const connectorsButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Connectors" }),
+    );
+
+    fireEvent.click(connectorsButton);
+
+    const addConnectorButton = await waitFor(() =>
+      screen.getByText("Add connector"),
+    );
+
+    fireEvent.click(addConnectorButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
   });
 });

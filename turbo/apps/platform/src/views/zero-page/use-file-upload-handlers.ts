@@ -1,9 +1,11 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { ClipboardEvent, DragEvent } from "react";
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
 import { detach, Reason } from "../../signals/utils.ts";
-import { uploadZeroAttachment$ } from "../../signals/zero-page/zero-chat.ts";
+import {
+  uploadZeroAttachment$,
+  zeroDragOver$,
+  setZeroDragOver$,
+} from "../../signals/zero-page/zero-chat.ts";
 
 interface FileUploadHandlers {
   dragOver: boolean;
@@ -15,9 +17,8 @@ interface FileUploadHandlers {
 
 export function useFileUploadHandlers(): FileUploadHandlers {
   const uploadAttachment = useSet(uploadZeroAttachment$);
-  const dragOver$ = useCCState(false);
-  const dragOver = useGet(dragOver$);
-  const setDragOver = useSet(dragOver$);
+  const dragOver = useGet(zeroDragOver$);
+  const setDragOver = useSet(setZeroDragOver$);
 
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;

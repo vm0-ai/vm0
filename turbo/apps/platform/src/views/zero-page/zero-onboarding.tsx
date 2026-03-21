@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { Component } from "react";
-import { useCCState } from "ccstate-react/experimental";
 import {
   useGet,
   useSet,
@@ -30,6 +28,8 @@ import {
   clearZeroOnboardingError$,
   completeMemberOnboarding$,
   zeroOnboardingStatus$,
+  memberWelcomeStep$,
+  setMemberWelcomeStep$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   sendZeroChatMessage$,
@@ -546,9 +546,8 @@ export function MemberWelcome({
   agentName?: string;
   zeroAvatarSrc?: string;
 }) {
-  const step$ = useCCState<"welcome" | "connectors" | "where">("welcome");
-  const step = useGet(step$);
-  const setStep = useSet(step$);
+  const step = useGet(memberWelcomeStep$);
+  const setStep = useSet(setMemberWelcomeStep$);
   const completeMember = useSet(completeMemberOnboarding$);
   const navigate = useSet(updatePathname$);
   const startNewSession = useSet(startNewZeroSession$);

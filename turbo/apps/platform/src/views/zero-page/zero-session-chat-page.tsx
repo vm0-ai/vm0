@@ -26,6 +26,10 @@ import {
 import { Markdown } from "../components/markdown.tsx";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
+import {
+  lightboxUrl$ as attachmentLightboxUrl$,
+  setLightboxUrl$ as setAttachmentLightboxUrl$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroChatMessages$,
@@ -274,9 +278,8 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
   // Preserve user-entered line breaks: CommonMark collapses single newlines
   // into spaces, so convert each \n to a hard line break (two trailing spaces + \n).
   const displayContent = cleanContent.replace(/\n/g, "  \n");
-  const lightboxUrl$ = useCCState<string | null>(null);
-  const lightboxUrl = useGet(lightboxUrl$);
-  const setLightboxUrl = useSet(lightboxUrl$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const setLightboxUrl = useSet(setAttachmentLightboxUrl$);
 
   // Merge explicit attachments with those parsed from content
   const allAttachments = [
@@ -341,9 +344,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
           </div>
         </div>
       </div>
-      {lightboxUrl && (
-        <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
-      )}
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
     </>
   );
 }

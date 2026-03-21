@@ -1,9 +1,11 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { Card, CardContent } from "@vm0/ui";
 import { ZeroScheduleCard, type ScheduleEntry } from "./zero-schedule-card.tsx";
 import { notificationPreferences$ } from "../../signals/zero-page/settings/notification-settings.ts";
+import {
+  scheduleTabSaving$,
+  setScheduleTabSaving$,
+} from "../../signals/zero-page/zero-schedule.ts";
 
 interface ZeroScheduleSaveParams {
   prompt: string;
@@ -41,9 +43,8 @@ export function ZeroScheduleTab({
   const prefsLoadable = useLoadable(notificationPreferences$);
   const userTimezone =
     prefsLoadable.state === "hasData" ? prefsLoadable.data.timezone : null;
-  const saving$ = useCCState(false);
-  const saving = useGet(saving$);
-  const setSaving = useSet(saving$);
+  const saving = useGet(scheduleTabSaving$);
+  const setSaving = useSet(setScheduleTabSaving$);
 
   if (scheduleError) {
     return (

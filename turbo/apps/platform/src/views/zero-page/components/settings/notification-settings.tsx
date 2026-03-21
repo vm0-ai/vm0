@@ -1,10 +1,11 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
+  addNotificationLoadingKey$,
+  notificationLoadingKeys$,
   notificationPreferences$,
+  removeNotificationLoadingKey$,
   updateNotificationPreference$,
 } from "../../../../signals/zero-page/settings/notification-settings.ts";
 import { LoadingSwitch } from "../../../components/loading-switch.tsx";
@@ -15,19 +16,15 @@ export function NotificationSettings() {
   const preferences = useLastResolved(notificationPreferences$);
   const updatePreference = useSet(updateNotificationPreference$);
 
-  const loadingKeys$ = useCCState<Set<string>>(new Set());
-  const loadingKeys = useGet(loadingKeys$);
-  const setLoadingKeys = useSet(loadingKeys$);
+  const loadingKeys = useGet(notificationLoadingKeys$);
+  const addLoadingKey = useSet(addNotificationLoadingKey$);
+  const removeLoadingKey = useSet(removeNotificationLoadingKey$);
 
   const handleToggle = (key: string, update: Record<string, boolean>) => {
-    setLoadingKeys((prev) => new Set([...prev, key]));
+    addLoadingKey(key);
     updatePreference(update)
       .finally(() => {
-        setLoadingKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(key);
-          return next;
-        });
+        removeLoadingKey(key);
       })
       .catch(() => toast.error("Failed to update preference"));
   };
