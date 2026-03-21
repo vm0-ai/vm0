@@ -1,6 +1,5 @@
 /* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { ChangeEvent } from "react";
-import { useEffect, useRef } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
@@ -424,13 +423,11 @@ export function ZeroChatComposer({
   const addDialogOpen = useGet(addDialogOpen$);
   const setAddDialogOpen = useSet(addDialogOpen$);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (autoFocus && textareaRef.current) {
-      textareaRef.current.focus();
+  const textareaCallbackRef = (el: HTMLTextAreaElement | null) => {
+    if (autoFocus && el) {
+      el.focus();
     }
-  }, [autoFocus]);
+  };
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
@@ -534,7 +531,7 @@ export function ZeroChatComposer({
               />
             )}
             <textarea
-              ref={textareaRef}
+              ref={textareaCallbackRef}
               className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
               rows={3}
               placeholder="Ask me to automate workflows, manage tasks..."

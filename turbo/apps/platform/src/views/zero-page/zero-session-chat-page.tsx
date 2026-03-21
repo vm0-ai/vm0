@@ -76,9 +76,12 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-  const messagesEndEl$ = useCCState<HTMLDivElement | null>(null);
-  const messagesEndEl = useGet(messagesEndEl$);
-  const setMessagesEndEl = useSet(messagesEndEl$);
+  // Auto-scroll when messages change — ref callback runs at commit time
+  const scrollAnchorRef = (el: HTMLDivElement | null) => {
+    if (el && messages.length > 0) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
   // Pin pill — show when chatting with an unpinned subagent
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -96,13 +99,6 @@ export function ZeroSessionChatPage({
       );
     }
   };
-
-  // Auto-scroll when messages change (deferred to avoid side effect during render)
-  if (messagesEndEl && messages.length > 0) {
-    queueMicrotask(() => {
-      messagesEndEl.scrollIntoView({ behavior: "smooth" });
-    });
-  }
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
     clearInput();
@@ -181,7 +177,7 @@ export function ZeroSessionChatPage({
                 zeroAvatarSrc={zeroAvatarSrc}
               />
             ))}
-            <div ref={setMessagesEndEl} />
+            <div ref={scrollAnchorRef} />
           </div>
         </main>
 

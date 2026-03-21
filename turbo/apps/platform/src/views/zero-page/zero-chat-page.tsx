@@ -739,7 +739,6 @@ function filterScenariosToShow(
 
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
-  onClearScenario?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (
     message: string,
@@ -754,7 +753,6 @@ interface ZeroChatPageProps {
 
 export function ZeroChatPage({
   initialScenarioId,
-  onClearScenario: _onClearScenario,
   onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,

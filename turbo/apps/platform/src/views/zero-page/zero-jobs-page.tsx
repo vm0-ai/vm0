@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useCCState } from "ccstate-react/experimental";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { IconCrown, IconPlus, IconUsers } from "@tabler/icons-react";
