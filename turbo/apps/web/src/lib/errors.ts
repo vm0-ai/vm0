@@ -71,12 +71,6 @@ interface NoModelProviderError extends ApiErrorBase {
   readonly code: "NO_MODEL_PROVIDER";
 }
 
-interface ProviderUnavailableError extends ApiErrorBase {
-  readonly name: "ProviderUnavailableError";
-  readonly statusCode: 503;
-  readonly code: "PROVIDER_UNAVAILABLE";
-}
-
 // ============================================================================
 // Factory Functions
 // ============================================================================

@@ -23,6 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
@@ -635,11 +636,18 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   ) : null;
 
   if (message.error) {
-    const isNoModelProvider = message.error.includes(
-      "No model provider configured",
-    );
+    const noProviderGuidance = RUN_ERROR_GUIDANCE.NO_MODEL_PROVIDER;
+    const isNoModelProvider =
+      noProviderGuidance !== undefined &&
+      message.error
+        .toLowerCase()
+        .includes(noProviderGuidance.title.toLowerCase());
+    const incompatibleGuidance = RUN_ERROR_GUIDANCE.PROVIDER_INCOMPATIBLE;
     const isProviderIncompatible =
-      message.error.includes("Cannot continue session") ||
+      (incompatibleGuidance !== undefined &&
+        message.error
+          .toLowerCase()
+          .includes(incompatibleGuidance.title.toLowerCase())) ||
       message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
