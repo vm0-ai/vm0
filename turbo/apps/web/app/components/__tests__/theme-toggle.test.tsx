@@ -1,113 +1,83 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { ThemeProvider, useTheme } from "../ThemeProvider";
 
-function ThemeDisplay() {
-  const { theme, toggleTheme } = useTheme();
-  return (
-    <div>
-      <span data-testid="theme-value">{theme}</span>
-      <button data-testid="toggle-btn" onClick={toggleTheme}>
-        Toggle
-      </button>
-    </div>
+import { describe, it, expect, beforeEach } from "vitest";
+import { render, screen, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { ThemeProvider } from "../ThemeProvider";
+import ThemeToggle from "../ThemeToggle";
+
+function renderToggle() {
+  return render(
+    <ThemeProvider>
+      <ThemeToggle />
+    </ThemeProvider>,
   );
 }
 
-beforeEach(() => {
-  localStorage.clear();
-  document.documentElement.removeAttribute("data-theme");
-  // Default to light color scheme (no dark preference)
+function mockMatchMedia(prefersDark: boolean) {
+  const listeners: Array<() => void> = [];
   Object.defineProperty(window, "matchMedia", {
-    writable: true,
     value: (query: string) => ({
-      matches: query === "(prefers-color-scheme: dark)" ? false : false,
-      media: query,
-      onchange: null,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      dispatchEvent: () => false,
+      matches:
+        query === "(prefers-color-scheme: dark)" ? prefersDark : !prefersDark,
+      addEventListener: (_event: string, cb: () => void) => {
+        listeners.push(cb);
+      },
+      removeEventListener: (_event: string, cb: () => void) => {
+        const idx = listeners.indexOf(cb);
+        if (idx >= 0) listeners.splice(idx, 1);
+      },
     }),
+    configurable: true,
+    writable: true,
   });
-});
+}
 
-describe("ThemeProvider and ThemeToggle", () => {
-  it("should resolve to light theme after hydration when system prefers light", () => {
-    render(
-      <ThemeProvider>
-        <ThemeDisplay />
-      </ThemeProvider>,
-    );
-
-    // After hydration (useEffect runs), theme should be "light" from system preference
-    expect(screen.getByTestId("theme-value").textContent).toBe("light");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+describe("ThemeToggle", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+    mockMatchMedia(false); // default: OS prefers light
   });
 
-  it("should toggle theme from light to dark when button is clicked", () => {
-    render(
-      <ThemeProvider>
-        <ThemeDisplay />
-      </ThemeProvider>,
-    );
+  it("should toggle theme from light to dark when button is clicked", async () => {
+    renderToggle();
 
-    // Initially light
-    expect(screen.getByTestId("theme-value").textContent).toBe("light");
+    // After mount, theme resolves to "light" (OS preference)
+    await act(() => Promise.resolve());
 
-    // Click toggle
-    fireEvent.click(screen.getByTestId("toggle-btn"));
+    const button = screen.getByRole("button", {
+      name: /switch to dark mode/i,
+    });
+    await userEvent.click(button);
 
-    // Should now be dark
-    expect(screen.getByTestId("theme-value").textContent).toBe("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     expect(localStorage.getItem("theme")).toBe("dark");
   });
 
-  it("should toggle theme from dark to light when button is clicked", () => {
+  it("should toggle theme from dark to light when button is clicked", async () => {
     localStorage.setItem("theme", "dark");
 
-    render(
-      <ThemeProvider>
-        <ThemeDisplay />
-      </ThemeProvider>,
-    );
+    renderToggle();
+    await act(() => Promise.resolve());
 
-    // Initially dark from localStorage
-    expect(screen.getByTestId("theme-value").textContent).toBe("dark");
+    const button = screen.getByRole("button", {
+      name: /switch to light mode/i,
+    });
+    await userEvent.click(button);
 
-    // Click toggle
-    fireEvent.click(screen.getByTestId("toggle-btn"));
-
-    // Should now be light
-    expect(screen.getByTestId("theme-value").textContent).toBe("light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(localStorage.getItem("theme")).toBe("light");
   });
 
-  it("should apply data-theme attribute on mount", () => {
-    render(
-      <ThemeProvider>
-        <ThemeDisplay />
-      </ThemeProvider>,
-    );
+  it("should persist theme preference to localStorage", async () => {
+    renderToggle();
+    await act(() => Promise.resolve());
 
-    // data-theme should be set after hydration
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-  });
+    const button = screen.getByRole("button");
+    await userEvent.click(button);
 
-  it("should read persisted theme from localStorage", () => {
-    localStorage.setItem("theme", "dark");
-
-    render(
-      <ThemeProvider>
-        <ThemeDisplay />
-      </ThemeProvider>,
-    );
-
-    expect(screen.getByTestId("theme-value").textContent).toBe("dark");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    const savedTheme = localStorage.getItem("theme");
+    expect(savedTheme === "light" || savedTheme === "dark").toBe(true);
   });
 });

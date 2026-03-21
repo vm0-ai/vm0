@@ -5,7 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useSyncExternalStore,
+  useState,
   type ReactNode,
 } from "react";
 
@@ -27,17 +27,7 @@ export function useTheme() {
   return context;
 }
 
-function subscribeToThemeChanges(callback: () => void): () => void {
-  window.addEventListener("storage", callback);
-  const mql = window.matchMedia("(prefers-color-scheme: dark)");
-  mql.addEventListener("change", callback);
-  return () => {
-    window.removeEventListener("storage", callback);
-    mql.removeEventListener("change", callback);
-  };
-}
-
-function getThemeSnapshot(): Theme {
+function resolveClientTheme(): Theme {
   const saved = localStorage.getItem("theme") as Theme | null;
   if (saved === "light" || saved === "dark") {
     return saved;
@@ -47,8 +37,12 @@ function getThemeSnapshot(): Theme {
     : "light";
 }
 
-function getServerThemeSnapshot(): Theme {
-  return "dark";
+function applyTheme(newTheme: Theme) {
+  localStorage.setItem("theme", newTheme);
+  document.documentElement.setAttribute("data-theme", newTheme);
+  // localStorage.setItem doesn't fire storage events in the same tab,
+  // so dispatch manually for cross-tab sync
+  window.dispatchEvent(new Event("storage"));
 }
 
 interface ThemeProviderProps {
@@ -56,46 +50,50 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const theme = useSyncExternalStore(
-    subscribeToThemeChanges,
-    getThemeSnapshot,
-    getServerThemeSnapshot,
-  );
+  // Start with "dark" to match the server render and the HTML default data-theme="dark".
+  // The inline script in layout.tsx prevents FOUC by setting the correct data-theme
+  // before paint. After hydration, useEffect reads the real client theme.
+  const [theme, setThemeState] = useState<Theme>("dark");
 
+  // After mount, sync state with the actual client theme
+  useEffect(() => {
+    setThemeState(resolveClientTheme());
+  }, []);
+
+  // Apply data-theme attribute whenever theme changes
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Ensure data-theme is set on initial mount even if theme matches
-  // the server snapshot. Without this, the attribute may remain unset
-  // when the client theme happens to be "dark" (same as server default).
+  // Subscribe to external theme changes (storage events, OS preference changes)
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", getThemeSnapshot());
+    const onStorage = () => {
+      setThemeState(resolveClientTheme());
+    };
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const onMediaChange = () => {
+      setThemeState(resolveClientTheme());
+    };
+    window.addEventListener("storage", onStorage);
+    mql.addEventListener("change", onMediaChange);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      mql.removeEventListener("change", onMediaChange);
+    };
   }, []);
 
-  const applyTheme = useCallback((newTheme: Theme) => {
-    localStorage.setItem("theme", newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
-    // localStorage.setItem doesn't fire storage events in the same tab,
-    // so dispatch manually to trigger useSyncExternalStore re-read
-    window.dispatchEvent(new Event("storage"));
+  const setTheme = useCallback((newTheme: Theme) => {
+    applyTheme(newTheme);
+    setThemeState(newTheme);
   }, []);
-
-  const setTheme = useCallback(
-    (newTheme: Theme) => {
-      applyTheme(newTheme);
-    },
-    [applyTheme],
-  );
 
   const toggleTheme = useCallback(() => {
-    // Read directly from the external store to get the true current theme.
-    // This avoids stale closure values that can occur during the hydration
-    // transition when useSyncExternalStore switches from server to client snapshot.
-    const currentTheme = getThemeSnapshot();
-    const newTheme = currentTheme === "dark" ? "light" : "dark";
-    applyTheme(newTheme);
-  }, [applyTheme]);
+    setThemeState((current) => {
+      const newTheme = current === "dark" ? "light" : "dark";
+      applyTheme(newTheme);
+      return newTheme;
+    });
+  }, []);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>

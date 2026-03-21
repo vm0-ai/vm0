@@ -1,0 +1,93 @@
+import { describe, it, expect, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ThemeProvider } from "../ThemeProvider";
+import Navbar from "../Navbar";
+
+// External: next-intl/navigation (used by navigation.ts -> Link, usePathname, useRouter)
+vi.mock("next-intl/navigation", () => ({
+  createNavigation: vi.fn(() => ({
+    Link: ({
+      href,
+      children,
+      className,
+    }: {
+      href: string;
+      children: React.ReactNode;
+      className?: string;
+    }) => (
+      <a href={href} className={className}>
+        {children}
+      </a>
+    ),
+    redirect: vi.fn(),
+    usePathname: vi.fn(() => "/"),
+    useRouter: vi.fn(() => ({ push: vi.fn() })),
+  })),
+}));
+
+// External: next-intl (used by Navbar, LanguageSwitcher)
+vi.mock("next-intl", () => ({
+  useTranslations: vi.fn(() => (key: string) => key),
+  useLocale: vi.fn(() => "en"),
+}));
+
+// External: @clerk/nextjs (used by Navbar)
+vi.mock("@clerk/nextjs", () => ({
+  useUser: vi.fn(() => ({ isSignedIn: false, user: null, isLoaded: true })),
+  useClerk: vi.fn(() => ({ signOut: vi.fn() })),
+}));
+
+// External: next/link (used by Navbar)
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    className,
+  }: {
+    href: string;
+    children: React.ReactNode;
+    className?: string;
+  }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
+}));
+
+// External: next/image (used by Navbar)
+vi.mock("next/image", () => ({
+  default: ({ alt, src }: { alt: string; src: string }) => (
+    <span data-alt={alt} data-src={src} />
+  ),
+}));
+
+// External: @tabler/icons-react (used by Navbar)
+vi.mock("@tabler/icons-react", () => ({
+  IconArrowRight: () => <span />,
+}));
+
+function renderNavbar() {
+  return renderToStaticMarkup(
+    <ThemeProvider>
+      <Navbar />
+    </ThemeProvider>,
+  );
+}
+
+describe("Navbar blog link visibility", () => {
+  it("does not render blog link when blog feature is disabled", () => {
+    // NEXT_PUBLIC_STRAPI_URL is not stubbed in global test setup,
+    // so isBlogEnabled() returns false by default
+    const html = renderNavbar();
+
+    expect(html).not.toContain('href="/blog"');
+  });
+
+  it("renders blog link when blog feature is enabled", () => {
+    vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", "https://strapi.example.com");
+
+    const html = renderNavbar();
+
+    expect(html).toContain('href="/blog"');
+  });
+});

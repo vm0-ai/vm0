@@ -36,9 +36,9 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("chat");
     });
 
-    it("should resolve unknown tab /meet to default 'chat'", () => {
+    it("should resolve unknown tab /meet to 'not-found'", () => {
       mockLocation({ pathname: "/meet", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
+      expect(context.store.get(zeroActiveId$)).toBe("not-found");
     });
 
     it("should resolve /schedule to 'schedule'", () => {
@@ -66,9 +66,21 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("preferences");
     });
 
-    it("should fall back to 'chat' for invalid tab", () => {
+    it("should resolve unknown path to 'not-found'", () => {
       mockLocation({ pathname: "/invalid", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
+      expect(context.store.get(zeroActiveId$)).toBe("not-found");
+    });
+
+    it("should not resolve unknown path /scheduled to chat (bug #5869)", () => {
+      mockLocation({ pathname: "/scheduled", search: "" }, context.signal);
+      expect(context.store.get(zeroActiveId$)).not.toBe("chat");
+      expect(context.store.get(zeroActiveId$)).toBe("not-found");
+    });
+
+    it("should not resolve unknown path /foo to chat (bug #5869)", () => {
+      mockLocation({ pathname: "/foo", search: "" }, context.signal);
+      expect(context.store.get(zeroActiveId$)).not.toBe("chat");
+      expect(context.store.get(zeroActiveId$)).toBe("not-found");
     });
 
     it("should resolve /settings to 'settings'", () => {
