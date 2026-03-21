@@ -20,6 +20,8 @@ import {
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
+  sendFromZeroDemo$,
+  syncUrlSession$,
 } from "../zero-chat.ts";
 
 const context = testContext();
@@ -593,6 +595,152 @@ describe("zero-chat signals", () => {
       expect(threadCreateCalled).toBeFalsy();
       expect(capturedRunBody).toBeTruthy();
       expect(capturedRunBody!.sessionId).toBe("existing-session");
+    });
+  });
+
+  describe("sendFromZeroDemo$", () => {
+    it("should reset session and start sending the message", async () => {
+      let runCreated = false;
+      server.use(
+        http.post("*/api/zero/chat-threads", () => {
+          return HttpResponse.json(
+            { id: "thread-demo", createdAt: "2026-03-10T00:00:00Z" },
+            { status: 201 },
+          );
+        }),
+        http.post("*/api/zero/chat-threads/:id/runs", () => {
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/zero/runs", () => {
+          runCreated = true;
+          return HttpResponse.json({ runId: "run-demo" });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          return HttpResponse.json({
+            id: "run-demo",
+            status: "completed",
+            error: null,
+            prompt: "Hello from demo",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: "2026-03-10T00:00:02Z",
+          });
+        }),
+        http.get("*/api/zero/runs/:runId", () => {
+          return HttpResponse.json({
+            result: { agentSessionId: "demo-session" },
+          });
+        }),
+      );
+
+      await setup();
+
+      // Set up some existing state that should get reset
+      context.store.set(setZeroChatInput$, "old input");
+
+      context.store.set(sendFromZeroDemo$, "Hello from demo");
+
+      // Wait for the detached send to complete
+      await delay(100);
+
+      expect(runCreated).toBeTruthy();
+      // Session was reset before sending
+      expect(context.store.get(zeroChatInput$)).toBe("");
+    });
+  });
+
+  describe("syncUrlSession$", () => {
+    it("should switch to the URL session when it differs from current", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "url-thread",
+            title: null,
+            agentComposeId: "mock-compose-id",
+            chatMessages: [
+              {
+                role: "user",
+                content: "From URL",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+            ],
+            latestSessionId: "url-session",
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
+
+      // Set up with the chat session path so zeroSessionId$ returns "url-thread"
+      await setupPage({
+        context,
+        path: "/chat/url-thread",
+        withoutRender: true,
+      });
+
+      await context.store.set(syncUrlSession$);
+
+      expect(context.store.get(zeroChatThreadId$)).toBe("url-thread");
+      expect(context.store.get(zeroCurrentSessionId$)).toBe("url-session");
+      const messages = context.store.get(zeroChatMessages$);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.content).toBe("From URL");
+    });
+
+    it("should skip when no session ID in URL", async () => {
+      // Set up with /chat path (no session ID)
+      await setupPage({
+        context,
+        path: "/chat",
+        withoutRender: true,
+      });
+
+      await context.store.set(syncUrlSession$);
+
+      expect(context.store.get(zeroChatThreadId$)).toBeNull();
+    });
+
+    it("should skip when URL session already matches current thread", async () => {
+      let switchCount = 0;
+      server.use(
+        http.get("*/api/zero/chat-threads/:id", () => {
+          switchCount++;
+          return HttpResponse.json({
+            id: "already-loaded",
+            title: null,
+            agentComposeId: "mock-compose-id",
+            chatMessages: [],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
+
+      // Set up with the chat session path
+      await setupPage({
+        context,
+        path: "/chat/already-loaded",
+        withoutRender: true,
+      });
+
+      // First sync should switch
+      await context.store.set(syncUrlSession$);
+      expect(switchCount).toBe(1);
+
+      // Second sync with same URL should skip
+      await context.store.set(syncUrlSession$);
+      expect(switchCount).toBe(1);
     });
   });
 });

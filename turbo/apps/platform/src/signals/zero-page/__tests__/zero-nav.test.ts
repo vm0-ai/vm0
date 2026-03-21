@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mockLocation } from "../../location.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
@@ -9,6 +9,15 @@ import {
   zeroChatAgentName$,
   zeroChatAgentId$,
   setZeroChatAgent$,
+  zeroAvatarIndex$,
+  cycleZeroAvatar$,
+  zeroShowAboutPage$,
+  setZeroShowAboutPage$,
+  zeroSidebarCollapsed$,
+  setZeroSidebarCollapsed$,
+  initSidebarCollapsed$,
+  handleZeroNavSelect$,
+  handleZeroAccountAction$,
 } from "../zero-nav.ts";
 import { setRootSignal$ } from "../../root-signal.ts";
 import { initRoutes$ } from "../../route.ts";
@@ -155,6 +164,139 @@ describe("zero-nav", () => {
       });
       context.store.set(setZeroChatAgent$, null);
       expect(context.store.get(zeroChatAgentId$)).toBeNull();
+    });
+  });
+
+  describe("zeroAvatarIndex$ and cycleZeroAvatar$", () => {
+    it("should default to 0", () => {
+      expect(context.store.get(zeroAvatarIndex$)).toBe(0);
+    });
+
+    it("should advance to the next index", () => {
+      context.store.set(cycleZeroAvatar$, 5);
+      expect(context.store.get(zeroAvatarIndex$)).toBe(1);
+    });
+
+    it("should wrap around when reaching the end", () => {
+      context.store.set(cycleZeroAvatar$, 3);
+      context.store.set(cycleZeroAvatar$, 3);
+      context.store.set(cycleZeroAvatar$, 3);
+      expect(context.store.get(zeroAvatarIndex$)).toBe(0);
+    });
+  });
+
+  describe("zeroShowAboutPage$ and setZeroShowAboutPage$", () => {
+    it("should default to false", () => {
+      expect(context.store.get(zeroShowAboutPage$)).toBeFalsy();
+    });
+
+    it("should set to true", () => {
+      context.store.set(setZeroShowAboutPage$, true);
+      expect(context.store.get(zeroShowAboutPage$)).toBeTruthy();
+    });
+
+    it("should set back to false", () => {
+      context.store.set(setZeroShowAboutPage$, true);
+      context.store.set(setZeroShowAboutPage$, false);
+      expect(context.store.get(zeroShowAboutPage$)).toBeFalsy();
+    });
+  });
+
+  describe("zeroSidebarCollapsed$", () => {
+    it("should default to false", () => {
+      expect(context.store.get(zeroSidebarCollapsed$)).toBeFalsy();
+    });
+
+    it("should toggle via setZeroSidebarCollapsed$", () => {
+      context.store.set(setZeroSidebarCollapsed$, true);
+      expect(context.store.get(zeroSidebarCollapsed$)).toBeTruthy();
+
+      context.store.set(setZeroSidebarCollapsed$, false);
+      expect(context.store.get(zeroSidebarCollapsed$)).toBeFalsy();
+    });
+
+    it("should initialize as collapsed on mobile viewport", () => {
+      vi.spyOn(window, "innerWidth", "get").mockReturnValue(500);
+
+      context.store.set(initSidebarCollapsed$);
+      expect(context.store.get(zeroSidebarCollapsed$)).toBeTruthy();
+
+      vi.restoreAllMocks();
+    });
+
+    it("should initialize as expanded on desktop viewport", () => {
+      vi.spyOn(window, "innerWidth", "get").mockReturnValue(1024);
+
+      context.store.set(initSidebarCollapsed$);
+      expect(context.store.get(zeroSidebarCollapsed$)).toBeFalsy();
+
+      vi.restoreAllMocks();
+    });
+  });
+
+  describe("handleZeroNavSelect$", () => {
+    it("should navigate to the selected tab and close about page", async () => {
+      const pushStateMock = await setupNav();
+
+      context.store.set(setZeroShowAboutPage$, true);
+      context.store.set(handleZeroNavSelect$, "schedule");
+
+      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedule");
+      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+      expect(context.store.get(zeroShowAboutPage$)).toBeFalsy();
+    });
+
+    async function setupNav() {
+      context.store.set(setRootSignal$, context.signal);
+      const pushStateMock = createPushStateMock(context.signal);
+      mockLocation({ pathname: "/", search: "" }, context.signal);
+      const noop$ = command(() => void 0);
+      await context.store.set(
+        initRoutes$,
+        [
+          { path: "/", setup: noop$ },
+          { path: "/:tab", setup: noop$ },
+        ],
+        context.signal,
+      );
+      return pushStateMock;
+    }
+  });
+
+  describe("handleZeroAccountAction$", () => {
+    it("should navigate to preferences for 'preferences' action", async () => {
+      context.store.set(setRootSignal$, context.signal);
+      createPushStateMock(context.signal);
+      mockLocation({ pathname: "/", search: "" }, context.signal);
+      const noop$ = command(() => void 0);
+      await context.store.set(
+        initRoutes$,
+        [
+          { path: "/", setup: noop$ },
+          { path: "/:tab", setup: noop$ },
+        ],
+        context.signal,
+      );
+
+      context.store.set(handleZeroAccountAction$, "preferences");
+
+      expect(context.store.get(zeroActiveId$)).toBe("preferences");
+    });
+
+    it("should do nothing for 'signout' action", () => {
+      mockLocation({ pathname: "/schedule", search: "" }, context.signal);
+
+      context.store.set(handleZeroAccountAction$, "signout");
+
+      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+    });
+
+    it("should do nothing for 'manage' action", () => {
+      mockLocation({ pathname: "/schedule", search: "" }, context.signal);
+
+      context.store.set(handleZeroAccountAction$, "manage");
+
+      expect(context.store.get(zeroActiveId$)).toBe("schedule");
     });
   });
 });
