@@ -1,4 +1,5 @@
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { Fragment } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { CONNECTOR_ICONS } from "./zero-page/components/settings/connector-icons.tsx";
 import {
@@ -138,7 +139,7 @@ export function InternalConnectorLogos() {
           const iconUrl = CONNECTOR_ICONS[type];
           const iconType = getIconType(iconUrl);
           return (
-            <>
+            <Fragment key={type}>
               <IconBox src={iconUrl} size={size} shape="square" bg="#fff" />
               <IconBox src={iconUrl} size={size} shape="square" bg="#7c3aed" />
               <IconBox src={iconUrl} size={size} shape="circle" bg="#fff" />
@@ -150,7 +151,7 @@ export function InternalConnectorLogos() {
                 <span style={{ fontSize: 12, color: "#999" }}>{type}</span>
                 <span style={{ fontSize: 12, color: "#666" }}>{iconType}</span>
               </div>
-            </>
+            </Fragment>
           );
         })}
       </div>
