@@ -9,6 +9,8 @@ import {
   updateOrgStripeFields,
   getOrgBillingFields,
   grantCreditsToOrg,
+  updateOrgAutoRecharge,
+  getOrgAutoRechargeFields,
 } from "../../../../../src/__tests__/api-test-helpers";
 import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
@@ -332,6 +334,40 @@ describe("POST /api/webhooks/stripe", () => {
       });
 
       expect(response.status).toBe(200);
+    });
+
+    it("grants credits for auto-recharge invoice via metadata", async () => {
+      const cusId = uniqueId("cus-auto");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargePendingAt: new Date(),
+      });
+
+      const creditsBefore = await getOrgCredits(user.orgId);
+
+      const response = await sendWebhookEvent("invoice.paid", {
+        id: uniqueId("inv-auto"),
+        customer: cusId,
+        metadata: {
+          type: "auto_recharge",
+          orgId: user.orgId,
+          creditsAmount: "5000",
+        },
+        parent: null,
+      });
+
+      expect(response.status).toBe(200);
+
+      // Credits should be granted
+      const creditsAfter = await getOrgCredits(user.orgId);
+      expect(creditsAfter! - creditsBefore!).toBe(5000);
+
+      // Pending flag should be cleared
+      const autoRecharge = await getOrgAutoRechargeFields(user.orgId);
+      expect(autoRecharge?.autoRechargePendingAt).toBeNull();
     });
   });
 

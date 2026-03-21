@@ -255,6 +255,93 @@ describe("auto-recharge-service", () => {
       // Only one should have created an invoice
       expect(stripeMocks.invoicesCreate).toHaveBeenCalledTimes(1);
     });
+
+    it("skips when Stripe customer is deleted", async () => {
+      const cusId = uniqueId("cus");
+      await updateOrgTier(user.orgId, "pro");
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 3000,
+        autoRechargeAmount: 5000,
+      });
+
+      stripeMocks.customersRetrieve.mockResolvedValue({ deleted: true });
+
+      await triggerAutoRecharge(user.orgId);
+
+      // No invoice should be created
+      expect(stripeMocks.invoicesCreate).not.toHaveBeenCalled();
+      // Pending flag should be cleared
+      const fields = await getOrgAutoRechargeFields(user.orgId);
+      expect(fields?.autoRechargePendingAt).toBeNull();
+    });
+
+    it("skips when no payment method on customer or subscription", async () => {
+      const cusId = uniqueId("cus");
+      const subId = uniqueId("sub");
+      await updateOrgTier(user.orgId, "pro");
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 3000,
+        autoRechargeAmount: 5000,
+      });
+
+      // Customer has no default payment method
+      stripeMocks.customersRetrieve.mockResolvedValue({
+        id: cusId,
+        deleted: false,
+        invoice_settings: { default_payment_method: null },
+      });
+      // Subscription also has no payment method
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        default_payment_method: null,
+      });
+
+      await triggerAutoRecharge(user.orgId);
+
+      expect(stripeMocks.invoicesCreate).not.toHaveBeenCalled();
+      const fields = await getOrgAutoRechargeFields(user.orgId);
+      expect(fields?.autoRechargePendingAt).toBeNull();
+    });
+
+    it("uses subscription payment method when customer has none", async () => {
+      const cusId = uniqueId("cus");
+      const subId = uniqueId("sub");
+      await updateOrgTier(user.orgId, "pro");
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargeEnabled: true,
+        autoRechargeThreshold: 3000,
+        autoRechargeAmount: 5000,
+      });
+
+      // Customer has no default payment method
+      stripeMocks.customersRetrieve.mockResolvedValue({
+        id: cusId,
+        deleted: false,
+        invoice_settings: { default_payment_method: null },
+      });
+      // Subscription has a payment method
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        default_payment_method: "pm_from_subscription",
+      });
+
+      await triggerAutoRecharge(user.orgId);
+
+      // Invoice should be created with subscription's payment method
+      const invoiceCall = stripeMocks.invoicesCreate.mock.calls[0]?.[0];
+      expect(invoiceCall?.default_payment_method).toBe("pm_from_subscription");
+    });
   });
 
   describe("handleAutoRechargeInvoicePaid", () => {

@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent, act } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing";
@@ -330,7 +332,19 @@ describe("auto-recharge in billing dialog", () => {
     expect(screen.getByText("= $10.00")).toBeInTheDocument();
   });
 
-  it("should show Save button that calls the auto-recharge API", async () => {
+  it("should send correct PUT body when enabling auto-recharge via Save", async () => {
+    const requestBody = vi.fn();
+    server.use(
+      http.put("*/api/billing/auto-recharge", async ({ request }) => {
+        requestBody(await request.json());
+        return HttpResponse.json({
+          enabled: true,
+          threshold: 2000,
+          amount: 5000,
+        });
+      }),
+    );
+
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -341,6 +355,71 @@ describe("auto-recharge in billing dialog", () => {
 
     await openBillingDialog("pro");
 
-    expect(screen.getByText("Save")).toBeInTheDocument();
+    // Toggle on
+    const toggle = screen.getByRole("switch");
+    await act(() => {
+      fireEvent.click(toggle);
+    });
+
+    // Fill in threshold and amount
+    const inputs = screen.getAllByRole("spinbutton");
+    await act(() => {
+      fireEvent.change(inputs[0]!, { target: { value: "2000" } });
+      fireEvent.change(inputs[1]!, { target: { value: "5000" } });
+    });
+
+    // Click Save
+    await act(() => {
+      fireEvent.click(screen.getByText("Save"));
+    });
+
+    // Verify PUT request was sent with correct body
+    await vi.waitFor(() => {
+      expect(requestBody).toHaveBeenCalledWith({
+        enabled: true,
+        threshold: 2000,
+        amount: 5000,
+      });
+    });
+  });
+
+  it("should send enabled:false when disabling auto-recharge via Save", async () => {
+    const requestBody = vi.fn();
+    server.use(
+      http.put("*/api/billing/auto-recharge", async ({ request }) => {
+        requestBody(await request.json());
+        return HttpResponse.json({
+          enabled: false,
+          threshold: null,
+          amount: null,
+        });
+      }),
+    );
+
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 1000, amount: 5000 },
+    });
+
+    await openBillingDialog("pro");
+
+    // Toggle off
+    const toggle = screen.getByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await act(() => {
+      fireEvent.click(toggle);
+    });
+
+    // Click Save
+    await act(() => {
+      fireEvent.click(screen.getByText("Save"));
+    });
+
+    await vi.waitFor(() => {
+      expect(requestBody).toHaveBeenCalledWith({ enabled: false });
+    });
   });
 });
