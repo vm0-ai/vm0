@@ -75,6 +75,29 @@ import zeroAvatarImg from "./assets/zero-avatar.png";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  zeroActiveId$,
+  zeroSessionId$,
+  zeroChatAgentId$,
+  zeroSidebarCollapsed$,
+  setZeroSidebarCollapsed$,
+  handleZeroNavSelect$,
+  handleZeroAccountAction$,
+  zeroAvatarIndex$,
+  navigateToZeroSession$,
+} from "../../signals/zero-page/zero-nav.ts";
+import {
+  agentDisplayName$,
+  defaultAgentName$,
+} from "../../signals/zero-page/zero-agent-name.ts";
+import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
+import {
+  zeroSessionList$,
+  zeroSessionListLoading$,
+  zeroSessionListError$,
+  startNewZeroSession$,
+} from "../../signals/zero-page/zero-chat.ts";
+import { navigateInReact$ } from "../../signals/route.ts";
+import {
   pinnedAgentIds$,
   savingPinnedAgents$,
   updatePinnedAgentIds$,
@@ -177,24 +200,13 @@ interface SessionAccount {
   isActive: boolean;
 }
 
-interface ZeroSidebarProps {
-  activeId: ZeroNavId;
-  agentName?: string | null;
-  defaultAgentRawName?: string | null;
-  zeroAvatarSrc?: string;
-  subagents?: SubagentInfo[];
-  currentChatAgentId?: string | null;
-  collapsed?: boolean;
-  onCollapse?: () => void;
-  onSelect: (id: ZeroNavId) => void;
-  onRecentSelect?: (id: string) => void;
-  selectedRecentId?: string | null;
-  onAccountAction?: (action: ZeroAccountAction) => void;
-  recentSessions?: ChatThreadListItem[];
-  recentSessionsLoading?: boolean;
-  recentSessionsError?: string | null;
-  onNewChat?: (agent: { id: string; name: string } | null) => void;
-}
+const ZERO_AVATARS = [
+  zeroAvatarImg,
+  avatar1Img,
+  avatar2Img,
+  avatar3Img,
+  avatar4Img,
+] as const;
 
 function AccountAvatar({
   imageUrl,
@@ -964,24 +976,51 @@ function SidebarBillingButton() {
   );
 }
 
-export function ZeroSidebar({
-  activeId,
-  agentName,
-  defaultAgentRawName,
-  zeroAvatarSrc = zeroAvatarImg,
-  subagents = [],
-  currentChatAgentId = null,
-  collapsed = false,
-  onCollapse,
-  onSelect,
-  onRecentSelect,
-  selectedRecentId = null,
-  onAccountAction,
-  recentSessions = [],
-  recentSessionsLoading = false,
-  recentSessionsError = null,
-  onNewChat,
-}: ZeroSidebarProps) {
+export function ZeroSidebar() {
+  // Read all data from signals directly
+  const activeId = useGet(zeroActiveId$);
+  const agentNameLoadable = useLastLoadable(agentDisplayName$);
+  const agentName =
+    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : null;
+  const defaultAgentNameLoadable = useLastLoadable(defaultAgentName$);
+  const defaultAgentRawName =
+    defaultAgentNameLoadable.state === "hasData"
+      ? defaultAgentNameLoadable.data
+      : null;
+  const avatarIndex = useGet(zeroAvatarIndex$);
+  const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+  const subagentsLoadable = useLastLoadable(zeroSubagents$);
+  const subagents: SubagentInfo[] =
+    subagentsLoadable.state === "hasData"
+      ? subagentsLoadable.data.map((a) => ({
+          id: a.id,
+          name: a.name,
+          displayName: a.displayName,
+        }))
+      : [];
+  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const collapsed = useGet(zeroSidebarCollapsed$);
+  const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
+  const onCollapse = () => setSidebarCollapsed(!collapsed);
+  const onSelect = useSet(handleZeroNavSelect$);
+  const navigateToSession = useSet(navigateToZeroSession$);
+  const onRecentSelect = (id: string) => navigateToSession(id);
+  const selectedRecentId = useGet(zeroSessionId$);
+  const onAccountAction = useSet(handleZeroAccountAction$);
+  const recentSessions = useGet(zeroSessionList$);
+  const recentSessionsLoading = useGet(zeroSessionListLoading$);
+  const recentSessionsError = useGet(zeroSessionListError$);
+  const startNewSession = useSet(startNewZeroSession$);
+  const navigateInReact = useSet(navigateInReact$);
+  const onNewChat = (agent: { id: string; name: string } | null) => {
+    startNewSession();
+    if (agent) {
+      navigateInReact("/talk/:name", { pathParams: { name: agent.name } });
+    } else {
+      navigateInReact("/");
+    }
+  };
+
   const displayName = agentName || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =

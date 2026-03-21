@@ -1,39 +1,22 @@
+import type { ReactNode } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import {
-  ZeroSidebar,
-  useAgentAvatar,
-  type SubagentInfo,
-} from "./zero-sidebar.tsx";
 import { Button } from "@vm0/ui";
-import { ZeroAboutPage } from "./zero-about-page.tsx";
-import { ZeroContent } from "./zero-content.tsx";
+import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { ZeroOnboarding, MemberWelcome } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
 import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
 } from "../../signals/zero-page/zero-onboarding.ts";
+import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
-  agentDisplayName$,
-  defaultAgentName$,
-} from "../../signals/zero-page/zero-agent-name.ts";
-import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
-import {
-  zeroActiveId$,
-  zeroInChat$,
-  zeroChatAgentId$,
-  zeroChatAgentName$,
-  zeroTalkAgentResolved$,
-  navigateFromZeroSession$,
   zeroAvatarIndex$,
-  cycleZeroAvatar$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
 } from "../../signals/zero-page/zero-nav.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
-import { sendFromZeroDemo$ } from "../../signals/zero-page/zero-chat.ts";
+import { ZeroAboutPage } from "./zero-about-page.tsx";
 
 import zeroAvatarImg from "./assets/zero-avatar.png";
 import avatar1Img from "./assets/avatar-1.png";
@@ -49,7 +32,7 @@ const ZERO_AVATARS = [
   avatar4Img,
 ] as const;
 
-function ZeroAppSkeleton({ visible }: { visible: boolean }) {
+function SidebarLayoutSkeleton({ visible }: { visible: boolean }) {
   return (
     <div
       className={`fixed inset-0 z-50 flex bg-background ${
@@ -60,13 +43,11 @@ function ZeroAppSkeleton({ visible }: { visible: boolean }) {
     >
       {/* Sidebar skeleton */}
       <aside className="flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
-        {/* Org switcher */}
         <div className="shrink-0 p-2 pb-1">
           <div className="rounded-lg p-2">
             <div className="h-8 w-full rounded-lg bg-muted/50 animate-pulse" />
           </div>
         </div>
-        {/* Nav + Recent */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden p-2">
           <div className="flex flex-col gap-1">
             {["nav-1", "nav-2", "nav-3", "nav-4", "nav-5", "nav-6"].map(
@@ -84,31 +65,13 @@ function ZeroAppSkeleton({ visible }: { visible: boolean }) {
               ),
             )}
           </div>
-          {/* Recent section */}
-          <div className="mt-4">
-            <div className="h-8 flex items-center px-2">
-              <div className="h-3 w-20 rounded bg-muted/30 animate-pulse" />
-            </div>
-            <div className="flex flex-col gap-1">
-              {["recent-1", "recent-2", "recent-3"].map((id, i) => (
-                <div key={id} className="flex h-8 items-center rounded-lg p-2">
-                  <div
-                    className="h-3.5 rounded bg-muted/40 animate-pulse"
-                    style={{ width: `${100 + ((i * 43) % 80)}px` }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
         </nav>
-        {/* Footer */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
             <div className="flex h-8 items-center gap-2 rounded-lg p-2">
               <div className="h-4 w-4 rounded bg-muted/50 animate-pulse shrink-0" />
               <div className="h-3.5 w-28 rounded bg-muted/50 animate-pulse" />
             </div>
-            {/* Account */}
             <div className="mt-2 pt-1">
               <div className="rounded-lg p-2">
                 <div className="flex items-center gap-2">
@@ -137,10 +100,6 @@ function ZeroAppSkeleton({ visible }: { visible: boolean }) {
       </div>
     </div>
   );
-}
-
-function useSkeletonVisibility(isLoggedIn: boolean, dataReady: boolean) {
-  return isLoggedIn && !dataReady;
 }
 
 function GuestNavBar({ onAbout }: { onAbout: () => void }) {
@@ -175,150 +134,48 @@ function GuestNavBar({ onAbout }: { onAbout: () => void }) {
   );
 }
 
-function useContentNavigation(resolvedAgentName: string | null) {
-  const navigateInReact = useSet(navigateInReact$);
-
-  const handleNavigateToSchedule = () => {
-    if (resolvedAgentName) {
-      navigateInReact("/team/:name", {
-        pathParams: { name: resolvedAgentName },
-        searchParams: new URLSearchParams({ tab: "schedule" }),
-      });
-    }
-  };
-
-  const handleNavigateToMeet = (tab?: string) => {
-    if (resolvedAgentName) {
-      const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
-      navigateInReact("/team/:name", {
-        pathParams: { name: resolvedAgentName },
-        searchParams,
-      });
-    }
-  };
-
-  const handleChatAvatarClick = () => {
-    if (resolvedAgentName) {
-      navigateInReact("/team/:name", {
-        pathParams: { name: resolvedAgentName },
-      });
-    }
-  };
-
-  return {
-    navigateInReact,
-    handleNavigateToSchedule,
-    handleNavigateToMeet,
-    handleChatAvatarClick,
-  };
+interface SidebarLayoutProps {
+  children: ReactNode;
 }
 
-function useZeroLoadables() {
+export function SidebarLayout({ children }: SidebarLayoutProps) {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
+
   const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
   const onboardingReady = onboardingLoadable.state === "hasData";
   const needsOnboarding =
     onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
-  const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
-  const agentNameReady = agentDisplayNameLoadable.state === "hasData";
-  const agentDisplayName = agentNameReady
-    ? agentDisplayNameLoadable.data
-    : "Zero";
-  const defaultAgentNameLoadable = useLastLoadable(defaultAgentName$);
-  const defaultRawName =
-    defaultAgentNameLoadable.state === "hasData"
-      ? defaultAgentNameLoadable.data
-      : null;
-  const subagentsLoadable = useLastLoadable(zeroSubagents$);
-  const subagents: SubagentInfo[] =
-    subagentsLoadable.state === "hasData"
-      ? subagentsLoadable.data.map((a) => ({
-          id: a.id,
-          name: a.name,
-          displayName: a.displayName,
-        }))
-      : [];
+  const showOnboarding = isLoggedIn && needsOnboarding;
+
   const memberOnboarding = useLastLoadable(zeroNeedsMemberOnboarding$);
   const showMemberWelcome =
     isLoggedIn &&
     memberOnboarding.state === "hasData" &&
     memberOnboarding.data === true;
-  return {
-    isLoggedIn,
-    onboardingReady,
-    needsOnboarding,
-    showOnboarding: isLoggedIn && needsOnboarding,
-    showMemberWelcome,
-    agentNameReady,
-    agentDisplayName,
-    defaultRawName,
-    subagents,
-  };
-}
 
-interface ZeroAppShellProps {
-  initialJobAgent?: string | null;
-}
+  const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
+  const agentNameReady = agentDisplayNameLoadable.state === "hasData";
+  const agentDisplayName = agentNameReady
+    ? agentDisplayNameLoadable.data
+    : "Zero";
 
-export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
-  const {
-    isLoggedIn,
-    onboardingReady,
-    showOnboarding,
-    showMemberWelcome,
-    agentNameReady,
-    agentDisplayName,
-    defaultRawName,
-    subagents,
-  } = useZeroLoadables();
-  const currentChatAgentId = useGet(zeroChatAgentId$);
-
-  const activeId = useGet(zeroActiveId$);
   const avatarIndex = useGet(zeroAvatarIndex$);
-  const cycleAvatar = useSet(cycleZeroAvatar$);
-  const showAboutPage = useGet(zeroShowAboutPage$);
-  const setShowAboutPage = useSet(setZeroShowAboutPage$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
 
-  // Resolve the effective agent name/avatar for the chat page
-  const selectedSubagent = currentChatAgentId
-    ? subagents.find((a) => a.id === currentChatAgentId)
-    : null;
-  const chatAgentName = selectedSubagent
-    ? (selectedSubagent.displayName ?? selectedSubagent.name)
-    : agentDisplayName;
-  const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.name ?? "");
-  const chatAvatarSrc = selectedSubagent ? subagentAvatarSrc : zeroAvatarSrc;
-  const inChat = useGet(zeroInChat$);
-  const inSession = inChat;
-  const handleSendFromDemo = useSet(sendFromZeroDemo$);
-
-  // When visiting /talk/:name, wait for the agent to be resolved
-  const talkAgentName = useGet(zeroChatAgentName$);
-  const talkAgentResolved = useGet(zeroTalkAgentResolved$);
-  const talkAgentReady = !talkAgentName || talkAgentResolved;
-
-  const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
-  const {
-    handleNavigateToSchedule,
-    handleNavigateToMeet,
-    handleChatAvatarClick,
-  } = useContentNavigation(resolvedAgentName);
-
-  const navigateBack = useSet(navigateFromZeroSession$);
+  const showAboutPage = useGet(zeroShowAboutPage$);
+  const setShowAboutPage = useSet(setZeroShowAboutPage$);
 
   const sidebarCollapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
 
-  const dataReady =
-    isLoggedIn && onboardingReady && agentNameReady && talkAgentReady;
-  const showSkeleton = useSkeletonVisibility(isLoggedIn, dataReady);
+  const dataReady = isLoggedIn && onboardingReady && agentNameReady;
+  const showSkeleton = isLoggedIn && !dataReady;
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
-      <ZeroAppSkeleton visible={showSkeleton} />
+      <SidebarLayoutSkeleton visible={showSkeleton} />
       {showOnboarding && <ZeroOnboarding zeroAvatarSrc={zeroAvatarSrc} />}
       {showMemberWelcome && (
         <MemberWelcome
@@ -327,7 +184,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         />
       )}
       <ZeroSidebar />
-      {/* Mobile backdrop when sidebar is open */}
       {!sidebarCollapsed && (
         <div
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
@@ -335,25 +191,11 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         />
       )}
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
-        {/* TopBarActions (credit & invite) hidden until feature is ready */}
         {!isLoggedIn && <GuestNavBar onAbout={() => setShowAboutPage(true)} />}
         {showAboutPage ? (
           <ZeroAboutPage onBack={() => setShowAboutPage(false)} />
         ) : (
-          <ZeroContent
-            sectionId={activeId}
-            inSession={inSession}
-            onSendMessage={handleSendFromDemo}
-            selectedAgentName={initialJobAgent}
-            onNavigateToSchedule={handleNavigateToSchedule}
-            onNavigateToMeet={handleNavigateToMeet}
-            onBackFromSession={navigateBack}
-            zeroAvatarSrc={zeroAvatarSrc}
-            chatAgentName={chatAgentName}
-            chatAvatarSrc={chatAvatarSrc}
-            onChatAvatarClick={handleChatAvatarClick}
-            onCycleZeroAvatar={() => cycleAvatar(ZERO_AVATARS.length)}
-          />
+          children
         )}
       </div>
     </div>
