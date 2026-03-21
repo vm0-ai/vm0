@@ -1,4 +1,3 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { ReactNode } from "react";
 import {
   useLoadable,
@@ -7,7 +6,6 @@ import {
   useGet,
   useSet,
 } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import {
   IconChartLine,
   IconLayoutGrid,
@@ -102,6 +100,16 @@ import {
   savingPinnedAgents$,
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
+import {
+  sidebarSearchOpen$,
+  sidebarSearchTerm$,
+  setSidebarSearchOpen$,
+  setSidebarSearchTerm$,
+  managePinnedDialogOpen$,
+  setManagePinnedDialogOpen$,
+  draftPinnedIds$,
+  setDraftPinnedIds$,
+} from "../../signals/zero-page/zero-sidebar-state.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
 import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatars.ts";
@@ -509,12 +517,10 @@ function RecentChatSection({
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
 }) {
-  const searchOpen$ = useCCState(false);
-  const searchOpen = useGet(searchOpen$);
-  const setSearchOpen = useSet(searchOpen$);
-  const searchTerm$ = useCCState("");
-  const searchTerm = useGet(searchTerm$);
-  const setSearchTerm = useSet(searchTerm$);
+  const searchOpen = useGet(sidebarSearchOpen$);
+  const setSearchOpen = useSet(setSidebarSearchOpen$);
+  const searchTerm = useGet(sidebarSearchTerm$);
+  const setSearchTerm = useSet(setSidebarSearchTerm$);
 
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
@@ -532,7 +538,6 @@ function RecentChatSection({
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) {
               setSearchOpen(false);
-              setSearchTerm("");
             }
           }}
         >
@@ -553,7 +558,6 @@ function RecentChatSection({
             type="button"
             onClick={() => {
               setSearchOpen(false);
-              setSearchTerm("");
             }}
             className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             aria-label="Close search"
@@ -681,7 +685,6 @@ function ManagePinnedAgentsDialog({
   zeroAvatarSrc,
   displayName,
   subagents,
-  pinnedIds,
   onPinnedIdsChange,
   saving = false,
 }: {
@@ -691,12 +694,10 @@ function ManagePinnedAgentsDialog({
   zeroAvatarSrc: string;
   displayName: string;
   subagents: SubagentInfo[];
-  pinnedIds: string[];
   onPinnedIdsChange: (ids: string[]) => void;
 }) {
-  const draftIds$ = useCCState(pinnedIds);
-  const draftIds = useGet(draftIds$);
-  const setDraftIds = useSet(draftIds$);
+  const draftIds = useGet(draftPinnedIds$);
+  const setDraftIds = useSet(setDraftPinnedIds$);
 
   const orderedPinned = draftIds
     .map((id) => subagents.find((a) => a.id === id))
@@ -1031,9 +1032,9 @@ export function ZeroSidebar() {
   const setPinnedIds = (ids: string[]) => {
     detach(savePinnedIds(ids), Reason.DomCallback);
   };
-  const managePinnedOpen$ = useCCState(false);
-  const managePinnedOpen = useGet(managePinnedOpen$);
-  const setManagePinnedOpen = useSet(managePinnedOpen$);
+  const managePinnedOpen = useGet(managePinnedDialogOpen$);
+  const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
+  const initDraftPinnedIds = useSet(setDraftPinnedIds$);
 
   // Billing
   const features = useLastResolved(featureSwitch$);
@@ -1202,7 +1203,10 @@ export function ZeroSidebar() {
             defaultAgentRawName={defaultAgentRawName}
             zeroAvatarSrc={zeroAvatarSrc}
             pinnedAgents={pinnedAgents}
-            onManagePinned={() => setManagePinnedOpen(true)}
+            onManagePinned={() => {
+              initDraftPinnedIds(pinnedIds);
+              setManagePinnedOpen(true);
+            }}
           />
 
           {/* Recent chat sessions */}
@@ -1260,13 +1264,11 @@ export function ZeroSidebar() {
 
       {/* Manage pinned agents dialog */}
       <ManagePinnedAgentsDialog
-        key={managePinnedOpen ? "open" : "closed"}
         open={managePinnedOpen}
         onOpenChange={setManagePinnedOpen}
         zeroAvatarSrc={zeroAvatarSrc}
         displayName={displayName}
         subagents={subagents}
-        pinnedIds={pinnedIds}
         onPinnedIdsChange={setPinnedIds}
         saving={savingPinned}
       />
