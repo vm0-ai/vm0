@@ -7,6 +7,7 @@ import {
 import {
   createTestCompose,
   findTestRunRecord,
+  findTestRunsByUserAndPrompt,
   findTestQueueEntry,
   markRunningRunsAsCompleted,
   setOrgCredits,
@@ -118,9 +119,14 @@ describe("credit check", () => {
     it("should not enqueue a rejected VM0 run", async () => {
       await setOrgCredits(user.orgId, 0);
 
+      const prompt = "Rejected VM0 run - no enqueue";
       await expect(
-        createRun(baseParams({ modelProvider: "vm0" })),
+        createRun(baseParams({ modelProvider: "vm0", prompt })),
       ).rejects.toSatisfy(isInsufficientCredits);
+
+      // Verify no run record was created (credit check rejects before INSERT)
+      const runs = await findTestRunsByUserAndPrompt(user.userId, prompt);
+      expect(runs).toHaveLength(0);
     });
   });
 
