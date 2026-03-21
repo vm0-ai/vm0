@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.140.0](https://github.com/vm0-ai/vm0/compare/web-v12.139.0...web-v12.140.0) (2026-03-21)
+
+
+### Features
+
+* add dev seed script for credit pricing and api keys ([#5853](https://github.com/vm0-ai/vm0/issues/5853)) ([50bcc9f](https://github.com/vm0-ai/vm0/commit/50bcc9f5f502dd189d1d3f8ea0344e4c2002af11))
+
+
+### Bug Fixes
+
+* **guest-agent:** add -- separator to prevent variadic flags from swallowing prompt ([#5789](https://github.com/vm0-ai/vm0/issues/5789)) ([b9b2fab](https://github.com/vm0-ai/vm0/commit/b9b2fabe509046af54776cb540b71deee0653c11))
+
 ## [12.139.0](https://github.com/vm0-ai/vm0/compare/web-v12.138.0...web-v12.139.0) (2026-03-21)
 
 

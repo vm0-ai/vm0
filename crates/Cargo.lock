@@ -632,7 +632,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.19.0"
+version = "0.19.1"
 dependencies = [
  "base64",
  "bytes",
@@ -683,7 +683,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -1555,7 +1555,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "ably-subscriber",
  "async-trait",

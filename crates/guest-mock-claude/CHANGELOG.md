@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.16.0...guest-mock-claude-v0.16.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* **guest-agent:** add -- separator to prevent variadic flags from swallowing prompt ([#5789](https://github.com/vm0-ai/vm0/issues/5789)) ([b9b2fab](https://github.com/vm0-ai/vm0/commit/b9b2fabe509046af54776cb540b71deee0653c11))
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.15.0...guest-mock-claude-v0.16.0) (2026-03-20)
 
 
