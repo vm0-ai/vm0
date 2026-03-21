@@ -33,6 +33,10 @@ import {
 } from "./api-user-preferences.ts";
 import { apiOnboardingHandlers } from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
+import {
+  apiIntegrationsSlackConnectHandlers,
+  resetMockSlackConnect,
+} from "./api-integrations-slack-connect.ts";
 
 export const handlers = [
   ...apiConnectorsHandlers,
@@ -48,6 +52,7 @@ export const handlers = [
   ...apiUserPreferencesHandlers,
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
+  ...apiIntegrationsSlackConnectHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -59,4 +64,5 @@ export function resetAllMockHandlers(): void {
   resetMockUserPreferences();
   resetMockOrgModelProviders();
   resetMockBilling();
+  resetMockSlackConnect();
 }
