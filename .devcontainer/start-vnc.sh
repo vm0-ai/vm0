@@ -98,28 +98,41 @@ INITEOF
 fi
 
 # Patch noVNC for automatic clipboard sync between browser and VNC session
+NOVNC_CLIP_JS="/usr/share/novnc/app/clipboard-sync.js"
+if [ ! -f "$NOVNC_CLIP_JS" ]; then
+  sudo tee "$NOVNC_CLIP_JS" > /dev/null << 'CLIPEOF'
+/* Auto-sync clipboard between browser and VNC session */
+import UI from "./ui.js";
+
+var _rfb = null;
+Object.defineProperty(UI, "rfb", {
+    configurable: true,
+    get: function() { return _rfb; },
+    set: function(v) {
+        _rfb = v;
+        if (v) {
+            v.addEventListener("clipboard", function(e) {
+                if (navigator.clipboard && e.detail && e.detail.text) {
+                    navigator.clipboard.writeText(e.detail.text).catch(function() {});
+                }
+            });
+        }
+    }
+});
+
+window.addEventListener("focus", function() {
+    if (navigator.clipboard && navigator.clipboard.readText && UI.rfb) {
+        navigator.clipboard.readText().then(function(text) {
+            if (text) UI.rfb.clipboardPasteFrom(text);
+        }).catch(function() {});
+    }
+});
+CLIPEOF
+fi
+
 NOVNC_HTML="/usr/share/novnc/vnc.html"
-if ! grep -q "Auto-sync clipboard" "$NOVNC_HTML" 2>/dev/null; then
-  sudo sed -i '/<\/body>/i \
-<script>\
-/* Auto-sync clipboard between browser and VNC session */\
-(function() {\
-    var origClipboardReceive = UI.clipboardReceive;\
-    UI.clipboardReceive = function(e) {\
-        origClipboardReceive.call(UI, e);\
-        if (navigator.clipboard \&\& navigator.clipboard.writeText \&\& e.detail \&\& e.detail.text) {\
-            navigator.clipboard.writeText(e.detail.text).catch(function() {});\
-        }\
-    };\
-    window.addEventListener("focus", function() {\
-        if (navigator.clipboard \&\& navigator.clipboard.readText \&\& UI.rfb) {\
-            navigator.clipboard.readText().then(function(text) {\
-                if (text) UI.rfb.clipboardPasteFrom(text);\
-            }).catch(function() {});\
-        }\
-    });\
-})();\
-</script>' "$NOVNC_HTML"
+if ! grep -q "clipboard-sync" "$NOVNC_HTML" 2>/dev/null; then
+  sudo sed -i '/src="app\/ui.js"/a \    <script type="module" crossorigin="anonymous" src="app/clipboard-sync.js"></script>' "$NOVNC_HTML"
 fi
 
 sudo service vnc start
