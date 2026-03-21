@@ -73,13 +73,11 @@ describe("zero-nav", () => {
 
     it("should not resolve unknown path /scheduled to chat (bug #5869)", () => {
       mockLocation({ pathname: "/scheduled", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).not.toBe("chat");
       expect(context.store.get(zeroActiveId$)).toBe("not-found");
     });
 
     it("should not resolve unknown path /foo to chat (bug #5869)", () => {
       mockLocation({ pathname: "/foo", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).not.toBe("chat");
       expect(context.store.get(zeroActiveId$)).toBe("not-found");
     });
 

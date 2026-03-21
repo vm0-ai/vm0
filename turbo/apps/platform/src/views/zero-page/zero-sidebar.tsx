@@ -157,7 +157,8 @@ export interface SubagentInfo {
   displayName?: string | null;
 }
 
-export type ZeroNavId =
+/** Valid navigable tab IDs — used in write paths (navigation commands). */
+export type ZeroNavTab =
   | "chat"
   | "schedule"
   | "team"
@@ -165,8 +166,10 @@ export type ZeroNavId =
   | "works"
   | "settings"
   | "preferences"
-  | "queue"
-  | "not-found";
+  | "queue";
+
+/** Active ID derived from the URL — includes valid tabs plus "not-found" for unknown routes. */
+export type ZeroNavId = ZeroNavTab | "not-found";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MANAGE_NAV = [
@@ -177,13 +180,13 @@ const MANAGE_NAV = [
 
 const FOOTER_NAV = [
   {
-    id: "works" as const satisfies ZeroNavId,
+    id: "works" as const satisfies ZeroNavTab,
     label: "Where Zero works",
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
   },
   {
-    id: "settings" as const satisfies ZeroNavId,
+    id: "settings" as const satisfies ZeroNavTab,
     label: "Settings",
     icon: IconSettings as NavIcon,
     iconImg: undefined,

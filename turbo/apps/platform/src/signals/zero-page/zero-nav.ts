@@ -2,10 +2,11 @@ import { command, computed, state } from "ccstate";
 import { pathname$, updatePathname$, navigateInReact$ } from "../route.ts";
 import type {
   ZeroNavId,
+  ZeroNavTab,
   ZeroAccountAction,
 } from "../../views/zero-page/zero-sidebar.tsx";
 
-function isValidTab(tab: string): tab is ZeroNavId {
+function isValidTab(tab: string): tab is ZeroNavTab {
   return (
     tab === "chat" ||
     tab === "schedule" ||
@@ -82,7 +83,7 @@ export const zeroChatAgentId$ = computed((get): string | null => {
  * Navigate to a zero tab — updates the URL path to `/:tab`.
  * "chat" maps to `/` (the default, no suffix needed).
  */
-export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
+export const setZeroActiveId$ = command(({ set }, id: ZeroNavTab) => {
   if (id === "chat") {
     set(navigateInReact$, "/");
   } else {
@@ -186,7 +187,7 @@ export const initSidebarCollapsed$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 
 /** Handle nav tab selection: navigate to tab and close about page. */
-export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
+export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavTab) => {
   set(setZeroActiveId$, id);
   set(internalShowAboutPage$, false);
 });
