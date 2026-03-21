@@ -155,6 +155,18 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# 9. Seed development data
+# -----------------------------------------------------------------------------
+echo "9. Seeding development data..."
+cd "$TURBO_DIR"
+if pnpm --filter web db:dev-seed; then
+  echo -e "${GREEN}   Development seed complete${NC}"
+else
+  echo -e "${RED}   Error: Development seed failed${NC}"
+  FAILED=1
+fi
+
+# -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
 echo ""

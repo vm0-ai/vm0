@@ -41,11 +41,33 @@ cd "$PROJECT_ROOT/turbo" && pnpm dev:status
 
 If all three services show `running`, the dev server is already up — display the output and stop. Otherwise, proceed to start the server.
 
-### Step 2: Start Dev Server and Runner in Background
+### Step 2: Start Runner in Background
 
-Start **both** the dev server and the runner in parallel, each using Bash tool with `run_in_background: true` parameter (two separate Bash calls in the same message).
+Start the runner first using Bash tool with `run_in_background: true` parameter. The runner takes several minutes to initialize, so we start it early to overlap with the prepare step.
 
-**Dev server** — if `--tunnel-hostname=<fqdn>` was provided in args, pass it as `TUNNEL_HOSTNAME` env var:
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT/turbo" && pnpm runner
+```
+
+This returns a task_id for monitoring.
+
+**Note on runner**: The runner takes several minutes to initialize (cross-compile, upload, build rootfs/snapshots). The app works without it — only chat/agent interaction features require the runner. You will be notified when the runner background task completes.
+
+### Step 3: Run prepare.sh
+
+While the runner is initializing in the background, run `prepare.sh` to set up the environment (sync .env.local, install dependencies, run database migrations). This may take a few minutes — wait for it to complete:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+cd "$PROJECT_ROOT" && bash scripts/prepare.sh
+```
+
+### Step 4: Start Dev Server in Background
+
+After `prepare.sh` completes successfully, start the dev server using Bash tool with `run_in_background: true` parameter.
+
+If `--tunnel-hostname=<fqdn>` was provided in args, pass it as `TUNNEL_HOSTNAME` env var:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
@@ -59,15 +81,6 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cd "$PROJECT_ROOT/turbo" && pnpm dev
 ```
 
-**Runner** — start in parallel with the dev server:
-
-```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && pnpm runner
-```
-
-Both return a task_id for monitoring.
-
 **Save the dev server task_id** to a local file so `/dev-logs` can find it across conversation sessions:
 
 ```bash
@@ -75,9 +88,7 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel)
 echo "<dev-task_id>" > "$PROJECT_ROOT/turbo/.dev-task-id"
 ```
 
-**Note on runner**: The runner takes several minutes to initialize (cross-compile, upload, build rootfs/snapshots). The app works without it — only chat/agent interaction features require the runner. You will be notified when the runner background task completes.
-
-### Step 3: Display Results
+### Step 5: Display Results
 
 Once the server is confirmed running, display the URLs:
 
@@ -95,18 +106,6 @@ Next steps:
 - Use `/dev-logs` to view server output
 - Use `/dev-logs [pattern]` to filter logs (e.g., `/dev-logs error`)
 - Use `/dev-stop` to stop the server
-```
-
-If the script fails with error:
-- a database error (e.g., missing `org_cache` table)
-- missing environment variables
-- missing npm modules
-
-Then the user likely needs to set up their environment. run prepare.sh, this will setup .env.local, set up the database, run migrations, and install npm dependencies. it may cost minutes to run, wait for it to complete:
-
-```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT" && bash scripts/prepare.sh
 ```
 
 ## Notes

@@ -168,6 +168,12 @@ GITHUB_APP_PRIVATE_KEY=op://Development/github/GITHUB_APP_PRIVATE_KEY
 GITHUB_APP_SLUG=op://Development/github/GITHUB_APP_SLUG
 GITHUB_APP_WEBHOOK_SECRET=op://Development/github/GITHUB_APP_WEBHOOK_SECRET
 
+# Optional: VM0 Managed Model Provider API Keys
+DEV_MODEL_ANTHROPIC_KEY=op://Development/anthropic/DEV_MODEL_ANTHROPIC_KEY
+DEV_MODEL_MOONSHOT_KEY=op://Development/moonshot/DEV_MODEL_MOONSHOT_KEY
+DEV_MODEL_ZAI_KEY=op://Development/z.ai/DEV_MODEL_ZAI_KEY
+DEV_MODEL_MINIMAX_KEY=op://Development/minimax/DEV_MODEL_MINIMAX_KEY
+
 # Optional: Self-hosted Runner (for local development with runner on dev-1)
 # RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
 OFFICIAL_RUNNER_SECRET=0000000000000000000000000000000000000000000000000000000000000000
