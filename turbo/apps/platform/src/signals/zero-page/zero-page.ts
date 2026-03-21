@@ -17,6 +17,7 @@ import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "./zero-pinned-agents.ts";
+import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { logger } from "../log.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
@@ -125,5 +126,8 @@ export const setupZeroPage$ = command(
     set(refreshScheduleIfActive$);
 
     await resolveAndSwitchAgent(get, set, signal);
+
+    // Reset model selection for the (possibly new) active agent
+    set(syncModelPreference$);
   },
 );
