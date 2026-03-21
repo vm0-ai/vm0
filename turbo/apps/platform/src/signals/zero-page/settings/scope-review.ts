@@ -1,4 +1,4 @@
-import { command, state } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   zeroConnectorScopeDiffContract,
   type ConnectorType,
@@ -22,11 +22,11 @@ const internalConnectorType$ = state<ConnectorType | null>(null);
 // Exported read-only atoms
 // ---------------------------------------------------------------------------
 
-export {
-  internalScopeDiff$ as scopeDiff$,
-  internalLoading$ as scopeReviewLoading$,
-  internalConnectorType$ as scopeReviewConnectorType$,
-};
+export const scopeDiff$ = computed((get) => get(internalScopeDiff$));
+export const scopeReviewLoading$ = computed((get) => get(internalLoading$));
+export const scopeReviewConnectorType$ = computed((get) =>
+  get(internalConnectorType$),
+);
 
 // ---------------------------------------------------------------------------
 // Commands
