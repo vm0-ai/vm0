@@ -160,7 +160,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc \
     openbox \
     novnc \
-    && rm -rf /var/lib/apt/lists/*
+    x11-xserver-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && sed -i "s/UI.initSetting('resize', 'off')/UI.initSetting('resize', 'remote')/" /usr/share/novnc/app/ui.js \
+    && sed -i "s/UI.initSetting('reconnect', false)/UI.initSetting('reconnect', true)/" /usr/share/novnc/app/ui.js
 
 # Install pip for Python testing
 RUN apt-get update && apt-get install -y --no-install-recommends \

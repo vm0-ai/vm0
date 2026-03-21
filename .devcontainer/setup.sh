@@ -84,6 +84,7 @@ command -v x11vnc >/dev/null 2>&1 || MISSING+=(x11vnc)
 command -v Xvfb >/dev/null 2>&1 || MISSING+=(xvfb)
 command -v openbox >/dev/null 2>&1 || MISSING+=(openbox)
 command -v websockify >/dev/null 2>&1 || MISSING+=(novnc)
+command -v xrandr >/dev/null 2>&1 || MISSING+=(x11-xserver-utils)
 if [ ${#MISSING[@]} -gt 0 ]; then
   sudo apt-get update -qq
   sudo apt-get install -y -qq "${MISSING[@]}"
