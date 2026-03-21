@@ -165,7 +165,12 @@ EOF
         return 1
     }
 
+    # Wait for async network log ingestion to Axiom
+    sleep 5
+
     run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+    echo "# Network logs output:"
+    echo "$output"
     assert_success
     # ALLOW: repos endpoint matches metadata:read — format: GET    200 {ms} {size}/{size} {url} [github]
     echo "$output" | grep -q "GET    200 [0-9]*ms [0-9.]*[A-Z]*/[0-9.]*[A-Z]* https://api.github.com/repos/vm0-ai/vm0 \[github\]"
