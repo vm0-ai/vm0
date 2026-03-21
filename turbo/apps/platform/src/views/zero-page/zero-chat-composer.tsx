@@ -267,6 +267,7 @@ function ConnectorsPopoverButton({
               <button
                 type="button"
                 className="inline-flex shrink-0 items-center justify-center rounded-lg h-9 min-w-9 px-1.5 hover:bg-accent transition-colors"
+                aria-label="Connectors"
               >
                 <ConnectorTriggerIcons connectors={agentConnectors} />
               </button>

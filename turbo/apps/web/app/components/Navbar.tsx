@@ -11,6 +11,7 @@ import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/url";
+import { isBlogEnabled } from "../../src/env";
 export default function Navbar() {
   const { theme } = useTheme();
   const t = useTranslations("nav");
@@ -74,9 +75,11 @@ export default function Navbar() {
             <Link href="/security" className="nav-link">
               Security
             </Link>
-            <Link href="/blog" className="nav-link">
-              {t("blog")}
-            </Link>
+            {isBlogEnabled() && (
+              <Link href="/blog" className="nav-link">
+                {t("blog")}
+              </Link>
+            )}
             <a
               href="https://github.com/vm0-ai/vm0"
               target="_blank"
@@ -159,13 +162,15 @@ export default function Navbar() {
             >
               Security
             </Link>
-            <Link
-              href="/blog"
-              className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              {t("blog")}
-            </Link>
+            {isBlogEnabled() && (
+              <Link
+                href="/blog"
+                className="mobile-menu-link"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {t("blog")}
+              </Link>
+            )}
             <a
               href="https://github.com/vm0-ai/vm0"
               target="_blank"
