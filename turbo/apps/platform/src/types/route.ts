@@ -10,5 +10,6 @@ export type RoutePath =
   | "/talk/:name"
   | "/slack/connect"
   | "/queue"
+  | "/preferences"
   | "/__internal-connector-logos"
   | `/projects/${string}`;
