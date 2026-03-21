@@ -2,6 +2,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { creditPricing } from "../../db/schema/credit-pricing";
 import { deductOrgCredits } from "../org/org-service";
+import { triggerAutoRecharge } from "../billing/auto-recharge-service";
 import { logger } from "../logger";
 
 const log = logger("service:credit");
@@ -118,6 +119,17 @@ export async function processOrgCredits(orgId: string): Promise<void> {
     processedCount: result.processedCount,
     totalCredits: result.totalCredits,
   });
+
+  // After deduction, check if auto-recharge should trigger.
+  // Fire-and-forget: errors are logged internally, never propagated.
+  if (result.totalCredits > 0) {
+    triggerAutoRecharge(orgId).catch((err) => {
+      log.warn("Auto-recharge trigger failed", {
+        orgId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
 }
 
 /**

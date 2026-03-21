@@ -13,6 +13,7 @@ let mockBillingStatus: BillingStatus = {
   subscriptionStatus: null,
   currentPeriodEnd: null,
   hasSubscription: false,
+  autoRecharge: { enabled: false, threshold: null, amount: null },
 };
 
 export function setMockBillingStatus(status: Partial<BillingStatus>): void {
@@ -26,6 +27,7 @@ export function resetMockBilling(): void {
     subscriptionStatus: null,
     currentPeriodEnd: null,
     hasSubscription: false,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
   };
 }
 
@@ -49,5 +51,23 @@ export const apiBillingHandlers = [
     return HttpResponse.json({
       url: "https://billing.stripe.com/test-portal",
     });
+  }),
+
+  http.get("*/api/billing/auto-recharge", () => {
+    return HttpResponse.json(mockBillingStatus.autoRecharge);
+  }),
+
+  http.put("*/api/billing/auto-recharge", async ({ request }) => {
+    const body = (await request.json()) as {
+      enabled: boolean;
+      threshold?: number;
+      amount?: number;
+    };
+    mockBillingStatus.autoRecharge = {
+      enabled: body.enabled,
+      threshold: body.enabled ? (body.threshold ?? null) : null,
+      amount: body.enabled ? (body.amount ?? null) : null,
+    };
+    return HttpResponse.json(mockBillingStatus.autoRecharge);
   }),
 ];

@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   pgTable,
   text,
   timestamp,
@@ -28,6 +29,15 @@ export const orgMetadata = pgTable(
     subscriptionStatus: varchar("subscription_status", { length: 20 }),
     currentPeriodEnd: timestamp("current_period_end"),
     lastProcessedInvoiceId: text("last_processed_invoice_id"),
+    // Auto-recharge configuration
+    autoRechargeEnabled: boolean("auto_recharge_enabled")
+      .notNull()
+      .default(false),
+    autoRechargeThreshold: bigint("auto_recharge_threshold", {
+      mode: "number",
+    }),
+    autoRechargeAmount: bigint("auto_recharge_amount", { mode: "number" }),
+    autoRechargePendingAt: timestamp("auto_recharge_pending_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

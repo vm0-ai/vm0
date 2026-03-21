@@ -3771,3 +3771,42 @@ export async function getOrgBillingFields(orgId: string) {
     .limit(1);
   return row ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Auto-recharge helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Configure auto-recharge settings on an org.
+ */
+export async function updateOrgAutoRecharge(
+  orgId: string,
+  fields: {
+    autoRechargeEnabled?: boolean;
+    autoRechargeThreshold?: number | null;
+    autoRechargeAmount?: number | null;
+    autoRechargePendingAt?: Date | null;
+  },
+): Promise<void> {
+  await globalThis.services.db
+    .update(orgMetadata)
+    .set({ ...fields, updatedAt: new Date() })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+/**
+ * Read auto-recharge fields from an org.
+ */
+export async function getOrgAutoRechargeFields(orgId: string) {
+  const [row] = await globalThis.services.db
+    .select({
+      autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
+      autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
+      autoRechargeAmount: orgMetadata.autoRechargeAmount,
+      autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return row ?? null;
+}

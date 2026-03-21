@@ -4,6 +4,7 @@ import { getStripe } from "../stripe";
 import { env } from "../../env";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
+import { handleAutoRechargeInvoicePaid } from "./auto-recharge-service";
 import { logger } from "../logger";
 
 const log = logger("billing");
@@ -24,6 +25,7 @@ interface CheckoutSessionInput {
 interface InvoiceInput {
   id: string;
   customer: string | { id: string } | null;
+  metadata: Record<string, string> | null;
   parent: {
     subscription_details: {
       subscription: string | { id: string };
@@ -217,6 +219,10 @@ export async function handleCheckoutCompleted(
  * Idempotent: checks last_processed_invoice_id.
  */
 export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
+  // Handle auto-recharge invoices (identified by metadata) before subscription logic
+  const handled = await handleAutoRechargeInvoicePaid(invoice);
+  if (handled) return;
+
   // In Stripe v2025 API, subscription is under parent.subscription_details
   const subDetails = invoice.parent?.subscription_details;
   const subscriptionId = subDetails
@@ -404,6 +410,11 @@ export async function getBillingStatus(orgId: string): Promise<{
   subscriptionStatus: string | null;
   currentPeriodEnd: Date | null;
   hasSubscription: boolean;
+  autoRecharge: {
+    enabled: boolean;
+    threshold: number | null;
+    amount: number | null;
+  };
 }> {
   const db = globalThis.services.db;
   const [org] = await db
@@ -413,6 +424,9 @@ export async function getBillingStatus(orgId: string): Promise<{
       subscriptionStatus: orgMetadata.subscriptionStatus,
       currentPeriodEnd: orgMetadata.currentPeriodEnd,
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
+      autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
+      autoRechargeAmount: orgMetadata.autoRechargeAmount,
     })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
@@ -424,5 +438,10 @@ export async function getBillingStatus(orgId: string): Promise<{
     subscriptionStatus: org?.subscriptionStatus ?? null,
     currentPeriodEnd: org?.currentPeriodEnd ?? null,
     hasSubscription: !!org?.stripeSubscriptionId,
+    autoRecharge: {
+      enabled: org?.autoRechargeEnabled ?? false,
+      threshold: org?.autoRechargeThreshold ?? null,
+      amount: org?.autoRechargeAmount ?? null,
+    },
   };
 }

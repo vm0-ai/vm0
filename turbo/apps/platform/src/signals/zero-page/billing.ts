@@ -11,12 +11,19 @@ const log = logger("billing");
 
 export type BillingTier = "free" | "pro" | "max";
 
+interface AutoRechargeConfig {
+  enabled: boolean;
+  threshold: number | null;
+  amount: number | null;
+}
+
 export interface BillingStatus {
   tier: BillingTier;
   credits: number;
   subscriptionStatus: string | null;
   currentPeriodEnd: string | null;
   hasSubscription: boolean;
+  autoRecharge: AutoRechargeConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,3 +130,37 @@ export const startDowngrade$ = command(async ({ get, set }) => {
     set(internalDialogLoading$, false);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Auto-recharge
+// ---------------------------------------------------------------------------
+
+export const saveAutoRecharge$ = command(
+  async (
+    { get, set },
+    config: { enabled: boolean; threshold?: number; amount?: number },
+  ) => {
+    set(internalDialogLoading$, true);
+
+    const fetchFn = get(fetch$);
+    const response = await fetchFn("/api/billing/auto-recharge", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+
+    const data = (await response.json()) as {
+      enabled?: boolean;
+      error?: string;
+    };
+
+    set(internalDialogLoading$, false);
+
+    if (!response.ok) {
+      log.error("Auto-recharge save failed", data.error);
+      return { ok: false, error: data.error };
+    }
+
+    return { ok: true };
+  },
+);
