@@ -34,15 +34,35 @@ vi.mock("@clerk/nextjs", () => ({
   useClerk: vi.fn(() => ({ signOut: vi.fn() })),
 }));
 
+// Sentinel to simulate Next.js notFound() control flow interruption
+const NOT_FOUND_SENTINEL = "NEXT_NOT_FOUND";
+
 // External: next/navigation (used by BlogContent)
 vi.mock("next/navigation", () => ({
-  notFound: vi.fn(),
+  notFound: vi.fn(() => {
+    throw new Error(NOT_FOUND_SENTINEL);
+  }),
   useSearchParams: vi.fn(() => new URLSearchParams()),
   useParams: vi.fn(() => ({})),
   useRouter: vi.fn(() => ({})),
 }));
 
-import { generateMetadata } from "../page";
+import { notFound } from "next/navigation";
+import BlogPage, { generateMetadata } from "../page";
+
+describe("blog page", () => {
+  it("calls notFound when blog feature is disabled", async () => {
+    // Default test setup does not stub NEXT_PUBLIC_STRAPI_URL,
+    // so isBlogEnabled() returns false. Override the beforeEach stub.
+    vi.stubEnv("NEXT_PUBLIC_STRAPI_URL", "");
+    reloadEnv();
+
+    await expect(
+      BlogPage({ params: Promise.resolve({ locale: "en" }) }),
+    ).rejects.toThrow(NOT_FOUND_SENTINEL);
+    expect(notFound).toHaveBeenCalled();
+  });
+});
 
 describe("blog list page metadata", () => {
   it("includes canonical URL with locale", async () => {
