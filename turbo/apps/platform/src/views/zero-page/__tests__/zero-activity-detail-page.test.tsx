@@ -59,7 +59,7 @@ function mockActivityDetailAPI() {
   );
 }
 
-describe("ZeroActivityDetailPage", () => {
+describe("zeroActivityDetailPage", () => {
   it("should load detail when navigating directly to /activity/:runId", async () => {
     mockActivityDetailAPI();
 
