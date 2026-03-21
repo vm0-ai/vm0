@@ -1,12 +1,14 @@
 /**
  * ESLint rule: no-use-ccstate-in-views
  *
- * Disallows useCCState() calls in views/ files.
- * Signals should only be declared in signals/ files, not inline in components.
+ * Disallows importing from "ccstate-react/experimental" in views/ files.
+ * The experimental module contains hooks like useCCState, useCommand, useCompute
+ * that should not be used in view components.
  *
- * Good: const [value, setValue] = useState("") // React local state
  * Good: const value = useGet(someSignal$)      // consume signal from signals/
- * Bad:  const input$ = useCCState("")           // declaring signal in a view
+ * Good: const [value, setValue] = useState("")  // React local state
+ * Bad:  import { useCCState } from "ccstate-react/experimental"
+ * Bad:  import { useCommand } from "ccstate-react/experimental"
  */
 
 import { ESLintUtils } from "@typescript-eslint/utils";
@@ -16,7 +18,7 @@ const createRule = ESLintUtils.RuleCreator(
     `https://github.com/anthropics/vm0/blob/main/docs/eslint/${name}.md`,
 );
 
-type MessageIds = "noUseCCStateInViews";
+type MessageIds = "noExperimentalImport";
 
 export default createRule<[], MessageIds>({
   name: "no-use-ccstate-in-views",
@@ -24,12 +26,12 @@ export default createRule<[], MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow useCCState() in views/ — signals must be declared in signals/ files",
+        "Disallow importing from ccstate-react/experimental in views/ — signals must be declared in signals/ files",
     },
     schema: [],
     messages: {
-      noUseCCStateInViews:
-        "useCCState() is not allowed in views/. For shared state, declare state()/computed()/command() in signals/ and consume with useGet()/useSet(). For component-local state, use React useState().",
+      noExperimentalImport:
+        'Importing from "ccstate-react/experimental" is not allowed in views/. For shared state, declare state()/computed()/command() in signals/ and consume with useGet()/useSet(). For component-local state, use React useState().',
     },
   },
   defaultOptions: [],
@@ -42,14 +44,11 @@ export default createRule<[], MessageIds>({
     }
 
     return {
-      CallExpression(node) {
-        if (
-          node.callee.type === "Identifier" &&
-          node.callee.name === "useCCState"
-        ) {
+      ImportDeclaration(node) {
+        if (node.source.value === "ccstate-react/experimental") {
           context.report({
             node,
-            messageId: "noUseCCStateInViews",
+            messageId: "noExperimentalImport",
           });
         }
       },

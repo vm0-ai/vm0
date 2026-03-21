@@ -10,33 +10,45 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-use-ccstate-in-views", rule, {
   valid: [
+    // OK: experimental import in signals/ (not views/)
     {
-      code: 'const input$ = useCCState("")',
+      code: 'import { useCCState } from "ccstate-react/experimental"',
       filename: "/project/src/signals/zero-page/zero-chat.ts",
     },
+    // OK: non-experimental import in views/
     {
-      code: "const value = useGet(someSignal$)",
+      code: 'import { useGet } from "ccstate-react"',
       filename: "/project/src/views/zero-page/zero-chat-page.tsx",
     },
+    // OK: React useState in views/
     {
-      code: 'const [value, setValue] = useState("")',
+      code: 'import { useState } from "react"',
       filename: "/project/src/views/zero-page/zero-chat-page.tsx",
     },
+    // OK: experimental import in tests/
     {
-      code: 'const input$ = useCCState("")',
+      code: 'import { useCCState } from "ccstate-react/experimental"',
       filename: "/project/src/__tests__/test.tsx",
     },
   ],
   invalid: [
+    // Bad: useCCState from experimental in views/
     {
-      code: 'const input$ = useCCState("")',
+      code: 'import { useCCState } from "ccstate-react/experimental"',
       filename: "/project/src/views/zero-page/zero-chat-page.tsx",
-      errors: [{ messageId: "noUseCCStateInViews" }],
+      errors: [{ messageId: "noExperimentalImport" }],
     },
+    // Bad: useCommand from experimental in views/
     {
-      code: "const flag$ = useCCState(false)",
+      code: 'import { useCommand } from "ccstate-react/experimental"',
+      filename: "/project/src/views/zero-page/zero-activity-page.tsx",
+      errors: [{ messageId: "noExperimentalImport" }],
+    },
+    // Bad: multiple imports from experimental in views/
+    {
+      code: 'import { useCCState, useCommand } from "ccstate-react/experimental"',
       filename: "/project/src/views/zero-page/zero-sidebar.tsx",
-      errors: [{ messageId: "noUseCCStateInViews" }],
+      errors: [{ messageId: "noExperimentalImport" }],
     },
   ],
 });
