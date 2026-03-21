@@ -14,6 +14,28 @@ import { clerk$ } from "../../auth.ts";
 const internalReloadPreferences$ = state(0);
 
 // ---------------------------------------------------------------------------
+// Loading keys — tracks which notification toggles are currently saving
+// ---------------------------------------------------------------------------
+
+const internalLoadingKeys$ = state<Set<string>>(new Set());
+
+export const notificationLoadingKeys$ = computed((get) =>
+  get(internalLoadingKeys$),
+);
+
+export const addNotificationLoadingKey$ = command(({ set }, key: string) => {
+  set(internalLoadingKeys$, (prev) => new Set([...prev, key]));
+});
+
+export const removeNotificationLoadingKey$ = command(({ set }, key: string) => {
+  set(internalLoadingKeys$, (prev) => {
+    const next = new Set(prev);
+    next.delete(key);
+    return next;
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
 
