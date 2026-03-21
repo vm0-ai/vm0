@@ -100,6 +100,15 @@ describe("zero chat page - composer", () => {
     });
   });
 
+  it("should have accessible name on connectors button", async () => {
+    await renderChatPage();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connectors" }),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("should disable Send button when input is empty", async () => {
     await renderChatPage();
 
