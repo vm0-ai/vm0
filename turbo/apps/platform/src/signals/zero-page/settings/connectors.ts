@@ -144,20 +144,6 @@ export const setSelectedConnectorType$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Scope review modal state
-// ---------------------------------------------------------------------------
-
-const internalScopeReviewType$ = state<ConnectorType | null>(null);
-export const scopeReviewType$ = computed((get) =>
-  get(internalScopeReviewType$),
-);
-export const setScopeReviewType$ = command(
-  ({ set }, type: ConnectorType | null) => {
-    set(internalScopeReviewType$, type);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // Token form state (used by add-connection dialog)
 // ---------------------------------------------------------------------------
 
