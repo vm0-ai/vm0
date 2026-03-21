@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import { IconPlus } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/core";
 import { skills$ } from "../../data/skills.ts";
@@ -14,6 +12,8 @@ import {
   setSelectedConnectorType$,
   pollingConnectorType$,
   justConnectedTypes$,
+  scopeReviewType$,
+  setScopeReviewType$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -59,9 +59,8 @@ export function ZeroSkillsTab({
   const selectedType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
 
-  const scopeReviewType$ = useCCState<ConnectorType | null>(null);
   const scopeReviewType = useGet(scopeReviewType$);
-  const setScopeReviewType = useSet(scopeReviewType$);
+  const setScopeReviewType = useSet(setScopeReviewType$);
 
   const allSkills = useGet(skills$);
 
