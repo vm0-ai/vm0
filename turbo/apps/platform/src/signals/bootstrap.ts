@@ -5,13 +5,13 @@ import { initRoutes$, setupAuthPageWrapper } from "./route.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupZeroPage$ } from "./zero-page/zero-page.ts";
-import { setupTeamPage$ } from "./team-page/team-page-setup.ts";
-import { setupTeamDetailPage$ } from "./team-page/team-detail-page-setup.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupQueuePage$ } from "./queue-page/queue-page-setup.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
+import { setupTeamPage$ } from "./team-page/team-page-setup.ts";
+import { setupTeamDetailPage$ } from "./team-page/team-detail-page-setup.ts";
 const ROUTE_CONFIG = [
   {
     path: "/select-org",

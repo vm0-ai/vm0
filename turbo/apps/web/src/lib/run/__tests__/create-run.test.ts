@@ -1125,8 +1125,7 @@ describe("createRun()", () => {
       });
     });
 
-    it("should inject Linear OAuth connector secret via environmentMapping into sandbox environment", async () => {
-      // Create a compose that references the mapped secret name
+    it("should inject Linear OAuth connector secret into sandbox environment", async () => {
       const compose = await createTestCompose(uniqueId("linear-oauth-agent"), {
         overrides: {
           environment: {
@@ -1136,8 +1135,6 @@ describe("createRun()", () => {
         },
       });
 
-      // Create a Linear connector with OAuth auth via callback route
-      // Linear uses GraphQL (POST) for user info — this validates the userMethod support
       await createTestConnector({
         type: "linear",
         authMethod: "oauth",
@@ -1151,20 +1148,18 @@ describe("createRun()", () => {
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
 
-      // Verify the runner job queue entry contains the injected secret
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
         LINEAR_TOKEN: "lin_oauth_test_789",
       });
-      // Verify the template placeholder was fully resolved
-      const env = job!.executionContext.environment;
-      expect(env).not.toBeNull();
-      expect(env!.LINEAR_TOKEN).not.toContain("${{");
+      // Ensure template placeholder was fully resolved
+      expect(job!.executionContext.environment!.LINEAR_TOKEN).not.toContain(
+        "${{",
+      );
     });
 
-    it("should leave Linear token as raw template when connector is not connected", async () => {
-      // Create a compose that references LINEAR_TOKEN but do NOT create a connector
+    it("should leave Linear token template unresolved when connector not connected", async () => {
       const compose = await createTestCompose(
         uniqueId("linear-no-connector-agent"),
         {
@@ -1177,6 +1172,8 @@ describe("createRun()", () => {
         },
       );
 
+      // Do NOT create a Linear connector
+
       const result = await createRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
@@ -1184,12 +1181,11 @@ describe("createRun()", () => {
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
 
-      // Verify the template is left as-is when no connector is connected
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
-      const env = job!.executionContext.environment;
-      expect(env).not.toBeNull();
-      expect(env!.LINEAR_TOKEN).toBe("${{ secrets.LINEAR_TOKEN }}");
+      expect(job!.executionContext.environment!.LINEAR_TOKEN).toBe(
+        "${{ secrets.LINEAR_TOKEN }}",
+      );
     });
   });
 });

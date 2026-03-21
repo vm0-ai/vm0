@@ -1699,14 +1699,15 @@ const OAUTH_PROVIDER_MOCKS: Record<
       access_token: accessToken,
       refresh_token: "linear-refresh-token",
       expires_in: 86399,
+      token_type: "Bearer",
       scope: "read,write,issues:create,comments:create,timeSchedule:write",
     }),
     buildUserResponse: (opts) => ({
       data: {
         viewer: {
-          id: opts.userId?.toString() ?? "linear-user-12345",
-          name: opts.username ?? "testuser",
-          email: opts.email ?? "test@example.com",
+          id: opts.userId?.toString() ?? "linear-user-123",
+          name: opts.username ?? "Linear User",
+          email: opts.email ?? "user@linear.app",
         },
       },
     }),
@@ -1738,13 +1739,11 @@ async function createTestOAuthConnector(options?: {
   reloadEnv();
 
   // Set up MSW handlers for token exchange + user info
-  const userHandler =
-    providerMock.userMethod === "post" ? mswHttp.post : mswHttp.get;
   server.use(
     mswHttp.post(providerMock.tokenUrl, () =>
       HttpResponse.json(providerMock.buildTokenResponse(accessToken)),
     ),
-    userHandler(providerMock.userUrl, () =>
+    mswHttp[providerMock.userMethod ?? "get"](providerMock.userUrl, () =>
       HttpResponse.json(
         providerMock.buildUserResponse({
           username: options?.externalUsername ?? "testuser",

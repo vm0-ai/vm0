@@ -121,8 +121,7 @@ export function ZeroSessionChatPage({
         </div>
         <div className="flex items-center gap-0.5">
           <Link
-            pathname="/:tab"
-            options={{ pathParams: { tab: "team" } }}
+            pathname="/team"
             className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
             aria-label="Sub-agents"
           >

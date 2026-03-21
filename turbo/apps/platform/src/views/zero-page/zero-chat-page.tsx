@@ -976,8 +976,7 @@ export function ZeroChatPage({
                   </ul>
                   <div className="border-t border-border/50 px-4 py-3">
                     <Link
-                      pathname="/:tab"
-                      options={{ pathParams: { tab: "team" } }}
+                      pathname="/team"
                       className="zero-btn-morandi inline-flex items-center w-fit rounded-lg h-8 px-3 text-sm font-medium border"
                     >
                       Manage in {agentName}&apos;s team
