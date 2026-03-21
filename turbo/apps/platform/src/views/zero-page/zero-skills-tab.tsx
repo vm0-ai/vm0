@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import { IconPlus } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/core";
 import { skills$ } from "../../data/skills.ts";
@@ -22,7 +20,10 @@ import {
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
-import { setScopeReviewConnectorType$ } from "../../signals/zero-page/settings/scope-review.ts";
+import {
+  setScopeReviewConnectorType$,
+  scopeReviewConnectorType$,
+} from "../../signals/zero-page/settings/scope-review.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -60,9 +61,7 @@ export function ZeroSkillsTab({
   const selectedType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
 
-  const scopeReviewType$ = useCCState<ConnectorType | null>(null);
-  const scopeReviewType = useGet(scopeReviewType$);
-  const setScopeReviewType = useSet(scopeReviewType$);
+  const scopeReviewType = useGet(scopeReviewConnectorType$);
   const setScopeReviewConnectorType = useSet(setScopeReviewConnectorType$);
 
   const allSkills = useGet(skills$);
@@ -185,7 +184,6 @@ export function ZeroSkillsTab({
                 onRemove={() => handleRemoveSkill(name)}
                 onReviewScopes={() => {
                   setScopeReviewConnectorType(name as ConnectorType);
-                  setScopeReviewType(name as ConnectorType);
                 }}
               />
             );
@@ -218,11 +216,9 @@ export function ZeroSkillsTab({
           connectorType={scopeReviewType}
           onClose={() => {
             setScopeReviewConnectorType(null);
-            setScopeReviewType(null);
           }}
           onReconnect={(type) => {
             setScopeReviewConnectorType(null);
-            setScopeReviewType(null);
             detach(connect(type, signal), Reason.DomCallback);
           }}
         />

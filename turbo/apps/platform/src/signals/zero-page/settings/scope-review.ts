@@ -25,6 +25,7 @@ const internalConnectorType$ = state<ConnectorType | null>(null);
 export {
   internalScopeDiff$ as scopeDiff$,
   internalLoading$ as scopeReviewLoading$,
+  internalConnectorType$ as scopeReviewConnectorType$,
 };
 
 // ---------------------------------------------------------------------------
