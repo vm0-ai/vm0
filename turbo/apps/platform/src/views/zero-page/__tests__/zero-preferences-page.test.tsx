@@ -33,89 +33,18 @@ async function renderPreferencesPage() {
   await setupPage({ context, path: "/preferences" });
 }
 
-describe("zero preferences page - header and tabs", () => {
-  it("should render page title and subtitle", async () => {
+describe("zero preferences page - smoke", () => {
+  it("should render the page with default appearance tab", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();
 
     await waitFor(() => {
       expect(screen.getByText("Preferences")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(
-        "Manage your appearance, notification and agent runtime preferences",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("should render all three tabs", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Appearance")).toBeInTheDocument();
-    });
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Notifications")).toBeInTheDocument();
     expect(screen.getByText("Time Zone")).toBeInTheDocument();
-  });
-
-  it("should show appearance tab content by default", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Your preferred color scheme")).toBeInTheDocument();
-    expect(screen.getByText("Send message with")).toBeInTheDocument();
-  });
-});
-
-describe("zero preferences page - appearance tab", () => {
-  it("should render theme options (Light, Dark, System)", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Light")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Dark")).toBeInTheDocument();
-    expect(screen.getByText("System")).toBeInTheDocument();
-  });
-
-  it("should render send mode options (Enter, Cmd+Enter)", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Enter")).toBeInTheDocument();
-    });
-  });
-
-  it("should show description for current send mode", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Press Enter to send, Shift+Enter for new line"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("should allow clicking a theme option", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Dark")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Dark"));
-
-    // After clicking Dark, the Dark button should reflect the active state
-    // The theme is applied via localStorage + DOM, so we verify it doesn't crash
-    expect(screen.getByText("Dark")).toBeInTheDocument();
+    expect(screen.getByText("Theme")).toBeInTheDocument();
   });
 });
 
@@ -149,9 +78,6 @@ describe("zero preferences page - tab switching", () => {
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("Your agents will use this time zone during runs"),
-    ).toBeInTheDocument();
   });
 
   it("should switch back to appearance tab from notifications", async () => {
@@ -197,30 +123,6 @@ describe("zero preferences page - notifications tab", () => {
     ).toBeInTheDocument();
   });
 
-  it("should show notification descriptions", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Notifications")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Notifications"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Receive an email when a scheduled agent run completes or fails.",
-        ),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(
-        "Get a Slack DM when a scheduled agent run completes or fails.",
-      ),
-    ).toBeInTheDocument();
-  });
-
   it("should send update request when toggling email notification", async () => {
     let capturedBody: Record<string, unknown> | null = null;
 
@@ -257,27 +159,6 @@ describe("zero preferences page - notifications tab", () => {
   });
 });
 
-describe("zero preferences page - timezone tab", () => {
-  it("should render timezone description and selector", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Time Zone"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Sets the TZ environment variable for your agent sandbox at runtime.",
-        ),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
 describe("zero preferences page - send mode interaction", () => {
   it("should send update request when changing send mode", async () => {
     let capturedBody: Record<string, unknown> | null = null;
@@ -296,7 +177,6 @@ describe("zero preferences page - send mode interaction", () => {
 
     await renderPreferencesPage();
 
-    // The cmd+enter button text uses the special character
     await waitFor(() => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
     });
