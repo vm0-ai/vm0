@@ -56,7 +56,7 @@ RUN find /usr/lib -name libnssckbi.so -exec sh -c \
 # Install Claude Code CLI as a standalone Bun-compiled binary.
 # The binary bundles Bun runtime (JSC) + application code into a single executable,
 # eliminating module resolution overhead and reducing CLI cold-start time.
-ARG CLAUDE_CODE_VERSION=2.1.75
+ARG CLAUDE_CODE_VERSION=2.1.81
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in amd64) PLATFORM="linux-x64" ;; arm64) PLATFORM="linux-arm64" ;; *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; esac \
     && GCS_BUCKET="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases" \
