@@ -161,11 +161,11 @@ if [ ! -f "$VNC_TLS_DIR/cert.crt" ] && command -v mkcert >/dev/null 2>&1; then
   sudo mkdir -p "$VNC_TLS_DIR"
   mkcert -install 2>/dev/null || true
   mkcert -cert-file /tmp/vnc-cert.crt -key-file /tmp/vnc-cert.key \
-    localhost 127.0.0.1 ::1 "*.localhost.direct" localhost.direct 2>/dev/null
+    localhost 127.0.0.1 ::1 2>/dev/null
   sudo mv /tmp/vnc-cert.crt "$VNC_TLS_DIR/cert.crt"
   sudo mv /tmp/vnc-cert.key "$VNC_TLS_DIR/cert.key"
   sudo chmod 600 "$VNC_TLS_DIR/cert.key"
 fi
 
 sudo service vnc start
-echo "✓ VNC stack started (noVNC at https://novnc.localhost.direct:6080/vnc.html)"
+echo "✓ VNC stack started (noVNC at https://localhost:6080/vnc.html)"
