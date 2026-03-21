@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
+import { detach, onRef, Reason } from "../utils.ts";
 
 interface SlackOrgData {
   isConnected: boolean;
@@ -33,6 +34,22 @@ const slackOrgState$ = state<SlackOrgState>({
 });
 
 export const slackOrgData$ = computed((get) => get(slackOrgState$).data);
+
+// ---------------------------------------------------------------------------
+// Uninstall dialog visibility — view-local state managed in signals layer
+// ---------------------------------------------------------------------------
+
+const showUninstallDialogState$ = state(false);
+
+/** Whether the uninstall confirmation dialog is visible. */
+export const showUninstallDialog$ = computed((get) =>
+  get(showUninstallDialogState$),
+);
+
+/** Show or hide the uninstall confirmation dialog. */
+export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
+  set(showUninstallDialogState$, show);
+});
 
 const fetchSlackOrg$ = command(async ({ get, set }) => {
   set(slackOrgState$, (prev) => ({
@@ -103,7 +120,7 @@ const POLL_INTERVAL_MS = 3000;
  * Used on the works page so that after the user completes OAuth in another tab
  * the UI updates automatically without a manual refresh.
  */
-export const pollSlackConnection$ = command(
+const pollSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Already connected — nothing to poll.
     const current = get(slackOrgState$).data;
@@ -130,6 +147,20 @@ export const pollSlackConnection$ = command(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// Polling trigger — extracted from the view's useCommand + onRef pattern.
+// The command uses the AbortSignal from onRef so polling stops on unmount.
+// ---------------------------------------------------------------------------
+
+const startSlackPolling$ = command(
+  ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    detach(set(pollSlackConnection$, signal), Reason.DomCallback);
+  },
+);
+
+/** Ref callback that starts Slack connection polling when the element mounts. */
+export const slackPollingRef$ = onRef(startSlackPolling$);
 
 export const initSlackOrg$ = command(async ({ set }) => {
   await set(fetchSlackOrg$);

@@ -1,5 +1,3 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconCircleCheck,
@@ -25,9 +23,11 @@ import {
   slackOrgData$,
   disconnectSlackOrg$,
   uninstallSlackOrg$,
-  pollSlackConnection$,
+  showUninstallDialog$,
+  setShowUninstallDialog$,
+  slackPollingRef$,
 } from "../../signals/zero-page/zero-slack.ts";
-import { detach, onRef, Reason } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import slackIconImg from "./assets/slack-icon.svg";
 
 /** Append a cache-busting timestamp so the browser never reuses a cached OAuth redirect. */
@@ -128,23 +128,14 @@ function SlackCard({ agentName }: { agentName: string }) {
   const disconnect = useSet(disconnectSlackOrg$);
   const uninstall = useSet(uninstallSlackOrg$);
 
-  const showUninstallDialog$ = useCCState(false);
   const showUninstallDialog = useGet(showUninstallDialog$);
-  const setShowUninstallDialog = useSet(showUninstallDialog$);
+  const setShowUninstallDialog = useSet(setShowUninstallDialog$);
 
   const isConnected = slackData?.isConnected ?? false;
   const isInstalled = slackData?.isInstalled ?? isConnected;
   const isAdmin = slackData?.isAdmin ?? false;
 
-  // Poll for Slack connection while not connected — auto-detects when the
-  // user completes OAuth in another tab.
-  const startPolling$ = useCommand(
-    ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-      detach(set(pollSlackConnection$, signal), Reason.DomCallback);
-    },
-  );
-  const pollingRef$ = onRef(startPolling$);
-  const pollingRef = useSet(pollingRef$);
+  const pollingRef = useSet(slackPollingRef$);
 
   return (
     <>

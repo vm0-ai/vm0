@@ -1,5 +1,3 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconSun,
@@ -22,6 +20,12 @@ import { sendMode$ } from "../../signals/send-mode.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { SendMode } from "@vm0/core";
 import { updateNotificationPreference$ } from "../../signals/zero-page/settings/notification-settings.ts";
+import {
+  preferencesTab$,
+  setPreferencesTab$,
+  sendModeSaving$,
+  setSendModeSaving$,
+} from "../../signals/zero-page/settings/preferences-page.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 function AppearanceSettings() {
@@ -96,9 +100,8 @@ function SendModeSettings() {
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
   const updatePref = useSet(updateNotificationPreference$);
-  const saving$ = useCCState<SendMode | null>(null);
-  const saving = useGet(saving$);
-  const setSaving = useSet(saving$);
+  const saving = useGet(sendModeSaving$);
+  const setSaving = useSet(setSendModeSaving$);
 
   const handleChange = (value: SendMode) => {
     setSaving(value);
@@ -171,9 +174,8 @@ function SendModeSettings() {
 }
 
 export function ZeroPreferencesPage() {
-  const tab$ = useCCState("appearance");
-  const tab = useGet(tab$);
-  const setTab = useSet(tab$);
+  const tab = useGet(preferencesTab$);
+  const setTab = useSet(setPreferencesTab$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">

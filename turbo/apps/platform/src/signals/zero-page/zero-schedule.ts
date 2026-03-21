@@ -46,6 +46,17 @@ interface ScheduleResponse {
 
 const internalSchedules$ = state<ScheduleResponse[]>([]);
 
+// Schedule tab saving state (used by ZeroScheduleTab to show loading during save)
+const internalScheduleTabSaving$ = state(false);
+
+export const scheduleTabSaving$ = computed((get) =>
+  get(internalScheduleTabSaving$),
+);
+
+export const setScheduleTabSaving$ = command(({ set }, value: boolean) => {
+  set(internalScheduleTabSaving$, value);
+});
+
 // ---------------------------------------------------------------------------
 // Convert ScheduleResponse to display time string
 // ---------------------------------------------------------------------------
