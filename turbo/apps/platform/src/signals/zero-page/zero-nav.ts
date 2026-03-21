@@ -22,14 +22,18 @@ function isValidTab(tab: string): tab is ZeroNavId {
  * Active zero nav id, derived from the URL path `/:tab`.
  * `/`, `/chat`, `/chat/:sessionId`, and `/talk/:name`
  * all resolve to "chat".
+ * Unknown paths resolve to "not-found".
  */
 export const zeroActiveId$ = computed((get): ZeroNavId => {
   const path = get(pathname$);
   const segment = path.split("/")[1] ?? "";
-  if (segment && isValidTab(segment)) {
+  if (!segment || segment === "talk") {
+    return "chat";
+  }
+  if (isValidTab(segment)) {
     return segment;
   }
-  return "chat";
+  return "not-found";
 });
 
 /**
