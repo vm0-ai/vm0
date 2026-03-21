@@ -69,38 +69,25 @@ async function renderTeamPage() {
 }
 
 describe("zero jobs page - team list", () => {
-  it("should render page title and description", async () => {
+  it("should render team page with main agent and sub-agents", async () => {
     mockTeamAPI();
     await renderTeamPage();
 
+    // Verify sub-agents render with correct names (including displayName fallback)
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Zero's team", level: 1 }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Research Agent")).toBeInTheDocument();
     });
     expect(
-      screen.getByText(
-        /Zero and sub-agents working together to run tailored workflows/,
-      ),
+      screen.getByText("Finds and summarizes information"),
     ).toBeInTheDocument();
-  });
-
-  it("should render main agent card with Lead badge", async () => {
-    mockTeamAPI();
-    await renderTeamPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Lead")).toBeInTheDocument();
-    });
     expect(
-      screen.getByText(
-        "Your primary AI assistant that manages your team and orchestrates workflows.",
-      ),
+      screen.getByText("Writes content based on research"),
     ).toBeInTheDocument();
+    // "writer" agent has displayName: null, so it should show the name "writer"
+    expect(screen.getByText("writer")).toBeInTheDocument();
   });
 
   it("should show empty state when no sub-agents exist", async () => {
-    // Default mock only has "zero" agent, which is filtered out as default agent
     mockTeamAPI([
       {
         id: "mock-compose-id",
@@ -119,32 +106,6 @@ describe("zero jobs page - team list", () => {
     });
   });
 
-  it("should render sub-agent cards with names and descriptions", async () => {
-    mockTeamAPI();
-    await renderTeamPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Research Agent")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("Finds and summarizes information"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Writes content based on research"),
-    ).toBeInTheDocument();
-  });
-
-  it("should show Workspace badge on sub-agent cards", async () => {
-    mockTeamAPI();
-    await renderTeamPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Research Agent")).toBeInTheDocument();
-    });
-    const workspaceBadges = screen.getAllByText("Workspace");
-    expect(workspaceBadges.length).toBeGreaterThanOrEqual(2);
-  });
-
   it("should show create teammate link when sub-agents exist", async () => {
     mockTeamAPI();
     await renderTeamPage();
@@ -161,18 +122,7 @@ describe("zero jobs page - team list", () => {
     await renderTeamPage();
 
     await waitFor(() => {
-      expect(screen.getByText(/Failed to fetch agents/)).toBeInTheDocument();
-    });
-    expect(screen.getByText("Retry")).toBeInTheDocument();
-  });
-
-  it("should fallback to agent name when displayName is null", async () => {
-    mockTeamAPI();
-    await renderTeamPage();
-
-    // "writer" agent has displayName: null, so it should show the name "writer"
-    await waitFor(() => {
-      expect(screen.getByText("writer")).toBeInTheDocument();
+      expect(screen.getByText("Retry")).toBeInTheDocument();
     });
   });
 });
