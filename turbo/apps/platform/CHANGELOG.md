@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.132.3](https://github.com/vm0-ai/vm0/compare/app-v0.132.2...app-v0.132.3) (2026-03-21)
+
+
+### Refactoring
+
+* extract dedicated queue page setup signal ([#5835](https://github.com/vm0-ai/vm0/issues/5835)) ([f5ce515](https://github.com/vm0-ai/vm0/commit/f5ce51558a19e5887fad0219d147b2cf900d1cb8))
+
 ## [0.132.2](https://github.com/vm0-ai/vm0/compare/app-v0.132.1...app-v0.132.2) (2026-03-21)
 
 
