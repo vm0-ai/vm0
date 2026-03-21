@@ -1749,7 +1749,7 @@ jobs:
   # Aggregates all job results — must ALWAYS run to report explicit success/failure.
   # Using !failure() or !cancelled() would cause the gate to be skipped when
   # dependencies fail, and GitHub treats "skipped" as passing — defeating the purpose.
-  ci-gate:
+  ci-gate-turbo:
     runs-on: ubuntu-latest
     # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:

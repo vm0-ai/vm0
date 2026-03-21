@@ -158,7 +158,7 @@ jobs:
             gitleaks detect --source . --log-opts="HEAD~1..HEAD" --verbose --redact
           fi
 
-  ci-gate:
+  ci-gate-security:
     runs-on: ubuntu-latest
     needs:
       - semgrep

@@ -42,12 +42,12 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Create ci-gate check run on release PR head commit.
-      # GITHUB_TOKEN pushes don't trigger pull_request events, so turbo.yml
-      # never runs on the new commit. The Checks API with GITHUB_TOKEN produces
-      # a check run with integration_id 15368 (GitHub Actions), satisfying the
-      # required_status_checks ruleset.
-      - name: Pass ci-gate for release PR
+      # Create ci-gate check runs on release PR head commit.
+      # GITHUB_TOKEN pushes don't trigger pull_request events, so the CI
+      # workflows never run on the new commit. The Checks API with GITHUB_TOKEN
+      # produces check runs with integration_id 15368 (GitHub Actions),
+      # satisfying the required_status_checks ruleset.
+      - name: Pass ci-gate checks for release PR
         if: ${{ steps.release.outputs.releases_created != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -57,14 +57,16 @@ jobs:
             echo "No release PR found, skipping"
             exit 0
           fi
-          gh api repos/${{ github.repository }}/check-runs -X POST \
-            -f name="ci-gate" \
-            -f head_sha="$PR_HEAD" \
-            -f status="completed" \
-            -f conclusion="success" \
-            -f "output[title]=Release PR — CI skipped" \
-            -f "output[summary]=Release-please PRs only contain version bumps and changelogs."
-          echo "✅ Created ci-gate check run on $PR_HEAD"
+          for gate in ci-gate-turbo ci-gate-crates ci-gate-security; do
+            gh api repos/${{ github.repository }}/check-runs -X POST \
+              -f name="$gate" \
+              -f head_sha="$PR_HEAD" \
+              -f status="completed" \
+              -f conclusion="success" \
+              -f "output[title]=Release PR — CI skipped" \
+              -f "output[summary]=Release-please PRs only contain version bumps and changelogs."
+            echo "✅ Created $gate check run on $PR_HEAD"
+          done
 
   # Run database migrations in production
   migrate-production:

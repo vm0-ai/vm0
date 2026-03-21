@@ -767,7 +767,7 @@ jobs:
           echo "=== Upgrade test passed ==="
           REMOTE_SCRIPT
 
-  ci-gate:
+  ci-gate-crates:
     runs-on: ubuntu-latest
     needs:
       - detect
