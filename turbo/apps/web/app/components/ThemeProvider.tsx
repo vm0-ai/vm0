@@ -37,6 +37,14 @@ function resolveClientTheme(): Theme {
     : "light";
 }
 
+function applyTheme(newTheme: Theme) {
+  localStorage.setItem("theme", newTheme);
+  document.documentElement.setAttribute("data-theme", newTheme);
+  // localStorage.setItem doesn't fire storage events in the same tab,
+  // so dispatch manually for cross-tab sync
+  window.dispatchEvent(new Event("storage"));
+}
+
 interface ThemeProviderProps {
   children: ReactNode;
 }
@@ -75,20 +83,14 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, []);
 
   const setTheme = useCallback((newTheme: Theme) => {
-    localStorage.setItem("theme", newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
+    applyTheme(newTheme);
     setThemeState(newTheme);
-    // localStorage.setItem doesn't fire storage events in the same tab,
-    // so dispatch manually for cross-tab sync
-    window.dispatchEvent(new Event("storage"));
   }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((current) => {
       const newTheme = current === "dark" ? "light" : "dark";
-      localStorage.setItem("theme", newTheme);
-      document.documentElement.setAttribute("data-theme", newTheme);
-      window.dispatchEvent(new Event("storage"));
+      applyTheme(newTheme);
       return newTheme;
     });
   }, []);
