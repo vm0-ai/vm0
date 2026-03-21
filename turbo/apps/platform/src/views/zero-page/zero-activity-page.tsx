@@ -1,3 +1,4 @@
+/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useCommand } from "ccstate-react/experimental";
 import {
