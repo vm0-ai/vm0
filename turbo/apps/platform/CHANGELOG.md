@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.132.1](https://github.com/vm0-ai/vm0/compare/app-v0.132.0...app-v0.132.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* activity detail page stuck on skeleton when accessed directly ([#5793](https://github.com/vm0-ai/vm0/issues/5793)) ([1778254](https://github.com/vm0-ai/vm0/commit/17782547c0ce9a928195e27f846505f7e4e24d6e))
+
+
+### Refactoring
+
+* broaden eslint rule to ban all ccstate-react/experimental imports ([#5794](https://github.com/vm0-ai/vm0/issues/5794)) ([210a178](https://github.com/vm0-ai/vm0/commit/210a178e1b6f4440c80f2904307eca77c99af7d2))
+
 ## [0.132.0](https://github.com/vm0-ai/vm0/compare/app-v0.131.2...app-v0.132.0) (2026-03-20)
 
 
