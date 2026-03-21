@@ -644,41 +644,6 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       expect(data.tools).toEqual(["Bash", "Edit"]);
     });
 
-    it("should return secretConnectorMap when present in stored context", async () => {
-      const { composeId, versionId } =
-        await createTestCompose("test-connector-map");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
-      const { runId } = await createTestRunnerJob(
-        user.userId,
-        versionId,
-        `${orgSlug}/default`,
-        { secretConnectorMap: { GMAIL_ACCESS_TOKEN: "gmail" } },
-      );
-
-      const token = await createTestCliToken(user.userId);
-      const request = createTestRequest(
-        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({}),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.secretConnectorMap).toEqual({
-        GMAIL_ACCESS_TOKEN: "gmail",
-      });
-    });
-
     it("should omit fields when not in stored context", async () => {
       const { composeId, versionId } =
         await createTestCompose("test-no-extras");
@@ -710,7 +675,6 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const data = await response.json();
       expect(data.settings).toBeUndefined();
       expect(data.tools).toBeUndefined();
-      expect(data.secretConnectorMap).toBeUndefined();
     });
   });
 });

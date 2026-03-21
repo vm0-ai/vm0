@@ -207,7 +207,6 @@ const router = tsr.router(runnersJobClaimContract, {
         disallowedTools: storedContext.disallowedTools,
         tools: storedContext.tools,
         settings: storedContext.settings,
-        secretConnectorMap: storedContext.secretConnectorMap,
         experimentalProfile: storedContext.experimentalProfile,
         debugNoMockClaude: storedContext.debugNoMockClaude,
         apiStartTime: storedContext.apiStartTime,
