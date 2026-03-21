@@ -16,6 +16,7 @@ import {
   concurrentRunLimit,
   isConcurrentRunLimit,
   insufficientCredits,
+  noModelProvider,
 } from "../errors";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { modelProviders } from "../../db/schema/model-provider";
@@ -30,7 +31,10 @@ import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import { buildExecutionContext as buildContext } from "./build-context";
+import {
+  buildExecutionContext as buildContext,
+  MODEL_PROVIDER_ENV_VARS,
+} from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
@@ -184,6 +188,55 @@ async function checkOrgCredits(
   }
 
   // Effective provider is not VM0 — skip check
+}
+
+/**
+ * Pre-INSERT check: ensure the org has a model provider configured.
+ * Skips the check when:
+ * - The compose has explicit model provider env vars (e.g. ANTHROPIC_API_KEY)
+ * - An explicit modelProvider param is provided (validated later in build-context)
+ * - The framework doesn't use model providers (non-claude-code)
+ */
+async function checkModelProviderConfigured(
+  orgId: string,
+  modelProvider: string | null | undefined,
+  composeContent: AgentComposeYaml,
+  db: Database,
+): Promise<void> {
+  // Explicit modelProvider param provided — skip (will be validated in build-context)
+  if (modelProvider) return;
+
+  // Extract framework and environment from first agent
+  const firstAgent = composeContent.agents
+    ? Object.values(composeContent.agents)[0]
+    : undefined;
+  const framework = firstAgent?.framework || "claude-code";
+
+  // Only claude-code framework needs provider resolution
+  if (framework !== "claude-code") return;
+
+  // If compose has explicit model provider env vars, skip check
+  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some(
+    (v) => firstAgent?.environment?.[v] !== undefined,
+  );
+  if (hasExplicitConfig) return;
+
+  // Check if org has a default model provider (within transaction)
+  const [defaultProvider] = await db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
+
+  if (!defaultProvider) {
+    throw noModelProvider();
+  }
 }
 
 /**
@@ -1089,6 +1142,14 @@ export async function createRun(
 
       // Check credit balance for VM0 provider runs
       await checkOrgCredits(orgId, params.modelProvider, tx);
+
+      // Check model provider is configured (pre-INSERT to avoid ghost run records)
+      await checkModelProviderConfigured(
+        orgId,
+        params.modelProvider,
+        composeContent,
+        tx,
+      );
 
       // INSERT within the same transaction
       const [newRun] = await tx

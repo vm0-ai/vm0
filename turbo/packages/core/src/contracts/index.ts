@@ -16,6 +16,7 @@ export {
   apiErrorSchema,
   ApiError,
   createErrorResponse,
+  RUN_ERROR_GUIDANCE,
   type ApiErrorKey,
   type ApiErrorResponse,
 } from "./errors";

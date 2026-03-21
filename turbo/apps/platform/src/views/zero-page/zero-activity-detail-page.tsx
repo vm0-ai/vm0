@@ -15,6 +15,7 @@ import { Button, Input } from "@vm0/ui";
 import {
   MODEL_PROVIDER_TYPES,
   FeatureSwitchKey,
+  RUN_ERROR_GUIDANCE,
   type ModelProviderType,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -42,6 +43,41 @@ import {
 import { GroupedMessageCard } from "./components/logs/grouped-message-card.tsx";
 import { StatusDot } from "./components/logs/status-dot.tsx";
 import { Markdown } from "../components/markdown.tsx";
+
+// ---------------------------------------------------------------------------
+// Error Banner
+// ---------------------------------------------------------------------------
+
+function getErrorGuidance(error: string) {
+  for (const [, guidance] of Object.entries(RUN_ERROR_GUIDANCE)) {
+    if (error.toLowerCase().includes(guidance.title.toLowerCase())) {
+      return guidance;
+    }
+  }
+  return null;
+}
+
+function RunErrorBanner({ error }: { error: string }) {
+  const guidance = getErrorGuidance(error);
+  if (guidance) {
+    return (
+      <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="font-medium">{guidance.title}</div>
+        <div className="mt-1 text-destructive/80">{guidance.guidance}</div>
+        {guidance.cliHint && (
+          <div className="mt-1 font-mono text-xs text-destructive/60">
+            $ {guidance.cliHint}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
+      {error}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -206,9 +242,7 @@ function ActivityHeaderCard({
         </Button>
       </div>
       {detail.error && status === "failed" && (
-        <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
-          {detail.error}
-        </div>
+        <RunErrorBanner error={detail.error} />
       )}
     </div>
   );
