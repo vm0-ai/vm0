@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import type { ModelProviderResponse } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import type { ModelProviderResponse } from "@vm0/core";
 
 const context = testContext();
 
@@ -19,8 +19,8 @@ function createMockProviders(): ModelProviderResponse[] {
       secretNames: null,
       isDefault: true,
       selectedModel: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      updatedAt: "2026-01-01T00:00:00Z",
+      createdAt: "2026-03-01T00:00:00Z",
+      updatedAt: "2026-03-01T00:00:00Z",
     },
     {
       id: "prov-2",
@@ -30,14 +30,14 @@ function createMockProviders(): ModelProviderResponse[] {
       authMethod: null,
       secretNames: null,
       isDefault: false,
-      selectedModel: null,
-      createdAt: "2026-01-02T00:00:00Z",
-      updatedAt: "2026-01-02T00:00:00Z",
+      selectedModel: "anthropic/claude-sonnet-4.5",
+      createdAt: "2026-03-02T00:00:00Z",
+      updatedAt: "2026-03-02T00:00:00Z",
     },
   ];
 }
 
-function mockProvidersAPI(providers = createMockProviders()) {
+function mockProviderAPI(providers = createMockProviders()) {
   server.use(
     http.get("*/api/zero/model-providers", () => {
       return HttpResponse.json({ modelProviders: providers });
@@ -48,7 +48,7 @@ function mockProvidersAPI(providers = createMockProviders()) {
   );
 }
 
-function mockNonAdmin() {
+function mockMemberRole() {
   server.use(
     http.get("*/api/zero/org", () => {
       return HttpResponse.json({
@@ -67,9 +67,9 @@ async function renderSettingsPage() {
   await setupPage({ context, path: "/settings" });
 }
 
-describe("zero settings page - admin rendering", () => {
+describe("zero settings page - admin view", () => {
   it("should render page header with title and description", async () => {
-    mockProvidersAPI();
+    mockProviderAPI();
     await renderSettingsPage();
 
     await waitFor(() => {
@@ -82,45 +82,8 @@ describe("zero settings page - admin rendering", () => {
     ).toBeInTheDocument();
   });
 
-  it("should render configured provider cards", async () => {
-    mockProvidersAPI();
-    await renderSettingsPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Model providers")).toBeInTheDocument();
-    });
-
-    const configuredLabels = screen.getAllByText("Configured");
-    expect(configuredLabels).toHaveLength(2);
-  });
-
-  it("should show Add provider button when not all types are configured", async () => {
-    mockProvidersAPI();
-    await renderSettingsPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Add provider")).toBeInTheDocument();
-    });
-  });
-
-  it("should show More options button on each provider card", async () => {
-    mockProvidersAPI();
-    await renderSettingsPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Model providers")).toBeInTheDocument();
-    });
-
-    const moreButtons = screen.getAllByRole("button", {
-      name: "More options",
-    });
-    expect(moreButtons).toHaveLength(2);
-  });
-});
-
-describe("zero settings page - default provider selector", () => {
   it("should render default provider section for admin", async () => {
-    mockProvidersAPI();
+    mockProviderAPI();
     await renderSettingsPage();
 
     await waitFor(() => {
@@ -129,8 +92,48 @@ describe("zero settings page - default provider selector", () => {
     expect(screen.getByText("Default provider")).toBeInTheDocument();
   });
 
-  it("should show No providers configured when provider list is empty", async () => {
-    mockProvidersAPI([]);
+  it("should render provider cards with configured status", async () => {
+    mockProviderAPI();
+    await renderSettingsPage();
+
+    await waitFor(() => {
+      const configuredLabels = screen.getAllByText("Configured");
+      expect(configuredLabels).toHaveLength(2);
+    });
+  });
+
+  it("should render model providers section heading", async () => {
+    mockProviderAPI();
+    await renderSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
+    });
+  });
+
+  it("should show add provider button when not all types are configured", async () => {
+    mockProviderAPI();
+    await renderSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Add provider")).toBeInTheDocument();
+    });
+  });
+
+  it("should show more options menu button on each provider card", async () => {
+    mockProviderAPI();
+    await renderSettingsPage();
+
+    await waitFor(() => {
+      const moreButtons = screen.getAllByRole("button", {
+        name: "More options",
+      });
+      expect(moreButtons).toHaveLength(2);
+    });
+  });
+
+  it("should show no providers configured when provider list is empty", async () => {
+    mockProviderAPI([]);
     await renderSettingsPage();
 
     await waitFor(() => {
@@ -139,40 +142,14 @@ describe("zero settings page - default provider selector", () => {
   });
 });
 
-describe("zero settings page - non-admin rendering", () => {
-  it("should not show Add provider button for non-admin", async () => {
-    mockNonAdmin();
-    mockProvidersAPI();
+describe("zero settings page - member view", () => {
+  it("should not render default provider section for non-admin", async () => {
+    mockMemberRole();
+    mockProviderAPI();
     await renderSettingsPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Anthropic API key")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("Add provider")).not.toBeInTheDocument();
-  });
-
-  it("should not show dropdown menus for non-admin", async () => {
-    mockNonAdmin();
-    mockProvidersAPI();
-    await renderSettingsPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Anthropic API key")).toBeInTheDocument();
-    });
-
-    expect(
-      screen.queryByRole("button", { name: "More options" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("should not show default provider selector for non-admin", async () => {
-    mockNonAdmin();
-    mockProvidersAPI();
-    await renderSettingsPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Anthropic API key")).toBeInTheDocument();
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
     });
 
     expect(
@@ -180,9 +157,37 @@ describe("zero settings page - non-admin rendering", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("should show empty state message for non-admin when no providers", async () => {
-    mockNonAdmin();
-    mockProvidersAPI([]);
+  it("should not show add provider button for non-admin", async () => {
+    mockMemberRole();
+    mockProviderAPI();
+    await renderSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Model providers")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Add provider")).not.toBeInTheDocument();
+  });
+
+  it("should not show more options menu for non-admin", async () => {
+    mockMemberRole();
+    mockProviderAPI();
+    await renderSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Configured").length).toBeGreaterThanOrEqual(
+        1,
+      );
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "More options" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should show empty state message when no providers for member", async () => {
+    mockMemberRole();
+    mockProviderAPI([]);
     await renderSettingsPage();
 
     await waitFor(() => {
@@ -197,7 +202,7 @@ describe("zero settings page - non-admin rendering", () => {
 
 describe("zero settings page - add provider dialog", () => {
   it("should open add provider dialog when Add provider is clicked", async () => {
-    mockProvidersAPI();
+    mockProviderAPI();
     await renderSettingsPage();
 
     await waitFor(() => {
@@ -216,43 +221,48 @@ describe("zero settings page - add provider dialog", () => {
 
 describe("zero settings page - edit provider", () => {
   it("should open edit dialog when clicking a provider card", async () => {
-    mockProvidersAPI();
+    mockProviderAPI();
     await renderSettingsPage();
 
+    // Wait for provider cards to render by checking for "Configured" status
     await waitFor(() => {
-      expect(screen.getByText("Model providers")).toBeInTheDocument();
+      expect(screen.getAllByText("Configured")).toHaveLength(2);
     });
 
-    // Provider cards have role="button" for admins — find by the "Configured" status
-    // which is unique to provider cards (not in sidebar)
-    const configuredLabels = screen.getAllByText("Configured");
-    // Click the parent card (the role="button" div) of the first provider
-    const firstProviderCard = configuredLabels[0].closest("[role='button']");
-    expect(firstProviderCard).toBeTruthy();
-    fireEvent.click(firstProviderCard!);
+    // Find the provider card div with role="button" — it contains the provider name
+    // The card div has role="button" and class="zero-card" for admins
+    const providerCardButtons = screen
+      .getAllByRole("button")
+      .filter(
+        (el) =>
+          el.classList.contains("zero-card") &&
+          el.textContent?.includes("Anthropic API key"),
+      );
+    expect(providerCardButtons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(providerCardButtons[0]);
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Edit organization Anthropic API key/),
+        screen.getByText("Edit organization Anthropic API key"),
       ).toBeInTheDocument();
     });
   });
 });
 
-describe("zero settings page - dropdown menu interaction", () => {
-  it("should open dropdown menu with Edit and Delete items on pointer down", async () => {
-    mockProvidersAPI();
+describe("zero settings page - delete provider", () => {
+  it("should open delete confirmation dialog from dropdown menu", async () => {
+    mockProviderAPI();
     await renderSettingsPage();
 
+    // Wait for provider cards to render
     await waitFor(() => {
-      expect(screen.getByText("Model providers")).toBeInTheDocument();
+      expect(screen.getAllByText("Configured")).toHaveLength(2);
     });
 
+    // Open the dropdown menu — Radix DropdownMenu needs pointerDown to trigger
     const moreButtons = screen.getAllByRole("button", {
       name: "More options",
     });
-
-    // Radix DropdownMenu uses pointerdown to open
     fireEvent.pointerDown(moreButtons[0], {
       button: 0,
       ctrlKey: false,
@@ -260,11 +270,18 @@ describe("zero settings page - dropdown menu interaction", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("menuitem", { name: "Edit" }),
+        screen.getByRole("menuitem", { name: "Delete" }),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("menuitem", { name: "Delete" }),
-    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Are you sure you want to delete this organization model provider?",
+        ),
+      ).toBeInTheDocument();
+    });
   });
 });

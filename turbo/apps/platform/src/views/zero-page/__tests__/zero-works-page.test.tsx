@@ -1,0 +1,440 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+function mockSlackAPI(overrides: Record<string, unknown> = {}) {
+  const defaults = {
+    isConnected: true,
+    isInstalled: true,
+    workspaceName: "Test Workspace",
+    isAdmin: true,
+    installUrl: "/api/zero/integrations/slack/install",
+    connectUrl: "/api/zero/integrations/slack/connect",
+    defaultAgentName: "zero",
+    agentOrgSlug: "test-org",
+    environment: {
+      requiredSecrets: [],
+      requiredVars: [],
+      missingSecrets: [],
+      missingVars: [],
+    },
+  };
+
+  server.use(
+    http.get("*/api/zero/integrations/slack", () => {
+      return HttpResponse.json({ ...defaults, ...overrides });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+  );
+}
+
+async function renderWorksPage() {
+  await setupPage({ context, path: "/works" });
+}
+
+describe("zero works page - header", () => {
+  it("should render page title with agent name", async () => {
+    mockSlackAPI();
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Where Zero works" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should render subtitle with agent name", async () => {
+    mockSlackAPI();
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Connect with Zero through these channels"),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero works page - slack card connected state", () => {
+  it("should show Connected badge when slack is connected", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+  });
+
+  it("should show Slack card label", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+    });
+  });
+
+  it("should show more options button when connected", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should show Disconnect option in popover when connected", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    });
+  });
+
+  it("should show Uninstall option for admin in popover", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+    });
+  });
+
+  it("should not show Install or Connect buttons when already connected", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Install to Slack")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connect" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("zero works page - slack not installed", () => {
+  it("should show Install to Slack button for admin when not installed", async () => {
+    mockSlackAPI({ isConnected: false, isInstalled: false, isAdmin: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Install to Slack")).toBeInTheDocument();
+    });
+  });
+
+  it("should not show Install button for non-admin when not installed", async () => {
+    mockSlackAPI({ isConnected: false, isInstalled: false, isAdmin: false });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Install to Slack")).not.toBeInTheDocument();
+  });
+
+  it("should show admin prompt message for non-admin when not installed", async () => {
+    mockSlackAPI({ isConnected: false, isInstalled: false, isAdmin: false });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Ask your admin to install the Slack integration"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should not show Connected badge when not installed", async () => {
+    mockSlackAPI({ isConnected: false, isInstalled: false, isAdmin: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Install to Slack")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Connected")).not.toBeInTheDocument();
+  });
+});
+
+describe("zero works page - slack installed but not connected", () => {
+  it("should show Connect button when installed but not connected", async () => {
+    mockSlackAPI({ isConnected: false, isInstalled: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should not show Connected badge when not connected", async () => {
+    mockSlackAPI({ isConnected: false, isInstalled: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Connected")).not.toBeInTheDocument();
+  });
+});
+
+describe("zero works page - uninstall confirmation dialog", () => {
+  it("should show uninstall confirmation dialog when Uninstall is clicked", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Uninstall"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Uninstall Slack integration?"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/This will remove the Slack integration/),
+    ).toBeInTheDocument();
+  });
+
+  it("should close dialog when Cancel is clicked", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Uninstall"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Uninstall Slack integration?"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Uninstall Slack integration?"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("should call uninstall API when confirming uninstall", async () => {
+    let uninstallCalled = false;
+
+    server.use(
+      http.get("*/api/zero/integrations/slack", () => {
+        return HttpResponse.json({
+          isConnected: true,
+          isInstalled: true,
+          workspaceName: "Test Workspace",
+          isAdmin: true,
+          installUrl: "/api/zero/integrations/slack/install",
+          connectUrl: "/api/zero/integrations/slack/connect",
+          defaultAgentName: "zero",
+          agentOrgSlug: "test-org",
+          environment: {
+            requiredSecrets: [],
+            requiredVars: [],
+            missingSecrets: [],
+            missingVars: [],
+          },
+        });
+      }),
+      http.delete("*/api/zero/integrations/slack", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("action") === "uninstall") {
+          uninstallCalled = true;
+        }
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Uninstall"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Uninstall Slack integration?"),
+      ).toBeInTheDocument();
+    });
+
+    // Click the confirmation Uninstall button in the dialog
+    const dialogButtons = screen.getAllByRole("button", { name: "Uninstall" });
+    const confirmButton = dialogButtons.find((btn) =>
+      btn.closest("[role='dialog']"),
+    );
+    fireEvent.click(confirmButton!);
+
+    await waitFor(() => {
+      expect(uninstallCalled).toBeTruthy();
+    });
+  });
+});
+
+describe("zero works page - admin vs non-admin permissions", () => {
+  it("should not show more options button for non-admin when installed but not connected", async () => {
+    mockSlackAPI({
+      isConnected: false,
+      isInstalled: true,
+      isAdmin: false,
+    });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "More options" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should show more options for non-admin when connected (for disconnect)", async () => {
+    mockSlackAPI({
+      isConnected: true,
+      isInstalled: true,
+      isAdmin: false,
+    });
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    });
+
+    // Non-admin should not see Uninstall
+    expect(screen.queryByText("Uninstall")).not.toBeInTheDocument();
+  });
+});
+
+describe("zero works page - disconnect", () => {
+  it("should call disconnect API when Disconnect is clicked", async () => {
+    let disconnectCalled = false;
+
+    server.use(
+      http.get("*/api/zero/integrations/slack", () => {
+        return HttpResponse.json({
+          isConnected: true,
+          isInstalled: true,
+          workspaceName: "Test Workspace",
+          isAdmin: true,
+          installUrl: null,
+          connectUrl: null,
+          defaultAgentName: "zero",
+          agentOrgSlug: "test-org",
+          environment: {
+            requiredSecrets: [],
+            requiredVars: [],
+            missingSecrets: [],
+            missingVars: [],
+          },
+        });
+      }),
+      http.delete("*/api/zero/integrations/slack", ({ request }) => {
+        const url = new URL(request.url);
+        if (!url.searchParams.get("action")) {
+          disconnectCalled = true;
+        }
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(disconnectCalled).toBeTruthy();
+    });
+  });
+});
