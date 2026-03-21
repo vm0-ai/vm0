@@ -9,7 +9,9 @@
 
 set -euo pipefail
 
-REPO="vm0-ai/vm0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_common.sh
+source "$SCRIPT_DIR/_common.sh"
 
 usage() {
   echo "Usage: $0 <label|range> [--user LOGIN]" >&2
@@ -48,28 +50,28 @@ else
   LANES+=("$LABEL_ARG")
 fi
 
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 query_lane() {
   local lane="$1"
-  local dir="$TMPDIR/$lane"
+  local dir="$WORK_DIR/$lane"
   mkdir -p "$dir"
 
   # Issues assigned to user
   gh issue list --repo "$REPO" --label "$lane" --assignee "$USER" --state open \
     --json number,title,labels,closedByPullRequestsReferences --limit 50 \
-    > "$dir/issues_assignee.json" 2>/dev/null &
+    > "$dir/issues_assignee.json" &
 
   # Issues authored by user (for dashboard dedup)
   gh issue list --repo "$REPO" --label "$lane" --author "$USER" --state open \
     --json number,title,labels,closedByPullRequestsReferences --limit 50 \
-    > "$dir/issues_author.json" 2>/dev/null &
+    > "$dir/issues_author.json" &
 
   # PRs authored by user
   gh pr list --repo "$REPO" --label "$lane" --author "$USER" --state open \
     --json number,title,labels,mergeable,headRefOid,headRefName --limit 50 \
-    > "$dir/prs.json" 2>/dev/null &
+    > "$dir/prs.json" &
 
   wait
 }
@@ -85,7 +87,7 @@ build_output() {
   echo "["
   local first=true
   for lane in "${LANES[@]}"; do
-    local dir="$TMPDIR/$lane"
+    local dir="$WORK_DIR/$lane"
     $first && first=false || echo ","
 
     # Deduplicate issues (assignee + author), transform

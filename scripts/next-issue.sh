@@ -8,7 +8,9 @@
 
 set -euo pipefail
 
-REPO="vm0-ai/vm0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_common.sh
+source "$SCRIPT_DIR/_common.sh"
 
 [[ $# -lt 1 ]] && { echo "Usage: $0 <label>" >&2; exit 1; }
 
@@ -34,7 +36,7 @@ ISSUE_NUMBER=$(echo "$ISSUE" | jq -r '.number')
 
 # Verify no open PR already covers this issue
 OPEN_PR=$(gh pr list --repo "$REPO" --state open --json number,title --limit 100 \
-  --jq "[.[] | select(.title | test(\"#${ISSUE_NUMBER}\\\\b\"; \"x\"))] | length")
+  --jq --arg num "#${ISSUE_NUMBER}" '[.[] | select(.title | contains($num))] | length')
 
 if [[ "$OPEN_PR" -gt 0 ]]; then
   exit 0

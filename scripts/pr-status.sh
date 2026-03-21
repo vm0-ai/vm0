@@ -8,42 +8,44 @@
 
 set -euo pipefail
 
-REPO="vm0-ai/vm0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_common.sh
+source "$SCRIPT_DIR/_common.sh"
 
 [[ $# -lt 1 ]] && { echo "Usage: $0 <pr-number>" >&2; exit 1; }
 
 PR="$1"
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 # Run 3 queries in parallel
 gh pr view "$PR" --repo "$REPO" --json mergeable,headRefOid \
-  > "$TMPDIR/pr_view.json" 2>/dev/null &
+  > "$WORK_DIR/pr_view.json" &
 
 gh pr checks "$PR" --repo "$REPO" --json name,state,bucket \
-  > "$TMPDIR/pr_checks.json" 2>/dev/null &
+  > "$WORK_DIR/pr_checks.json" &
 
 gh api "repos/$REPO/issues/$PR/comments" \
   --jq '[.[] | select(.body | test("## Code Review"))]' \
-  > "$TMPDIR/reviews.json" 2>/dev/null &
+  > "$WORK_DIR/reviews.json" &
 
 wait
 
 # Parse results
-MERGEABLE=$(jq -r '.mergeable' "$TMPDIR/pr_view.json")
-HEAD_SHA=$(jq -r '.headRefOid' "$TMPDIR/pr_view.json")
+MERGEABLE=$(jq -r '.mergeable' "$WORK_DIR/pr_view.json")
+HEAD_SHA=$(jq -r '.headRefOid' "$WORK_DIR/pr_view.json")
 HEAD_SHORT="${HEAD_SHA:0:7}"
 
 # CI analysis — use state field (SUCCESS/FAILURE/IN_PROGRESS/SKIPPED) and bucket (pass/fail/pending/skipping)
-HAS_FAILURE=$(jq '[.[] | select(.state == "FAILURE")] | length > 0' "$TMPDIR/pr_checks.json")
-FAILED_JOBS=$(jq '[.[] | select(.state == "FAILURE") | .name]' "$TMPDIR/pr_checks.json")
-PENDING_JOBS=$(jq '[.[] | select(.bucket == "pending") | .name]' "$TMPDIR/pr_checks.json")
-ALL_PASSED=$(jq '[.[] | select(.state != "SUCCESS" and .state != "SKIPPED")] | length == 0' "$TMPDIR/pr_checks.json")
+HAS_FAILURE=$(jq '[.[] | select(.state == "FAILURE")] | length > 0' "$WORK_DIR/pr_checks.json")
+FAILED_JOBS=$(jq '[.[] | select(.state == "FAILURE") | .name]' "$WORK_DIR/pr_checks.json")
+PENDING_JOBS=$(jq '[.[] | select(.bucket == "pending") | .name]' "$WORK_DIR/pr_checks.json")
+ALL_PASSED=$(jq '[.[] | select(.state != "SUCCESS" and .state != "SKIPPED")] | length == 0' "$WORK_DIR/pr_checks.json")
 
 # Review analysis — check if review exists for current HEAD
 HAS_REVIEW=$(jq --arg sha "$HEAD_SHORT" \
-  '[.[] | select(.body | test($sha))] | length > 0' "$TMPDIR/reviews.json")
-REVIEW_IDS=$(jq '[.[].id]' "$TMPDIR/reviews.json")
+  '[.[] | select(.body | test($sha))] | length > 0' "$WORK_DIR/reviews.json")
+REVIEW_IDS=$(jq '[.[].id]' "$WORK_DIR/reviews.json")
 
 # Classify status
 if [[ "$MERGEABLE" == "CONFLICTING" ]]; then
