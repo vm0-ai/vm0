@@ -76,8 +76,10 @@ describe("sidebar chat navigation from /team", () => {
     const chatLink = await waitFor(() =>
       screen.getByText("Who are you and what can you do?"),
     );
+    const anchor = chatLink.closest("a");
+    expect(anchor).not.toBeNull();
     await act(() => {
-      chatLink.closest("a")!.click();
+      anchor!.click();
     });
 
     // After clicking, the chat page content should render (not team page)
