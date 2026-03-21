@@ -36,7 +36,7 @@ ISSUE_NUMBER=$(echo "$ISSUE" | jq -r '.number')
 
 # Verify no open PR already covers this issue
 OPEN_PR=$(gh pr list --repo "$REPO" --state open --json number,title --limit 100 \
-  --jq --arg num "#${ISSUE_NUMBER}" '[.[] | select(.title | contains($num))] | length')
+  --jq "[.[] | select(.title | contains(\"#${ISSUE_NUMBER}\"))] | length")
 
 if [[ "$OPEN_PR" -gt 0 ]]; then
   exit 0
