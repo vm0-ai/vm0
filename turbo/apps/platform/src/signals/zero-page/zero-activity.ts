@@ -132,13 +132,14 @@ export const {
 /**
  * Refresh activity data if the current tab is "activity".
  * Called from `setupZeroPage$` on every route entry so that each visit
- * to the activity tab triggers a fresh fetch.
+ * to the activity tab triggers a fresh fetch and syncs detail polling.
  */
 export const refreshZeroActivityIfActive$ = command(({ get, set }) => {
   const activeTab = get(zeroActiveId$);
   if (activeTab !== "activity") {
     return;
   }
+  set(syncZeroActivitySub$);
   detach(set(refreshZeroActivity$), Reason.Entrance);
 });
 
@@ -173,16 +174,35 @@ export const setZeroActivityFilter$ = command(
 const internalPollingAbort$ = state<AbortController | null>(null);
 const lastSyncedLogId$ = state<string | null>(null);
 
+// ---------------------------------------------------------------------------
+// Detail step search — component-local filter for the detail view
+// ---------------------------------------------------------------------------
+
+const internalStepSearch$ = state("");
+
+/** Current step search filter for the activity detail view. */
+export const zeroActivityStepSearch$ = computed((get) =>
+  get(internalStepSearch$),
+);
+
+/** Update the step search filter. */
+export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
+  set(internalStepSearch$, value);
+});
+
 /**
  * Sync the URL sub-route to the detail polling lifecycle.
  * Idempotent: only restarts polling when the log ID actually changes.
  */
-export const syncZeroActivitySub$ = command(({ get, set }) => {
+const syncZeroActivitySub$ = command(({ get, set }) => {
   const sub = get(zeroTabSub$);
   const prev = get(lastSyncedLogId$);
   if (sub === prev) {
     return;
   }
+
+  // Reset step search when switching log entries
+  set(internalStepSearch$, "");
 
   // Abort previous polling
   const prevAbort = get(internalPollingAbort$);

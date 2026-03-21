@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useGet, useSet, useLoadable } from "ccstate-react";
-import { useCommand } from "ccstate-react/experimental";
 import {
   IconClock,
   IconChevronRight,
@@ -32,7 +30,6 @@ import {
   zeroActivityLimit$,
   zeroActivityHasPrev$,
   zeroActivityCurrentPage$,
-  syncZeroActivitySub$,
   goToNextZeroActivityPage$,
   goToPrevZeroActivityPage$,
   goForwardTwoZeroActivityPages$,
@@ -43,7 +40,7 @@ import {
 } from "../../signals/zero-page/zero-activity.ts";
 import { zeroTabSub$ } from "../../signals/zero-page/zero-nav.ts";
 import { SimpleLink } from "../router/link.tsx";
-import { Reason, detach, onRef } from "../../signals/utils.ts";
+import { Reason, detach } from "../../signals/utils.ts";
 import emptyActivityImg from "./assets/empty-activity.png";
 
 const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
@@ -124,11 +121,6 @@ export function ZeroActivityPage() {
   const goForwardTwo = useSet(goForwardTwoZeroActivityPages$);
   const goBackTwo = useSet(goBackTwoZeroActivityPages$);
   const setRowsPerPage = useSet(setZeroActivityRowsPerPage$);
-  const initPage$ = useCommand(({ set }) => {
-    set(syncZeroActivitySub$);
-  });
-  const initPageRef$ = onRef(initPage$);
-  const initPageRef = useSet(initPageRef$);
 
   // URL-driven detail: /activity/:logId
   const sub = useGet(zeroTabSub$);
@@ -155,11 +147,11 @@ export function ZeroActivityPage() {
 
   // Detail view when sub-route is present
   if (sub) {
-    return <ZeroActivityDetailPage ref={initPageRef} />;
+    return <ZeroActivityDetailPage />;
   }
 
   return (
-    <div ref={initPageRef} className="flex flex-1 flex-col min-h-0">
+    <div className="flex flex-1 flex-col min-h-0">
       {/* Fixed header: title + filters */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">

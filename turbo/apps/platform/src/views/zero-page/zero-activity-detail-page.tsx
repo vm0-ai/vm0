@@ -1,6 +1,3 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import type { Ref } from "react";
-import { useCCState } from "ccstate-react/experimental";
 import {
   useGet,
   useSet,
@@ -32,6 +29,8 @@ import { StatusBadge } from "./components/logs/status-badge.tsx";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
+  zeroActivityStepSearch$,
+  setZeroActivityStepSearch$,
   formatLogTime,
   formatDuration,
 } from "../../signals/zero-page/zero-activity.ts";
@@ -217,7 +216,7 @@ function ActivityHeaderCard({
   );
 }
 
-export function ZeroActivityDetailPage({ ref }: { ref?: Ref<HTMLDivElement> }) {
+export function ZeroActivityDetailPage() {
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   // Resolve agent display name from the detail response
@@ -225,26 +224,17 @@ export function ZeroActivityDetailPage({ ref }: { ref?: Ref<HTMLDivElement> }) {
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   const agentName = detail ? (detail.displayName ?? detail.agentName) : "Agent";
 
-  const stepSearch$ = useCCState("");
-  const stepSearch = useGet(stepSearch$);
-  const setStepSearch = useSet(stepSearch$);
+  const stepSearch = useGet(zeroActivityStepSearch$);
+  const setStepSearch = useSet(setZeroActivityStepSearch$);
   const features = useLastResolved(featureSwitch$);
 
   // Skeleton until both detail and initial events are loaded
   const eventsReady = eventsLoadable.state === "hasData";
   if (!detail || !eventsReady) {
     if (detailLoadable.state === "hasError") {
-      return (
-        <div ref={ref}>
-          <ActivityNotFound />
-        </div>
-      );
+      return <ActivityNotFound />;
     }
-    return (
-      <div ref={ref}>
-        <ActivitySkeleton />
-      </div>
-    );
+    return <ActivitySkeleton />;
   }
 
   const events: AgentEvent[] = eventsLoadable.data;
@@ -271,7 +261,7 @@ export function ZeroActivityDetailPage({ ref }: { ref?: Ref<HTMLDivElement> }) {
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
   return (
-    <div ref={ref} className="h-full flex flex-col min-h-0 overflow-hidden">
+    <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           <ActivityBreadcrumbLink />
