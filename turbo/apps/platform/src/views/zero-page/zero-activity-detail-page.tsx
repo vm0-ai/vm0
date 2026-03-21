@@ -1,4 +1,5 @@
 /* eslint-disable ccstate/no-use-ccstate-in-views */
+import { forwardRef } from "react";
 import { useCCState } from "ccstate-react/experimental";
 import {
   useGet,
@@ -216,115 +217,127 @@ function ActivityHeaderCard({
   );
 }
 
-export function ZeroActivityDetailPage() {
-  const detailLoadable = useLastLoadable(zeroActivityDetail$);
-  const eventsLoadable = useLastLoadable(zeroActivityEvents$);
-  // Resolve agent display name from the detail response
-  const detail =
-    detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const agentName = detail ? (detail.displayName ?? detail.agentName) : "Agent";
+export const ZeroActivityDetailPage = forwardRef<HTMLDivElement>(
+  function ZeroActivityDetailPage(_props, ref) {
+    const detailLoadable = useLastLoadable(zeroActivityDetail$);
+    const eventsLoadable = useLastLoadable(zeroActivityEvents$);
+    // Resolve agent display name from the detail response
+    const detail =
+      detailLoadable.state === "hasData" ? detailLoadable.data : null;
+    const agentName = detail
+      ? (detail.displayName ?? detail.agentName)
+      : "Agent";
 
-  const stepSearch$ = useCCState("");
-  const stepSearch = useGet(stepSearch$);
-  const setStepSearch = useSet(stepSearch$);
-  const features = useLastResolved(featureSwitch$);
+    const stepSearch$ = useCCState("");
+    const stepSearch = useGet(stepSearch$);
+    const setStepSearch = useSet(stepSearch$);
+    const features = useLastResolved(featureSwitch$);
 
-  // Skeleton until both detail and initial events are loaded
-  const eventsReady = eventsLoadable.state === "hasData";
-  if (!detail || !eventsReady) {
-    if (detailLoadable.state === "hasError") {
-      return <ActivityNotFound />;
+    // Skeleton until both detail and initial events are loaded
+    const eventsReady = eventsLoadable.state === "hasData";
+    if (!detail || !eventsReady) {
+      if (detailLoadable.state === "hasError") {
+        return (
+          <div ref={ref}>
+            <ActivityNotFound />
+          </div>
+        );
+      }
+      return (
+        <div ref={ref}>
+          <ActivitySkeleton />
+        </div>
+      );
     }
-    return <ActivitySkeleton />;
-  }
 
-  const events: AgentEvent[] = eventsLoadable.data;
+    const events: AgentEvent[] = eventsLoadable.data;
 
-  const allMessages = groupEventsIntoMessages(events);
+    const allMessages = groupEventsIntoMessages(events);
 
-  // Filter out text-only assistant messages right before result (redundant)
-  const visibleMessages = allMessages.filter((message, index) =>
-    isVisibleMessage(message, allMessages[index + 1]),
-  );
+    // Filter out text-only assistant messages right before result (redundant)
+    const visibleMessages = allMessages.filter((message, index) =>
+      isVisibleMessage(message, allMessages[index + 1]),
+    );
 
-  const messages = visibleMessages.filter((m) =>
-    groupedMessageMatchesSearch(m, stepSearch.trim()),
-  );
+    const messages = visibleMessages.filter((m) =>
+      groupedMessageMatchesSearch(m, stepSearch.trim()),
+    );
 
-  const showSystemPrompt =
-    features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false;
+    const showSystemPrompt =
+      features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false;
 
-  const prompt = detail.prompt ?? "";
-  const appendSystemPrompt = detail.appendSystemPrompt ?? "";
-  const hasSystemPrompt =
-    showSystemPrompt && appendSystemPrompt.trim().length > 0;
-  const status: LogStatus = detail.status;
-  const time = formatLogTime(detail.createdAt);
-  const duration = formatDuration(detail.startedAt, detail.completedAt);
-  return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
-        <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          <ActivityBreadcrumbLink />
-          <span className="text-muted-foreground/40 select-none">/</span>
-          <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
-            {agentName}
-          </span>
-        </nav>
-        <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8">
-          <ActivityHeaderCard
-            agentName={agentName}
-            status={status}
-            triggerSource={detail.triggerSource ?? null}
-            detail={detail}
-            duration={duration}
-            time={time}
-            events={events}
-          />
+    const prompt = detail.prompt ?? "";
+    const appendSystemPrompt = detail.appendSystemPrompt ?? "";
+    const hasSystemPrompt =
+      showSystemPrompt && appendSystemPrompt.trim().length > 0;
+    const status: LogStatus = detail.status;
+    const time = formatLogTime(detail.createdAt);
+    const duration = formatDuration(detail.startedAt, detail.completedAt);
+    return (
+      <div ref={ref} className="h-full flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 overflow-auto">
+          <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+            <ActivityBreadcrumbLink />
+            <span className="text-muted-foreground/40 select-none">/</span>
+            <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
+              {agentName}
+            </span>
+          </nav>
+          <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8">
+            <ActivityHeaderCard
+              agentName={agentName}
+              status={status}
+              triggerSource={detail.triggerSource ?? null}
+              detail={detail}
+              duration={duration}
+              time={time}
+              events={events}
+            />
 
-          {/* Steps section */}
-          <div className="flex flex-col gap-4 flex-1 min-h-0 min-w-0 mt-6">
-            <div className="flex flex-col gap-4 pb-8 min-w-0">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-base font-medium text-foreground whitespace-nowrap">
-                    Steps
-                  </span>
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">
-                    {stepSearch.trim()
-                      ? `(${messages.length}/${visibleMessages.length} matched)`
-                      : `${visibleMessages.length} total`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="zero-search-input relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
-                    <div className="pl-2">
-                      <IconSearch className="h-4 w-4 text-muted-foreground" />
+            {/* Steps section */}
+            <div className="flex flex-col gap-4 flex-1 min-h-0 min-w-0 mt-6">
+              <div className="flex flex-col gap-4 pb-8 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-base font-medium text-foreground whitespace-nowrap">
+                      Steps
+                    </span>
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      {stepSearch.trim()
+                        ? `(${messages.length}/${visibleMessages.length} matched)`
+                        : `${visibleMessages.length} total`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="zero-search-input relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
+                      <div className="pl-2">
+                        <IconSearch className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <Input
+                        placeholder="Search steps"
+                        value={stepSearch}
+                        onChange={(e) => setStepSearch(e.target.value)}
+                        className="h-full w-full sm:w-44 border-0 text-sm focus:border-0 focus:ring-0 pl-2 pr-3 bg-transparent"
+                      />
                     </div>
-                    <Input
-                      placeholder="Search steps"
-                      value={stepSearch}
-                      onChange={(e) => setStepSearch(e.target.value)}
-                      className="h-full w-full sm:w-44 border-0 text-sm focus:border-0 focus:ring-0 pl-2 pr-3 bg-transparent"
-                    />
                   </div>
                 </div>
-              </div>
 
-              <StepsList
-                prompt={prompt}
-                appendSystemPrompt={hasSystemPrompt ? appendSystemPrompt : ""}
-                messages={messages}
-                stepSearch={stepSearch}
-                isLoading={false}
-              />
+                <StepsList
+                  prompt={prompt}
+                  appendSystemPrompt={hasSystemPrompt ? appendSystemPrompt : ""}
+                  messages={messages}
+                  stepSearch={stepSearch}
+                  isLoading={false}
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  },
+);
 
 function ActivitySkeleton() {
   return (

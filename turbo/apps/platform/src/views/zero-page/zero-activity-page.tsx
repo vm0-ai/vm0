@@ -154,7 +154,7 @@ export function ZeroActivityPage() {
 
   // Detail view when sub-route is present
   if (sub) {
-    return <ZeroActivityDetailPage />;
+    return <ZeroActivityDetailPage ref={initPageRef} />;
   }
 
   return (
