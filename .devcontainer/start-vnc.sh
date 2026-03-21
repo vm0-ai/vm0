@@ -155,19 +155,16 @@ if ! grep -q "clipboard-sync" "$NOVNC_HTML" 2>/dev/null; then
   sudo sed -i '/src="app\/ui.js"/a \    <script type="module" crossorigin="anonymous" src="app/clipboard-sync.js"></script>' "$NOVNC_HTML"
 fi
 
-# Download localhost.direct self-signed TLS certificate for HTTPS
+# Generate TLS certificate with mkcert for HTTPS
 VNC_TLS_DIR="/etc/vnc-tls"
-if [ ! -f "$VNC_TLS_DIR/cert.crt" ]; then
+if [ ! -f "$VNC_TLS_DIR/cert.crt" ] && command -v mkcert >/dev/null 2>&1; then
   sudo mkdir -p "$VNC_TLS_DIR"
-  TMP_ZIP="$(mktemp)"
-  if curl -sL -o "$TMP_ZIP" "https://aka.re/localhost-ss" && \
-     unzip -o -P localhost "$TMP_ZIP" -d /tmp/vnc-tls-extract >/dev/null 2>&1; then
-    sudo cp /tmp/vnc-tls-extract/localhost.direct.SS.crt "$VNC_TLS_DIR/cert.crt"
-    sudo cp /tmp/vnc-tls-extract/localhost.direct.SS.key "$VNC_TLS_DIR/cert.key"
-    sudo chmod 600 "$VNC_TLS_DIR/cert.key"
-    rm -rf /tmp/vnc-tls-extract
-  fi
-  rm -f "$TMP_ZIP"
+  mkcert -install 2>/dev/null || true
+  mkcert -cert-file /tmp/vnc-cert.crt -key-file /tmp/vnc-cert.key \
+    localhost 127.0.0.1 ::1 "*.localhost.direct" localhost.direct 2>/dev/null
+  sudo mv /tmp/vnc-cert.crt "$VNC_TLS_DIR/cert.crt"
+  sudo mv /tmp/vnc-cert.key "$VNC_TLS_DIR/cert.key"
+  sudo chmod 600 "$VNC_TLS_DIR/cert.key"
 fi
 
 sudo service vnc start
