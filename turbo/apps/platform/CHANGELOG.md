@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.133.1](https://github.com/vm0-ai/vm0/compare/app-v0.133.0...app-v0.133.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* **platform:** add accessible name to connectors button in chat composer ([#5891](https://github.com/vm0-ai/vm0/issues/5891)) ([29b9db1](https://github.com/vm0-ai/vm0/commit/29b9db14e68fbd3c1111b7139f25f268b9442106)), closes [#5873](https://github.com/vm0-ai/vm0/issues/5873)
+* **platform:** show 404 page for unknown routes instead of falling back to chat ([#5886](https://github.com/vm0-ai/vm0/issues/5886)) ([e40b76c](https://github.com/vm0-ai/vm0/commit/e40b76cf6e51efe71d4948dfafc49435bcfdbdec)), closes [#5869](https://github.com/vm0-ai/vm0/issues/5869)
+
+
+### Refactoring
+
+* extract activity list and detail pages into dedicated routes ([#5901](https://github.com/vm0-ai/vm0/issues/5901)) ([8a3b1d0](https://github.com/vm0-ai/vm0/commit/8a3b1d04844d536ee3ed385b8c9ff2cc259a6c13)), closes [#5895](https://github.com/vm0-ai/vm0/issues/5895) [#5857](https://github.com/vm0-ai/vm0/issues/5857) [#5847](https://github.com/vm0-ai/vm0/issues/5847)
+* extract activity pages into dedicated routes ([#5900](https://github.com/vm0-ai/vm0/issues/5900)) ([b490ae2](https://github.com/vm0-ai/vm0/commit/b490ae25a368c05218e86ab59334c5489d70d4b2)), closes [#5895](https://github.com/vm0-ai/vm0/issues/5895) [#5857](https://github.com/vm0-ai/vm0/issues/5857) [#5847](https://github.com/vm0-ai/vm0/issues/5847)
+* extract team list and detail pages into dedicated routes ([#5902](https://github.com/vm0-ai/vm0/issues/5902)) ([3721d09](https://github.com/vm0-ai/vm0/commit/3721d0921f0981436b28b3fcdba8ff5a6beb77a4))
+* extract team pages from zero page into dedicated routes ([#5903](https://github.com/vm0-ai/vm0/issues/5903)) ([9790169](https://github.com/vm0-ai/vm0/commit/9790169e0c514263ae003041b09d213475f250bd)), closes [#5897](https://github.com/vm0-ai/vm0/issues/5897)
+
 ## [0.133.0](https://github.com/vm0-ai/vm0/compare/app-v0.132.3...app-v0.133.0) (2026-03-21)
 
 

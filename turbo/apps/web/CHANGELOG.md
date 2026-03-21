@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.140.1](https://github.com/vm0-ai/vm0/compare/web-v12.140.0...web-v12.140.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* resolve dark mode toggle hydration mismatch on landing page ([#5892](https://github.com/vm0-ai/vm0/issues/5892)) ([4e5b2d9](https://github.com/vm0-ai/vm0/commit/4e5b2d9f3aeed17c26a6abb7aba1d1743b966772))
+* resolve eslint set-state-in-effect error in theme provider ([#5898](https://github.com/vm0-ai/vm0/issues/5898)) ([46f4fd4](https://github.com/vm0-ai/vm0/commit/46f4fd4ae1bb93979c8ee099d03ba223c9d0cb24)), closes [#5896](https://github.com/vm0-ai/vm0/issues/5896)
+* **www:** hide blog nav link when blog feature is disabled ([#5887](https://github.com/vm0-ai/vm0/issues/5887)) ([5678b01](https://github.com/vm0-ai/vm0/commit/5678b01b0b252d871ab2e2883bbe6cfdefc0754e)), closes [#5870](https://github.com/vm0-ai/vm0/issues/5870)
+
 ## [12.140.0](https://github.com/vm0-ai/vm0/compare/web-v12.139.0...web-v12.140.0) (2026-03-21)
 
 
