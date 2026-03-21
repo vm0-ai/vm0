@@ -140,7 +140,7 @@ teardown_file() {
         --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
         --disallowed-tools CronCreate CronList CronDelete \
         --settings "$SETTINGS" \
-        -- "Do these two steps using the Bash tool: Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook-sentinel'. Include all outputs."
+        -- "Do these three steps using the Bash tool: Step 1: run 'claude --version'. Step 2: run 'echo hello'. Step 3: run 'cat /tmp/hook-sentinel'. Include all outputs."
 
     assert_success
     assert_output --partial "◆ Claude Code Completed"
@@ -149,5 +149,8 @@ teardown_file() {
     # Verify --append-system-prompt reached Claude
     assert_output --partial "SIGNATURE=smoke-test"
     # Verify --settings hook executed in sandbox (sentinel created by PreToolUse hook)
+    # Print full output for debugging if this assertion fails
+    echo "# t27-2 full output for debugging:" >&3
+    echo "$output" >&3
     assert_output --partial "HOOK_OK"
 }
