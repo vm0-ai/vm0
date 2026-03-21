@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.133.2](https://github.com/vm0-ai/vm0/compare/app-v0.133.1...app-v0.133.2) (2026-03-21)
+
+
+### Refactoring
+
+* unify onboarding connector selection to use connector data instead of skill data ([#5909](https://github.com/vm0-ai/vm0/issues/5909)) ([eccf2cf](https://github.com/vm0-ai/vm0/commit/eccf2cf37566457139289e5143094cf5da1d3180)), closes [#5907](https://github.com/vm0-ai/vm0/issues/5907)
+
 ## [0.133.1](https://github.com/vm0-ai/vm0/compare/app-v0.133.0...app-v0.133.1) (2026-03-21)
 
 

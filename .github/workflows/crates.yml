@@ -2,17 +2,9 @@ name: Crates
 
 on:
   pull_request:
-    paths:
-      - 'crates/**'
-      - 'ansible/**'
-      - '.github/workflows/crates.yml'
   push:
     branches:
       - main
-    paths:
-      - 'crates/**'
-      - 'ansible/**'
-      - '.github/workflows/crates.yml'
   merge_group:
 
 concurrency:
