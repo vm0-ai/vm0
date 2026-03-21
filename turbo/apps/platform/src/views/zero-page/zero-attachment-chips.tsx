@@ -1,10 +1,13 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import type { MouseEvent } from "react";
-import { useCCState, useCommand } from "ccstate-react/experimental";
+import type { MouseEvent, Ref } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/zero-page/zero-chat.ts";
-import { onRef } from "../../signals/utils.ts";
+import {
+  attachmentLightboxRef$,
+  attachmentLightboxUrl$,
+  closeAttachmentLightbox$,
+  openAttachmentLightbox$,
+} from "../../signals/zero-page/zero-attachment-lightbox.ts";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
@@ -42,27 +45,12 @@ function getFileTypeIcon(filename: string): string | null {
 export function ImageLightbox({
   url,
   onClose,
+  dialogRef,
 }: {
   url: string;
   onClose: () => void;
+  dialogRef?: Ref<HTMLDivElement>;
 }) {
-  const escapeKeydown$ = useCommand(
-    (_, el: HTMLDivElement, signal: AbortSignal) => {
-      document.addEventListener(
-        "keydown",
-        (e: KeyboardEvent) => {
-          if (e.key === "Escape") {
-            onClose();
-          }
-        },
-        { signal },
-      );
-      el.focus();
-    },
-  );
-  const dialogRef$ = onRef(escapeKeydown$);
-  const dialogRef = useSet(dialogRef$);
-
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -139,78 +127,71 @@ function AttachmentChip({
   attachment: ZeroChatAttachment;
   onRemove: () => void;
 }) {
-  const lightboxUrl$ = useCCState<string | null>(null);
-  const lightboxUrl = useGet(lightboxUrl$);
-  const setLightboxUrl = useSet(lightboxUrl$);
+  const openLightbox = useSet(openAttachmentLightbox$);
   const isImage = attachment.contentType.startsWith("image/");
   const iconSrc = isImage ? null : getFileTypeIcon(attachment.filename);
   return (
-    <>
-      <div
-        className="relative inline-flex items-center justify-center"
-        title={attachment.filename}
-      >
-        {isImage ? (
-          <button
-            type="button"
-            onClick={() => attachment.url && setLightboxUrl(attachment.url)}
-            disabled={!attachment.url}
-            className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-          >
-            {attachment.url ? (
-              <>
-                <img
-                  src={attachment.url}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                  <IconPhoto
-                    size={18}
-                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                  />
-                </span>
-              </>
-            ) : (
-              <IconPhoto
-                size={20}
-                stroke={1.5}
-                className="text-muted-foreground m-auto h-full"
+    <div
+      className="relative inline-flex items-center justify-center"
+      title={attachment.filename}
+    >
+      {isImage ? (
+        <button
+          type="button"
+          onClick={() => attachment.url && openLightbox(attachment.url)}
+          disabled={!attachment.url}
+          className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
+        >
+          {attachment.url ? (
+            <>
+              <img
+                src={attachment.url}
+                alt=""
+                className="h-full w-full object-cover"
               />
-            )}
-          </button>
-        ) : iconSrc ? (
-          <img
-            alt=""
-            className="h-9 w-9 object-contain opacity-80"
-            aria-hidden="true"
-            src={iconSrc}
-          />
-        ) : (
-          <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
-        )}
-        {attachment.uploading ? (
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
-            <IconLoader2
-              size={10}
-              className="animate-spin text-muted-foreground"
+              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                <IconPhoto
+                  size={18}
+                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                />
+              </span>
+            </>
+          ) : (
+            <IconPhoto
+              size={20}
+              stroke={1.5}
+              className="text-muted-foreground m-auto h-full"
             />
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
-            aria-label={`Remove ${attachment.filename}`}
-          >
-            <IconX size={9} stroke={2.5} />
-          </button>
-        )}
-      </div>
-      {lightboxUrl && (
-        <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+          )}
+        </button>
+      ) : iconSrc ? (
+        <img
+          alt=""
+          className="h-9 w-9 object-contain opacity-80"
+          aria-hidden="true"
+          src={iconSrc}
+        />
+      ) : (
+        <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
       )}
-    </>
+      {attachment.uploading ? (
+        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
+          <IconLoader2
+            size={10}
+            className="animate-spin text-muted-foreground"
+          />
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
+          aria-label={`Remove ${attachment.filename}`}
+        >
+          <IconX size={9} stroke={2.5} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -225,6 +206,10 @@ export function AttachmentChips({
   attachments: ZeroChatAttachment[];
   onRemove: (id: string) => void;
 }) {
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const closeLightbox = useSet(closeAttachmentLightbox$);
+  const lightboxRef = useSet(attachmentLightboxRef$);
+
   return (
     <div className="flex flex-wrap gap-2 px-4 pt-3">
       {attachments.map((a) => (
@@ -234,6 +219,13 @@ export function AttachmentChips({
           onRemove={() => onRemove(a.id)}
         />
       ))}
+      {lightboxUrl && (
+        <ImageLightbox
+          url={lightboxUrl}
+          onClose={closeLightbox}
+          dialogRef={lightboxRef}
+        />
+      )}
     </div>
   );
 }
