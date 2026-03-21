@@ -648,6 +648,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
         message.error
           .toLowerCase()
           .includes(incompatibleGuidance.title.toLowerCase())) ||
+      message.error.includes("Cannot continue session") ||
       message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
