@@ -55,16 +55,18 @@ const ROW_GRID =
 
 function ActivityRow({
   entry,
+  logId,
   agentName = "Zero",
 }: {
   entry: LogEntry;
+  logId: string;
   agentName?: string;
 }) {
   const time = formatLogTime(entry.createdAt);
   return (
     <Link
       pathname="/activity/:logId"
-      options={{ pathParams: { logId: entry.id } }}
+      options={{ pathParams: { logId } }}
       className="block py-3 -mx-4 px-4 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
     >
       <div className={cn(ROW_GRID)}>
@@ -245,6 +247,7 @@ export function ZeroActivityPage() {
                     <ActivityRow
                       key={entry.id}
                       entry={entry}
+                      logId={entry.id}
                       agentName={entry.displayName ?? entry.agentName}
                     />
                   ))

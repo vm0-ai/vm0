@@ -16,8 +16,13 @@ export const setupActivityDetailPage$ = command(
       set(initZeroOnboarding$, signal),
     ]);
     signal.throwIfAborted();
-    const params = get(pathParams$) as { logId?: string } | undefined;
-    const logId = params?.logId ?? null;
+
+    const params = get(pathParams$);
+    const logId =
+      params && typeof params === "object" && "logId" in params
+        ? String(params.logId)
+        : null;
+
     if (logId) {
       set(setZeroActivitySelectedLogId$, logId);
     }

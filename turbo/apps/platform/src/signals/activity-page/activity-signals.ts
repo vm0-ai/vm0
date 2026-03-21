@@ -175,7 +175,7 @@ export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
 });
 
 /**
- * Set selected log ID — used by the detail page setup and tests.
+ * Set selected log ID directly — triggers detail fetch + event polling.
  */
 export const setZeroActivitySelectedLogId$ = command(
   ({ get, set }, logId: string | null) => {
