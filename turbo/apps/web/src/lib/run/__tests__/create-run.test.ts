@@ -1124,5 +1124,68 @@ describe("createRun()", () => {
         GH_TOKEN: "ghp_oauth_test_456",
       });
     });
+
+    it("should inject Linear OAuth connector secret into sandbox environment", async () => {
+      const compose = await createTestCompose(uniqueId("linear-oauth-agent"), {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-api-key",
+            LINEAR_TOKEN: "${{ secrets.LINEAR_TOKEN }}",
+          },
+        },
+      });
+
+      await createTestConnector({
+        type: "linear",
+        authMethod: "oauth",
+        accessToken: "lin_oauth_test_789",
+      });
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("pending");
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        LINEAR_TOKEN: "lin_oauth_test_789",
+      });
+      // Ensure template placeholder was fully resolved
+      expect(job!.executionContext.environment!.LINEAR_TOKEN).not.toContain(
+        "${{",
+      );
+    });
+
+    it("should leave Linear token template unresolved when connector not connected", async () => {
+      const compose = await createTestCompose(
+        uniqueId("linear-no-connector-agent"),
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-api-key",
+              LINEAR_TOKEN: "${{ secrets.LINEAR_TOKEN }}",
+            },
+          },
+        },
+      );
+
+      // Do NOT create a Linear connector
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      expect(result.runId).toBeDefined();
+      expect(result.status).toBe("pending");
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment!.LINEAR_TOKEN).toBe(
+        "${{ secrets.LINEAR_TOKEN }}",
+      );
+    });
   });
 });

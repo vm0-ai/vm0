@@ -1619,6 +1619,7 @@ const OAUTH_PROVIDER_MOCKS: Record<
   {
     tokenUrl: string;
     userUrl: string;
+    userMethod?: "get" | "post";
     envVars: Record<string, string>;
     buildTokenResponse: (accessToken: string) => Record<string, unknown>;
     buildUserResponse: (opts: {
@@ -1686,6 +1687,31 @@ const OAUTH_PROVIDER_MOCKS: Record<
       handle: opts.username ?? "testuser",
     }),
   },
+  linear: {
+    tokenUrl: "https://api.linear.app/oauth/token",
+    userUrl: "https://api.linear.app/graphql",
+    userMethod: "post",
+    envVars: {
+      LINEAR_OAUTH_CLIENT_ID: "linear-test-client-id",
+      LINEAR_OAUTH_CLIENT_SECRET: "linear-test-client-secret",
+    },
+    buildTokenResponse: (accessToken) => ({
+      access_token: accessToken,
+      refresh_token: "linear-refresh-token",
+      expires_in: 86399,
+      token_type: "Bearer",
+      scope: "read,write",
+    }),
+    buildUserResponse: (opts) => ({
+      data: {
+        viewer: {
+          id: opts.userId?.toString() ?? "linear-user-123",
+          name: opts.username ?? "Linear User",
+          email: opts.email ?? "user@linear.app",
+        },
+      },
+    }),
+  },
 };
 
 /**
@@ -1717,7 +1743,7 @@ async function createTestOAuthConnector(options?: {
     mswHttp.post(providerMock.tokenUrl, () =>
       HttpResponse.json(providerMock.buildTokenResponse(accessToken)),
     ),
-    mswHttp.get(providerMock.userUrl, () =>
+    mswHttp[providerMock.userMethod ?? "get"](providerMock.userUrl, () =>
       HttpResponse.json(
         providerMock.buildUserResponse({
           username: options?.externalUsername ?? "testuser",
