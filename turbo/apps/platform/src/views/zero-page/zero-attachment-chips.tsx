@@ -1,10 +1,12 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { MouseEvent } from "react";
-import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
 import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/zero-page/zero-chat.ts";
-import { onRef } from "../../signals/utils.ts";
+import {
+  lightboxUrl$,
+  setLightboxUrl$,
+  lightboxDialogRef$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
@@ -39,33 +41,13 @@ function getFileTypeIcon(filename: string): string | null {
 // ImageLightbox — full-screen image viewer
 // ---------------------------------------------------------------------------
 
-export function ImageLightbox({
-  url,
-  onClose,
-}: {
-  url: string;
-  onClose: () => void;
-}) {
-  const escapeKeydown$ = useCommand(
-    (_, el: HTMLDivElement, signal: AbortSignal) => {
-      document.addEventListener(
-        "keydown",
-        (e: KeyboardEvent) => {
-          if (e.key === "Escape") {
-            onClose();
-          }
-        },
-        { signal },
-      );
-      el.focus();
-    },
-  );
-  const dialogRef$ = onRef(escapeKeydown$);
-  const dialogRef = useSet(dialogRef$);
+export function ImageLightbox({ url }: { url: string }) {
+  const dialogRef = useSet(lightboxDialogRef$);
+  const closeLightbox = useSet(setLightboxUrl$);
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
-      onClose();
+      closeLightbox(null);
     }
   };
 
@@ -80,7 +62,7 @@ export function ImageLightbox({
     >
       <button
         type="button"
-        onClick={onClose}
+        onClick={() => closeLightbox(null)}
         className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
         aria-label="Close"
       >
@@ -139,9 +121,8 @@ function AttachmentChip({
   attachment: ZeroChatAttachment;
   onRemove: () => void;
 }) {
-  const lightboxUrl$ = useCCState<string | null>(null);
   const lightboxUrl = useGet(lightboxUrl$);
-  const setLightboxUrl = useSet(lightboxUrl$);
+  const setLightboxUrlFn = useSet(setLightboxUrl$);
   const isImage = attachment.contentType.startsWith("image/");
   const iconSrc = isImage ? null : getFileTypeIcon(attachment.filename);
   return (
@@ -153,7 +134,7 @@ function AttachmentChip({
         {isImage ? (
           <button
             type="button"
-            onClick={() => attachment.url && setLightboxUrl(attachment.url)}
+            onClick={() => attachment.url && setLightboxUrlFn(attachment.url)}
             disabled={!attachment.url}
             className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
           >
@@ -207,9 +188,7 @@ function AttachmentChip({
           </button>
         )}
       </div>
-      {lightboxUrl && (
-        <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
-      )}
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
     </>
   );
 }
