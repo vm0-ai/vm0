@@ -85,6 +85,8 @@ export const zeroChatAgentId$ = computed((get): string | null => {
 export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
   if (id === "chat") {
     set(navigateInReact$, "/");
+  } else if (id === "team") {
+    set(navigateInReact$, "/team");
   } else {
     set(navigateInReact$, "/:tab", { pathParams: { tab: id } });
   }

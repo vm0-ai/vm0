@@ -10,23 +10,25 @@ import {
   agentDisplayName$,
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
+import { zeroAvatarIndex$ } from "../../signals/zero-page/zero-nav.ts";
 import { Link } from "../router/link.tsx";
-import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.png";
+import avatar1Img from "./assets/avatar-1.png";
+import avatar2Img from "./assets/avatar-2.png";
+import avatar3Img from "./assets/avatar-3.png";
+import avatar4Img from "./assets/avatar-4.png";
 import emptyChatImg from "./assets/empty-chat.png";
 
-interface ZeroJobsPageProps {
-  selectedAgentName?: string | null;
-  zeroAvatarSrc?: string;
-  onCycleZeroAvatar?: () => void;
-}
+const ZERO_AVATARS = [
+  zeroAvatarImg,
+  avatar1Img,
+  avatar2Img,
+  avatar3Img,
+  avatar4Img,
+] as const;
 
-export function ZeroJobsPage({
-  selectedAgentName,
-  zeroAvatarSrc = zeroAvatarImg,
-  onCycleZeroAvatar,
-}: ZeroJobsPageProps) {
+export function ZeroJobsPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -36,18 +38,8 @@ export function ZeroJobsPage({
   const agents = useLastResolved(zeroSubagents$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
-
-  const isDefaultAgent = selectedAgentName === rawAgentName;
-
-  if (selectedAgentName) {
-    return (
-      <ZeroJobDetailPage
-        agentName={selectedAgentName}
-        zeroAvatarSrc={isDefaultAgent ? zeroAvatarSrc : undefined}
-        onCycleAvatar={isDefaultAgent ? onCycleZeroAvatar : undefined}
-      />
-    );
-  }
+  const avatarIndex = useGet(zeroAvatarIndex$);
+  const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
