@@ -3,10 +3,12 @@
 # Real Claude smoke tests — verify actual LLM execution (not mock).
 # Requires ANTHROPIC_API_KEY set in CI via secrets.CI_ANTHROPIC_API_KEY.
 #
-# Test 1 (basic): cook + run with model-provider — baseline LLM execution
-# Test 2 (flags): run with --append-system-prompt, --disallowed-tools, --settings
-#   Verifies these flags reach the real Claude CLI without breaking execution.
-#   Catches Commander.js argument parsing regressions (see #5788).
+# Test 1 (basic): baseline LLM execution — math prompt, verify correct answer
+# Test 2 (flags): --append-system-prompt, --disallowed-tools, --settings with
+#   a PreToolUse hook that writes a sentinel file. Verifies:
+#   - Commander.js variadic arg parsing works (regression for #5788)
+#   - append-system-prompt reaches Claude (verifiable via SIGNATURE)
+#   - settings hooks execute inside the sandbox (verifiable via sentinel file)
 
 load '../../helpers/setup'
 
@@ -18,7 +20,6 @@ setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
     export AGENT_NAME="e2e-real-claude-${UNIQUE_ID}"
-    export ARTIFACT_NAME="e2e-real-claude-art-${UNIQUE_ID}"
     export VOLUME_NAME="e2e-real-claude-vol-${UNIQUE_ID}"
 
     # Create volume for claude-files (needed by both tests)
@@ -84,25 +85,39 @@ teardown_file() {
     assert_output --partial "RESULT=579"
 }
 
-# Test 2: CLI flags — verify --append-system-prompt, --disallowed-tools, and
-# --settings pass through the guest-agent → Claude CLI pipeline without
-# breaking execution. This catches Commander.js variadic argument bugs (#5788).
-@test "t27-2: run with cli flags (append-system-prompt, disallowed-tools, settings)" {
+# Test 2: CLI flags — verify the full guest-agent → Claude CLI flag pipeline.
+#
+# Uses a PreToolUse hook that writes a sentinel file before each Bash execution.
+# The prompt asks Claude to:
+#   Step 1: run "echo hello" (triggers hook → sentinel created)
+#   Step 2: run "cat /tmp/hook-sentinel" (reads hook output → proves hook ran)
+#
+# Verifies three things in one test:
+#   - --disallowed-tools doesn't swallow the prompt (#5788 regression)
+#   - --append-system-prompt reaches Claude (SIGNATURE in response)
+#   - --settings hooks execute in the sandbox (HOOK_OK in Bash output)
+@test "t27-2: run with cli flags and settings hook verification" {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set"
     fi
 
+    # PreToolUse hook: write sentinel before each Bash tool execution
+    local SETTINGS='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo HOOK_OK > /tmp/hook-sentinel"}]}]}}'
+
     run timeout 120 $CLI_COMMAND run "${AGENT_NAME}-flags" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
-        --append-system-prompt "Always end your response with SIGNATURE=smoke-test" \
+        --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
         --disallowed-tools CronCreate CronList CronDelete \
-        --settings '{"permissions":{"allow":[]}}' \
-        "Compute 789+101 and reply with exactly: RESULT=<answer>"
+        --settings "$SETTINGS" \
+        "Do these two steps using the Bash tool: Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook-sentinel'. Include all outputs."
 
     assert_success
     assert_output --partial "◆ Claude Code Completed"
-    assert_output --partial "RESULT=890"
-    # Verify --append-system-prompt reached Claude (agent follows the instruction)
+    # Verify prompt was not swallowed by variadic --disallowed-tools
+    assert_output --partial "hello"
+    # Verify --append-system-prompt reached Claude
     assert_output --partial "SIGNATURE=smoke-test"
+    # Verify --settings hook executed in sandbox (sentinel created by PreToolUse hook)
+    assert_output --partial "HOOK_OK"
 }
