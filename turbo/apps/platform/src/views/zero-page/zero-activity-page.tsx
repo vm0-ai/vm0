@@ -20,7 +20,6 @@ import {
 } from "../../signals/zero-page/log-types.ts";
 import { StatusBadge } from "./components/logs/status-badge.tsx";
 import { Pagination } from "../components/pagination.tsx";
-import { ZeroActivityDetailPage } from "./zero-activity-detail-page.tsx";
 import {
   zeroActivityAgentFilter$,
   zeroActivityStatusFilter$,
@@ -37,9 +36,8 @@ import {
   setZeroActivityRowsPerPage$,
   formatLogTime,
   formatDuration,
-} from "../../signals/zero-page/zero-activity.ts";
-import { zeroTabSub$ } from "../../signals/zero-page/zero-nav.ts";
-import { SimpleLink } from "../router/link.tsx";
+} from "../../signals/activity-page/activity-signals.ts";
+import { Link } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
 import emptyActivityImg from "./assets/empty-activity.png";
 
@@ -57,17 +55,16 @@ const ROW_GRID =
 
 function ActivityRow({
   entry,
-  href,
   agentName = "Zero",
 }: {
   entry: LogEntry;
-  href: string;
   agentName?: string;
 }) {
   const time = formatLogTime(entry.createdAt);
   return (
-    <SimpleLink
-      href={href}
+    <Link
+      pathname="/activity/:logId"
+      options={{ pathParams: { logId: entry.id } }}
       className="block py-3 -mx-4 px-4 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
     >
       <div className={cn(ROW_GRID)}>
@@ -107,7 +104,7 @@ function ActivityRow({
           </span>
         </div>
       </div>
-    </SimpleLink>
+    </Link>
   );
 }
 
@@ -121,9 +118,6 @@ export function ZeroActivityPage() {
   const goForwardTwo = useSet(goForwardTwoZeroActivityPages$);
   const goBackTwo = useSet(goBackTwoZeroActivityPages$);
   const setRowsPerPage = useSet(setZeroActivityRowsPerPage$);
-
-  // URL-driven detail: /activity/:logId
-  const sub = useGet(zeroTabSub$);
 
   const agentFilter = useGet(zeroActivityAgentFilter$);
   const statusFilter = useGet(zeroActivityStatusFilter$);
@@ -144,11 +138,6 @@ export function ZeroActivityPage() {
     { value: "all", label: "All agents" },
     ...orgAgents.map((a) => ({ value: a.name, label: a.displayName })),
   ];
-
-  // Detail view when sub-route is present
-  if (sub) {
-    return <ZeroActivityDetailPage />;
-  }
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -256,7 +245,6 @@ export function ZeroActivityPage() {
                     <ActivityRow
                       key={entry.id}
                       entry={entry}
-                      href={`/activity/${entry.id}`}
                       agentName={entry.displayName ?? entry.agentName}
                     />
                   ))

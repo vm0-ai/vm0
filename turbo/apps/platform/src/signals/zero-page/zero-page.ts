@@ -5,10 +5,6 @@ import { updatePage$ } from "../react-router.ts";
 import { fetchAgentsList$, zeroSubagents$ } from "./zero-agents.ts";
 import { defaultAgentName$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import {
-  initZeroActivity$,
-  refreshZeroActivityIfActive$,
-} from "./zero-activity.ts";
 import { refreshScheduleIfActive$ } from "./zero-schedule.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import {
@@ -123,11 +119,9 @@ export const setupZeroPage$ = command(
       signal.throwIfAborted();
       set(initialDataLoaded$, true);
       set(initSidebarCollapsed$);
-      detach(set(initZeroActivity$), Reason.Daemon);
     }
 
     // Refresh tab-specific data on each route entry
-    set(refreshZeroActivityIfActive$);
     set(refreshScheduleIfActive$);
 
     await resolveAndSwitchAgent(get, set, signal);

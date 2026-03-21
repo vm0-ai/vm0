@@ -7,4 +7,6 @@ export type RoutePath =
   | "/talk/:name"
   | "/slack/connect"
   | "/queue"
+  | "/activity"
+  | "/activity/:logId"
   | `/projects/${string}`;

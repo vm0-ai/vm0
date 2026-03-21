@@ -12,7 +12,7 @@ import {
   zeroActivityDetail$,
   formatLogTime,
   formatDuration,
-} from "../zero-activity.ts";
+} from "../../activity-page/activity-signals.ts";
 
 const context = testContext();
 
