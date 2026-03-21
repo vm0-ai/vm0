@@ -23,8 +23,10 @@ PIDFILE_XVFB="/var/run/vnc-xvfb.pid"
 PIDFILE_OPENBOX="/var/run/vnc-openbox.pid"
 PIDFILE_X11VNC="/var/run/vnc-x11vnc.pid"
 PIDFILE_WEBSOCKIFY="/var/run/vnc-websockify.pid"
+PIDFILE_CADDY="/var/run/vnc-caddy.pid"
 PIDFILE_RESIZE="/var/run/vnc-resize.pid"
 X11VNC_LOG="/tmp/x11vnc-debug.log"
+VNC_TLS_DIR="/etc/vnc-tls"
 
 start() {
     if start-stop-daemon --status --pidfile "$PIDFILE_XVFB" 2>/dev/null; then
@@ -51,7 +53,24 @@ start() {
         --chuid "$VNC_USER" --exec /usr/bin/x11vnc -- -display :99 -nopw -forever -shared -rfbport 5900 -xrandr resize -v -o "$X11VNC_LOG"
 
     start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_WEBSOCKIFY" \
-        --chuid "$VNC_USER" --exec /usr/bin/python3 -- /usr/bin/websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900
+        --chuid "$VNC_USER" --exec /usr/bin/python3 -- /usr/bin/websockify --web /usr/share/novnc/ 127.0.0.1:6081 localhost:5900
+
+    # Caddy HTTPS reverse proxy (localhost.direct self-signed cert)
+    if [ -f "$VNC_TLS_DIR/cert.crt" ] && command -v caddy >/dev/null 2>&1; then
+        CADDY_CFG="/tmp/vnc-caddyfile"
+        cat > "$CADDY_CFG" << CADDYEOF
+{
+    auto_https off
+}
+
+:6080 {
+    tls $VNC_TLS_DIR/cert.crt $VNC_TLS_DIR/cert.key
+    reverse_proxy 127.0.0.1:6081
+}
+CADDYEOF
+        start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_CADDY" \
+            --exec /usr/local/bin/caddy -- run --config "$CADDY_CFG" --adapter caddyfile
+    fi
 
     # Resize helper: watches x11vnc log for client resize requests and applies them via xrandr
     RESIZE_SCRIPT="__WORKSPACE_DIR__/.devcontainer/vnc-resize-helper.sh"
@@ -65,11 +84,12 @@ start() {
 
 stop() {
     start-stop-daemon --stop --pidfile "$PIDFILE_RESIZE" --oknodo
+    start-stop-daemon --stop --pidfile "$PIDFILE_CADDY" --oknodo
     start-stop-daemon --stop --pidfile "$PIDFILE_WEBSOCKIFY" --oknodo
     start-stop-daemon --stop --pidfile "$PIDFILE_X11VNC" --oknodo
     start-stop-daemon --stop --pidfile "$PIDFILE_OPENBOX" --oknodo
     start-stop-daemon --stop --pidfile "$PIDFILE_XVFB" --oknodo
-    rm -f "$PIDFILE_XVFB" "$PIDFILE_OPENBOX" "$PIDFILE_X11VNC" "$PIDFILE_WEBSOCKIFY" "$PIDFILE_RESIZE"
+    rm -f "$PIDFILE_XVFB" "$PIDFILE_OPENBOX" "$PIDFILE_X11VNC" "$PIDFILE_WEBSOCKIFY" "$PIDFILE_CADDY" "$PIDFILE_RESIZE"
     echo "VNC stack stopped"
 }
 
@@ -135,5 +155,20 @@ if ! grep -q "clipboard-sync" "$NOVNC_HTML" 2>/dev/null; then
   sudo sed -i '/src="app\/ui.js"/a \    <script type="module" crossorigin="anonymous" src="app/clipboard-sync.js"></script>' "$NOVNC_HTML"
 fi
 
+# Download localhost.direct self-signed TLS certificate for HTTPS
+VNC_TLS_DIR="/etc/vnc-tls"
+if [ ! -f "$VNC_TLS_DIR/cert.crt" ]; then
+  sudo mkdir -p "$VNC_TLS_DIR"
+  TMP_ZIP="$(mktemp)"
+  if curl -sL -o "$TMP_ZIP" "https://aka.re/localhost-ss" && \
+     unzip -o -P localhost "$TMP_ZIP" -d /tmp/vnc-tls-extract >/dev/null 2>&1; then
+    sudo cp /tmp/vnc-tls-extract/localhost.direct.SS.crt "$VNC_TLS_DIR/cert.crt"
+    sudo cp /tmp/vnc-tls-extract/localhost.direct.SS.key "$VNC_TLS_DIR/cert.key"
+    sudo chmod 600 "$VNC_TLS_DIR/cert.key"
+    rm -rf /tmp/vnc-tls-extract
+  fi
+  rm -f "$TMP_ZIP"
+fi
+
 sudo service vnc start
-echo "✓ VNC stack started (noVNC at http://localhost:6080/vnc.html)"
+echo "✓ VNC stack started (noVNC at https://novnc.localhost.direct:6080/vnc.html)"
