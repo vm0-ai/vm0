@@ -1090,9 +1090,13 @@ export function ZeroSidebar() {
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>
                     <Link
-                      pathname={id === "chat" ? "/" : "/:tab"}
+                      pathname={
+                        id === "chat" ? "/" : id === "team" ? "/team" : "/:tab"
+                      }
                       options={
-                        id === "chat" ? undefined : { pathParams: { tab: id } }
+                        id === "chat" || id === "team"
+                          ? undefined
+                          : { pathParams: { tab: id } }
                       }
                       onClick={(e) => {
                         if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -1164,8 +1168,10 @@ export function ZeroSidebar() {
               {manageNav.map(({ id, label, icon: Icon }) => (
                 <Link
                   key={id}
-                  pathname="/:tab"
-                  options={{ pathParams: { tab: id } }}
+                  pathname={id === "team" ? "/team" : "/:tab"}
+                  options={
+                    id === "team" ? undefined : { pathParams: { tab: id } }
+                  }
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey) {
                       return;

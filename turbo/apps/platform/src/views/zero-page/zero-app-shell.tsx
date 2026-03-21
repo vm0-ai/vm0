@@ -26,7 +26,6 @@ import {
   zeroTalkAgentResolved$,
   navigateFromZeroSession$,
   zeroAvatarIndex$,
-  cycleZeroAvatar$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
   zeroSidebarCollapsed$,
@@ -258,11 +257,7 @@ function useZeroLoadables() {
   };
 }
 
-interface ZeroAppShellProps {
-  initialJobAgent?: string | null;
-}
-
-export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
+export function ZeroAppShell() {
   const {
     isLoggedIn,
     onboardingReady,
@@ -277,7 +272,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
 
   const activeId = useGet(zeroActiveId$);
   const avatarIndex = useGet(zeroAvatarIndex$);
-  const cycleAvatar = useSet(cycleZeroAvatar$);
   const showAboutPage = useGet(zeroShowAboutPage$);
   const setShowAboutPage = useSet(setZeroShowAboutPage$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
@@ -344,7 +338,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             sectionId={activeId}
             inSession={inSession}
             onSendMessage={handleSendFromDemo}
-            selectedAgentName={initialJobAgent}
             onNavigateToSchedule={handleNavigateToSchedule}
             onNavigateToMeet={handleNavigateToMeet}
             onBackFromSession={navigateBack}
@@ -352,7 +345,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}
             onChatAvatarClick={handleChatAvatarClick}
-            onCycleZeroAvatar={() => cycleAvatar(ZERO_AVATARS.length)}
           />
         )}
       </div>

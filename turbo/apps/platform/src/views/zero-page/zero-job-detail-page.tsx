@@ -82,8 +82,7 @@ function Breadcrumb({ currentName }: { currentName?: string }) {
   return (
     <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
       <Link
-        pathname="/:tab"
-        options={{ pathParams: { tab: "team" } }}
+        pathname="/team"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
@@ -369,7 +368,7 @@ export function ZeroJobDetailPage({
 
   const handleDelete = async () => {
     await deleteAgent();
-    nav("/:tab", { pathParams: { tab: "team" } });
+    nav("/team");
   };
 
   const activeTab$ = useCCState(getInitialTab());

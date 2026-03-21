@@ -11,22 +11,11 @@ import {
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { Link } from "../router/link.tsx";
-import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.png";
 import emptyChatImg from "./assets/empty-chat.png";
 
-interface ZeroJobsPageProps {
-  selectedAgentName?: string | null;
-  zeroAvatarSrc?: string;
-  onCycleZeroAvatar?: () => void;
-}
-
-export function ZeroJobsPage({
-  selectedAgentName,
-  zeroAvatarSrc = zeroAvatarImg,
-  onCycleZeroAvatar,
-}: ZeroJobsPageProps) {
+export function ZeroJobsPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
@@ -36,18 +25,6 @@ export function ZeroJobsPage({
   const agents = useLastResolved(zeroSubagents$);
   const loading = useGet(agentsLoading$);
   const error = useGet(agentsError$);
-
-  const isDefaultAgent = selectedAgentName === rawAgentName;
-
-  if (selectedAgentName) {
-    return (
-      <ZeroJobDetailPage
-        agentName={selectedAgentName}
-        zeroAvatarSrc={isDefaultAgent ? zeroAvatarSrc : undefined}
-        onCycleAvatar={isDefaultAgent ? onCycleZeroAvatar : undefined}
-      />
-    );
-  }
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -75,7 +52,7 @@ export function ZeroJobsPage({
               <Card className="zero-card cursor-pointer hover:bg-muted/30 transition-colors">
                 <CardContent className="p-5 flex items-center gap-4">
                   <img
-                    src={zeroAvatarSrc}
+                    src={zeroAvatarImg}
                     alt={agentName}
                     className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
                   />
@@ -105,7 +82,7 @@ export function ZeroJobsPage({
             <Card className="zero-card">
               <CardContent className="p-5 flex items-center gap-4">
                 <img
-                  src={zeroAvatarSrc}
+                  src={zeroAvatarImg}
                   alt={agentName}
                   className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
                 />

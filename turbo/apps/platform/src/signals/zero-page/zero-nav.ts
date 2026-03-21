@@ -81,10 +81,13 @@ export const zeroChatAgentId$ = computed((get): string | null => {
 /**
  * Navigate to a zero tab — updates the URL path to `/:tab`.
  * "chat" maps to `/` (the default, no suffix needed).
+ * "team" maps to `/team` (dedicated route).
  */
 export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
   if (id === "chat") {
     set(navigateInReact$, "/");
+  } else if (id === "team") {
+    set(navigateInReact$, "/team");
   } else {
     set(navigateInReact$, "/:tab", { pathParams: { tab: id } });
   }

@@ -5,10 +5,11 @@ import { initRoutes$, setupAuthPageWrapper } from "./route.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupZeroPage$ } from "./zero-page/zero-page.ts";
-import { setupZeroJobDetailRoute$ } from "./zero-page/zero-job-detail-route.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupQueuePage$ } from "./queue-page/queue-page-setup.ts";
+import { setupTeamPage$ } from "./team-page/team-page-setup.ts";
+import { setupTeamDetailPage$ } from "./team-page/team-detail-page-setup.ts";
 const ROUTE_CONFIG = [
   {
     path: "/select-org",
@@ -24,7 +25,11 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/team/:name",
-    setup: setupAuthPageWrapper(setupZeroJobDetailRoute$),
+    setup: setupAuthPageWrapper(setupTeamDetailPage$),
+  },
+  {
+    path: "/team",
+    setup: setupAuthPageWrapper(setupTeamPage$),
   },
   {
     path: "/slack/connect",
