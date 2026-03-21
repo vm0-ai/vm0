@@ -112,20 +112,10 @@ const router = tsr.router(webhookTelemetryContract, {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
       const axiomEvents = body.networkLogs.map(
         (netLog: Record<string, unknown>) => ({
+          ...netLog,
           _time: netLog.timestamp,
           runId: body.runId,
           userId: auth.userId,
-          mode: netLog.mode,
-          action: netLog.action,
-          host: netLog.host,
-          port: netLog.port,
-          rule_matched: netLog.rule_matched,
-          method: netLog.method,
-          url: netLog.url,
-          status: netLog.status,
-          latency_ms: netLog.latency_ms,
-          request_size: netLog.request_size,
-          response_size: netLog.response_size,
         }),
       );
       ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
