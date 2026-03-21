@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import type Stripe from "stripe";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
 import { getStripe } from "../stripe";
@@ -11,6 +12,82 @@ export const CREDITS_PER_DOLLAR = 1000;
 
 /** Pending recharge older than this is considered stale and can be retried. */
 const STALE_THRESHOLD_MINUTES = 10;
+
+interface OrgRechargeState {
+  credits: number;
+  tier: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  autoRechargeEnabled: boolean;
+  autoRechargeThreshold: number | null;
+  autoRechargeAmount: number | null;
+  autoRechargePendingAt: Date | null;
+}
+
+function isEligibleForRecharge(
+  org: OrgRechargeState,
+): org is OrgRechargeState & {
+  stripeCustomerId: string;
+  autoRechargeThreshold: number;
+  autoRechargeAmount: number;
+} {
+  return (
+    org.autoRechargeEnabled &&
+    org.tier !== "free" &&
+    org.stripeCustomerId !== null &&
+    org.autoRechargeThreshold !== null &&
+    org.autoRechargeAmount !== null &&
+    org.credits <= org.autoRechargeThreshold
+  );
+}
+
+async function clearPendingFlag(orgId: string): Promise<void> {
+  const db = globalThis.services.db;
+  await db
+    .update(orgMetadata)
+    .set({ autoRechargePendingAt: null, updatedAt: new Date() })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+function resolvePaymentMethodId(
+  pm: string | Stripe.PaymentMethod | null | undefined,
+): string | null {
+  if (typeof pm === "string") return pm;
+  return pm?.id ?? null;
+}
+
+async function resolvePaymentMethod(
+  stripe: Stripe,
+  org: { stripeCustomerId: string; stripeSubscriptionId: string | null },
+  orgId: string,
+): Promise<string | null> {
+  const customer = await stripe.customers.retrieve(org.stripeCustomerId);
+  if (customer.deleted) {
+    log.warn("Stripe customer is deleted, skipping auto-recharge", { orgId });
+    await clearPendingFlag(orgId);
+    return null;
+  }
+
+  const customerPm = resolvePaymentMethodId(
+    customer.invoice_settings?.default_payment_method,
+  );
+  if (customerPm) return customerPm;
+
+  if (org.stripeSubscriptionId) {
+    const subscription = await stripe.subscriptions.retrieve(
+      org.stripeSubscriptionId,
+    );
+    const subPm = resolvePaymentMethodId(subscription.default_payment_method);
+    if (subPm) return subPm;
+  }
+
+  log.warn(
+    "No payment method found on customer or subscription, skipping auto-recharge",
+    { orgId, customerId: org.stripeCustomerId },
+  );
+  await clearPendingFlag(orgId);
+  return null;
+}
 
 /**
  * Check if auto-recharge should trigger for an org and, if so,
@@ -38,22 +115,7 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  if (!org) return;
-
-  // Guard: feature must be enabled
-  if (!org.autoRechargeEnabled) return;
-
-  // Guard: only paid tiers
-  if (org.tier === "free") return;
-
-  // Guard: must have Stripe customer
-  if (!org.stripeCustomerId) return;
-
-  // Guard: must have valid config
-  if (!org.autoRechargeThreshold || !org.autoRechargeAmount) return;
-
-  // Guard: balance must be at or below threshold
-  if (org.credits > org.autoRechargeThreshold) return;
+  if (!org || !isEligibleForRecharge(org)) return;
 
   // Atomically claim the recharge slot — only one writer wins.
   // Allows retry if the previous pending is stale (> 10 min).
@@ -79,48 +141,8 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
   const stripe = getStripe();
 
   try {
-    // Resolve the payment method from the customer's subscription or default
-    const customer = await stripe.customers.retrieve(org.stripeCustomerId);
-    if (customer.deleted) {
-      log.warn("Stripe customer is deleted, skipping auto-recharge", { orgId });
-      await db
-        .update(orgMetadata)
-        .set({ autoRechargePendingAt: null, updatedAt: new Date() })
-        .where(eq(orgMetadata.orgId, orgId));
-      return;
-    }
-
-    // Try customer default, then fall back to subscription's payment method
-    const customerPm =
-      typeof customer.invoice_settings?.default_payment_method === "string"
-        ? customer.invoice_settings.default_payment_method
-        : customer.invoice_settings?.default_payment_method?.id;
-
-    let paymentMethodId = customerPm ?? null;
-
-    // Fallback: retrieve payment method from the active subscription
-    if (!paymentMethodId && org.stripeSubscriptionId) {
-      const subscription = await stripe.subscriptions.retrieve(
-        org.stripeSubscriptionId,
-      );
-      const subPm =
-        typeof subscription.default_payment_method === "string"
-          ? subscription.default_payment_method
-          : subscription.default_payment_method?.id;
-      paymentMethodId = subPm ?? null;
-    }
-
-    if (!paymentMethodId) {
-      log.warn(
-        "No payment method found on customer or subscription, skipping auto-recharge",
-        { orgId, customerId: org.stripeCustomerId },
-      );
-      await db
-        .update(orgMetadata)
-        .set({ autoRechargePendingAt: null, updatedAt: new Date() })
-        .where(eq(orgMetadata.orgId, orgId));
-      return;
-    }
+    const paymentMethodId = await resolvePaymentMethod(stripe, org, orgId);
+    if (!paymentMethodId) return;
 
     // Create a one-time invoice with metadata for webhook identification
     const invoice = await stripe.invoices.create({
@@ -160,10 +182,7 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
       error: err instanceof Error ? err.message : String(err),
     });
 
-    await db
-      .update(orgMetadata)
-      .set({ autoRechargePendingAt: null, updatedAt: new Date() })
-      .where(eq(orgMetadata.orgId, orgId));
+    await clearPendingFlag(orgId);
   }
 }
 
