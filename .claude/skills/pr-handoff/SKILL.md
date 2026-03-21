@@ -49,10 +49,11 @@ This skill runs in two phases: **Create/Update PR** then **Assign Worker**.
 
 ## Phase 1: Create or Update PR
 
-### Step 1: Check if PR Already Exists
+### Step 1: Check Current State
 
 ```bash
 existing_pr=$(gh pr view --json number,url,labels 2>/dev/null)
+has_uncommitted=$(git status --porcelain)
 ```
 
 ### Step 2a: No Existing PR → Use `/pr-create`
@@ -64,6 +65,8 @@ Skill({ skill: "pull-request", args: "create" })
 ```
 
 **IMPORTANT:** Only create the PR — do NOT run `/pr-check` or any CI monitoring after creation. The assigned worker will run `/pr-check` itself. The goal here is to get the PR created and handed off as fast as possible.
+
+This also applies when **there are uncommitted changes but no PR yet** — `/pr-create` will handle staging, committing, branch creation, and PR opening all in one step. Skip `/pr-check` as the worker handles it.
 
 After `/pr-create` completes, capture the PR number and proceed to Phase 2.
 
@@ -122,18 +125,14 @@ Only runs if PR has no existing worker label.
 
 ```bash
 ME=$(gh api user --jq '.login')
-
 MAX_WORKERS=<from args or 4>
-for i in $(seq 1 $MAX_WORKERS); do
-  LABEL=$(printf "vm%02d" "$i")
-  ISSUE_COUNT=$(gh issue list --repo vm0-ai/vm0 --label "$LABEL" --assignee "$ME" --state open --json number --jq 'length')
-  PR_COUNT=$(gh pr list --repo vm0-ai/vm0 --label "$LABEL" --author "$ME" --state open --json number --jq 'length')
-  TOTAL=$((ISSUE_COUNT + PR_COUNT))
-  echo "$LABEL: $TOTAL (issues: $ISSUE_COUNT, PRs: $PR_COUNT)"
-done
-```
 
-**Label format**: Always use `printf "vm%02d"` to generate labels — this produces `vm01`..`vm09` for single digits and `vm10`..`vm99` for double digits.
+FIRST_LANE=$(printf "vm%02d" 1)
+LAST_LANE=$(printf "vm%02d" $MAX_WORKERS)
+LANES=$(scripts/lane-status.sh "${FIRST_LANE}-${LAST_LANE}" --user "$ME")
+
+echo "$LANES" | jq '.[] | {lane, issue_count, pr_count, total}'
+```
 
 ### Step 5: Apply Worker Label
 

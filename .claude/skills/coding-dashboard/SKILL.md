@@ -45,195 +45,68 @@ ME=$(gh api user --jq '.login')
 
 Generate lane labels: `vm01`, `vm02`, ..., `vm0N` using `printf "vm%02d" $i`.
 
-### Step 2: Check Main CI Pipeline
+### Step 2: Get Pipeline Status (CI + Merge Queue + Release)
 
-Query the last 10 workflow runs on `main`:
+Fetch all pipeline data in a single call:
 
 ```bash
-gh run list --workflow turbo.yml --branch main --limit 10 \
-  --json databaseId,conclusion,url,name,headBranch,createdAt \
-  --jq '.[] | {id: .databaseId, conclusion, url, createdAt}'
+PIPELINE=$(scripts/pipeline-status.sh)
+```
+
+This runs CI pipeline check, merge queue GraphQL query, and release PR check **in parallel** and returns unified JSON with `ci_runs`, `merge_queue`, and `release` sections.
+
+#### CI Pipeline Display
+
+Extract CI runs and display status line:
+```bash
+echo "$PIPELINE" | jq '.ci_runs'
 ```
 
 Display a status line showing all 10 runs in order (most recent first), using ✅ for success and 🔴 for failure.
 
 - If **all runs** have `conclusion == "success"`, report: "全部通过，无失败"
 - If **any run** has `conclusion == "failure"`:
-  1. Identify the **most recent failed run** among the 10 results. Track its position (1-indexed, where 1 is the most recent run).
-  2. Get the failed job names for that run:
-     ```bash
-     gh run view <RUN_ID> --json jobs --jq '[.jobs[] | select(.conclusion == "failure") | .name]'
-     ```
-  3. Calculate **success count since last failure** — the number of consecutive successful runs that occurred after (more recent than) the failed run. This equals `position - 1`.
-  4. Calculate **time elapsed since the failure** — compute a human-readable duration from the failed run's `createdAt` to now (e.g., "2 小时 15 分钟", "1 天 3 小时"). Use hours and minutes for durations under 24 hours, days and hours for longer durations.
-  5. Report the failure details in the dashboard output (see output format below).
-  6. Post to Slack using the Slack MCP tool (`slack_send_message` with `channelId: C0ALXC1SHHN`). Do NOT mention or @ any users in the message. Use Slack mrkdwn link syntax `<url|display text>` for all URLs so they render as clickable links. Example message format:
-     ```
-     🔴 main CI failure
-     Failed jobs: lint, test
-     Run: <https://github.com/vm0-ai/vm0/actions/runs/12345|#12345>
-     ```
+  1. Identify the **most recent failed run**. Track its position (1-indexed).
+  2. Get the failed job names: `gh run view <RUN_ID> --json jobs --jq '[.jobs[] | select(.conclusion == "failure") | .name]'`
+  3. Calculate **success count since last failure** (position - 1).
+  4. Calculate **time elapsed since the failure** (human-readable duration).
+  5. Post to Slack using the Slack MCP tool (`slack_send_message` with `channelId: C0ALXC1SHHN`). Do NOT mention or @ any users. Use Slack mrkdwn link syntax `<url|display text>`.
 
-#### Pipeline Output Format
+#### Merge Queue Display
 
-When failures exist:
-```
-📊 主分支 CI 流水线（最近 10 次）
-✅✅✅🔴✅✅✅✅✅✅
-
-最近一次失败: 第 4/10 次
-  Run: https://github.com/vm0-ai/vm0/actions/runs/123456
-  失败 Jobs: deploy, cli-e2e
-  此后连续成功: 3 次
-  距今: 2 小时 15 分钟
+Extract merge queue entries:
+```bash
+echo "$PIPELINE" | jq '.merge_queue'
 ```
 
-When all green:
-```
-📊 主分支 CI 流水线（最近 10 次）
-✅✅✅✅✅✅✅✅✅✅
-全部通过，无失败
+For each entry, map `ci_state` to emoji: `SUCCESS` → ✅, `FAILURE`/`ERROR` → 🔴, `PENDING`/`EXPECTED`/missing → ⏳
+
+#### Release Status Display
+
+Extract release info:
+```bash
+echo "$PIPELINE" | jq '.release'
 ```
 
-### Step 3: Check Merge Queue Status
+- If `release` is not null and has `open_pr`, show PR number and change list
+- If `release.in_progress_run` is not null, show changes being deployed
+- If `release` is null, skip this section entirely
 
-Query the merge queue for the `main` branch using the GitHub GraphQL API:
+### Step 5: Get Lane Status (Issues + PRs per Lane)
+
+Fetch all lane data in a single call with parallel queries:
 
 ```bash
-gh api graphql -f query='
-{
-  repository(owner: "vm0-ai", name: "vm0") {
-    mergeQueue(branch: "main") {
-      entries(first: 20) {
-        nodes {
-          pullRequest {
-            number
-            title
-            author {
-              login
-            }
-            commits(last: 1) {
-              nodes {
-                commit {
-                  statusCheckRollup {
-                    state
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}'
+FIRST_LANE=$(printf "vm%02d" 1)
+LAST_LANE=$(printf "vm%02d" $MAX_WORKERS)
+LANES=$(scripts/lane-status.sh "${FIRST_LANE}-${LAST_LANE}" --user "$ME")
 ```
 
-For each entry in the merge queue, determine the CI status:
-- **All checks passed** → ✅
-- **Any check failed** → 🔴
-- **Checks still running or pending** → ⏳
+This queries all lanes **in parallel** (issues assigned + authored, PRs authored) and returns unified JSON with deduplication already handled.
 
-Use `statusCheckRollup.state`:
-- `SUCCESS` → ✅
-- `FAILURE` or `ERROR` → 🔴
-- `PENDING` or `EXPECTED` or missing → ⏳
+For each lane in the output, display issues and PRs. Mark items with `pending: true` as `[Pending]`. Empty lanes show `-- idle`.
 
-#### Merge Queue Output Format
-
-When merge queue has entries:
-```
-🚦 Merge Queue
-
-- ✅ #5680 — feat: add files:write scope to Slack connector (e7h4n)
-- ⏳ #5685 — fix: persist trigger source when enqueueing runs (e7h4n)
-```
-
-When merge queue is empty:
-```
-🚦 Merge Queue
-无排队 PR
-```
-
-### Step 4: Check Release Status
-
-Query release-related information to show pending and in-progress releases.
-
-#### Step 4a: Check Open Release PR
-
-Find the open release PR created by the github-actions bot (title: "chore: release main") and extract its changelog:
-
-```bash
-# Find release PR (authored by github-actions bot with title "chore: release main")
-gh pr list --repo vm0-ai/vm0 --author "app/github-actions" --state open \
-  --json number,title,body --limit 1 \
-  --jq '.[0] | select(.title == "chore: release main") | {number, title, body}'
-```
-
-If a release PR exists, parse the PR body to extract change titles. The release PR body contains changelog entries inside `<details>` blocks in markdown format (`* <title>` lines). Filter out dependency-only lines and deduplicate:
-
-```bash
-# Extract change titles from PR body, excluding dependency update noise and deduplicating
-gh pr view <PR_NUMBER> --repo vm0-ai/vm0 --json body \
-  --jq '.body' | grep -E '^\* ' | grep -v 'The following workspace dependencies were updated' | sort -u | sed 's/^\* /- /'
-```
-
-#### Step 4b: Check In-Progress Release Deployment
-
-Check if the `release-please.yml` workflow has an in-progress run, and if so, extract the changes being deployed:
-
-```bash
-# Check for in-progress release-please workflow run
-RELEASE_RUN=$(gh run list --repo vm0-ai/vm0 --workflow release-please.yml --status in_progress --limit 1 \
-  --json databaseId,headSha --jq '.[0] | {id: .databaseId, sha: .headSha} // empty')
-```
-
-If an in-progress run exists, get the release commit's changes. The release commit created by release-please aggregates multiple changes. Extract the change titles from the commit message or the associated release PR body:
-
-```bash
-# Get the commit message which contains the changelog
-gh api repos/vm0-ai/vm0/git/commits/<HEAD_SHA> --jq '.message' | grep -E '^\* ' | sed 's/^\* /- /'
-```
-
-#### Step 4c: Output
-
-- If an open release PR exists, show its number and list of change titles
-- If a release-please workflow is in-progress, show the changes being deployed
-- If neither exists, skip this section entirely (do not show "Release Status" header)
-
-### Step 5: Check Open Issues per Lane
-
-For each lane `vm01` through `vm0N`:
-
-```bash
-gh issue list --repo vm0-ai/vm0 --label "$LANE" --assignee "$ME" --state open \
-  --json number,title,labels --limit 50 \
-  --jq '.[] | {number, title, pending: ([.labels[].name] | any(. == "pending"))}'
-```
-
-Also check issues where the current user is the author:
-
-```bash
-gh issue list --repo vm0-ai/vm0 --label "$LANE" --author "$ME" --state open \
-  --json number,title,labels --limit 50 \
-  --jq '.[] | {number, title, pending: ([.labels[].name] | any(. == "pending"))}'
-```
-
-Deduplicate by issue number. Mark items with `pending` label as `[Pending]`.
-
-### Step 6: Check Open PRs per Lane
-
-For each lane `vm01` through `vm0N`:
-
-```bash
-gh pr list --repo vm0-ai/vm0 --label "$LANE" --author "$ME" --state open \
-  --json number,title,labels --limit 50 \
-  --jq '.[] | {number, title, pending: ([.labels[].name] | any(. == "pending"))}'
-```
-
-Mark items with `pending` label as `[Pending]`.
-
-### Step 7: List Recently Merged PRs
+### Step 6: List Recently Merged PRs
 
 Query the last 20 merged PRs across all lanes:
 

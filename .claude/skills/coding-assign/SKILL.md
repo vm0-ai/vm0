@@ -51,19 +51,19 @@ ME=$(gh api user --jq '.login')
 
 ### Step 3: Count Issues and PRs Per Worker
 
-For each worker label (`vm01` through `vm0N`), count **both** open issues and open PRs assigned to the current user:
+Fetch all lane data in a single parallel call:
 
 ```bash
-for i in $(seq 1 $MAX_WORKERS); do
-  LABEL=$(printf "vm%02d" "$i")
-  ISSUE_COUNT=$(gh issue list --repo vm0-ai/vm0 --label "$LABEL" --assignee "$ME" --state open --json number --jq 'length')
-  PR_COUNT=$(gh pr list --repo vm0-ai/vm0 --label "$LABEL" --author "$ME" --state open --json number --jq 'length')
-  TOTAL=$((ISSUE_COUNT + PR_COUNT))
-  echo "$LABEL: $TOTAL (issues: $ISSUE_COUNT, PRs: $PR_COUNT)"
-done
+FIRST_LANE=$(printf "vm%02d" 1)
+LAST_LANE=$(printf "vm%02d" $MAX_WORKERS)
+LANES=$(scripts/lane-status.sh "${FIRST_LANE}-${LAST_LANE}" --user "$ME")
 ```
 
-**Label format**: Always use `printf "vm%02d"` to generate labels — this produces `vm01`..`vm09` for single digits and `vm10`..`vm99` for double digits. Never use `seq -w` combined with string concatenation, as it produces wrong formats like `vm001` when workers > 9.
+This queries all lanes **in parallel** and returns issue/PR counts per lane. Extract the load per lane:
+
+```bash
+echo "$LANES" | jq '.[] | {lane, issue_count, pr_count, total}'
+```
 
 ### Step 4: Select Least-Loaded Worker
 
