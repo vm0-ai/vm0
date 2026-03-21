@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -23,6 +22,12 @@ import {
 import {
   selectedPlanTier$,
   setSelectedPlanTier$,
+  autoRechargeEnabled$,
+  autoRechargeThreshold$,
+  autoRechargeAmount$,
+  setAutoRechargeEnabled$,
+  setAutoRechargeThreshold$,
+  setAutoRechargeAmount$,
 } from "../../signals/zero-page/billing-dialog-state.ts";
 
 const PLANS = [
@@ -111,32 +116,22 @@ const CREDITS_PER_DOLLAR = 1000;
 
 function AutoRechargeSection({
   currentTier,
-  autoRecharge,
   loading,
 }: {
   currentTier: BillingTier;
-  autoRecharge: {
-    enabled: boolean;
-    threshold: number | null;
-    amount: number | null;
-  };
   loading: boolean;
 }) {
   const save = useSet(saveAutoRecharge$);
-  const [enabled, setEnabled] = useState(autoRecharge.enabled);
-  const [threshold, setThreshold] = useState(
-    autoRecharge.threshold?.toString() ?? "",
-  );
-  const [amount, setAmount] = useState(autoRecharge.amount?.toString() ?? "");
+  const enabled = useGet(autoRechargeEnabled$);
+  const threshold = useGet(autoRechargeThreshold$);
+  const amount = useGet(autoRechargeAmount$);
+  const setEnabled = useSet(setAutoRechargeEnabled$);
+  const setThreshold = useSet(setAutoRechargeThreshold$);
+  const setAmount = useSet(setAutoRechargeAmount$);
 
-  // Sync local state when dialog data changes
-  useEffect(() => {
-    setEnabled(autoRecharge.enabled);
-    setThreshold(autoRecharge.threshold?.toString() ?? "");
-    setAmount(autoRecharge.amount?.toString() ?? "");
-  }, [autoRecharge.enabled, autoRecharge.threshold, autoRecharge.amount]);
-
-  if (currentTier === "free") return null;
+  if (currentTier === "free") {
+    return null;
+  }
 
   const amountNum = Number(amount);
   const dollarAmount =
@@ -299,17 +294,7 @@ export function BillingDialog() {
         )}
 
         {status && (
-          <AutoRechargeSection
-            currentTier={currentTier}
-            autoRecharge={
-              status.autoRecharge ?? {
-                enabled: false,
-                threshold: null,
-                amount: null,
-              }
-            }
-            loading={loading}
-          />
+          <AutoRechargeSection currentTier={currentTier} loading={loading} />
         )}
       </DialogContent>
     </Dialog>

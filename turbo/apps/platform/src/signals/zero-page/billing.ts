@@ -1,7 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { fetch$ } from "../fetch.ts";
 import { logger } from "../log.ts";
-import { setSelectedPlanTier$ } from "./billing-dialog-state.ts";
+import {
+  setSelectedPlanTier$,
+  syncAutoRechargeForm$,
+} from "./billing-dialog-state.ts";
 
 const log = logger("billing");
 
@@ -67,6 +70,14 @@ export const openBillingDialog$ = command(async ({ get, set }) => {
   const status = await get(billingStatusAsync$);
   const currentTier = (status?.tier as BillingTier) ?? "free";
   set(setSelectedPlanTier$, currentTier);
+  set(
+    syncAutoRechargeForm$,
+    status?.autoRecharge ?? {
+      enabled: false,
+      threshold: null,
+      amount: null,
+    },
+  );
   set(internalDialogOpen$, true);
 });
 

@@ -323,7 +323,7 @@ describe("auto-recharge in billing dialog", () => {
       credits: 20_000,
       subscriptionStatus: "active",
       hasSubscription: true,
-      autoRecharge: { enabled: true, threshold: 1000, amount: 10000 },
+      autoRecharge: { enabled: true, threshold: 1000, amount: 10_000 },
     });
 
     await openBillingDialog("pro");
