@@ -138,7 +138,7 @@ function ActivityHeaderCard({
           className="w-px h-3.5 shrink-0 bg-border self-center"
           aria-hidden
         />
-        <div className="flex items-center gap-x-0 text-sm min-w-0 overflow-x-auto">
+        <div className="flex items-center gap-x-0 text-sm min-w-0 overflow-hidden">
           <div className="flex items-center gap-1.5 pl-3 pr-3">
             <span className="text-muted-foreground shrink-0">Status</span>
             <StatusBadge status={status} zeroStyle />

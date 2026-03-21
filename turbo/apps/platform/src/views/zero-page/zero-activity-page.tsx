@@ -67,7 +67,7 @@ function ActivityRow({
     <Link
       pathname="/activity/:logId"
       options={{ pathParams: { logId } }}
-      className="block py-3 -mx-4 px-4 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
+      className="block py-3 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
     >
       <div className={cn(ROW_GRID)}>
         <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
@@ -203,7 +203,7 @@ export function ZeroActivityPage() {
                   <div
                     className={cn(
                       ROW_GRID,
-                      "sticky top-0 z-10 -mx-4 px-4 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
+                      "sticky top-0 z-10 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
                     )}
                   >
                     <div className="text-left">Agent</div>
