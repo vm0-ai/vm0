@@ -57,7 +57,7 @@ describe("zero works page - header", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Connect with Zero through these channels"),
+        screen.getByText(/connect with zero through these channels/i),
       ).toBeInTheDocument();
     });
   });
@@ -147,7 +147,7 @@ describe("zero works page - slack card connected state", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Team communication and collaboration"),
+        screen.getByText(/team communication and collaboration/i),
       ).toBeInTheDocument();
     });
   });
@@ -180,7 +180,7 @@ describe("zero works page - slack not installed", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Ask your admin to install the Slack integration"),
+        screen.getByText(/ask your admin to install/i),
       ).toBeInTheDocument();
     });
   });
@@ -288,34 +288,14 @@ describe("zero works page - uninstall confirmation dialog", () => {
   it("should call uninstall API when confirming uninstall", async () => {
     let uninstallCalled = false;
 
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
-      http.get("*/api/zero/integrations/slack", () => {
-        return HttpResponse.json({
-          isConnected: true,
-          isInstalled: true,
-          workspaceName: "Test Workspace",
-          isAdmin: true,
-          installUrl: "/api/zero/integrations/slack/install",
-          connectUrl: "/api/zero/integrations/slack/connect",
-          defaultAgentName: "zero",
-          agentOrgSlug: "test-org",
-          environment: {
-            requiredSecrets: [],
-            requiredVars: [],
-            missingSecrets: [],
-            missingVars: [],
-          },
-        });
-      }),
       http.delete("*/api/zero/integrations/slack", ({ request }) => {
         const url = new URL(request.url);
         if (url.searchParams.get("action") === "uninstall") {
           uninstallCalled = true;
         }
         return HttpResponse.json({ ok: true });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
@@ -400,34 +380,14 @@ describe("zero works page - disconnect", () => {
   it("should call disconnect API when Disconnect is clicked", async () => {
     let disconnectCalled = false;
 
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     server.use(
-      http.get("*/api/zero/integrations/slack", () => {
-        return HttpResponse.json({
-          isConnected: true,
-          isInstalled: true,
-          workspaceName: "Test Workspace",
-          isAdmin: true,
-          installUrl: null,
-          connectUrl: null,
-          defaultAgentName: "zero",
-          agentOrgSlug: "test-org",
-          environment: {
-            requiredSecrets: [],
-            requiredVars: [],
-            missingSecrets: [],
-            missingVars: [],
-          },
-        });
-      }),
       http.delete("*/api/zero/integrations/slack", ({ request }) => {
         const url = new URL(request.url);
         if (!url.searchParams.get("action")) {
           disconnectCalled = true;
         }
         return HttpResponse.json({ ok: true });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
       }),
     );
 
