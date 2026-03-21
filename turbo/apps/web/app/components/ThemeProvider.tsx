@@ -5,7 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -45,54 +45,52 @@ function applyTheme(newTheme: Theme) {
   window.dispatchEvent(new Event("storage"));
 }
 
+/** Subscribe to storage and OS color-scheme changes. */
+function subscribeToTheme(callback: () => void): () => void {
+  const mql = window.matchMedia("(prefers-color-scheme: dark)");
+  window.addEventListener("storage", callback);
+  mql.addEventListener("change", callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    mql.removeEventListener("change", callback);
+  };
+}
+
+function getThemeSnapshot(): Theme {
+  return resolveClientTheme();
+}
+
+function getServerSnapshot(): Theme {
+  return "dark";
+}
+
 interface ThemeProviderProps {
   children: ReactNode;
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  // Start with "dark" to match the server render and the HTML default data-theme="dark".
-  // The inline script in layout.tsx prevents FOUC by setting the correct data-theme
-  // before paint. After hydration, useEffect reads the real client theme.
-  const [theme, setThemeState] = useState<Theme>("dark");
-
-  // After mount, sync state with the actual client theme
-  useEffect(() => {
-    setThemeState(resolveClientTheme());
-  }, []);
+  // useSyncExternalStore reads the client theme synchronously on mount,
+  // eliminating the need for a post-mount setState inside useEffect.
+  // Server snapshot returns "dark" to match the HTML default data-theme="dark".
+  const theme = useSyncExternalStore(
+    subscribeToTheme,
+    getThemeSnapshot,
+    getServerSnapshot,
+  );
 
   // Apply data-theme attribute whenever theme changes
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Subscribe to external theme changes (storage events, OS preference changes)
-  useEffect(() => {
-    const onStorage = () => {
-      setThemeState(resolveClientTheme());
-    };
-    const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const onMediaChange = () => {
-      setThemeState(resolveClientTheme());
-    };
-    window.addEventListener("storage", onStorage);
-    mql.addEventListener("change", onMediaChange);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      mql.removeEventListener("change", onMediaChange);
-    };
-  }, []);
-
   const setTheme = useCallback((newTheme: Theme) => {
     applyTheme(newTheme);
-    setThemeState(newTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((current) => {
-      const newTheme = current === "dark" ? "light" : "dark";
-      applyTheme(newTheme);
-      return newTheme;
-    });
+    const current = resolveClientTheme();
+    const newTheme = current === "dark" ? "light" : "dark";
+    applyTheme(newTheme);
   }, []);
 
   return (
