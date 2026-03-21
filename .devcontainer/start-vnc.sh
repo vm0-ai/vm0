@@ -46,7 +46,7 @@ start() {
     start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_OPENBOX" \
         --chuid "$VNC_USER" --exec /usr/bin/env -- DISPLAY=:99 openbox
 
-    : > "$X11VNC_LOG"
+    install -o "$VNC_USER" -m 644 /dev/null "$X11VNC_LOG"
     start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_X11VNC" \
         --chuid "$VNC_USER" --exec /usr/bin/x11vnc -- -display :99 -nopw -forever -shared -rfbport 5900 -xrandr resize -v -o "$X11VNC_LOG"
 
