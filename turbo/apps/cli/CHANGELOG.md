@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.73.0](https://github.com/vm0-ai/vm0/compare/cli-v9.72.1...cli-v9.73.0) (2026-03-21)
+
+
+### Features
+
+* add tcp connection logging and network log type field ([#5786](https://github.com/vm0-ai/vm0/issues/5786)) ([12d6ddb](https://github.com/vm0-ai/vm0/commit/12d6ddbefa61a83e7e50e6ae4e5fc904b6965678)), closes [#5592](https://github.com/vm0-ai/vm0/issues/5592)
+
 ## [9.72.1](https://github.com/vm0-ai/vm0/compare/cli-v9.72.0...cli-v9.72.1) (2026-03-20)
 
 

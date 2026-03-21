@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.42.1...runner-rs-v0.43.0) (2026-03-21)
+
+
+### Features
+
+* add tcp connection logging and network log type field ([#5786](https://github.com/vm0-ai/vm0/issues/5786)) ([12d6ddb](https://github.com/vm0-ai/vm0/commit/12d6ddbefa61a83e7e50e6ae4e5fc904b6965678)), closes [#5592](https://github.com/vm0-ai/vm0/issues/5592)
+
 ## [0.42.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.42.0...runner-rs-v0.42.1) (2026-03-21)
 
 ## [0.42.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.41.0...runner-rs-v0.42.0) (2026-03-20)
