@@ -12,4 +12,5 @@ export type RoutePath =
   | "/queue"
   | "/activity"
   | "/activity/:logId"
+  | `/__internal-connector-logos`
   | `/projects/${string}`;
