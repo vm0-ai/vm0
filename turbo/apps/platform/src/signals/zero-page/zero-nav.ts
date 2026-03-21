@@ -115,10 +115,24 @@ export const setZeroChatAgent$ = command(
 
 /**
  * Navigate to a specific chat session — `/chat/:sessionId`.
+ *
+ * When already on a zero page (chat), a lightweight pathname update is
+ * sufficient.  When on a different page (e.g. /team), a full route
+ * navigation via `navigateInReact$` is required so that `loadRoute$`
+ * fires and the correct page setup runs.
  */
-export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
-  set(updatePathname$, `/chat/${sessionId}`);
-});
+export const navigateToZeroSession$ = command(
+  ({ get, set }, sessionId: string) => {
+    const path = `/chat/${sessionId}`;
+    if (get(zeroInChat$)) {
+      set(updatePathname$, path);
+    } else {
+      set(navigateInReact$, "/chat/:sessionId", {
+        pathParams: { sessionId },
+      });
+    }
+  },
+);
 
 /**
  * Navigate back from a chat session to the previous route in browser history.
