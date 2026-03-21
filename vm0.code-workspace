@@ -38,4 +38,8 @@
   "extensions": {
     "recommendations": ["esbenp.prettier-vscode", "anthropic.claude-code"],
   },
+  "settings": {
+    "claudeCode.useTerminal": true,
+    "claudeCode.initialPermissionMode": "bypassPermissions",
+  },
 }
