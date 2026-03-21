@@ -120,3 +120,125 @@ describe("zero onboarding - does not render when not needed", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Member Welcome (non-admin onboarding)
+// ---------------------------------------------------------------------------
+
+function mockMemberOnboardingNeeded() {
+  server.use(
+    http.get("*/api/zero/onboarding/status", () => {
+      return HttpResponse.json({
+        needsOnboarding: true,
+        isAdmin: false,
+        hasOrg: true,
+        hasModelProvider: true,
+        hasDefaultAgent: true,
+        defaultAgentName: "zero",
+        defaultAgentComposeId: "mock-compose-id",
+        defaultAgentMetadata: null,
+        defaultAgentSkills: [],
+      });
+    }),
+  );
+}
+
+describe("member welcome - step navigation", () => {
+  it("should render welcome dialog for non-admin member needing onboarding", async () => {
+    mockMemberOnboardingNeeded();
+    await renderOnboardingPage();
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Meet .+, your new teammate/),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  });
+
+  it("should advance from welcome to where-to-work step when no connectors", async () => {
+    mockMemberOnboardingNeeded();
+    await renderOnboardingPage();
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("button", { name: "Next" }),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // With no defaultAgentSkills, it should skip connectors and go to "where"
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should show Slack and web options in where-to-work step", async () => {
+    mockMemberOnboardingNeeded();
+    await renderOnboardingPage();
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("button", { name: "Next" }),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Go to Slack" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Chat with/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("should navigate back from where-to-work to welcome", async () => {
+    mockMemberOnboardingNeeded();
+    await renderOnboardingPage();
+
+    // Advance to "where" step
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("button", { name: "Next" }),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
+
+    // Click Back
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+    // Should be back at welcome
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Meet .+, your new teammate/),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  });
+});
