@@ -522,6 +522,12 @@ export const zeroChatAttachments$ = computed((get) =>
   get(internalAttachments$),
 );
 
+const internalDragOver$ = state(false);
+export const zeroDragOver$ = computed((get) => get(internalDragOver$));
+export const setZeroDragOver$ = command(({ set }, value: boolean) => {
+  set(internalDragOver$, value);
+});
+
 export const uploadZeroAttachment$ = command(
   async ({ get, set }, file: File) => {
     const id = crypto.randomUUID();
