@@ -167,7 +167,8 @@ EOF
 
     run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
     assert_success
-    assert_output --partial "200"
-    assert_output --partial "[github]"
-    assert_output --partial "DENY"
+    # ALLOW: repos endpoint matches metadata:read — format: GET    200 {ms} {size}/{size} {url} [github]
+    echo "$output" | grep -q "GET    200 [0-9]*ms [0-9.]*[A-Z]*/[0-9.]*[A-Z]* https://api.github.com/repos/vm0-ai/vm0 \[github\]"
+    # DENY: search endpoint has no matching permission
+    assert_output --partial "GET    DENY https://api.github.com/search/code?q=vm0 [github]"
 }
