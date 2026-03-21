@@ -5,7 +5,6 @@ import { updatePage$ } from "../react-router.ts";
 import { fetchAgentsList$, zeroSubagents$ } from "./zero-agents.ts";
 import { defaultAgentName$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { refreshScheduleIfActive$ } from "./zero-schedule.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import {
   zeroChatAgentName$,
@@ -121,9 +120,6 @@ export const setupZeroPage$ = command(
       set(initialDataLoaded$, true);
       set(initSidebarCollapsed$);
     }
-
-    // Refresh tab-specific data on each route entry
-    set(refreshScheduleIfActive$);
 
     await resolveAndSwitchAgent(get, set, signal);
 

@@ -1,10 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort, detach, Reason } from "../utils.ts";
+import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { zeroActiveId$ } from "./zero-nav.ts";
 import {
   buildCronExpression,
   buildAtTime,
@@ -419,19 +418,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
     );
 });
 
-/**
- * Refresh schedule data if the current tab is "schedule".
- * Called from `setupZeroPage$` on every route entry.
- */
-export const refreshScheduleIfActive$ = command(({ get, set }) => {
-  const activeTab = get(zeroActiveId$);
-  if (activeTab !== "schedule") {
-    return;
-  }
-  detach(set(fetchAllOrgSchedules$), Reason.Entrance);
-});
-
-const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
+export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   try {
     const response = await fetchFn("/api/zero/schedules");
