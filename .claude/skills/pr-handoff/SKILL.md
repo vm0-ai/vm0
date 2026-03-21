@@ -63,6 +63,8 @@ If no PR exists for this branch, delegate to the `pull-request create` skill to 
 Skill({ skill: "pull-request", args: "create" })
 ```
 
+**IMPORTANT:** Only create the PR — do NOT run `/pr-check` or any CI monitoring after creation. The assigned worker will run `/pr-check` itself. The goal here is to get the PR created and handed off as fast as possible.
+
 After `/pr-create` completes, capture the PR number and proceed to Phase 2.
 
 ### Step 2b: Existing PR → Push Any Pending Changes
