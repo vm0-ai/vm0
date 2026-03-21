@@ -54,9 +54,8 @@ start() {
         --chuid "$VNC_USER" --exec /usr/bin/python3 -- /usr/bin/websockify --web /usr/share/novnc/ 0.0.0.0:6080 localhost:5900
 
     # Resize helper: watches x11vnc log for client resize requests and applies them via xrandr
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    RESIZE_SCRIPT="${SCRIPT_DIR}/../.devcontainer/vnc-resize-helper.sh"
-    if [ -x "$RESIZE_SCRIPT" ]; then
+    RESIZE_SCRIPT="__WORKSPACE_DIR__/.devcontainer/vnc-resize-helper.sh"
+    if [ -f "$RESIZE_SCRIPT" ]; then
         start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_RESIZE" \
             --chuid "$VNC_USER" --exec /bin/bash -- "$RESIZE_SCRIPT" "$X11VNC_LOG"
     fi
@@ -92,6 +91,9 @@ case "$1" in
         ;;
 esac
 INITEOF
+  # Inject actual workspace path into the installed init.d script
+  WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  sudo sed -i "s|__WORKSPACE_DIR__|${WORKSPACE_DIR}|g" /etc/init.d/vnc
   sudo chmod +x /etc/init.d/vnc
 fi
 
