@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useLastResolved, useGet, useSet } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import { IconSearch, IconPlus } from "@tabler/icons-react";
 import {
   Dialog,
@@ -24,6 +22,11 @@ import {
   setTokenFormSubmitting$,
   selectedConnectorType$,
   setSelectedConnectorType$,
+  zeroDialogSearch$,
+  setZeroDialogSearch$,
+  zeroDialogTab$,
+  setZeroDialogTab$,
+  resetZeroDialogState$,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { openAddSecretDialog$ } from "../../../../signals/zero-page/settings/secrets.ts";
@@ -626,12 +629,11 @@ function ZeroAddConnectionDialog({
   agentName?: string;
 }) {
   const connectorTypes = useLastResolved(allConnectorTypes$);
-  const search$ = useCCState("");
-  const search = useGet(search$);
-  const setSearch = useSet(search$);
-  const tab$ = useCCState<"not-connected" | "connected">("not-connected");
-  const tab = useGet(tab$);
-  const setTab = useSet(tab$);
+  const search = useGet(zeroDialogSearch$);
+  const setSearch = useSet(setZeroDialogSearch$);
+  const tab = useGet(zeroDialogTab$);
+  const setTab = useSet(setZeroDialogTab$);
+  const resetState = useSet(resetZeroDialogState$);
   const types = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
 
   const baseFiltered = connectorTypes
@@ -666,8 +668,7 @@ function ZeroAddConnectionDialog({
       open={open}
       onOpenChange={(v) => {
         if (!v) {
-          setSearch("");
-          setTab("not-connected");
+          resetState();
         }
         onOpenChange(v);
       }}
