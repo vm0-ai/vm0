@@ -18,8 +18,9 @@ import {
   insufficientCredits,
 } from "../errors";
 import { orgMetadata } from "../../db/schema/org-metadata";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
+import { modelProviders } from "../../db/schema/model-provider";
 import { enqueueRun, drainOrgQueue } from "./run-queue-service";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { buildAgentIdentityPrompt } from "../agent-identity";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
@@ -36,7 +37,6 @@ import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
 
 import { getVariableValues } from "../variable/variable-service";
-import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
 import { type OrgTier, type TriggerSource, orgTierSchema } from "@vm0/core";
 import { getOrgData } from "../org/org-cache-service";
@@ -130,8 +130,10 @@ export async function checkRunConcurrencyLimit(
  * Only blocks runs using the VM0 managed provider (where the platform
  * bears API costs). Runs using the org's own API key are not affected.
  *
- * Uses lazy resolution: getOrgDefaultModelProvider() is only called
+ * Uses lazy resolution: the org default provider is only queried
  * when modelProvider is null AND credits are already depleted.
+ * The query runs within the caller's transaction to preserve
+ * advisory lock guarantees.
  */
 async function checkOrgCredits(
   orgId: string,
@@ -165,11 +167,18 @@ async function checkOrgCredits(
     throw insufficientCredits(orgRow.credits);
   }
 
-  // modelProvider is null/undefined — check org default
-  const defaultProvider = await getOrgDefaultModelProvider(
-    orgId,
-    "claude-code",
-  );
+  // modelProvider is null/undefined — check org default within the transaction
+  const [defaultProvider] = await db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
   if (defaultProvider?.type === "vm0") {
     throw insufficientCredits(orgRow.credits);
   }

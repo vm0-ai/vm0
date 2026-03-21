@@ -5,8 +5,9 @@ import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { env } from "../../env";
 import { logger } from "../logger";
-import { isConcurrentRunLimit } from "../errors";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
+import { isConcurrentRunLimit, insufficientCredits } from "../errors";
+import { modelProviders } from "../../db/schema/model-provider";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import {
   encryptSecretsMap,
   decryptSecretsMap,
@@ -233,13 +234,17 @@ async function dequeueNextAtomic(
 
         // Check credits for VM0 provider runs
         if (orgCredits !== null && orgCredits <= 0) {
-          const isVm0 = await resolveIsVm0Provider(row.model_provider, orgId);
+          const isVm0 = await resolveIsVm0Provider(
+            row.model_provider,
+            orgId,
+            tx,
+          );
           if (isVm0) {
             await transitionRunStatus(
               row.run_id,
               {
                 status: "failed",
-                error: `Insufficient credits (balance: ${orgCredits}). Your VM0 credits are depleted. Add credits or configure your own API key to continue.`,
+                error: insufficientCredits(orgCredits).message,
                 completedAt: new Date(),
               },
               ["queued"],
@@ -286,19 +291,28 @@ async function dequeueNextAtomic(
 
 /**
  * Resolve whether the effective model provider is VM0.
- * Only calls getOrgDefaultModelProvider() when modelProvider is null.
+ * Queries the model_providers table within the provided transaction
+ * to maintain advisory lock guarantees.
  */
 async function resolveIsVm0Provider(
   modelProvider: string | null,
   orgId: string,
+  db: typeof globalThis.services.db,
 ): Promise<boolean> {
   if (modelProvider === "vm0") return true;
   if (modelProvider && modelProvider !== "vm0") return false;
-  // null → check org default
-  const defaultProvider = await getOrgDefaultModelProvider(
-    orgId,
-    "claude-code",
-  );
+  // null → check org default within the transaction
+  const [defaultProvider] = await db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
   return defaultProvider?.type === "vm0";
 }
 
