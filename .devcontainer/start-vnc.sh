@@ -124,7 +124,7 @@ if [ ! -f "$NOVNC_CLIP_JS" ]; then
 /* Auto-sync clipboard between browser and VNC session */
 import UI from "./ui.js";
 
-var _rfb = null;
+var _rfb;
 Object.defineProperty(UI, "rfb", {
     configurable: true,
     get: function() { return _rfb; },
