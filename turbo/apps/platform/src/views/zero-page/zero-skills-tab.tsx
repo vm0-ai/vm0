@@ -22,6 +22,7 @@ import {
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
+import { setScopeReviewConnectorType$ } from "../../signals/zero-page/settings/scope-review.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
@@ -62,6 +63,7 @@ export function ZeroSkillsTab({
   const scopeReviewType$ = useCCState<ConnectorType | null>(null);
   const scopeReviewType = useGet(scopeReviewType$);
   const setScopeReviewType = useSet(scopeReviewType$);
+  const setScopeReviewConnectorType = useSet(setScopeReviewConnectorType$);
 
   const allSkills = useGet(skills$);
 
@@ -181,7 +183,10 @@ export function ZeroSkillsTab({
                   toast.success(`${label} disconnected`);
                 }}
                 onRemove={() => handleRemoveSkill(name)}
-                onReviewScopes={() => setScopeReviewType(name as ConnectorType)}
+                onReviewScopes={() => {
+                  setScopeReviewConnectorType(name as ConnectorType);
+                  setScopeReviewType(name as ConnectorType);
+                }}
               />
             );
           })}
@@ -211,8 +216,12 @@ export function ZeroSkillsTab({
       {scopeReviewType && (
         <ScopeReviewModal
           connectorType={scopeReviewType}
-          onClose={() => setScopeReviewType(null)}
+          onClose={() => {
+            setScopeReviewConnectorType(null);
+            setScopeReviewType(null);
+          }}
           onReconnect={(type) => {
+            setScopeReviewConnectorType(null);
             setScopeReviewType(null);
             detach(connect(type, signal), Reason.DomCallback);
           }}
