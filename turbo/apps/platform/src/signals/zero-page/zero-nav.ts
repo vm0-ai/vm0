@@ -111,16 +111,6 @@ export const setZeroChatAgent$ = command(
 );
 
 /**
- * Sub-path segment under the current tab, e.g. `/activity/:sub`.
- * Returns null when there is no sub-segment.
- */
-export const zeroTabSub$ = computed((get): string | null => {
-  const path = get(pathname$);
-  const parts = path.split("/");
-  return parts[2] || null;
-});
-
-/**
  * Navigate to a specific chat session — `/chat/:sessionId`.
  */
 export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {

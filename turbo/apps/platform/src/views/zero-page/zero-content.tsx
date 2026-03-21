@@ -3,7 +3,6 @@ import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
 import { ZeroPreferencesPage } from "./zero-account-page.tsx";
 import { ZeroJobsPage } from "./zero-jobs-page.tsx";
-import { ZeroActivityPage } from "./zero-activity-page.tsx";
 import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { QueuePage } from "../queue-page/queue-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
@@ -81,9 +80,6 @@ export function ZeroContent({
         onCycleZeroAvatar={onCycleZeroAvatar}
       />
     );
-  }
-  if (sectionId === "activity") {
-    return <ZeroActivityPage />;
   }
   if (sectionId === "works") {
     return <ZeroWorksPage />;

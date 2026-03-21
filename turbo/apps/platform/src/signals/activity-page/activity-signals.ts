@@ -4,14 +4,13 @@ import type {
   AgentEvent,
   AgentEventsResponse,
   LogStatus,
-} from "./log-types.ts";
+} from "../zero-page/log-types.ts";
 import type { ComposeListItem } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { throwIfAbort, detach, Reason } from "../utils.ts";
-import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { zeroActiveId$, zeroTabSub$ } from "./zero-nav.ts";
+import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { delay } from "signal-timers";
 
 const EVENTS_PAGE_LIMIT = 30;
@@ -84,7 +83,6 @@ export const initZeroActivity$ = command(async ({ set }) => {
 export const {
   limit$: zeroActivityLimit$,
   data$: zeroActivityData$,
-  refresh$: refreshZeroActivity$,
   seedCursorHistory$: seedZeroActivityCursorHistory$,
   hasPrev$: zeroActivityHasPrev$,
   currentPage$: zeroActivityCurrentPage$,
@@ -127,20 +125,6 @@ export const {
     }
     return result;
   },
-});
-
-/**
- * Refresh activity data if the current tab is "activity".
- * Called from `setupZeroPage$` on every route entry so that each visit
- * to the activity tab triggers a fresh fetch and syncs detail polling.
- */
-export const refreshZeroActivityIfActive$ = command(({ get, set }) => {
-  const activeTab = get(zeroActiveId$);
-  if (activeTab !== "activity") {
-    return;
-  }
-  set(syncZeroActivitySub$);
-  detach(set(refreshZeroActivity$), Reason.Entrance);
 });
 
 /** Update a filter — resets pagination and writes to URL. */
@@ -191,40 +175,7 @@ export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
 });
 
 /**
- * Sync the URL sub-route to the detail polling lifecycle.
- * Idempotent: only restarts polling when the log ID actually changes.
- */
-const syncZeroActivitySub$ = command(({ get, set }) => {
-  const sub = get(zeroTabSub$);
-  const prev = get(lastSyncedLogId$);
-  if (sub === prev) {
-    return;
-  }
-
-  // Reset step search when switching log entries
-  set(internalStepSearch$, "");
-
-  // Abort previous polling
-  const prevAbort = get(internalPollingAbort$);
-  if (prevAbort) {
-    prevAbort.abort();
-  }
-  set(internalPollingAbort$, null);
-  set(pagedEvents$, []);
-  set(lastSyncedLogId$, sub);
-
-  if (sub) {
-    const controller = new AbortController();
-    set(internalPollingAbort$, controller);
-    detach(
-      set(setupZeroActivityEventPolling$, controller.signal),
-      Reason.Daemon,
-    );
-  }
-});
-
-/**
- * Set selected log ID directly (used by tests).
+ * Set selected log ID directly — triggers detail fetch + event polling.
  */
 export const setZeroActivitySelectedLogId$ = command(
   ({ get, set }, logId: string | null) => {
