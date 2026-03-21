@@ -162,10 +162,8 @@ describe("auto-recharge-service", () => {
         expect.objectContaining({
           invoice: "inv_auto_test",
           customer: cusId,
-          price_data: expect.objectContaining({
-            unit_amount: 1000,
-            currency: "usd",
-          }),
+          amount: 1000,
+          currency: "usd",
         }),
       );
 

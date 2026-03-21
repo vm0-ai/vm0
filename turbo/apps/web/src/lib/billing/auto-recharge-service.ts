@@ -89,16 +89,13 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
       },
     });
 
-    // Add the line item with dynamic pricing
+    // Add the line item
     await stripe.invoiceItems.create({
       invoice: invoice.id,
       customer: org.stripeCustomerId,
-      price_data: {
-        currency: "usd",
-        unit_amount: amountCents,
-        product_data: { name: "Credit top-up" },
-      },
-      quantity: 1,
+      amount: amountCents,
+      currency: "usd",
+      description: `Credit top-up: ${creditsAmount.toLocaleString()} credits`,
     });
 
     // Finalize and pay immediately
