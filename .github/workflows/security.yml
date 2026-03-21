@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: always() && github.event_name != 'merge_group'
         with:
           sarif_file: semgrep-results.sarif
           category: semgrep
@@ -89,6 +89,7 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: codeql
+          upload: ${{ github.event_name != 'merge_group' }}
 
   pnpm-audit:
     name: pnpm audit (SCA)
