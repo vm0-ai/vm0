@@ -39,7 +39,9 @@ function mockTeamAndDetailAPIs() {
       return HttpResponse.json({ threads: [] });
     }),
     http.get("*/api/zero/composes/:id", ({ params }) => {
-      if (params.id === "list") return;
+      if (params.id === "list") {
+        return;
+      }
       return HttpResponse.json({
         id: params.id,
         name: "research-agent",
