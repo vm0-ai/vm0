@@ -97,5 +97,30 @@ INITEOF
   sudo chmod +x /etc/init.d/vnc
 fi
 
+# Patch noVNC for automatic clipboard sync between browser and VNC session
+NOVNC_HTML="/usr/share/novnc/vnc.html"
+if ! grep -q "Auto-sync clipboard" "$NOVNC_HTML" 2>/dev/null; then
+  sudo sed -i '/<\/body>/i \
+<script>\
+/* Auto-sync clipboard between browser and VNC session */\
+(function() {\
+    var origClipboardReceive = UI.clipboardReceive;\
+    UI.clipboardReceive = function(e) {\
+        origClipboardReceive.call(UI, e);\
+        if (navigator.clipboard \&\& navigator.clipboard.writeText \&\& e.detail \&\& e.detail.text) {\
+            navigator.clipboard.writeText(e.detail.text).catch(function() {});\
+        }\
+    };\
+    window.addEventListener("focus", function() {\
+        if (navigator.clipboard \&\& navigator.clipboard.readText \&\& UI.rfb) {\
+            navigator.clipboard.readText().then(function(text) {\
+                if (text) UI.rfb.clipboardPasteFrom(text);\
+            }).catch(function() {});\
+        }\
+    });\
+})();\
+</script>' "$NOVNC_HTML"
+fi
+
 sudo service vnc start
 echo "✓ VNC stack started (noVNC at http://localhost:6080/vnc.html)"
