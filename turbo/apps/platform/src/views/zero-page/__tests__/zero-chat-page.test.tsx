@@ -143,10 +143,12 @@ describe("zero chat page - file input ref", () => {
     );
 
     // The hidden file input should exist in the DOM
-    const fileInput = document.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
     expect(fileInput).toBeInTheDocument();
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
 
     // Mock the click method to verify it gets called
     const clickSpy = vi.fn();
