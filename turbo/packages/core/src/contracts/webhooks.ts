@@ -289,20 +289,22 @@ const sandboxOperationSchema = z.object({
 /**
  * Network log entry schema (from mitmproxy addon)
  */
-const networkLogSchema = z.object({
-  timestamp: z.string(),
-  mode: z.literal("mitm").optional(),
-  action: z.enum(["ALLOW", "DENY"]).optional(),
-  host: z.string().optional(),
-  port: z.number().optional(),
-  rule_matched: z.string().nullable().optional(),
-  method: z.string().optional(),
-  url: z.string().optional(),
-  status: z.number().optional(),
-  latency_ms: z.number().optional(),
-  request_size: z.number().optional(),
-  response_size: z.number().optional(),
-});
+const networkLogSchema = z
+  .object({
+    timestamp: z.string(),
+    mode: z.literal("mitm").optional(),
+    action: z.enum(["ALLOW", "DENY"]).optional(),
+    host: z.string().optional(),
+    port: z.number().optional(),
+    rule_matched: z.string().nullable().optional(),
+    method: z.string().optional(),
+    url: z.string().optional(),
+    status: z.number().optional(),
+    latency_ms: z.number().optional(),
+    request_size: z.number().optional(),
+    response_size: z.number().optional(),
+  })
+  .passthrough();
 
 /**
  * Webhook telemetry contract for /api/webhooks/agent/telemetry
