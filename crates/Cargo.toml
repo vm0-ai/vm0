@@ -60,7 +60,7 @@ sentry = { version = "0.47", default-features = false }
 which = "8"
 ureq = "3"
 reqwest = { version = "0.13", default-features = false }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "0.23", default-features = false }
 hmac = "0.12"
 sha2 = "0.10"
 tokio-util = "0.7"

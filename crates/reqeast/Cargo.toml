@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 reqwest = { workspace = true, features = ["json", "rustls-no-provider"] }
-rustls = { workspace = true }
+rustls = { workspace = true, features = ["ring", "std", "tls12"] }
 
 [lints]
 workspace = true
