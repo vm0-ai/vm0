@@ -32,7 +32,16 @@ const ZERO_AVATARS = [
   avatar4Img,
 ] as const;
 
-function SidebarLayoutSkeleton({ visible }: { visible: boolean }) {
+function SidebarLayoutSkeleton() {
+  const userLoadable = useLoadable(user$);
+  const isLoggedIn =
+    userLoadable.state === "hasData" && userLoadable.data !== undefined;
+  const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
+  const onboardingReady = onboardingLoadable.state === "hasData";
+  const agentNameLoadable = useLastLoadable(agentDisplayName$);
+  const agentNameReady = agentNameLoadable.state === "hasData";
+  const visible = isLoggedIn && !(onboardingReady && agentNameReady);
+
   return (
     <div
       className={`fixed inset-0 z-50 flex bg-background ${
@@ -102,7 +111,9 @@ function SidebarLayoutSkeleton({ visible }: { visible: boolean }) {
   );
 }
 
-function GuestNavBar({ onAbout }: { onAbout: () => void }) {
+function GuestNavBar() {
+  const setShowAboutPage = useSet(setZeroShowAboutPage$);
+
   return (
     <nav
       className="pointer-events-none absolute right-6 top-6 z-10"
@@ -111,7 +122,7 @@ function GuestNavBar({ onAbout }: { onAbout: () => void }) {
       <div className="zero-float-card pointer-events-auto flex items-center gap-4 rounded-xl border border-border bg-card/95 px-4 py-2.5 backdrop-blur-sm">
         <button
           type="button"
-          onClick={onAbout}
+          onClick={() => setShowAboutPage(true)}
           className="text-sm tracking-wide text-foreground hover:text-primary transition-colors duration-200"
         >
           About VM0
@@ -134,17 +145,12 @@ function GuestNavBar({ onAbout }: { onAbout: () => void }) {
   );
 }
 
-interface SidebarLayoutProps {
-  children: ReactNode;
-}
-
-export function SidebarLayout({ children }: SidebarLayoutProps) {
+export function SidebarLayout({ children }: { children: ReactNode }) {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
 
   const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
-  const onboardingReady = onboardingLoadable.state === "hasData";
   const needsOnboarding =
     onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
   const showOnboarding = isLoggedIn && needsOnboarding;
@@ -156,10 +162,10 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
     memberOnboarding.data === true;
 
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
-  const agentNameReady = agentDisplayNameLoadable.state === "hasData";
-  const agentDisplayName = agentNameReady
-    ? agentDisplayNameLoadable.data
-    : "Zero";
+  const agentDisplayName =
+    agentDisplayNameLoadable.state === "hasData"
+      ? agentDisplayNameLoadable.data
+      : "Zero";
 
   const avatarIndex = useGet(zeroAvatarIndex$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
@@ -170,12 +176,9 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   const sidebarCollapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
 
-  const dataReady = isLoggedIn && onboardingReady && agentNameReady;
-  const showSkeleton = isLoggedIn && !dataReady;
-
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
-      <SidebarLayoutSkeleton visible={showSkeleton} />
+      <SidebarLayoutSkeleton />
       {showOnboarding && <ZeroOnboarding zeroAvatarSrc={zeroAvatarSrc} />}
       {showMemberWelcome && (
         <MemberWelcome
@@ -191,7 +194,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
         />
       )}
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
-        {!isLoggedIn && <GuestNavBar onAbout={() => setShowAboutPage(true)} />}
+        {!isLoggedIn && <GuestNavBar />}
         {showAboutPage ? (
           <ZeroAboutPage onBack={() => setShowAboutPage(false)} />
         ) : (
