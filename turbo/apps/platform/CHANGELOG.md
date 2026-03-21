@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.133.0](https://github.com/vm0-ai/vm0/compare/app-v0.132.3...app-v0.133.0) (2026-03-21)
+
+
+### Features
+
+* add pay-as-you-go auto-recharge for org credits ([#5834](https://github.com/vm0-ai/vm0/issues/5834)) ([66228b7](https://github.com/vm0-ai/vm0/commit/66228b7494af85d25a3dbe54210149de7964fb43))
+
 ## [0.132.3](https://github.com/vm0-ai/vm0/compare/app-v0.132.2...app-v0.132.3) (2026-03-21)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.139.0](https://github.com/vm0-ai/vm0/compare/web-v12.138.0...web-v12.139.0) (2026-03-21)
+
+
+### Features
+
+* add pay-as-you-go auto-recharge for org credits ([#5834](https://github.com/vm0-ai/vm0/issues/5834)) ([66228b7](https://github.com/vm0-ai/vm0/commit/66228b7494af85d25a3dbe54210149de7964fb43))
+
 ## [12.138.0](https://github.com/vm0-ai/vm0/compare/web-v12.137.1...web-v12.138.0) (2026-03-20)
 
 
