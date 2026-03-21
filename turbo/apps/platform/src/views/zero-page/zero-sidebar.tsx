@@ -697,7 +697,7 @@ function SortablePinnedAgent({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors duration-150 group cursor-pointer"
+      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent transition-colors duration-150 group cursor-pointer"
     >
       <button
         type="button"
@@ -719,7 +719,7 @@ function SortablePinnedAgent({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-1 transition-colors touch-none"
+                className="flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground hover:bg-accent rounded-md p-1 transition-colors touch-none"
                 {...attributes}
                 {...listeners}
               >
@@ -734,7 +734,7 @@ function SortablePinnedAgent({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-1 transition-colors duration-150"
+                className="flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent rounded-md p-1 transition-colors duration-150"
                 onClick={onUnpin}
                 aria-label={`Remove ${agent.displayName ?? agent.name}`}
               >
@@ -882,7 +882,7 @@ function ChatListDialog({
                 <button
                   type="button"
                   onClick={() => handleChat(null)}
-                  className="group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors duration-150 w-full text-left cursor-pointer"
+                  className="group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors duration-150 w-full text-left cursor-pointer"
                 >
                   <img
                     src={zeroAvatarSrc}
@@ -938,7 +938,7 @@ function ChatListDialog({
                 {unpinned.map((agent) => (
                   <div
                     key={agent.id}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors duration-150 group cursor-pointer"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent transition-colors duration-150 group cursor-pointer"
                   >
                     <button
                       type="button"
@@ -960,7 +960,7 @@ function ChatListDialog({
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              className="flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-1 transition-colors duration-150"
+                              className="flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent rounded-md p-1 transition-colors duration-150"
                               onClick={() => togglePin(agent.id)}
                               aria-label={`Pin ${agent.displayName ?? agent.name}`}
                             >
@@ -1142,7 +1142,7 @@ function ManagePinnedAgentsDialog({
               {unpinned.map((agent) => (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
                 >
                   <AgentAvatarImg
                     name={agent.name}
