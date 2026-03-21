@@ -1,41 +1,41 @@
 {
   "folders": [
     {
-      "path": "turbo"
-    },
-    {
-      "path": "crates"
-    },
-    {
-      "path": "e2e"
-    },
-    {
-      "path": "docs"
-    },
-    {
-      "path": ".github"
-    },
-    {
-      "path": ".claude"
-    },
-    {
-      "path": ".devcontainer"
-    },
-    {
-      "path": "scripts"
-    },
-    {
-      "path": "bin"
-    },
-    {
-      "path": "ansible"
-    },
-    {
       "path": ".",
-      "name": "root"
-    }
+      "name": "root",
+    },
+    {
+      "path": "turbo",
+    },
+    {
+      "path": "crates",
+    },
+    {
+      "path": "e2e",
+    },
+    {
+      "path": "docs",
+    },
+    {
+      "path": ".github",
+    },
+    {
+      "path": ".claude",
+    },
+    {
+      "path": ".devcontainer",
+    },
+    {
+      "path": "scripts",
+    },
+    {
+      "path": "bin",
+    },
+    {
+      "path": "ansible",
+    },
   ],
   "extensions": {
-    "recommendations": ["esbenp.prettier-vscode", "anthropic.claude-code"]
-  }
+    "recommendations": ["esbenp.prettier-vscode", "anthropic.claude-code"],
+  },
 }
