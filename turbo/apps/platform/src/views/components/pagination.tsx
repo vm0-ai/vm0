@@ -72,10 +72,7 @@ export function Pagination({
           value={String(rowsPerPage)}
           onValueChange={handleRowsPerPageChange}
         >
-          <SelectTrigger
-            className="h-8 w-[72px]"
-            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-          >
+          <SelectTrigger className="zero-btn-morandi h-8 w-[72px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

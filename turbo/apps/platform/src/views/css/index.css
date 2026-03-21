@@ -181,6 +181,8 @@
   --color-divider: hsl(var(--divider));
 }
 :where([data-theme="dark"]) .zero-nav {
+  --color-sidebar: hsl(240 5% 8%);
+  --color-sidebar-accent: hsl(var(--gray-50));
   --color-sidebar-primary: #ffffff;
 }
 
@@ -688,7 +690,7 @@
 
 .wmde-markdown table th {
   font-weight: 600;
-  background-color: hsl(var(--gray-50));
+  background-color: hsl(var(--gray-100));
 }
 
 .wmde-markdown table tr {
@@ -697,7 +699,7 @@
 }
 
 .wmde-markdown table tr:nth-child(2n) {
-  background-color: hsl(var(--gray-50) / 0.5);
+  background-color: hsl(var(--gray-100) / 0.5);
 }
 
 /* --- Inline Code -------------------------------------------------------- */

@@ -59,7 +59,7 @@ describe("zero onboarding - step 1: welcome", () => {
     );
   });
 
-  it("should advance to step 2 (model provider) when Next is clicked", async () => {
+  it("should advance to connector step when Next is clicked", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -74,120 +74,6 @@ describe("zero onboarding - step 1: welcome", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-    await waitFor(() => {
-      expect(screen.getByText("Add model provider")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("zero onboarding - step 2: model provider", () => {
-  it("should render provider selection grid in step 2", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    // Advance to step 2
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Add model provider")).toBeInTheDocument();
-    });
-
-    // Should show provider choices
-    expect(
-      screen.getByText(
-        "Bring your own model. We never charge for chat. Pick a provider below to get started.",
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("should show Back button in step 2", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
-    });
-  });
-
-  it("should go back to step 1 when Back is clicked in step 2", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Meet Zero, your new teammate/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-  });
-});
-
-describe("zero onboarding - skip model provider when already set", () => {
-  it("should skip step 2 and go directly to step 3 if model provider exists", async () => {
-    server.use(
-      http.get("*/api/zero/onboarding/status", () => {
-        return HttpResponse.json({
-          needsOnboarding: true,
-          isAdmin: true,
-          hasOrg: true,
-          hasModelProvider: true,
-          hasDefaultAgent: false,
-          defaultAgentName: null,
-          defaultAgentComposeId: null,
-          defaultAgentMetadata: null,
-          defaultAgentSkills: [],
-        });
-      }),
-    );
-
-    await renderOnboardingPage();
-
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    // Should go to step 3 (Add connector), not step 2
     await waitFor(() => {
       expect(screen.getByText("Add connector")).toBeInTheDocument();
     });
@@ -197,24 +83,6 @@ describe("zero onboarding - skip model provider when already set", () => {
 describe("zero onboarding - step 3: connectors", () => {
   it("should show connector step with skip instruction", async () => {
     mockOnboardingNeeded();
-
-    // Mock model provider existing so we can navigate through step 2
-    server.use(
-      http.get("*/api/zero/onboarding/status", () => {
-        return HttpResponse.json({
-          needsOnboarding: true,
-          isAdmin: true,
-          hasOrg: true,
-          hasModelProvider: true,
-          hasDefaultAgent: false,
-          defaultAgentName: null,
-          defaultAgentComposeId: null,
-          defaultAgentMetadata: null,
-          defaultAgentSkills: [],
-        });
-      }),
-    );
-
     await renderOnboardingPage();
 
     // Step 1 -> Next

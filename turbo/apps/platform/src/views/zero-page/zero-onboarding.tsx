@@ -4,7 +4,6 @@ import { useCCState } from "ccstate-react/experimental";
 import {
   useGet,
   useSet,
-  useLoadable,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
@@ -17,34 +16,14 @@ import {
   DialogTitle,
   Button,
 } from "@vm0/ui";
-import { ProviderIcon } from "./components/settings/provider-icons";
-import {
-  MODEL_PROVIDER_TYPES,
-  isProviderVisible,
-  getSelectableProviderTypes,
-  type ConnectorType,
-  type ModelProviderType,
-} from "@vm0/core";
+import type { ConnectorType } from "@vm0/core";
 import { skills$ } from "../../data/skills.ts";
-import { ProviderFormFields } from "./components/settings/provider-form-fields";
-import { getUILabel } from "./components/settings/provider-ui-config";
 import {
   zeroOnboardingStep$,
   zeroAgentName$,
-  zeroProviderType$,
-  zeroFormValues$,
   zeroSaving$,
-  zeroCanSave$,
   setZeroStep$,
-  setZeroProviderType$,
-  setZeroSecret$,
-  setZeroModel$,
-  setZeroUseDefaultModel$,
-  setZeroAuthMethod$,
-  setZeroSecretField$,
-  saveZeroModelProvider$,
   completeZeroOnboarding$,
-  zeroHasModelProvider$,
   zeroSelectedSkills$,
   toggleZeroSkill$,
   zeroOnboardingError$,
@@ -69,7 +48,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { IconCircleCheck, IconLoader } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { create as createConfetti } from "canvas-confetti";
 
 class WelcomeAnimation extends Component<
@@ -181,9 +159,6 @@ class WelcomeAnimation extends Component<
     );
   }
 }
-
-const MODEL_PROVIDER_LIST: readonly ModelProviderType[] =
-  getSelectableProviderTypes();
 
 function OnboardingSkillCard({
   label,
@@ -329,66 +304,22 @@ export function ZeroOnboarding({
   const step = useGet(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
   const name = useGet(zeroAgentName$);
-  const providerType = useGet(zeroProviderType$);
-  const setProviderType = useSet(setZeroProviderType$);
-  const formValues = useGet(zeroFormValues$);
-  const setSecret = useSet(setZeroSecret$);
-  const setModel = useSet(setZeroModel$);
-  const setUseDefaultModel = useSet(setZeroUseDefaultModel$);
-  const setAuthMethod = useSet(setZeroAuthMethod$);
-  const setSecretField = useSet(setZeroSecretField$);
   const saving = useGet(zeroSaving$);
-  const canSave = useGet(zeroCanSave$);
   const allSkills = useGet(skills$);
   const selectedSkills = useGet(zeroSelectedSkills$);
   const toggleSkill = useSet(toggleZeroSkill$);
-  const saveModelProvider = useSet(saveZeroModelProvider$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const navigate = useSet(updatePathname$);
-  const hasModelProviderLoadable = useLoadable(zeroHasModelProvider$);
-  const hasModelProvider =
-    hasModelProviderLoadable.state === "hasData" &&
-    hasModelProviderLoadable.data === true;
   const onboardingError = useGet(zeroOnboardingError$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
-  const features = useLastResolved(featureSwitch$);
   const slackData = useGet(slackOrgData$);
 
-  // Local UI state: whether user has picked a provider (showing form vs list)
-  const providerPicked$ = useCCState(false);
-  const providerPicked = useGet(providerPicked$);
-  const setProviderPicked = useSet(providerPicked$);
-
-  const handleSelectProvider = (type: ModelProviderType) => {
-    setProviderType(type);
-    setProviderPicked(true);
-  };
-
   const handleStep1Next = () => {
-    setStep(hasModelProvider ? "3" : "2");
-  };
-
-  const handleStep2Next = () => {
-    const controller = new AbortController();
-    detach(
-      (async () => {
-        await saveModelProvider(controller.signal);
-        setStep("3");
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleStep2Back = () => {
-    if (providerPicked) {
-      setProviderPicked(false);
-    } else {
-      setStep("1");
-    }
+    setStep("3");
   };
 
   const handleStep3Next = () => {
@@ -396,7 +327,7 @@ export function ZeroOnboarding({
   };
 
   const handleStep3Back = () => {
-    setStep(hasModelProvider ? "1" : "2");
+    setStep("1");
   };
 
   const handleStep4Back = () => {
@@ -481,95 +412,6 @@ export function ZeroOnboarding({
               className="rounded-lg min-w-[100px]"
             >
               Next
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Step 2: Add model provider */}
-      <Dialog open={step === "2"}>
-        <DialogContent
-          className={`${dialogBaseClass} zero-onboarding-dialog`}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          aria-describedby={undefined}
-        >
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col justify-center px-8 pt-8 pb-8">
-            {providerPicked ? (
-              <div className="flex flex-col items-center pt-10">
-                <div className="flex items-center justify-center gap-3 mb-6">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden">
-                    <ProviderIcon type={providerType} size={28} />
-                  </span>
-                  <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                    {getUILabel(providerType)}
-                  </h2>
-                </div>
-                <div className="w-full max-w-md flex flex-col gap-4 text-left">
-                  <ProviderFormFields
-                    providerType={providerType}
-                    formValues={formValues}
-                    onProviderTypeChange={() => {}}
-                    onSecretChange={setSecret}
-                    onModelChange={setModel}
-                    onUseDefaultModelChange={setUseDefaultModel}
-                    onAuthMethodChange={setAuthMethod}
-                    onSecretFieldChange={setSecretField}
-                    isLoading={saving}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center text-center">
-                <DialogHeader className="space-y-2">
-                  <DialogTitle className="text-xl font-semibold tracking-tight">
-                    Add model provider
-                  </DialogTitle>
-                </DialogHeader>
-                <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6 max-w-[400px]">
-                  Bring your own model. We never charge for chat. Pick a
-                  provider below to get started.
-                </p>
-                <div className="w-full flex flex-wrap justify-center gap-3">
-                  {MODEL_PROVIDER_LIST.filter((type) =>
-                    isProviderVisible(type, features ?? {}),
-                  ).map((type) => {
-                    const config = MODEL_PROVIDER_TYPES[type];
-                    return (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => handleSelectProvider(type)}
-                        className="zero-card flex items-center gap-2 rounded-xl border border-border px-3 py-2 min-w-0 hover:border-primary/30 hover:bg-muted/30 transition-colors text-left"
-                      >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-                          <ProviderIcon type={type} size={18} />
-                        </span>
-                        <span className="text-sm font-medium text-foreground whitespace-nowrap">
-                          {config.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className={`${footerClass} justify-between`}>
-            <Button
-              variant="ghost"
-              className="rounded-lg text-muted-foreground"
-              onClick={handleStep2Back}
-              disabled={saving}
-            >
-              Back
-            </Button>
-            <Button
-              onClick={handleStep2Next}
-              className="rounded-lg min-w-[100px]"
-              disabled={!providerPicked || !canSave || saving}
-            >
-              {saving ? "Saving\u2026" : "Next"}
             </Button>
           </div>
         </DialogContent>

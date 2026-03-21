@@ -87,7 +87,7 @@ export function TimezoneSettings() {
             onValueChange={handleChange}
             disabled={loading}
           >
-            <SelectTrigger>
+            <SelectTrigger className="zero-btn-morandi">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

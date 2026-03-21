@@ -70,11 +70,6 @@ export const completeMemberOnboarding$ = command(async ({ get, set }) => {
   set(internalReload$, (x) => x + 1);
 });
 
-export const zeroHasModelProvider$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
-  return status.hasModelProvider;
-});
-
 // ---------------------------------------------------------------------------
 // Onboarding form state
 // ---------------------------------------------------------------------------
@@ -116,7 +111,6 @@ const internalOnboardingError$ = state<string | null>(null);
 
 export const zeroOnboardingStep$ = computed((get) => get(internalStep$));
 export const zeroAgentName$ = computed((get) => get(internalAgentName$));
-export const zeroProviderType$ = computed((get) => get(internalProviderType$));
 export const zeroFormValues$ = computed((get) => get(internalFormValues$));
 export const zeroSaving$ = computed((get) => get(internalSaving$));
 export const zeroSelectedSkills$ = computed((get) =>
@@ -189,43 +183,6 @@ export const setZeroProviderType$ = command(
       secrets: {},
       useDefaultModel: !defaultModel,
     });
-  },
-);
-
-export const setZeroSecret$ = command(({ set }, value: string) => {
-  set(internalFormValues$, (prev) => ({ ...prev, secret: value }));
-});
-
-export const setZeroModel$ = command(({ set }, value: string) => {
-  set(internalFormValues$, (prev) => ({
-    ...prev,
-    selectedModel: value,
-    useDefaultModel: false,
-  }));
-});
-
-export const setZeroUseDefaultModel$ = command(({ set }, value: boolean) => {
-  set(internalFormValues$, (prev) => ({
-    ...prev,
-    useDefaultModel: value,
-    selectedModel: value ? "" : prev.selectedModel,
-  }));
-});
-
-export const setZeroAuthMethod$ = command(({ set }, value: string) => {
-  set(internalFormValues$, (prev) => ({
-    ...prev,
-    authMethod: value,
-    secrets: {},
-  }));
-});
-
-export const setZeroSecretField$ = command(
-  ({ set }, key: string, value: string) => {
-    set(internalFormValues$, (prev) => ({
-      ...prev,
-      secrets: { ...prev.secrets, [key]: value },
-    }));
   },
 );
 
