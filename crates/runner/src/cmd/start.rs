@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,8 +9,7 @@ use sandbox_fc::FirecrackerFactory;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
-
-use std::collections::BTreeMap;
+use uuid::Uuid;
 
 use crate::config::{self, ProfileConfig};
 use crate::deps;
@@ -222,6 +222,9 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     let http = HttpClient::new(server.url.clone())?;
     let name = runner_config.name;
     let group = runner_config.group;
+    let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
         let group_dir = home.groups_dir().join(&group);
         std::fs::create_dir_all(&group_dir).map_err(|e| {
@@ -232,8 +235,15 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     } else {
         let group_name = group.clone();
         let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
-        let provider =
-            ApiProvider::new(http.clone(), server.token, group, profiles, cancel.clone()).await;
+        let provider = ApiProvider::new(
+            http.clone(),
+            server.token,
+            group,
+            profiles,
+            cancel.clone(),
+            Arc::clone(&cancel_tokens),
+        )
+        .await;
         (provider, group_name)
     };
 
@@ -256,6 +266,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         mitm,
         mitm_crash_rx,
         provider,
+        cancel_tokens,
         cancel,
         exec_config,
         firecracker: runner_config.firecracker,
@@ -279,6 +290,8 @@ struct RunConfig {
     mitm: proxy::MitmProxy,
     mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
     provider: Arc<dyn JobProvider>,
+    /// Per-job cancel tokens shared with ApiProvider for Ably cancel events.
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
     cancel: CancellationToken,
     exec_config: Arc<ExecutorConfig>,
     firecracker: config::FirecrackerConfig,
@@ -302,6 +315,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         mut mitm,
         mut mitm_crash_rx,
         provider,
+        cancel_tokens,
         cancel,
         exec_config,
         firecracker,
@@ -340,7 +354,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         info!(profile = %profile_name, "factory started");
     }
 
-    let mut jobs = JoinSet::new();
+    let mut jobs: JoinSet<Option<Uuid>> = JoinSet::new();
 
     status.write_initial().await;
     info!(
@@ -412,9 +426,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             tokio::select! {
                 _ = mode_rx.changed() => {}
                 result = jobs.join_next() => {
-                    if let Some(Err(e)) = result {
-                        error!(error = %e, "job task panicked");
-                    }
+                    handle_job_result(result, &cancel_tokens).await;
                 }
                 _ = mitm_crash_rx.recv() => {
                     warn!("mitmproxy exited unexpectedly, scheduling restart");
@@ -450,9 +462,24 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 if !budget.try_reserve(job_vcpu, job_memory) {
                     continue;
                 }
+                // Insert cancel token before claiming so it is available when
+                // discover() next processes a buffered Ably cancel event.
+                // Skip if already present (duplicate discovery via poll +
+                // buffered Ably notification) — overwriting would break
+                // cancel delivery for the running executor.
+                let job_cancel = CancellationToken::new();
+                {
+                    let mut tokens = cancel_tokens.lock().await;
+                    if tokens.contains_key(&run_id) {
+                        budget.release(job_vcpu, job_memory);
+                        continue;
+                    }
+                    tokens.insert(run_id, job_cancel.clone());
+                }
                 // claim() runs in the branch handler — non-interruptible,
                 // so a successful claim is always paired with complete().
                 let Some(context) = provider.claim(run_id).await else {
+                    cancel_tokens.lock().await.remove(&run_id);
                     budget.release(job_vcpu, job_memory); // rollback on 409
                     continue;
                 };
@@ -463,6 +490,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     memory_mb: job_memory,
                     use_snapshot: factory.has_snapshot(),
                     factory: Arc::clone(factory),
+                    cancel: job_cancel,
                 };
                 spawn_job(
                     context, job_profile, &provider, &exec_config,
@@ -498,9 +526,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
             tokio::select! {
                 result = jobs.join_next() => {
-                    if let Some(Err(e)) = result {
-                        error!(error = %e, "job task panicked during drain");
-                    }
+                    handle_job_result(result, &cancel_tokens).await;
                 }
                 _ = mitm_crash_rx.recv() => {
                     warn!("mitmproxy exited unexpectedly, scheduling restart");
@@ -537,6 +563,7 @@ struct JobProfile {
     memory_mb: u32,
     use_snapshot: bool,
     factory: Arc<FirecrackerFactory>,
+    cancel: CancellationToken,
 }
 
 /// Shut down all factories and clean up the shared netns pool.
@@ -564,19 +591,23 @@ async fn shutdown_factories(
 /// The provider has already claimed the job and the caller has reserved
 /// resources in the budget — this function spawns the executor, reports
 /// completion via the provider, and releases the budget when done.
+///
+/// Returns the run_id via the JoinSet so the main loop can clean up
+/// the cancel token.
 fn spawn_job(
     context: ExecutionContext,
     job_profile: JobProfile,
     provider: &Arc<dyn JobProvider>,
     exec_config: &Arc<ExecutorConfig>,
     budget: &Arc<ResourceBudget>,
-    jobs: &mut JoinSet<()>,
+    jobs: &mut JoinSet<Option<Uuid>>,
     status: &Arc<StatusTracker>,
 ) {
     let run_id = context.run_id;
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let factory = job_profile.factory;
+    let job_cancel = job_profile.cancel;
     let params = executor::JobParams {
         vcpu,
         memory_mb,
@@ -591,12 +622,19 @@ fn spawn_job(
     jobs.spawn(async move {
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and releases budget.
+        let cancel = job_cancel.clone();
         let inner = tokio::spawn(async move {
-            executor::execute_job(factory.as_ref(), context, &exec_config, &params).await
+            executor::execute_job(factory.as_ref(), context, &exec_config, &params, cancel).await
         });
 
         let (exit_code, err) = match inner.await {
-            Ok((code, err)) => (code, err),
+            Ok((code, err)) => {
+                if job_cancel.is_cancelled() {
+                    (code, Some("cancelled by user".to_string()))
+                } else {
+                    (code, err)
+                }
+            }
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "executor task panicked");
                 (1, Some(format!("internal error: {e}")))
@@ -607,7 +645,24 @@ fn spawn_job(
         provider.complete(run_id, exit_code, err.as_deref()).await;
         status.remove_run(run_id).await;
         budget.release(vcpu, memory_mb);
+        Some(run_id)
     });
+}
+
+/// Handle a completed job from the JoinSet, cleaning up cancel tokens.
+async fn handle_job_result(
+    result: Option<Result<Option<Uuid>, tokio::task::JoinError>>,
+    cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+) {
+    match result {
+        Some(Ok(Some(run_id))) => {
+            cancel_tokens.lock().await.remove(&run_id);
+        }
+        Some(Err(e)) => {
+            error!(error = %e, "job task panicked");
+        }
+        _ => {}
+    }
 }
 
 /// Await a signal if registered, or pend forever if registration failed.

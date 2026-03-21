@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -47,6 +48,7 @@ pub async fn execute_job(
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
+    cancel: CancellationToken,
 ) -> (i32, Option<String>) {
     let run_id = context.run_id;
     let mut telemetry =
@@ -66,7 +68,7 @@ pub async fn execute_job(
     }
 
     let (exit_code, err) =
-        match execute_inner(factory, &context, config, params, &mut telemetry).await {
+        match execute_inner(factory, &context, config, params, &mut telemetry, cancel).await {
             Ok((code, stderr)) => (code, stderr),
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "job execution failed");
@@ -86,6 +88,7 @@ async fn execute_inner(
     config: &ExecutorConfig,
     params: &JobParams,
     telemetry: &mut JobTelemetry,
+    cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
     let sandbox_id = context.run_id;
     let sandbox_config = SandboxConfig {
@@ -145,6 +148,7 @@ async fn execute_inner(
         config,
         params.use_snapshot,
         telemetry,
+        cancel,
     )
     .await;
 
@@ -193,6 +197,7 @@ async fn run_in_sandbox(
     config: &ExecutorConfig,
     use_snapshot: bool,
     telemetry: &mut JobTelemetry,
+    cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
     // System log file — all guest process output goes here for telemetry upload.
     let log_file = format!("/tmp/vm0-system-{}.log", context.run_id);
@@ -275,14 +280,32 @@ async fn run_in_sandbox(
         .take()
         .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
 
-    // 6. Wait for exit
-    let result = sandbox.wait_exit(handle, JOB_TIMEOUT).await;
+    // 6. Wait for exit (or cancellation).
+    // On cancel we return immediately — the caller (execute_inner) will
+    // call sandbox.stop() + factory.destroy() in its cleanup path.
+    let result = tokio::select! {
+        result = sandbox.wait_exit(handle, JOB_TIMEOUT) => result,
+        () = cancel.cancelled() => {
+            info!(run_id = %context.run_id, "cancel received, aborting sandbox wait");
+            Ok(sandbox::ProcessExit {
+                pid: 0,
+                exit_code: EXIT_SIGKILL,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+        }
+    };
 
     // Wait for streaming to finish (channel closes when process exits).
-    if let Some(task) = stream_task
-        && let Err(e) = task.await
-    {
-        warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+    // On cancel the VM process is still running (stop happens in the caller),
+    // so the stream channel may not close yet — abort instead of blocking.
+    if let Some(task) = stream_task {
+        if cancel.is_cancelled() {
+            task.abort();
+            let _ = task.await;
+        } else if let Err(e) = task.await {
+            warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+        }
     }
     let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
     let err = result.as_ref().err().map(|e| e.to_string());
@@ -295,8 +318,12 @@ async fn run_in_sandbox(
         "agent exited"
     );
 
-    // Check for OOM kill when process was terminated by SIGKILL
-    if exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL {
+    // Check for OOM kill when process was terminated by SIGKILL.
+    // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
+    // would run against a sandbox that hasn't been stopped yet.
+    if !cancel.is_cancelled()
+        && (exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL)
+    {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
@@ -317,7 +344,11 @@ async fn run_in_sandbox(
         }
     }
 
-    let error_msg = if exit.exit_code != 0 {
+    let error_msg = if cancel.is_cancelled() {
+        // Skip guest file reads — sandbox hasn't been stopped yet and the
+        // caller will override with "cancelled by user" anyway.
+        None
+    } else if exit.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         if !stderr.is_empty() {
             Some(stderr)

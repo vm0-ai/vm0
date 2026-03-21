@@ -50,6 +50,9 @@ pub struct ApiProvider {
     discovery: tokio::sync::Mutex<DiscoveryState>,
     /// Per-job sandbox tokens for completion auth.
     tokens: tokio::sync::Mutex<HashMap<Uuid, String>>,
+    /// Shared map of per-job cancel tokens. When a `"cancel"` event arrives
+    /// via Ably, `discover()` looks up the run and cancels it directly.
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -72,6 +75,7 @@ impl ApiProvider {
         group: String,
         profiles: Vec<String>,
         cancel: CancellationToken,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let mut ably_retry: RetryState<AblyReconnectHandle> =
@@ -101,6 +105,7 @@ impl ApiProvider {
                 poll_now: true, // immediate first poll
             }),
             tokens: tokio::sync::Mutex::new(HashMap::new()),
+            cancel_tokens,
             cancel,
         })
     }
@@ -144,6 +149,13 @@ impl JobProvider for ApiProvider {
                 event = recv_ably(ably) => {
                     match event {
                         Some(ably_subscriber::Event::Message(msg)) => {
+                            if let Some(run_id) = parse_cancel_notification(&msg) {
+                                if let Some(token) = self.cancel_tokens.lock().await.get(&run_id) {
+                                    info!(run_id = %run_id, "ably: cancel notification, killing job");
+                                    token.cancel();
+                                }
+                                continue;
+                            }
                             if let Some(notif) = parse_job_notification(&msg) {
                                 // Fall back to default profile when server doesn't send one
                                 // (backwards compat with pre-profile API).
@@ -280,6 +292,20 @@ impl JobProvider for ApiProvider {
 struct JobNotification {
     run_id: Uuid,
     profile: Option<String>,
+}
+
+fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<Uuid> {
+    if msg.name.as_deref() != Some("cancel") {
+        return None;
+    }
+    let raw = msg.data.get("runId").and_then(|v| v.as_str())?;
+    match raw.parse() {
+        Ok(id) => Some(id),
+        Err(e) => {
+            warn!(value = %raw, error = %e, "ably: invalid cancel runId");
+            None
+        }
+    }
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification> {
@@ -600,5 +626,45 @@ mod tests {
     fn parse_job_notification_missing_field() {
         let msg = make_message(Some("job"), serde_json::json!({ "other": "data" }));
         assert!(parse_job_notification(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_cancel_notification_valid() {
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000002" }),
+        );
+        let run_id = parse_cancel_notification(&msg).unwrap();
+        assert_eq!(run_id.to_string(), "00000000-0000-0000-0000-000000000002");
+    }
+
+    #[test]
+    fn parse_cancel_notification_wrong_event_name() {
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000002" }),
+        );
+        assert!(parse_cancel_notification(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_cancel_notification_missing_name() {
+        let msg = make_message(
+            None,
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000002" }),
+        );
+        assert!(parse_cancel_notification(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_cancel_notification_invalid_uuid() {
+        let msg = make_message(Some("cancel"), serde_json::json!({ "runId": "not-a-uuid" }));
+        assert!(parse_cancel_notification(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_cancel_notification_missing_field() {
+        let msg = make_message(Some("cancel"), serde_json::json!({ "other": "data" }));
+        assert!(parse_cancel_notification(&msg).is_none());
     }
 }

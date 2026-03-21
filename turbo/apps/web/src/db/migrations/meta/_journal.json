@@ -1240,6 +1240,13 @@
       "when": 1774071909702,
       "tag": "0176_wealthy_mystique",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1774105076742,
+      "tag": "0177_lively_clint_barton",
+      "breakpoints": true
     }
   ]
 }

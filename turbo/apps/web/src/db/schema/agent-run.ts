@@ -49,6 +49,7 @@ export const agentRuns = pgTable(
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
     lastHeartbeatAt: timestamp("last_heartbeat_at"),
+    runnerGroup: varchar("runner_group", { length: 255 }),
   },
   (table) => [
     // Composite index for user listing with time-based sorting

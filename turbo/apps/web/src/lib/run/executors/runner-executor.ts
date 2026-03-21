@@ -1,4 +1,6 @@
 import { DEFAULT_PROFILE, type StoredExecutionContext } from "@vm0/core";
+import { eq } from "drizzle-orm";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
 import { encryptSecretsMap } from "../../crypto/secrets-encryption";
 import { validateRunnerGroupOrg } from "../../org/org-service";
@@ -83,6 +85,13 @@ export async function executeRunnerJob(
     executionContext: storedContext,
     expiresAt,
   });
+
+  // Store runner group on agent_runs for cancel routing (runner_job_queue
+  // is deleted after claim, so we need a durable reference).
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ runnerGroup })
+    .where(eq(agentRuns.id, context.runId));
 
   log.debug(`Run ${context.runId} queued for runner group: ${runnerGroup}`);
 
