@@ -963,8 +963,8 @@ export function ZeroChatPage({
         aria-hidden="true"
       />
 
-      <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
-        <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
+      <main className="flex flex-1 flex-col items-center justify-center overflow-auto px-4 sm:px-6 py-12">
+        <div className="w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
             <div className="relative shrink-0">
               <button
