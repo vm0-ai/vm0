@@ -1,8 +1,11 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import type { KeyboardEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
-import { sendMode$ } from "../../signals/send-mode.ts";
+import {
+  sendMode$,
+  composing$,
+  compositionStart$,
+  compositionEnd$,
+} from "../../signals/send-mode.ts";
 import type { SendMode } from "@vm0/core";
 
 /**
@@ -22,17 +25,9 @@ import type { SendMode } from "@vm0/core";
 export function useSendKeyHandler(onSend: () => void) {
   const loadable = useLastLoadable(sendMode$);
   const mode: SendMode = loadable.state === "hasData" ? loadable.data : "enter";
-  const composing$ = useCCState(false);
   const composing = useGet(composing$);
-  const setComposing = useSet(composing$);
-
-  const onCompositionStart = () => {
-    setComposing(true);
-  };
-
-  const onCompositionEnd = () => {
-    setComposing(false);
-  };
+  const onCompositionStart = useSet(compositionStart$);
+  const onCompositionEnd = useSet(compositionEnd$);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (composing || e.nativeEvent.isComposing) {

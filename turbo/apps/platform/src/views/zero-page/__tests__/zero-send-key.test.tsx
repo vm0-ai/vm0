@@ -37,7 +37,7 @@ async function renderChatPage(sendMode: "enter" | "cmd-enter" = "enter") {
   await setupPage({ context, path: "/" });
 }
 
-async function getTextarea(): Promise<HTMLTextAreaElement> {
+function getTextarea(): Promise<HTMLTextAreaElement> {
   return waitFor(
     () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
   );
@@ -51,7 +51,7 @@ describe("send-key behavior — enter mode", () => {
     fireEvent.change(textarea, { target: { value: "Hello" } });
 
     const preventDefault = vi.fn();
-    await act(async () => {
+    act(() => {
       textarea.dispatchEvent(
         Object.assign(
           new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
@@ -62,7 +62,7 @@ describe("send-key behavior — enter mode", () => {
       );
     });
 
-    expect(preventDefault).toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledWith();
   });
 
   it("should not send when Shift+Enter is pressed", async () => {
@@ -72,7 +72,7 @@ describe("send-key behavior — enter mode", () => {
     fireEvent.change(textarea, { target: { value: "Hello" } });
 
     const preventDefault = vi.fn();
-    await act(async () => {
+    act(() => {
       textarea.dispatchEvent(
         Object.assign(
           new KeyboardEvent("keydown", {
@@ -97,7 +97,7 @@ describe("send-key behavior — cmd-enter mode", () => {
     fireEvent.change(textarea, { target: { value: "Hello" } });
 
     const preventDefault = vi.fn();
-    await act(async () => {
+    act(() => {
       textarea.dispatchEvent(
         Object.assign(
           new KeyboardEvent("keydown", {
@@ -110,7 +110,7 @@ describe("send-key behavior — cmd-enter mode", () => {
       );
     });
 
-    expect(preventDefault).toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledWith();
   });
 
   it("should not send when plain Enter is pressed", async () => {
@@ -120,7 +120,7 @@ describe("send-key behavior — cmd-enter mode", () => {
     fireEvent.change(textarea, { target: { value: "Hello" } });
 
     const preventDefault = vi.fn();
-    await act(async () => {
+    act(() => {
       textarea.dispatchEvent(
         Object.assign(
           new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
@@ -144,7 +144,7 @@ describe("send-key behavior — IME composition", () => {
     fireEvent.compositionStart(textarea);
 
     const preventDefault = vi.fn();
-    await act(async () => {
+    act(() => {
       textarea.dispatchEvent(
         Object.assign(
           new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
