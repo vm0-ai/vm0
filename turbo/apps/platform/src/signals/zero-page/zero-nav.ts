@@ -1,6 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { pathname$, updatePathname$, navigateInReact$ } from "../route.ts";
-import type { ZeroNavId } from "../../views/zero-page/zero-sidebar.tsx";
+import type {
+  ZeroNavId,
+  ZeroAccountAction,
+} from "../../views/zero-page/zero-sidebar.tsx";
 
 function isValidTab(tab: string): tab is ZeroNavId {
   return (
@@ -126,3 +129,72 @@ export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
 export const navigateFromZeroSession$ = command(() => {
   window.history.back();
 });
+
+// ---------------------------------------------------------------------------
+// Shell UI state — avatar, about page, sidebar
+// ---------------------------------------------------------------------------
+
+const internalAvatarIndex$ = state(0);
+
+/** Current avatar index for the Zero agent avatar cycle. */
+export const zeroAvatarIndex$ = computed((get) => get(internalAvatarIndex$));
+
+/** Advance the avatar to the next image in the cycle. */
+export const cycleZeroAvatar$ = command(({ get, set }, avatarCount: number) => {
+  const current = get(internalAvatarIndex$);
+  set(internalAvatarIndex$, (current + 1) % avatarCount);
+});
+
+const internalShowAboutPage$ = state(false);
+
+/** Whether the About VM0 page is shown. */
+export const zeroShowAboutPage$ = computed((get) =>
+  get(internalShowAboutPage$),
+);
+
+/** Show or hide the About VM0 page. */
+export const setZeroShowAboutPage$ = command(({ set }, show: boolean) => {
+  set(internalShowAboutPage$, show);
+});
+
+const internalSidebarCollapsed$ = state(false);
+
+/** Whether the sidebar is collapsed. */
+export const zeroSidebarCollapsed$ = computed((get) =>
+  get(internalSidebarCollapsed$),
+);
+
+/** Set sidebar collapsed state. */
+export const setZeroSidebarCollapsed$ = command(
+  ({ set }, collapsed: boolean) => {
+    set(internalSidebarCollapsed$, collapsed);
+  },
+);
+
+/** Initialize sidebar collapsed state from viewport width. */
+export const initSidebarCollapsed$ = command(({ set }) => {
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  set(internalSidebarCollapsed$, isMobile);
+});
+
+// ---------------------------------------------------------------------------
+// Shell commands — nav select, account action, send from demo
+// ---------------------------------------------------------------------------
+
+/** Handle nav tab selection: navigate to tab and close about page. */
+export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
+  set(setZeroActiveId$, id);
+  set(internalShowAboutPage$, false);
+});
+
+/** Handle account menu action. */
+export const handleZeroAccountAction$ = command(
+  ({ set }, action: ZeroAccountAction) => {
+    if (action === "signout" || action === "manage") {
+      return;
+    }
+    if (action === "preferences") {
+      set(setZeroActiveId$, "preferences");
+    }
+  },
+);

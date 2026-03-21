@@ -11,8 +11,12 @@ import {
 } from "./zero-activity.ts";
 import { refreshScheduleIfActive$ } from "./zero-schedule.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
-import { zeroChatAgentName$, zeroInChat$ } from "./zero-nav.ts";
-import { switchActiveAgent$ } from "./zero-chat.ts";
+import {
+  zeroChatAgentName$,
+  zeroInChat$,
+  initSidebarCollapsed$,
+} from "./zero-nav.ts";
+import { switchActiveAgent$, syncUrlSession$ } from "./zero-chat.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -30,7 +34,7 @@ const initialDataLoaded$ = state(false);
  * Resolve the active agent from the URL and switch to it.
  *
  * - `/talk/:name` → find agent by name, switch to it
- * - `/chat/:threadId` → skip (switchZeroSession$ handles it)
+ * - `/chat/:threadId` → sync session via syncUrlSession$
  * - `/` → redirect to `/talk/:defaultAgent`
  * - other `/*` → switch to default agent
  *
@@ -43,10 +47,11 @@ async function resolveAndSwitchAgent(
 ) {
   const currentPath = get(pathname$);
 
-  // On /chat/:threadId, switchZeroSession$ resolves the agent from
-  // the thread's agentComposeId. Don't interfere here.
+  // On /chat/:threadId, syncUrlSession$ switches to the correct session.
+  // Don't resolve agent here — switchZeroSession$ handles that internally.
   if (get(zeroInChat$)) {
-    L.info("on chat URL, deferring to switchZeroSession$");
+    L.info("on chat URL, syncing session");
+    await set(syncUrlSession$);
     return;
   }
   L.info("resolveAgent path:", currentPath);
@@ -117,6 +122,7 @@ export const setupZeroPage$ = command(
       ]);
       signal.throwIfAborted();
       set(initialDataLoaded$, true);
+      set(initSidebarCollapsed$);
       detach(set(initZeroActivity$), Reason.Daemon);
     }
 

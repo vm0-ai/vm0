@@ -10,7 +10,9 @@ import {
   zeroChatAgentId$,
   setZeroChatAgent$,
   zeroInChat$,
+  zeroSessionId$,
 } from "./zero-nav.ts";
+import { updatePathname$ } from "../route.ts";
 import { agentsList$ } from "./agents-list.ts";
 import type { ChatThreadListItem } from "@vm0/core";
 
@@ -1105,4 +1107,33 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
     throwIfAbort(error);
     L.error("Failed to extract run result:", error);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Composite shell commands
+// ---------------------------------------------------------------------------
+
+/** Send a message from the demo/home page: navigate to chat, reset session, fire message. */
+export const sendFromZeroDemo$ = command(
+  ({ set }, message: string, options?: { modelProvider?: string }) => {
+    set(updatePathname$, "/chat");
+    set(startNewZeroSession$);
+    detach(set(sendZeroChatMessage$, message, options), Reason.DomCallback);
+  },
+);
+
+/**
+ * Sync URL session ID to the chat signal.
+ * Called from setupZeroPage$ on each route entry for /chat/:sessionId routes.
+ */
+export const syncUrlSession$ = command(async ({ get, set }) => {
+  const urlSessionId = get(zeroSessionId$);
+  if (!urlSessionId) {
+    return;
+  }
+  const currentThreadId = get(zeroChatThreadId$);
+  if (urlSessionId === currentThreadId) {
+    return;
+  }
+  await set(switchZeroSession$, urlSessionId);
 });

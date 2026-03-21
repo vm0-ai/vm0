@@ -1,11 +1,7 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   ZeroSidebar,
   useAgentAvatar,
-  type ZeroNavId,
-  type ZeroAccountAction,
   type SubagentInfo,
 } from "./zero-sidebar.tsx";
 import { Button } from "@vm0/ui";
@@ -22,7 +18,6 @@ import {
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroActiveId$,
   zeroInChat$,
@@ -30,19 +25,24 @@ import {
   zeroChatAgentId$,
   zeroChatAgentName$,
   zeroTalkAgentResolved$,
-  setZeroActiveId$,
   navigateToZeroSession$,
   navigateFromZeroSession$,
+  zeroAvatarIndex$,
+  cycleZeroAvatar$,
+  zeroShowAboutPage$,
+  setZeroShowAboutPage$,
+  zeroSidebarCollapsed$,
+  setZeroSidebarCollapsed$,
+  handleZeroNavSelect$,
+  handleZeroAccountAction$,
 } from "../../signals/zero-page/zero-nav.ts";
-import { updatePathname$, navigateInReact$ } from "../../signals/route.ts";
+import { navigateInReact$ } from "../../signals/route.ts";
 import {
   zeroSessionList$,
   zeroSessionListLoading$,
   zeroSessionListError$,
-  zeroChatThreadId$,
-  switchZeroSession$,
   startNewZeroSession$,
-  sendZeroChatMessage$,
+  sendFromZeroDemo$,
 } from "../../signals/zero-page/zero-chat.ts";
 
 import zeroAvatarImg from "./assets/zero-avatar.png";
@@ -164,31 +164,6 @@ function useSessionLifecycle() {
   return { recentSessions, recentSessionsLoading, recentSessionsError };
 }
 
-/**
- * Sync URL session ID to the chat signal, avoiding redundant switches.
- */
-function useUrlSessionSync(
-  urlSessionId: string | null,
-  currentSessionId: string | null,
-  switchSession: (id: string) => Promise<void>,
-) {
-  const lastDispatched$ = useCCState<string | null>(null);
-  const lastDispatched = useGet(lastDispatched$);
-  const setLastDispatched = useSet(lastDispatched$);
-  if (
-    urlSessionId &&
-    urlSessionId !== lastDispatched &&
-    urlSessionId !== currentSessionId
-  ) {
-    setLastDispatched(urlSessionId);
-    queueMicrotask(() => {
-      detach(switchSession(urlSessionId), Reason.DomCallback);
-    });
-  } else if (!urlSessionId) {
-    setLastDispatched(null);
-  }
-}
-
 function GuestNavBar({ onAbout }: { onAbout: () => void }) {
   return (
     <nav
@@ -222,7 +197,6 @@ function GuestNavBar({ onAbout }: { onAbout: () => void }) {
 }
 
 function useContentNavigation(resolvedAgentName: string | null) {
-  const navigate = useSet(updatePathname$);
   const navigateInReact = useSet(navigateInReact$);
 
   const handleNavigateToSchedule = () => {
@@ -253,7 +227,6 @@ function useContentNavigation(resolvedAgentName: string | null) {
   };
 
   return {
-    navigate,
     navigateInReact,
     handleNavigateToSchedule,
     handleNavigateToMeet,
@@ -324,15 +297,11 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const currentChatAgentId = useGet(zeroChatAgentId$);
 
   const activeId = useGet(zeroActiveId$);
-  const avatarIndex$ = useCCState(0);
-  const avatarIndex = useGet(avatarIndex$);
-  const setAvatarIndex = useSet(avatarIndex$);
-  const showAboutPage$ = useCCState(false);
-  const showAboutPage = useGet(showAboutPage$);
-  const setShowAboutPage = useSet(showAboutPage$);
+  const avatarIndex = useGet(zeroAvatarIndex$);
+  const cycleAvatar = useSet(cycleZeroAvatar$);
+  const showAboutPage = useGet(zeroShowAboutPage$);
+  const setShowAboutPage = useSet(setZeroShowAboutPage$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
-  const cycleZeroAvatar = () =>
-    setAvatarIndex((avatarIndex + 1) % ZERO_AVATARS.length);
 
   // Resolve the effective agent name/avatar for the chat page
   const selectedSubagent = currentChatAgentId
@@ -346,10 +315,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const inChat = useGet(zeroInChat$);
   const urlSessionId = useGet(zeroSessionId$);
   const inSession = inChat;
-  const currentThreadId = useGet(zeroChatThreadId$);
-  const switchSession = useSet(switchZeroSession$);
   const startNewSession = useSet(startNewZeroSession$);
-  const sendMessage = useSet(sendZeroChatMessage$);
+  const handleSendFromDemo = useSet(sendFromZeroDemo$);
 
   // When visiting /talk/:name, wait for the agent to be resolved
   const talkAgentName = useGet(zeroChatAgentName$);
@@ -359,9 +326,6 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
   const { recentSessions, recentSessionsLoading, recentSessionsError } =
     useSessionLifecycle();
 
-  // Sync URL thread ID to chat signal (skip if signal already matches)
-  useUrlSessionSync(urlSessionId, currentThreadId, switchSession);
-
   const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
   const {
     navigateInReact,
@@ -370,10 +334,10 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     handleChatAvatarClick,
   } = useContentNavigation(resolvedAgentName);
 
-  const handleRecentSelect$ = useCommand(({ set }, sessionId: string) => {
-    set(navigateToZeroSession$, sessionId);
-  });
-  const handleRecentSelect = useSet(handleRecentSelect$);
+  const navigateToSession = useSet(navigateToZeroSession$);
+  const navigateBack = useSet(navigateFromZeroSession$);
+  const handleNavSelect = useSet(handleZeroNavSelect$);
+  const handleAccountAction = useSet(handleZeroAccountAction$);
 
   const handleNewChat = (agent: { id: string; name: string } | null) => {
     startNewSession();
@@ -388,42 +352,8 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
     }
   };
 
-  const handleSendFromDemo$ = useCommand(
-    ({ set }, message: string, options?: { modelProvider?: string }) => {
-      set(updatePathname$, "/chat");
-      startNewSession();
-      detach(sendMessage(message, options), Reason.DomCallback);
-    },
-  );
-  const handleSendFromDemo = useSet(handleSendFromDemo$);
-
-  const handleBackFromSession$ = useCommand(({ set }) => {
-    set(navigateFromZeroSession$);
-  });
-  const handleBackFromSession = useSet(handleBackFromSession$);
-
-  const handleNavSelect$ = useCommand(({ set }, id: ZeroNavId) => {
-    set(setZeroActiveId$, id);
-    set(showAboutPage$, false);
-  });
-  const handleNavSelect = useSet(handleNavSelect$);
-
-  const handleAccountAction$ = useCommand(
-    ({ set }, action: ZeroAccountAction) => {
-      if (action === "signout" || action === "manage") {
-        return;
-      }
-      if (action === "preferences") {
-        set(setZeroActiveId$, "preferences");
-      }
-    },
-  );
-  const handleAccountAction = useSet(handleAccountAction$);
-
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  const sidebarCollapsed$ = useCCState(isMobile);
-  const sidebarCollapsed = useGet(sidebarCollapsed$);
-  const setSidebarCollapsed = useSet(sidebarCollapsed$);
+  const sidebarCollapsed = useGet(zeroSidebarCollapsed$);
+  const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
 
   const dataReady =
     isLoggedIn && onboardingReady && agentNameReady && talkAgentReady;
@@ -449,7 +379,7 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
         collapsed={sidebarCollapsed}
         onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         onSelect={handleNavSelect}
-        onRecentSelect={handleRecentSelect}
+        onRecentSelect={navigateToSession}
         selectedRecentId={urlSessionId}
         onAccountAction={handleAccountAction}
         recentSessions={recentSessions}
@@ -477,12 +407,12 @@ export function ZeroAppShell({ initialJobAgent }: ZeroAppShellProps) {
             selectedAgentName={initialJobAgent}
             onNavigateToSchedule={handleNavigateToSchedule}
             onNavigateToMeet={handleNavigateToMeet}
-            onBackFromSession={handleBackFromSession}
+            onBackFromSession={navigateBack}
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}
             onChatAvatarClick={handleChatAvatarClick}
-            onCycleZeroAvatar={cycleZeroAvatar}
+            onCycleZeroAvatar={() => cycleAvatar(ZERO_AVATARS.length)}
           />
         )}
       </div>
