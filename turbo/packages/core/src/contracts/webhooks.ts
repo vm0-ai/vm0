@@ -289,22 +289,29 @@ const sandboxOperationSchema = z.object({
 /**
  * Network log entry schema (from mitmproxy addon)
  */
-const networkLogSchema = z
-  .object({
-    timestamp: z.string(),
-    mode: z.literal("mitm").optional(),
-    action: z.enum(["ALLOW", "DENY"]).optional(),
-    host: z.string().optional(),
-    port: z.number().optional(),
-    rule_matched: z.string().nullable().optional(),
-    method: z.string().optional(),
-    url: z.string().optional(),
-    status: z.number().optional(),
-    latency_ms: z.number().optional(),
-    request_size: z.number().optional(),
-    response_size: z.number().optional(),
-  })
-  .passthrough();
+const networkLogSchema = z.object({
+  timestamp: z.string(),
+  mode: z.literal("mitm").optional(),
+  action: z.enum(["ALLOW", "DENY"]).optional(),
+  host: z.string().optional(),
+  port: z.number().optional(),
+  rule_matched: z.string().nullable().optional(),
+  method: z.string().optional(),
+  url: z.string().optional(),
+  status: z.number().optional(),
+  latency_ms: z.number().optional(),
+  request_size: z.number().optional(),
+  response_size: z.number().optional(),
+  firewall_base: z.string().optional(),
+  firewall_name: z.string().optional(),
+  firewall_ref: z.string().optional(),
+  firewall_permission: z.string().optional(),
+  firewall_rule_match: z.string().optional(),
+  firewall_params: z.record(z.string(), z.string()).optional(),
+  firewall_error: z.string().optional(),
+  error: z.string().optional(),
+  type: z.enum(["http", "tcp"]).optional(),
+});
 
 /**
  * Webhook telemetry contract for /api/webhooks/agent/telemetry
