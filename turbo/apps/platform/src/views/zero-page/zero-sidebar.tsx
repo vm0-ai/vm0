@@ -1508,7 +1508,7 @@ export function ZeroSidebar({
 
   return (
     <VM0ClerkProvider>
-      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl">
+      <aside className="zero-nav flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl">
         {/* Organization switcher */}
         <div className="shrink-0 px-2 pt-1.5 pb-0">
           <div className="flex items-center justify-between gap-2 rounded-lg pl-0 pr-1 py-0.5">

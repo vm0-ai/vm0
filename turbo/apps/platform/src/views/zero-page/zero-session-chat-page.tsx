@@ -150,8 +150,8 @@ export function ZeroSessionChatPage({
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
-        <main className="flex-1 px-4 sm:px-6 py-4">
-          <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
+        <main className="flex-1 flex flex-col items-center px-4 sm:px-6 py-4">
+          <div className="w-full max-w-[900px] flex-1 flex flex-col gap-6 pb-4">
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="flex items-center gap-2 text-destructive">
@@ -184,20 +184,17 @@ export function ZeroSessionChatPage({
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
         <footer className="relative sticky bottom-0 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
           <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-          <div className="mx-auto max-w-[900px] grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
-            <div className="w-9 shrink-0" />
-            <div className="flex flex-col gap-1.5 min-w-0">
-              <ZeroChatComposer
-                className="w-full min-w-0"
-                input={input}
-                onInputChange={setInput}
-                onSend={handleSend}
-                sending={sending}
-                onCancel={() => void cancelRun()}
-                agentName={agentName}
-                autoFocus={messages.length === 0}
-              />
-            </div>
+          <div className="mx-auto w-full max-w-[900px]">
+            <ZeroChatComposer
+              className="w-full min-w-0"
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSend}
+              sending={sending}
+              onCancel={() => void cancelRun()}
+              agentName={agentName}
+              autoFocus={messages.length === 0}
+            />
           </div>
         </footer>
       </div>
