@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -425,11 +425,8 @@ describe("zero works page - uninstall confirmation dialog", () => {
     });
 
     // Click "Uninstall" button in dialog to confirm
-    const dialogButtons = screen.getAllByRole("button", { name: "Uninstall" });
-    const confirmButton = dialogButtons.find(
-      (btn) => btn.closest("[role='dialog']") !== null,
-    );
-    fireEvent.click(confirmButton!);
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Uninstall" }));
 
     await waitFor(() => {
       expect(uninstallCalled).toBeTruthy();
