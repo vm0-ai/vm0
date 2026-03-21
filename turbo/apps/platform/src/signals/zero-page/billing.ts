@@ -32,6 +32,7 @@ export interface BillingStatus {
 
 const internalDialogOpen$ = state(false);
 const internalDialogLoading$ = state(false);
+const billingReload$ = state(0);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -47,6 +48,7 @@ export const billingDialogLoading$ = computed((get) =>
  * Use with useLastLoadable() in views for automatic loading.
  */
 export const billingStatusAsync$ = computed(async (get) => {
+  get(billingReload$);
   const fetchFn = await get(fetch$);
   const response = await fetchFn("/api/billing/status");
   if (!response.ok) {
@@ -160,6 +162,9 @@ export const saveAutoRecharge$ = command(
       log.error("Auto-recharge save failed", data.error);
       return { ok: false, error: data.error };
     }
+
+    // Invalidate billing status cache so the dialog shows fresh data on re-open
+    set(billingReload$, (x) => x + 1);
 
     return { ok: true };
   },
