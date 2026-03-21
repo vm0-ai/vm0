@@ -16,8 +16,8 @@ import {
   DialogTitle,
   Button,
 } from "@vm0/ui";
-import type { ConnectorType } from "@vm0/core";
-import { skills$ } from "../../data/skills.ts";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroOnboardingStep$,
   zeroAgentName$,
@@ -160,15 +160,15 @@ class WelcomeAnimation extends Component<
   }
 }
 
-function OnboardingSkillCard({
+function OnboardingConnectorCard({
+  type,
   label,
-  iconUrl,
   isSelected,
   isPolling,
   onClick,
 }: {
+  type: ConnectorType;
   label: string;
-  iconUrl: string | undefined;
   isSelected: boolean;
   isPolling: boolean;
   onClick: () => void;
@@ -187,13 +187,7 @@ function OnboardingSkillCard({
       }`}
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-        {iconUrl ? (
-          <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
-        ) : (
-          <span className="text-xs font-medium text-muted-foreground">
-            {label.slice(0, 2)}
-          </span>
-        )}
+        <ConnectorIcon type={type} size={20} />
       </span>
       <span className="text-sm font-medium text-foreground whitespace-nowrap">
         {label}
@@ -208,13 +202,11 @@ function OnboardingSkillCard({
   );
 }
 
-function OnboardingSkillsStep({
+function OnboardingConnectorsStep({
   name,
-  allSkills,
   selectedSkills,
 }: {
   name: string;
-  allSkills: readonly { value: string; label: string; icon?: string }[];
   selectedSkills: string[];
 }) {
   const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
@@ -231,35 +223,35 @@ function OnboardingSkillsStep({
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
   const selectedSet = new Set(selectedSkills);
 
-  const handleClick = (value: string) => {
+  const connectorEntries = Object.entries(CONNECTOR_TYPES) as [
+    ConnectorType,
+    (typeof CONNECTOR_TYPES)[ConnectorType],
+  ][];
+
+  const handleClick = (type: ConnectorType) => {
     // Already selected → deselect (don't disconnect)
-    if (selectedSet.has(value)) {
-      toggleSkill(value);
+    if (selectedSet.has(type)) {
+      toggleSkill(type);
       return;
     }
 
-    const connector = connectorMap.get(value as ConnectorType);
-    if (!connector) {
-      // Non-connector skill: select immediately
-      toggleSkill(value);
-      return;
-    }
+    const connector = connectorMap.get(type);
 
-    // Connector skill: already connected → select immediately
-    if (connector.connected) {
-      toggleSkill(value);
+    // Connector already connected → select immediately
+    if (connector?.connected) {
+      toggleSkill(type);
       return;
     }
 
     // Not connected → start connect flow, select on success
-    if (connector.availableAuthMethods.includes("api-token")) {
-      setSelectedConnector(value as ConnectorType);
+    if (connector?.availableAuthMethods.includes("api-token")) {
+      setSelectedConnector(type);
     } else {
       // OAuth flow: select skill after connect completes
       detach(
         (async () => {
-          await connect(value as ConnectorType, pageSignal);
-          toggleSkill(value);
+          await connect(type, pageSignal);
+          toggleSkill(type);
         })(),
         Reason.DomCallback,
       );
@@ -279,14 +271,14 @@ function OnboardingSkillsStep({
       </p>
       <div className="w-full px-4 flex-1 min-h-0">
         <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
-          {allSkills.map((skill) => (
-            <OnboardingSkillCard
-              key={skill.value}
-              label={skill.label}
-              iconUrl={skill.icon}
-              isSelected={selectedSet.has(skill.value)}
-              isPolling={pollingType === skill.value}
-              onClick={() => handleClick(skill.value)}
+          {connectorEntries.map(([type, config]) => (
+            <OnboardingConnectorCard
+              key={type}
+              type={type}
+              label={config.label}
+              isSelected={selectedSet.has(type)}
+              isPolling={pollingType === type}
+              onClick={() => handleClick(type)}
             />
           ))}
         </div>
@@ -305,7 +297,6 @@ export function ZeroOnboarding({
   const setStep = useSet(setZeroStep$);
   const name = useGet(zeroAgentName$);
   const saving = useGet(zeroSaving$);
-  const allSkills = useGet(skills$);
   const selectedSkills = useGet(zeroSelectedSkills$);
   const toggleSkill = useSet(toggleZeroSkill$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
@@ -425,9 +416,8 @@ export function ZeroOnboarding({
           onEscapeKeyDown={(e) => e.preventDefault()}
           aria-describedby={undefined}
         >
-          <OnboardingSkillsStep
+          <OnboardingConnectorsStep
             name={name}
-            allSkills={allSkills}
             selectedSkills={selectedSkills}
           />
           <div className={`${footerClass} justify-between`}>
@@ -563,7 +553,6 @@ export function MemberWelcome({
   const navigate = useSet(updatePathname$);
   const startNewSession = useSet(startNewZeroSession$);
   const sendIntro = useSet(sendZeroChatMessage$);
-  const allSkills = useGet(skills$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
   const connectConnectorFn = useSet(connectConnector$);
@@ -584,12 +573,17 @@ export function MemberWelcome({
     allConnectors.filter((c) => c.connected).map((c) => c.type),
   );
 
-  // Only show skills that: (1) are in the default agent, (2) have a connector
-  const memberSkills = allSkills.filter((skill) => {
+  // Only show connectors that: (1) are in the default agent, (2) have a connector type
+  const memberConnectors = (
+    Object.entries(CONNECTOR_TYPES) as [
+      ConnectorType,
+      (typeof CONNECTOR_TYPES)[ConnectorType],
+    ][]
+  ).filter(([type]) => {
     const isInAgent = defaultAgentSkillUrls.some((url) =>
-      url.endsWith(`/${skill.value}`),
+      url.endsWith(`/${type}`),
     );
-    return isInAgent && connectorTypeSet.has(skill.value as ConnectorType);
+    return isInAgent && connectorTypeSet.has(type);
   });
 
   const handleOpenSlack = () => {
@@ -653,7 +647,7 @@ export function MemberWelcome({
           <div className={`${footerClass} justify-end`}>
             <Button
               onClick={() => {
-                if (memberSkills.length > 0) {
+                if (memberConnectors.length > 0) {
                   setStep("connectors");
                 } else {
                   setStep("where");
@@ -685,38 +679,33 @@ export function MemberWelcome({
               Your organization uses these tools with {agentName}. Connect the
               ones you use to get started.
             </p>
-            {memberSkills.length > 0 ? (
+            {memberConnectors.length > 0 ? (
               <div className="w-full px-4 flex-1 min-h-0">
                 <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
-                  {memberSkills.map((skill) => {
-                    const isConnected = connectedSet.has(
-                      skill.value as ConnectorType,
-                    );
+                  {memberConnectors.map(([type, config]) => {
+                    const isConnected = connectedSet.has(type);
                     return (
-                      <OnboardingSkillCard
-                        key={skill.value}
-                        label={skill.label}
-                        iconUrl={skill.icon}
+                      <OnboardingConnectorCard
+                        key={type}
+                        type={type}
+                        label={config.label}
                         isSelected={isConnected}
                         isPolling={false}
                         onClick={() => {
                           if (!isConnected) {
                             const connector = allConnectors.find(
-                              (c) => c.type === skill.value,
+                              (c) => c.type === type,
                             );
                             if (
                               connector?.availableAuthMethods.includes(
                                 "api-token",
                               )
                             ) {
-                              setSelected(skill.value as ConnectorType);
+                              setSelected(type);
                             } else {
                               detach(
                                 (async () => {
-                                  await connectConnectorFn(
-                                    skill.value as ConnectorType,
-                                    pageSignal,
-                                  );
+                                  await connectConnectorFn(type, pageSignal);
                                 })(),
                                 Reason.DomCallback,
                               );
@@ -832,7 +821,7 @@ export function MemberWelcome({
               variant="ghost"
               className="rounded-lg text-muted-foreground"
               onClick={() => {
-                if (memberSkills.length > 0) {
+                if (memberConnectors.length > 0) {
                   setStep("connectors");
                 } else {
                   setStep("welcome");
