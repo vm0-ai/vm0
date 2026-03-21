@@ -23,6 +23,7 @@ import {
   isNotFound,
   isUnauthorized,
   isProviderIncompatible,
+  isInsufficientCredits,
 } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
@@ -41,6 +42,15 @@ function handleCreateRunError(error: unknown) {
       status: 400 as const,
       body: {
         error: { message: error.message, code: "PROVIDER_INCOMPATIBLE" },
+      },
+    };
+  }
+
+  if (isInsufficientCredits(error)) {
+    return {
+      status: 402 as const,
+      body: {
+        error: { message: error.message, code: "INSUFFICIENT_CREDITS" },
       },
     };
   }

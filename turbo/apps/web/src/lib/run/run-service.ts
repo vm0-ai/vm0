@@ -15,7 +15,10 @@ import {
   forbidden,
   concurrentRunLimit,
   isConcurrentRunLimit,
+  insufficientCredits,
 } from "../errors";
+import { orgMetadata } from "../../db/schema/org-metadata";
+import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
 import { enqueueRun, drainOrgQueue } from "./run-queue-service";
 import { buildAgentIdentityPrompt } from "../agent-identity";
 import { logger } from "../logger";
@@ -119,6 +122,59 @@ export async function checkRunConcurrencyLimit(
     );
     throw concurrentRunLimit();
   }
+}
+
+/**
+ * Check if the org has sufficient credits for a VM0 provider run.
+ *
+ * Only blocks runs using the VM0 managed provider (where the platform
+ * bears API costs). Runs using the org's own API key are not affected.
+ *
+ * Uses lazy resolution: getOrgDefaultModelProvider() is only called
+ * when modelProvider is null AND credits are already depleted.
+ */
+async function checkOrgCredits(
+  orgId: string,
+  modelProvider: string | null | undefined,
+  db: Database,
+): Promise<void> {
+  // Explicit non-VM0 provider — skip check entirely
+  if (modelProvider && modelProvider !== "vm0") {
+    return;
+  }
+
+  // Read credits from org_metadata
+  const [orgRow] = await db
+    .select({ credits: orgMetadata.credits })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  // No org row → treat as sufficient (new org, default 2000 credits)
+  if (!orgRow) {
+    return;
+  }
+
+  // Credits > 0 → sufficient for any provider
+  if (orgRow.credits > 0) {
+    return;
+  }
+
+  // Credits <= 0 — resolve effective provider if needed
+  if (modelProvider === "vm0") {
+    throw insufficientCredits(orgRow.credits);
+  }
+
+  // modelProvider is null/undefined — check org default
+  const defaultProvider = await getOrgDefaultModelProvider(
+    orgId,
+    "claude-code",
+  );
+  if (defaultProvider?.type === "vm0") {
+    throw insufficientCredits(orgRow.credits);
+  }
+
+  // Effective provider is not VM0 — skip check
 }
 
 /**
@@ -1021,6 +1077,9 @@ export async function createRun(
 
       // Check concurrent run limit within the serialized transaction
       await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
+
+      // Check credit balance for VM0 provider runs
+      await checkOrgCredits(orgId, params.modelProvider, tx);
 
       // INSERT within the same transaction
       const [newRun] = await tx

@@ -19,6 +19,13 @@ export function withErrorHandler<T extends unknown[]>(
         if (error.code === "UNAUTHORIZED") {
           console.error(chalk.red("✗ Not authenticated"));
           console.error(chalk.dim("  Run: vm0 auth login"));
+        } else if (error.code === "INSUFFICIENT_CREDITS") {
+          console.error(chalk.red("✗ Credits depleted"));
+          console.error(
+            chalk.dim(
+              "  Add credits at your billing page or configure your own API key.",
+            ),
+          );
         } else {
           console.error(chalk.red(`✗ ${error.status}: ${error.message}`));
         }

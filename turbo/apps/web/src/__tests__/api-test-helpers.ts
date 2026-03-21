@@ -39,6 +39,8 @@ import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { orgMetadata } from "../db/schema/org-metadata";
+import { modelProviders } from "../db/schema/model-provider";
+import { ORG_SENTINEL_USER_ID } from "../lib/org/org-sentinel";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../db/schema/org-members-metadata";
@@ -2910,6 +2912,41 @@ export async function getOrgCredits(orgId: string): Promise<number | null> {
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   return row?.credits ?? null;
+}
+
+/**
+ * Set the credit balance for an org in the `org` table.
+ * Ensures the org row exists first.
+ */
+export async function setOrgCredits(
+  orgId: string,
+  credits: number,
+): Promise<void> {
+  await globalThis.services.db
+    .insert(orgMetadata)
+    .values({ orgId, credits })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { credits, updatedAt: new Date() },
+    });
+}
+
+/**
+ * Insert an org-level default model provider directly in the database.
+ * Useful for testing credit check behavior with different provider types.
+ */
+export async function insertOrgDefaultModelProvider(
+  orgId: string,
+  type: string,
+  selectedModel?: string,
+): Promise<void> {
+  await globalThis.services.db.insert(modelProviders).values({
+    type,
+    userId: ORG_SENTINEL_USER_ID,
+    orgId,
+    isDefault: true,
+    selectedModel: selectedModel ?? null,
+  });
 }
 
 /**

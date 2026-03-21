@@ -53,6 +53,12 @@ interface ConcurrentRunLimitError extends ApiErrorBase {
   readonly code: "TOO_MANY_REQUESTS";
 }
 
+interface InsufficientCreditsError extends ApiErrorBase {
+  readonly name: "InsufficientCreditsError";
+  readonly statusCode: 402;
+  readonly code: "INSUFFICIENT_CREDITS";
+}
+
 interface ProviderIncompatibleError extends ApiErrorBase {
   readonly name: "ProviderIncompatibleError";
   readonly statusCode: 400;
@@ -123,6 +129,15 @@ export function concurrentRunLimit(
   return error;
 }
 
+export function insufficientCredits(credits: number): InsufficientCreditsError {
+  const message = `Insufficient credits (balance: ${credits}). Your VM0 credits are depleted. Add credits or configure your own API key to continue.`;
+  const error = new Error(message) as InsufficientCreditsError;
+  (error as { name: string }).name = "InsufficientCreditsError";
+  (error as { statusCode: number }).statusCode = 402;
+  (error as { code: string }).code = "INSUFFICIENT_CREDITS";
+  return error;
+}
+
 export function providerIncompatible(
   message: string,
 ): ProviderIncompatibleError {
@@ -163,6 +178,12 @@ export function isSchedulePast(e: unknown): e is SchedulePastError {
 
 export function isConcurrentRunLimit(e: unknown): e is ConcurrentRunLimitError {
   return e instanceof Error && e.name === "ConcurrentRunLimitError";
+}
+
+export function isInsufficientCredits(
+  e: unknown,
+): e is InsufficientCreditsError {
+  return e instanceof Error && e.name === "InsufficientCreditsError";
 }
 
 export function isProviderIncompatible(

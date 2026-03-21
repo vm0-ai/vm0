@@ -1,6 +1,6 @@
 import { startRun, isRunDispatchError } from "../../run";
 import { buildIntegrationContext } from "../../integration-context";
-import { isConcurrentRunLimit } from "../../errors";
+import { isConcurrentRunLimit, isInsufficientCredits } from "../../errors";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 
@@ -99,6 +99,15 @@ export async function runAgentForTelegram(
         status: "failed",
         response:
           "You have too many concurrent runs. Please wait for existing runs to complete.",
+        runId: undefined,
+      };
+    }
+    if (isInsufficientCredits(error)) {
+      log.warn("Insufficient credits", { composeId, agentName, userId });
+      return {
+        status: "failed",
+        response:
+          "Your VM0 credits are depleted. Add credits at your billing page or configure your own API key.",
         runId: undefined,
       };
     }

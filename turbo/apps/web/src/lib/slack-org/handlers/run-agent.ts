@@ -4,7 +4,7 @@ import {
   buildScheduleGuidance,
   DISALLOWED_CRON_TOOLS,
 } from "../../integration-context";
-import { isConcurrentRunLimit } from "../../errors";
+import { isConcurrentRunLimit, isInsufficientCredits } from "../../errors";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { logger } from "../../logger";
 
@@ -115,6 +115,15 @@ export async function runAgentForSlackOrg(
         status: "failed",
         response:
           "You have too many concurrent runs. Please wait for existing runs to complete.",
+        runId: undefined,
+      };
+    }
+    if (isInsufficientCredits(error)) {
+      log.warn("Insufficient credits", { composeId, agentName, userId });
+      return {
+        status: "failed",
+        response:
+          "Your VM0 credits are depleted. Add credits at your billing page or configure your own API key.",
         runId: undefined,
       };
     }

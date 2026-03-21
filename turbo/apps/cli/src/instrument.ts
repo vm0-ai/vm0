@@ -33,6 +33,7 @@ const OPERATIONAL_ERROR_PATTERNS = [
   // Rate limiting (expected operational condition)
   /rate limit/i,
   /concurrent run limit/i,
+  /insufficient.*credit/i,
   // Network issues (transient, not bugs)
   /network error/i,
   /network issue/i,
