@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.133.3](https://github.com/vm0-ai/vm0/compare/app-v0.133.2...app-v0.133.3) (2026-03-21)
+
+
+### Bug Fixes
+
+* resolve activity page overflow and add internal connector logos page ([#5912](https://github.com/vm0-ai/vm0/issues/5912)) ([bd9e1fd](https://github.com/vm0-ai/vm0/commit/bd9e1fdcc41f2d39ddd740bf319e3f692f99eb34))
+* resolve sidebar chat navigation failing from /team page ([#5918](https://github.com/vm0-ai/vm0/issues/5918)) ([25763e7](https://github.com/vm0-ai/vm0/commit/25763e7ce577d42c40bb626edbce624832e4b249))
+
 ## [0.133.2](https://github.com/vm0-ai/vm0/compare/app-v0.133.1...app-v0.133.2) (2026-03-21)
 
 
