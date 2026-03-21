@@ -28,6 +28,7 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
       credits: orgMetadata.credits,
       tier: orgMetadata.tier,
       stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
       autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
       autoRechargeAmount: orgMetadata.autoRechargeAmount,
@@ -89,18 +90,30 @@ export async function triggerAutoRecharge(orgId: string): Promise<void> {
       return;
     }
 
-    const paymentMethodId =
-      (typeof customer.invoice_settings?.default_payment_method === "string"
+    // Try customer default, then fall back to subscription's payment method
+    const customerPm =
+      typeof customer.invoice_settings?.default_payment_method === "string"
         ? customer.invoice_settings.default_payment_method
-        : customer.invoice_settings?.default_payment_method?.id) ?? null;
+        : customer.invoice_settings?.default_payment_method?.id;
+
+    let paymentMethodId = customerPm ?? null;
+
+    // Fallback: retrieve payment method from the active subscription
+    if (!paymentMethodId && org.stripeSubscriptionId) {
+      const subscription = await stripe.subscriptions.retrieve(
+        org.stripeSubscriptionId,
+      );
+      const subPm =
+        typeof subscription.default_payment_method === "string"
+          ? subscription.default_payment_method
+          : subscription.default_payment_method?.id;
+      paymentMethodId = subPm ?? null;
+    }
 
     if (!paymentMethodId) {
       log.warn(
-        "No default payment method on customer, skipping auto-recharge",
-        {
-          orgId,
-          customerId: org.stripeCustomerId,
-        },
+        "No payment method found on customer or subscription, skipping auto-recharge",
+        { orgId, customerId: org.stripeCustomerId },
       );
       await db
         .update(orgMetadata)
