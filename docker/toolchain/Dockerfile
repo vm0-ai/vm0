@@ -158,7 +158,7 @@ RUN mkdir -p /usr/share/keyrings \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     x11vnc \
-    openbox \
+    i3 \
     novnc \
     x11-xserver-utils \
     && rm -rf /var/lib/apt/lists/* \

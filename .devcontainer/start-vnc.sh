@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Start VNC stack (Xvfb + openbox + x11vnc + websockify) for headed browser automation
+# Start VNC stack (Xvfb + i3 + x11vnc + websockify) for headed browser automation
 # Installed as /etc/init.d/vnc and managed via `service vnc start`
 
 echo "🖥️ Starting VNC stack..."
@@ -15,12 +15,12 @@ if [ ! -f /etc/init.d/vnc ]; then
 # Required-Stop:     $local_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: VNC stack for headed browser automation
+# Short-Description: VNC stack (i3 + x11vnc) for headed browser automation
 ### END INIT INFO
 
 VNC_USER="vscode"
 PIDFILE_XVFB="/var/run/vnc-xvfb.pid"
-PIDFILE_OPENBOX="/var/run/vnc-openbox.pid"
+PIDFILE_I3="/var/run/vnc-i3.pid"
 PIDFILE_X11VNC="/var/run/vnc-x11vnc.pid"
 PIDFILE_WEBSOCKIFY="/var/run/vnc-websockify.pid"
 PIDFILE_RESIZE="/var/run/vnc-resize.pid"
@@ -43,8 +43,17 @@ start() {
         DISPLAY=:99 xrandr -s 1344x840 2>/dev/null || true
     fi
 
-    start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_OPENBOX" \
-        --chuid "$VNC_USER" --exec /usr/bin/env -- DISPLAY=:99 openbox
+    # Install i3 config to suppress first-run wizard
+    I3_CONFIG_DIR="/home/$VNC_USER/.config/i3"
+    I3_CONFIG_SRC="__WORKSPACE_DIR__/.devcontainer/i3-config"
+    if [ ! -f "$I3_CONFIG_DIR/config" ] && [ -f "$I3_CONFIG_SRC" ]; then
+        mkdir -p "$I3_CONFIG_DIR"
+        cp "$I3_CONFIG_SRC" "$I3_CONFIG_DIR/config"
+        chown -R "$VNC_USER:$VNC_USER" "$I3_CONFIG_DIR"
+    fi
+
+    start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_I3" \
+        --chuid "$VNC_USER" --exec /usr/bin/env -- DISPLAY=:99 i3
 
     : > "$X11VNC_LOG"
     start-stop-daemon --start --background --make-pidfile --pidfile "$PIDFILE_X11VNC" \
@@ -68,9 +77,9 @@ stop() {
     start-stop-daemon --stop --pidfile "$PIDFILE_RESIZE" --oknodo
     start-stop-daemon --stop --pidfile "$PIDFILE_WEBSOCKIFY" --oknodo
     start-stop-daemon --stop --pidfile "$PIDFILE_X11VNC" --oknodo
-    start-stop-daemon --stop --pidfile "$PIDFILE_OPENBOX" --oknodo
+    start-stop-daemon --stop --pidfile "$PIDFILE_I3" --oknodo
     start-stop-daemon --stop --pidfile "$PIDFILE_XVFB" --oknodo
-    rm -f "$PIDFILE_XVFB" "$PIDFILE_OPENBOX" "$PIDFILE_X11VNC" "$PIDFILE_WEBSOCKIFY" "$PIDFILE_RESIZE"
+    rm -f "$PIDFILE_XVFB" "$PIDFILE_I3" "$PIDFILE_X11VNC" "$PIDFILE_WEBSOCKIFY" "$PIDFILE_RESIZE"
     echo "VNC stack stopped"
 }
 
