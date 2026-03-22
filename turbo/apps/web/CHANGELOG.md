@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.141.1](https://github.com/vm0-ai/vm0/compare/web-v12.141.0...web-v12.141.1) (2026-03-22)
+
+
+### Refactoring
+
+* make plausible analytics config environment-driven ([#5985](https://github.com/vm0-ai/vm0/issues/5985)) ([7ec3011](https://github.com/vm0-ai/vm0/commit/7ec3011f04eb0ae66e328012fdd2a28af8ebe01d))
+
 ## [12.141.0](https://github.com/vm0-ai/vm0/compare/web-v12.140.1...web-v12.141.0) (2026-03-22)
 
 
