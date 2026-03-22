@@ -113,6 +113,8 @@ function initEnv() {
       STRIPE_SECRET_KEY: z.string().min(1).optional(),
       STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
       ZERO_PRO_PLAN_PRICE_ID: z.string().min(1).optional(),
+      // Clerk Webhooks
+      CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1).optional(),
       ZERO_MAX_PLAN_PRICE_ID: z.string().min(1).optional(),
       // Stripe OAuth (for connector)
       STRIPE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -282,6 +284,7 @@ function initEnv() {
       STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
       ZERO_PRO_PLAN_PRICE_ID: process.env.ZERO_PRO_PLAN_PRICE_ID,
       ZERO_MAX_PLAN_PRICE_ID: process.env.ZERO_MAX_PLAN_PRICE_ID,
+      CLERK_WEBHOOK_SIGNING_SECRET: process.env.CLERK_WEBHOOK_SIGNING_SECRET,
       STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
       STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:
