@@ -1125,6 +1125,14 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
 
+      - name: Print E2E trace log
+        if: always()
+        run: |
+          if [ -f /tmp/e2e-trace.log ]; then
+            echo "=== E2E CLI Trace (Serial) ==="
+            cat /tmp/e2e-trace.log
+          fi
+
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
@@ -1620,6 +1628,14 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Print E2E trace log
+        if: always()
+        run: |
+          if [ -f /tmp/e2e-trace.log ]; then
+            echo "=== E2E CLI Trace (Chunk ${{ matrix.index }}) ==="
+            cat /tmp/e2e-trace.log
+          fi
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
