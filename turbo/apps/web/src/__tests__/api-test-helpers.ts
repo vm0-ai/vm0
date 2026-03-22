@@ -90,7 +90,6 @@ import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/c
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
-import { variables } from "../db/schema/variable";
 import { hashFileContent } from "../lib/storage/content-hash";
 import {
   encryptSecretValue,
@@ -4128,7 +4127,7 @@ export async function insertTestExportJob(params: {
   });
 }
 
-/** Count rows by org_id in a given table. */
+/** Count rows by org_id in a given table using raw SQL to avoid type casts. */
 export async function countOrgRows(
   tableName:
     | "agent_runs"

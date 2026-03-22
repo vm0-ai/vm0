@@ -285,6 +285,7 @@ describe("deleteOrgData", () => {
     // Verify ALL tables are empty for this org
     const tables = [
       "agent_runs",
+      "agent_run_queue",
       "agent_composes",
       "storages",
       "secrets",
@@ -296,6 +297,7 @@ describe("deleteOrgData", () => {
       "zero_agents",
       "credit_usage",
       "agent_sessions",
+      "email_thread_sessions",
       "slack_org_installations",
       "org_members_cache",
       "org_members_metadata",
