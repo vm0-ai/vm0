@@ -35,16 +35,16 @@ export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={notoSans.className} suppressHydrationWarning>
       <head>
-        <script
-          src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
-          data-domain="vm0.ai"
-          defer
-        />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init({domain:"vm0.ai"})`,
-          }}
-        />
+        {process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL && (
+          <>
+            <script src={process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL} defer />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init({transformRequest:function(p){p.u=p.u.replace(/\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,'/:id');return p}})`,
+              }}
+            />
+          </>
+        )}
       </head>
       <body className="flex flex-col min-h-screen">
         <RootProvider>{children}</RootProvider>

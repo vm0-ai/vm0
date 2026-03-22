@@ -246,6 +246,7 @@ jobs:
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ vars.SLACK_REDIRECT_BASE_URL }}
+            PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
             SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
@@ -417,6 +418,8 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
           environment: production
           deployment-env: docs
+          environment-variables: |
+            NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
 
       - name: Calculate duration
         id: duration
@@ -508,6 +511,7 @@ jobs:
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=https://www.vm0.ai
+            VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
             VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}

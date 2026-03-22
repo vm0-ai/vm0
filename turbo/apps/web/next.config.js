@@ -52,6 +52,9 @@ const nextConfig = {
     NEXT_PUBLIC_BASE_URL: process.env.BLOG_BASE_URL,
     NEXT_PUBLIC_STRAPI_URL: process.env.STRAPI_URL,
     NEXT_PUBLIC_DATA_SOURCE: process.env.BLOG_DATA_SOURCE,
+
+    // Analytics (Plausible)
+    NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: process.env.PLAUSIBLE_SCRIPT_URL,
   },
 
   typescript: {
