@@ -90,6 +90,7 @@ import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/c
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
+import { variables } from "../db/schema/variable";
 import { hashFileContent } from "../lib/storage/content-hash";
 import {
   encryptSecretValue,
@@ -4116,17 +4117,6 @@ export async function insertTestUsageDaily(params: {
   });
 }
 
-export async function insertTestExportJob(params: {
-  userId: string;
-  orgId: string;
-}): Promise<void> {
-  await globalThis.services.db.insert(exportJobs).values({
-    userId: params.userId,
-    orgId: params.orgId,
-    status: "completed",
-  });
-}
-
 /** Count rows by org_id in a given table using raw SQL to avoid type casts. */
 export async function countOrgRows(
   tableName:
@@ -4155,4 +4145,34 @@ export async function countOrgRows(
     sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE org_id = ${orgId}`,
   );
   return (rows.rows[0] as { count: number }).count;
+}
+
+export async function insertTestOrgSentinelSecret(params: {
+  orgId: string;
+  name: string;
+}): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const encrypted = encryptSecretValue(
+    "sentinel-test-value",
+    SECRETS_ENCRYPTION_KEY,
+  );
+  await globalThis.services.db.insert(secrets).values({
+    name: params.name,
+    encryptedValue: encrypted,
+    type: "user",
+    userId: ORG_SENTINEL_USER_ID,
+    orgId: params.orgId,
+  });
+}
+
+export async function insertTestOrgSentinelVariable(params: {
+  orgId: string;
+  name: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(variables).values({
+    name: params.name,
+    value: "sentinel-test-value",
+    userId: ORG_SENTINEL_USER_ID,
+    orgId: params.orgId,
+  });
 }

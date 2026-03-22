@@ -26,6 +26,8 @@ import {
   insertOrgMembersEntry,
   findTestSlackOrgInstallation,
   countOrgRows,
+  insertTestOrgSentinelSecret,
+  insertTestOrgSentinelVariable,
 } from "../../../__tests__/api-test-helpers";
 import { deleteOrgData } from "../org-deletion-service";
 
@@ -144,7 +146,7 @@ describe("deleteOrgData", () => {
       displayName: "Test",
     });
     await insertTestUsageDaily({ userId, orgId, date: "2026-01-01" });
-    await insertTestExportJob({ userId, orgId });
+    await insertTestExportJob(orgId, { userId, status: "completed" });
 
     await deleteOrgData(orgId);
 
@@ -244,7 +246,7 @@ describe("deleteOrgData", () => {
       displayName: "Full Test",
     });
     await insertTestUsageDaily({ userId, orgId, date: "2026-03-01" });
-    await insertTestExportJob({ userId, orgId });
+    await insertTestExportJob(orgId, { userId, status: "completed" });
 
     // Email thread session
     await createTestEmailThreadSession({
@@ -311,6 +313,25 @@ describe("deleteOrgData", () => {
         `Expected 0 rows in ${table}`,
       ).toBe(0);
     }
+  });
+
+  it("should delete org-level sentinel resources (userId = __org__)", async () => {
+    context.setupMocks();
+    const { orgId } = await context.setupUser();
+
+    // Create org-level sentinel resources
+    await insertTestOrgSentinelSecret({ orgId, name: "ORG_API_KEY" });
+    await insertTestOrgSentinelVariable({ orgId, name: "ORG_CONFIG" });
+    await insertOrgDefaultModelProvider(orgId, "anthropic");
+
+    // Also create a user-level secret to ensure both are deleted
+    await createTestSecret("USER_KEY", "user-value");
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("secrets", orgId)).toBe(0);
+    expect(await countOrgRows("variables", orgId)).toBe(0);
+    expect(await countOrgRows("model_providers", orgId)).toBe(0);
   });
 
   it("should be idempotent — calling twice produces no errors", async () => {
