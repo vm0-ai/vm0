@@ -183,6 +183,7 @@ describe("backfill-clerk-metadata", () => {
     });
 
     it("skips orgs with only default metadata", async () => {
+      // No trackOrg — backfill skips default-only metadata, nothing written to DB
       const orgId = uniqueId("bf-org-skip");
 
       const clerk = mockClerkClient({
@@ -497,6 +498,7 @@ describe("backfill-clerk-metadata", () => {
 
   describe("error resilience", () => {
     it("continues processing after individual org failure", async () => {
+      // No trackOrg for orgId1 — invalid UUID causes SQL error, nothing written to DB
       const orgId1 = uniqueId("bf-err-org1");
       const orgId2 = uniqueId("bf-err-org2");
       trackOrg(orgId2);
@@ -527,7 +529,7 @@ describe("backfill-clerk-metadata", () => {
     });
 
     it("aborts when error count exceeds threshold", async () => {
-      // Create enough orgs with invalid UUIDs to exceed MAX_ERRORS
+      // No trackOrg — all orgs have invalid UUIDs, every INSERT fails, nothing written to DB
       const badOrgs = Array.from({ length: MAX_ERRORS + 5 }, (_, i) => ({
         id: uniqueId(`bf-thresh-${i}`),
         publicMetadata: {
