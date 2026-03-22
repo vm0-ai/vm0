@@ -49,19 +49,6 @@ export type ClerkClient = ReturnType<typeof createClerkClient>;
 export type Db = PgDatabase<PgQueryResultHKT>;
 
 // ---------------------------------------------------------------------------
-// CLI argument parsing
-// ---------------------------------------------------------------------------
-
-const { values: args } = parseArgs({
-  options: {
-    migrate: { type: "boolean", default: false },
-  },
-  strict: true,
-});
-
-const DRY_RUN = !args.migrate;
-
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -321,6 +308,14 @@ export async function backfillUsers(
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  const { values: args } = parseArgs({
+    options: {
+      migrate: { type: "boolean", default: false },
+    },
+    strict: true,
+  });
+  const dryRun = !args.migrate;
+
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required");
@@ -328,13 +323,13 @@ async function main(): Promise<void> {
 
   console.log("=== Backfill Clerk Metadata ===");
   console.log(
-    `Mode: ${DRY_RUN ? "dry-run (pass --migrate to execute)" : "MIGRATE"}`,
+    `Mode: ${dryRun ? "dry-run (pass --migrate to execute)" : "MIGRATE"}`,
   );
   console.log();
 
   let clerk: ClerkClient | null = null;
 
-  if (!DRY_RUN) {
+  if (!dryRun) {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) {
       throw new Error("CLERK_SECRET_KEY is required for --migrate");
@@ -349,17 +344,17 @@ async function main(): Promise<void> {
   try {
     console.log("Phase 1: Backfilling org_metadata...");
     if (clerk) {
-      await backfillOrgMetadata(clerk, db, stats, DRY_RUN);
+      await backfillOrgMetadata(clerk, db, stats, dryRun);
     }
 
     console.log("\nPhase 2: Backfilling org_members_metadata...");
     if (clerk) {
-      await backfillOrgMembersMetadata(clerk, db, stats, DRY_RUN);
+      await backfillOrgMembersMetadata(clerk, db, stats, dryRun);
     }
 
     console.log("\nPhase 3: Backfilling users...");
     if (clerk) {
-      await backfillUsers(clerk, db, stats, DRY_RUN);
+      await backfillUsers(clerk, db, stats, dryRun);
     }
 
     console.log("\n=== Summary ===");
@@ -379,7 +374,7 @@ async function main(): Promise<void> {
       }
     }
 
-    if (DRY_RUN) {
+    if (dryRun) {
       console.log(
         "\nDry run — no changes were made. Pass --migrate to execute.",
       );
