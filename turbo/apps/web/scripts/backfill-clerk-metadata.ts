@@ -46,6 +46,27 @@ export type ClerkClient = ReturnType<typeof createClerkClient>;
 export type Db = PgDatabase<PgQueryResultHKT>;
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Abort the backfill if more than this many per-item errors accumulate. */
+export const MAX_ERRORS = 50;
+
+export function createTooManyErrorsError(count: number): Error {
+  const err = new Error(
+    `Backfill aborted: ${count} errors exceeded threshold of ${MAX_ERRORS}`,
+  );
+  err.name = "TooManyErrorsError";
+  return err;
+}
+
+function checkErrorThreshold(stats: BackfillStats): void {
+  if (stats.errors.length > MAX_ERRORS) {
+    throw createTooManyErrorsError(stats.errors.length);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -158,6 +179,7 @@ export async function backfillOrgMetadata(
           error: String(err),
         });
         console.log(`  ERROR org ${org.id}: ${err}`);
+        checkErrorThreshold(stats);
       }
     }
   }
@@ -230,6 +252,7 @@ export async function backfillOrgMembersMetadata(
               error: String(err),
             });
             console.log(`  ERROR member ${org.id}/${userId}: ${err}`);
+            checkErrorThreshold(stats);
           }
         }
       }
@@ -282,6 +305,7 @@ export async function backfillUsers(
           error: String(err),
         });
         console.log(`  ERROR user ${user.id}: ${err}`);
+        checkErrorThreshold(stats);
       }
     }
   }

@@ -3111,6 +3111,7 @@ export function getTestDb() {
  * Returns undefined if no row exists.
  */
 export async function getOrgRow(orgId: string) {
+  initServices();
   const [row] = await globalThis.services.db
     .select()
     .from(orgMetadata)
@@ -3124,6 +3125,7 @@ export async function getOrgRow(orgId: string) {
  * Returns undefined if no row exists.
  */
 export async function getOrgMembersEntry(orgId: string, userId: string) {
+  initServices();
   const [row] = await globalThis.services.db
     .select()
     .from(orgMembersMetadata)
@@ -3143,6 +3145,7 @@ export async function deleteOrgMembersEntry(
   orgId: string,
   userId: string,
 ): Promise<void> {
+  initServices();
   await globalThis.services.db
     .delete(orgMembersMetadata)
     .where(
@@ -3158,6 +3161,7 @@ export async function deleteOrgMembersEntry(
  * Returns undefined if no row exists.
  */
 export async function getUserRow(userId: string) {
+  initServices();
   const [row] = await globalThis.services.db
     .select()
     .from(users)
@@ -3173,6 +3177,7 @@ export async function insertUserRow(
   userId: string,
   emailUnsubscribed: boolean,
 ): Promise<void> {
+  initServices();
   await globalThis.services.db
     .insert(users)
     .values({ id: userId, emailUnsubscribed })
@@ -3183,6 +3188,7 @@ export async function insertUserRow(
  * Delete a user row by userId.
  */
 export async function deleteUserRow(userId: string): Promise<void> {
+  initServices();
   await globalThis.services.db.delete(users).where(eq(users.id, userId));
 }
 
