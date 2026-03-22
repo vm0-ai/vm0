@@ -11,7 +11,7 @@ import { skillUrlToValue } from "../../data/skills.ts";
 import { SEED_SKILLS } from "../../data/the-seed.ts";
 import { zeroChatAgentId$ } from "./zero-nav.ts";
 
-const L = logger("ZeroSkills");
+const L = logger("ZeroConnectors");
 
 // ---------------------------------------------------------------------------
 // Default agent compose
@@ -67,16 +67,16 @@ const zeroCompose$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Skills list: derived from compose content, synced via compose jobs
+// Connectors list: derived from compose content, synced via compose jobs
 // ---------------------------------------------------------------------------
 
 const internalSaving$ = state(false);
 
 // null = not initialized (fallback to seeded), string[] = user's local draft
-const internalAddedSkills$ = state<string[] | null>(null);
+const internalAddedConnectors$ = state<string[] | null>(null);
 
-/** Skills seeded from compose content, always includes default seed skills. */
-const seededSkills$ = computed(async (get) => {
+/** Connectors seeded from compose content, always includes default seed skills. */
+const seededConnectors$ = computed(async (get) => {
   const compose = await get(zeroCompose$);
   const fromContent: string[] = [];
   if (compose?.content) {
@@ -89,46 +89,46 @@ const seededSkills$ = computed(async (get) => {
   return [...new Set([...SEED_SKILLS, ...fromContent])];
 });
 
-/** Added skills: local draft takes precedence, otherwise seeded from compose. */
-export const zeroAddedSkills$ = computed(async (get) => {
-  const local = get(internalAddedSkills$);
+/** Added connectors: local draft takes precedence, otherwise seeded from compose. */
+export const zeroAddedConnectors$ = computed(async (get) => {
+  const local = get(internalAddedConnectors$);
   if (local !== null) {
     return local;
   }
-  return await get(seededSkills$);
+  return await get(seededConnectors$);
 });
 
-/** Add a skill (local only, no compose job). */
-export const addZeroSkill$ = command(async ({ get, set }, name: string) => {
-  if (get(internalAddedSkills$) === null) {
-    set(internalAddedSkills$, await get(seededSkills$));
+/** Add a connector (local only, no compose job). */
+export const addZeroConnector$ = command(async ({ get, set }, name: string) => {
+  if (get(internalAddedConnectors$) === null) {
+    set(internalAddedConnectors$, await get(seededConnectors$));
   }
-  set(internalAddedSkills$, (prev) => [...(prev ?? []), name]);
+  set(internalAddedConnectors$, (prev) => [...(prev ?? []), name]);
 });
 
-/** Save skill changes: trigger compose job and wait for completion. */
-export const saveZeroSkills$ = command(async ({ get, set }) => {
+/** Save connector changes: trigger compose job and wait for completion. */
+export const saveZeroConnectors$ = command(async ({ get, set }) => {
   set(internalSaving$, true);
   try {
-    const newSkills = get(internalAddedSkills$) ?? [];
-    await set(syncSkillsToCompose$, newSkills);
+    const newConnectors = get(internalAddedConnectors$) ?? [];
+    await set(syncConnectorsToCompose$, newConnectors);
     // Reset to null so seeded picks up the new compose state
-    set(internalAddedSkills$, null);
-    toast.success("Skills saved");
+    set(internalAddedConnectors$, null);
+    toast.success("Connectors saved");
   } catch (error) {
     throwIfAbort(error);
-    L.error("Failed to save skills:", error);
+    L.error("Failed to save connectors:", error);
     toast.error(
-      error instanceof Error ? error.message : "Failed to save skills",
+      error instanceof Error ? error.message : "Failed to save connectors",
     );
   } finally {
     set(internalSaving$, false);
   }
 });
 
-/** Sync the skills list via zero agents API. */
-const syncSkillsToCompose$ = command(
-  async ({ get, set }, skillValues: string[]) => {
+/** Sync the connectors list via zero agents API. */
+const syncConnectorsToCompose$ = command(
+  async ({ get, set }, connectorValues: string[]) => {
     const compose = await get(zeroCompose$);
     if (!compose?.content) {
       throw new Error("No compose content available");
@@ -141,7 +141,7 @@ const syncSkillsToCompose$ = command(
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectors: skillValues }),
+        body: JSON.stringify({ connectors: connectorValues }),
       },
     );
 

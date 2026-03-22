@@ -44,10 +44,10 @@ function mockConnectors(connectors: ConnectorResponse[]) {
 }
 
 /**
- * Set up the /team/zero route with the given skills seeded in the agent compose.
+ * Set up the /team/zero route with the given connectors seeded in the agent compose.
  * This renders the full page through setupPage, exercising the real signal flow.
  */
-async function renderTeamPage(skills: string[]) {
+async function renderTeamPage(connectors: string[]) {
   // Mock the agent compose lookup (fetched by name query param)
   server.use(
     http.get("*/api/zero/composes", () => {
@@ -57,7 +57,7 @@ async function renderTeamPage(skills: string[]) {
         headVersionId: "version_1",
         content: {
           version: "1",
-          agents: { zero: { framework: "claude-code", skills } },
+          agents: { zero: { framework: "claude-code", skills: connectors } },
         },
         createdAt: "2024-01-01T00:00:00Z",
         updatedAt: "2024-01-01T00:00:00Z",
@@ -68,7 +68,7 @@ async function renderTeamPage(skills: string[]) {
   await setupPage({ context, path: "/team/zero" });
 }
 
-describe("zero skill card status display", () => {
+describe("zero connector card status display", () => {
   it("shows green indicator for connected OAuth connector with username", async () => {
     mockConnectors([
       makeConnector({
@@ -184,7 +184,7 @@ describe("zero skill card status display", () => {
   });
 });
 
-describe("zero skill card button clicks", () => {
+describe("zero connector card button clicks", () => {
   it("calls window.open with authorize URL when Connect is clicked", async () => {
     mockConnectors([]);
     await renderTeamPage(["github"]);
@@ -247,7 +247,7 @@ describe("zero skill card button clicks", () => {
   });
 });
 
-describe("zero skill card scope review modal", () => {
+describe("zero connector card scope review modal", () => {
   it("opens ScopeReviewModal with scope diff when Review is clicked", async () => {
     mockConnectors([
       makeConnector({

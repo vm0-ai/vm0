@@ -9,7 +9,7 @@ import {
   setZeroAgentName$,
   setZeroProviderType$,
   setZeroStep$,
-  toggleZeroSkill$,
+  toggleZeroConnector$,
   zeroCanSave$,
   zeroFormValues$,
   zeroOnboardingStep$,
@@ -117,8 +117,8 @@ describe("completeZeroOnboarding$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     // Select a connector skill and a duplicate seed skill
-    context.store.set(toggleZeroSkill$, "slack");
-    context.store.set(toggleZeroSkill$, "vm0"); // duplicate of seed skill
+    context.store.set(toggleZeroConnector$, "slack");
+    context.store.set(toggleZeroConnector$, "vm0"); // duplicate of seed skill
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 

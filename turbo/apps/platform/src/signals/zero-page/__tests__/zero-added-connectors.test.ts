@@ -4,10 +4,10 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
-  zeroAddedSkills$,
-  addZeroSkill$,
-  saveZeroSkills$,
-} from "../zero-skills.ts";
+  zeroAddedConnectors$,
+  addZeroConnector$,
+  saveZeroConnectors$,
+} from "../zero-connectors.ts";
 import { setZeroChatAgent$ } from "../zero-nav.ts";
 import { SEED_SKILLS } from "../../../data/the-seed.ts";
 
@@ -34,8 +34,8 @@ function mockComposeApi(content: {
   );
 }
 
-describe("zeroAddedSkills$", () => {
-  it("should seed skills from compose content", async () => {
+describe("zeroAddedConnectors$", () => {
+  it("should seed connectors from compose content", async () => {
     mockComposeApi({
       agents: {
         zero: {
@@ -50,23 +50,23 @@ describe("zeroAddedSkills$", () => {
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    const skills = await context.store.get(zeroAddedSkills$);
-    // SEED_SKILLS are always included, plus compose-specific skills
-    expect(skills).toStrictEqual([...SEED_SKILLS, "slack", "github"]);
+    const connectors = await context.store.get(zeroAddedConnectors$);
+    // SEED_SKILLS are always included, plus compose-specific connectors
+    expect(connectors).toStrictEqual([...SEED_SKILLS, "slack", "github"]);
   });
 
-  it("should return seed skills when compose has no skills", async () => {
+  it("should return seed connectors when compose has no skills", async () => {
     mockComposeApi({
       agents: { zero: { framework: "claude-code" } },
     });
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    const skills = await context.store.get(zeroAddedSkills$);
-    expect(skills).toStrictEqual([...SEED_SKILLS]);
+    const connectors = await context.store.get(zeroAddedConnectors$);
+    expect(connectors).toStrictEqual([...SEED_SKILLS]);
   });
 
-  it("should seed skills from sub-agent compose when chat agent is set", async () => {
+  it("should seed connectors from sub-agent compose when chat agent is set", async () => {
     const subAgentComposeId = "sub-agent-compose-id";
 
     // Default agent has slack only
@@ -111,14 +111,14 @@ describe("zeroAddedSkills$", () => {
       name: "cycling-coach",
     });
 
-    const skills = await context.store.get(zeroAddedSkills$);
-    // SEED_SKILLS are always included, plus sub-agent compose skills
-    expect(skills).toStrictEqual([...SEED_SKILLS, "github"]);
+    const connectors = await context.store.get(zeroAddedConnectors$);
+    // SEED_SKILLS are always included, plus sub-agent compose connectors
+    expect(connectors).toStrictEqual([...SEED_SKILLS, "github"]);
   });
 });
 
-describe("addZeroSkill$", () => {
-  it("should add a skill locally and save via zero agents api", async () => {
+describe("addZeroConnector$", () => {
+  it("should add a connector locally and save via zero agents api", async () => {
     let capturedBody: { connectors: string[] } | null = null;
 
     mockComposeApi({
@@ -146,16 +146,16 @@ describe("addZeroSkill$", () => {
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    // Add skill locally (deferred save pattern)
-    await context.store.set(addZeroSkill$, "github");
+    // Add connector locally (deferred save pattern)
+    await context.store.set(addZeroConnector$, "github");
 
-    // Local state should include both skills
-    const skills = await context.store.get(zeroAddedSkills$);
-    expect(skills).toContain("slack");
-    expect(skills).toContain("github");
+    // Local state should include both connectors
+    const connectors = await context.store.get(zeroAddedConnectors$);
+    expect(connectors).toContain("slack");
+    expect(connectors).toContain("github");
 
     // Save triggers the zero agents API
-    await context.store.set(saveZeroSkills$);
+    await context.store.set(saveZeroConnectors$);
 
     expect(capturedBody).not.toBeNull();
     // Connectors are sent as short names

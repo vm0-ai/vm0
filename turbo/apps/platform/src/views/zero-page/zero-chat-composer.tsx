@@ -60,10 +60,10 @@ import {
 } from "../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  zeroAddedSkills$,
-  addZeroSkill$,
-  saveZeroSkills$,
-} from "../../signals/zero-page/zero-skills.ts";
+  zeroAddedConnectors$,
+  addZeroConnector$,
+  saveZeroConnectors$,
+} from "../../signals/zero-page/zero-connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
@@ -385,7 +385,7 @@ export function ZeroChatComposer({
 
   // Connectors
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const addedSkillsLoadable = useLastLoadable(zeroAddedSkills$);
+  const addedConnectorsLoadable = useLastLoadable(zeroAddedConnectors$);
   const connectConnector = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
@@ -395,8 +395,8 @@ export function ZeroChatComposer({
   const isOnboarding =
     (onboardingActive.state === "hasData" && onboardingActive.data) ||
     (memberOnboardingActive.state === "hasData" && memberOnboardingActive.data);
-  const addSkill = useSet(addZeroSkill$);
-  const saveSkills = useSet(saveZeroSkills$);
+  const addConnector = useSet(addZeroConnector$);
+  const saveConnectors = useSet(saveZeroConnectors$);
   const optimisticConnected = useGet(justConnectedTypes$);
   const clearOptimistic = useSet(clearJustConnectedTypes$);
   const addDialogOpen = useGet(composerAddDialogOpen$);
@@ -406,11 +406,13 @@ export function ZeroChatComposer({
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
   maybeClearOptimistic(optimisticConnected, connectorMap, clearOptimistic);
-  const addedSkills =
-    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
-  const addedSet = new Set(addedSkills);
+  const addedConnectors =
+    addedConnectorsLoadable.state === "hasData"
+      ? addedConnectorsLoadable.data
+      : [];
+  const addedSet = new Set(addedConnectors);
 
-  const agentConnectors: ComposerConnectorItem[] = addedSkills
+  const agentConnectors: ComposerConnectorItem[] = addedConnectors
     .filter((name) => connectorMap.has(name as ConnectorType))
     .map((name) => buildConnectorItem(name, connectorMap, optimisticConnected))
     .sort((a, b) => Number(a.connected) - Number(b.connected));
@@ -419,9 +421,9 @@ export function ZeroChatComposer({
     const label = resolveConnectorLabel(type, connectorMap);
     detach(
       (async () => {
-        await addSkill(type);
+        await addConnector(type);
         try {
-          await saveSkills();
+          await saveConnectors();
         } catch (error) {
           throwIfAbort(error);
           // May fail during onboarding when compose doesn't exist yet — ignore

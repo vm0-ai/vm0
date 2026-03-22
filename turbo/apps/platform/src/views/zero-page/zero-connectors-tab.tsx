@@ -1,8 +1,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { IconPlus } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/core";
-import { skills$ } from "../../data/skills.ts";
-import { ZeroSkillCard } from "./zero-skill-card.tsx";
+import { ZeroConnectorCard } from "./zero-connector-card.tsx";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -26,29 +25,29 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 
-interface ZeroSkillsTabProps {
-  addedSkills: string[];
-  addedSkillsLoading: boolean;
-  skillsDirty: boolean;
-  skillsSaving: boolean;
-  onAddSkill: (name: string) => void;
-  onRemoveSkill: (name: string) => void;
-  onSaveSkills: () => void;
-  onDiscardSkills: () => void;
+interface ZeroConnectorsTabProps {
+  addedConnectors: string[];
+  addedConnectorsLoading: boolean;
+  connectorsDirty: boolean;
+  connectorsSaving: boolean;
+  onAddConnector: (name: string) => void;
+  onRemoveConnector: (name: string) => void;
+  onSaveConnectors: () => void;
+  onDiscardConnectors: () => void;
   agentName?: string;
 }
 
-export function ZeroSkillsTab({
-  addedSkills,
-  addedSkillsLoading,
-  skillsDirty,
-  skillsSaving,
+export function ZeroConnectorsTab({
+  addedConnectors,
+  addedConnectorsLoading,
+  connectorsDirty,
+  connectorsSaving,
   agentName,
-  onAddSkill,
-  onRemoveSkill,
-  onSaveSkills,
-  onDiscardSkills,
-}: ZeroSkillsTabProps) {
+  onAddConnector,
+  onRemoveConnector,
+  onSaveConnectors,
+  onDiscardConnectors,
+}: ZeroConnectorsTabProps) {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
@@ -62,38 +61,29 @@ export function ZeroSkillsTab({
   const scopeReviewType = useGet(scopeReviewType$);
   const setScopeReviewType = useSet(setScopeReviewType$);
 
-  const allSkills = useGet(skills$);
-
   const optimisticConnected = useGet(justConnectedTypes$);
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
-  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
-  const addedSet = new Set(addedSkills);
+  const addedSet = new Set(addedConnectors);
 
   const handleConnectSuccess = (type: string) => {
-    onAddSkill(type);
-    const label =
-      skillMap.get(type)?.label ??
-      connectorMap.get(type as ConnectorType)?.label ??
-      type;
+    onAddConnector(type);
+    const label = connectorMap.get(type as ConnectorType)?.label ?? type;
     toast.success(`${label} added to connectors`);
   };
 
-  const handleRemoveSkill = (name: string) => {
-    onRemoveSkill(name);
-    const label =
-      skillMap.get(name)?.label ??
-      connectorMap.get(name as ConnectorType)?.label ??
-      name;
+  const handleRemoveConnector = (name: string) => {
+    onRemoveConnector(name);
+    const label = connectorMap.get(name as ConnectorType)?.label ?? name;
     toast.success(`${label} removed from connectors`);
   };
 
   return (
     <div className="mx-auto max-w-[900px] flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* Add skill */}
+        {/* Add connector */}
         <button
           type="button"
           onClick={() => setAddDialogOpen(true)}
@@ -119,7 +109,7 @@ export function ZeroSkillsTab({
         </button>
 
         {/* Skeleton cards while loading */}
-        {addedSkillsLoading && (
+        {addedConnectorsLoading && (
           <>
             {Array.from({ length: 3 }, (_, i) => (
               <div
@@ -138,22 +128,20 @@ export function ZeroSkillsTab({
           </>
         )}
 
-        {/* Skill cards — only show skills that have a matching connector */}
-        {addedSkills
+        {/* Connector cards — only show connectors that have a matching connector type */}
+        {addedConnectors
           .filter((name) => connectorMap.has(name as ConnectorType))
           .map((name) => {
-            const skill = skillMap.get(name);
             const connector = connectorMap.get(name as ConnectorType) ?? null;
             const effectiveConnector =
               optimisticConnected.has(name) && connector && !connector.connected
                 ? { ...connector, connected: true }
                 : connector;
             return (
-              <ZeroSkillCard
+              <ZeroConnectorCard
                 key={name}
                 name={name}
-                label={skill?.label ?? name}
-                iconUrl={skill?.icon}
+                label={connectorMap.get(name as ConnectorType)?.label ?? name}
                 connector={effectiveConnector}
                 pollingType={pollingType}
                 onConnect={() => {
@@ -174,12 +162,10 @@ export function ZeroSkillsTab({
                 onDisconnect={() => {
                   detach(disconnect(name as ConnectorType), Reason.DomCallback);
                   const label =
-                    skillMap.get(name)?.label ??
-                    connectorMap.get(name as ConnectorType)?.label ??
-                    name;
+                    connectorMap.get(name as ConnectorType)?.label ?? name;
                   toast.success(`${label} disconnected`);
                 }}
-                onRemove={() => handleRemoveSkill(name)}
+                onRemove={() => handleRemoveConnector(name)}
                 onReviewScopes={() => setScopeReviewType(name as ConnectorType)}
               />
             );
@@ -218,11 +204,11 @@ export function ZeroSkillsTab({
         />
       )}
 
-      {(skillsDirty || skillsSaving) && (
+      {(connectorsDirty || connectorsSaving) && (
         <ZeroUnsavedBar
-          onDiscard={onDiscardSkills}
-          onSave={onSaveSkills}
-          saving={skillsSaving}
+          onDiscard={onDiscardConnectors}
+          onSave={onSaveConnectors}
+          saving={connectorsSaving}
         />
       )}
     </div>

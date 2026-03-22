@@ -22,8 +22,8 @@ import {
   zeroSaving$,
   setZeroStep$,
   completeZeroOnboarding$,
-  zeroSelectedSkills$,
-  toggleZeroSkill$,
+  zeroSelectedConnectors$,
+  toggleZeroConnector$,
   zeroOnboardingError$,
   clearZeroOnboardingError$,
   completeMemberOnboarding$,
@@ -204,24 +204,24 @@ function OnboardingConnectorCard({
 
 function OnboardingConnectorsStep({
   name,
-  selectedSkills,
+  selectedConnectors,
 }: {
   name: string;
-  selectedSkills: string[];
+  selectedConnectors: string[];
 }) {
   const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
   const setSelectedConnector = useSet(setSelectedConnectorType$);
   const pageSignal = useGet(pageSignal$);
-  const toggleSkill = useSet(toggleZeroSkill$);
+  const toggleConnector = useSet(toggleZeroConnector$);
 
   const allConnectors =
     connectorTypesLoadable.state === "hasData"
       ? connectorTypesLoadable.data
       : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
-  const selectedSet = new Set(selectedSkills);
+  const selectedSet = new Set(selectedConnectors);
 
   const connectorEntries = Object.entries(CONNECTOR_TYPES) as [
     ConnectorType,
@@ -231,7 +231,7 @@ function OnboardingConnectorsStep({
   const handleClick = (type: ConnectorType) => {
     // Already selected → deselect (don't disconnect)
     if (selectedSet.has(type)) {
-      toggleSkill(type);
+      toggleConnector(type);
       return;
     }
 
@@ -239,7 +239,7 @@ function OnboardingConnectorsStep({
 
     // Connector already connected → select immediately
     if (connector?.connected) {
-      toggleSkill(type);
+      toggleConnector(type);
       return;
     }
 
@@ -251,7 +251,7 @@ function OnboardingConnectorsStep({
       detach(
         (async () => {
           await connect(type, pageSignal);
-          toggleSkill(type);
+          toggleConnector(type);
         })(),
         Reason.DomCallback,
       );
@@ -297,8 +297,8 @@ export function ZeroOnboarding({
   const setStep = useSet(setZeroStep$);
   const name = useGet(zeroAgentName$);
   const saving = useGet(zeroSaving$);
-  const selectedSkills = useGet(zeroSelectedSkills$);
-  const toggleSkill = useSet(toggleZeroSkill$);
+  const selectedConnectors = useGet(zeroSelectedConnectors$);
+  const toggleConnector = useSet(toggleZeroConnector$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
@@ -418,7 +418,7 @@ export function ZeroOnboarding({
         >
           <OnboardingConnectorsStep
             name={name}
-            selectedSkills={selectedSkills}
+            selectedConnectors={selectedConnectors}
           />
           <div className={`${footerClass} justify-between`}>
             <Button
@@ -441,7 +441,7 @@ export function ZeroOnboarding({
       {selectedConnectorType && (
         <ConnectModal
           onClose={() => setSelected(null)}
-          onSuccess={() => toggleSkill(selectedConnectorType)}
+          onSuccess={() => toggleConnector(selectedConnectorType)}
         />
       )}
 

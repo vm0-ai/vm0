@@ -10,10 +10,9 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 
-interface ZeroSkillCardProps {
+interface ZeroConnectorCardProps {
   name: string;
   label: string;
-  iconUrl: string | undefined;
   connector: ConnectorTypeWithStatus | null;
   pollingType: ConnectorType | null;
   onConnect: () => void;
@@ -22,17 +21,16 @@ interface ZeroSkillCardProps {
   onReviewScopes?: () => void;
 }
 
-export function ZeroSkillCard({
+export function ZeroConnectorCard({
   name,
   label,
-  iconUrl,
   connector,
   pollingType,
   onConnect,
   onDisconnect,
   onRemove,
   onReviewScopes,
-}: ZeroSkillCardProps) {
+}: ZeroConnectorCardProps) {
   const isPolling = pollingType === name;
 
   return (
@@ -44,8 +42,6 @@ export function ZeroSkillCard({
         <span className="flex h-7 w-7 shrink-0 items-center justify-center">
           {name in CONNECTOR_TYPES ? (
             <ConnectorIcon type={name as ConnectorType} size={22} />
-          ) : iconUrl ? (
-            <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
           ) : (
             <IconPlug
               size={18}

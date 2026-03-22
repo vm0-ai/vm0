@@ -120,7 +120,7 @@ function defaultFormValues(): ZeroFormValues {
 
 const internalFormValues$ = state<ZeroFormValues>(defaultFormValues());
 const internalSaving$ = state(false);
-const internalSelectedSkills$ = state<string[]>([]);
+const internalSelectedConnectors$ = state<string[]>([]);
 const internalOnboardingError$ = state<string | null>(null);
 
 // ---------------------------------------------------------------------------
@@ -131,8 +131,8 @@ export const zeroOnboardingStep$ = computed((get) => get(internalStep$));
 export const zeroAgentName$ = computed((get) => get(internalAgentName$));
 export const zeroFormValues$ = computed((get) => get(internalFormValues$));
 export const zeroSaving$ = computed((get) => get(internalSaving$));
-export const zeroSelectedSkills$ = computed((get) =>
-  get(internalSelectedSkills$),
+export const zeroSelectedConnectors$ = computed((get) =>
+  get(internalSelectedConnectors$),
 );
 
 export const zeroOnboardingError$ = computed((get) =>
@@ -204,13 +204,15 @@ export const setZeroProviderType$ = command(
   },
 );
 
-export const toggleZeroSkill$ = command(({ set }, skillValue: string) => {
-  set(internalSelectedSkills$, (prev) =>
-    prev.includes(skillValue)
-      ? prev.filter((s) => s !== skillValue)
-      : [...prev, skillValue],
-  );
-});
+export const toggleZeroConnector$ = command(
+  ({ set }, connectorValue: string) => {
+    set(internalSelectedConnectors$, (prev) =>
+      prev.includes(connectorValue)
+        ? prev.filter((s) => s !== connectorValue)
+        : [...prev, connectorValue],
+    );
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Commands: lifecycle
@@ -288,11 +290,13 @@ export const completeZeroOnboarding$ = command(
 
     try {
       const displayName = get(internalAgentName$);
-      const selectedSkills = get(internalSelectedSkills$);
+      const selectedConnectors = get(internalSelectedConnectors$);
       const fetchFn = get(fetch$);
 
       // Merge seed skills with user-selected skills (deduplicated)
-      const allConnectors = [...new Set([...SEED_SKILLS, ...selectedSkills])];
+      const allConnectors = [
+        ...new Set([...SEED_SKILLS, ...selectedConnectors]),
+      ];
 
       // Create agent via zero agents API
       const createResp = await fetchFn("/api/zero/agents", {

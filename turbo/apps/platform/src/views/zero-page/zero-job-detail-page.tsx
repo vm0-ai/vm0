@@ -20,7 +20,7 @@ import {
   CardContent,
 } from "@vm0/ui";
 import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
-import { ZeroSkillsTab } from "./zero-skills-tab.tsx";
+import { ZeroConnectorsTab } from "./zero-connectors-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
 
@@ -48,12 +48,12 @@ import {
   zeroJobUpdateSettings$,
   zeroJobSettingsSaving$,
   deleteZeroJobAgent$,
-  zeroJobAddedSkills$,
-  zeroJobSkillsDirty$,
-  addZeroJobSkill$,
-  removeZeroJobSkill$,
-  saveZeroJobSkills$,
-  discardZeroJobSkills$,
+  zeroJobAddedConnectors$,
+  zeroJobConnectorsDirty$,
+  addZeroJobConnector$,
+  removeZeroJobConnector$,
+  saveZeroJobConnectors$,
+  discardZeroJobConnectors$,
   zeroJobActiveTab$,
   setZeroJobActiveTab$,
 } from "../../signals/zero-page/zero-job-detail.ts";
@@ -207,26 +207,26 @@ function extractAgentFields(
 // Tab wrappers — resolve signals into shared component props
 // ---------------------------------------------------------------------------
 
-function JobSkillsTab({ agentName }: { agentName: string }) {
-  const addedSkills = useGet(zeroJobAddedSkills$);
-  const skillsDirty = useGet(zeroJobSkillsDirty$);
-  const skillsSaving = useGet(zeroJobSettingsSaving$);
-  const addSkill = useSet(addZeroJobSkill$);
-  const removeSkill = useSet(removeZeroJobSkill$);
-  const saveSkills = useSet(saveZeroJobSkills$);
-  const discardSkills = useSet(discardZeroJobSkills$);
+function JobConnectorsTab({ agentName }: { agentName: string }) {
+  const addedConnectors = useGet(zeroJobAddedConnectors$);
+  const connectorsDirty = useGet(zeroJobConnectorsDirty$);
+  const connectorsSaving = useGet(zeroJobSettingsSaving$);
+  const addConnector = useSet(addZeroJobConnector$);
+  const removeConnector = useSet(removeZeroJobConnector$);
+  const saveConnectors = useSet(saveZeroJobConnectors$);
+  const discardConnectors = useSet(discardZeroJobConnectors$);
 
   return (
-    <ZeroSkillsTab
-      addedSkills={addedSkills}
-      addedSkillsLoading={false}
-      skillsDirty={skillsDirty}
-      skillsSaving={skillsSaving}
+    <ZeroConnectorsTab
+      addedConnectors={addedConnectors}
+      addedConnectorsLoading={false}
+      connectorsDirty={connectorsDirty}
+      connectorsSaving={connectorsSaving}
       agentName={agentName}
-      onAddSkill={addSkill}
-      onRemoveSkill={removeSkill}
-      onSaveSkills={() => detach(saveSkills(), Reason.DomCallback)}
-      onDiscardSkills={() => discardSkills()}
+      onAddConnector={addConnector}
+      onRemoveConnector={removeConnector}
+      onSaveConnectors={() => detach(saveConnectors(), Reason.DomCallback)}
+      onDiscardConnectors={() => discardConnectors()}
     />
   );
 }
@@ -443,7 +443,9 @@ export function ZeroJobDetailPage({
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        {activeTab === "connectors" && <JobSkillsTab agentName={displayName} />}
+        {activeTab === "connectors" && (
+          <JobConnectorsTab agentName={displayName} />
+        )}
 
         {activeTab === "schedule" && <JobScheduleTab agentName={displayName} />}
 
