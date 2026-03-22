@@ -278,6 +278,9 @@ export const schedulesEnableContract = c.router({
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
+    query: z.object({
+      org: z.string().optional(),
+    }),
     body: z.object({
       composeId: z.string().uuid("Compose ID required"),
     }),
@@ -306,6 +309,9 @@ export const schedulesDisableContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
+    }),
+    query: z.object({
+      org: z.string().optional(),
     }),
     body: z.object({
       composeId: z.string().uuid("Compose ID required"),

@@ -475,6 +475,7 @@ export const composesInstructionsContract = c.router({
     responses: {
       200: composeInstructionsResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get agent compose instructions content",

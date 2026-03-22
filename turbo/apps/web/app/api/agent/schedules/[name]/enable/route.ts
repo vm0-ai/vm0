@@ -1,7 +1,7 @@
 import {
   createHandler,
+  createSafeErrorHandler,
   tsr,
-  TsRestResponse,
 } from "../../../../../../src/lib/ts-rest-handler";
 import { schedulesEnableContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
@@ -17,7 +17,7 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 const log = logger("api:schedules:enable");
 
 const router = tsr.router(schedulesEnableContract, {
-  enable: async ({ params, body, headers }, { request }) => {
+  enable: async ({ params, query, body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -26,10 +26,9 @@ const router = tsr.router(schedulesEnableContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
     const {
       org: { orgId },
-    } = await resolveOrg(authCtx, orgSlug);
+    } = await resolveOrg(authCtx, query.org);
 
     log.debug(`Enabling schedule ${params.name} for compose ${body.composeId}`);
 
@@ -70,48 +69,8 @@ const router = tsr.router(schedulesEnableContract, {
   },
 });
 
-function errorHandler(err: unknown): TsRestResponse | void {
-  if (err && typeof err === "object" && "bodyError" in err) {
-    const validationError = err as {
-      bodyError?: {
-        issues: Array<{ path: string[]; message: string }>;
-      } | null;
-    };
-
-    if (validationError.bodyError) {
-      const issue = validationError.bodyError.issues[0];
-      if (issue) {
-        return TsRestResponse.fromJson(
-          {
-            error: {
-              message: "composeId must be a valid UUID",
-              code: "BAD_REQUEST",
-            },
-          },
-          { status: 400 },
-        );
-      }
-    }
-  }
-
-  // Handle invalid JSON body (SyntaxError from JSON.parse)
-  if (err instanceof SyntaxError) {
-    return TsRestResponse.fromJson(
-      {
-        error: {
-          message: "composeId must be a valid UUID",
-          code: "BAD_REQUEST",
-        },
-      },
-      { status: 400 },
-    );
-  }
-
-  return undefined;
-}
-
 const handler = createHandler(schedulesEnableContract, router, {
-  errorHandler,
+  errorHandler: createSafeErrorHandler("schedules:enable"),
 });
 
 export { handler as POST };
