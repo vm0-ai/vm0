@@ -19,6 +19,7 @@ import {
   backfillOrgMembersMetadata,
   backfillUsers,
   newStats,
+  MAX_ERRORS,
   type ClerkClient,
   type BackfillStats,
   type Db,
@@ -523,6 +524,26 @@ describe("backfill-clerk-metadata", () => {
       const row2 = await getOrgRow(orgId2);
       expect(row2).toBeDefined();
       expect(row2!.tier).toBe("team");
+    });
+
+    it("aborts when error count exceeds threshold", async () => {
+      // Create enough orgs with invalid UUIDs to exceed MAX_ERRORS
+      const badOrgs = Array.from({ length: MAX_ERRORS + 5 }, (_, i) => ({
+        id: uniqueId(`bf-thresh-${i}`),
+        publicMetadata: {
+          tier: "pro",
+          default_agent_compose_id: "not-a-valid-uuid",
+        },
+      }));
+
+      const clerk = mockClerkClient({ orgs: badOrgs });
+
+      await expect(
+        backfillOrgMetadata(clerk, db(), stats, false),
+      ).rejects.toThrow("exceeded threshold");
+
+      // Should have accumulated just over MAX_ERRORS before aborting
+      expect(stats.errors.length).toBe(MAX_ERRORS + 1);
     });
   });
 });
