@@ -2950,6 +2950,7 @@ export async function insertOrgDefaultModelProvider(
  * Inserts with defaults if missing, does nothing if already present.
  */
 export async function ensureOrgRow(orgId: string): Promise<void> {
+  initServices();
   await globalThis.services.db
     .insert(orgMetadata)
     .values({ orgId })
@@ -3094,6 +3095,95 @@ export async function insertOrgMembersEntry(entry: {
         updatedAt: now,
       },
     });
+}
+
+/**
+ * Return the Drizzle DB instance from globalThis.services.
+ * Useful for passing to script functions under test that need a db parameter.
+ */
+export function getTestDb() {
+  initServices();
+  return globalThis.services.db;
+}
+
+/**
+ * Read a full org_metadata row by orgId.
+ * Returns undefined if no row exists.
+ */
+export async function getOrgRow(orgId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Read a full org_members_metadata row by (orgId, userId).
+ * Returns undefined if no row exists.
+ */
+export async function getOrgMembersEntry(orgId: string, userId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    );
+  return row;
+}
+
+/**
+ * Delete an org_members_metadata row by (orgId, userId).
+ */
+export async function deleteOrgMembersEntry(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  await globalThis.services.db
+    .delete(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    );
+}
+
+/**
+ * Read a full users row by userId.
+ * Returns undefined if no row exists.
+ */
+export async function getUserRow(userId: string) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Insert a user row for testing.
+ */
+export async function insertUserRow(
+  userId: string,
+  emailUnsubscribed: boolean,
+): Promise<void> {
+  await globalThis.services.db
+    .insert(users)
+    .values({ id: userId, emailUnsubscribed })
+    .onConflictDoNothing();
+}
+
+/**
+ * Delete a user row by userId.
+ */
+export async function deleteUserRow(userId: string): Promise<void> {
+  await globalThis.services.db.delete(users).where(eq(users.id, userId));
 }
 
 export async function findTestRunnerJobEntry(runId: string) {

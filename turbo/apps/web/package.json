@@ -16,7 +16,8 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:dev-seed": "dotenv -e .env.local -- tsx scripts/dev-seed.ts",
     "db:studio": "drizzle-kit studio",
-    "db:reset": "tsx scripts/reset-db.ts"
+    "db:reset": "tsx scripts/reset-db.ts",
+    "db:backfill-clerk": "dotenv -e .env.local -- tsx scripts/backfill-clerk-metadata.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",
