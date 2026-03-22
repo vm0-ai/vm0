@@ -139,7 +139,7 @@ cmd_submit() {
   log "Submitting job to $RUNNER_NAME (profile: $PROFILE, prompt: $PROMPT)..."
   # Use printf %q to safely escape the prompt for remote shell
   ESCAPED_PROMPT=$(printf '%q' "$PROMPT")
-  ssh_cmd "$RUNNER_BIN submit --group $RUNNER_GROUP --profile $PROFILE --prompt $ESCAPED_PROMPT --timeout 120"
+  ssh_cmd "$RUNNER_BIN local submit --group $RUNNER_GROUP --profile $PROFILE --prompt $ESCAPED_PROMPT --timeout 120"
 }
 
 cmd_deploy_local() {

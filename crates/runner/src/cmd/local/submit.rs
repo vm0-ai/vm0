@@ -1,4 +1,4 @@
-//! `runner submit` — submit a job to locally running runners via file queue.
+//! `runner local submit` — submit a job to locally running runners via file queue.
 //!
 //! Writes a `{job_id}.job` file into the group directory and polls for a
 //! `{job_id}.result` file written by the runner that claimed the job.
