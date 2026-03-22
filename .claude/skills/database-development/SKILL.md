@@ -53,6 +53,29 @@ pnpm db:migrate
 pnpm db:migrate
 ```
 
+## Data Migration Scripts (Clerk API)
+
+When a data migration requires **external API calls** (e.g., reading from Clerk),
+it cannot be done in a SQL migration. These scripts live in:
+
+```
+turbo/apps/web/scripts/migrations/NNN-description/
+├── backfill.ts   # (or sync.ts) — the migration script
+└── README.md     # Usage, prerequisites, verification steps
+```
+
+Pure data transforms that only touch the database should use regular SQL migrations instead.
+
+### Convention
+
+- **Numbered sequentially**: `001-`, `002-`, etc. — never reuse numbers
+- **Permanent**: these scripts are historical records and MUST NOT be deleted,
+  even after the migration is complete and the referenced tables/schemas no longer exist
+- **Default dry-run**: use `parseArgs` with `--migrate` flag; default mode is dry-run
+- **Self-contained**: each directory has its own README with usage instructions
+- **Excluded from CI**: completed scripts that reference deleted schemas are excluded
+  from `tsconfig.json` and `eslint.config.js` to avoid build errors
+
 ## Checklist
 
 Before committing:
