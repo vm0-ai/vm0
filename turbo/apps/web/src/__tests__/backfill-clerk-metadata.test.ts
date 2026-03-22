@@ -23,7 +23,7 @@ import {
   type ClerkClient,
   type BackfillStats,
   type Db,
-} from "../../scripts/backfill-clerk-metadata";
+} from "../../scripts/migrations/005-backfill-clerk-metadata/backfill";
 
 // ---------------------------------------------------------------------------
 // Mock Clerk client factory

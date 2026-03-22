@@ -1,19 +1,22 @@
 #!/usr/bin/env tsx
 
 /**
- * One-time backfill script: reads ALL org/membership/user data from Clerk API
- * and writes to local DB tables (org_metadata, org_members_metadata, users).
+ * Backfill Clerk metadata into local DB tables.
  *
- * This ensures complete data coverage beyond what lazy migration (#5591) achieves,
- * since lazy migration only covers active users who trigger a read.
+ * Reads ALL org/membership/user data from Clerk API and writes to
+ * org_metadata, org_members_metadata, and users tables. Ensures complete
+ * data coverage beyond what lazy migration (#5591) achieves.
  *
- * Usage:
- *   dotenv -e .env.local -- tsx scripts/backfill-clerk-metadata.ts
- *   dotenv -e .env.local -- tsx scripts/backfill-clerk-metadata.ts --dry-run
+ * Usage (from turbo/apps/web):
+ *   tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts
+ *   tsx scripts/migrations/005-backfill-clerk-metadata/backfill.ts --migrate
  *
- * Required env vars: DATABASE_URL, CLERK_SECRET_KEY
+ * Environment:
+ *   DATABASE_URL        — Required
+ *   CLERK_SECRET_KEY    — Required only with --migrate
  */
 
+import { parseArgs } from "node:util";
 import {
   createClerkClient,
   type Organization,
@@ -24,9 +27,9 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
-import { orgMetadata } from "../src/db/schema/org-metadata";
-import { orgMembersMetadata } from "../src/db/schema/org-members-metadata";
-import { users } from "../src/db/schema/user";
+import { orgMetadata } from "../../../src/db/schema/org-metadata";
+import { orgMembersMetadata } from "../../../src/db/schema/org-members-metadata";
+import { users } from "../../../src/db/schema/user";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,25 +49,26 @@ export type ClerkClient = ReturnType<typeof createClerkClient>;
 export type Db = PgDatabase<PgQueryResultHKT>;
 
 // ---------------------------------------------------------------------------
+// CLI argument parsing
+// ---------------------------------------------------------------------------
+
+const { values: args } = parseArgs({
+  options: {
+    migrate: { type: "boolean", default: false },
+  },
+  strict: true,
+});
+
+const DRY_RUN = !args.migrate;
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
+const THROTTLE_MS = 100;
+
 /** Abort the backfill if more than this many per-item errors accumulate. */
 export const MAX_ERRORS = 50;
-
-export function createTooManyErrorsError(count: number): Error {
-  const err = new Error(
-    `Backfill aborted: ${count} errors exceeded threshold of ${MAX_ERRORS}`,
-  );
-  err.name = "TooManyErrorsError";
-  return err;
-}
-
-function checkErrorThreshold(stats: BackfillStats): void {
-  if (stats.errors.length > MAX_ERRORS) {
-    throw createTooManyErrorsError(stats.errors.length);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,6 +85,16 @@ export function newStats(): BackfillStats {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function checkErrorThreshold(stats: BackfillStats): void {
+  if (stats.errors.length > MAX_ERRORS) {
+    const err = new Error(
+      `Backfill aborted: ${stats.errors.length} errors exceeded threshold of ${MAX_ERRORS}`,
+    );
+    err.name = "TooManyErrorsError";
+    throw err;
+  }
 }
 
 /**
@@ -102,7 +116,7 @@ async function* paginate<T>(
     yield data;
     offset += data.length;
     if (offset >= totalCount) break;
-    await sleep(100); // rate-limit protection
+    await sleep(THROTTLE_MS);
   }
 }
 
@@ -163,7 +177,7 @@ export async function backfillOrgMetadata(
                 tier: sql`CASE WHEN ${orgMetadata.tier} = 'free' THEN EXCLUDED.tier ELSE ${orgMetadata.tier} END`,
                 // Only update defaultAgentComposeId if DB is null
                 defaultAgentComposeId: sql`COALESCE(${orgMetadata.defaultAgentComposeId}, EXCLUDED.default_agent_compose_id)`,
-                updatedAt: new Date(),
+                updatedAt: sql`NOW()`,
               },
             });
         }
@@ -173,11 +187,7 @@ export async function backfillOrgMetadata(
           `  org ${org.id}: tier=${clerkTier}, composeId=${clerkComposeId ?? "null"}${dryRun ? " (dry-run)" : ""}`,
         );
       } catch (err) {
-        stats.errors.push({
-          type: "org",
-          id: org.id,
-          error: String(err),
-        });
+        stats.errors.push({ type: "org", id: org.id, error: String(err) });
         console.log(`  ERROR org ${org.id}: ${err}`);
         checkErrorThreshold(stats);
       }
@@ -222,7 +232,6 @@ export async function backfillOrgMembersMetadata(
             }
 
             if (!dryRun) {
-              const now = new Date();
               await db
                 .insert(orgMembersMetadata)
                 .values({
@@ -235,8 +244,8 @@ export async function backfillOrgMembersMetadata(
                   pinnedAgentIds: toStringArray(meta.pinned_agent_ids),
                   sendMode: parseSendMode(meta.send_mode),
                   onboardingDone: meta.onboarding_done === true,
-                  createdAt: now,
-                  updatedAt: now,
+                  createdAt: sql`NOW()`,
+                  updatedAt: sql`NOW()`,
                 })
                 .onConflictDoNothing();
             }
@@ -290,7 +299,7 @@ export async function backfillUsers(
             .values({ id: user.id, emailUnsubscribed: true })
             .onConflictDoUpdate({
               target: users.id,
-              set: { emailUnsubscribed: true, updatedAt: new Date() },
+              set: { emailUnsubscribed: true, updatedAt: sql`NOW()` },
             });
         }
 
@@ -299,11 +308,7 @@ export async function backfillUsers(
           `  user ${user.id}: email_unsubscribed=true${dryRun ? " (dry-run)" : ""}`,
         );
       } catch (err) {
-        stats.errors.push({
-          type: "user",
-          id: user.id,
-          error: String(err),
-        });
+        stats.errors.push({ type: "user", id: user.id, error: String(err) });
         console.log(`  ERROR user ${user.id}: ${err}`);
         checkErrorThreshold(stats);
       }
@@ -316,38 +321,48 @@ export async function backfillUsers(
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const dryRun = process.argv.includes("--dry-run");
-
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL environment variable is required");
-  }
-  if (!process.env.CLERK_SECRET_KEY) {
-    throw new Error("CLERK_SECRET_KEY environment variable is required");
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required");
   }
 
-  const clerk = createClerkClient({
-    secretKey: process.env.CLERK_SECRET_KEY,
-  });
-  const sqlClient = postgres(process.env.DATABASE_URL, { max: 1 });
-  const db = drizzle(sqlClient);
+  console.log("=== Backfill Clerk Metadata ===");
+  console.log(
+    `Mode: ${DRY_RUN ? "dry-run (pass --migrate to execute)" : "MIGRATE"}`,
+  );
+  console.log();
 
+  let clerk: ClerkClient | null = null;
+
+  if (!DRY_RUN) {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) {
+      throw new Error("CLERK_SECRET_KEY is required for --migrate");
+    }
+    clerk = createClerkClient({ secretKey: clerkSecretKey });
+  }
+
+  const pg = postgres(databaseUrl, { max: 1 });
+  const db = drizzle(pg);
   const stats = newStats();
 
   try {
-    if (dryRun) {
-      console.log("DRY RUN MODE — no DB writes will occur\n");
+    console.log("Phase 1: Backfilling org_metadata...");
+    if (clerk) {
+      await backfillOrgMetadata(clerk, db, stats, DRY_RUN);
     }
 
-    console.log("Phase 1: Backfilling org_metadata...");
-    await backfillOrgMetadata(clerk, db, stats, dryRun);
-
     console.log("\nPhase 2: Backfilling org_members_metadata...");
-    await backfillOrgMembersMetadata(clerk, db, stats, dryRun);
+    if (clerk) {
+      await backfillOrgMembersMetadata(clerk, db, stats, DRY_RUN);
+    }
 
     console.log("\nPhase 3: Backfilling users...");
-    await backfillUsers(clerk, db, stats, dryRun);
+    if (clerk) {
+      await backfillUsers(clerk, db, stats, DRY_RUN);
+    }
 
-    console.log("\n=== Backfill Summary ===");
+    console.log("\n=== Summary ===");
     console.log(
       `Orgs:    ${stats.orgs.processed} processed, ${stats.orgs.upserted} upserted, ${stats.orgs.skipped} skipped`,
     );
@@ -363,14 +378,22 @@ async function main(): Promise<void> {
         console.log(`  - [${e.type}] ${e.id}: ${e.error}`);
       }
     }
+
+    if (DRY_RUN) {
+      console.log(
+        "\nDry run — no changes were made. Pass --migrate to execute.",
+      );
+    }
+
+    if (stats.errors.length > 0) {
+      process.exitCode = 1;
+    }
   } finally {
-    await sqlClient.end();
+    await pg.end();
   }
 }
 
-// Only run main() when executed directly (not imported by tests)
-const isDirectRun =
-  process.argv[1]?.includes("backfill-clerk-metadata") ?? false;
-if (isDirectRun) {
-  await main();
-}
+main().catch((err) => {
+  console.error("Backfill failed:", err);
+  process.exit(1);
+});
