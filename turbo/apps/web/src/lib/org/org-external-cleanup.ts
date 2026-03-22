@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { ConnectorType } from "@vm0/core";
+import { connectorTypeSchema } from "@vm0/core";
 import { logger } from "../logger";
 import { getStripe } from "../stripe";
 import { deleteWebhook } from "../telegram/client";
@@ -21,132 +21,127 @@ const log = logger("service:org-external-cleanup");
  * Idempotent: safe to call multiple times.
  */
 export async function cleanupOrgExternalServices(orgId: string): Promise<void> {
-  await cancelStripeSubscription(orgId);
-  await deregisterTelegramWebhooks(orgId);
-  await revokeOrgConnectorTokens(orgId);
-  await cleanupOrgSlackInstallation(orgId);
-}
+  const steps = [
+    { name: "stripe subscription", fn: () => cancelStripeSubscription(orgId) },
+    { name: "telegram webhooks", fn: () => deregisterTelegramWebhooks(orgId) },
+    { name: "connector tokens", fn: () => revokeOrgConnectorTokens(orgId) },
+    {
+      name: "slack installation",
+      fn: () => cleanupOrgSlackInstallation(orgId),
+    },
+  ];
 
-async function cancelStripeSubscription(orgId: string): Promise<void> {
-  try {
-    const db = globalThis.services.db;
-    const [meta] = await db
-      .select({
-        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        subscriptionStatus: orgMetadata.subscriptionStatus,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-
-    if (!meta?.stripeSubscriptionId || meta.subscriptionStatus === "canceled") {
-      return;
+  for (const step of steps) {
+    try {
+      await step.fn();
+    } catch (error) {
+      log.error(`failed to cleanup ${step.name} (best-effort)`, {
+        orgId,
+        error,
+      });
     }
-
-    const stripe = getStripe();
-    await stripe.subscriptions.cancel(meta.stripeSubscriptionId);
-    log.info("stripe subscription cancelled", {
-      orgId,
-      subId: meta.stripeSubscriptionId,
-    });
-  } catch (error) {
-    log.error("failed to cancel stripe subscription (best-effort)", {
-      orgId,
-      error,
-    });
   }
 }
 
+async function cancelStripeSubscription(orgId: string): Promise<void> {
+  const db = globalThis.services.db;
+  const [meta] = await db
+    .select({
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  if (!meta?.stripeSubscriptionId || meta.subscriptionStatus === "canceled") {
+    return;
+  }
+
+  const stripe = getStripe();
+  await stripe.subscriptions.cancel(meta.stripeSubscriptionId);
+  log.info("stripe subscription cancelled", {
+    orgId,
+    subId: meta.stripeSubscriptionId,
+  });
+}
+
 async function deregisterTelegramWebhooks(orgId: string): Promise<void> {
-  try {
-    const db = globalThis.services.db;
-    const installations = await db
-      .select({
-        id: telegramInstallations.id,
-        encryptedBotToken: telegramInstallations.encryptedBotToken,
-      })
-      .from(telegramInstallations)
-      .innerJoin(
-        agentComposes,
-        eq(telegramInstallations.defaultComposeId, agentComposes.id),
-      )
-      .where(eq(agentComposes.orgId, orgId));
+  const db = globalThis.services.db;
+  const installations = await db
+    .select({
+      id: telegramInstallations.id,
+      encryptedBotToken: telegramInstallations.encryptedBotToken,
+    })
+    .from(telegramInstallations)
+    .innerJoin(
+      agentComposes,
+      eq(telegramInstallations.defaultComposeId, agentComposes.id),
+    )
+    .where(eq(agentComposes.orgId, orgId));
 
-    const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
-    for (const inst of installations) {
-      try {
-        const botToken = decryptSecretValue(
-          inst.encryptedBotToken,
-          encryptionKey,
-        );
-        await deleteWebhook(botToken);
-        log.debug("telegram webhook deregistered", {
-          installationId: inst.id,
-        });
-      } catch (error) {
-        log.error("failed to deregister telegram webhook (best-effort)", {
-          installationId: inst.id,
-          error,
-        });
-      }
+  for (const inst of installations) {
+    try {
+      const botToken = decryptSecretValue(
+        inst.encryptedBotToken,
+        encryptionKey,
+      );
+      await deleteWebhook(botToken);
+      log.debug("telegram webhook deregistered", {
+        installationId: inst.id,
+      });
+    } catch (error) {
+      log.error("failed to deregister telegram webhook (best-effort)", {
+        installationId: inst.id,
+        error,
+      });
     }
-  } catch (error) {
-    log.error("failed to query telegram installations (best-effort)", {
-      orgId,
-      error,
-    });
   }
 }
 
 async function revokeOrgConnectorTokens(orgId: string): Promise<void> {
-  try {
-    const db = globalThis.services.db;
-    const orgConnectors = await db
-      .select({ userId: connectors.userId, type: connectors.type })
-      .from(connectors)
-      .where(eq(connectors.orgId, orgId));
+  const db = globalThis.services.db;
+  const orgConnectors = await db
+    .select({ userId: connectors.userId, type: connectors.type })
+    .from(connectors)
+    .where(eq(connectors.orgId, orgId));
 
-    for (const conn of orgConnectors) {
-      try {
-        await revokeConnectorToken(
+  for (const conn of orgConnectors) {
+    try {
+      const parsed = connectorTypeSchema.safeParse(conn.type);
+      if (!parsed.success) {
+        log.warn("unknown connector type, skipping revocation", {
           orgId,
-          conn.userId,
-          conn.type as ConnectorType,
-        );
-      } catch (error) {
-        log.error("failed to revoke connector token (best-effort)", {
-          orgId,
-          userId: conn.userId,
           type: conn.type,
-          error,
         });
+        continue;
       }
+      await revokeConnectorToken(orgId, conn.userId, parsed.data);
+    } catch (error) {
+      log.error("failed to revoke connector token (best-effort)", {
+        orgId,
+        userId: conn.userId,
+        type: conn.type,
+        error,
+      });
     }
-  } catch (error) {
-    log.error("failed to query connectors (best-effort)", { orgId, error });
   }
 }
 
 async function cleanupOrgSlackInstallation(orgId: string): Promise<void> {
-  try {
-    const db = globalThis.services.db;
-    const [installation] = await db
-      .select({
-        slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
-      })
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.orgId, orgId))
-      .limit(1);
+  const db = globalThis.services.db;
+  const [installation] = await db
+    .select({
+      slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
+    })
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, orgId))
+    .limit(1);
 
-    if (!installation) return;
+  if (!installation) return;
 
-    await cleanupWorkspaceInstallation(installation.slackWorkspaceId);
-    log.info("slack workspace installation cleaned up", { orgId });
-  } catch (error) {
-    log.error("failed to cleanup slack installation (best-effort)", {
-      orgId,
-      error,
-    });
-  }
+  await cleanupWorkspaceInstallation(installation.slackWorkspaceId);
+  log.info("slack workspace installation cleaned up", { orgId });
 }

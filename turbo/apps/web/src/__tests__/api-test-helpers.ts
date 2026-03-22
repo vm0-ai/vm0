@@ -3896,7 +3896,6 @@ export async function updateAgentComposeOrg(
   composeId: string,
   orgId: string,
 ): Promise<void> {
-  const { agentComposes } = await import("../db/schema/agent-compose");
   await globalThis.services.db
     .update(agentComposes)
     .set({ orgId })
@@ -3912,13 +3911,10 @@ export async function createTelegramInstallationForCompose(
   adminUserId: string,
   botToken: string,
 ): Promise<string> {
-  const { encryptSecretValue } = await import(
-    "../lib/crypto/secrets-encryption"
-  );
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedBotToken = encryptSecretValue(botToken, encryptionKey);
 
-  const [inst] = await globalThis.services.db
+  const rows = await globalThis.services.db
     .insert(telegramInstallations)
     .values({
       telegramBotId: `bot-${randomUUID().slice(0, 8)}`,
@@ -3929,7 +3925,8 @@ export async function createTelegramInstallationForCompose(
     })
     .returning();
 
-  return inst!.id;
+  if (!rows[0]) throw new Error("Failed to create telegram installation");
+  return rows[0].id;
 }
 
 /**
@@ -3939,9 +3936,6 @@ export async function createSlackInstallationForOrg(
   orgId: string,
   workspaceId: string,
 ): Promise<void> {
-  const { encryptSecretValue } = await import(
-    "../lib/crypto/secrets-encryption"
-  );
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
   await globalThis.services.db
