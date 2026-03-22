@@ -388,7 +388,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error("Backfill failed:", err);
-  process.exit(1);
-});
+// Only run when executed directly (not imported by tests)
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error("Backfill failed:", err);
+    process.exit(1);
+  });
+}
