@@ -41,6 +41,7 @@ export const VALID_CAPABILITIES = [
   "agent-run:write",
   "schedule:read",
   "schedule:write",
+  "integration-slack:write",
 ] as const;
 
 /** Inferred union type of all valid capability strings. */
@@ -72,6 +73,10 @@ export const CAPABILITY_META: Record<ValidCapability, CapabilityMeta> = {
   "agent-run:write": { group: "Operations", label: "Create & cancel runs" },
   "schedule:read": { group: "Operations", label: "View schedules" },
   "schedule:write": { group: "Operations", label: "Manage schedules" },
+  "integration-slack:write": {
+    group: "Integrations",
+    label: "Send Slack messages via org bot",
+  },
 };
 
 /**

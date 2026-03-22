@@ -602,3 +602,7 @@ export {
   zeroSessionsByIdContract,
   type ZeroSessionsByIdContract,
 } from "./zero-sessions";
+export {
+  integrationsSlackMessageContract,
+  type IntegrationsSlackMessageContract,
+} from "./integrations";
