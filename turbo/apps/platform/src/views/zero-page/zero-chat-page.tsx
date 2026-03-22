@@ -1,4 +1,4 @@
-import { Component } from "react";
+import { Component, useState } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { user$ } from "../../signals/auth.ts";
 import {
@@ -38,10 +38,10 @@ import {
   chatPageTaglineIndex$,
   toggleChatPageSubAgentList$,
 } from "../../signals/zero-page/zero-chat-page.ts";
-import chatFolderImg from "./assets/chat-folder.png";
-import chatCoffeeImg from "./assets/chat-coffee.png";
-import chatMacImg from "./assets/chat-mac.png";
+import { ZeroIdeationPage, getRandomPrompts } from "./zero-ideation-page.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.png";
+import chatFolderImg from "./assets/chat-folder.png";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -51,33 +51,6 @@ type DemoScenarioId =
   | "connect-connector"
   | "rich-summary"
   | "agent-operations";
-
-const SUGGESTED_PROMPTS = [
-  {
-    title: "Auto-organize inbox",
-    description: "Smart categorization, reply, and daily email digest",
-    image: chatFolderImg,
-    imageClassName: "h-12 w-12",
-    prompt:
-      "Set up auto-organization for my inbox with smart categorization, auto-reply rules, and a daily email digest",
-  },
-  {
-    title: "Daily morning brief",
-    description: "Trending topics on a schedule, your personalized digest",
-    image: chatCoffeeImg,
-    imageClassName: "h-14 w-14 -mt-1",
-    prompt:
-      "Create a daily morning brief that curates trending topics and delivers a personalized digest every morning",
-  },
-  {
-    title: "Create a sub-agent",
-    description: "Build a specialized agent for a specific workflow",
-    image: chatMacImg,
-    imageClassName: "h-[4.5rem] w-[4.5rem]",
-    prompt:
-      "I want to create a new sub-agent to handle a specific workflow for my team",
-  },
-] as const;
 
 function getStreamedScenarios(agentName: string): readonly Readonly<{
   id: DemoScenarioId;
@@ -796,6 +769,8 @@ export function ZeroChatPage({
   const showSubAgentList = useGet(chatPageShowSubAgentList$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(agentName, userName, taglineIndex);
+  const [showIdeation, setShowIdeation] = useState(false);
+  const [suggestedPrompts] = useState(() => getRandomPrompts(3));
   const toggleSubAgentList = useSet(toggleChatPageSubAgentList$);
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
@@ -813,6 +788,18 @@ export function ZeroChatPage({
   const showConversation =
     (initialScenarioId !== undefined && scenariosToShow.length > 0) ||
     conversationActive;
+
+  if (showIdeation) {
+    return (
+      <ZeroIdeationPage
+        onBack={() => setShowIdeation(false)}
+        onSelectPrompt={(prompt) => {
+          setInput(prompt);
+          setShowIdeation(false);
+        }}
+      />
+    );
+  }
 
   if (showConversation && scenariosToShow.length > 0) {
     const isScenarioFromSidebar = initialScenarioId !== undefined;
@@ -1038,13 +1025,13 @@ export function ZeroChatPage({
           />
 
           {/* Suggested prompts */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-            {SUGGESTED_PROMPTS.map(
-              ({ title, description, image, imageClassName, prompt }) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+            {suggestedPrompts.map(
+              ({ title, description, connectors, prompt }) => (
                 <button
                   key={title}
                   type="button"
-                  className="zero-card cursor-pointer p-4 text-left flex flex-col sm:flex-row gap-3 items-start sm:items-center relative group"
+                  className="zero-card cursor-pointer p-4 text-left flex flex-col gap-3 relative group"
                   onClick={() => setInput(prompt)}
                 >
                   <IconArrowUpRight
@@ -1052,11 +1039,11 @@ export function ZeroChatPage({
                     stroke={2}
                     className="absolute top-2.5 right-2.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
                   />
-                  <img
-                    src={image}
-                    alt=""
-                    className={`shrink-0 object-contain ${imageClassName}`}
-                  />
+                  <div className="flex items-center gap-1.5">
+                    {connectors?.map((type) => (
+                      <ConnectorIcon key={type} type={type} size={18} />
+                    ))}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
                       {title}
@@ -1068,6 +1055,31 @@ export function ZeroChatPage({
                 </button>
               ),
             )}
+            <button
+              type="button"
+              className="zero-card cursor-pointer p-4 text-left flex flex-col gap-3 relative group"
+              onClick={() => setShowIdeation(true)}
+            >
+              <IconArrowUpRight
+                size={14}
+                stroke={2}
+                className="absolute top-2.5 right-2.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+              />
+              <img
+                src={chatFolderImg}
+                alt=""
+                role="presentation"
+                className="h-8 w-8 object-contain"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">
+                  Explore more ideas
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Browse use cases across all connectors
+                </p>
+              </div>
+            </button>
           </div>
         </div>
       </main>
