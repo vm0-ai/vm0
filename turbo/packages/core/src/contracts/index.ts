@@ -16,6 +16,7 @@ export {
   apiErrorSchema,
   ApiError,
   createErrorResponse,
+  RUN_ERROR_GUIDANCE,
   type ApiErrorKey,
   type ApiErrorResponse,
 } from "./errors";
@@ -24,10 +25,14 @@ export {
   composesByIdContract,
   composesVersionsContract,
   composesListContract,
+  composesMetadataContract,
+  composesInstructionsContract,
   type ComposesMainContract,
   type ComposesByIdContract,
   type ComposesVersionsContract,
   type ComposesListContract,
+  type ComposesMetadataContract,
+  type ComposesInstructionsContract,
   AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
@@ -36,6 +41,8 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
+  metadataUpdateSchema,
+  composeInstructionsResponseSchema,
   VALID_CAPABILITIES,
   CAPABILITY_META,
   type ValidCapability,
@@ -326,7 +333,9 @@ export {
   schedulesMainContract,
   schedulesByNameContract,
   schedulesEnableContract,
+  schedulesDisableContract,
   scheduleRunsContract,
+  schedulesMissingSecretsContract,
   scheduleYamlSchema,
   scheduleTriggerSchema,
   scheduleRunConfigSchema,
@@ -337,10 +346,13 @@ export {
   deployScheduleResponseSchema,
   runSummarySchema,
   scheduleRunsResponseSchema,
+  agentMissingSecretsSchema,
   type SchedulesMainContract,
   type SchedulesByNameContract,
   type SchedulesEnableContract,
+  type SchedulesDisableContract,
   type ScheduleRunsContract,
+  type SchedulesMissingSecretsContract,
   // Inferred types
   type ScheduleTrigger,
   type ScheduleRunConfig,
@@ -527,6 +539,11 @@ export {
   type OrgVariablesByNameContract,
 } from "./org-variables";
 export {
+  requiredEnvContract,
+  agentRequiredEnvSchema,
+  type RequiredEnvContract,
+} from "./required-env";
+export {
   zeroAgentsMainContract,
   zeroAgentsByNameContract,
   zeroAgentInstructionsContract,
@@ -601,3 +618,7 @@ export {
   zeroSessionsByIdContract,
   type ZeroSessionsByIdContract,
 } from "./zero-sessions";
+export {
+  integrationsSlackMessageContract,
+  type IntegrationsSlackMessageContract,
+} from "./integrations";

@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
+import { schedulesMissingSecretsContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -16,113 +17,102 @@ import { resolveOrgOrNull } from "../../../../../src/lib/org/resolve-org";
 
 const log = logger("api:agents:missing-secrets");
 
-/**
- * Agent with missing secrets information
- */
-interface AgentMissingSecrets {
-  composeId: string;
-  agentName: string;
-  requiredSecrets: string[]; // All secrets required by agent
-  missingSecrets: string[]; // Secrets that are required but not configured
-}
+const router = tsr.router(schedulesMissingSecretsContract, {
+  getMissingSecrets: async ({ query, headers }) => {
+    initServices();
 
-/**
- * GET /api/agent/schedules/missing-secrets
- * Check all user's agents for missing secrets
- */
-export async function GET(request: Request) {
-  initServices();
+    const authResult = await requireAuth(headers.authorization, {
+      requiredCapability: "schedule:read",
+    });
+    if (isAuthError(authResult)) return authResult;
+    const userId = authResult.userId;
 
-  const authHeader = request.headers.get("authorization");
-  const authResult = await requireAuth(authHeader ?? undefined, {
-    requiredCapability: "schedule:read",
-  });
-  if (isAuthError(authResult)) {
-    return NextResponse.json(authResult.body, { status: authResult.status });
-  }
-  const userId = authResult.userId;
+    log.debug(`Checking missing secrets for user ${userId}`);
 
-  log.debug(`Checking missing secrets for user ${userId}`);
+    const db = globalThis.services.db;
 
-  const db = globalThis.services.db;
+    const agents = await getUserAgents(userId);
 
-  const agents = await getUserAgents(userId);
-
-  if (agents.length === 0) {
-    return NextResponse.json({ agents: [] });
-  }
-
-  // Get user's org to query configured secrets
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  const runtimeOrg = await resolveOrgOrNull(authResult, orgSlug);
-  if (!runtimeOrg) {
-    return NextResponse.json({ agents: [] });
-  }
-
-  // Check the recipient's own secrets — org member agents run with the
-  // recipient's secrets, so missing ones need to be configured by them.
-  const userSecrets = await db
-    .select({ name: secrets.name })
-    .from(secrets)
-    .where(eq(secrets.orgId, runtimeOrg.orgId));
-
-  const configuredSecretNames = new Set(userSecrets.map((s) => s.name));
-
-  // Batch-fetch all versions in a single query
-  const versionIds = agents
-    .map((a) => a.headVersionId)
-    .filter((id): id is string => id !== null);
-
-  const versionContents = await batchFetchVersionContents(versionIds);
-
-  const result: AgentMissingSecrets[] = [];
-
-  for (const agent of agents) {
-    if (!agent.headVersionId) {
-      continue;
+    if (agents.length === 0) {
+      return { status: 200 as const, body: { agents: [] } };
     }
 
-    const composeYaml = versionContents.get(agent.headVersionId);
-    if (!composeYaml) {
-      continue;
+    // Get user's org to query configured secrets
+    const runtimeOrg = await resolveOrgOrNull(authResult, query.org);
+    if (!runtimeOrg) {
+      return { status: 200 as const, body: { agents: [] } };
     }
 
-    // Extract required secrets from compose environment
-    const agentDefs = Object.values(composeYaml.agents || {});
-    const firstAgent = agentDefs[0];
+    const userSecrets = await db
+      .select({ name: secrets.name })
+      .from(secrets)
+      .where(eq(secrets.orgId, runtimeOrg.orgId));
 
-    if (!firstAgent?.environment) {
-      continue;
+    const configuredSecretNames = new Set(userSecrets.map((s) => s.name));
+
+    // Batch-fetch all versions in a single query
+    const versionIds = agents
+      .map((a) => a.headVersionId)
+      .filter((id): id is string => id !== null);
+
+    const versionContents = await batchFetchVersionContents(versionIds);
+
+    const result: Array<{
+      composeId: string;
+      agentName: string;
+      requiredSecrets: string[];
+      missingSecrets: string[];
+    }> = [];
+
+    for (const agent of agents) {
+      if (!agent.headVersionId) {
+        continue;
+      }
+
+      const composeYaml = versionContents.get(agent.headVersionId);
+      if (!composeYaml) {
+        continue;
+      }
+
+      const agentDefs = Object.values(composeYaml.agents || {});
+      const firstAgent = agentDefs[0];
+
+      if (!firstAgent?.environment) {
+        continue;
+      }
+
+      const grouped = extractAndGroupVariables(firstAgent.environment);
+      const requiredSecrets = grouped.secrets.map((r) => r.name);
+
+      if (requiredSecrets.length === 0) {
+        continue;
+      }
+
+      const missingSecrets = requiredSecrets.filter(
+        (secret) => !configuredSecretNames.has(secret),
+      );
+
+      if (missingSecrets.length > 0) {
+        result.push({
+          composeId: agent.composeId,
+          agentName: agent.agentName,
+          requiredSecrets,
+          missingSecrets,
+        });
+      }
     }
 
-    const grouped = extractAndGroupVariables(firstAgent.environment);
-
-    const requiredSecrets = grouped.secrets.map((r) => r.name);
-
-    if (requiredSecrets.length === 0) {
-      continue;
-    }
-
-    // Find missing secrets
-    const missingSecrets = requiredSecrets.filter(
-      (secret) => !configuredSecretNames.has(secret),
+    log.debug(
+      `Found ${result.length} agent(s) with missing secrets for user ${userId}`,
     );
 
-    if (missingSecrets.length > 0) {
-      result.push({
-        composeId: agent.composeId,
-        agentName: agent.agentName,
-        requiredSecrets,
-        missingSecrets,
-      });
-    }
-  }
+    return {
+      status: 200 as const,
+      body: { agents: result },
+    };
+  },
+});
 
-  log.debug(
-    `Found ${result.length} agent(s) with missing secrets for user ${userId}`,
-  );
+const handler = createHandler(schedulesMissingSecretsContract, router);
 
-  return NextResponse.json({
-    agents: result,
-  });
-}
+export { handler as GET };

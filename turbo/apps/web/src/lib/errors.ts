@@ -65,6 +65,12 @@ interface ProviderIncompatibleError extends ApiErrorBase {
   readonly code: "PROVIDER_INCOMPATIBLE";
 }
 
+interface NoModelProviderError extends ApiErrorBase {
+  readonly name: "NoModelProviderError";
+  readonly statusCode: 422;
+  readonly code: "NO_MODEL_PROVIDER";
+}
+
 // ============================================================================
 // Factory Functions
 // ============================================================================
@@ -148,13 +154,19 @@ export function providerIncompatible(
   return error;
 }
 
+export function noModelProvider(
+  message = "No model provider configured. Run 'vm0 org model-provider setup' to configure one, or add environment variables to your vm0.yaml.",
+): NoModelProviderError {
+  const error = new Error(message) as NoModelProviderError;
+  (error as { name: string }).name = "NoModelProviderError";
+  (error as { statusCode: number }).statusCode = 422;
+  (error as { code: string }).code = "NO_MODEL_PROVIDER";
+  return error;
+}
+
 // ============================================================================
 // Type Guards
 // ============================================================================
-
-export function isUnauthorized(e: unknown): e is UnauthorizedError {
-  return e instanceof Error && e.name === "UnauthorizedError";
-}
 
 export function isNotFound(e: unknown): e is NotFoundError {
   return e instanceof Error && e.name === "NotFoundError";
@@ -190,4 +202,12 @@ export function isProviderIncompatible(
   e: unknown,
 ): e is ProviderIncompatibleError {
   return e instanceof Error && e.name === "ProviderIncompatibleError";
+}
+
+export function isNoModelProvider(e: unknown): e is NoModelProviderError {
+  return e instanceof Error && e.name === "NoModelProviderError";
+}
+
+export function isApiError(e: unknown): e is ApiErrorBase {
+  return e instanceof Error && "statusCode" in e && "code" in e;
 }

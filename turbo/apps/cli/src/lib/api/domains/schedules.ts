@@ -3,6 +3,7 @@ import {
   schedulesMainContract,
   schedulesByNameContract,
   schedulesEnableContract,
+  schedulesDisableContract,
   scheduleRunsContract,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -135,7 +136,7 @@ export async function disableSchedule(params: {
   composeId: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
-  const client = initClient(schedulesEnableContract, config);
+  const client = initClient(schedulesDisableContract, config);
 
   const result = await client.disable({
     params: { name: params.name },

@@ -182,3 +182,64 @@ describe("zero preferences page - send mode interaction", () => {
     expect(capturedBody).toHaveProperty("sendMode", "cmd-enter");
   });
 });
+
+describe("zero preferences page - timezone update", () => {
+  it("should render timezone settings with current value when switching to timezone tab", async () => {
+    mockPreferencesAPI(createMockPreferences({ timezone: "Asia/Tokyo" }));
+    await renderPreferencesPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Time Zone")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Time Zone"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Time zone")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Japan Standard Time (JST)")).toBeInTheDocument();
+  });
+
+  it("should send update request when changing timezone", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("*/api/zero/user-preferences", () => {
+        return HttpResponse.json(createMockPreferences({ timezone: "UTC" }));
+      }),
+      http.post("*/api/zero/user-preferences", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          createMockPreferences({ timezone: "America/New_York" }),
+        );
+      }),
+    );
+
+    await renderPreferencesPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Time Zone")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Time Zone"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Time zone")).toBeInTheDocument();
+    });
+
+    // Open the select dropdown
+    const selectTrigger = screen.getByRole("combobox");
+    fireEvent.click(selectTrigger);
+
+    // Select a different timezone
+    await waitFor(() => {
+      expect(screen.getByText("Eastern Time (ET)")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Eastern Time (ET)"));
+
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody).toHaveProperty("timezone", "America/New_York");
+  });
+});

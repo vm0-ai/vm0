@@ -3,6 +3,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { search } from "../location.ts";
 import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
 import { skillUrlToValue } from "../../data/skills.ts";
 import { SEED_SKILLS } from "../../data/the-seed.ts";
@@ -26,6 +27,40 @@ const L = logger("ZeroJobDetail");
 const internalAgentName$ = state<string | null>(null);
 const setZeroJobAgentName$ = command(({ set }, name: string | null) => {
   set(internalAgentName$, name);
+});
+
+// ---------------------------------------------------------------------------
+// Active tab
+// ---------------------------------------------------------------------------
+
+function isValidTab(tab: string): boolean {
+  return (
+    tab === "connectors" ||
+    tab === "schedule" ||
+    tab === "profile" ||
+    tab === "instructions"
+  );
+}
+
+function getInitialTab(): string {
+  const params = new URLSearchParams(search());
+  const tab = params.get("tab") ?? "";
+  return isValidTab(tab) ? tab : "connectors";
+}
+
+const internalActiveTab$ = state("connectors");
+
+export const zeroJobActiveTab$ = computed((get) => get(internalActiveTab$));
+
+export const setZeroJobActiveTab$ = command(({ set }, tab: string) => {
+  set(internalActiveTab$, tab);
+  const url = new URL(location.href);
+  if (tab === "connectors") {
+    url.searchParams.delete("tab");
+  } else {
+    url.searchParams.set("tab", tab);
+  }
+  history.replaceState(null, "", url.toString());
 });
 
 // ---------------------------------------------------------------------------
@@ -730,6 +765,7 @@ export const fetchZeroJobData$ = command(async ({ set }, agentName: string) => {
   set(internalBuildError$, null);
   set(jobBuilding$, false);
   set(internalSaving$, false);
+  set(internalActiveTab$, getInitialTab());
 
   set(setZeroJobAgentName$, agentName);
   await set(fetchZeroJobDetail$);

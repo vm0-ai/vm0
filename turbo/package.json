@@ -25,7 +25,7 @@
     "runner:remove": "bash ../scripts/dev-runner.sh remove"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.8.1",
+    "@commitlint/cli": "^20.5.0",
     "@vitest/coverage-v8": "^4.1.0",
     "@vitest/ui": "^4.1.0",
     "dotenv-cli": "^7.4.2",
@@ -33,7 +33,7 @@
     "knip": "^5.63.1",
     "prettier": "^3.6.2",
     "tsx": "^4.21.0",
-    "turbo": "^2.8.17",
+    "turbo": "^2.8.20",
     "typescript": "5.9.3",
     "vitest": "^4.1.0"
   },

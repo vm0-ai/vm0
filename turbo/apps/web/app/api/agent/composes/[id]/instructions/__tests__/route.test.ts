@@ -35,9 +35,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       "http://localhost:3000/api/agent/composes/some-id/instructions",
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: "some-id" }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -49,9 +47,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${fakeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: fakeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -65,9 +61,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -87,9 +81,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -133,9 +125,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -183,9 +173,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -206,9 +194,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -251,9 +237,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -296,9 +280,7 @@ describe("GET /api/agent/composes/:id/instructions", () => {
     const request = createTestRequest(
       `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
     );
-    const response = await GET(request, {
-      params: Promise.resolve({ id: composeId }),
-    });
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);

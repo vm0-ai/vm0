@@ -9,6 +9,9 @@
 #   Verifies CLI flags pass through guest-agent → Claude CLI pipeline:
 #   - Commander.js variadic arg parsing works (regression for #5788)
 #   - append-system-prompt reaches Claude (verifiable via SIGNATURE)
+# Test 3 (settings): --settings with PreToolUse hook
+#   Verifies the full pipeline: API → claim route → runner → sandbox → hook fires
+#   Regression test for #5832 (claim route omitted settings from response)
 
 load '../../helpers/setup'
 
@@ -67,8 +70,24 @@ volumes:
     version: latest
 EOF
 
+    cat > "$TEST_DIR/vm0-settings.yaml" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_NAME}-settings:
+    description: "Real Claude settings test"
+    framework: claude-code
+    volumes:
+      - claude-files:/home/user/.claude
+    working_dir: /home/user/workspace
+volumes:
+  claude-files:
+    name: $VOLUME_NAME
+    version: latest
+EOF
+
     $CLI_COMMAND compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
     $CLI_COMMAND compose "$TEST_DIR/vm0-flags.yaml" >/dev/null
+    $CLI_COMMAND compose "$TEST_DIR/vm0-settings.yaml" >/dev/null
 }
 
 teardown_file() {
@@ -118,8 +137,6 @@ teardown_file() {
 # Verifies:
 #   - --disallowed-tools doesn't swallow the prompt (#5788 regression)
 #   - --append-system-prompt reaches Claude (SIGNATURE in response)
-#
-# Note: --settings hooks don't execute in the Firecracker sandbox (see #5832).
 @test "t27-2: run with cli flags (append-system-prompt, disallowed-tools)" {
     if [ -z "$ANTHROPIC_API_KEY" ]; then
         skip "ANTHROPIC_API_KEY not set"
@@ -139,4 +156,30 @@ teardown_file() {
     assert_output --partial "RESULT=890"
     # Verify --append-system-prompt reached Claude (agent follows the instruction)
     assert_output --partial "SIGNATURE=smoke-test"
+}
+
+# Test 3: --settings with PreToolUse hook — verify settings reach the sandbox.
+#
+# Verifies the full pipeline: API → claim route → runner → guest-agent → Claude CLI.
+# The PreToolUse hook writes a sentinel file before Bash executes; Claude then
+# reads it to prove the hook fired. Regression test for #5832.
+@test "t27-3: run with --settings hooks" {
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        skip "ANTHROPIC_API_KEY not set"
+    fi
+
+    # PreToolUse hook: write sentinel file before each Bash tool invocation.
+    # Claude will read this file to prove the hook fired inside the sandbox.
+    local settings='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo SETTINGS_HOOK_OK > /tmp/hook_sentinel.txt"}]}]}}'
+
+    run timeout 120 $CLI_COMMAND run "${AGENT_NAME}-settings" \
+        --model-provider "anthropic-api-key" \
+        --debug-no-mock-claude \
+        --settings "$settings" \
+        -- "Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook_sentinel.txt'. Include the exact output of step 2 in your response."
+
+    assert_success
+    assert_output --partial "◆ Claude Code Completed"
+    # Sentinel file was created by PreToolUse hook and read by Claude
+    assert_output --partial "SETTINGS_HOOK_OK"
 }

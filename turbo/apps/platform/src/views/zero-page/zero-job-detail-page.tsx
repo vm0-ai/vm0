@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import {
   IconFileText,
   IconUserCircle,
@@ -56,6 +54,8 @@ import {
   removeZeroJobSkill$,
   saveZeroJobSkills$,
   discardZeroJobSkills$,
+  zeroJobActiveTab$,
+  setZeroJobActiveTab$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
@@ -182,37 +182,6 @@ function DetailError({
 
 const TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
-
-function isValidTab(tab: string): boolean {
-  return (
-    tab === "connectors" ||
-    tab === "schedule" ||
-    tab === "profile" ||
-    tab === "instructions"
-  );
-}
-
-function getInitialTab(): string {
-  if (typeof window === "undefined") {
-    return "connectors";
-  }
-  const params = new URLSearchParams(window.location.search);
-  const tab = params.get("tab") ?? "";
-  return isValidTab(tab) ? tab : "connectors";
-}
-
-function syncTabToUrl(tab: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  const url = new URL(window.location.href);
-  if (tab === "connectors") {
-    url.searchParams.delete("tab");
-  } else {
-    url.searchParams.set("tab", tab);
-  }
-  window.history.replaceState(null, "", url.toString());
-}
 
 function extractAgentFields(
   detail: AgentDetail | null,
@@ -371,13 +340,8 @@ export function ZeroJobDetailPage({
     nav("/team");
   };
 
-  const activeTab$ = useCCState(getInitialTab());
-  const activeTab = useGet(activeTab$);
-  const rawSetActiveTab = useSet(activeTab$);
-  const setActiveTab = (tab: string) => {
-    rawSetActiveTab(tab);
-    syncTabToUrl(tab);
-  };
+  const activeTab = useGet(zeroJobActiveTab$);
+  const setActiveTab = useSet(setZeroJobActiveTab$);
 
   const agentAvatar = useAgentAvatar(agentName);
   const setAgentAvatarCmd = useSet(setAgentAvatar$);

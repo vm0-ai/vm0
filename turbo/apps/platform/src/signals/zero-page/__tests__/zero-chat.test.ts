@@ -473,7 +473,7 @@ describe("zero-chat signals", () => {
       const messages = context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
       expect(lastMsg?.error).toBe(
-        "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key",
+        "Provider not compatible: This session was created with a different provider type.",
       );
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });

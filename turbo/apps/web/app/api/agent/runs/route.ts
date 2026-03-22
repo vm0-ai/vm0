@@ -17,44 +17,48 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { logger } from "../../../../src/lib/logger";
-import {
-  isForbidden,
-  isBadRequest,
-  isNotFound,
-  isUnauthorized,
-  isProviderIncompatible,
-  isInsufficientCredits,
-} from "../../../../src/lib/errors";
+import { isApiError } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 
 const log = logger("api:runs");
 
 /**
- * Translate createRun() errors into API response format
+ * Translate createRun() errors into API response format.
+ *
+ * Uses the generic isApiError() check so that new error types
+ * (with statusCode + code) are handled automatically without
+ * adding per-type branches here.
  */
 function handleCreateRunError(error: unknown) {
-  // Provider incompatibility must be checked before RunDispatchError:
-  // the error is thrown inside buildAndDispatchRun (after run INSERT),
-  // so markRunFailed attaches runId. Without this early check,
-  // dispatchError.runId would match first and return a generic 201 "Run failed".
-  if (isProviderIncompatible(error)) {
+  if (isApiError(error)) {
+    // Post-INSERT errors have runId attached by markRunFailed().
+    // Return 201 with failed status so the client can track the run.
+    const dispatchError = error as RunDispatchError;
+    if (dispatchError.runId) {
+      return {
+        status: 201 as const,
+        body: {
+          runId: dispatchError.runId,
+          status: "failed" as const,
+          error: error.message,
+          createdAt: dispatchError.createdAt?.toISOString() ?? "",
+        },
+      };
+    }
+
+    // Pre-INSERT errors — return proper HTTP error with structured code.
+    // Map UNAUTHORIZED → NOT_FOUND for security (don't leak resource existence).
+    const status = error.code === "UNAUTHORIZED" ? 404 : error.statusCode;
+    const code = error.code === "UNAUTHORIZED" ? "NOT_FOUND" : error.code;
+    const message =
+      error.code === "UNAUTHORIZED" ? "Resource not found" : error.message;
     return {
-      status: 400 as const,
-      body: {
-        error: { message: error.message, code: "PROVIDER_INCOMPATIBLE" },
-      },
+      status: status as 400 | 401 | 402 | 403 | 404 | 422 | 429 | 503,
+      body: { error: { message, code } },
     };
   }
 
-  if (isInsufficientCredits(error)) {
-    return {
-      status: 402 as const,
-      body: {
-        error: { message: error.message, code: "INSUFFICIENT_CREDITS" },
-      },
-    };
-  }
-
+  // Non-API errors with runId (unexpected dispatch failures)
   const dispatchError = error as RunDispatchError;
   if (dispatchError.runId) {
     return {
@@ -65,34 +69,6 @@ function handleCreateRunError(error: unknown) {
         error: "Run failed",
         createdAt: dispatchError.createdAt?.toISOString() ?? "",
       },
-    };
-  }
-
-  // Map unauthorized to 404 for security (don't leak resource existence).
-  // This covers checkpoint/session validation failures where the resource
-  // belongs to a different user.
-  if (isUnauthorized(error)) {
-    return {
-      status: 404 as const,
-      body: { error: { message: "Resource not found", code: "NOT_FOUND" } },
-    };
-  }
-  if (isForbidden(error)) {
-    return {
-      status: 403 as const,
-      body: { error: { message: "Access denied", code: "FORBIDDEN" } },
-    };
-  }
-  if (isBadRequest(error)) {
-    return {
-      status: 400 as const,
-      body: { error: { message: error.message, code: "BAD_REQUEST" } },
-    };
-  }
-  if (isNotFound(error)) {
-    return {
-      status: 404 as const,
-      body: { error: { message: error.message, code: "NOT_FOUND" } },
     };
   }
 

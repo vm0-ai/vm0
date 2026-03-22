@@ -1039,9 +1039,7 @@ export async function enableTestSchedule(
       body: JSON.stringify({ composeId }),
     },
   );
-  const response = await enableScheduleRoute(request, {
-    params: Promise.resolve({ name }),
-  });
+  const response = await enableScheduleRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
@@ -1070,9 +1068,7 @@ export async function disableTestSchedule(
       body: JSON.stringify({ composeId }),
     },
   );
-  const response = await disableScheduleRoute(request, {
-    params: Promise.resolve({ name }),
-  });
+  const response = await disableScheduleRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(

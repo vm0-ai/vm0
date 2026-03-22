@@ -821,7 +821,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Upload E2E test tokens
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-tokens
           path: |
@@ -935,11 +935,11 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -956,7 +956,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
       - name: Upload auth screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-auth-screenshots
           path: /tmp/e2e-auth-screenshots/
@@ -989,7 +989,7 @@ jobs:
       - name: Deploy CLI with production dependencies
         run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted /tmp/cli-deploy
       - name: Upload CLI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1026,18 +1026,18 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
       - name: Link CLI globally
         run: cd /tmp/cli-deploy && sudo npm link
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: e2e-tokens
           path: /tmp
@@ -1076,7 +1076,7 @@ jobs:
 
       - name: Upload JUnit XML artifact
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-serial-junit-xml
           path: e2e/results/
@@ -1453,18 +1453,18 @@ jobs:
       )
     timeout-minutes: 2
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
       - name: Link CLI globally
         run: cd /tmp/cli-deploy && sudo npm link
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: e2e-tokens
           path: /tmp
@@ -1508,11 +1508,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1521,7 +1521,7 @@ jobs:
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: e2e-tokens
           path: /tmp
@@ -1572,7 +1572,7 @@ jobs:
 
       - name: Upload JUnit XML artifact
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-runner-junit-xml-${{ matrix.index }}
           path: e2e/results/
@@ -1624,7 +1624,7 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Install Chrome for Puppeteer
@@ -1655,7 +1655,7 @@ jobs:
           echo "dir=" >> "$GITHUB_OUTPUT"
       - name: Upload Lighthouse report (web)
         if: always() && steps.lhci-dir-web.outputs.dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report-web
           path: ${{ steps.lhci-dir-web.outputs.dir }}/
@@ -1672,7 +1672,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Post Lighthouse comment (web)
         if: steps.lighthouse-comment-web.outcome == 'success'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: lighthouse-web
           message: ${{ steps.lighthouse-comment-web.outputs.body }}
@@ -1691,7 +1691,7 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Install Chrome for Puppeteer
@@ -1723,7 +1723,7 @@ jobs:
           echo "dir=" >> "$GITHUB_OUTPUT"
       - name: Upload Lighthouse report (app)
         if: always() && steps.lhci-dir-app.outputs.dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report-app
           path: ${{ steps.lhci-dir-app.outputs.dir }}/
@@ -1740,7 +1740,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Post Lighthouse comment (app)
         if: steps.lighthouse-comment-app.outcome == 'success'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: lighthouse-app
           message: ${{ steps.lighthouse-comment-app.outputs.body }}

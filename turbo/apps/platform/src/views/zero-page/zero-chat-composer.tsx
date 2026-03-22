@@ -381,7 +381,7 @@ export function ZeroChatComposer({
 
   // Model selection
   const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
-    useModelSelection(agentName);
+    useModelSelection();
 
   // Connectors
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);

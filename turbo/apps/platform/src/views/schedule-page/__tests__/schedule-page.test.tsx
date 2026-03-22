@@ -1,0 +1,76 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+describe("schedule page", () => {
+  it("should render the schedule page with empty schedules", async () => {
+    await setupPage({ context, path: "/schedule" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    });
+
+    // Empty state shows "Nothing on the calendar"
+    expect(screen.getByText("Nothing on the calendar")).toBeInTheDocument();
+  });
+
+  it("should render schedule entries when data is present", async () => {
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [
+            {
+              id: "sched-1",
+              composeId: "compose-1",
+              composeName: "Test Agent",
+              orgSlug: "test",
+              name: "test-schedule",
+              triggerType: "cron",
+              cronExpression: "0 9 * * *",
+              atTime: null,
+              intervalSeconds: null,
+              timezone: "UTC",
+              prompt: "Daily standup summary",
+              enabled: true,
+              notifyEmail: false,
+              notifySlack: false,
+              nextRunAt: null,
+              lastRunAt: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/schedule" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily standup summary")).toBeInTheDocument();
+    });
+  });
+
+  it("should show Add schedule button", async () => {
+    await setupPage({ context, path: "/schedule" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    });
+
+    // The "Add schedule" button appears in the header and in the empty state
+    const addButtons = screen.getAllByRole("button", {
+      name: /Add schedule/,
+    });
+    expect(addButtons.length).toBeGreaterThanOrEqual(1);
+  });
+});

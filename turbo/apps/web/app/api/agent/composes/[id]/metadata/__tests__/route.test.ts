@@ -26,7 +26,7 @@ async function callPatch(
       headers: { "content-type": "application/json" },
     },
   );
-  return PATCH(request, { params: Promise.resolve({ id: composeId }) });
+  return PATCH(request);
 }
 
 describe("PATCH /api/agent/composes/:id/metadata", () => {

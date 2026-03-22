@@ -2,9 +2,11 @@ import { startRun, isRunDispatchError } from "../../run";
 import {
   buildIntegrationContext,
   buildScheduleGuidance,
+  buildSlackMessagingGuidance,
   DISALLOWED_CRON_TOOLS,
 } from "../../integration-context";
-import { isConcurrentRunLimit, isInsufficientCredits } from "../../errors";
+import { isApiError } from "../../errors";
+import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { logger } from "../../logger";
 
@@ -75,6 +77,7 @@ export async function runAgentForSlackOrg(
       threadContext,
       userContext,
       buildScheduleGuidance(),
+      buildSlackMessagingGuidance(),
     ].filter(Boolean);
     const appendSystemPrompt =
       contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
@@ -105,27 +108,17 @@ export async function runAgentForSlackOrg(
 
     return { status, runId: result.runId };
   } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      log.warn("Concurrent run limit reached", {
+    if (isApiError(error)) {
+      const guidance = RUN_ERROR_GUIDANCE[error.code];
+      const response = guidance
+        ? `${guidance.title}: ${guidance.guidance}`
+        : error.message;
+      log.warn(`Pre-run check failed: ${error.code}`, {
         composeId,
         agentName,
         userId,
       });
-      return {
-        status: "failed",
-        response:
-          "You have too many concurrent runs. Please wait for existing runs to complete.",
-        runId: undefined,
-      };
-    }
-    if (isInsufficientCredits(error)) {
-      log.warn("Insufficient credits", { composeId, agentName, userId });
-      return {
-        status: "failed",
-        response:
-          "Your VM0 credits are depleted. Add credits at your billing page or configure your own API key.",
-        runId: undefined,
-      };
+      return { status: "failed", response, runId: undefined };
     }
     const runId = isRunDispatchError(error) ? error.runId : undefined;
     log.error("Error running agent for Slack org:", error);

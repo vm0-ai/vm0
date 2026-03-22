@@ -578,4 +578,103 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       expect(data.secretValues).toBeNull();
     });
   });
+
+  describe("Claim flow - execution context fields", () => {
+    it("should return settings when present in stored context", async () => {
+      const { composeId, versionId } = await createTestCompose("test-settings");
+      const composeInfo = await findTestComposeWithOrg(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+        { settings: '{"hooks":{}}' },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.settings).toBe('{"hooks":{}}');
+    });
+
+    it("should return tools when present in stored context", async () => {
+      const { composeId, versionId } = await createTestCompose("test-tools");
+      const composeInfo = await findTestComposeWithOrg(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+        { tools: ["Bash", "Edit"] },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.tools).toEqual(["Bash", "Edit"]);
+    });
+
+    it("should omit fields when not in stored context", async () => {
+      const { composeId, versionId } =
+        await createTestCompose("test-no-extras");
+      const composeInfo = await findTestComposeWithOrg(composeId);
+      const orgSlug = composeInfo!.orgSlug;
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        `${orgSlug}/default`,
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.settings).toBeUndefined();
+      expect(data.tools).toBeUndefined();
+    });
+  });
 });

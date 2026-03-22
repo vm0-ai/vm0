@@ -264,7 +264,7 @@ export const schedulesByNameContract = c.router({
 });
 
 /**
- * Schedule enable/disable route contract
+ * Schedule enable route contract (/api/agent/schedules/[name]/enable)
  */
 export const schedulesEnableContract = c.router({
   /**
@@ -278,18 +278,27 @@ export const schedulesEnableContract = c.router({
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
+    query: z.object({
+      org: z.string().optional(),
+    }),
     body: z.object({
       composeId: z.string().uuid("Compose ID required"),
     }),
     responses: {
       200: scheduleResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Enable schedule",
   },
+});
 
+/**
+ * Schedule disable route contract (/api/agent/schedules/[name]/disable)
+ */
+export const schedulesDisableContract = c.router({
   /**
    * POST /api/agent/schedules/:name/disable
    * Disable an enabled schedule
@@ -301,11 +310,15 @@ export const schedulesEnableContract = c.router({
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
+    query: z.object({
+      org: z.string().optional(),
+    }),
     body: z.object({
       composeId: z.string().uuid("Compose ID required"),
     }),
     responses: {
       200: scheduleResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -344,11 +357,49 @@ export const scheduleRunsContract = c.router({
   },
 });
 
+/**
+ * Agent missing secrets schema
+ */
+const agentMissingSecretsSchema = z.object({
+  composeId: z.string(),
+  agentName: z.string(),
+  requiredSecrets: z.array(z.string()),
+  missingSecrets: z.array(z.string()),
+});
+
+/**
+ * Schedules missing secrets route contract (/api/agent/schedules/missing-secrets)
+ * Checks all user's agents for missing secrets
+ */
+export const schedulesMissingSecretsContract = c.router({
+  /**
+   * GET /api/agent/schedules/missing-secrets
+   * Check agents for missing secrets
+   */
+  getMissingSecrets: {
+    method: "GET",
+    path: "/api/agent/schedules/missing-secrets",
+    headers: authHeadersSchema,
+    query: z.object({
+      org: z.string().optional(),
+    }),
+    responses: {
+      200: z.object({ agents: z.array(agentMissingSecretsSchema) }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Check agents for missing secrets",
+  },
+});
+
 // Type exports
 export type SchedulesMainContract = typeof schedulesMainContract;
 export type SchedulesByNameContract = typeof schedulesByNameContract;
 export type SchedulesEnableContract = typeof schedulesEnableContract;
+export type SchedulesDisableContract = typeof schedulesDisableContract;
 export type ScheduleRunsContract = typeof scheduleRunsContract;
+export type SchedulesMissingSecretsContract =
+  typeof schedulesMissingSecretsContract;
 
 // Schema exports for reuse
 export {
@@ -361,6 +412,7 @@ export {
   deployScheduleResponseSchema,
   runSummarySchema,
   scheduleRunsResponseSchema,
+  agentMissingSecretsSchema,
 };
 
 // Export inferred types for consumers

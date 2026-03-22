@@ -14,7 +14,7 @@ import {
 } from "./zero-nav.ts";
 import { updatePathname$ } from "../route.ts";
 import { agentsList$ } from "./agents-list.ts";
-import type { ChatThreadListItem } from "@vm0/core";
+import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
 
@@ -163,9 +163,14 @@ async function startAgentRun(
 
   if (!response.ok) {
     const errBody = (await response.json().catch(() => null)) as {
-      error?: { message?: string };
+      error?: { message?: string; code?: string };
     } | null;
-    throw new Error(errBody?.error?.message ?? "Failed to start agent run");
+    const code = errBody?.error?.code;
+    const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
+    const message = guidance
+      ? `${guidance.title}: ${guidance.guidance}`
+      : (errBody?.error?.message ?? "Failed to start agent run");
+    throw new Error(message);
   }
 
   const data = (await response.json()) as { runId: string };

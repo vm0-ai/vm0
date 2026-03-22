@@ -21,7 +21,7 @@ function wrapInCompose(agentOverrides: Record<string, unknown>) {
 
 describe("VALID_CAPABILITIES", () => {
   it("contains 8 capabilities", () => {
-    expect(VALID_CAPABILITIES).toHaveLength(8);
+    expect(VALID_CAPABILITIES).toHaveLength(9);
   });
 
   it("all follow resource:action format", () => {

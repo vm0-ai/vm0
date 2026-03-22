@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { ApiRequestError } from "../api/core/client-factory";
 
 /**
@@ -19,15 +20,17 @@ export function withErrorHandler<T extends unknown[]>(
         if (error.code === "UNAUTHORIZED") {
           console.error(chalk.red("✗ Not authenticated"));
           console.error(chalk.dim("  Run: vm0 auth login"));
-        } else if (error.code === "INSUFFICIENT_CREDITS") {
-          console.error(chalk.red("✗ Credits depleted"));
-          console.error(
-            chalk.dim(
-              "  Add credits at your billing page or configure your own API key.",
-            ),
-          );
         } else {
-          console.error(chalk.red(`✗ ${error.status}: ${error.message}`));
+          const guidance = RUN_ERROR_GUIDANCE[error.code];
+          if (guidance) {
+            console.error(chalk.red(`✗ ${guidance.title}`));
+            console.error(chalk.dim(`  ${guidance.guidance}`));
+            if (guidance.cliHint) {
+              console.error(chalk.dim(`  Run: ${guidance.cliHint}`));
+            }
+          } else {
+            console.error(chalk.red(`✗ ${error.status}: ${error.message}`));
+          }
         }
       } else if (error instanceof Error) {
         console.error(chalk.red(`✗ ${error.message}`));

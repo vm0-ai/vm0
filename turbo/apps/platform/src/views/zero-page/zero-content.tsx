@@ -1,8 +1,6 @@
 import type { ZeroNavId } from "./zero-sidebar.tsx";
 import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
-import { ZeroPreferencesPage } from "./zero-account-page.tsx";
-import { ZeroWorksPage } from "./zero-works-page.tsx";
 import { ZeroSchedulePage } from "./zero-schedule-page.tsx";
 import { ZeroSettingsPage } from "./zero-settings-page.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.png";
@@ -65,16 +63,9 @@ export function ZeroContent({
   if (sectionId === "schedule") {
     return <ZeroSchedulePage />;
   }
-  if (sectionId === "works") {
-    return <ZeroWorksPage />;
-  }
   if (sectionId === "settings") {
     return <ZeroSettingsPage />;
   }
-  if (sectionId === "preferences") {
-    return <ZeroPreferencesPage />;
-  }
-
   return <ZeroNotFoundPage />;
 }
 

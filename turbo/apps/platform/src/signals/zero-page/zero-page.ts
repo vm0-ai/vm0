@@ -5,7 +5,6 @@ import { updatePage$ } from "../react-router.ts";
 import { fetchAgentsList$, zeroSubagents$ } from "./zero-agents.ts";
 import { defaultAgentName$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { refreshScheduleIfActive$ } from "./zero-schedule.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import {
   zeroChatAgentName$,
@@ -17,6 +16,7 @@ import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "./zero-pinned-agents.ts";
+import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { logger } from "../log.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
@@ -121,9 +121,9 @@ export const setupZeroPage$ = command(
       set(initSidebarCollapsed$);
     }
 
-    // Refresh tab-specific data on each route entry
-    set(refreshScheduleIfActive$);
-
     await resolveAndSwitchAgent(get, set, signal);
+
+    // Reset model selection for the (possibly new) active agent
+    set(syncModelPreference$);
   },
 );

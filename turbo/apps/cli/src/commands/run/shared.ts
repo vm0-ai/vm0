@@ -263,6 +263,10 @@ export async function pollEvents(
         chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
       );
       result = { succeeded: false, runId };
+    } else if (runStatus === "cancelled") {
+      complete = true;
+      console.error(chalk.yellow("\n✗ Run cancelled"));
+      result = { succeeded: false, runId };
     }
 
     // If not complete, wait before next poll
