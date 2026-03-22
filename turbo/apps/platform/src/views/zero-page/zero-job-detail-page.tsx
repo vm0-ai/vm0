@@ -6,7 +6,6 @@ import {
   IconCalendar,
   IconMessageCircle,
   IconUsers,
-  IconMoodSad,
 } from "@tabler/icons-react";
 import {
   Tabs,
@@ -65,6 +64,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
+import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -130,11 +130,7 @@ function DetailError({
         <Breadcrumb />
         <main className="flex-1 flex items-center justify-center px-4 sm:px-6 pb-16">
           <div className="flex flex-col items-center text-center gap-4 max-w-sm">
-            <IconMoodSad
-              size={48}
-              stroke={1.2}
-              className="text-muted-foreground/40"
-            />
+            <ZeroNoPermissionIllustration className="h-32 w-auto max-w-[220px] object-contain opacity-90" />
             <div className="space-y-1.5">
               <h2 className="text-lg font-semibold text-foreground">
                 Agent not found
