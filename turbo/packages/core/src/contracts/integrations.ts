@@ -20,7 +20,7 @@ export const integrationsSlackMessageContract = c.router({
       channel: z.string().min(1, "Channel ID is required"),
       text: z.string().optional(),
       threadTs: z.string().optional(),
-      blocks: z.array(z.unknown()).optional(),
+      blocks: z.array(z.object({ type: z.string() }).passthrough()).optional(),
     }),
     responses: {
       200: z.object({

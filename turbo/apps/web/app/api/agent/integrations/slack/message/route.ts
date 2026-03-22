@@ -7,13 +7,29 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { decryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
-import { createSlackClient } from "../../../../../../src/lib/slack/client";
+import {
+  createSlackClient,
+  postMessage,
+} from "../../../../../../src/lib/slack/client";
 import type { Block, KnownBlock } from "@slack/web-api";
 import { eq, and } from "drizzle-orm";
+
+/** Type guard for Slack API platform errors that carry a `data.error` string */
+function isSlackPlatformError(
+  err: unknown,
+): err is Error & { data: { error: string } } {
+  if (!(err instanceof Error) || !("data" in err)) return false;
+  const { data } = err as { data: unknown };
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "error" in data &&
+    typeof (data as { error: unknown }).error === "string"
+  );
+}
 
 const router = tsr.router(integrationsSlackMessageContract, {
   sendMessage: async ({ body, headers }, { request }) => {
@@ -43,7 +59,7 @@ const router = tsr.router(integrationsSlackMessageContract, {
           },
         };
       }
-      orgId = (await getOrgData(sandboxRun.orgId)).orgId;
+      orgId = sandboxRun.orgId;
     } else {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const { org } = await resolveOrg(authCtx, orgSlug);
@@ -78,13 +94,9 @@ const router = tsr.router(integrationsSlackMessageContract, {
     const client = createSlackClient(botToken);
 
     try {
-      const result = await client.chat.postMessage({
-        channel: body.channel,
-        text: body.text ?? "",
-        ...(body.threadTs !== undefined && { thread_ts: body.threadTs }),
-        ...(body.blocks !== undefined && {
-          blocks: body.blocks as (Block | KnownBlock)[],
-        }),
+      const result = await postMessage(client, body.channel, body.text ?? "", {
+        threadTs: body.threadTs,
+        blocks: body.blocks as (Block | KnownBlock)[],
       });
       return {
         status: 200 as const,
@@ -95,13 +107,12 @@ const router = tsr.router(integrationsSlackMessageContract, {
         },
       };
     } catch (error) {
-      const slackError = (error as { data?: { error?: string } }).data?.error;
-      if (slackError) {
+      if (isSlackPlatformError(error)) {
         return {
           status: 400 as const,
           body: {
             error: {
-              message: `Slack API error: ${slackError}`,
+              message: `Slack API error: ${error.data.error}`,
               code: "SLACK_ERROR",
             },
           },
