@@ -75,7 +75,7 @@ enum Command {
     Gc(cmd::GcArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),
-    /// Local file-queue provider commands (submit, cancel)
+    /// Local file-queue provider commands
     Local(cmd::LocalArgs),
 }
 
