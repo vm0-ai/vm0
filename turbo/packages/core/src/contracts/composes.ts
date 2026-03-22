@@ -413,10 +413,80 @@ export const composesListContract = c.router({
   },
 });
 
+/**
+ * Compose metadata update schema
+ */
+const metadataUpdateSchema = z.object({
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  sound: z.string().optional(),
+});
+
+/**
+ * Composes metadata route contract (/api/agent/composes/[id]/metadata)
+ */
+export const composesMetadataContract = c.router({
+  /**
+   * PATCH /api/agent/composes/:id/metadata
+   * Update agent compose metadata (displayName, description, sound)
+   */
+  updateMetadata: {
+    method: "PATCH",
+    path: "/api/agent/composes/:id/metadata",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().min(1, "Compose ID is required"),
+    }),
+    body: metadataUpdateSchema,
+    responses: {
+      200: z.object({ ok: z.literal(true) }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update agent compose metadata",
+  },
+});
+
+/**
+ * Compose instructions response schema
+ */
+const composeInstructionsResponseSchema = z.object({
+  content: z.string().nullable(),
+  filename: z.string().nullable(),
+});
+
+/**
+ * Composes instructions route contract (/api/agent/composes/[id]/instructions)
+ */
+export const composesInstructionsContract = c.router({
+  /**
+   * GET /api/agent/composes/:id/instructions
+   * Get the instructions content for an agent compose
+   */
+  getInstructions: {
+    method: "GET",
+    path: "/api/agent/composes/:id/instructions",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().min(1, "Compose ID is required"),
+    }),
+    responses: {
+      200: composeInstructionsResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get agent compose instructions content",
+  },
+});
+
 export type ComposesMainContract = typeof composesMainContract;
 export type ComposesByIdContract = typeof composesByIdContract;
 export type ComposesVersionsContract = typeof composesVersionsContract;
 export type ComposesListContract = typeof composesListContract;
+export type ComposesMetadataContract = typeof composesMetadataContract;
+export type ComposesInstructionsContract = typeof composesInstructionsContract;
 
 // Export schemas for reuse
 export {
@@ -427,6 +497,8 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
+  metadataUpdateSchema,
+  composeInstructionsResponseSchema,
 };
 
 // Export inferred types for consumers

@@ -8,8 +8,9 @@
  * Writing instructions is handled through the compose job flow
  * (POST /api/compose/jobs) which runs in an E2B sandbox.
  */
-import { NextResponse } from "next/server";
 import { gunzipSync } from "node:zlib";
+import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
+import { composesInstructionsContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { eq, and } from "drizzle-orm";
 import {
@@ -39,150 +40,161 @@ import {
 } from "@vm0/core";
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  initServices();
+const router = tsr.router(composesInstructionsContract, {
+  getInstructions: async ({ params, headers }) => {
+    initServices();
 
-  const authorization = request.headers.get("authorization") ?? undefined;
-  const authResult = await requireAuth(authorization, {
-    requiredCapability: "agent:read",
-  });
-  if (isAuthError(authResult)) {
-    return NextResponse.json(authResult.body, { status: authResult.status });
-  }
-  const { userId } = authResult;
-
-  const { id } = await params;
-
-  // Get compose with HEAD version content
-  const [result] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      userId: agentComposes.userId,
-      orgId: agentComposes.orgId,
-      name: agentComposes.name,
-      content: agentComposeVersions.content,
-    })
-    .from(agentComposes)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentComposes.headVersionId, agentComposeVersions.id),
-    )
-    .where(eq(agentComposes.id, id))
-    .limit(1);
-
-  if (!result) {
-    return NextResponse.json(
-      { error: { message: "Agent compose not found", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
-  }
-
-  // Check access (owner or org member).
-  // Sandbox tokens (with capabilities) are already authorized via requireAuth;
-  // use the compose's orgId since sandbox tokens lack org context.
-  const orgId = authResult.capabilities
-    ? result.orgId
-    : (await resolveOrg(authResult)).org.orgId;
-  const hasAccess = canAccessCompose(userId, orgId, result);
-  if (!hasAccess) {
-    return NextResponse.json(
-      { error: { message: "Agent compose not found", code: "NOT_FOUND" } },
-      { status: 404 },
-    );
-  }
-
-  // Extract instructions filename from compose content
-  const parsed = agentComposeApiContentSchema.safeParse(result.content);
-  if (!parsed.success) {
-    return NextResponse.json({ content: null, filename: null });
-  }
-
-  const agentKeys = Object.keys(parsed.data.agents);
-  const firstKey = agentKeys[0];
-  const agentDef = firstKey ? parsed.data.agents[firstKey] : undefined;
-  // Use the explicit instructions filename from YAML, or fall back to the
-  // framework-canonical name (e.g. CLAUDE.md for claude-code).  The CLI may
-  // upload instructions without setting the `instructions` field in the YAML.
-  const instructionsFilename =
-    agentDef?.instructions ?? getInstructionsFilename(agentDef?.framework);
-
-  // Look up the instructions storage volume
-  const storageName = getInstructionsStorageName(result.name);
-  const [storage] = await globalThis.services.db
-    .select()
-    .from(storages)
-    .where(
-      and(
-        eq(storages.orgId, result.orgId),
-        eq(storages.name, storageName),
-        eq(storages.type, "volume"),
-      ),
-    )
-    .limit(1);
-
-  if (!storage?.headVersionId) {
-    return NextResponse.json({ content: null, filename: instructionsFilename });
-  }
-
-  // Get the HEAD version to find S3 key
-  const [version] = await globalThis.services.db
-    .select()
-    .from(storageVersions)
-    .where(eq(storageVersions.id, storage.headVersionId))
-    .limit(1);
-
-  if (!version) {
-    return NextResponse.json({ content: null, filename: instructionsFilename });
-  }
-
-  const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
-
-  // Download manifest to find the actual filename in storage
-  const manifest = await downloadManifest(bucket, version.s3Key);
-
-  // Derive the canonical filename from the agent's framework.
-  // CLI uploads instructions with a framework-canonical name (e.g., CLAUDE.md
-  // for claude-code). Use the same mapping to look up the file in the manifest,
-  // ensuring the read path matches the write path.
-  const canonicalFilename = getInstructionsFilename(agentDef?.framework);
-  const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
-  const instructionFile = manifest.files.find(
-    (f) => normalize(f.path) === normalize(canonicalFilename),
-  );
-
-  if (!instructionFile) {
-    return NextResponse.json({ content: null, filename: instructionsFilename });
-  }
-
-  // Download and extract from the archive (CLI uploads archive.tar.gz, not individual blobs)
-  const archiveKey = `${version.s3Key}/archive.tar.gz`;
-  const archiveBuffer = await downloadS3Buffer(bucket, archiveKey);
-  const tarBuffer = gunzipSync(archiveBuffer);
-  const fileContent = extractFileFromTar(tarBuffer, instructionFile.path);
-
-  if (!fileContent) {
-    return NextResponse.json({
-      content: null,
-      filename: instructionsFilename,
+    const authResult = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:read",
     });
-  }
+    if (isAuthError(authResult)) return authResult;
+    const { userId } = authResult;
 
-  // Strip any legacy metadata blocks that the CLI may have baked in.
-  // New uploads no longer inject metadata; this handles the transition period.
-  // Only strip when legacy markers are present to avoid trimming clean content.
-  const rawContent = fileContent.toString("utf-8");
-  const hasLegacyBlocks =
-    rawContent.includes("[AGENT_PROFILE]") ||
-    rawContent.includes("<!-- ZERO_PROFILE");
-  const finalContent = hasLegacyBlocks
-    ? stripMetadataFrontmatter(rawContent)
-    : rawContent;
+    const { id } = params;
 
-  return NextResponse.json({
-    content: finalContent,
-    filename: instructionsFilename,
-  });
-}
+    // Get compose with HEAD version content
+    const [result] = await globalThis.services.db
+      .select({
+        id: agentComposes.id,
+        userId: agentComposes.userId,
+        orgId: agentComposes.orgId,
+        name: agentComposes.name,
+        content: agentComposeVersions.content,
+      })
+      .from(agentComposes)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentComposes.headVersionId, agentComposeVersions.id),
+      )
+      .where(eq(agentComposes.id, id))
+      .limit(1);
+
+    if (!result) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent compose not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    // Check access (owner or org member).
+    // Sandbox tokens (with capabilities) are already authorized via requireAuth;
+    // use the compose's orgId since sandbox tokens lack org context.
+    const orgId = authResult.capabilities
+      ? result.orgId
+      : (await resolveOrg(authResult)).org.orgId;
+    const hasAccess = canAccessCompose(userId, orgId, result);
+    if (!hasAccess) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent compose not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    // Extract instructions filename from compose content
+    const parsed = agentComposeApiContentSchema.safeParse(result.content);
+    if (!parsed.success) {
+      return {
+        status: 200 as const,
+        body: { content: null, filename: null },
+      };
+    }
+
+    const agentKeys = Object.keys(parsed.data.agents);
+    const firstKey = agentKeys[0];
+    const agentDef = firstKey ? parsed.data.agents[firstKey] : undefined;
+    // Use the explicit instructions filename from YAML, or fall back to the
+    // framework-canonical name (e.g. CLAUDE.md for claude-code).  The CLI may
+    // upload instructions without setting the `instructions` field in the YAML.
+    const instructionsFilename =
+      agentDef?.instructions ?? getInstructionsFilename(agentDef?.framework);
+
+    // Look up the instructions storage volume
+    const storageName = getInstructionsStorageName(result.name);
+    const [storage] = await globalThis.services.db
+      .select()
+      .from(storages)
+      .where(
+        and(
+          eq(storages.orgId, result.orgId),
+          eq(storages.name, storageName),
+          eq(storages.type, "volume"),
+        ),
+      )
+      .limit(1);
+
+    if (!storage?.headVersionId) {
+      return {
+        status: 200 as const,
+        body: { content: null, filename: instructionsFilename },
+      };
+    }
+
+    // Get the HEAD version to find S3 key
+    const [version] = await globalThis.services.db
+      .select()
+      .from(storageVersions)
+      .where(eq(storageVersions.id, storage.headVersionId))
+      .limit(1);
+
+    if (!version) {
+      return {
+        status: 200 as const,
+        body: { content: null, filename: instructionsFilename },
+      };
+    }
+
+    const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
+
+    // Download manifest to find the actual filename in storage
+    const manifest = await downloadManifest(bucket, version.s3Key);
+
+    // Derive the canonical filename from the agent's framework.
+    const canonicalFilename = getInstructionsFilename(agentDef?.framework);
+    const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
+    const instructionFile = manifest.files.find(
+      (f) => normalize(f.path) === normalize(canonicalFilename),
+    );
+
+    if (!instructionFile) {
+      return {
+        status: 200 as const,
+        body: { content: null, filename: instructionsFilename },
+      };
+    }
+
+    // Download and extract from the archive
+    const archiveKey = `${version.s3Key}/archive.tar.gz`;
+    const archiveBuffer = await downloadS3Buffer(bucket, archiveKey);
+    const tarBuffer = gunzipSync(archiveBuffer);
+    const fileContent = extractFileFromTar(tarBuffer, instructionFile.path);
+
+    if (!fileContent) {
+      return {
+        status: 200 as const,
+        body: { content: null, filename: instructionsFilename },
+      };
+    }
+
+    // Strip any legacy metadata blocks
+    const rawContent = fileContent.toString("utf-8");
+    const hasLegacyBlocks =
+      rawContent.includes("[AGENT_PROFILE]") ||
+      rawContent.includes("<!-- ZERO_PROFILE");
+    const finalContent = hasLegacyBlocks
+      ? stripMetadataFrontmatter(rawContent)
+      : rawContent;
+
+    return {
+      status: 200 as const,
+      body: { content: finalContent, filename: instructionsFilename },
+    };
+  },
+});
+
+const handler = createHandler(composesInstructionsContract, router);
+
+export { handler as GET };

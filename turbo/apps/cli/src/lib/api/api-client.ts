@@ -20,6 +20,7 @@ import {
   schedulesMainContract,
   schedulesByNameContract,
   schedulesEnableContract,
+  schedulesDisableContract,
   scheduleRunsContract,
   agentComposeApiContentSchema,
   type ApiErrorResponse,
@@ -884,7 +885,7 @@ class ApiClient {
     const baseUrl = await this.getBaseUrl();
     const headers = await this.getHeaders();
 
-    const client = initClient(schedulesEnableContract, {
+    const client = initClient(schedulesDisableContract, {
       baseUrl,
       baseHeaders: headers,
       jsonQuery: false,

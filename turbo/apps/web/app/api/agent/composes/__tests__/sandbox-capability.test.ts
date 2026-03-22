@@ -388,9 +388,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
         },
       );
 
-      const response = await instructionsGET(request, {
-        params: Promise.resolve({ id: composeId }),
-      });
+      const response = await instructionsGET(request);
       // Should pass auth and reach compose lookup - returns 200 with null content
       // (no storage volume exists for test compose)
       expect(response.status).toBe(200);
@@ -412,9 +410,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
         },
       );
 
-      const response = await instructionsGET(request, {
-        params: Promise.resolve({ id: composeId }),
-      });
+      const response = await instructionsGET(request);
       expect(response.status).toBe(403);
     });
   });

@@ -78,9 +78,7 @@ describe("POST /api/agent/schedules/:name/disable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "my-schedule" }),
-    });
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(400);
@@ -102,9 +100,7 @@ describe("POST /api/agent/schedules/:name/disable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "my-schedule" }),
-    });
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(400);
@@ -121,9 +117,7 @@ describe("POST /api/agent/schedules/:name/disable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "non-existent" }),
-    });
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -162,9 +156,7 @@ describe("POST /api/agent/schedules/:name/disable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "any-schedule" }),
-    });
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -215,9 +207,7 @@ describe("POST /api/agent/schedules/:name/disable - Sandbox Token Auth", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "sandbox-disable-test" }),
-    });
+    const response = await POST(request);
 
     expect(response.status).toBe(200);
   });
@@ -240,9 +230,7 @@ describe("POST /api/agent/schedules/:name/disable - Sandbox Token Auth", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "any-schedule" }),
-    });
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
   });
