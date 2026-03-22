@@ -11,6 +11,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import { getAppUrl } from "../src/lib/url";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
 import "./blog.css";
@@ -169,10 +170,10 @@ export default function RootLayout({
               `,
             }}
           />
-          {process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL && (
+          {env().NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL && (
             <>
               <Script
-                src={process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL}
+                src={env().NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL}
                 strategy="afterInteractive"
                 async
               />

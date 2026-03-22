@@ -205,6 +205,8 @@ function initEnv() {
       NEXT_PUBLIC_STRAPI_URL: z.url().optional(),
       // App UI URL (for settings page links, Navbar, LandingPage)
       NEXT_PUBLIC_APP_URL: z.url(),
+      // Analytics (Plausible)
+      NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: z.url().optional(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
@@ -346,6 +348,8 @@ function initEnv() {
       NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
       NEXT_PUBLIC_DATA_SOURCE: process.env.NEXT_PUBLIC_DATA_SOURCE,
       NEXT_PUBLIC_STRAPI_URL: process.env.NEXT_PUBLIC_STRAPI_URL,
+      NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL:
+        process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL,
     },
     emptyStringAsUndefined: true,
   });
