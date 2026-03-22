@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.43.0...runner-rs-v0.44.0) (2026-03-22)
+
+
+### Features
+
+* **runner:** add job cancellation via ably real-time notifications ([#5949](https://github.com/vm0-ai/vm0/issues/5949)) ([e157f92](https://github.com/vm0-ai/vm0/commit/e157f925312c50ff8de62e986d7bc7afac0a3d53)), closes [#5762](https://github.com/vm0-ai/vm0/issues/5762)
+
 ## [0.43.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.42.1...runner-rs-v0.43.0) (2026-03-21)
 
 

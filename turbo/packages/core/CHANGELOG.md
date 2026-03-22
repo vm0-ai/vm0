@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.91.0](https://github.com/vm0-ai/vm0/compare/core-v8.90.0...core-v8.91.0) (2026-03-22)
+
+
+### Features
+
+* add integration-slack:write capability and proxy api endpoint ([#5970](https://github.com/vm0-ai/vm0/issues/5970)) ([afafbfc](https://github.com/vm0-ai/vm0/commit/afafbfc74e3f82ec9c80170869d0594713bf0385))
+* add pre-flight credit check for vm0 model provider runs ([#5917](https://github.com/vm0-ai/vm0/issues/5917)) ([3bc42e8](https://github.com/vm0-ai/vm0/commit/3bc42e8662e8b7f54aab394401444fb7e6d74794))
+* structured error codes for pre-run checks with client-side guidance ([#5936](https://github.com/vm0-ai/vm0/issues/5936)) ([c6c0dda](https://github.com/vm0-ai/vm0/commit/c6c0ddaebfc7b0b2fc188a537e16d45fa7a65c02))
+
+
+### Refactoring
+
+* migrate remaining agent api routes to ts-rest contracts ([#5971](https://github.com/vm0-ai/vm0/issues/5971)) ([0dabe60](https://github.com/vm0-ai/vm0/commit/0dabe60a38e3d8bb96326ab701a272a1a3ac2d6c))
+
 ## [8.90.0](https://github.com/vm0-ai/vm0/compare/core-v8.89.0...core-v8.90.0) (2026-03-20)
 
 

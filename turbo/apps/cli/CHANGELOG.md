@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.74.0](https://github.com/vm0-ai/vm0/compare/cli-v9.73.0...cli-v9.74.0) (2026-03-22)
+
+
+### Features
+
+* add pre-flight credit check for vm0 model provider runs ([#5917](https://github.com/vm0-ai/vm0/issues/5917)) ([3bc42e8](https://github.com/vm0-ai/vm0/commit/3bc42e8662e8b7f54aab394401444fb7e6d74794))
+* **runner:** add job cancellation via ably real-time notifications ([#5949](https://github.com/vm0-ai/vm0/issues/5949)) ([e157f92](https://github.com/vm0-ai/vm0/commit/e157f925312c50ff8de62e986d7bc7afac0a3d53)), closes [#5762](https://github.com/vm0-ai/vm0/issues/5762)
+* structured error codes for pre-run checks with client-side guidance ([#5936](https://github.com/vm0-ai/vm0/issues/5936)) ([c6c0dda](https://github.com/vm0-ai/vm0/commit/c6c0ddaebfc7b0b2fc188a537e16d45fa7a65c02))
+
+
+### Refactoring
+
+* migrate remaining agent api routes to ts-rest contracts ([#5971](https://github.com/vm0-ai/vm0/issues/5971)) ([0dabe60](https://github.com/vm0-ai/vm0/commit/0dabe60a38e3d8bb96326ab701a272a1a3ac2d6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.91.0
+
 ## [9.73.0](https://github.com/vm0-ai/vm0/compare/cli-v9.72.1...cli-v9.73.0) (2026-03-21)
 
 

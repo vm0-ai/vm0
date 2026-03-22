@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.14.0...sandbox-fc-v0.14.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** prevent orphan firecracker processes during snapshot creation ([#5963](https://github.com/vm0-ai/vm0/issues/5963)) ([ec72353](https://github.com/vm0-ai/vm0/commit/ec72353dbbcc3c07edc560c7004c43350422c3c7))
+
 ## [0.14.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.13.2...sandbox-fc-v0.14.0) (2026-03-20)
 
 

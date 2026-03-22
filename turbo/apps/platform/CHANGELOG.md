@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.134.0](https://github.com/vm0-ai/vm0/compare/app-v0.133.3...app-v0.134.0) (2026-03-22)
+
+
+### Features
+
+* structured error codes for pre-run checks with client-side guidance ([#5936](https://github.com/vm0-ai/vm0/issues/5936)) ([c6c0dda](https://github.com/vm0-ai/vm0/commit/c6c0ddaebfc7b0b2fc188a537e16d45fa7a65c02))
+
+
+### Bug Fixes
+
+* add works path to route type union for type safety ([#5950](https://github.com/vm0-ai/vm0/issues/5950)) ([3f5d4e8](https://github.com/vm0-ai/vm0/commit/3f5d4e8bca637e1c7cde95fd5ed8710bae1b8489))
+
+
+### Refactoring
+
+* cleanup stale references after activity/team route migration ([#5922](https://github.com/vm0-ai/vm0/issues/5922)) ([4c0894f](https://github.com/vm0-ai/vm0/commit/4c0894f17692085d47a6cb8464f8f9382a9ab110)), closes [#5921](https://github.com/vm0-ai/vm0/issues/5921)
+* extract lightbox state from view components into shared signal ([#5928](https://github.com/vm0-ai/vm0/issues/5928)) ([eebc5d3](https://github.com/vm0-ai/vm0/commit/eebc5d3b8c0a6995fbd62491ffb122c5f9b83b73))
+* migrate /preferences route to dedicated setup function ([#5946](https://github.com/vm0-ai/vm0/issues/5946)) ([2e380e7](https://github.com/vm0-ai/vm0/commit/2e380e71095cc17fae56a585013ebc434e8f1229)), closes [#5843](https://github.com/vm0-ai/vm0/issues/5843)
+* migrate /schedule route to dedicated setup function ([#5951](https://github.com/vm0-ai/vm0/issues/5951)) ([180b0b8](https://github.com/vm0-ai/vm0/commit/180b0b8d0ad06204308ac70ffd80bb6e18bc45bf)), closes [#5841](https://github.com/vm0-ai/vm0/issues/5841)
+* migrate /settings route to dedicated setup function ([#5842](https://github.com/vm0-ai/vm0/issues/5842)) ([#5952](https://github.com/vm0-ai/vm0/issues/5952)) ([dada26b](https://github.com/vm0-ai/vm0/commit/dada26ba26f79012680f708b1b839164ecd2eed5))
+* migrate /works route to dedicated setup function ([#5948](https://github.com/vm0-ai/vm0/issues/5948)) ([01d3f61](https://github.com/vm0-ai/vm0/commit/01d3f61e2432f2e288af7980c8ea3957fe448b4d)), closes [#5844](https://github.com/vm0-ai/vm0/issues/5844)
+* move scope review type state from view to signals layer ([#5941](https://github.com/vm0-ai/vm0/issues/5941)) ([a28042c](https://github.com/vm0-ai/vm0/commit/a28042cfd39e408c78ef635867c618ebb04abb34)), closes [#5815](https://github.com/vm0-ai/vm0/issues/5815)
+* remove ccstate-react/experimental from add-connection-dialog ([#5943](https://github.com/vm0-ai/vm0/issues/5943)) ([2c16bc4](https://github.com/vm0-ai/vm0/commit/2c16bc460bc40e8e7cb6610e2b64efd32500dfdc)), closes [#5821](https://github.com/vm0-ai/vm0/issues/5821)
+* remove ccstate-react/experimental from notification-settings ([#5938](https://github.com/vm0-ai/vm0/issues/5938)) ([4bb7d35](https://github.com/vm0-ai/vm0/commit/4bb7d35b2bb15eeb6e86b572bce8d743afc49f0c)), closes [#5819](https://github.com/vm0-ai/vm0/issues/5819)
+* remove ccstate-react/experimental from timezone-settings ([#5945](https://github.com/vm0-ai/vm0/issues/5945)) ([39d63a6](https://github.com/vm0-ai/vm0/commit/39d63a6bdeed07bcbde6cd60dda907fc7da4d147))
+* remove ccstate-react/experimental from use-file-upload-handlers ([#5923](https://github.com/vm0-ai/vm0/issues/5923)) ([bee3eb1](https://github.com/vm0-ai/vm0/commit/bee3eb1722e52012283b687b872a4a1e3faaa0a5)), closes [#5818](https://github.com/vm0-ai/vm0/issues/5818)
+* remove ccstate-react/experimental from zero-account-page ([#5933](https://github.com/vm0-ai/vm0/issues/5933)) ([702a13d](https://github.com/vm0-ai/vm0/commit/702a13d7b64842a4a7488c9e1f352558d72e56e2)), closes [#5814](https://github.com/vm0-ai/vm0/issues/5814)
+* remove ccstate-react/experimental from zero-chat-composer.tsx ([#5927](https://github.com/vm0-ai/vm0/issues/5927)) ([862b98e](https://github.com/vm0-ai/vm0/commit/862b98e3a711e718883e6313da2be43c32627198))
+* remove ccstate-react/experimental from zero-job-detail-page ([#5944](https://github.com/vm0-ai/vm0/issues/5944)) ([8f5d1a3](https://github.com/vm0-ai/vm0/commit/8f5d1a3f2072231860d7862ef91176c66afdf256)), closes [#5813](https://github.com/vm0-ai/vm0/issues/5813)
+* remove ccstate-react/experimental from zero-model-preference ([#5942](https://github.com/vm0-ai/vm0/issues/5942)) ([b27854c](https://github.com/vm0-ai/vm0/commit/b27854c47dad66b1b8f9bbed139d1a555d47828d))
+* remove ccstate-react/experimental from zero-onboarding.tsx ([#5924](https://github.com/vm0-ai/vm0/issues/5924)) ([dbc99ed](https://github.com/vm0-ai/vm0/commit/dbc99ed46266aee83e9b5efd7e7a71f90680e67f)), closes [#5808](https://github.com/vm0-ai/vm0/issues/5808)
+* remove ccstate-react/experimental from zero-schedule-tab.tsx ([#5934](https://github.com/vm0-ai/vm0/issues/5934)) ([ec37c57](https://github.com/vm0-ai/vm0/commit/ec37c5777821cbf0817656be78bf6cfbd74793fa)), closes [#5811](https://github.com/vm0-ai/vm0/issues/5811)
+* remove ccstate-react/experimental from zero-send-key.ts ([#5937](https://github.com/vm0-ai/vm0/issues/5937)) ([88e6901](https://github.com/vm0-ai/vm0/commit/88e6901c11cf82089220bd583d67386846a758c0))
+* remove ccstate-react/experimental from zero-sidebar.tsx ([#5806](https://github.com/vm0-ai/vm0/issues/5806)) ([#5939](https://github.com/vm0-ai/vm0/issues/5939)) ([3fa250d](https://github.com/vm0-ai/vm0/commit/3fa250d13dcf14fdea0be9a5ed581fd1b7b5e6d5))
+* remove ccstate-react/experimental from zero-slack-connect-page ([#5803](https://github.com/vm0-ai/vm0/issues/5803)) ([#5935](https://github.com/vm0-ai/vm0/issues/5935)) ([0a6d043](https://github.com/vm0-ai/vm0/commit/0a6d0433924dce3b860adf55733e712e483071bb))
+* remove ccstate-react/experimental from zero-works-page.tsx ([#5931](https://github.com/vm0-ai/vm0/issues/5931)) ([69dc26e](https://github.com/vm0-ai/vm0/commit/69dc26e7f26fe64bfcaaba37379a9eb8bfed44b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.91.0
+
 ## [0.133.3](https://github.com/vm0-ai/vm0/compare/app-v0.133.2...app-v0.133.3) (2026-03-21)
 
 
