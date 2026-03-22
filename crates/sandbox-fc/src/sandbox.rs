@@ -194,19 +194,19 @@ impl FirecrackerSandbox {
         let username = current_username()?;
         let api_sock = self.sock_paths.api_sock();
 
+        // Use `exec` to replace the bash process with firecracker, keeping all
+        // descendants in the same process group so `kill_process_group` can
+        // reach them (same pattern as start_from_snapshot and snapshot.rs).
+        let inner_cmd =
+            r#"exec ip netns exec "$1" sudo -u "$2" "$3" --config-file "$4" --api-sock "$5""#;
+
         let mut child = tokio::process::Command::new("sudo")
-            .arg("ip")
-            .arg("netns")
-            .arg("exec")
-            .arg(&self.network.name)
-            .arg("sudo")
-            .arg("-u")
-            .arg(&username)
-            .arg(&self.factory_config.binary_path)
-            .arg("--config-file")
-            .arg(self.sandbox_paths.config())
-            .arg("--api-sock")
-            .arg(&api_sock)
+            .args(["bash", "-c", inner_cmd, "_"])
+            .arg(&self.network.name) // $1
+            .arg(&username) // $2
+            .arg(&self.factory_config.binary_path) // $3
+            .arg(self.sandbox_paths.config()) // $4
+            .arg(&api_sock) // $5
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
