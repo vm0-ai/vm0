@@ -9,13 +9,55 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
   security-events: write
 
 jobs:
+  # Detect release-please context across all event types (PR, push, merge queue).
+  detect-release:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Check for release-please
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref || '' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ "$HEAD_REF" == release-please--branches--* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please PR detected (branch: $HEAD_REF)"
+            exit 0
+          fi
+          if [[ "$EVENT_NAME" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please push detected (message: $COMMIT_MSG)"
+            exit 0
+          fi
+          if [[ "$EVENT_NAME" == "merge_group" ]] && [[ -n "$MQ_HEAD_REF" ]]; then
+            PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [[ -n "$PR_NUM" ]]; then
+              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName 2>/dev/null || echo "")
+              if [[ "$PR_BRANCH" == release-please--branches--* ]]; then
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                echo "Release-please merge queue entry detected (PR #$PR_NUM, branch: $PR_BRANCH)"
+                exit 0
+              fi
+            fi
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Not a release-please context"
+
   semgrep:
+    needs: [detect-release]
     name: Semgrep SAST
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep
@@ -73,9 +115,10 @@ jobs:
           category: semgrep
 
   codeql:
+    needs: [detect-release]
     name: CodeQL SAST
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -92,9 +135,10 @@ jobs:
           upload: ${{ github.event_name != 'merge_group' }}
 
   pnpm-audit:
+    needs: [detect-release]
     name: pnpm audit (SCA)
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -122,9 +166,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   actionlint:
+    needs: [detect-release]
     name: Workflow Lint
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -136,9 +181,10 @@ jobs:
         run: ./actionlint
 
   gitleaks:
+    needs: [detect-release]
     name: Gitleaks Secrets Detection
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -161,20 +207,24 @@ jobs:
   ci-gate-security:
     runs-on: ubuntu-latest
     needs:
+      - detect-release
       - semgrep
       - codeql
       - pnpm-audit
       - actionlint
       - gitleaks
     # Always run so the gate reports an explicit result (not "skipped").
-    # Skip on release-please PRs and commits — GitHub treats "skipped" as passing.
-    if: >-
-      always() &&
-      !startsWith(github.head_ref || '', 'release-please--branches--') &&
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release'))
+    if: always()
     steps:
       - name: Validate CI results
+        env:
+          IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
         run: |
+          # Auto-pass for release-please PRs, commits, and merge queue entries
+          if [[ "$IS_RELEASE" == "true" ]]; then
+            echo "✅ Release-please — skipping CI gate"
+            exit 0
+          fi
           echo "::group::CI Gate Results"
           FAILED=0
 

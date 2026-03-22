@@ -12,10 +12,59 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Detect release-please context across all event types (PR, push, merge queue).
+  # github.head_ref is empty in merge_group events, so we extract the PR number
+  # from the merge queue head_ref and check via GitHub API.
+  detect-release:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Check for release-please
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref || '' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          # PR event: check branch name
+          if [[ "$HEAD_REF" == release-please--branches--* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please PR detected (branch: $HEAD_REF)"
+            exit 0
+          fi
+
+          # Push event: check commit message
+          if [[ "$EVENT_NAME" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please push detected (message: $COMMIT_MSG)"
+            exit 0
+          fi
+
+          # Merge queue event: extract PR number, check branch via API
+          if [[ "$EVENT_NAME" == "merge_group" ]] && [[ -n "$MQ_HEAD_REF" ]]; then
+            PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [[ -n "$PR_NUM" ]]; then
+              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName 2>/dev/null || echo "")
+              if [[ "$PR_BRANCH" == release-please--branches--* ]]; then
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                echo "Release-please merge queue entry detected (PR #$PR_NUM, branch: $PR_BRANCH)"
+                exit 0
+              fi
+            fi
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Not a release-please context"
+
   # Prepare: detect changes and set job-ref identifier
   prepare:
+    needs: [detect-release]
     # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -181,9 +230,10 @@ jobs:
           fi
 
   file-size-check:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -220,9 +270,10 @@ jobs:
 
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -233,9 +284,10 @@ jobs:
         run: pnpm lint
 
   lint-types:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -246,9 +298,10 @@ jobs:
         run: pnpm check-types
 
   lint-format:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -259,9 +312,10 @@ jobs:
         run: pnpm prettier --check .
 
   lint-knip:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -275,8 +329,6 @@ jobs:
   test-web:
     needs: prepare
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
     strategy:
       matrix:
         shard: [1, 2, 3, 4]
@@ -348,8 +400,9 @@ jobs:
         run: pnpm tsx scripts/test-migration-consistency-schema.ts
 
   test-cli:
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -376,8 +429,9 @@ jobs:
           report_type: test_results
 
   test-app:
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -404,8 +458,9 @@ jobs:
           report_type: test_results
 
   test-other:
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
@@ -1753,6 +1808,7 @@ jobs:
     runs-on: ubuntu-latest
     # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
+      - detect-release
       - prepare
       - file-size-check
       - lint-eslint
@@ -1783,14 +1839,11 @@ jobs:
     steps:
       - name: Validate CI results
         env:
-          HEAD_REF: ${{ github.head_ref || '' }}
-          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
-          EVENT_NAME: ${{ github.event_name }}
+          IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
         run: |
-          # Auto-pass for release-please PRs (only version bumps and changelogs)
-          if [[ "$HEAD_REF" == release-please--branches--* ]] || \
-             { [[ "$EVENT_NAME" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; }; then
-            echo "✅ Release-please PR — skipping CI gate"
+          # Auto-pass for release-please PRs, commits, and merge queue entries
+          if [[ "$IS_RELEASE" == "true" ]]; then
+            echo "✅ Release-please — skipping CI gate"
             exit 0
           fi
 
