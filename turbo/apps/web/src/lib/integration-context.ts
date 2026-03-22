@@ -43,3 +43,18 @@ export function buildScheduleGuidance(): string {
     'Choose a short, descriptive schedule name based on the task (e.g., "deploy-check", "daily-report").',
   ].join("\n");
 }
+
+/**
+ * Build system prompt guidance for Slack messaging via the vm0 proxy API.
+ * Injected into Slack-triggered runs so agents know how to send messages.
+ */
+export function buildSlackMessagingGuidance(): string {
+  return `# Sending Slack Messages
+You can send Slack messages directly using the vm0 integration API:
+curl -X POST "$VM0_API_URL/api/agent/integrations/slack/message" \\
+  -H "Authorization: Bearer $VM0_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"channel": "<channel-id>", "text": "your message"}'
+Optional fields: threadTs (reply in thread), blocks (Block Kit JSON).
+Messages are sent as the bot user, not as an individual user.`;
+}

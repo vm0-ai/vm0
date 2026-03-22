@@ -2,6 +2,7 @@ import { startRun, isRunDispatchError } from "../../run";
 import {
   buildIntegrationContext,
   buildScheduleGuidance,
+  buildSlackMessagingGuidance,
   DISALLOWED_CRON_TOOLS,
 } from "../../integration-context";
 import { isApiError } from "../../errors";
@@ -76,6 +77,7 @@ export async function runAgentForSlackOrg(
       threadContext,
       userContext,
       buildScheduleGuidance(),
+      buildSlackMessagingGuidance(),
     ].filter(Boolean);
     const appendSystemPrompt =
       contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
