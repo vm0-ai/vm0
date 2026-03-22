@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.134.2](https://github.com/vm0-ai/vm0/compare/app-v0.134.1...app-v0.134.2) (2026-03-22)
+
+
+### Refactoring
+
+* rename skill to connector in platform ui ([#5995](https://github.com/vm0-ai/vm0/issues/5995)) ([e9a0f40](https://github.com/vm0-ai/vm0/commit/e9a0f40c98726c7b0df5bcf7a6781d9cf454717d)), closes [#5991](https://github.com/vm0-ai/vm0/issues/5991)
+
 ## [0.134.1](https://github.com/vm0-ai/vm0/compare/app-v0.134.0...app-v0.134.1) (2026-03-22)
 
 
