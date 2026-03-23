@@ -47,19 +47,19 @@ function makeEventsResponse(text: string): AgentEventsResponse {
   };
 }
 
-const detail1 = makeLogDetail({
-  id: "run_1",
-  agentName: "agent-1",
-  displayName: "Agent One",
-});
-
-const detail2 = makeLogDetail({
-  id: "run_2",
-  agentName: "agent-2",
-  displayName: "Agent Two",
-});
-
 function mockAPIs() {
+  const detail1 = makeLogDetail({
+    id: "run_1",
+    agentName: "agent-1",
+    displayName: "Agent One",
+  });
+
+  const detail2 = makeLogDetail({
+    id: "run_2",
+    agentName: "agent-2",
+    displayName: "Agent Two",
+  });
+
   const listData = [
     {
       id: "run_1",
@@ -100,16 +100,22 @@ function mockAPIs() {
       return HttpResponse.json({ composes: [] });
     }),
     http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "run_1") return HttpResponse.json(detail1);
-      if (params["id"] === "run_2") return HttpResponse.json(detail2);
+      if (params["id"] === "run_1") {
+        return HttpResponse.json(detail1);
+      }
+      if (params["id"] === "run_2") {
+        return HttpResponse.json(detail2);
+      }
       return new HttpResponse(null, { status: 404 });
     }),
     http.get("*/api/zero/runs/:runId/telemetry/agent", ({ params }) => {
       const runId = params["runId"] as string;
-      if (runId === "run_1")
+      if (runId === "run_1") {
         return HttpResponse.json(makeEventsResponse("Response from agent one"));
-      if (runId === "run_2")
+      }
+      if (runId === "run_2") {
         return HttpResponse.json(makeEventsResponse("Response from agent two"));
+      }
       return HttpResponse.json({
         events: [],
         hasMore: false,

@@ -257,7 +257,7 @@ export function ZeroActivityDetailPage() {
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   // Detect stale detail from previous navigation (useLastLoadable keeps old data)
-  const isStale = detail != null && detail.id !== selectedLogId;
+  const isStale = detail !== null && detail.id !== selectedLogId;
   const agentName =
     detail && !isStale ? (detail.displayName ?? detail.agentName) : "Agent";
 
