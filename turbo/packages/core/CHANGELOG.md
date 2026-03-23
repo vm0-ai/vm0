@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.95.0](https://github.com/vm0-ai/vm0/compare/core-v8.94.0...core-v8.95.0) (2026-03-23)
+
+
+### Features
+
+* add trigger source filter to activity page ([#6091](https://github.com/vm0-ai/vm0/issues/6091)) ([89013bb](https://github.com/vm0-ai/vm0/commit/89013bb68137e74f355f7f6330cc17c394990c26))
+
+
+### Refactoring
+
+* enforce no-self-api-call eslint rule globally ([#6054](https://github.com/vm0-ai/vm0/issues/6054)) ([a9131c0](https://github.com/vm0-ai/vm0/commit/a9131c083971c66ec2e2193cbf7fe015742c44a2))
+
 ## [8.94.0](https://github.com/vm0-ai/vm0/compare/core-v8.93.0...core-v8.94.0) (2026-03-23)
 
 

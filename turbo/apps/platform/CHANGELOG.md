@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.138.0](https://github.com/vm0-ai/vm0/compare/app-v0.137.0...app-v0.138.0) (2026-03-23)
+
+
+### Features
+
+* add trigger source filter to activity page ([#6091](https://github.com/vm0-ai/vm0/issues/6091)) ([89013bb](https://github.com/vm0-ai/vm0/commit/89013bb68137e74f355f7f6330cc17c394990c26))
+* update plan credits and pricing (free 10k, pro $40/20k, team $200/120k) ([#6075](https://github.com/vm0-ai/vm0/issues/6075)) ([7898caa](https://github.com/vm0-ai/vm0/commit/7898caa94a65ea855375fb9c6aae07207906429b))
+
+
+### Performance Improvements
+
+* dynamically import @clerk/clerk-js to reduce initial bundle ([#6102](https://github.com/vm0-ai/vm0/issues/6102)) ([a91c1f0](https://github.com/vm0-ai/vm0/commit/a91c1f0e9b96a64ec864c3676624469647cf717a)), closes [#6087](https://github.com/vm0-ai/vm0/issues/6087)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.95.0
+
 ## [0.137.0](https://github.com/vm0-ai/vm0/compare/app-v0.136.0...app-v0.137.0) (2026-03-23)
 
 
