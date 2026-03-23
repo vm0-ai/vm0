@@ -10,7 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposeVersions } from "./agent-compose";
-import { agentSchedules } from "./agent-schedule";
+import { zeroAgentSchedules } from "./zero-agent-schedule";
 
 /**
  * Agent Runs table
@@ -27,9 +27,9 @@ export const agentRuns = pgTable(
     }).references(() => agentComposeVersions.id, { onDelete: "set null" }),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     continuedFromSessionId: uuid("continued_from_session_id"),
-    // References agent_schedules.id if this run was triggered by a schedule
+    // References zero_agent_schedules.id if this run was triggered by a schedule
     scheduleId: uuid("schedule_id").references(
-      (): AnyPgColumn => agentSchedules.id,
+      (): AnyPgColumn => zeroAgentSchedules.id,
       { onDelete: "set null" },
     ),
     status: varchar("status", { length: 20 }).notNull(),

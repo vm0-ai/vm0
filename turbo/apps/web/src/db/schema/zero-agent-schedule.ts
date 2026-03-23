@@ -15,7 +15,7 @@ import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
 
 /**
- * Agent Schedules table
+ * Zero Agent Schedules table
  * Stores schedule configurations for automated agent runs
  * Supports 1:N (one agent can have multiple named schedules)
  *
@@ -29,8 +29,8 @@ import { agentRuns } from "./agent-run";
  * - 'once': cron_expression NULL, at_time NOT NULL, interval_seconds NULL
  * - 'loop': cron_expression NULL, at_time NULL, interval_seconds NOT NULL
  */
-export const agentSchedules = pgTable(
-  "agent_schedules",
+export const zeroAgentSchedules = pgTable(
+  "zero_agent_schedules",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     composeId: uuid("compose_id")
@@ -84,16 +84,16 @@ export const agentSchedules = pgTable(
   },
   (table) => [
     // Index for finding schedules by compose
-    index("idx_agent_schedules_compose").on(table.composeId),
-    index("idx_agent_schedules_org").on(table.orgId),
-    uniqueIndex("idx_agent_schedules_compose_name_org_user").on(
+    index("idx_zero_agent_schedules_compose").on(table.composeId),
+    index("idx_zero_agent_schedules_org").on(table.orgId),
+    uniqueIndex("idx_zero_agent_schedules_compose_name_org_user").on(
       table.composeId,
       table.name,
       table.orgId,
       table.userId,
     ),
     // Partial index for efficient cron polling: enabled schedules with due next_run_at
-    index("idx_agent_schedules_next_run")
+    index("idx_zero_agent_schedules_next_run")
       .on(table.nextRunAt)
       .where(sql`enabled = true`),
   ],
