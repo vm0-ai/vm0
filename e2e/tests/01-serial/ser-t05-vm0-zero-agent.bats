@@ -3,16 +3,24 @@
 # Test VM0 zero agent commands (happy path)
 #
 # This test covers issue #6216: zero agent CLI E2E tests
-# Tests the full CRUD lifecycle: create → list → view → edit → view → delete → list
+# Tests the full CRUD lifecycle: create -> list -> view -> edit -> view -> delete -> list
+#
+# Test Structure:
+# - State is shared via $BATS_FILE_TMPDIR (AP-6 compliant)
+# - Tests run serially with skip guards for cascading failure prevention
 
 load '../../helpers/setup'
 
-AGENT_NAME_FILE="/tmp/e2e-zero-agent-name"
+agent_name_file() {
+    echo "$BATS_FILE_TMPDIR/agent-name"
+}
 
 teardown_file() {
-    if [ -f "$AGENT_NAME_FILE" ]; then
-        $CLI_COMMAND zero agent delete "$(cat "$AGENT_NAME_FILE")" --yes 2>/dev/null || true
-        rm -f "$AGENT_NAME_FILE"
+    local name_file
+    name_file="$(agent_name_file)"
+    if [ -f "$name_file" ]; then
+        $CLI_COMMAND zero agent delete "$(cat "$name_file")" --yes 2>/dev/null || true
+        rm -f "$name_file"
     fi
 }
 
@@ -26,11 +34,11 @@ teardown_file() {
     assert_output --partial "created"
 
     name=$(echo "$output" | grep -oP "agent '\K[^']+")
-    echo "$name" > "$AGENT_NAME_FILE"
+    echo "$name" > "$(agent_name_file)"
 }
 
 @test "vm0 zero agent list shows created agent" {
-    [ -f "$AGENT_NAME_FILE" ] || skip "agent not created"
+    [ -f "$(agent_name_file)" ] || skip "agent not created"
 
     run $CLI_COMMAND zero agent list
     assert_success
@@ -39,8 +47,8 @@ teardown_file() {
 }
 
 @test "vm0 zero agent view shows agent details" {
-    [ -f "$AGENT_NAME_FILE" ] || skip "agent not created"
-    name=$(cat "$AGENT_NAME_FILE")
+    [ -f "$(agent_name_file)" ] || skip "agent not created"
+    name=$(cat "$(agent_name_file)")
 
     run $CLI_COMMAND zero agent view "$name"
     assert_success
@@ -50,8 +58,8 @@ teardown_file() {
 }
 
 @test "vm0 zero agent edit updates agent" {
-    [ -f "$AGENT_NAME_FILE" ] || skip "agent not created"
-    name=$(cat "$AGENT_NAME_FILE")
+    [ -f "$(agent_name_file)" ] || skip "agent not created"
+    name=$(cat "$(agent_name_file)")
 
     run $CLI_COMMAND zero agent edit "$name" --display-name "Updated E2E Agent"
     assert_success
@@ -59,8 +67,8 @@ teardown_file() {
 }
 
 @test "vm0 zero agent view shows updated agent" {
-    [ -f "$AGENT_NAME_FILE" ] || skip "agent not created"
-    name=$(cat "$AGENT_NAME_FILE")
+    [ -f "$(agent_name_file)" ] || skip "agent not created"
+    name=$(cat "$(agent_name_file)")
 
     run $CLI_COMMAND zero agent view "$name"
     assert_success
@@ -68,8 +76,8 @@ teardown_file() {
 }
 
 @test "vm0 zero agent delete removes agent" {
-    [ -f "$AGENT_NAME_FILE" ] || skip "agent not created"
-    name=$(cat "$AGENT_NAME_FILE")
+    [ -f "$(agent_name_file)" ] || skip "agent not created"
+    name=$(cat "$(agent_name_file)")
 
     run $CLI_COMMAND zero agent delete "$name" --yes
     assert_success
@@ -77,7 +85,7 @@ teardown_file() {
 }
 
 @test "vm0 zero agent list excludes deleted agent" {
-    [ -f "$AGENT_NAME_FILE" ] || skip "agent not created"
+    [ -f "$(agent_name_file)" ] || skip "agent not created"
 
     run $CLI_COMMAND zero agent list
     assert_success
