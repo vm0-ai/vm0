@@ -11,6 +11,7 @@ export type RoutePath =
   | "/slack/connect"
   | "/queue"
   | "/schedule"
+  | "/schedule/:scheduleId"
   | "/preferences"
   | "/usage"
   | "/works"

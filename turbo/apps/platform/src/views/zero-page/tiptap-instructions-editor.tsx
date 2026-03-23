@@ -108,6 +108,8 @@ interface TiptapInstructionsEditorProps {
   initialContent: string;
   onChange: (markdown: string) => void;
   disabled?: boolean;
+  /** Hint shown below the editor (default copy is for agent profile instructions). */
+  footerHint?: string;
 }
 
 const ICON_SIZE = 18;
@@ -163,6 +165,7 @@ export function TiptapInstructionsEditor({
   initialContent,
   onChange,
   disabled = false,
+  footerHint = "Edit the instructions directly to customize your agent's behavior.",
 }: TiptapInstructionsEditorProps) {
   const editor = useEditor({
     extensions: [StarterKit, createLowlightPlugin(), Markdown],
@@ -286,7 +289,7 @@ export function TiptapInstructionsEditor({
       )}
       <EditorContent editor={editor} />
       <p className="mx-4 border-t border-border/40 pt-2 pb-3 text-xs text-muted-foreground">
-        Edit the instructions directly to customize your agent&apos;s behavior.
+        {footerHint}
       </p>
     </div>
   );

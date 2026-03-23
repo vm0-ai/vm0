@@ -104,8 +104,8 @@ describe("zero schedule page - list view", () => {
     expect(
       screen.getByText("Check inbox for urgent items"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
-    expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
+    expect(screen.getByText(/Every weekday at 9:00 AM/)).toBeInTheDocument();
+    expect(screen.getByText(/Every 15 minutes/)).toBeInTheDocument();
   });
 
   it("should render page title and subtitle", async () => {
@@ -147,25 +147,58 @@ describe("zero schedule page - list view", () => {
     });
   });
 
-  it("should show edit buttons for each schedule entry", async () => {
+  it("should show a row action menu for each schedule entry", async () => {
     mockScheduleAPI();
     await renderSchedulePage();
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Edit Every 15 minutes")).toBeInTheDocument();
+    const menus = screen.getAllByRole("button", { name: /More actions for/ });
+    expect(menus).toHaveLength(3);
   });
 
-  it("should show delete buttons for named schedule entries", async () => {
+  it("should make each schedule row clickable to detail page", async () => {
     mockScheduleAPI();
     await renderSchedulePage();
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("link", {
+        name: /Open schedule Summarize yesterday's threads/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("should expose Run now, Edit, and Delete in the row menu", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+    const menuTrigger = screen.getByRole("button", {
+      name: "More actions for Every weekday at 9:00 AM",
+    });
+    // Radix DropdownMenu opens on pointerDown in tests (see zero-settings-page tests)
+    fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: /Run now/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Edit" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Delete" }),
       ).toBeInTheDocument();
     });
   });

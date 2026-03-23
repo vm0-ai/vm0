@@ -405,6 +405,9 @@ export interface OrgScheduleEntry {
   timezone: string;
   intervalSeconds: number | null;
   agentId: string;
+  agentName: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -433,6 +436,9 @@ export const allOrgScheduleEntries$ = computed((get) => {
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
+        agentName: s.agentName,
+        nextRunAt: s.nextRunAt,
+        lastRunAt: s.lastRunAt,
       }),
     );
 });
@@ -593,5 +599,34 @@ export const deleteOrgSchedule$ = command(
 
     toast.success("Schedule deleted");
     await set(fetchAllOrgSchedules$);
+  },
+);
+
+/**
+ * Trigger an immediate run using the schedule's prompt and agent (same as chat run).
+ */
+export const runScheduleNow$ = command(
+  async ({ get }, params: { composeId: string; prompt: string }) => {
+    const fetchFn = get(fetch$);
+    const response = await fetchFn("/api/zero/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: params.prompt,
+        agentComposeId: params.composeId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      const message =
+        errorData?.error?.message ?? `Run failed: ${response.status}`;
+      toast.error(message);
+      throw new Error(message);
+    }
+
+    toast.success("Run started");
   },
 );
