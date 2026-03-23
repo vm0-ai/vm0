@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroSchedules } from "../../../lib/api";
+import { resolveZeroScheduleByAgent } from "../../../lib/api";
 import {
   formatDateTime,
   detectTimezone,
@@ -112,33 +112,10 @@ export const statusCommand = new Command()
   )
   .action(
     withErrorHandler(async (agentName: string, options: { name?: string }) => {
-      const { schedules } = await listZeroSchedules();
-
-      const agentSchedules = schedules.filter((s) => s.agentName === agentName);
-
-      if (agentSchedules.length === 0) {
-        throw new Error(`No schedule found for agent "${agentName}"`);
-      }
-
-      let schedule: ScheduleResponse;
-
-      if (options.name) {
-        const match = agentSchedules.find((s) => s.name === options.name);
-        if (!match) {
-          const available = agentSchedules.map((s) => s.name).join(", ");
-          throw new Error(
-            `Schedule "${options.name}" not found for agent "${agentName}". Available schedules: ${available}`,
-          );
-        }
-        schedule = match;
-      } else if (agentSchedules.length === 1) {
-        schedule = agentSchedules[0]!;
-      } else {
-        const available = agentSchedules.map((s) => s.name).join(", ");
-        throw new Error(
-          `Agent "${agentName}" has multiple schedules. Use --name to specify which one: ${available}`,
-        );
-      }
+      const schedule = await resolveZeroScheduleByAgent(
+        agentName,
+        options.name,
+      );
 
       console.log();
       console.log(`Schedule for agent: ${chalk.cyan(agentName)}`);

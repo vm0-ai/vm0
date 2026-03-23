@@ -126,18 +126,10 @@ export async function disableZeroSchedule(params: {
 }
 
 /**
- * Result of resolving a zero schedule by agent name
- */
-interface ResolveZeroScheduleResult {
-  name: string;
-  zeroAgentId: string;
-  agentName: string;
-}
-
-/**
  * Resolve a zero schedule by agent name using the list API.
  * Searches across all user's schedules and finds by agentName.
  *
+ * Returns the full ScheduleResponse so callers can access any field.
  * When an agent has multiple schedules, scheduleName is required for disambiguation.
  * When an agent has exactly one schedule, scheduleName is optional.
  *
@@ -146,7 +138,7 @@ interface ResolveZeroScheduleResult {
 export async function resolveZeroScheduleByAgent(
   agentName: string,
   scheduleName?: string,
-): Promise<ResolveZeroScheduleResult> {
+): Promise<ScheduleResponse> {
   const { schedules } = await listZeroSchedules();
 
   const agentSchedules = schedules.filter((s) => s.agentName === agentName);
@@ -163,19 +155,11 @@ export async function resolveZeroScheduleByAgent(
         `Schedule "${scheduleName}" not found for agent "${agentName}". Available schedules: ${available}`,
       );
     }
-    return {
-      name: match.name,
-      zeroAgentId: match.zeroAgentId,
-      agentName: match.agentName,
-    };
+    return match;
   }
 
   if (agentSchedules.length === 1) {
-    return {
-      name: agentSchedules[0]!.name,
-      zeroAgentId: agentSchedules[0]!.zeroAgentId,
-      agentName: agentSchedules[0]!.agentName,
-    };
+    return agentSchedules[0]!;
   }
 
   const available = agentSchedules.map((s) => s.name).join(", ");
