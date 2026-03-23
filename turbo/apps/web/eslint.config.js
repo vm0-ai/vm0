@@ -68,17 +68,6 @@ export default [
     },
   },
   {
-    // Legacy zero API routes that still use infra-client for HTTP round-trips.
-    // These should be refactored to call underlying logic directly.
-    files: ["app/api/zero/**/route.ts"],
-    plugins: {
-      web: webPlugin,
-    },
-    rules: {
-      "web/no-self-api-call": "off",
-    },
-  },
-  {
     files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
     plugins: {
       web: webPlugin,
