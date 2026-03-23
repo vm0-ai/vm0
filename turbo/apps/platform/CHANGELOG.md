@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.140.0](https://github.com/vm0-ai/vm0/compare/app-v0.139.0...app-v0.140.0) (2026-03-23)
+
+
+### Features
+
+* **platform:** add delete confirmation dialog for schedules ([#6130](https://github.com/vm0-ai/vm0/issues/6130)) ([4f76e6f](https://github.com/vm0-ai/vm0/commit/4f76e6f1ae36fd22916650e076f8e2d7530da4de))
+
+
+### Bug Fixes
+
+* **platform:** refresh activity list and show skeleton on navigation ([#6142](https://github.com/vm0-ai/vm0/issues/6142)) ([0ddc2ff](https://github.com/vm0-ai/vm0/commit/0ddc2ffc4c3b9a4ea41c453d9c95285db6924183))
+
+
+### Refactoring
+
+* migrate remaining non-zero api calls to /api/zero/ and add lint rule ([#6116](https://github.com/vm0-ai/vm0/issues/6116)) ([853e76a](https://github.com/vm0-ai/vm0/commit/853e76ac623682e91e31b5a9e87338fb3875cc0c))
+
+
+### Performance Improvements
+
+* add skeleton ui during bootstrap to fix fcp and cls ([#6088](https://github.com/vm0-ai/vm0/issues/6088)) ([#6145](https://github.com/vm0-ai/vm0/issues/6145)) ([02fbcf1](https://github.com/vm0-ai/vm0/commit/02fbcf18e6df12c1d44b4fc9a4cd7b199ea1d896))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.97.0
+
 ## [0.139.0](https://github.com/vm0-ai/vm0/compare/app-v0.138.0...app-v0.139.0) (2026-03-23)
 
 

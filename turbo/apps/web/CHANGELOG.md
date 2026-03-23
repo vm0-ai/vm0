@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.147.0](https://github.com/vm0-ai/vm0/compare/web-v12.146.0...web-v12.147.0) (2026-03-23)
+
+
+### Features
+
+* **api:** add zero org list endpoint ([#6150](https://github.com/vm0-ai/vm0/issues/6150)) ([98b39e9](https://github.com/vm0-ai/vm0/commit/98b39e96779d0d016aaa02ee0ff2cd4a68604f6f)), closes [#6139](https://github.com/vm0-ai/vm0/issues/6139)
+
+
+### Refactoring
+
+* add zero-agent-id column to zero_agent_schedules and backfill ([#6136](https://github.com/vm0-ai/vm0/issues/6136)) ([dd1d65e](https://github.com/vm0-ai/vm0/commit/dd1d65efadd637709c2be1db1816ba50c1f6a868))
+* migrate remaining non-zero api calls to /api/zero/ and add lint rule ([#6116](https://github.com/vm0-ai/vm0/issues/6116)) ([853e76a](https://github.com/vm0-ai/vm0/commit/853e76ac623682e91e31b5a9e87338fb3875cc0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.97.0
+
 ## [12.146.0](https://github.com/vm0-ai/vm0/compare/web-v12.145.0...web-v12.146.0) (2026-03-23)
 
 

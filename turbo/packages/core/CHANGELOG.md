@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.97.0](https://github.com/vm0-ai/vm0/compare/core-v8.96.0...core-v8.97.0) (2026-03-23)
+
+
+### Features
+
+* **api:** add zero org list endpoint ([#6150](https://github.com/vm0-ai/vm0/issues/6150)) ([98b39e9](https://github.com/vm0-ai/vm0/commit/98b39e96779d0d016aaa02ee0ff2cd4a68604f6f)), closes [#6139](https://github.com/vm0-ai/vm0/issues/6139)
+* bundle notion firewall into @vm0/core ([#6140](https://github.com/vm0-ai/vm0/issues/6140)) ([253778d](https://github.com/vm0-ai/vm0/commit/253778d4b70acb3e23952ac89f4b65482cfd247e))
+
+
+### Refactoring
+
+* migrate remaining non-zero api calls to /api/zero/ and add lint rule ([#6116](https://github.com/vm0-ai/vm0/issues/6116)) ([853e76a](https://github.com/vm0-ai/vm0/commit/853e76ac623682e91e31b5a9e87338fb3875cc0c))
+
 ## [8.96.0](https://github.com/vm0-ai/vm0/compare/core-v8.95.0...core-v8.96.0) (2026-03-23)
 
 
