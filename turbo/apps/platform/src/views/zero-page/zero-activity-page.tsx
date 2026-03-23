@@ -5,6 +5,7 @@ import {
   IconLoader2,
   IconUsers,
   IconCircleDot,
+  IconPlugConnected,
 } from "@tabler/icons-react";
 import {
   Select,
@@ -23,6 +24,7 @@ import { Pagination } from "../components/pagination.tsx";
 import {
   zeroActivityAgentFilter$,
   zeroActivityStatusFilter$,
+  zeroActivitySourceFilter$,
   zeroActivityOrgAgents$,
   setZeroActivityFilter$,
   zeroActivityData$,
@@ -48,6 +50,17 @@ const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "running", label: "Running" },
   { value: "timeout", label: "Timeout" },
   { value: "cancelled", label: "Cancelled" },
+];
+
+const SOURCE_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
+  { value: "all", label: "All sources" },
+  { value: "web", label: "Web" },
+  { value: "cli", label: "CLI" },
+  { value: "schedule", label: "Schedule" },
+  { value: "slack", label: "Slack" },
+  { value: "email", label: "Email" },
+  { value: "telegram", label: "Telegram" },
+  { value: "github", label: "GitHub" },
 ];
 
 const ROW_GRID =
@@ -123,6 +136,7 @@ export function ZeroActivityPage() {
 
   const agentFilter = useGet(zeroActivityAgentFilter$);
   const statusFilter = useGet(zeroActivityStatusFilter$);
+  const sourceFilter = useGet(zeroActivitySourceFilter$);
   const setFilter = useSet(setZeroActivityFilter$);
   const orgAgents = useGet(zeroActivityOrgAgents$);
 
@@ -188,6 +202,26 @@ export function ZeroActivityPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                value={sourceFilter}
+                onValueChange={(v) => setFilter("source", v)}
+              >
+                <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
+                  <IconPlugConnected
+                    size={14}
+                    stroke={1.5}
+                    className="shrink-0"
+                  />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOURCE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -231,12 +265,16 @@ export function ZeroActivityPage() {
                     />
                     <div className="text-center">
                       <p className="text-sm font-medium text-foreground">
-                        {agentFilter === "all" && statusFilter === "all"
+                        {agentFilter === "all" &&
+                        statusFilter === "all" &&
+                        sourceFilter === "all"
                           ? "All quiet for now"
                           : "Nothing matches those filters"}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {agentFilter === "all" && statusFilter === "all"
+                        {agentFilter === "all" &&
+                        statusFilter === "all" &&
+                        sourceFilter === "all"
                           ? "When your agents start working, their activity will show up here."
                           : "Try different filters to find what you're looking for."}
                       </p>

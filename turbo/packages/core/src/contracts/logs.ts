@@ -119,6 +119,7 @@ export const logsListContract = c.router({
       name: z.string().optional(),
       org: z.string().optional(),
       status: logStatusSchema.optional(),
+      triggerSource: triggerSourceSchema.optional(),
     }),
     responses: {
       200: logsListResponseSchema,

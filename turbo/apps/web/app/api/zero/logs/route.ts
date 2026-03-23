@@ -8,7 +8,11 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { logsListContract, type LogStatus } from "@vm0/core";
+import {
+  logsListContract,
+  type LogStatus,
+  type TriggerSource,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -38,6 +42,7 @@ interface LogsQuery {
   agent?: string;
   search?: string;
   status?: LogStatus;
+  triggerSource?: TriggerSource;
   cursor?: string;
   limit?: number;
 }
@@ -93,6 +98,9 @@ async function getTotalCount(
   conditions.push(...buildAgentFilterConditions(query));
   if (query.status) {
     conditions.push(eq(agentRuns.status, query.status));
+  }
+  if (query.triggerSource) {
+    conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
   }
 
   const [result] = await globalThis.services.db
@@ -175,6 +183,9 @@ const router = tsr.router(logsListContract, {
 
     if (query.status) {
       conditions.push(eq(agentRuns.status, query.status));
+    }
+    if (query.triggerSource) {
+      conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
     }
 
     const runs = await globalThis.services.db
