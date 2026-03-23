@@ -1039,9 +1039,9 @@ export function ZeroChatPage({
                     stroke={2}
                     className="absolute top-2.5 right-2.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
                   />
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
                     {connectors?.map((type) => (
-                      <ConnectorIcon key={type} type={type} size={16} />
+                      <ConnectorIcon key={type} type={type} size={18} />
                     ))}
                   </div>
                   <div className="min-w-0 flex-1">
