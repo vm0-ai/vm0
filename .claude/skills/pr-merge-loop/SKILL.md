@@ -4,22 +4,17 @@ description: Monitor merge queue until PR is successfully merged into main, auto
 context: fork
 ---
 
-You are a merge queue specialist for the vm0 project. Your role is to ensure a PR successfully merges into main by monitoring the merge queue, handling ejections, resolving conflicts, and re-enqueueing as needed.
+You are a merge queue specialist for the vm0 project. Your role is to ensure a PR successfully merges into main by adding it to the merge queue, monitoring progress, handling ejections, resolving conflicts, and re-enqueueing as needed.
 
 ## Architecture
 
-Loop control is handled by a **bash driver script**, not by your memory. You MUST follow the ACTION output from the driver script at every step. The driver script is deterministic — it enforces the monitor-recover cycle.
+Loop control is handled by a **bash driver script**, not by your memory. You MUST follow the ACTION output from the driver script at every step. The driver script is deterministic — it enforces the enqueue-monitor-recover cycle.
 
 ```
-┌──────────┐    ACTION: CHECK_CI     ┌─────────┐
-│  Driver   │ ─────────────────────→ │   LLM   │  ← verify CI checks pass
+┌──────────┐    ACTION: ENQUEUE      ┌─────────┐
+│  Driver   │ ─────────────────────→ │   LLM   │  ← add PR to merge queue
 │  Script   │ ←───────────────────── │ (you)    │
-│           │    ci-ready / ci-fail  │         │
-│           │                        │         │
-│           │    ACTION: ENQUEUE     │         │  ← add PR to merge queue
-│           │ ─────────────────────→ │         │
-│           │ ←───────────────────── │         │
-│           │    enqueued            │         │
+│           │    enqueued / failed   │         │
 │           │                        │         │
 │           │    ACTION: POLL        │         │  ← check merge queue status
 │           │ ─────────────────────→ │         │
@@ -31,6 +26,11 @@ Loop control is handled by a **bash driver script**, not by your memory. You MUS
 │           │ ─────────────────────→ │         │
 │           │ ←───────────────────── │         │
 │           │    recovered / failed  │         │
+│           │                        │         │
+│           │    ACTION: WAIT_CI     │         │  ← wait for CI after recovery
+│           │ ─────────────────────→ │         │
+│           │ ←───────────────────── │         │
+│           │    ci-ready / ci-fail  │         │
 │           │                        │         │
 │           │    ACTION: DONE        │         │  ← report final status
 │           │ ─────────────────────→ │         │
@@ -80,33 +80,20 @@ log() { echo "[$(date '+%H:%M:%S')] $*" >> "$LOG"; }
 
 case "$CMD" in
   init)
-    echo '{"phase":"check_ci","attempts":0,"polls":0,"recoveries":0}' > "$STATE"
+    echo '{"phase":"enqueue","polls":0,"recoveries":0,"ci_waits":0}' > "$STATE"
     log "init: starting merge loop for PR #$PR"
-    echo "ACTION: CHECK_CI"
-    ;;
-  ci-ready)
-    STATE_JSON=$(cat "$STATE")
-    echo "$STATE_JSON" | jq '.phase = "enqueue"' > "$STATE"
-    log "ci-ready: all checks passing"
     echo "ACTION: ENQUEUE"
-    ;;
-  ci-fail)
-    STATE_JSON=$(cat "$STATE")
-    ATTEMPTS=$(echo "$STATE_JSON" | jq -r '.attempts')
-    if [ "$ATTEMPTS" -ge 3 ]; then
-      log "ci-fail: max CI wait attempts reached ($ATTEMPTS)"
-      echo "ACTION: DONE_FAIL ci-timeout"
-    else
-      echo "$STATE_JSON" | jq ".attempts = $((ATTEMPTS + 1))" > "$STATE"
-      log "ci-fail: attempt $((ATTEMPTS + 1))/3, will retry"
-      echo "ACTION: WAIT_CI $((60 * (ATTEMPTS + 1)))"
-    fi
     ;;
   enqueued)
     STATE_JSON=$(cat "$STATE")
     echo "$STATE_JSON" | jq '.phase = "polling" | .polls = 0' > "$STATE"
     log "enqueued: PR added to merge queue"
     echo "ACTION: POLL"
+    ;;
+  enqueue-failed)
+    REASON="${3:-unknown}"
+    log "enqueue-failed: reason=$REASON"
+    echo "ACTION: DONE_FAIL enqueue-failed $REASON"
     ;;
   merged)
     STATE_JSON=$(cat "$STATE")
@@ -146,13 +133,41 @@ case "$CMD" in
     ;;
   recovered)
     STATE_JSON=$(cat "$STATE")
-    echo "$STATE_JSON" | jq '.phase = "check_ci"' > "$STATE"
-    log "recovered: fixes applied, restarting CI check"
-    echo "ACTION: CHECK_CI"
+    echo "$STATE_JSON" | jq '.phase = "wait_ci" | .ci_waits = 0' > "$STATE"
+    log "recovered: fixes applied, waiting for CI"
+    echo "ACTION: WAIT_CI 60"
+    ;;
+  ci-ready)
+    STATE_JSON=$(cat "$STATE")
+    echo "$STATE_JSON" | jq '.phase = "enqueue"' > "$STATE"
+    log "ci-ready: all checks passing, re-enqueueing"
+    echo "ACTION: ENQUEUE"
+    ;;
+  ci-pending)
+    STATE_JSON=$(cat "$STATE")
+    CI_WAITS=$(echo "$STATE_JSON" | jq -r '.ci_waits')
+    if [ "$CI_WAITS" -ge 30 ]; then
+      log "ci-pending: max CI wait attempts reached ($CI_WAITS)"
+      echo "ACTION: DONE_FAIL ci-timeout"
+    else
+      echo "$STATE_JSON" | jq ".ci_waits = $((CI_WAITS + 1))" > "$STATE"
+      log "ci-pending: wait $((CI_WAITS + 1))/30"
+      echo "ACTION: WAIT_CI 60"
+    fi
+    ;;
+  ci-fail)
+    log "ci-fail: CI checks failing after recovery"
+    echo "ACTION: DONE_FAIL ci-failure"
     ;;
   recovery-failed)
     log "recovery-failed: cannot auto-recover"
     echo "ACTION: DONE_FAIL recovery-failed"
+    ;;
+  re-enqueue)
+    STATE_JSON=$(cat "$STATE")
+    echo "$STATE_JSON" | jq '.phase = "enqueue"' > "$STATE"
+    log "re-enqueue: re-adding to merge queue"
+    echo "ACTION: ENQUEUE"
     ;;
   status)
     cat "$STATE"
@@ -166,7 +181,7 @@ chmod +x /tmp/pr-merge-loop-driver.sh
 
 ```bash
 ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" init)
-# Output: ACTION: CHECK_CI
+# Output: ACTION: ENQUEUE
 ```
 
 Display PR metadata (title, branch, author), then proceed to Phase 2.
@@ -176,53 +191,6 @@ Display PR metadata (title, branch, author), then proceed to Phase 2.
 ## Phase 2: Action Loop
 
 Read the ACTION output from the driver script and execute the corresponding action. **Always call the driver script after completing an action to get the next ACTION.**
-
-### On `ACTION: CHECK_CI`
-
-Verify all CI checks are passing before attempting to enqueue.
-
-```bash
-gh pr checks <PR_NUMBER>
-```
-
-**Check Status Values:**
-- `pass`: Completed successfully
-- `fail`: Failed — cannot enqueue
-- `pending`: Still running — wait
-- `skipping`: Skipped (acceptable)
-
-**Decision:**
-- All non-skipped checks pass → report `ci-ready`
-- Any check still `pending` → report `ci-fail` (driver will schedule retry with backoff)
-- Any check `fail` → **stop and report**. Do NOT auto-fix here (use `/pr-check` for that). Report the failing checks and exit.
-
-```bash
-ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" ci-ready)
-# or
-ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" ci-fail)
-```
-
-Follow the returned ACTION.
-
----
-
-### On `ACTION: WAIT_CI <seconds>`
-
-Wait for the specified number of seconds, then go back to CHECK_CI.
-
-```bash
-sleep <seconds>
-```
-
-Then re-check:
-
-```bash
-gh pr checks <PR_NUMBER>
-```
-
-Apply the same decision logic as CHECK_CI.
-
----
 
 ### On `ACTION: ENQUEUE`
 
@@ -236,8 +204,8 @@ When merge queue is enabled, this command adds the PR to the queue rather than m
 
 **If the command fails:**
 - "not mergeable" or "merge conflict" → report `ejected conflict`
-- "required status check" → report `ci-fail`
-- Other error → report the error and exit
+- "required status check" or CI related → report `enqueue-failed ci-not-ready` and exit (use `/pr-check` first)
+- Other error → report `enqueue-failed <error>` and exit
 
 **If successful:**
 
@@ -366,7 +334,7 @@ Auto-recover from merge queue ejection based on the reason.
 6. **If rebase and push succeed**:
    ```bash
    ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" recovered)
-   # Output: ACTION: CHECK_CI (wait for new CI run after push)
+   # Output: ACTION: WAIT_CI 60 (wait for new CI run after push)
    ```
 
 #### Reason: `CI_FAILURE`
@@ -382,7 +350,7 @@ CI failed in the merge queue build. This might be a flaky test or an actual issu
 2. **If the failure looks like a flaky test or transient issue** (timeout, network error, etc.):
    - No code changes needed — just re-enqueue
    ```bash
-   ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" recovered)
+   ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" re-enqueue)
    ```
 
 3. **If the failure is a real issue in our PR code**:
@@ -393,10 +361,36 @@ CI failed in the merge queue build. This might be a flaky test or an actual issu
 
 #### Reason: `DEQUEUED` or other
 
-Another PR in the merge queue group failed, causing this PR to be dequeued. This is not our fault — just re-enqueue.
+Another PR in the merge queue group failed, causing this PR to be dequeued. This is not our fault — just re-enqueue directly.
 
 ```bash
-ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" recovered)
+ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" re-enqueue)
+```
+
+Follow the returned ACTION.
+
+---
+
+### On `ACTION: WAIT_CI <seconds>`
+
+Wait for CI to complete after a recovery push, then check CI status.
+
+```bash
+sleep <seconds>
+gh pr checks <PR_NUMBER>
+```
+
+**Decision:**
+- All non-skipped checks pass → report `ci-ready` (driver will re-enqueue)
+- Any check still `pending` → report `ci-pending` (driver will wait more)
+- Any check `fail` → report `ci-fail` (driver will exit — use `/pr-check` to fix)
+
+```bash
+ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" ci-ready)
+# or
+ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" ci-pending)
+# or
+ACTION=$(/tmp/pr-merge-loop-driver.sh "<PR_NUMBER>" ci-fail)
 ```
 
 Follow the returned ACTION.
@@ -418,11 +412,13 @@ git log --oneline -1
 Merge loop ended without successful merge. Go to Phase 3 with failure status.
 
 Reason mapping:
-- `ci-timeout` — CI checks did not pass after 3 attempts
+- `enqueue-failed` — Could not add PR to merge queue (CI not passing, or other issue)
 - `queue-timeout` — PR stayed in merge queue for 60+ minutes without merging
 - `max-recoveries` — Ejected from merge queue 5 times
 - `pr-closed` — PR was closed (not merged)
 - `recovery-failed` — Auto-recovery failed (conflicts or CI issues need manual fix)
+- `ci-timeout` — CI checks did not pass within 30 minutes after recovery push
+- `ci-failure` — CI checks failed after recovery push
 
 ---
 
@@ -447,13 +443,13 @@ PR Merge Loop Ended
 
 PR: #<number> - <title>
 Status: Failed — <reason>
-Attempts: <count>
 Recoveries: <count>
 
 [Reason-specific guidance:]
 
-ci-timeout:
-  CI checks are not passing. Run /pr-check to diagnose and fix.
+enqueue-failed:
+  Could not add PR to merge queue. Ensure CI checks are passing first.
+  Run /pr-check to diagnose and fix CI issues.
 
 queue-timeout:
   PR was in merge queue for over 60 minutes. Check GitHub merge queue status.
@@ -465,6 +461,12 @@ recovery-failed:
   Auto-recovery could not resolve the issue. Manual intervention needed:
   <specific details about what failed>
 
+ci-timeout:
+  CI checks did not pass within 30 minutes after recovery. Run /pr-check to diagnose.
+
+ci-failure:
+  CI checks failed after recovery push. Run /pr-check to fix.
+
 pr-closed:
   PR was closed without merging. Check if this was intentional.
 ```
@@ -473,7 +475,7 @@ pr-closed:
 
 ## Important Notes
 
-1. **This skill focuses on merge queue monitoring, not CI fixing.** If CI checks are failing, exit and recommend `/pr-check`.
+1. **Enqueue first, ask questions later.** This skill assumes CI is already passing when invoked. If enqueue fails due to CI, it exits immediately and recommends `/pr-check`.
 
 2. **Force-push safety**: Always use `--force-with-lease` when pushing after rebase to avoid overwriting concurrent changes.
 
@@ -483,7 +485,7 @@ pr-closed:
 
 5. **Polling frequency**: 60-second intervals balance responsiveness with API rate limits. The merge queue typically takes 5-15 minutes.
 
-6. **Max limits**: 60 polls (~60 min), 5 recoveries, 3 CI wait attempts. These prevent infinite loops while allowing reasonable recovery time.
+6. **Max limits**: 60 polls (~60 min), 5 recoveries, 30 CI waits (~30 min). These prevent infinite loops while allowing reasonable recovery time.
 
 ---
 
@@ -509,7 +511,7 @@ Transient network errors should be retried once. If they persist, report and exi
 
 ## Best Practices
 
-1. **Always check PR state first** — Don't assume merge queue status
+1. **Enqueue immediately** — Don't pre-check CI; let the merge queue command tell you if something is wrong
 2. **Recover gracefully** — Most ejections just need re-enqueue, not code changes
 3. **Clear reporting** — User should always know current queue position and status
 4. **No silent failures** — Always communicate what happened and what to do next
