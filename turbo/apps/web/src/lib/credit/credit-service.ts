@@ -3,6 +3,7 @@ import { creditUsage } from "../../db/schema/credit-usage";
 import { creditPricing } from "../../db/schema/credit-pricing";
 import { deductOrgCredits } from "../org/org-service";
 import { triggerAutoRecharge } from "../billing/auto-recharge-service";
+import { evaluateMemberCaps } from "./member-credit-cap-service";
 import { logger } from "../logger";
 
 const log = logger("service:credit");
@@ -47,8 +48,10 @@ export async function processOrgCredits(orgId: string): Promise<void> {
 
     let totalCredits = 0;
     let processedCount = 0;
+    const affectedUserIds = new Set<string>();
 
     for (const record of pendingRecords) {
+      affectedUserIds.add(record.userId);
       const pricing = pricingByKey.get(
         `${record.model}|${record.modelProvider}`,
       );
@@ -109,7 +112,7 @@ export async function processOrgCredits(orgId: string): Promise<void> {
       await deductOrgCredits(tx, orgId, totalCredits);
     }
 
-    return { totalCredits, processedCount };
+    return { totalCredits, processedCount, affectedUserIds };
   });
 
   if (!result) return;
@@ -129,6 +132,11 @@ export async function processOrgCredits(orgId: string): Promise<void> {
         error: err instanceof Error ? err.message : String(err),
       });
     });
+  }
+
+  // Evaluate member credit caps for affected users (awaited as part of settlement)
+  if (result.totalCredits > 0 && result.affectedUserIds.size > 0) {
+    await evaluateMemberCaps(orgId, [...result.affectedUserIds]);
   }
 }
 

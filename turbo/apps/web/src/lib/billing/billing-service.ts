@@ -5,6 +5,7 @@ import { env } from "../../env";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
 import { handleAutoRechargeInvoicePaid } from "./auto-recharge-service";
+import { resetMemberCreditFlags } from "../credit/member-credit-cap-service";
 import { logger } from "../logger";
 
 const log = logger("billing");
@@ -309,6 +310,9 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
       })
       .where(eq(orgMetadata.orgId, org.orgId));
   });
+
+  // Reset member credit cap flags for the new billing period
+  await resetMemberCreditFlags(org.orgId);
 
   log.info("credits granted via invoice.paid", {
     orgId: org.orgId,
