@@ -125,6 +125,20 @@ export {
   deleteZeroOrg,
 } from "./domains/zero-orgs";
 
+// Domain modules - Zero Secrets
+export {
+  listZeroSecrets,
+  setZeroSecret,
+  deleteZeroSecret,
+} from "./domains/zero-secrets";
+
+// Domain modules - Zero Variables
+export {
+  listZeroVariables,
+  setZeroVariable,
+  deleteZeroVariable,
+} from "./domains/zero-variables";
+
 // Domain modules - Zero Org Secrets
 export {
   listZeroOrgSecrets,
