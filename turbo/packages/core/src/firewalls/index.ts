@@ -18,6 +18,7 @@ import { googleSheetsFirewall } from "./google-sheets.generated";
 import { jiraFirewall } from "./jira.generated";
 import { notionFirewall } from "./notion.generated";
 import { slackFirewall } from "./slack.generated";
+import { vercelFirewall } from "./vercel.generated";
 
 export const builtinFirewalls: Record<string, FirewallConfig> = {
   confluence: confluenceFirewall,
@@ -31,4 +32,5 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   jira: jiraFirewall,
   notion: notionFirewall,
   slack: slackFirewall,
+  vercel: vercelFirewall,
 };

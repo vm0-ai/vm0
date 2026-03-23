@@ -16,7 +16,8 @@
     "generate:google-sheets": "tsx src/index.ts google-sheets",
     "generate:jira": "tsx src/index.ts jira",
     "generate:notion": "tsx src/index.ts notion",
-    "generate:slack": "tsx src/index.ts slack"
+    "generate:slack": "tsx src/index.ts slack",
+    "generate:vercel": "tsx src/index.ts vercel"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
