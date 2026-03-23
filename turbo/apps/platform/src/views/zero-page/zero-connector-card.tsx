@@ -39,9 +39,9 @@ export function ZeroConnectorCard({
       style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <div className="flex h-14 items-center gap-2.5 px-5">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           {name in CONNECTOR_TYPES ? (
-            <ConnectorIcon type={name as ConnectorType} size={22} />
+            <ConnectorIcon type={name as ConnectorType} size={20} />
           ) : (
             <IconPlug
               size={18}
