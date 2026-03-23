@@ -11,6 +11,9 @@ import { reloadEnv } from "../../../../../src/env";
 import * as externalCleanup from "../../../../../src/lib/org/org-external-cleanup";
 import * as s3Cleanup from "../../../../../src/lib/org/org-s3-cleanup";
 import * as dbCleanup from "../../../../../src/lib/org/org-deletion-service";
+import * as userExternalCleanup from "../../../../../src/lib/user/user-external-cleanup";
+import * as userS3Cleanup from "../../../../../src/lib/user/user-s3-cleanup";
+import * as userDbCleanup from "../../../../../src/lib/user/user-deletion-service";
 import {
   createTestCompose,
   createTestRunInDb,
@@ -30,9 +33,24 @@ import {
   insertTestSlackOrgConnection,
   insertTestSlackOrgPendingQuestion,
   countOrgRows,
+  countUserRows,
+  countSlackConnectionRows,
+  countGithubUserLinkRows,
+  countTelegramUserLinkRows,
   updateOrgStripeSubscription,
   updateAgentComposeOrg,
   createTelegramInstallationForCompose,
+  createTestCliToken,
+  createTestDeviceCode,
+  createTestConnectorSession,
+  insertTestComposeJob,
+  insertTestGithubInstallation,
+  insertTestGithubUserLink,
+  insertTestTelegramInstallation,
+  insertTestTelegramUserLink,
+  insertUserCacheEntry,
+  insertOrgCacheEntry,
+  insertTestSlackOrgThreadSession,
 } from "../../../../../src/__tests__/api-test-helpers";
 
 // Mock @clerk/nextjs/webhooks (external dependency)
@@ -73,6 +91,9 @@ describe("POST /api/webhooks/clerk", () => {
   let spyCleanupExternal: ReturnType<typeof vi.spyOn>;
   let spyDeleteS3: ReturnType<typeof vi.spyOn>;
   let spyDeleteOrgData: ReturnType<typeof vi.spyOn>;
+  let spyCleanupUserExternal: ReturnType<typeof vi.spyOn>;
+  let spyDeleteUserS3: ReturnType<typeof vi.spyOn>;
+  let spyDeleteUserData: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     context.setupMocks();
@@ -84,6 +105,15 @@ describe("POST /api/webhooks/clerk", () => {
       .mockResolvedValue(undefined);
     spyDeleteOrgData = vi
       .spyOn(dbCleanup, "deleteOrgData")
+      .mockResolvedValue(undefined);
+    spyCleanupUserExternal = vi
+      .spyOn(userExternalCleanup, "cleanupUserExternalServices")
+      .mockResolvedValue(undefined);
+    spyDeleteUserS3 = vi
+      .spyOn(userS3Cleanup, "deleteUserS3Data")
+      .mockResolvedValue(undefined);
+    spyDeleteUserData = vi
+      .spyOn(userDbCleanup, "deleteUserData")
       .mockResolvedValue(undefined);
   });
 
@@ -200,6 +230,66 @@ describe("POST /api/webhooks/clerk", () => {
       expect(spyCleanupExternal).not.toHaveBeenCalled();
       expect(spyDeleteS3).not.toHaveBeenCalled();
       expect(spyDeleteOrgData).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("user.deleted cleanup", () => {
+    it("calls all cleanup functions in correct order", async () => {
+      mockVerifyWebhook.mockResolvedValue({
+        type: "user.deleted",
+        data: { object: "user", id: "user_test123", deleted: true },
+      });
+
+      const callOrder: string[] = [];
+      spyCleanupUserExternal.mockImplementation(async () => {
+        callOrder.push("external");
+      });
+      spyDeleteUserS3.mockImplementation(async () => {
+        callOrder.push("s3");
+      });
+      spyDeleteUserData.mockImplementation(async () => {
+        callOrder.push("db");
+      });
+
+      const response = await POST(createWebhookRequest());
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      expect(spyCleanupUserExternal).toHaveBeenCalledWith("user_test123");
+      expect(spyDeleteUserS3).toHaveBeenCalledWith("user_test123");
+      expect(spyDeleteUserData).toHaveBeenCalledWith("user_test123");
+      expect(callOrder).toEqual(["external", "s3", "db"]);
+    });
+
+    it("handles missing user ID gracefully", async () => {
+      mockVerifyWebhook.mockResolvedValue({
+        type: "user.deleted",
+        data: { object: "user", id: undefined, deleted: true },
+      });
+
+      const response = await POST(createWebhookRequest());
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      expect(spyCleanupUserExternal).not.toHaveBeenCalled();
+      expect(spyDeleteUserS3).not.toHaveBeenCalled();
+      expect(spyDeleteUserData).not.toHaveBeenCalled();
+    });
+
+    it("catches cleanup errors without affecting response", async () => {
+      mockVerifyWebhook.mockResolvedValue({
+        type: "user.deleted",
+        data: { object: "user", id: "user_fail", deleted: true },
+      });
+      spyCleanupUserExternal.mockRejectedValue(new Error("external failed"));
+
+      const response = await POST(createWebhookRequest());
+      expect(response.status).toBe(200);
+
+      // flushAfter should not throw — error is caught inside the after() callback
+      await expect(context.mocks.flushAfter()).resolves.toBeUndefined();
     });
   });
 });
@@ -369,6 +459,179 @@ describe("organization.deleted e2e cleanup", () => {
     // --- Verify external service cleanup ---
     expect(stripeMocks.subscriptionsCancel).toHaveBeenCalledWith(subId);
     expect(telegramHandler.mocked).toHaveBeenCalledTimes(1);
+    expect(context.mocks.s3.listS3Objects).toHaveBeenCalled();
+  });
+});
+
+/**
+ * E2E test block for user.deleted — cleanup functions run for real (no spies).
+ * Separate describe block to avoid inheriting spy-mocks from the dispatch tests.
+ */
+describe("user.deleted e2e cleanup", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    context.setupMocks();
+  });
+
+  it("deletes all user data through the full pipeline", async () => {
+    const { userId, orgId } = await context.setupUser();
+
+    // Create a second org to verify cross-org membership cleanup
+    const orgId2 = uniqueId("org");
+    await insertOrgCacheEntry({ orgId: orgId2, slug: "second-org" });
+
+    // --- Populate user data across all table types ---
+
+    // Composes + sessions + runs
+    const { composeId } = await createTestCompose("e2e-user-test");
+    const session = await createTestAgentSession(userId, composeId);
+    await createTestRunInDb(userId, composeId, {
+      status: "running",
+      startedAt: new Date(),
+    });
+
+    // Email thread session
+    await createTestEmailThreadSession({
+      userId,
+      composeId,
+      agentSessionId: session.id,
+      replyToToken: uniqueId("reply"),
+    });
+
+    // Storage with s3Prefix
+    await insertTestStorage({ userId, orgId, name: "e2e-user-volume" });
+
+    // Secret + model provider
+    await createTestSecret("E2E_USER_KEY", "e2e-value");
+    await insertOrgDefaultModelProvider(orgId, "anthropic");
+
+    // Connector
+    await context.createConnector(orgId, { userId, type: "github" });
+
+    // Variable
+    await createTestVariable("E2E_USER_VAR", "e2e-value");
+
+    // Export job with s3Key
+    await insertTestExportJob(orgId, {
+      userId,
+      status: "completed",
+      s3Key: "exports/e2e-user.zip",
+    });
+
+    // Usage daily
+    await insertTestUsageDaily({ userId, orgId, date: "2026-01-01" });
+
+    // Slack installation + connection + pending question
+    const workspaceId = uniqueId("ws");
+    await insertTestSlackOrgInstallation({
+      slackWorkspaceId: workspaceId,
+      slackWorkspaceName: "E2E User Workspace",
+      orgId,
+      installedByUserId: userId,
+    });
+    const connection = await insertTestSlackOrgConnection({
+      slackUserId: uniqueId("slack-user"),
+      slackWorkspaceId: workspaceId,
+      vm0UserId: userId,
+    });
+    await insertTestSlackOrgPendingQuestion({
+      connectionId: connection.id,
+      composeId,
+      sessionId: session.id,
+      runId: uniqueId("run"),
+      slackWorkspaceId: workspaceId,
+    });
+    await insertTestSlackOrgThreadSession({
+      connectionId: connection.id,
+    });
+
+    // GitHub user link (needs a github installation first)
+    const ghInstall = await insertTestGithubInstallation({
+      composeId,
+    });
+    await insertTestGithubUserLink({
+      installationId: ghInstall.id,
+      githubUserId: "123456",
+      vm0UserId: userId,
+    });
+
+    // Telegram user link (needs a telegram installation first)
+    const tgInstall = await insertTestTelegramInstallation({
+      composeId,
+      adminUserId: userId,
+    });
+    await insertTestTelegramUserLink({
+      installationId: tgInstall.id,
+      telegramUserId: "654321",
+      vm0UserId: userId,
+    });
+
+    // User-only tables
+    await createTestCliToken(userId);
+    await createTestDeviceCode({ userId, status: "authenticated" });
+    await createTestConnectorSession(userId, "github");
+    await insertTestComposeJob({ userId });
+
+    // Membership in both orgs
+    await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
+    await insertOrgMembersEntry({ orgId, userId });
+    await insertOrgMembersCacheEntry({ orgId: orgId2, userId, role: "member" });
+    await insertOrgMembersEntry({ orgId: orgId2, userId });
+
+    // User identity
+    await insertUserCacheEntry({ userId, email: "e2e-user@example.com" });
+
+    // --- Send webhook ---
+    mockVerifyWebhook.mockResolvedValue({
+      type: "user.deleted",
+      data: { object: "user", id: userId, deleted: true },
+    });
+
+    const response = await POST(createWebhookRequest());
+    expect(response.status).toBe(200);
+
+    await context.mocks.flushAfter();
+
+    // --- Verify ALL user-scoped tables are empty ---
+    const userIdTables = [
+      "agent_runs",
+      "agent_run_queue",
+      "agent_composes",
+      "storages",
+      "secrets",
+      "model_providers",
+      "connectors",
+      "variables",
+      "usage_daily",
+      "export_jobs",
+      "cli_tokens",
+      "compose_jobs",
+      "connector_sessions",
+      "device_codes",
+      "org_members_cache",
+      "org_members_metadata",
+      "user_cache",
+      "users",
+    ] as const;
+
+    for (const table of userIdTables) {
+      expect(
+        await countUserRows(table, userId),
+        `Expected 0 rows in ${table}`,
+      ).toBe(0);
+    }
+
+    // vm0UserId-based tables
+    expect(await countSlackConnectionRows(userId)).toBe(0);
+    expect(await countGithubUserLinkRows(userId)).toBe(0);
+    expect(await countTelegramUserLinkRows(userId)).toBe(0);
+
+    // --- Verify org-level data is untouched ---
+    // Org cache and slack installations should survive user deletion
+    expect(await countOrgRows("org_cache", orgId)).toBe(1);
+    expect(await countOrgRows("slack_org_installations", orgId)).toBe(1);
+
+    // S3 cleanup should have been attempted
     expect(context.mocks.s3.listS3Objects).toHaveBeenCalled();
   });
 });

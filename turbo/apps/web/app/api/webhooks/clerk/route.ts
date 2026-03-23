@@ -5,6 +5,9 @@ import { logger } from "../../../../src/lib/logger";
 import { cleanupOrgExternalServices } from "../../../../src/lib/org/org-external-cleanup";
 import { deleteOrgS3Data } from "../../../../src/lib/org/org-s3-cleanup";
 import { deleteOrgData } from "../../../../src/lib/org/org-deletion-service";
+import { cleanupUserExternalServices } from "../../../../src/lib/user/user-external-cleanup";
+import { deleteUserS3Data } from "../../../../src/lib/user/user-s3-cleanup";
+import { deleteUserData } from "../../../../src/lib/user/user-deletion-service";
 
 const log = logger("webhook:clerk");
 
@@ -16,6 +19,7 @@ const log = logger("webhook:clerk");
  * Handles incoming Clerk webhook events with Svix signature verification.
  * Handles:
  * - organization.deleted — cascade cleanup of all org-scoped data
+ * - user.deleted — cascade cleanup of all user-scoped data
  * - organizationMembership.deleted — intentional no-op (handled by org deletion)
  */
 export async function POST(request: NextRequest) {
@@ -61,6 +65,35 @@ export async function POST(request: NextRequest) {
           log.info("organization.deleted — cleanup complete", { orgId });
         } catch (error) {
           log.error("organization.deleted — cleanup failed", { orgId, error });
+        }
+      });
+
+      break;
+    }
+
+    case "user.deleted": {
+      const userId = evt.data.id;
+      if (!userId) {
+        log.error("user.deleted event missing user ID", { data: evt.data });
+        break;
+      }
+
+      log.info("user.deleted — starting cleanup", { userId });
+
+      after(async () => {
+        try {
+          // Phase 1: External services (needs DB data — must run first)
+          await cleanupUserExternalServices(userId);
+
+          // Phase 2: S3 cleanup (needs DB data — must run before DB deletion)
+          await deleteUserS3Data(userId);
+
+          // Phase 3: Database cleanup (deletes all user-scoped rows)
+          await deleteUserData(userId);
+
+          log.info("user.deleted — cleanup complete", { userId });
+        } catch (error) {
+          log.error("user.deleted — cleanup failed", { userId, error });
         }
       });
 
