@@ -200,16 +200,16 @@ describe("createRun()", () => {
       expect(run3.status).toBe("queued");
     });
 
-    it("should allow multiple concurrent runs for max tier", async () => {
-      // Create 3 concurrent runs to verify max tier allows more than pro tier (which allows 2)
+    it("should allow multiple concurrent runs for team tier", async () => {
+      // Create 3 concurrent runs to verify team tier allows more than pro tier (which allows 2)
       const run1 = await createRun(
-        baseParams({ prompt: "Max run 1", orgTier: "max" }),
+        baseParams({ prompt: "Team run 1", orgTier: "team" }),
       );
       const run2 = await createRun(
-        baseParams({ prompt: "Max run 2", orgTier: "max" }),
+        baseParams({ prompt: "Team run 2", orgTier: "team" }),
       );
       const run3 = await createRun(
-        baseParams({ prompt: "Max run 3", orgTier: "max" }),
+        baseParams({ prompt: "Team run 3", orgTier: "team" }),
       );
 
       expect(run1.status).toBe("pending");

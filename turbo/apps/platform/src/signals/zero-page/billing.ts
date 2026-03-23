@@ -12,7 +12,7 @@ const log = logger("billing");
 // Types
 // ---------------------------------------------------------------------------
 
-export type BillingTier = "free" | "pro" | "max";
+export type BillingTier = "free" | "pro" | "team";
 
 interface AutoRechargeConfig {
   enabled: boolean;
@@ -86,7 +86,7 @@ export const closeBillingDialog$ = command(({ set }) => {
 });
 
 export const startCheckout$ = command(
-  async ({ get, set }, tier: "pro" | "max") => {
+  async ({ get, set }, tier: "pro" | "team") => {
     set(internalDialogLoading$, true);
 
     const fetchFn = get(fetch$);

@@ -38,8 +38,8 @@ describe("billing in sidebar", () => {
     expect(screen.getByText("2,000")).toBeInTheDocument();
   });
 
-  it("should show max tier with correct credits", async () => {
-    setMockBillingStatus({ tier: "max", credits: 82_000 });
+  it("should show team tier with correct credits", async () => {
+    setMockBillingStatus({ tier: "team", credits: 82_000 });
 
     await setupPage({
       context,
@@ -47,7 +47,11 @@ describe("billing in sidebar", () => {
       featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
-    const billingButton = await screen.findByText("max", {}, { timeout: 3000 });
+    const billingButton = await screen.findByText(
+      "team",
+      {},
+      { timeout: 3000 },
+    );
     expect(billingButton).toBeInTheDocument();
     expect(screen.getByText("82,000")).toBeInTheDocument();
   });
@@ -159,9 +163,9 @@ describe("billing in sidebar", () => {
     expect(screen.getByText("Manage subscription")).toBeInTheDocument();
   });
 
-  it("should show manage subscription when max user selects pro (downgrade)", async () => {
+  it("should show manage subscription when team user selects pro (downgrade)", async () => {
     setMockBillingStatus({
-      tier: "max",
+      tier: "team",
       credits: 80_000,
       subscriptionStatus: "active",
       hasSubscription: true,
@@ -173,7 +177,11 @@ describe("billing in sidebar", () => {
       featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
-    const billingButton = await screen.findByText("max", {}, { timeout: 3000 });
+    const billingButton = await screen.findByText(
+      "team",
+      {},
+      { timeout: 3000 },
+    );
     await act(() => {
       fireEvent.click(billingButton);
     });
@@ -217,7 +225,7 @@ describe("billing in sidebar", () => {
 
   it("should show correct description with credits", async () => {
     setMockBillingStatus({
-      tier: "max",
+      tier: "team",
       credits: 82_000,
       subscriptionStatus: "active",
       hasSubscription: true,
@@ -229,19 +237,23 @@ describe("billing in sidebar", () => {
       featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
-    const billingButton = await screen.findByText("max", {}, { timeout: 3000 });
+    const billingButton = await screen.findByText(
+      "team",
+      {},
+      { timeout: 3000 },
+    );
     await act(() => {
       fireEvent.click(billingButton);
     });
 
     await expect(
-      screen.findByText(/You are on the Max plan with 82,000 credits/),
+      screen.findByText(/You are on the Team plan with 82,000 credits/),
     ).resolves.toBeInTheDocument();
   });
 });
 
 describe("auto-recharge in billing dialog", () => {
-  async function openBillingDialog(tier: "free" | "pro" | "max") {
+  async function openBillingDialog(tier: "free" | "pro" | "team") {
     await setupPage({
       context,
       path: "/works",
@@ -282,16 +294,16 @@ describe("auto-recharge in billing dialog", () => {
     expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
   });
 
-  it("should show auto-recharge section for max tier", async () => {
+  it("should show auto-recharge section for team tier", async () => {
     setMockBillingStatus({
-      tier: "max",
+      tier: "team",
       credits: 80_000,
       subscriptionStatus: "active",
       hasSubscription: true,
       autoRecharge: { enabled: false, threshold: null, amount: null },
     });
 
-    await openBillingDialog("max");
+    await openBillingDialog("team");
 
     expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
   });

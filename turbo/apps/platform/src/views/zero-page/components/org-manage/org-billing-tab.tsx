@@ -9,7 +9,7 @@ import {
 import { Button, Dialog, DialogContent, Switch } from "@vm0/ui";
 import planFreeImg from "./assets/plan-free.png";
 import planProImg from "./assets/plan-pro.png";
-import planMaxImg from "./assets/plan-max.png";
+import planTeamImg from "./assets/plan-team.png";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 
@@ -60,12 +60,12 @@ const PLANS = [
     ],
   },
   {
-    name: "Max",
+    name: "Team",
     price: "$99",
     period: "/month",
     description: "Scale fast with zero friction and full flexibility.",
-    cta: "Upgrade to Max",
-    image: planMaxImg,
+    cta: "Upgrade to Team",
+    image: planTeamImg,
     features: [
       "25,000 credits / month",
       "5 active agents",

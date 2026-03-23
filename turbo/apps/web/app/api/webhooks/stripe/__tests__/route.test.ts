@@ -45,7 +45,7 @@ import { POST } from "../route";
 
 const TEST_WEBHOOK_SECRET = "whsec_test_secret";
 const TEST_PRICE_PRO = "price_test_pro";
-const TEST_PRICE_MAX = "price_test_max";
+const TEST_PRICE_TEAM = "price_test_team";
 
 const context = testContext();
 
@@ -94,7 +94,7 @@ describe("POST /api/webhooks/stripe", () => {
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET);
     vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
-    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_MAX);
+    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_TEAM);
     reloadEnv();
 
     stripeMocks.constructEvent.mockReset();
@@ -257,7 +257,7 @@ describe("POST /api/webhooks/stripe", () => {
 
       stripeMocks.subscriptionsRetrieve.mockResolvedValue({
         id: subId,
-        items: { data: [{ price: { id: TEST_PRICE_MAX } }] },
+        items: { data: [{ price: { id: TEST_PRICE_TEAM } }] },
       });
 
       const creditsBefore = await getOrgCredits(user.orgId);
@@ -386,14 +386,14 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("customer.subscription.updated", {
         id: subId,
         status: "past_due",
-        items: { data: [{ price: { id: TEST_PRICE_MAX } }] },
+        items: { data: [{ price: { id: TEST_PRICE_TEAM } }] },
       });
 
       expect(response.status).toBe(200);
 
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.subscriptionStatus).toBe("past_due");
-      expect(billing?.tier).toBe("max");
+      expect(billing?.tier).toBe("team");
     });
   });
 
@@ -406,7 +406,7 @@ describe("POST /api/webhooks/stripe", () => {
         stripeCustomerId: cusId,
         stripeSubscriptionId: subId,
         subscriptionStatus: "active",
-        tier: "max",
+        tier: "team",
       });
 
       const response = await sendWebhookEvent("customer.subscription.deleted", {
