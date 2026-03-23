@@ -167,8 +167,11 @@ download_pr_content() {
 # --- Step 0: Sync main ---
 
 rm -f .claude/scheduled_tasks.lock
-git checkout main >&2 2>&1 || true
-{ git stash >&2 2>&1; git pull >&2 2>&1; git stash pop >&2 2>&1; } || true
+git fetch origin main >&2 2>&1
+git checkout -f main >&2 2>&1
+git reset --hard origin/main >&2 2>&1
+git clean -df >&2 2>&1
+git stash clear >&2 2>&1
 
 # --- Phase A: Check PRs ---
 
