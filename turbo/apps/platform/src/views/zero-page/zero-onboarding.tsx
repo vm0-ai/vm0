@@ -332,7 +332,10 @@ export function ZeroOnboarding({
     const controller = new AbortController();
     detach(
       (async () => {
-        await completeOnboarding(controller.signal);
+        const result = await completeOnboarding(controller.signal);
+        if (!result) {
+          return;
+        }
         dismissOnboarding();
         // Admin with install URL: open Slack OAuth install flow
         if (slackData?.isAdmin && slackData.installUrl) {
@@ -351,7 +354,10 @@ export function ZeroOnboarding({
     const controller = new AbortController();
     detach(
       (async () => {
-        await completeOnboarding(controller.signal);
+        const result = await completeOnboarding(controller.signal);
+        if (!result) {
+          return;
+        }
         navigate("/chat");
         startNewSession();
         detach(
