@@ -29,9 +29,23 @@ teardown_file() {
 # ============================================================================
 
 @test "vm0 zero agent create creates agent" {
-    # Use a seed skill as connector to avoid dependency on non-seed skill cache state.
-    # The seed skill is deduplicated so connectors output will be empty, but CRUD lifecycle is still validated.
-    run $CLI_COMMAND zero agent create --connectors vm0 --display-name "E2E Test Agent" --description "Created by E2E test"
+    # Retry up to 3 times with 3s backoff because the API returns 422 when
+    # skill cache is not yet warm ("Please try again later").
+    # BATS_TEST_TIMEOUT is 30s, so budget: 3 attempts * ~2s call + 2 * 3s sleep = ~12s
+    local max_attempts=3
+    for ((attempt=1; attempt<=max_attempts; attempt++)); do
+        run $CLI_COMMAND zero agent create --connectors vm0 --display-name "E2E Test Agent" --description "Created by E2E test"
+        if [[ "$status" -eq 0 ]]; then
+            break
+        fi
+        # If the error is skill-cache related, retry; otherwise fail immediately
+        if [[ "$output" == *"not cached"* ]] && ((attempt < max_attempts)); then
+            echo "# Attempt $attempt: skill cache not ready, retrying in 3s..." >&3
+            sleep 3
+        else
+            break
+        fi
+    done
     assert_success
     assert_output --partial "created"
 
