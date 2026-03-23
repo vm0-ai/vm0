@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   scheduleViewMode$,
@@ -151,15 +152,44 @@ function DeleteButton({
   label: string;
   onDelete: (name: string) => Promise<void>;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <button
-      type="button"
-      onClick={() => void onDelete(name)}
-      className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-      aria-label={`Delete ${label}`}
-    >
-      <IconTrash size={14} stroke={1.5} />
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+        aria-label={`Delete ${label}`}
+      >
+        <IconTrash size={14} stroke={1.5} />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete schedule?</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              This will permanently delete the schedule{" "}
+              <span className="font-medium text-foreground">{name}</span>. This
+              action cannot be undone.
+            </p>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setOpen(false);
+                detach(onDelete(name), Reason.DomCallback);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
