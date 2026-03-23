@@ -354,6 +354,24 @@ async function insertNewSchedule(
   return created;
 }
 
+/** Base URL for the Anthropic Messages API */
+const ANTHROPIC_API_BASE = "https://api.anthropic.com";
+
+/**
+ * Build a template-based description fallback.
+ */
+function buildTemplateDescription(
+  request: DeployScheduleRequest,
+  composeName: string,
+): string {
+  const triggerLabel = request.cronExpression
+    ? "recurring"
+    : request.atTime
+      ? "one-time"
+      : "loop";
+  return `${composeName} ${triggerLabel} task: ${request.prompt.slice(0, 100)}`;
+}
+
 /**
  * Generate a concise schedule description using a lightweight model.
  * Falls back to a template-based description if the API key is not configured
@@ -364,56 +382,57 @@ async function generateDescription(
   composeName: string,
 ): Promise<string> {
   const apiKey = globalThis.services.env.ANTHROPIC_API_KEY;
-  if (apiKey) {
-    try {
-      const triggerSummary = request.cronExpression
-        ? `cron: ${request.cronExpression}`
-        : request.atTime
-          ? `once at ${request.atTime}`
-          : request.intervalSeconds !== undefined
-            ? `loop every ${request.intervalSeconds}s`
-            : "unknown trigger";
-
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 100,
-          messages: [
-            {
-              role: "user",
-              content: `Write a one-sentence summary (max 120 chars) for this scheduled task. No quotes or punctuation at end.\nAgent: ${composeName}\nSchedule: ${request.name}\nTrigger: ${triggerSummary}\nPrompt: ${request.prompt.slice(0, 200)}`,
-            },
-          ],
-        }),
-      });
-
-      if (response.ok) {
-        const data = (await response.json()) as {
-          content: Array<{ type: string; text: string }>;
-        };
-        const text = data.content[0]?.text?.trim();
-        if (text) {
-          return text.slice(0, 200);
-        }
-      }
-    } catch {
-      // Fall through to template-based generation
-    }
+  if (!apiKey) {
+    return buildTemplateDescription(request, composeName);
   }
 
-  // Template fallback
-  const triggerLabel = request.cronExpression
-    ? "recurring"
+  const triggerSummary = request.cronExpression
+    ? `cron: ${request.cronExpression}`
     : request.atTime
-      ? "one-time"
-      : "loop";
-  return `${composeName} ${triggerLabel} task: ${request.prompt.slice(0, 100)}`;
+      ? `once at ${request.atTime}`
+      : request.intervalSeconds !== undefined
+        ? `loop every ${request.intervalSeconds}s`
+        : "unknown trigger";
+
+  const response = await fetch(`${ANTHROPIC_API_BASE}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 100,
+      messages: [
+        {
+          role: "user",
+          content: `Write a one-sentence summary (max 120 chars) for this scheduled task. No quotes or punctuation at end.\nAgent: ${composeName}\nSchedule: ${request.name}\nTrigger: ${triggerSummary}\nPrompt: ${request.prompt.slice(0, 200)}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    log.warn(
+      `Anthropic API returned ${response.status} for description generation, using template fallback`,
+    );
+    return buildTemplateDescription(request, composeName);
+  }
+
+  const data: unknown = await response.json();
+  const content = data as {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  const text = content.content?.[0]?.text?.trim();
+  if (!text) {
+    log.warn(
+      "Anthropic API returned empty or unexpected response for description generation, using template fallback",
+    );
+    return buildTemplateDescription(request, composeName);
+  }
+
+  return text.slice(0, 200);
 }
 
 /**
@@ -441,8 +460,9 @@ export async function deploySchedule(
   // Reject one-time schedules with past atTime when enabled
   validateAtTimeNotPast(request);
 
-  // Auto-generate description if not provided
-  if (!request.description) {
+  // Auto-generate description if not provided (undefined/null means not provided;
+  // empty string means the user explicitly cleared it — skip auto-generation)
+  if (request.description == null) {
     request = {
       ...request,
       description: await generateDescription(request, compose.name),
