@@ -402,12 +402,17 @@ jobs:
           # Check that migration SQL files and snapshots are only added, never modified or deleted
           CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
             'turbo/apps/web/src/db/migrations/*.sql' \
-            'turbo/apps/web/src/db/migrations/meta/*_snapshot.json' \
+            'turbo/apps/web/src/db/migrations/meta/*_snapshot.json')
+
+          # _journal.json is modified on every new migration, so only flag deletion
+          DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
             'turbo/apps/web/src/db/migrations/meta/_journal.json')
 
-          if [ -n "$CHANGED" ]; then
+          VIOLATIONS="${CHANGED}${DELETED_JOURNAL}"
+
+          if [ -n "$VIOLATIONS" ]; then
             echo "::error::Migration files must not be modified or deleted once on main:"
-            echo "$CHANGED"
+            echo "$VIOLATIONS"
             echo ""
             echo "These files may already be deployed to production."
             echo "Create a NEW migration instead of modifying existing ones."
