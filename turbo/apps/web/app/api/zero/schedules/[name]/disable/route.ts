@@ -2,6 +2,7 @@
  * POST /api/zero/schedules/:name/disable
  * Proxies to /api/agent/schedules/:name/disable
  */
+// eslint-disable-next-line web/no-self-api-call
 import { proxyToInfra } from "../../../../../../src/lib/infra-client";
 
 export async function POST(
