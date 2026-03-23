@@ -27,7 +27,7 @@ const PERMS_URL =
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 function base62Encode(num: number, pad = 6): string {
-  if (num === 0) return BASE62[0]!.repeat(pad);
+  if (num === 0) return "0".repeat(pad);
   const digits: string[] = [];
   let n = num;
   while (n > 0) {
@@ -134,11 +134,13 @@ function buildGroups(permsData: PermsData): PermissionGroup[] {
         );
       }
       const groupName = `${permKey}:${ep.access}`;
-      if (!groups.has(groupName)) {
-        groups.set(groupName, new Set());
+      let ruleSet = groups.get(groupName);
+      if (!ruleSet) {
+        ruleSet = new Set();
+        groups.set(groupName, ruleSet);
       }
       const fwPath = convertPath(ep.requestPath);
-      groups.get(groupName)!.add(`${ep.verb.toUpperCase()} ${fwPath}`);
+      ruleSet.add(`${ep.verb.toUpperCase()} ${fwPath}`);
       if (!descriptions.has(groupName)) {
         descriptions.set(groupName, title);
       }
