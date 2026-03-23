@@ -25,8 +25,6 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
   IconCrown,
-  IconPin,
-  IconSettings,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {

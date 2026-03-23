@@ -1025,6 +1025,7 @@ async function ensureChatThread(
       id: thread.id,
       title: thread.title ?? title,
       preview: null,
+      agentComposeId: composeId,
       createdAt: now,
       updatedAt: now,
     },
