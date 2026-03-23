@@ -174,5 +174,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN cargo install cargo-llvm-cov --locked \
     && rustup component add llvm-tools-preview
 
+# Install Stripe CLI for local webhook forwarding during development
+RUN curl -s https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/public | gpg --dearmor -o /usr/share/keyrings/stripe.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/stripe.gpg] https://packages.stripe.dev/stripe-cli-debian-local stable main" | tee /etc/apt/sources.list.d/stripe.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends stripe \
+    && rm -rf /var/lib/apt/lists/*
+
 # Default command
 CMD ["/usr/bin/zsh"]

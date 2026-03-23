@@ -80,6 +80,11 @@ export const billingStatusAsync$ = computed(async (get) => {
 // Commands
 // ---------------------------------------------------------------------------
 
+/** Force a refetch of billing status (e.g. after onboarding creates the org row). */
+export const reloadBillingStatus$ = command(({ set }) => {
+  set(billingReload$, (x) => x + 1);
+});
+
 export const openBillingDialog$ = command(async ({ get, set }) => {
   const status = await get(billingStatusAsync$);
   const currentTier = toBillingTier(status.tier);

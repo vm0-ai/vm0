@@ -1,9 +1,10 @@
 #!/bin/bash
-# Start Cloudflare Tunnel and then exec Next.js dev server
+# Start Cloudflare Tunnel, Stripe webhook forwarding, and Next.js dev server
 #
-# This script enables E2B webhooks to reach localhost by:
+# This script enables external webhooks to reach localhost by:
 # 1. Starting a Cloudflare Tunnel via scripts/tunnel.sh
-# 2. Executing Next.js dev server with VM0_API_URL set to tunnel URL
+# 2. Starting Stripe CLI webhook forwarding (if STRIPE_SECRET_KEY is set)
+# 3. Executing Next.js dev server with VM0_API_URL set to tunnel URL
 #
 # Related: https://github.com/vm0-ai/vm0/issues/1726
 
@@ -13,14 +14,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PORT=3000
+ENV_LOCAL_FILE="$WEB_APP_DIR/.env.local"
 
-# Cleanup cloudflared on exit
+# Cleanup background processes on exit
 cleanup() {
   TUNNEL_PID=$(cat "/tmp/cloudflared-${PORT}.pid" 2>/dev/null || true)
   if [[ -n "$TUNNEL_PID" ]] && kill -0 "$TUNNEL_PID" 2>/dev/null; then
     kill "$TUNNEL_PID" 2>/dev/null || true
     sleep 1
     kill -9 "$TUNNEL_PID" 2>/dev/null || true
+  fi
+  STRIPE_PID=$(cat "/tmp/stripe-listen.pid" 2>/dev/null || true)
+  if [[ -n "$STRIPE_PID" ]] && kill -0 "$STRIPE_PID" 2>/dev/null; then
+    kill "$STRIPE_PID" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
@@ -34,7 +40,6 @@ echo -e "\033[0;32m[tunnel]\033[0m Webhooks: \033[1;33m${TUNNEL_URL}/api/webhook
 echo ""
 
 # Update SLACK_REDIRECT_BASE_URL in .env.local
-ENV_LOCAL_FILE="$WEB_APP_DIR/.env.local"
 if [ -f "$ENV_LOCAL_FILE" ]; then
   if grep -q "^SLACK_REDIRECT_BASE_URL=" "$ENV_LOCAL_FILE"; then
     sed -i "s|^SLACK_REDIRECT_BASE_URL=.*|SLACK_REDIRECT_BASE_URL=${TUNNEL_URL}|" "$ENV_LOCAL_FILE"
@@ -42,6 +47,24 @@ if [ -f "$ENV_LOCAL_FILE" ]; then
     echo "SLACK_REDIRECT_BASE_URL=${TUNNEL_URL}" >> "$ENV_LOCAL_FILE"
   fi
 fi
+
+# Start Stripe CLI webhook forwarding
+STRIPE_KEY=$(grep "^STRIPE_SECRET_KEY=" "$ENV_LOCAL_FILE" | cut -d= -f2)
+if [[ -z "$STRIPE_KEY" ]]; then
+  echo "Error: STRIPE_SECRET_KEY not found in .env.local. Run scripts/sync-env.sh first." >&2
+  exit 1
+fi
+
+STRIPE_WHSEC=$(stripe listen --api-key "$STRIPE_KEY" --print-secret 2>/dev/null)
+sed -i "s|^STRIPE_WEBHOOK_SECRET=.*|STRIPE_WEBHOOK_SECRET=${STRIPE_WHSEC}|" "$ENV_LOCAL_FILE"
+
+stripe listen \
+  --api-key "$STRIPE_KEY" \
+  --forward-to "localhost:${PORT}/api/webhooks/stripe" \
+  > /tmp/stripe-listen.log 2>&1 &
+echo "$!" > /tmp/stripe-listen.pid
+
+echo -e "\033[0;35m[stripe]\033[0m Webhook forwarding → localhost:${PORT}/api/webhooks/stripe"
 
 # Start Next.js dev server
 cd "$WEB_APP_DIR"

@@ -47,6 +47,7 @@ import {
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
+import { reloadBillingStatus$ } from "../../signals/zero-page/billing.ts";
 import { IconCircleCheck, IconLoader } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { create as createConfetti } from "canvas-confetti";
@@ -307,6 +308,7 @@ export function ZeroOnboarding({
   const navigate = useSet(updatePathname$);
   const onboardingError = useGet(zeroOnboardingError$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
+  const reloadBilling = useSet(reloadBillingStatus$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
   const slackData = useGet(slackOrgData$);
@@ -336,6 +338,7 @@ export function ZeroOnboarding({
         if (!result) {
           return;
         }
+        reloadBilling();
         dismissOnboarding();
         // Admin with install URL: open Slack OAuth install flow
         if (slackData?.isAdmin && slackData.installUrl) {
@@ -358,6 +361,7 @@ export function ZeroOnboarding({
         if (!result) {
           return;
         }
+        reloadBilling();
         navigate("/chat");
         startNewSession();
         detach(
