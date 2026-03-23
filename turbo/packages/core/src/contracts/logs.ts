@@ -149,40 +149,9 @@ export const logsByIdContract = c.router({
   },
 });
 
-/**
- * Artifact download URL response schema
- */
-const artifactDownloadResponseSchema = z.object({
-  url: z.url(),
-  expiresAt: z.string(),
-});
-
-/**
- * Artifact download contract
- * GET /api/app/artifacts/download
- * Returns a presigned URL for downloading the artifact
- */
-export const artifactDownloadContract = c.router({
-  getDownloadUrl: {
-    method: "GET",
-    path: "/api/app/artifacts/download",
-    query: z.object({
-      name: z.string().min(1, "Artifact name is required"),
-      version: z.string().optional(),
-    }),
-    responses: {
-      200: artifactDownloadResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get presigned URL for artifact download",
-  },
-});
-
 // Contract type exports
 export type LogsListContract = typeof logsListContract;
 export type LogsByIdContract = typeof logsByIdContract;
-export type ArtifactDownloadContract = typeof artifactDownloadContract;
 
 // Schema exports for reuse
 export {
@@ -191,7 +160,6 @@ export {
   logsListResponseSchema,
   artifactSchema,
   logDetailSchema,
-  artifactDownloadResponseSchema,
 };
 
 // Inferred type exports
@@ -200,6 +168,3 @@ export type LogEntry = z.infer<typeof logEntrySchema>;
 export type LogsListResponse = z.infer<typeof logsListResponseSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type LogDetail = z.infer<typeof logDetailSchema>;
-export type ArtifactDownloadResponse = z.infer<
-  typeof artifactDownloadResponseSchema
->;

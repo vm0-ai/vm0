@@ -361,18 +361,15 @@ export {
 export {
   logsListContract,
   logsByIdContract,
-  artifactDownloadContract,
   logStatusSchema,
   logEntrySchema,
   paginationSchema,
   logsListResponseSchema,
   artifactSchema,
   logDetailSchema,
-  artifactDownloadResponseSchema,
   triggerSourceSchema,
   type LogsListContract,
   type LogsByIdContract,
-  type ArtifactDownloadContract,
   // Inferred types
   type LogStatus,
   type LogEntry,
@@ -380,7 +377,6 @@ export {
   type LogsListResponse,
   type Artifact,
   type LogDetail,
-  type ArtifactDownloadResponse,
   type TriggerSource,
 } from "./logs";
 
@@ -583,9 +579,11 @@ export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
+  zeroModelProvidersUpdateModelContract,
   type ZeroModelProvidersMainContract,
   type ZeroModelProvidersByTypeContract,
   type ZeroModelProvidersDefaultContract,
+  type ZeroModelProvidersUpdateModelContract,
 } from "./zero-model-providers";
 export {
   zeroUserPreferencesContract,
