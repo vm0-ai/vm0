@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.149.0](https://github.com/vm0-ai/vm0/compare/web-v12.148.0...web-v12.149.0) (2026-03-23)
+
+
+### Features
+
+* add user deletion s3 and external service cleanup ([#6180](https://github.com/vm0-ai/vm0/issues/6180)) ([748b453](https://github.com/vm0-ai/vm0/commit/748b45310900ee0d670ae661265beda20d981b92))
+
+
+### Refactoring
+
+* separate connectors from seed skills in zero agent API ([#6204](https://github.com/vm0-ai/vm0/issues/6204)) ([c7fd608](https://github.com/vm0-ai/vm0/commit/c7fd608cc73b9ae95725bc4828440b38d700f67c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.98.1
+
 ## [12.148.0](https://github.com/vm0-ai/vm0/compare/web-v12.147.0...web-v12.148.0) (2026-03-23)
 
 

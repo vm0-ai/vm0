@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.76.0](https://github.com/vm0-ai/vm0/compare/cli-v9.75.2...cli-v9.76.0) (2026-03-23)
+
+
+### Features
+
+* **cli:** add vm0 zero org command group with core subcommands ([#6187](https://github.com/vm0-ai/vm0/issues/6187)) ([fb7b4b6](https://github.com/vm0-ai/vm0/commit/fb7b4b6bd3ccba194a36fcecca89acb1898ecfaa)), closes [#6182](https://github.com/vm0-ai/vm0/issues/6182)
+* **cli:** add vm0 zero org secret, variable, and model-provider commands ([#6208](https://github.com/vm0-ai/vm0/issues/6208)) ([9321193](https://github.com/vm0-ai/vm0/commit/9321193d569c4dcece9c31519f4710704b03eab6)), closes [#6200](https://github.com/vm0-ai/vm0/issues/6200)
+* **cli:** implement vm0 zero agent commands (create/edit/view/list/delete) ([#6195](https://github.com/vm0-ai/vm0/issues/6195)) ([cdfd054](https://github.com/vm0-ai/vm0/commit/cdfd054fcae57aa8953f3bcc2d2fa15f0718e7c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.98.1
+
 ## [9.75.2](https://github.com/vm0-ai/vm0/compare/cli-v9.75.1...cli-v9.75.2) (2026-03-23)
 
 

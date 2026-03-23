@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.141.1](https://github.com/vm0-ai/vm0/compare/app-v0.141.0...app-v0.141.1) (2026-03-23)
+
+
+### Refactoring
+
+* **platform:** eliminate broken pathname-only navigation ([#6185](https://github.com/vm0-ai/vm0/issues/6185)) ([487f35e](https://github.com/vm0-ai/vm0/commit/487f35efef71c5d40f7a7cd6357452bb343da1a8))
+* separate connectors from seed skills in zero agent API ([#6204](https://github.com/vm0-ai/vm0/issues/6204)) ([c7fd608](https://github.com/vm0-ai/vm0/commit/c7fd608cc73b9ae95725bc4828440b38d700f67c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.98.1
+
 ## [0.141.0](https://github.com/vm0-ai/vm0/compare/app-v0.140.0...app-v0.141.0) (2026-03-23)
 
 

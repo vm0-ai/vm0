@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.98.1](https://github.com/vm0-ai/vm0/compare/core-v8.98.0...core-v8.98.1) (2026-03-23)
+
+
+### Refactoring
+
+* separate connectors from seed skills in zero agent API ([#6204](https://github.com/vm0-ai/vm0/issues/6204)) ([c7fd608](https://github.com/vm0-ai/vm0/commit/c7fd608cc73b9ae95725bc4828440b38d700f67c))
+
 ## [8.98.0](https://github.com/vm0-ai/vm0/compare/core-v8.97.0...core-v8.98.0) (2026-03-23)
 
 
