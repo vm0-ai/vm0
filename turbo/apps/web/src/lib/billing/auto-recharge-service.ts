@@ -8,7 +8,7 @@ import { logger } from "../logger";
 const log = logger("billing:auto-recharge");
 
 /** $1 = 1,000 credits */
-export const CREDITS_PER_DOLLAR = 1000;
+const CREDITS_PER_DOLLAR = 1000;
 
 /** Pending recharge older than this is considered stale and can be retried. */
 const STALE_THRESHOLD_MINUTES = 10;
