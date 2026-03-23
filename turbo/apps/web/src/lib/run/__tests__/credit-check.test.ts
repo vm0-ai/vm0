@@ -13,6 +13,7 @@ import {
   setOrgCredits,
   deleteOrgRow,
   insertOrgDefaultModelProvider,
+  insertOrgMembersEntry,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import {
@@ -127,6 +128,76 @@ describe("credit check", () => {
       // Verify no run record was created (credit check rejects before INSERT)
       const runs = await findTestRunsByUserAndPrompt(user.userId, prompt);
       expect(runs).toHaveLength(0);
+    });
+  });
+
+  describe("member credit cap enforcement", () => {
+    it("should reject VM0 run when creditEnabled is false", async () => {
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+
+      // Disable member via credit cap
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      await expect(
+        createRun(baseParams({ modelProvider: "vm0" })),
+      ).rejects.toSatisfy(isInsufficientCredits);
+    });
+
+    it("should allow non-VM0 run regardless of creditEnabled", async () => {
+      await setOrgCredits(user.orgId, 10000);
+
+      // Disable member via credit cap
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      const result = await createRun(
+        baseParams({ modelProvider: "anthropic" }),
+      );
+      expect(result.status).toBe("pending");
+    });
+
+    it("should allow VM0 run when creditEnabled is true with cap set", async () => {
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+
+      // Set cap but leave enabled
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 10000,
+        creditEnabled: true,
+      });
+
+      const result = await createRun(baseParams({ modelProvider: "vm0" }));
+      expect(result.status).toBe("pending");
+    });
+
+    it("should reject VM0 run when default provider is vm0 and creditEnabled is false", async () => {
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+
+      // Disable member via credit cap
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      // No explicit modelProvider — falls back to org default (vm0)
+      await expect(createRun(baseParams())).rejects.toSatisfy(
+        isInsufficientCredits,
+      );
     });
   });
 

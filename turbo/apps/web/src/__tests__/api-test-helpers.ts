@@ -3068,6 +3068,8 @@ export async function insertOrgMembersEntry(entry: {
   pinnedAgentIds?: string[];
   sendMode?: string;
   onboardingDone?: boolean;
+  creditCap?: number | null;
+  creditEnabled?: boolean;
 }): Promise<void> {
   initServices();
   const now = new Date();
@@ -3082,6 +3084,8 @@ export async function insertOrgMembersEntry(entry: {
       pinnedAgentIds: entry.pinnedAgentIds ?? [],
       sendMode: entry.sendMode ?? "enter",
       onboardingDone: entry.onboardingDone ?? false,
+      creditCap: entry.creditCap ?? null,
+      creditEnabled: entry.creditEnabled ?? true,
       createdAt: now,
       updatedAt: now,
     })
@@ -3101,6 +3105,10 @@ export async function insertOrgMembersEntry(entry: {
         ...(entry.sendMode !== undefined && { sendMode: entry.sendMode }),
         ...(entry.onboardingDone !== undefined && {
           onboardingDone: entry.onboardingDone,
+        }),
+        ...(entry.creditCap !== undefined && { creditCap: entry.creditCap }),
+        ...(entry.creditEnabled !== undefined && {
+          creditEnabled: entry.creditEnabled,
         }),
         updatedAt: now,
       },
@@ -3593,6 +3601,7 @@ export async function insertTestCreditUsage(
     resultUuid?: string;
     status?: string;
     creditsCharged?: number;
+    processedAt?: Date | null;
   },
 ): Promise<string> {
   initServices();
@@ -3626,6 +3635,14 @@ export async function insertTestCreditUsage(
     })
     .returning();
 
+  // Auto-set processedAt for processed records if not explicitly provided
+  const processedAt =
+    options.processedAt !== undefined
+      ? options.processedAt
+      : options.status === "processed"
+        ? new Date()
+        : null;
+
   const [record] = await globalThis.services.db
     .insert(creditUsage)
     .values({
@@ -3643,6 +3660,7 @@ export async function insertTestCreditUsage(
       costUsd: options.costUsd ?? null,
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
+      processedAt,
     })
     .returning();
 
