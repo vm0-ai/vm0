@@ -65,9 +65,14 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
  * so the dialog disappears (server reads Clerk API directly, no JWT needed).
  */
 export const completeMemberOnboarding$ = command(async ({ get, set }) => {
-  const fetchFn = get(fetch$);
-  await fetchFn("/api/zero/onboarding/complete", { method: "POST" });
-  set(internalReload$, (x) => x + 1);
+  set(internalSaving$, true);
+  try {
+    const fetchFn = get(fetch$);
+    await fetchFn("/api/zero/onboarding/complete", { method: "POST" });
+    set(internalReload$, (x) => x + 1);
+  } finally {
+    set(internalSaving$, false);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -369,9 +374,8 @@ export const completeZeroOnboarding$ = command(
       await clerk.session?.getToken({ skipCache: true });
       signal.throwIfAborted();
 
-      // Reload status and mark done
+      // Reload status (caller dismisses via dismissZeroOnboarding$)
       set(internalReload$, (x) => x + 1);
-      set(internalStep$, "done");
 
       return agent.agentComposeId;
     } catch (error) {
@@ -386,3 +390,12 @@ export const completeZeroOnboarding$ = command(
     }
   },
 );
+
+/**
+ * Dismiss the admin onboarding dialog.
+ * Separated from completeZeroOnboarding$ so callers can control when the
+ * dialog disappears (e.g. after a chat thread is initiated).
+ */
+export const dismissZeroOnboarding$ = command(({ set }) => {
+  set(internalStep$, "done");
+});

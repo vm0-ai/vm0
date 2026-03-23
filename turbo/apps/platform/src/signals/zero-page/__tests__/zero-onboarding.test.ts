@@ -166,7 +166,7 @@ describe("completeZeroOnboarding$", () => {
     });
   });
 
-  it("should set step to done and saving to false after completion", async () => {
+  it("should reset saving to false after completion (step remains unchanged)", async () => {
     server.use(
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
@@ -197,7 +197,7 @@ describe("completeZeroOnboarding$", () => {
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    expect(context.store.get(zeroOnboardingStep$)).toBe("done");
+    // Step no longer auto-set to "done"; callers use dismissZeroOnboarding$
     expect(context.store.get(zeroSaving$)).toBeFalsy();
   });
 
@@ -273,7 +273,9 @@ describe("completeZeroOnboarding$", () => {
     await context.store.set(completeZeroOnboarding$, context.signal);
 
     expect(context.store.get(zeroOnboardingError$)).toBeNull();
-    expect(context.store.get(zeroOnboardingStep$)).toBe("done");
+    // Step is no longer auto-set to "done" by completeZeroOnboarding$;
+    // callers use dismissZeroOnboarding$ to dismiss the dialog.
+    expect(context.store.get(zeroOnboardingStep$)).toBe("4");
   });
 });
 
