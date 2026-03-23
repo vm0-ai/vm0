@@ -101,7 +101,7 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
         throw new Error(`Unexpected key '${methodLower}' on ${apiPath}`);
       }
 
-      const operation = op as OpenApiOperation;
+      const operation: OpenApiOperation = op;
       const security = operation.security ?? [];
       let oauthScopes: string[] | null = null;
       for (const s of security) {
