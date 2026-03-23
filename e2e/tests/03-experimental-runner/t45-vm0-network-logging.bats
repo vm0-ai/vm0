@@ -73,13 +73,15 @@ EOF
 @test "t45-1: udp dns queries appear in network logs" {
     create_agent
 
-    # Run a command that triggers both DNS (UDP) and HTTP (TCP) traffic.
-    # nslookup forces a UDP DNS query; curl makes an HTTP request.
+    # Run a command that triggers both UDP and HTTP (TCP) traffic.
+    # python3 sends a raw UDP DNS query to 8.8.8.8:53; curl makes an HTTP request.
     # Both should appear in the same network log file.
+    # Note: dig/nslookup are not available in the sandbox image.
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "nslookup example.com > /dev/null && curl -s -o /dev/null -w 'HTTP=%{http_code}' https://example.com"
+        "python3 -c \"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'\\x00\\x01\\x01\\x00\\x00\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x07example\\x03com\\x00\\x00\\x01\\x00\\x01',('8.8.8.8',53)); s.recv(512); s.close(); print('UDP_OK=true')\" && curl -s -o /dev/null -w 'HTTP=%{http_code}' https://example.com"
     assert_success
+    assert_output --partial "UDP_OK=true"
     assert_output --partial "HTTP=200"
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
