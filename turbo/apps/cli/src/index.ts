@@ -22,7 +22,6 @@ import { secretCommand } from "./commands/secret";
 import { variableCommand } from "./commands/variable";
 
 import { connectorCommand } from "./commands/connector";
-import { setupClaudeCommand } from "./commands/setup-claude";
 import { preferenceCommand } from "./commands/preference";
 import { upgradeCommand } from "./commands/upgrade";
 import { whoamiCommand } from "./commands/whoami";
@@ -55,7 +54,6 @@ program.addCommand(usageCommand);
 program.addCommand(secretCommand);
 program.addCommand(variableCommand);
 program.addCommand(connectorCommand);
-program.addCommand(setupClaudeCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(whoamiCommand);
