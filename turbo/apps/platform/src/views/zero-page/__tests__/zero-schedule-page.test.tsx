@@ -276,6 +276,103 @@ describe("zero schedule page - toggle enabled", () => {
   });
 });
 
+describe("zero schedule page - delete confirmation", () => {
+  it("should show confirmation dialog when delete button is clicked", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    });
+    expect(screen.getByText("morning-briefing")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+
+  it("should close dialog without deleting when Cancel is clicked", async () => {
+    let deleteCalled = false;
+
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.delete("*/api/zero/schedules/:name", () => {
+        deleteCalled = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+    });
+    expect(deleteCalled).toBeFalsy();
+  });
+
+  it("should call delete API when Delete is confirmed", async () => {
+    let deletedName: string | null = null;
+
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.delete("*/api/zero/schedules/:name", ({ params }) => {
+        deletedName = params["name"] as string;
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(deletedName).toBe("morning-briefing");
+    });
+  });
+});
+
 describe("zero schedule page - view modes", () => {
   it("should render list and calendar view tabs", async () => {
     mockScheduleAPI();

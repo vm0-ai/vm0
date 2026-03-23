@@ -1113,6 +1113,9 @@ export function ZeroSchedulePage() {
   const [editingEntry, setEditingEntry] = useState<CombinedEntry | null>(null);
   const [saving, setSaving] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<CombinedEntry | null>(
+    null,
+  );
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
@@ -1176,10 +1179,21 @@ export function ZeroSchedulePage() {
     if (entry.name === undefined) {
       return;
     }
+    setPendingDelete(entry);
+  };
+
+  const confirmDelete = () => {
+    if (pendingDelete?.name === undefined) {
+      return;
+    }
     detach(
-      deleteSchedule({ name: entry.name, composeId: entry.composeId }),
+      deleteSchedule({
+        name: pendingDelete.name,
+        composeId: pendingDelete.composeId,
+      }),
       Reason.DomCallback,
     );
+    setPendingDelete(null);
   };
 
   return (
@@ -1276,6 +1290,35 @@ export function ZeroSchedulePage() {
         agents={agents}
         defaultComposeId={defaultComposeId}
       />
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete schedule?</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              This will permanently delete the schedule{" "}
+              <span className="font-medium text-foreground">
+                {pendingDelete?.name}
+              </span>
+              . This action cannot be undone.
+            </p>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
