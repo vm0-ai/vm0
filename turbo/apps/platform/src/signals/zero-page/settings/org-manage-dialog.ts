@@ -1,6 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { clerk$ } from "../../auth.ts";
 import { onRef } from "../../utils.ts";
+import { searchParams$, updateSearchParams$ } from "../../route.ts";
+import { setActiveTab$, type OrgManageTab } from "./org-manage-tabs-state.ts";
 
 const internalOrgManageDialogOpen$ = state(false);
 
@@ -10,6 +12,38 @@ export const orgManageDialogOpen$ = computed((get) =>
 
 export const setOrgManageDialogOpen$ = command(({ set }, open: boolean) => {
   set(internalOrgManageDialogOpen$, open);
+});
+
+const SETTINGS_TAB_MAP: Record<string, OrgManageTab> = {
+  providers: "providers",
+  general: "general",
+  members: "members",
+  billing: "billing",
+  credits: "credits",
+  invoices: "invoices",
+};
+
+/**
+ * Check URL for `?settings=<tab>` param and auto-open the org manage dialog
+ * on the specified tab. Strips the param from the URL after consuming it.
+ */
+export const checkSettingsParam$ = command(({ get, set }) => {
+  const params = get(searchParams$);
+  const settingsValue = params.get("settings");
+  if (!settingsValue) {
+    return;
+  }
+
+  const tab = SETTINGS_TAB_MAP[settingsValue];
+  if (tab) {
+    set(setActiveTab$, tab);
+    set(internalOrgManageDialogOpen$, true);
+  }
+
+  // Strip the param so it doesn't re-trigger on navigation
+  const next = new URLSearchParams(params);
+  next.delete("settings");
+  set(updateSearchParams$, next);
 });
 
 const patchClerkOrgProfile$ = command(

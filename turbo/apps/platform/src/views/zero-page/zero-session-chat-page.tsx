@@ -49,6 +49,7 @@ import {
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { setActiveTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import zeroAvatarImg from "./assets/zero-avatar.png";
 
 // ---------------------------------------------------------------------------
@@ -565,6 +566,7 @@ interface AssistantMessageProps {
 
 function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
+  const setTab = useSet(setActiveTab$);
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
@@ -670,7 +672,10 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
-                    onClick={() => setOrgManageOpen(true)}
+                    onClick={() => {
+                      setTab("providers");
+                      setOrgManageOpen(true);
+                    }}
                   >
                     Set one up in Organization Settings
                   </button>{" "}

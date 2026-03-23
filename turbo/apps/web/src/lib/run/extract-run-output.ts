@@ -22,8 +22,6 @@ export interface RunOutput {
   result: string | null;
   /** AskUserQuestion permission denials */
   askUserDenials: PermissionDenial[];
-  /** Whether model provider keywords were detected in the result */
-  modelProviderIssue: boolean;
   /** Whether connector/secret keywords were detected in the result */
   connectorIssue: boolean;
   /** Run error message (if failed) */
@@ -88,7 +86,6 @@ export async function extractRunOutput(
     return {
       result: null,
       askUserDenials: [],
-      modelProviderIssue: false,
       connectorIssue: false,
       error: error ?? null,
     };
@@ -115,7 +112,6 @@ export async function extractAllRunOutputs(
       {
         result: null,
         askUserDenials: [],
-        modelProviderIssue: false,
         connectorIssue: false,
         error: error ?? null,
       },
@@ -142,7 +138,6 @@ function buildRunOutput(event: ResultEvent, error?: string | null): RunOutput {
   return {
     result,
     askUserDenials,
-    modelProviderIssue: categories.has("provider"),
     connectorIssue: categories.has("connector"),
     error: error ?? null,
   };
@@ -186,14 +181,6 @@ export function buildDeepLinksFromFlags(
   agentName?: string,
 ): DeepLink[] {
   const links: DeepLink[] = [];
-
-  if (output.modelProviderIssue) {
-    links.push({
-      emoji: "🔑",
-      label: "Configure model providers",
-      url: `${appUrl}/settings`,
-    });
-  }
 
   if (output.connectorIssue) {
     const path = agentName

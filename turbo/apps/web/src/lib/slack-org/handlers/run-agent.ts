@@ -43,6 +43,7 @@ interface RunAgentResult {
   status: "dispatched" | "queued" | "failed";
   response?: string;
   runId: string | undefined;
+  errorCode?: string;
 }
 
 /**
@@ -118,7 +119,12 @@ export async function runAgentForSlackOrg(
         agentName,
         userId,
       });
-      return { status: "failed", response, runId: undefined };
+      return {
+        status: "failed",
+        response,
+        runId: undefined,
+        errorCode: error.code,
+      };
     }
     const runId = isRunDispatchError(error) ? error.runId : undefined;
     log.error("Error running agent for Slack org:", error);
