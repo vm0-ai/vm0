@@ -6,11 +6,13 @@
  *   tsx src/index.ts github    # generate github only
  */
 
+import { generate as generateConfluence } from "./confluence";
 import { generate as generateGitHub } from "./github";
 import { generate as generateSlack } from "./slack";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
+  confluence: generateConfluence,
   github: generateGitHub,
   slack: generateSlack,
   ...Object.fromEntries(
