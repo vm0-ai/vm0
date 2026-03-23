@@ -561,6 +561,7 @@ export {
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsSearchContract,
+  type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,

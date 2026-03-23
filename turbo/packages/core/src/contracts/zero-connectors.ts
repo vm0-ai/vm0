@@ -65,11 +65,17 @@ export const zeroConnectorScopeDiffContract = c.router({
   },
 });
 
+const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token"]);
+
+export type ConnectorSearchAuthMethod = z.infer<
+  typeof connectorSearchAuthMethodSchema
+>;
+
 const connectorSearchItemSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string(),
-  authMethods: z.array(z.string()),
+  authMethods: z.array(connectorSearchAuthMethodSchema),
 });
 
 const connectorSearchResponseSchema = z.object({
