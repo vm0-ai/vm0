@@ -1,0 +1,88 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { pathname, search } from "../../../signals/location.ts";
+
+const context = testContext();
+
+function mockChatSessionAPIs() {
+  server.use(
+    http.get("*/api/zero/chat-threads/:id", () => {
+      return HttpResponse.json({
+        id: "session-thread-1",
+        title: "Session navigation test",
+        agentComposeId: "mock-compose-id",
+        chatMessages: [
+          {
+            role: "user",
+            content: "Run the task",
+            createdAt: "2026-03-10T00:00:00Z",
+          },
+          {
+            role: "assistant",
+            content: "Task is running.",
+            createdAt: "2026-03-10T00:00:01Z",
+          },
+        ],
+        latestSessionId: "session-wrapper-1",
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:01Z",
+      });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+  );
+}
+
+describe("chat session page wrapper navigation", () => {
+  it("should navigate to agent schedule when clicking schedule button", async () => {
+    mockChatSessionAPIs();
+
+    await setupPage({ context, path: "/chat/session-thread-1" });
+
+    // Wait for chat messages to render
+    await waitFor(
+      () => {
+        expect(screen.getByText("Task is running.")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // Click the schedule button in the session header
+    const scheduledButton = screen.getByLabelText("Scheduled");
+    fireEvent.click(scheduledButton);
+
+    // Verify navigation to /team/zero with tab=schedule
+    await waitFor(() => {
+      expect(pathname()).toBe("/team/zero");
+      expect(search()).toContain("tab=schedule");
+    });
+  }, 15_000);
+
+  it("should navigate to agent profile when clicking chat avatar", async () => {
+    mockChatSessionAPIs();
+
+    await setupPage({ context, path: "/chat/session-thread-1" });
+
+    // Wait for chat messages to render
+    await waitFor(
+      () => {
+        expect(screen.getByText("Task is running.")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // Click the avatar button in the session header
+    const avatarButton = screen.getByLabelText("View agent profile");
+    fireEvent.click(avatarButton);
+
+    // Verify navigation to /team/zero (no tab param)
+    await waitFor(() => {
+      expect(pathname()).toBe("/team/zero");
+    });
+  }, 15_000);
+});
