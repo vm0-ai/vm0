@@ -46,7 +46,7 @@ jobs:
               continue
             fi
 
-            # Extract PR number from preview/pr-{number} or preview/pr-{number}-merge-queue
+            # Extract PR number from preview/pr-{number} or preview/pr-{number}-mq
             PR_NUMBER=$(echo "$branch" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$PR_NUMBER" ]; then
 
@@ -161,8 +161,8 @@ jobs:
               let shouldDelete = false;
               let reason = '';
 
-              // Check if it's a PR-based deployment (pr-123 or pr-123-merge-queue format)
-              const prMatch = identifier.match(/^pr-(\d+)(-merge-queue)?$/);
+              // Check if it's a PR-based deployment (pr-123 or pr-123-mq format)
+              const prMatch = identifier.match(/^pr-(\d+)(-mq)?$/);
               if (prMatch) {
                 const prNumber = parseInt(prMatch[1]);
                 if (!openPRNumbers.has(prNumber)) {
@@ -277,17 +277,17 @@ jobs:
 
             if [ "$DRY_RUN" = "true" ]; then
               echo "[DRY-RUN] Would cleanup turbo runner pr-${PR_NUMBER}"
-              echo "[DRY-RUN] Would cleanup turbo runner pr-${PR_NUMBER}-merge-queue"
+              echo "[DRY-RUN] Would cleanup turbo runner pr-${PR_NUMBER}-mq"
               echo "[DRY-RUN] Would cleanup crates runner pr-${PR_NUMBER}-test"
-              echo "[DRY-RUN] Would cleanup crates runner pr-${PR_NUMBER}-merge-queue-test"
+              echo "[DRY-RUN] Would cleanup crates runner pr-${PR_NUMBER}-mq-test"
               CLEANED=$((CLEANED + 1))
               continue
             fi
 
             PR_FAILED=0
 
-            # Cleanup turbo runners (PR and merge-queue)
-            for JOB_REF in "pr-${PR_NUMBER}" "pr-${PR_NUMBER}-merge-queue"; do
+            # Cleanup turbo runners (PR and mq)
+            for JOB_REF in "pr-${PR_NUMBER}" "pr-${PR_NUMBER}-mq"; do
               if ! ansible-playbook \
                 -i "${METAL_HOSTS}," \
                 playbooks/cleanup-turbo-runner.yml \
@@ -299,8 +299,8 @@ jobs:
               fi
             done
 
-            # Cleanup crates runners (PR and merge-queue)
-            for JOB_REF in "pr-${PR_NUMBER}-test" "pr-${PR_NUMBER}-merge-queue-test"; do
+            # Cleanup crates runners (PR and mq)
+            for JOB_REF in "pr-${PR_NUMBER}-test" "pr-${PR_NUMBER}-mq-test"; do
               if ! ansible-playbook \
                 -i "${METAL_HOSTS}," \
                 playbooks/cleanup-crates-runner.yml \

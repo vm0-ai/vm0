@@ -109,10 +109,11 @@ export async function resolveAgentByName(
 /**
  * Resolve the active agent from the URL and switch to it.
  *
- * - `/talk/:name` → find agent by name, switch to it
  * - `/chat/:threadId` → sync session via syncUrlSession$
- * - `/` → redirect to `/talk/:defaultAgent`
- * - other `/*` → switch to default agent
+ * - `/talk/:name` → find agent by name, switch to it
+ * - other `/:tab` / `/:tab/:sub` → switch to default agent
+ *
+ * Note: bare `/` is handled by `setupChatPage$` in bootstrap.ts.
  *
  * switchActiveAgent$ sets the agent AND fetches the session list atomically.
  */
@@ -131,19 +132,6 @@ async function resolveAndSwitchAgent(
     return;
   }
   L.info("resolveAgent path:", currentPath);
-
-  // If on bare /, redirect to /talk/:defaultAgent
-  if (/^\/?$/.test(currentPath)) {
-    const rawName = await get(defaultAgentName$);
-    signal.throwIfAborted();
-    if (rawName) {
-      window.history.replaceState(
-        {},
-        "",
-        `/talk/${encodeURIComponent(rawName)}`,
-      );
-    }
-  }
 
   // Resolve agent from /talk/:name
   const agentName = get(zeroChatAgentName$);

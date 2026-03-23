@@ -27,9 +27,9 @@ describe("credit-service", () => {
     it("no-ops when no pending records exist", async () => {
       await processOrgCredits(user.orgId);
 
-      // Org row exists (from setupUser) with default credits (2000)
+      // Org row exists (from setupUser) with default credits (10000)
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(2000);
+      expect(credits).toBe(10_000);
     });
 
     it("processes a single pending record with correct calculation", async () => {
@@ -58,9 +58,9 @@ describe("credit-service", () => {
       expect(record!.creditsCharged).toBe(2);
       expect(record!.processedAt).toBeInstanceOf(Date);
 
-      // Verify credits were deducted in org table (2000 default - 2 = 1998)
+      // Verify credits were deducted in org table (10000 default - 2 = 9998)
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(1998);
+      expect(credits).toBe(9998);
     });
 
     it("processes multiple pending records in a batch", async () => {
@@ -95,9 +95,9 @@ describe("credit-service", () => {
       expect(record2!.status).toBe("processed");
       expect(record2!.creditsCharged).toBe(400);
 
-      // Total: 200 + 400 = 600, deducted from org (2000 default - 600 = 1400)
+      // Total: 200 + 400 = 600, deducted from org (10000 default - 600 = 9400)
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(1400);
+      expect(credits).toBe(9400);
     });
 
     it("skips already-processed records", async () => {
@@ -118,9 +118,9 @@ describe("credit-service", () => {
       expect(record!.status).toBe("processed");
       expect(record!.creditsCharged).toBe(500);
 
-      // Org row exists (from setupUser) with default credits (2000)
+      // Org row exists (from setupUser) with default credits (10000)
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(2000);
+      expect(credits).toBe(10_000);
     });
 
     it("marks records with no matching pricing as processed with zero charge", async () => {
@@ -171,7 +171,7 @@ describe("credit-service", () => {
       expect(record!.creditsCharged).toBe(6);
 
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(1994);
+      expect(credits).toBe(9994);
     });
 
     it("charges only when model+provider matches pricing", async () => {
@@ -212,7 +212,7 @@ describe("credit-service", () => {
 
       // Only charged record (200 credits) should be deducted
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(1800);
+      expect(credits).toBe(9800);
     });
 
     it("concurrent calls serialize via advisory lock (no double-processing)", async () => {
@@ -241,7 +241,7 @@ describe("credit-service", () => {
 
       // Credits should be deducted exactly once
       const credits = await getOrgCredits(user.orgId);
-      expect(credits).toBe(1800);
+      expect(credits).toBe(9800);
     });
   });
 

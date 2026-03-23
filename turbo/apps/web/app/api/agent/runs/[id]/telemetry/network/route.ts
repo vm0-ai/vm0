@@ -22,7 +22,7 @@ interface AxiomNetworkEvent {
   _time: string;
   runId: string;
   userId: string;
-  type?: "http" | "tcp";
+  type?: string;
   action?: "ALLOW" | "DENY";
   host?: string;
   port?: number;

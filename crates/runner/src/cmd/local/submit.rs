@@ -16,6 +16,9 @@ use crate::provider::{JobRequest, JobResponse};
 /// Poll interval for checking the result file.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+/// Grace period after Ctrl+C to wait for the runner to write a `.result` file.
+const CANCEL_GRACE: Duration = Duration::from_secs(10);
+
 #[derive(Args)]
 pub struct SubmitArgs {
     /// Runner group name (writes job to ~/.vm0-runner/groups/{group}/)
@@ -36,6 +39,29 @@ pub struct SubmitArgs {
     /// Timeout in seconds waiting for a runner to complete the job
     #[arg(long, default_value_t = 300)]
     timeout: u64,
+}
+
+/// Try to read a non-empty result file.  Returns `None` if the file does
+/// not exist, is empty, or cannot be read.
+fn try_read_result(result_path: &std::path::Path) -> Option<Vec<u8>> {
+    match std::fs::read(result_path) {
+        Ok(b) if !b.is_empty() => Some(b),
+        _ => None,
+    }
+}
+
+/// Clean up all queue files for a job.
+fn cleanup_files(
+    job_path: &std::path::Path,
+    result_path: &std::path::Path,
+    cancel_path: &std::path::Path,
+    group_dir: &std::path::Path,
+    job_id: Uuid,
+) {
+    let _ = std::fs::remove_file(job_path);
+    let _ = std::fs::remove_file(result_path);
+    let _ = std::fs::remove_file(cancel_path);
+    let _ = std::fs::remove_file(group_dir.join(format!("{job_id}.claim")));
 }
 
 pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
@@ -77,36 +103,60 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
     std::fs::rename(&tmp_path, &job_path)
         .map_err(|e| RunnerError::Internal(format!("rename job file: {e}")))?;
 
-    // Poll for result.
+    // Poll for result, listening for Ctrl+C to cancel.
     let result_path = group_dir.join(format!("{job_id}.result"));
+    let cancel_path = group_dir.join(format!("{job_id}.cancel"));
     let timeout = Duration::from_secs(args.timeout);
     let deadline = tokio::time::Instant::now() + timeout;
 
     let buf = loop {
-        if result_path.exists() {
-            match std::fs::read(&result_path) {
-                Ok(b) if !b.is_empty() => break b,
-                _ => {}
-            }
+        if let Some(b) = try_read_result(&result_path) {
+            break b;
         }
         if tokio::time::Instant::now() >= deadline {
-            // Clean up queue files on timeout.
-            let _ = std::fs::remove_file(&job_path);
-            let _ = std::fs::remove_file(group_dir.join(format!("{job_id}.claim")));
+            cleanup_files(&job_path, &result_path, &cancel_path, &group_dir, job_id);
             return Err(RunnerError::Internal(format!(
                 "timeout waiting for result after {timeout:?}"
             )));
         }
-        tokio::time::sleep(POLL_INTERVAL).await;
+        tokio::select! {
+            () = tokio::time::sleep(POLL_INTERVAL) => {}
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("interrupted — requesting cancel for {job_id}");
+                let _ = std::fs::write(&cancel_path, b"");
+                // Give the runner a short window to finish and write .result.
+                // A second Ctrl+C exits immediately.
+                let grace = tokio::time::Instant::now() + CANCEL_GRACE;
+                let cancelled_buf = loop {
+                    if let Some(b) = try_read_result(&result_path) {
+                        break b;
+                    }
+                    if tokio::time::Instant::now() >= grace {
+                        eprintln!("grace period expired, exiting");
+                        // Leave .cancel for the runner to process — don't
+                        // delete it here or the cancel request may be lost.
+                        let _ = std::fs::remove_file(&job_path);
+                        return Ok(ExitCode::FAILURE);
+                    }
+                    tokio::select! {
+                        () = tokio::time::sleep(POLL_INTERVAL) => {}
+                        _ = tokio::signal::ctrl_c() => {
+                            eprintln!("second interrupt, exiting immediately");
+                            let _ = std::fs::remove_file(&job_path);
+                            return Ok(ExitCode::FAILURE);
+                        }
+                    }
+                };
+                break cancelled_buf;
+            }
+        }
     };
 
     let response: JobResponse = serde_json::from_slice(&buf)
         .map_err(|e| RunnerError::Internal(format!("parse result: {e}")))?;
 
     // Clean up queue files.
-    let _ = std::fs::remove_file(&job_path);
-    let _ = std::fs::remove_file(&result_path);
-    let _ = std::fs::remove_file(group_dir.join(format!("{job_id}.claim")));
+    cleanup_files(&job_path, &result_path, &cancel_path, &group_dir, job_id);
 
     use std::io::Write;
     std::io::stdout().write_all(&buf).ok();

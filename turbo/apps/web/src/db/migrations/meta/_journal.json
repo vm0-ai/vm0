@@ -1261,6 +1261,13 @@
       "when": 1774241074994,
       "tag": "0179_rename_tier_max_to_team",
       "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1774243821855,
+      "tag": "0180_faulty_rhino",
+      "breakpoints": true
     }
   ]
 }
