@@ -13,6 +13,7 @@ import {
   clearSkillsData,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { createSingleFileTar } from "../../../../../src/lib/tar";
 
 const context = testContext();
@@ -571,9 +572,6 @@ describe("Zero Agents API", () => {
     });
 
     it("should return 401 without auth", async () => {
-      const { mockClerk } = await import(
-        "../../../../../src/__tests__/clerk-mock"
-      );
       mockClerk({ userId: null });
       const response = await listAgentsReq("no-token");
       expect(response.status).toBe(401);
@@ -621,9 +619,6 @@ describe("Zero Agents API", () => {
     });
 
     it("should return 401 without auth", async () => {
-      const { mockClerk } = await import(
-        "../../../../../src/__tests__/clerk-mock"
-      );
       mockClerk({ userId: null });
       const response = await deleteAgent("some-agent", "no-token");
       expect(response.status).toBe(401);

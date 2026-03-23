@@ -143,9 +143,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: row.displayName ?? null,
         description: row.description ?? null,
         sound: row.sound ?? null,
-        connectors: extractConnectors(
-          (row.content ?? {}) as Record<string, unknown>,
-        ),
+        connectors: extractConnectors(row.content),
       })),
     };
   },

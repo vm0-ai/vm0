@@ -79,8 +79,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
       .limit(1);
 
     // Extract connector short names from compose content
-    const content = (compose.content ?? {}) as Record<string, unknown>;
-    const connectors = extractConnectors(content);
+    const connectors = extractConnectors(compose.content);
 
     return {
       status: 200 as const,

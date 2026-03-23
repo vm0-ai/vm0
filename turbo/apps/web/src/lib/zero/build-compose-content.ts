@@ -45,8 +45,9 @@ export function buildComposeContent(
  * Reverses the skill URL mapping: extracts the bare name from
  * GitHub URLs matching the vm0-skills pattern.
  */
-export function extractConnectors(content: Record<string, unknown>): string[] {
-  const agents = content.agents as
+export function extractConnectors(content: unknown): string[] {
+  const obj = typeof content === "object" && content !== null ? content : {};
+  const agents = (obj as Record<string, unknown>).agents as
     | Record<string, Record<string, unknown>>
     | undefined;
   if (!agents) return [];
