@@ -251,7 +251,9 @@ export function ConnectModal({
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <ConnectorIcon type={selectedType} size={28} />
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+              <ConnectorIcon type={selectedType} size={20} />
+            </div>
             <DialogTitle>{config.label}</DialogTitle>
           </div>
         </DialogHeader>
@@ -336,7 +338,7 @@ function ConnectorCard({
 
   return (
     <div
-      className={`flex flex-col gap-3 rounded-xl border border-border bg-card p-4${clickable ? " cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+      className={`flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4${clickable ? " cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
       onClick={clickable ? handleCardClick : undefined}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
@@ -351,14 +353,12 @@ function ConnectorCard({
           : undefined
       }
     >
-      <div className="flex items-center gap-3">
-        <div className="shrink-0">
-          <ConnectorIcon type={item.type} size={28} />
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <ConnectorIcon type={item.type} size={20} />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-foreground truncate">
-            {item.label}
-          </div>
+        <div className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-foreground">
+          {item.label}
         </div>
       </div>
       <div className="text-xs text-muted-foreground line-clamp-2">
@@ -469,7 +469,7 @@ function ConnectorGrid({
   onAdd?: (type: ConnectorType) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid min-w-0 grid-cols-[repeat(2,minmax(0,1fr))] gap-3">
       {connectorTypes
         ? connectorTypes.map((item) => (
             <ConnectorCard
@@ -483,10 +483,10 @@ function ConnectorGrid({
         : types.slice(0, 6).map((type) => (
             <div
               key={type}
-              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
+              className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
             >
-              <div className="flex items-center gap-3">
-                <div className="h-7 w-7 rounded bg-muted" />
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="h-5 w-5 rounded bg-muted" />
                 <div className="h-4 w-20 rounded bg-muted" />
               </div>
               <div className="h-3 w-full rounded bg-muted" />
@@ -673,7 +673,7 @@ function ZeroAddConnectionDialog({
         onOpenChange(v);
       }}
     >
-      <DialogContent className="max-w-2xl h-[85vh] flex flex-col overflow-hidden pr-0 pb-0 zero-app">
+      <DialogContent className="max-w-2xl h-[85vh] min-w-0 flex flex-col overflow-hidden pr-0 pb-0 zero-app">
         <DialogHeader>
           <DialogTitle>Add connector to {agentName ?? "agent"}</DialogTitle>
         </DialogHeader>
@@ -681,8 +681,8 @@ function ZeroAddConnectionDialog({
           Connectors let your agents access and interact with third-party
           services.
         </p>
-        <div className="flex items-center gap-3 pr-6">
-          <div className="relative flex-1">
+        <div className="flex min-w-0 items-center gap-3 pr-6">
+          <div className="relative min-w-0 flex-1">
             <IconSearch
               size={16}
               stroke={1.5}
@@ -711,8 +711,8 @@ function ZeroAddConnectionDialog({
             </TabsList>
           </Tabs>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="pt-4 pb-6 pr-6">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="min-w-0 pt-4 pb-6 pr-6">
             {filteredTypes && filteredTypes.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No matching connectors found.

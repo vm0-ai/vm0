@@ -104,8 +104,9 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* Monochrome SVG icons (fill="currentColor" rendered as <img>): invert in dark mode */
-:where([data-theme="dark"]) .zero-app .zero-icon-mono {
+/* Monochrome SVG icons (e.g. connector marks as <img>): invert in dark mode.
+   Scoped to [data-theme="dark"] only—not .zero-app—so portaled popovers/dropdowns still match. */
+:where([data-theme="dark"]) .zero-icon-mono {
   filter: invert(1);
 }
 

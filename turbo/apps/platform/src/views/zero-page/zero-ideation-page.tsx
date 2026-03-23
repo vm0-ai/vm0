@@ -120,9 +120,9 @@ export function ZeroIdeationPage({
                         {useCase.description}
                       </p>
                       {useCase.connectors && useCase.connectors.length > 0 && (
-                        <div className="flex items-center gap-1.5 mt-2.5">
+                        <div className="flex items-center gap-2.5 mt-2.5">
                           {useCase.connectors.map((type) => (
-                            <ConnectorIcon key={type} type={type} size={14} />
+                            <ConnectorIcon key={type} type={type} size={16} />
                           ))}
                         </div>
                       )}
