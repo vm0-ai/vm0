@@ -17,6 +17,7 @@ import {
   updatePinnedAgentIds$,
 } from "./zero-pinned-agents.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
+import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
@@ -149,6 +150,9 @@ export const setupZeroPage$ = command(
     set(updatePage$, createElement(ZeroPage));
 
     await set(loadInitialData$, signal);
+
+    // Consume ?settings=<tab> param before resolveAndSwitchAgent replaces the URL
+    set(checkSettingsParam$);
 
     await resolveAndSwitchAgent(get, set, signal);
 

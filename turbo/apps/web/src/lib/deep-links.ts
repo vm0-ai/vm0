@@ -2,7 +2,7 @@
 // Keyword detection for deep links (shared across Slack and Telegram)
 // ---------------------------------------------------------------------------
 
-type KeywordCategory = "provider" | "connector";
+type KeywordCategory = "connector";
 
 interface KeywordLinkMapping {
   keywords: string[];
@@ -18,12 +18,6 @@ export interface DeepLink {
 }
 
 const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
-  {
-    keywords: ["model provider", "provider not configured"],
-    label: "Configure model providers",
-    category: "provider",
-    emoji: "🔑",
-  },
   {
     keywords: [
       "secret",
@@ -46,14 +40,23 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
 ]);
 
 function buildPath(category: KeywordCategory, agentName?: string): string {
-  if (category === "provider") {
-    return "/settings";
-  }
   // Connector links route to the agent's team page with connectors tab
-  if (agentName) {
+  if (category === "connector" && agentName) {
     return `/team/${encodeURIComponent(agentName)}?tab=connectors`;
   }
   return "/team";
+}
+
+/**
+ * Build the deep link URL for configuring model providers.
+ * Opens the org manage dialog directly on the providers tab.
+ */
+export function buildModelProviderLink(appUrl: string): DeepLink {
+  return {
+    emoji: "🔑",
+    label: "Configure model providers",
+    url: `${appUrl}/?settings=providers`,
+  };
 }
 
 /**

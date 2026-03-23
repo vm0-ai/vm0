@@ -207,17 +207,12 @@ describe("detectDeepLinks", () => {
     expect(links).toEqual([]);
   });
 
-  it("should detect provider-related keywords", () => {
+  it("should not detect provider-related keywords (handled via error code)", () => {
     const links = detectDeepLinks(
       "The model provider is not configured",
       appUrl,
     );
-    expect(links).toHaveLength(1);
-    expect(links[0]).toEqual({
-      emoji: "\u{1F511}",
-      label: "Configure model providers",
-      url: `${appUrl}/settings`,
-    });
+    expect(links).toEqual([]);
   });
 
   it("should route connector links to team page with agent name", () => {
@@ -264,16 +259,14 @@ describe("detectDeepLinks", () => {
     expect(links[0]?.url).toBe(`${appUrl}/team/my-agent?tab=connectors`);
   });
 
-  it("should return multiple links for different destinations", () => {
+  it("should only return connector link when both provider and connector keywords present", () => {
     const links = detectDeepLinks(
       "The model provider is missing. Also the api key is not set and the MCP server is down.",
       appUrl,
       "my-agent",
     );
-    expect(links).toHaveLength(2);
-    const urls = links.map((l) => l.url);
-    expect(urls).toContain(`${appUrl}/settings`);
-    expect(urls).toContain(`${appUrl}/team/my-agent?tab=connectors`);
+    expect(links).toHaveLength(1);
+    expect(links[0]?.url).toBe(`${appUrl}/team/my-agent?tab=connectors`);
   });
 
   it("should encode special characters in agent name", () => {
