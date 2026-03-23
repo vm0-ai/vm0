@@ -551,7 +551,7 @@ export function ZeroOnboarding({
 
 export function MemberWelcome({
   agentName = "Zero",
-  zeroAvatarSrc = "/zero-avatar.webp",
+  zeroAvatarSrc = zeroAvatarImg,
 }: {
   agentName?: string;
   zeroAvatarSrc?: string;
