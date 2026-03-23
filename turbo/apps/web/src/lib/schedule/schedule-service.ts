@@ -7,7 +7,7 @@ import { decryptSecretsMap } from "../crypto";
 import { getOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
-import { startZeroRun } from "../run/run-service";
+import { startZeroRun } from "../run/zero-run-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 

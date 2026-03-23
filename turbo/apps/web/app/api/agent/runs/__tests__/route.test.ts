@@ -78,7 +78,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should inject agent identity into appendSystemPrompt", async () => {
+    it("should not inject agent identity for CLI callers", async () => {
       const agentName = uniqueId("identity-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {
@@ -90,9 +90,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Hello");
       const run = await getTestRun(data.runId);
 
-      expect(run.appendSystemPrompt).toContain("My Agent");
-      expect(run.appendSystemPrompt).toContain("A helpful assistant");
-      expect(run.appendSystemPrompt).toContain("warm, approachable");
+      // CLI path (startRun) does not inject agent identity — that's done by startZeroRun
+      expect(run.appendSystemPrompt).toBeNull();
     });
 
     it("should not inject identity when no metadata exists", async () => {
@@ -102,7 +101,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.appendSystemPrompt).toBeNull();
     });
 
-    it("should prepend identity before existing appendSystemPrompt", async () => {
+    it("should pass through appendSystemPrompt without identity for CLI callers", async () => {
       const agentName = uniqueId("prepend-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {
@@ -114,7 +113,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
       const run = await getTestRun(data.runId);
 
-      expect(run.appendSystemPrompt).toMatch(/Bot[\s\S]*Custom instructions/);
+      // CLI path passes appendSystemPrompt through without prepending identity
+      expect(run.appendSystemPrompt).toBe("Custom instructions");
     });
   });
 
