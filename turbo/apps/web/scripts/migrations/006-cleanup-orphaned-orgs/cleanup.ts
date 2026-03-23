@@ -201,9 +201,9 @@ async function cleanupOrphanedOrg(
       `SELECT s3_prefix FROM storages WHERE org_id = '${orgId.replace(/'/g, "''")}'`,
     ),
   );
-  if (storageRows.rows.length > 0) {
+  if (storageRows.length > 0) {
     console.log(
-      `    S3 prefixes to clean manually: ${storageRows.rows.map((r) => r.s3_prefix).join(", ")}`,
+      `    S3 prefixes to clean manually: ${storageRows.map((r) => r.s3_prefix).join(", ")}`,
     );
   }
 
@@ -212,9 +212,9 @@ async function cleanupOrphanedOrg(
       `SELECT s3_key FROM export_jobs WHERE org_id = '${orgId.replace(/'/g, "''")}'AND s3_key IS NOT NULL`,
     ),
   );
-  if (exportRows.rows.length > 0) {
+  if (exportRows.length > 0) {
     console.log(
-      `    Export S3 keys to clean manually: ${exportRows.rows.map((r) => r.s3_key).join(", ")}`,
+      `    Export S3 keys to clean manually: ${exportRows.map((r) => r.s3_key).join(", ")}`,
     );
   }
 
@@ -226,7 +226,7 @@ async function cleanupOrphanedOrg(
       `SELECT slack_workspace_id FROM slack_org_installations WHERE org_id = '${orgId.replace(/'/g, "''")}'`,
     ),
   );
-  for (const row of slackRows.rows) {
+  for (const row of slackRows) {
     const wsId = row.slack_workspace_id.replace(/'/g, "''");
     // Delete pending questions first (no cascade from connection)
     await db.execute(
