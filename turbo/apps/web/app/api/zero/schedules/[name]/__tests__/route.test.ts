@@ -5,7 +5,6 @@ import {
   createTestCompose,
   createTestOrg,
   createTestSchedule,
-  getTestSchedule,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
