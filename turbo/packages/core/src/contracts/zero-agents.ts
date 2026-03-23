@@ -42,7 +42,7 @@ export const zeroAgentInstructionsRequestSchema = z.object({
 });
 
 /**
- * Contract for POST /api/zero/agents (create agent)
+ * Contract for GET/POST /api/zero/agents (list/create agents)
  */
 export const zeroAgentsMainContract = c.router({
   create: {
@@ -58,10 +58,20 @@ export const zeroAgentsMainContract = c.router({
     },
     summary: "Create zero agent",
   },
+  list: {
+    method: "GET",
+    path: "/api/zero/agents",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.array(zeroAgentResponseSchema),
+      401: apiErrorSchema,
+    },
+    summary: "List zero agents",
+  },
 });
 
 /**
- * Contract for GET/PUT /api/zero/agents/:name
+ * Contract for GET/PUT/DELETE /api/zero/agents/:name
  */
 export const zeroAgentsByNameContract = c.router({
   get: {
@@ -90,6 +100,19 @@ export const zeroAgentsByNameContract = c.router({
       422: apiErrorSchema,
     },
     summary: "Update zero agent",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/agents/:name",
+    headers: authHeadersSchema,
+    pathParams: z.object({ name: z.string() }),
+    body: c.noBody(),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete zero agent by name",
   },
 });
 

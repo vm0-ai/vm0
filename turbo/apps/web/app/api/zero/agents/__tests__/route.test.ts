@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { gzipSync } from "node:zlib";
-import { POST } from "../route";
-import { GET, PUT } from "../[name]/route";
+import { POST, GET as listAgents } from "../route";
+import { GET, PUT, DELETE } from "../[name]/route";
 import {
   GET as getInstructions,
   PUT as putInstructions,
@@ -68,6 +68,29 @@ function putAgent(
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
+      },
+    ),
+  );
+}
+
+function listAgentsReq(token: string, orgSlug?: string) {
+  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+  return listAgents(
+    createTestRequest(`http://localhost:3000/api/zero/agents${orgParam}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  );
+}
+
+function deleteAgent(name: string, token: string, orgSlug?: string) {
+  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+  return DELETE(
+    createTestRequest(
+      `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
       },
     ),
   );
@@ -446,6 +469,24 @@ describe("Zero Agents API", () => {
       expect(fetched.sound).toBe("casual");
     });
 
+    it("should reflect deleted agent in list", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "To Delete" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      await deleteAgent(created.name, testCliToken, testOrgSlug);
+
+      const listResponse = await listAgentsReq(testCliToken, testOrgSlug);
+      const data = await listResponse.json();
+      expect(
+        data.find((a: { name: string }) => a.name === created.name),
+      ).toBeUndefined();
+    });
+
     it("should read back instructions content after PUT via GET", async () => {
       const created = await (
         await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
@@ -492,6 +533,100 @@ describe("Zero Agents API", () => {
       const fetched = await getRes.json();
 
       expect(fetched.content).toBe(instructionsContent);
+    });
+  });
+
+  describe("GET /api/zero/agents", () => {
+    it("should return empty array when no agents exist", async () => {
+      const response = await listAgentsReq(testCliToken, testOrgSlug);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toStrictEqual([]);
+    });
+
+    it("should return list with created agent", async () => {
+      const created = await (
+        await postAgent(
+          {
+            connectors: [],
+            displayName: "Listed Agent",
+            description: "desc",
+            sound: "friendly",
+          },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const response = await listAgentsReq(testCliToken, testOrgSlug);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toHaveLength(1);
+      expect(data[0].name).toBe(created.name);
+      expect(data[0].agentComposeId).toBe(created.agentComposeId);
+      expect(data[0].displayName).toBe("Listed Agent");
+      expect(data[0].description).toBe("desc");
+      expect(data[0].sound).toBe("friendly");
+      expect(data[0].connectors).toStrictEqual([]);
+    });
+
+    it("should return 401 without auth", async () => {
+      const { mockClerk } = await import(
+        "../../../../../src/__tests__/clerk-mock"
+      );
+      mockClerk({ userId: null });
+      const response = await listAgentsReq("no-token");
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("DELETE /api/zero/agents/:name", () => {
+    it("should delete an agent and return 204", async () => {
+      const created = await (
+        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      ).json();
+
+      const response = await deleteAgent(
+        created.name,
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(204);
+    });
+
+    it("should return 404 on GET after delete", async () => {
+      const created = await (
+        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      ).json();
+
+      await deleteAgent(created.name, testCliToken, testOrgSlug);
+
+      const getResponse = await getAgent(
+        created.name,
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(getResponse.status).toBe(404);
+    });
+
+    it("should return 404 for nonexistent agent", async () => {
+      const response = await deleteAgent(
+        "nonexistent-agent",
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return 401 without auth", async () => {
+      const { mockClerk } = await import(
+        "../../../../../src/__tests__/clerk-mock"
+      );
+      mockClerk({ userId: null });
+      const response = await deleteAgent("some-agent", "no-token");
+      expect(response.status).toBe(401);
     });
   });
 });

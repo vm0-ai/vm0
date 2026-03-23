@@ -13,6 +13,11 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/compose/server-side-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../../../src/db/schema/agent-compose";
+import { eq, and, desc } from "drizzle-orm";
+import {
   buildComposeContent,
   extractConnectors,
 } from "../../../../src/lib/zero/build-compose-content";
@@ -94,10 +99,60 @@ const router = tsr.router(zeroAgentsMainContract, {
       },
     };
   },
+
+  list: async ({ headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+
+    const rows = await globalThis.services.db
+      .select({
+        name: zeroAgents.name,
+        agentComposeId: agentComposes.id,
+        displayName: zeroAgents.displayName,
+        description: zeroAgents.description,
+        sound: zeroAgents.sound,
+        content: agentComposeVersions.content,
+      })
+      .from(zeroAgents)
+      .innerJoin(
+        agentComposes,
+        and(
+          eq(zeroAgents.orgId, agentComposes.orgId),
+          eq(zeroAgents.name, agentComposes.name),
+        ),
+      )
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentComposes.headVersionId, agentComposeVersions.id),
+      )
+      .where(eq(zeroAgents.orgId, org.orgId))
+      .orderBy(desc(zeroAgents.updatedAt));
+
+    return {
+      status: 200 as const,
+      body: rows.map((row) => ({
+        name: row.name,
+        agentComposeId: row.agentComposeId,
+        displayName: row.displayName ?? null,
+        description: row.description ?? null,
+        sound: row.sound ?? null,
+        connectors: extractConnectors(
+          (row.content ?? {}) as Record<string, unknown>,
+        ),
+      })),
+    };
+  },
 });
 
 const handler = createHandler(zeroAgentsMainContract, router, {
   errorHandler: createSafeErrorHandler("zero-agents"),
 });
 
-export { handler as POST };
+export { handler as POST, handler as GET };

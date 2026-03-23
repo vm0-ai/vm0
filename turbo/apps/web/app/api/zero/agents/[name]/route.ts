@@ -206,10 +206,62 @@ const router = tsr.router(zeroAgentsByNameContract, {
       },
     };
   },
+
+  delete: async ({ params, headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:write",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+
+    // Find compose by (orgId, name)
+    const [compose] = await globalThis.services.db
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(
+        and(
+          eq(agentComposes.orgId, org.orgId),
+          eq(agentComposes.name, params.name),
+        ),
+      )
+      .limit(1);
+
+    if (!compose) {
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: `Agent not found: ${params.name}`,
+            code: "NOT_FOUND",
+          },
+        },
+      };
+    }
+
+    // Delete compose (cascades to zero_agent_schedules via composeId FK)
+    await globalThis.services.db
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, compose.id));
+
+    // Delete zero_agents metadata record
+    await globalThis.services.db
+      .delete(zeroAgents)
+      .where(
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, params.name)),
+      );
+
+    log.info(`Deleted zero agent: ${params.name}`);
+
+    return { status: 204 as const, body: undefined };
+  },
 });
 
 const handler = createHandler(zeroAgentsByNameContract, router, {
   errorHandler: createSafeErrorHandler("zero-agents:name"),
 });
 
-export { handler as GET, handler as PUT };
+export { handler as GET, handler as PUT, handler as DELETE };
