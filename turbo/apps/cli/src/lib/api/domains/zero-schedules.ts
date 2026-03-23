@@ -9,7 +9,7 @@ import type {
   ScheduleResponse,
   ScheduleListResponse,
   DeployScheduleResponse,
-} from "../core/types";
+} from "@vm0/core";
 
 /**
  * Deploy zero schedule (create or update)

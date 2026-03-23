@@ -26,8 +26,6 @@ const mockDeployResponse = {
   created: true,
   schedule: {
     id: "sched-001",
-    composeId: "comp-001",
-    composeName: "my-agent",
     zeroAgentId: "za-001",
     agentName: "my-agent",
     orgSlug: "my-org",

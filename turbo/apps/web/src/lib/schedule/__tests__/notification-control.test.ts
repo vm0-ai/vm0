@@ -8,35 +8,39 @@ import {
   createTestCompose,
   createTestZeroAgent,
   createTestRequest,
+  createTestOrg,
+  getTestZeroAgentId,
   findTestRunCallbacks,
   findTestScheduleById,
   updateTestScheduleState,
   insertOrgMembersEntry,
   disableAllSchedules,
 } from "../../../__tests__/api-test-helpers";
-import { POST as deployScheduleRoute } from "../../../../app/api/agent/schedules/route";
-import { POST as enableScheduleRoute } from "../../../../app/api/agent/schedules/[name]/enable/route";
+import { mockClerk } from "../../../__tests__/clerk-mock";
+import { POST as deployScheduleRoute } from "../../../../app/api/zero/schedules/route";
+import { POST as enableScheduleRoute } from "../../../../app/api/zero/schedules/[name]/enable/route";
 import { executeDueSchedules } from "../schedule-service";
 
 const context = testContext();
 
 /**
- * Create a schedule with specific notification settings via the API,
+ * Create a schedule with specific notification settings via the zero API,
  * enable it, and make it due for execution.
  */
 async function createDueSchedule(
-  composeId: string,
+  zeroAgentId: string,
+  slug: string,
   name: string,
   options: { notifyEmail: boolean; notifySlack: boolean },
 ): Promise<string> {
-  // Create schedule via API with notification settings
+  // Create schedule via zero API with notification settings
   const createReq = createTestRequest(
-    "http://localhost:3000/api/agent/schedules",
+    `http://localhost:3000/api/zero/schedules?org=${slug}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        composeId,
+        zeroAgentId,
         name,
         cronExpression: "0 0 * * *",
         timezone: "UTC",
@@ -52,14 +56,16 @@ async function createDueSchedule(
 
   // Enable the schedule
   const enableReq = createTestRequest(
-    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}/enable`,
+    `http://localhost:3000/api/zero/schedules/${encodeURIComponent(name)}/enable?org=${slug}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ composeId }),
+      body: JSON.stringify({ zeroAgentId }),
     },
   );
-  await enableScheduleRoute(enableReq);
+  await enableScheduleRoute(enableReq, {
+    params: Promise.resolve({ name }),
+  });
 
   // Make it due by setting nextRunAt to the past
   const pastTime = new Date(Date.now() - 60_000);
@@ -70,15 +76,22 @@ async function createDueSchedule(
 
 describe("Schedule notification control - AND logic", () => {
   let user: UserContext;
-  let composeId: string;
+  let zeroAgentId: string;
+  let slug: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+
+    // Set up org with explicit slug for zero schedule routes
+    slug = uniqueId("notify");
+    mockClerk({ userId: user.userId, orgId: user.orgId, orgRole: "org:admin" });
+    await createTestOrg(slug);
+
     const agentName = uniqueId("notify-agent");
-    const compose = await createTestCompose(agentName);
-    composeId = compose.composeId;
+    await createTestCompose(agentName);
     await createTestZeroAgent(user.orgId, agentName, {});
+    zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
     // Disable any schedules from other tests to avoid interference
     await disableAllSchedules();
@@ -94,7 +107,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: both on
-    const scheduleId = await createDueSchedule(composeId, "both-on", {
+    const scheduleId = await createDueSchedule(zeroAgentId, slug, "both-on", {
       notifyEmail: true,
       notifySlack: true,
     });
@@ -125,7 +138,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: email off
-    const scheduleId = await createDueSchedule(composeId, "email-off", {
+    const scheduleId = await createDueSchedule(zeroAgentId, slug, "email-off", {
       notifyEmail: false,
       notifySlack: true,
     });
@@ -156,7 +169,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: slack off
-    const scheduleId = await createDueSchedule(composeId, "slack-off", {
+    const scheduleId = await createDueSchedule(zeroAgentId, slug, "slack-off", {
       notifyEmail: true,
       notifySlack: false,
     });
@@ -187,10 +200,15 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: both on
-    const scheduleId = await createDueSchedule(composeId, "user-email-off", {
-      notifyEmail: true,
-      notifySlack: true,
-    });
+    const scheduleId = await createDueSchedule(
+      zeroAgentId,
+      slug,
+      "user-email-off",
+      {
+        notifyEmail: true,
+        notifySlack: true,
+      },
+    );
 
     await executeDueSchedules();
 
@@ -218,7 +236,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: both off
-    const scheduleId = await createDueSchedule(composeId, "silent", {
+    const scheduleId = await createDueSchedule(zeroAgentId, slug, "silent", {
       notifyEmail: false,
       notifySlack: false,
     });

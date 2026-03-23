@@ -317,42 +317,6 @@ export {
 } from "./runners";
 
 export {
-  schedulesMainContract,
-  schedulesByNameContract,
-  schedulesEnableContract,
-  schedulesDisableContract,
-  scheduleRunsContract,
-  schedulesMissingSecretsContract,
-  scheduleYamlSchema,
-  scheduleTriggerSchema,
-  scheduleRunConfigSchema,
-  scheduleDefinitionSchema,
-  deployScheduleRequestSchema,
-  scheduleResponseSchema,
-  scheduleListResponseSchema,
-  deployScheduleResponseSchema,
-  runSummarySchema,
-  scheduleRunsResponseSchema,
-  agentMissingSecretsSchema,
-  type SchedulesMainContract,
-  type SchedulesByNameContract,
-  type SchedulesEnableContract,
-  type SchedulesDisableContract,
-  type ScheduleRunsContract,
-  type SchedulesMissingSecretsContract,
-  // Inferred types
-  type ScheduleTrigger,
-  type ScheduleRunConfig,
-  type ScheduleDefinition,
-  type DeployScheduleRequest,
-  type ScheduleResponse,
-  type ScheduleListResponse,
-  type DeployScheduleResponse,
-  type RunSummary,
-  type ScheduleRunsResponse,
-} from "./schedules";
-
-export {
   runnerRealtimeTokenContract,
   type RunnerRealtimeTokenContract,
 } from "./realtime";
@@ -573,9 +537,15 @@ export {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
+  scheduleResponseSchema,
+  scheduleListResponseSchema,
+  deployScheduleResponseSchema,
   type ZeroSchedulesMainContract,
   type ZeroSchedulesByNameContract,
   type ZeroSchedulesEnableContract,
+  type ScheduleResponse,
+  type ScheduleListResponse,
+  type DeployScheduleResponse,
 } from "./zero-schedules";
 export {
   zeroModelProvidersMainContract,

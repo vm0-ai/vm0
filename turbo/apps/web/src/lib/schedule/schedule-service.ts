@@ -24,8 +24,6 @@ const log = logger("service:schedule");
  */
 export interface ScheduleResponse {
   id: string;
-  composeId: string;
-  composeName: string;
   zeroAgentId: string;
   agentName: string;
   orgSlug: string;
@@ -72,8 +70,7 @@ interface RunSummary {
  */
 interface DeployScheduleRequest {
   name: string;
-  composeId?: string;
-  zeroAgentId?: string;
+  zeroAgentId: string;
   cronExpression?: string;
   atTime?: string;
   intervalSeconds?: number;
@@ -136,8 +133,6 @@ function toResponse(
 
   return {
     id: schedule.id,
-    composeId: schedule.composeId,
-    composeName: agentName,
     zeroAgentId: schedule.zeroAgentId,
     agentName,
     orgSlug,
@@ -170,90 +165,21 @@ function toResponse(
 
 /**
  * Verify zero agent exists and return it.
- *
- * Resolution strategy:
- * 1. Direct lookup by zero_agents.id (platform / zero API flow)
- * 2. Fallback: treat the id as a composeId, resolve the compose's
- *    (orgId, name), then find-or-create the zero_agents row.
- *    This supports the CLI flow where `vm0 compose` creates only an
- *    agentComposes record but not a zero_agents row.
  */
 async function loadZeroAgent(
   zeroAgentId: string,
 ): Promise<typeof zeroAgents.$inferSelect> {
-  // 1. Try direct zero_agents lookup
   const [agent] = await globalThis.services.db
     .select()
     .from(zeroAgents)
     .where(eq(zeroAgents.id, zeroAgentId))
     .limit(1);
 
-  if (agent) {
-    return agent;
-  }
-
-  // 2. Fallback: treat as composeId and resolve via compose
-  const [compose] = await globalThis.services.db
-    .select()
-    .from(agentComposes)
-    .where(eq(agentComposes.id, zeroAgentId))
-    .limit(1);
-
-  if (!compose) {
+  if (!agent) {
     throw notFound("Agent not found");
   }
 
-  // Find existing zero_agent by (orgId, name) or create one
-  const [existing] = await globalThis.services.db
-    .select()
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, compose.orgId),
-        eq(zeroAgents.name, compose.name),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    return existing;
-  }
-
-  // Auto-create zero_agents row for CLI-composed agents
-  const [created] = await globalThis.services.db
-    .insert(zeroAgents)
-    .values({
-      orgId: compose.orgId,
-      name: compose.name,
-    })
-    .returning();
-
-  if (!created) {
-    throw notFound("Agent not found");
-  }
-
-  log.debug(`Auto-created zero agent for compose ${compose.name}`);
-  return created;
-}
-
-/**
- * Resolve compose by (orgId, name) — used to get composeId for run creation
- */
-async function loadComposeByOrgAndName(
-  orgId: string,
-  name: string,
-): Promise<typeof agentComposes.$inferSelect> {
-  const [compose] = await globalThis.services.db
-    .select()
-    .from(agentComposes)
-    .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.name, name)))
-    .limit(1);
-
-  if (!compose) {
-    throw notFound("Agent compose not found");
-  }
-
-  return compose;
+  return agent;
 }
 
 /**
@@ -266,7 +192,6 @@ async function getOrgSlug(orgId: string): Promise<string> {
 
 /**
  * Verify the user owns this schedule (by zeroAgentId + name + orgId + userId).
- * Resolves the zeroAgentId first (handles composeId fallback from CLI).
  */
 async function verifyScheduleOwnership(
   userId: string,
@@ -278,7 +203,6 @@ async function verifyScheduleOwnership(
   agentName: string;
   orgSlug: string;
 }> {
-  // Resolve the real zeroAgentId (handles composeId fallback)
   const agent = await loadZeroAgent(zeroAgentId);
   const resolvedId = agent.id;
 
@@ -394,7 +318,6 @@ async function insertNewSchedule(
   orgId: string,
   request: DeployScheduleRequest,
   zeroAgentId: string,
-  composeId: string,
   triggerType: "cron" | "once" | "loop",
   nextRunAt: Date | null,
 ): Promise<typeof zeroAgentSchedules.$inferSelect> {
@@ -403,7 +326,6 @@ async function insertNewSchedule(
     .insert(zeroAgentSchedules)
     .values({
       zeroAgentId,
-      composeId,
       userId,
       orgId,
       name: request.name,
@@ -490,24 +412,12 @@ export async function deploySchedule(
   orgId: string,
   request: DeployScheduleRequest,
 ): Promise<{ schedule: ScheduleResponse; created: boolean }> {
-  const agentRef = request.zeroAgentId ?? request.composeId;
-  if (!agentRef) {
-    throw badRequest("Either zeroAgentId or composeId is required");
-  }
+  log.debug(
+    `Deploying schedule ${request.name} for agent ${request.zeroAgentId}`,
+  );
 
-  log.debug(`Deploying schedule ${request.name} for agent ${agentRef}`);
-
-  // Load zero agent to validate existence and get agent name.
-  // loadZeroAgent accepts both a zeroAgentId and a composeId (CLI fallback).
-  const agent = await loadZeroAgent(agentRef);
-  // Use the resolved agent.id (real zeroAgentId) for all downstream operations
-  const resolvedZeroAgentId = agent.id;
-  // Resolve compose via agent's (orgId, name) for composeId (still needed for run creation)
-  const compose = await loadComposeByOrgAndName(agent.orgId, agent.name);
+  const agent = await loadZeroAgent(request.zeroAgentId);
   const orgSlug = await getOrgSlug(orgId);
-
-  // Normalize request to use the resolved zeroAgentId
-  request = { ...request, zeroAgentId: resolvedZeroAgentId };
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
@@ -532,7 +442,7 @@ export async function deploySchedule(
     .from(zeroAgentSchedules)
     .where(
       and(
-        eq(zeroAgentSchedules.zeroAgentId, resolvedZeroAgentId),
+        eq(zeroAgentSchedules.zeroAgentId, request.zeroAgentId),
         eq(zeroAgentSchedules.name, request.name),
         eq(zeroAgentSchedules.orgId, orgId),
         eq(zeroAgentSchedules.userId, userId),
@@ -560,8 +470,7 @@ export async function deploySchedule(
     userId,
     orgId,
     request,
-    resolvedZeroAgentId,
-    compose.id,
+    agent.id,
     triggerType,
     nextRunAt,
   );
@@ -931,16 +840,35 @@ async function executeSchedule(
 ): Promise<void> {
   log.debug(`Executing schedule ${schedule.name} (${schedule.id})`);
 
-  // Use composeId stored on the schedule row (populated at deploy time)
+  // Resolve compose via zero agent's (orgId, name)
+  const [agent] = await globalThis.services.db
+    .select()
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, schedule.zeroAgentId))
+    .limit(1);
+
+  if (!agent) {
+    log.error(`Agent for schedule ${schedule.name} not found`);
+    await globalThis.services.db
+      .update(zeroAgentSchedules)
+      .set({ enabled: false })
+      .where(eq(zeroAgentSchedules.id, schedule.id));
+    return;
+  }
+
   const [compose] = await globalThis.services.db
     .select()
     .from(agentComposes)
-    .where(eq(agentComposes.id, schedule.composeId))
+    .where(
+      and(
+        eq(agentComposes.orgId, agent.orgId),
+        eq(agentComposes.name, agent.name),
+      ),
+    )
     .limit(1);
 
   if (!compose) {
     log.error(`Compose for schedule ${schedule.name} not found`);
-    // Disable schedule if compose is deleted
     await globalThis.services.db
       .update(zeroAgentSchedules)
       .set({ enabled: false })

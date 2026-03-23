@@ -68,18 +68,15 @@ import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { POST as upsertOrgModelProviderRoute } from "../../app/api/zero/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
-import {
-  POST as deployScheduleRoute,
-  GET as listSchedulesRoute,
-} from "../../app/api/agent/schedules/route";
-import {
-  GET as getScheduleRoute,
-  DELETE as deleteScheduleRoute,
-} from "../../app/api/agent/schedules/[name]/route";
-import { POST as enableScheduleRoute } from "../../app/api/agent/schedules/[name]/enable/route";
-import { POST as disableScheduleRoute } from "../../app/api/agent/schedules/[name]/disable/route";
-import { GET as getScheduleRunsRoute } from "../../app/api/agent/schedules/[name]/runs/route";
 import type { ScheduleResponse } from "../lib/schedule/schedule-service";
+import {
+  deploySchedule,
+  getScheduleByName,
+  deleteSchedule,
+  enableSchedule,
+  disableSchedule,
+  getScheduleRecentRuns,
+} from "../lib/schedule";
 import { grantOrgCredits } from "../lib/org/org-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
@@ -946,15 +943,48 @@ export async function failTestRun(
 // ============================================================================
 
 /**
- * Create a test schedule via API route handler.
- *
- * @param composeId - The compose ID to attach the schedule to
- * @param name - The schedule name
- * @param options - Optional schedule parameters
- * @returns The created schedule response
+ * Resolve composeId to zeroAgentId for test helpers.
+ * Looks up the compose to get org/name, then finds the corresponding zero agent.
  */
+async function resolveZeroAgentIdFromCompose(
+  composeId: string,
+): Promise<string> {
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId, name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (!compose) throw new Error(`Compose ${composeId} not found`);
+
+  const [agent] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, compose.orgId),
+        eq(zeroAgents.name, compose.name),
+      ),
+    )
+    .limit(1);
+  if (!agent) throw new Error(`Zero agent not found for compose ${composeId}`);
+
+  return agent.id;
+}
+
 /**
- * Create a test schedule via API route handler.
+ * Get the test auth context (userId + orgId) from the mock Clerk setup.
+ */
+async function getTestAuthContext(): Promise<{
+  userId: string;
+  orgId: string;
+}> {
+  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
+  if (!userId) throw new Error("Mock Clerk userId is null");
+  return { userId, orgId: `org_mock_${userId}` };
+}
+
+/**
+ * Create a test schedule via the schedule service.
  * Note: vars and secrets are now managed via server-side tables (vm0 secret set, vm0 var set)
  */
 export async function createTestSchedule(
@@ -967,49 +997,33 @@ export async function createTestSchedule(
     timezone?: string;
     prompt?: string;
     appendSystemPrompt?: string;
-    // vars and secrets removed - now managed via server-side tables
   },
 ): Promise<ScheduleResponse> {
+  initServices();
+  const { userId, orgId } = await getTestAuthContext();
+  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+
   // Default to cron if no trigger specified
-  const trigger =
+  const hasTrigger =
     options?.cronExpression ||
     options?.atTime ||
-    options?.intervalSeconds !== undefined
-      ? {}
-      : { cronExpression: "0 0 * * *" };
+    options?.intervalSeconds !== undefined;
 
-  const request = createTestRequest(
-    "http://localhost:3000/api/agent/schedules",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        composeId,
-        name,
-        timezone: options?.timezone ?? "UTC",
-        prompt: options?.prompt ?? "Test schedule prompt",
-        cronExpression: options?.cronExpression,
-        atTime: options?.atTime,
-        intervalSeconds: options?.intervalSeconds,
-        appendSystemPrompt: options?.appendSystemPrompt,
-        // vars and secrets no longer sent - managed via server-side tables
-        ...trigger,
-      }),
-    },
-  );
-  const response = await deployScheduleRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create schedule: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.schedule;
+  const result = await deploySchedule(userId, orgId, {
+    name,
+    zeroAgentId,
+    timezone: options?.timezone ?? "UTC",
+    prompt: options?.prompt ?? "Test schedule prompt",
+    cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
+    atTime: options?.atTime,
+    intervalSeconds: options?.intervalSeconds,
+    appendSystemPrompt: options?.appendSystemPrompt,
+  });
+  return result.schedule;
 }
 
 /**
- * Get a test schedule by name via API route handler.
+ * Get a test schedule by name via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -1019,41 +1033,14 @@ export async function getTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}?composeId=${composeId}`,
-  );
-  const response = await getScheduleRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to get schedule: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  initServices();
+  const { userId, orgId } = await getTestAuthContext();
+  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+  return getScheduleByName(userId, orgId, zeroAgentId, name);
 }
 
 /**
- * List all schedules for the current user via API route handler.
- *
- * @returns Array of schedule responses
- */
-export async function listTestSchedules(): Promise<ScheduleResponse[]> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/agent/schedules",
-  );
-  const response = await listSchedulesRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to list schedules: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.schedules;
-}
-
-/**
- * Enable a test schedule via API route handler.
+ * Enable a test schedule via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -1063,26 +1050,14 @@ export async function enableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}/enable`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ composeId }),
-    },
-  );
-  const response = await enableScheduleRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to enable schedule: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  initServices();
+  const { userId, orgId } = await getTestAuthContext();
+  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+  return enableSchedule(userId, orgId, zeroAgentId, name);
 }
 
 /**
- * Disable a test schedule via API route handler.
+ * Disable a test schedule via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -1092,26 +1067,14 @@ export async function disableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}/disable`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ composeId }),
-    },
-  );
-  const response = await disableScheduleRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to disable schedule: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  initServices();
+  const { userId, orgId } = await getTestAuthContext();
+  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+  return disableSchedule(userId, orgId, zeroAgentId, name);
 }
 
 /**
- * Delete a test schedule via API route handler.
+ * Delete a test schedule via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -1120,21 +1083,14 @@ export async function deleteTestSchedule(
   composeId: string,
   name: string,
 ): Promise<void> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}?composeId=${composeId}`,
-    { method: "DELETE" },
-  );
-  const response = await deleteScheduleRoute(request);
-  if (!response.ok && response.status !== 204) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to delete schedule: ${error.error?.message || response.status}`,
-    );
-  }
+  initServices();
+  const { userId, orgId } = await getTestAuthContext();
+  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+  await deleteSchedule(userId, orgId, zeroAgentId, name);
 }
 
 /**
- * Get runs for a test schedule via API route handler.
+ * Get runs for a test schedule via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -1154,21 +1110,17 @@ export async function getTestScheduleRuns(
     error: string | null;
   }>;
 }> {
-  const params = new URLSearchParams({ composeId });
-  if (limit !== undefined) {
-    params.set("limit", String(limit));
-  }
-  const request = createTestRequest(
-    `http://localhost:3000/api/agent/schedules/${encodeURIComponent(name)}/runs?${params}`,
+  initServices();
+  const { userId, orgId } = await getTestAuthContext();
+  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+  const runs = await getScheduleRecentRuns(
+    userId,
+    orgId,
+    zeroAgentId,
+    name,
+    limit ?? 5,
   );
-  const response = await getScheduleRunsRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to get schedule runs: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  return { runs };
 }
 
 // ============================================================================

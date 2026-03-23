@@ -6,10 +6,6 @@ import type {
   CheckpointResponse,
   ComposeResponse,
   ApiErrorResponse,
-  ScheduleResponse,
-  ScheduleListResponse,
-  DeployScheduleResponse,
-  ScheduleRunsResponse,
 } from "@vm0/core";
 
 // Re-export types with CLI naming conventions for backward compatibility
@@ -19,14 +15,6 @@ export type GetSessionResponse = SessionResponse;
 export type GetCheckpointResponse = CheckpointResponse;
 export type GetComposeResponse = ComposeResponse;
 export type GetEventsResponse = EventsResponse;
-
-// Re-export @vm0/core types for domain modules
-export type {
-  ScheduleResponse,
-  ScheduleListResponse,
-  DeployScheduleResponse,
-  ScheduleRunsResponse,
-};
 
 // CLI-specific types (not in @vm0/core or have different structure)
 export interface CreateComposeResponse {

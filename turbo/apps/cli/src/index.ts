@@ -15,7 +15,6 @@ import { logsCommand } from "./commands/logs";
 
 import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
-import { scheduleCommand } from "./commands/schedule";
 
 import { connectorCommand } from "./commands/connector";
 import { preferenceCommand } from "./commands/preference";
@@ -45,7 +44,6 @@ program.addCommand(logsCommand);
 
 program.addCommand(agentCommand);
 program.addCommand(initCommand);
-program.addCommand(scheduleCommand);
 program.addCommand(connectorCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);

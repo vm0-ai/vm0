@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
+import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
+import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
 import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
@@ -134,17 +135,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       headers: unsubscribeHeaders,
       threadAction: agentSessionId
         ? await (async () => {
-            // Load composeId from the schedule row (still needed for email thread sessions)
-            const [sched] = await globalThis.services.db
-              .select({ composeId: zeroAgentSchedules.composeId })
-              .from(zeroAgentSchedules)
-              .where(eq(zeroAgentSchedules.id, payload.scheduleId))
+            // Resolve composeId via zeroAgentId → zeroAgents → agentComposes
+            const [agent] = await globalThis.services.db
+              .select({ orgId: zeroAgents.orgId, name: zeroAgents.name })
+              .from(zeroAgents)
+              .where(eq(zeroAgents.id, payload.zeroAgentId))
               .limit(1);
-            if (!sched) return undefined;
+            if (!agent) return undefined;
+            const [compose] = await globalThis.services.db
+              .select({ id: agentComposes.id })
+              .from(agentComposes)
+              .where(
+                and(
+                  eq(agentComposes.orgId, agent.orgId),
+                  eq(agentComposes.name, agent.name),
+                ),
+              )
+              .limit(1);
+            if (!compose) return undefined;
             return {
               action: "save_thread_session" as const,
               userId,
-              composeId: sched.composeId,
+              composeId: compose.id,
               agentSessionId,
               replyToToken: replyToken,
             };

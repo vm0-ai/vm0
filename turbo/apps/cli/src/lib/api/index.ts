@@ -36,16 +36,6 @@ export {
   listStorages,
 } from "./domains/storages";
 
-// Domain modules - Schedules
-export {
-  deploySchedule,
-  listSchedules,
-  getScheduleByName,
-  deleteSchedule,
-  enableSchedule,
-  disableSchedule,
-  listScheduleRuns,
-} from "./domains/schedules";
 
 // Domain modules - Connectors
 export {

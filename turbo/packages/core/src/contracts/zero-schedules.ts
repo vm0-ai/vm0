@@ -1,13 +1,51 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import {
-  scheduleListResponseSchema,
-  deployScheduleResponseSchema,
-  scheduleResponseSchema,
-} from "./schedules";
 
 const c = initContract();
+
+/**
+ * Schedule response schema — shared by all schedule endpoints
+ */
+export const scheduleResponseSchema = z.object({
+  id: z.string().uuid(),
+  zeroAgentId: z.string().uuid(),
+  agentName: z.string(),
+  orgSlug: z.string(),
+  userId: z.string(),
+  name: z.string(),
+  triggerType: z.enum(["cron", "once", "loop"]),
+  cronExpression: z.string().nullable(),
+  atTime: z.string().nullable(),
+  intervalSeconds: z.number().nullable(),
+  timezone: z.string(),
+  prompt: z.string(),
+  description: z.string().nullable(),
+  appendSystemPrompt: z.string().nullable(),
+  vars: z.record(z.string(), z.string()).nullable(),
+  secretNames: z.array(z.string()).nullable(),
+  artifactName: z.string().nullable(),
+  artifactVersion: z.string().nullable(),
+  volumeVersions: z.record(z.string(), z.string()).nullable(),
+  enabled: z.boolean(),
+  notifyEmail: z.boolean(),
+  notifySlack: z.boolean(),
+  nextRunAt: z.string().nullable(),
+  lastRunAt: z.string().nullable(),
+  retryStartedAt: z.string().nullable(),
+  consecutiveFailures: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const scheduleListResponseSchema = z.object({
+  schedules: z.array(scheduleResponseSchema),
+});
+
+export const deployScheduleResponseSchema = z.object({
+  schedule: scheduleResponseSchema,
+  created: z.boolean(),
+});
 
 /**
  * Zero deploy schedule request — uses zeroAgentId instead of composeId
@@ -146,7 +184,14 @@ export const zeroSchedulesEnableContract = c.router({
   },
 });
 
-// Type exports
+// Contract type exports
 export type ZeroSchedulesMainContract = typeof zeroSchedulesMainContract;
 export type ZeroSchedulesByNameContract = typeof zeroSchedulesByNameContract;
 export type ZeroSchedulesEnableContract = typeof zeroSchedulesEnableContract;
+
+// Inferred types from response schemas
+export type ScheduleResponse = z.infer<typeof scheduleResponseSchema>;
+export type ScheduleListResponse = z.infer<typeof scheduleListResponseSchema>;
+export type DeployScheduleResponse = z.infer<
+  typeof deployScheduleResponseSchema
+>;
