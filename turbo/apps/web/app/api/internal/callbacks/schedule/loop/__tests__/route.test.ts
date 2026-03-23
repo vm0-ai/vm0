@@ -11,6 +11,7 @@ import {
   createTestCallback,
   createTestRequest,
   createTestSchedule,
+  createTestZeroAgent,
   enableTestSchedule,
   disableTestSchedule,
   deleteTestSchedule,
@@ -63,8 +64,10 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
-    composeId = (await createTestCompose(uniqueId("agent"))).composeId;
+    const user = await context.setupUser();
+    const agentName = uniqueId("agent");
+    composeId = (await createTestCompose(agentName)).composeId;
+    await createTestZeroAgent(user.orgId, agentName, {});
   });
 
   async function setupLoopSchedule() {

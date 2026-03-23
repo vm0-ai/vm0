@@ -8,7 +8,7 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import { disableSchedule } from "../../../../../../src/lib/schedule";
 import { isNotFound } from "../../../../../../src/lib/errors";
 
-const bodySchema = z.object({ composeId: z.string() });
+const bodySchema = z.object({ zeroAgentId: z.string() });
 
 export async function POST(
   request: Request,
@@ -44,7 +44,7 @@ export async function POST(
     const schedule = await disableSchedule(
       userId,
       orgId,
-      parsed.data.composeId,
+      parsed.data.zeroAgentId,
       name,
     );
 

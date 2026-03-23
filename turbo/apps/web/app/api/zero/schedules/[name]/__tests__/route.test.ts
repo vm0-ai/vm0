@@ -3,6 +3,8 @@ import { DELETE } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestZeroAgent,
+  getTestZeroAgentId,
   createTestOrg,
   createTestSchedule,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -26,18 +28,22 @@ async function setupOrg(userId: string) {
 
 describe("DELETE /api/zero/schedules/:name", () => {
   let slug: string;
+  let orgId: string;
   let testComposeId: string;
+  let testZeroAgentId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
     slug = org.slug;
+    orgId = org.orgId;
 
-    const { composeId } = await createTestCompose(
-      `zero-sched-del-${Date.now()}`,
-    );
+    const agentName = `zero-sched-del-${Date.now()}`;
+    const { composeId } = await createTestCompose(agentName);
     testComposeId = composeId;
+    await createTestZeroAgent(orgId, agentName, {});
+    testZeroAgentId = await getTestZeroAgentId(orgId, agentName);
   });
 
   it("should delete schedule and return 204", async () => {
@@ -48,7 +54,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/to-delete?composeId=${testComposeId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/to-delete?zeroAgentId=${testZeroAgentId}&org=${slug}`,
         { method: "DELETE" },
       ),
     );
@@ -59,7 +65,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
   it("should return 404 for non-existent schedule", async () => {
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/non-existent?composeId=${testComposeId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/non-existent?zeroAgentId=${testZeroAgentId}&org=${slug}`,
         { method: "DELETE" },
       ),
     );
@@ -74,7 +80,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/any?composeId=${testComposeId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/any?zeroAgentId=${testZeroAgentId}&org=${slug}`,
         { method: "DELETE" },
       ),
     );

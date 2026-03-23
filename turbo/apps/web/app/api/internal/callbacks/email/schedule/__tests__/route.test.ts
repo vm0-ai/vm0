@@ -12,6 +12,8 @@ import {
   createTestCallback,
   createTestRequest,
   createTestSchedule,
+  createTestZeroAgent,
+  getTestZeroAgentId,
   linkRunToSchedule,
   completeTestRun,
 } from "../../../../../../../src/__tests__/api-test-helpers";
@@ -23,8 +25,8 @@ const mockResend = vi.mocked(new Resend(""), true);
 
 interface ScheduleCallbackPayload {
   scheduleId: string;
-  composeId: string;
-  composeName: string;
+  zeroAgentId: string;
+  agentName: string;
   userId: string;
 }
 
@@ -71,15 +73,18 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
     it("should reject request with invalid signature", async () => {
       const user = await context.setupUser({ prefix: "email-sched-sig" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+      const agentName = uniqueId("sched-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {});
+      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        composeId,
-        composeName: "sched-agent",
+        zeroAgentId,
+        agentName,
         userId: user.userId,
       };
 
@@ -102,15 +107,18 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
     it("should reject request with expired timestamp", async () => {
       const user = await context.setupUser({ prefix: "email-sched-exp" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+      const agentName = uniqueId("sched-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {});
+      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        composeId,
-        composeName: "sched-agent",
+        zeroAgentId,
+        agentName,
         userId: user.userId,
       };
 
@@ -135,15 +143,18 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
     it("should no-op on progress and not send any email", async () => {
       const user = await context.setupUser({ prefix: "email-sched-prog" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+      const agentName = uniqueId("sched-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {});
+      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        composeId,
-        composeName: "test-agent",
+        zeroAgentId,
+        agentName,
         userId: user.userId,
       };
 
@@ -172,7 +183,10 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
     it("should send completion email for successful scheduled run", async () => {
       const user = await context.setupUser({ prefix: "email-sched-ok" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+      const agentName = uniqueId("sched-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {});
+      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
@@ -180,8 +194,8 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        composeId,
-        composeName: "test-agent",
+        zeroAgentId,
+        agentName,
         userId: user.userId,
       };
 
@@ -209,21 +223,24 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       };
       expect(sendArgs.to).toBe("test@example.com");
       expect(sendArgs.subject).toContain("completed");
-      expect(sendArgs.from).toContain("test-agent");
+      expect(sendArgs.from).toContain("sched-agent");
     });
 
     it("should send failure email for failed scheduled run", async () => {
       const user = await context.setupUser({ prefix: "email-sched-fail" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("fail-agent"));
+      const agentName = uniqueId("fail-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {});
+      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        composeId,
-        composeName: "fail-agent",
+        zeroAgentId,
+        agentName,
         userId: user.userId,
       };
 

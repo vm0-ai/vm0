@@ -3,6 +3,8 @@ import { POST, GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestZeroAgent,
+  getTestZeroAgentId,
   createTestOrg,
   createTestSchedule,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -26,18 +28,22 @@ async function setupOrg(userId: string) {
 
 describe("POST /api/zero/schedules - Deploy Schedule", () => {
   let slug: string;
+  let orgId: string;
   let testComposeId: string;
+  let testZeroAgentId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
     slug = org.slug;
+    orgId = org.orgId;
 
-    const { composeId } = await createTestCompose(
-      `zero-sched-deploy-${Date.now()}`,
-    );
+    const agentName = `zero-sched-deploy-${Date.now()}`;
+    const { composeId } = await createTestCompose(agentName);
     testComposeId = composeId;
+    await createTestZeroAgent(orgId, agentName, {});
+    testZeroAgentId = await getTestZeroAgentId(orgId, agentName);
   });
 
   it("should create schedule and return 201", async () => {
@@ -48,7 +54,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            composeId: testComposeId,
+            zeroAgentId: testZeroAgentId,
             name: "daily-zero",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
@@ -78,7 +84,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            composeId: testComposeId,
+            zeroAgentId: testZeroAgentId,
             name: "update-zero",
             cronExpression: "0 10 * * *",
             timezone: "UTC",
@@ -94,7 +100,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.schedule.cronExpression).toBe("0 10 * * *");
   });
 
-  it("should return 400 for non-existent compose", async () => {
+  it("should return 400 for non-existent agent", async () => {
     const response = await POST(
       createTestRequest(
         `http://localhost:3000/api/zero/schedules?org=${slug}`,
@@ -102,7 +108,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            composeId: "non-existent-compose-id",
+            zeroAgentId: "00000000-0000-0000-0000-000000000000",
             name: "will-fail",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
@@ -113,8 +119,8 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     );
     const data = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(data.error.code).toBe("BAD_REQUEST");
+    expect(response.status).toBe(404);
+    expect(data.error.code).toBe("NOT_FOUND");
   });
 
   it("should reject unauthenticated request", async () => {
@@ -127,7 +133,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            composeId: testComposeId,
+            zeroAgentId: testZeroAgentId,
             name: "unauth",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
@@ -143,6 +149,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
 
 describe("GET /api/zero/schedules - List Schedules", () => {
   let slug: string;
+  let orgId: string;
   let testComposeId: string;
 
   beforeEach(async () => {
@@ -150,11 +157,12 @@ describe("GET /api/zero/schedules - List Schedules", () => {
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
     slug = org.slug;
+    orgId = org.orgId;
 
-    const { composeId } = await createTestCompose(
-      `zero-sched-list-${Date.now()}`,
-    );
+    const agentName = `zero-sched-list-${Date.now()}`;
+    const { composeId } = await createTestCompose(agentName);
     testComposeId = composeId;
+    await createTestZeroAgent(orgId, agentName, {});
   });
 
   it("should return list of schedules", async () => {

@@ -2,7 +2,6 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
-  deployScheduleRequestSchema,
   scheduleListResponseSchema,
   deployScheduleResponseSchema,
   scheduleResponseSchema,
@@ -11,15 +10,51 @@ import {
 const c = initContract();
 
 /**
+ * Zero deploy schedule request — uses zeroAgentId instead of composeId
+ */
+const zeroDeployScheduleRequestSchema = z
+  .object({
+    name: z.string().min(1).max(64, "Schedule name max 64 chars"),
+    cronExpression: z.string().optional(),
+    atTime: z.string().optional(),
+    intervalSeconds: z.number().int().min(0).optional(),
+    timezone: z.string().default("UTC"),
+    prompt: z.string().min(1, "Prompt required"),
+    description: z.string().optional(),
+    appendSystemPrompt: z.string().optional(),
+    artifactName: z.string().optional(),
+    artifactVersion: z.string().optional(),
+    volumeVersions: z.record(z.string(), z.string()).optional(),
+    // Resolved zero agent ID (platform resolves org/name → zeroAgentId)
+    zeroAgentId: z.string().uuid("Invalid agent ID"),
+    enabled: z.boolean().optional(),
+    notifyEmail: z.boolean().optional(),
+    notifySlack: z.boolean().optional(),
+  })
+  .refine(
+    (data) => {
+      const triggers = [
+        data.cronExpression,
+        data.atTime,
+        data.intervalSeconds,
+      ].filter((v) => v !== undefined);
+      return triggers.length === 1;
+    },
+    {
+      message:
+        "Exactly one of 'cronExpression', 'atTime', or 'intervalSeconds' must be specified",
+    },
+  );
+
+/**
  * Zero schedules main contract (GET/POST /api/zero/schedules)
- * Proxies to schedulesMainContract
  */
 export const zeroSchedulesMainContract = c.router({
   deploy: {
     method: "POST",
     path: "/api/zero/schedules",
     headers: authHeadersSchema,
-    body: deployScheduleRequestSchema,
+    body: zeroDeployScheduleRequestSchema,
     responses: {
       200: deployScheduleResponseSchema,
       201: deployScheduleResponseSchema,
@@ -45,7 +80,6 @@ export const zeroSchedulesMainContract = c.router({
 
 /**
  * Zero schedules by name contract (DELETE /api/zero/schedules/:name)
- * Proxies to schedulesByNameContract.delete
  */
 export const zeroSchedulesByNameContract = c.router({
   delete: {
@@ -56,7 +90,7 @@ export const zeroSchedulesByNameContract = c.router({
       name: z.string().min(1, "Schedule name required"),
     }),
     query: z.object({
-      composeId: z.string().uuid("Compose ID required"),
+      zeroAgentId: z.string().uuid("Agent ID required"),
     }),
     responses: {
       204: c.noBody(),
@@ -70,7 +104,6 @@ export const zeroSchedulesByNameContract = c.router({
 
 /**
  * Zero schedules enable/disable contract
- * Proxies to schedulesEnableContract
  */
 export const zeroSchedulesEnableContract = c.router({
   enable: {
@@ -81,7 +114,7 @@ export const zeroSchedulesEnableContract = c.router({
       name: z.string().min(1, "Schedule name required"),
     }),
     body: z.object({
-      composeId: z.string().uuid("Compose ID required"),
+      zeroAgentId: z.string().uuid("Agent ID required"),
     }),
     responses: {
       200: scheduleResponseSchema,
@@ -100,7 +133,7 @@ export const zeroSchedulesEnableContract = c.router({
       name: z.string().min(1, "Schedule name required"),
     }),
     body: z.object({
-      composeId: z.string().uuid("Compose ID required"),
+      zeroAgentId: z.string().uuid("Agent ID required"),
     }),
     responses: {
       200: scheduleResponseSchema,

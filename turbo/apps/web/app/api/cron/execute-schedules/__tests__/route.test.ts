@@ -3,6 +3,7 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestZeroAgent,
   createTestRun,
   createTestSchedule,
   enableTestSchedule,
@@ -24,10 +25,12 @@ describe("GET /api/cron/execute-schedules", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    const user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(uniqueId("cron-agent"));
+    const agentName = uniqueId("cron-agent");
+    const { composeId } = await createTestCompose(agentName);
     testComposeId = composeId;
+    await createTestZeroAgent(user.orgId, agentName, {});
   });
 
   describe("Authorization", () => {
@@ -250,7 +253,7 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(runs.length).toBe(1);
 
       const run = await getTestRun(runs[0]!.id);
-      expect(run.appendSystemPrompt).toBe("Always respond in formal tone");
+      expect(run.appendSystemPrompt).toContain("Always respond in formal tone");
     });
 
     it("should disable one-time schedule after execution", async () => {

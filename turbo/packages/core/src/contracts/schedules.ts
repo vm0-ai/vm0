@@ -103,6 +103,8 @@ const scheduleResponseSchema = z.object({
   id: z.uuid(),
   composeId: z.uuid(),
   composeName: z.string(),
+  zeroAgentId: z.uuid(),
+  agentName: z.string(),
   orgSlug: z.string(),
   userId: z.string(),
   name: z.string(),

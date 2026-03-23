@@ -15,8 +15,8 @@ import { getAllRunOutputTexts } from "../../../../../../../src/lib/run/extract-r
 import {
   saveThreadSession,
   buildLogsUrl,
-  getWorkspaceAgent,
 } from "../../../../../../../src/lib/slack-org/handlers/shared";
+import { zeroAgents } from "../../../../../../../src/db/schema/zero-agent";
 import { env } from "../../../../../../../src/env";
 import type { SlackScheduleCallbackPayload } from "../../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../../src/lib/logger";
@@ -28,8 +28,8 @@ function parsePayload(payload: unknown): SlackScheduleCallbackPayload | null {
   const p = payload as Record<string, unknown>;
   if (
     typeof p.scheduleId !== "string" ||
-    typeof p.composeId !== "string" ||
-    typeof p.composeName !== "string" ||
+    typeof p.zeroAgentId !== "string" ||
+    typeof p.agentName !== "string" ||
     typeof p.userId !== "string" ||
     typeof p.orgId !== "string"
   ) {
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { composeName, userId } = payload;
+  const { agentName, userId } = payload;
 
   log.debug("Processing Slack org schedule callback", { runId, status });
 
@@ -198,9 +198,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const logsUrl = buildLogsUrl(runId);
 
-  // Resolve display name for user-visible messages
-  const agentInfo = await getWorkspaceAgent(payload.composeId);
-  const displayName = agentInfo?.displayName ?? composeName;
+  // Resolve display name from zeroAgents
+  const [agentInfo] = await globalThis.services.db
+    .select({ displayName: zeroAgents.displayName })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, payload.zeroAgentId))
+    .limit(1);
+  const displayName = agentInfo?.displayName ?? agentName;
 
   if (status === "completed") {
     const allTexts = await getAllRunOutputTexts(runId);
@@ -269,7 +273,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   log.info("Sent Slack org schedule notification", {
     runId,
     status,
-    agentName: composeName,
+    agentName,
   });
 
   return NextResponse.json({ success: true });

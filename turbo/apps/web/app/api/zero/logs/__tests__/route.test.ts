@@ -394,10 +394,10 @@ describe("GET /api/zero/logs", () => {
     let testComposeId: string;
 
     beforeEach(async () => {
-      const { composeId } = await createTestCompose(
-        `trigger-src-${randomUUID().slice(0, 8)}`,
-      );
+      const agentName = `trigger-src-${randomUUID().slice(0, 8)}`;
+      const { composeId } = await createTestCompose(agentName);
       testComposeId = composeId;
+      await createTestZeroAgent(user.orgId, agentName, {});
     });
 
     it("should return explicit trigger source when set on run", async () => {

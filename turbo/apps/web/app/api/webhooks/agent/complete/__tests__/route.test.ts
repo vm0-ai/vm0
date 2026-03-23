@@ -9,6 +9,7 @@ import {
   createTestSandboxToken,
   completeTestRun,
   createTestSchedule,
+  createTestZeroAgent,
   linkRunToSchedule,
   createTestAgentSession,
   createTestEmailThreadSession,
@@ -1371,7 +1372,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Use a separate user for concurrency
       const schedUser = await context.setupUser({ prefix: "sched-cb" });
       mockClerk({ userId: schedUser.userId });
-      const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+      const agentName = uniqueId("sched-agent");
+      const { composeId } = await createTestCompose(agentName);
+      await createTestZeroAgent(schedUser.orgId, agentName, {});
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Scheduled task");
       await linkRunToSchedule(runId, schedule.id);
@@ -1382,8 +1385,8 @@ describe("POST /api/webhooks/agent/complete", () => {
         url: "http://localhost/api/internal/callbacks/email/schedule",
         payload: {
           scheduleId: schedule.id,
-          composeId,
-          composeName: "sched-agent",
+          zeroAgentId: schedule.zeroAgentId,
+          agentName,
           userId: schedUser.userId,
         },
       });
@@ -1392,8 +1395,8 @@ describe("POST /api/webhooks/agent/complete", () => {
         url: "http://localhost/api/internal/callbacks/slack/schedule",
         payload: {
           scheduleId: schedule.id,
-          composeId,
-          composeName: "sched-agent",
+          zeroAgentId: schedule.zeroAgentId,
+          agentName,
           userId: schedUser.userId,
         },
       });

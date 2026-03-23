@@ -401,6 +401,29 @@ export async function createTestZeroAgent(
 }
 
 /**
+ * Get the zero_agents UUID by org + agent name.
+ *
+ * @param orgId - The org ID
+ * @param name - The agent name
+ * @returns The zero agent UUID
+ */
+export async function getTestZeroAgentId(
+  orgId: string,
+  name: string,
+): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, name)))
+    .limit(1);
+  if (!row) {
+    throw new Error(`Zero agent not found: org=${orgId} name=${name}`);
+  }
+  return row.id;
+}
+
+/**
  * Read a zero_agents row by org + agent name.
  *
  * @param orgId - The org ID

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
 import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
@@ -26,8 +27,8 @@ function parsePayload(payload: unknown): EmailScheduleCallbackPayload | null {
   const p = payload as Record<string, unknown>;
   if (
     typeof p.scheduleId !== "string" ||
-    typeof p.composeId !== "string" ||
-    typeof p.composeName !== "string" ||
+    typeof p.zeroAgentId !== "string" ||
+    typeof p.agentName !== "string" ||
     typeof p.userId !== "string"
   ) {
     return null;
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { composeId, composeName, userId } = payload;
+  const { agentName, userId } = payload;
 
   log.debug("Processing email schedule callback", { runId, status });
 
@@ -117,13 +118,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const replyToAddress = buildReplyToAddress(replyToken);
 
     await enqueueEmail({
-      from: buildFromAddress(composeName),
+      from: buildFromAddress(agentName),
       to: userEmail,
-      subject: `VM0 - Scheduled run for "${composeName}" completed`,
+      subject: `VM0 - Scheduled run for "${agentName}" completed`,
       template: {
         template: "schedule-completed",
         props: {
-          agentName: composeName,
+          agentName,
           output: truncatedOutput,
           logsUrl,
           unsubscribeUrl,
@@ -132,25 +133,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       replyTo: replyToAddress,
       headers: unsubscribeHeaders,
       threadAction: agentSessionId
-        ? {
-            action: "save_thread_session",
-            userId,
-            composeId,
-            agentSessionId,
-            replyToToken: replyToken,
-          }
+        ? await (async () => {
+            // Load composeId from the schedule row (still needed for email thread sessions)
+            const [sched] = await globalThis.services.db
+              .select({ composeId: zeroAgentSchedules.composeId })
+              .from(zeroAgentSchedules)
+              .where(eq(zeroAgentSchedules.id, payload.scheduleId))
+              .limit(1);
+            if (!sched) return undefined;
+            return {
+              action: "save_thread_session" as const,
+              userId,
+              composeId: sched.composeId,
+              agentSessionId,
+              replyToToken: replyToken,
+            };
+          })()
         : undefined,
     });
   } else {
     // Failed run
     await enqueueEmail({
-      from: buildFromAddress(composeName),
+      from: buildFromAddress(agentName),
       to: userEmail,
-      subject: `VM0 - Scheduled run for "${composeName}" failed`,
+      subject: `VM0 - Scheduled run for "${agentName}" failed`,
       template: {
         template: "schedule-failed",
         props: {
-          agentName: composeName,
+          agentName,
           errorMessage: error ?? "Unknown error",
           logsUrl,
           unsubscribeUrl,
@@ -163,7 +173,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   log.info("Sent email schedule notification", {
     runId,
     status,
-    agentName: composeName,
+    agentName,
   });
 
   return NextResponse.json({ success: true });

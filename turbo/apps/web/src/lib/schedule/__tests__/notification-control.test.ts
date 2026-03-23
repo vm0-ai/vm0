@@ -6,6 +6,7 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestZeroAgent,
   createTestRequest,
   findTestRunCallbacks,
   findTestScheduleById,
@@ -74,8 +75,10 @@ describe("Schedule notification control - AND logic", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    const compose = await createTestCompose(uniqueId("notify-agent"));
+    const agentName = uniqueId("notify-agent");
+    const compose = await createTestCompose(agentName);
     composeId = compose.composeId;
+    await createTestZeroAgent(user.orgId, agentName, {});
 
     // Disable any schedules from other tests to avoid interference
     await disableAllSchedules();

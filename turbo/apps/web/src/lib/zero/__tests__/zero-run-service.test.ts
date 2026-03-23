@@ -150,7 +150,13 @@ describe("createZeroRun()", () => {
 
   describe("parameter forwarding", () => {
     it("should propagate scheduleId to run record", async () => {
-      const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+      const agentName = uniqueId("sched-agent");
+      const compose = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {});
+      const schedule = await createTestSchedule(
+        compose.composeId,
+        uniqueId("sched"),
+      );
       const result = await createZeroRun(
         baseParams({ scheduleId: schedule.id, triggerSource: "schedule" }),
       );

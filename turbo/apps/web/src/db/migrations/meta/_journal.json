@@ -1296,6 +1296,13 @@
       "when": 1774263581054,
       "tag": "0184_add_member_credit_cap",
       "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1774267891710,
+      "tag": "0185_safe_rogue",
+      "breakpoints": true
     }
   ]
 }

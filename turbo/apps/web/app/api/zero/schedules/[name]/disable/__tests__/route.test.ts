@@ -3,6 +3,8 @@ import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestZeroAgent,
+  getTestZeroAgentId,
   createTestOrg,
   createTestSchedule,
   enableTestSchedule,
@@ -28,18 +30,22 @@ async function setupOrg(userId: string) {
 
 describe("POST /api/zero/schedules/:name/disable", () => {
   let slug: string;
+  let orgId: string;
   let testComposeId: string;
+  let testZeroAgentId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
     slug = org.slug;
+    orgId = org.orgId;
 
-    const { composeId } = await createTestCompose(
-      `zero-sched-disable-${Date.now()}`,
-    );
+    const agentName = `zero-sched-disable-${Date.now()}`;
+    const { composeId } = await createTestCompose(agentName);
     testComposeId = composeId;
+    await createTestZeroAgent(orgId, agentName, {});
+    testZeroAgentId = await getTestZeroAgentId(orgId, agentName);
   });
 
   it("should disable an enabled schedule", async () => {
@@ -58,7 +64,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ composeId: testComposeId }),
+          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "to-disable" }) },
@@ -76,7 +82,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ composeId: testComposeId }),
+          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "non-existent" }) },
@@ -114,7 +120,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ composeId: testComposeId }),
+          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "any" }) },
