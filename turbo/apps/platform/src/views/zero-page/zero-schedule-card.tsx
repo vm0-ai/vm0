@@ -55,6 +55,12 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { getBrowserTimezone } from "../../signals/zero-page/cron.ts";
 
+/** Include the current value if it is not in the preset list (e.g. browser-detected TZ). */
+function timezonesForSelect(value: string): readonly string[] {
+  const preset = COMMON_TIMEZONES as readonly string[];
+  return preset.includes(value) ? preset : [...preset, value];
+}
+
 export const WEEKDAY_LABELS = [
   "Mon",
   "Tue",
@@ -81,6 +87,8 @@ export interface ScheduleEntry {
   enabled?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  /** IANA timezone from the server (not derivable from `time` alone). */
+  timezone?: string;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds?: number | null;
 }
@@ -537,7 +545,7 @@ export function ZeroScheduleCard({
       date: parsed.date,
       hour: parsed.hour,
       minute: parsed.minute,
-      timezone: parsed.timezone,
+      timezone: entry.timezone ?? parsed.timezone,
       loopMinutes:
         entry.intervalSeconds !== null && entry.intervalSeconds !== undefined
           ? Math.round(entry.intervalSeconds / 60)

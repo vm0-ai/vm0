@@ -78,6 +78,7 @@ function buildCombinedSchedule(
     notifyEmail: e.notifyEmail,
     notifySlack: e.notifySlack,
     name: e.name,
+    timezone: e.timezone,
     intervalSeconds: e.intervalSeconds,
     agentLabel:
       e.agentId === defaultComposeId
