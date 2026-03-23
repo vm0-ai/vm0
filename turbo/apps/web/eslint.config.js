@@ -55,6 +55,7 @@ export default [
     rules: {
       // Check for duplicate migration prefixes (runs once per lint process)
       "web/no-duplicate-migration-prefix": "error",
+      "web/no-self-api-call": "error",
     },
   },
   {
@@ -64,18 +65,6 @@ export default [
     },
     rules: {
       "web/no-request-json-as": "error",
-      "web/no-self-api-call": "error",
-    },
-  },
-  {
-    // Legacy zero API routes that still use infra-client for HTTP round-trips.
-    // These should be refactored to call underlying logic directly.
-    files: ["app/api/zero/**/route.ts"],
-    plugins: {
-      web: webPlugin,
-    },
-    rules: {
-      "web/no-self-api-call": "off",
     },
   },
   {

@@ -5,6 +5,7 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import { zeroComposesMainContract, composesMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
+// eslint-disable-next-line web/no-self-api-call
 import {
   createInfraClient,
   forwardInfra,
