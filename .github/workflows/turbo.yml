@@ -81,6 +81,7 @@ jobs:
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
       ci-changed: ${{ steps.detect-ci.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect-e2e.outputs.e2e-changed }}
+      base-ref: ${{ steps.detect.outputs.base-ref }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -392,7 +393,25 @@ jobs:
           POSTGRES_HOST_AUTH_METHOD: trust
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
+      - name: Check Migration Immutability
+        run: |
+          BASE_REF="${{ needs.prepare.outputs.base-ref }}"
+          # Check that migration SQL files and snapshots are only added, never modified or deleted
+          CHANGED=$(git diff --diff-filter=MD --name-only "$BASE_REF" -- \
+            'turbo/apps/web/src/db/migrations/*.sql' \
+            'turbo/apps/web/src/db/migrations/meta/*_snapshot.json')
+
+          if [ -n "$CHANGED" ]; then
+            echo "::error::Migration files must not be modified or deleted once on main:"
+            echo "$CHANGED"
+            echo ""
+            echo "These files may already be deployed to production."
+            echo "Create a NEW migration instead of modifying existing ones."
+            exit 1
+          fi
       - name: Test Migration Consistency
         working-directory: turbo/apps/web
         env:
