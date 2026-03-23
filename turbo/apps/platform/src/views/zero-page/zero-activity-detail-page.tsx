@@ -8,7 +8,6 @@ import {
   IconSearch,
   IconLoader2,
   IconDownload,
-  IconLock,
   IconChartLine,
 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
@@ -44,6 +43,7 @@ import {
 import { GroupedMessageCard } from "./components/logs/grouped-message-card.tsx";
 import { StatusDot } from "./components/logs/status-dot.tsx";
 import { Markdown } from "../components/markdown.tsx";
+import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 
 // ---------------------------------------------------------------------------
 // Error Banner
@@ -124,9 +124,7 @@ function ActivityNotFound() {
         </span>
       </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-          <IconLock size={24} stroke={1.5} className="text-muted-foreground" />
-        </div>
+        <ZeroNoPermissionIllustration />
         <h2 className="text-lg font-semibold text-foreground">Log not found</h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
           This log doesn&apos;t exist or you don&apos;t have permission to view
