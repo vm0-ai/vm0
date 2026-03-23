@@ -4,7 +4,7 @@ load '../../helpers/setup'
 
 # Secret command tests - CRUD operations only
 # Validation tests (help text, name validation, error handling) are in unit tests:
-# turbo/apps/cli/src/commands/secret/__tests__/*.test.ts
+# turbo/apps/cli/src/commands/zero/secret/__tests__/*.test.ts
 
 # Generate unique secret name for each test run to avoid conflicts
 setup() {
@@ -13,11 +13,11 @@ setup() {
 
 teardown() {
     # Clean up test secret if it exists
-    $CLI_COMMAND secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
+    $CLI_COMMAND zero secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
 }
 
-@test "vm0 secret --help shows command description" {
-    run $CLI_COMMAND secret --help
+@test "vm0 zero secret --help shows command description" {
+    run $CLI_COMMAND zero secret --help
     assert_success
     assert_output --partial "Manage stored secrets"
     assert_output --partial "list"
@@ -25,61 +25,61 @@ teardown() {
     assert_output --partial "delete"
 }
 
-@test "vm0 secret set creates a secret" {
-    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "test-secret-value"
+@test "vm0 zero secret set creates a secret" {
+    run $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "test-secret-value"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
     assert_output --partial "Use in vm0.yaml"
     assert_output --partial "\${{ secrets.$TEST_SECRET_NAME }}"
 }
 
-@test "vm0 secret list shows created secret" {
+@test "vm0 zero secret list shows created secret" {
     # First create a secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "secret-value" --description "E2E test"
+    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "secret-value" --description "E2E test"
 
     # Then list secrets
-    run $CLI_COMMAND secret list
+    run $CLI_COMMAND zero secret list
     assert_success
     assert_output --partial "$TEST_SECRET_NAME"
     assert_output --partial "E2E test"
     assert_output --partial "secret(s)"
 }
 
-@test "vm0 secret ls works as alias for list" {
+@test "vm0 zero secret ls works as alias for list" {
     # First create a secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "secret-value"
+    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "secret-value"
 
     # List using ls alias
-    run $CLI_COMMAND secret ls
+    run $CLI_COMMAND zero secret ls
     assert_success
     assert_output --partial "$TEST_SECRET_NAME"
 }
 
-@test "vm0 secret set updates existing secret" {
+@test "vm0 zero secret set updates existing secret" {
     # Create initial secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "initial-value"
+    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "initial-value"
 
     # Update it
-    run $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "updated-value" --description "Updated"
+    run $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "updated-value" --description "Updated"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
 
     # Verify description was updated
-    run $CLI_COMMAND secret list
+    run $CLI_COMMAND zero secret list
     assert_output --partial "Updated"
 }
 
-@test "vm0 secret delete removes secret" {
+@test "vm0 zero secret delete removes secret" {
     # Create a secret
-    $CLI_COMMAND secret set "$TEST_SECRET_NAME" --body "to-be-deleted"
+    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "to-be-deleted"
 
     # Delete it (use -y to skip confirmation)
-    run $CLI_COMMAND secret delete -y "$TEST_SECRET_NAME"
+    run $CLI_COMMAND zero secret delete -y "$TEST_SECRET_NAME"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" deleted"
 
     # Verify it's gone
-    run $CLI_COMMAND secret list
+    run $CLI_COMMAND zero secret list
     assert_success
     refute_output --partial "$TEST_SECRET_NAME"
 }

@@ -4,7 +4,7 @@ load '../../helpers/setup'
 
 # Variable command tests - CRUD operations only
 # Validation tests (help text, name validation, error handling) are in unit tests:
-# turbo/apps/cli/src/commands/variable/__tests__/*.test.ts
+# turbo/apps/cli/src/commands/zero/variable/__tests__/*.test.ts
 
 # Generate unique variable name for each test run to avoid conflicts
 setup() {
@@ -13,11 +13,11 @@ setup() {
 
 teardown() {
     # Clean up test variable if it exists
-    $CLI_COMMAND variable delete -y "$TEST_VAR_NAME" 2>/dev/null || true
+    $CLI_COMMAND zero variable delete -y "$TEST_VAR_NAME" 2>/dev/null || true
 }
 
-@test "vm0 variable --help shows command description" {
-    run $CLI_COMMAND variable --help
+@test "vm0 zero variable --help shows command description" {
+    run $CLI_COMMAND zero variable --help
     assert_success
     assert_output --partial "Manage stored variables"
     assert_output --partial "list"
@@ -25,20 +25,20 @@ teardown() {
     assert_output --partial "delete"
 }
 
-@test "vm0 variable set creates a variable" {
-    run $CLI_COMMAND variable set "$TEST_VAR_NAME" "test-variable-value"
+@test "vm0 zero variable set creates a variable" {
+    run $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "test-variable-value"
     assert_success
     assert_output --partial "Variable \"$TEST_VAR_NAME\" saved"
     assert_output --partial "Use in vm0.yaml"
     assert_output --partial "\${{ vars.$TEST_VAR_NAME }}"
 }
 
-@test "vm0 variable list shows created variable with value" {
+@test "vm0 zero variable list shows created variable with value" {
     # First create a variable
-    $CLI_COMMAND variable set "$TEST_VAR_NAME" "my-test-value" --description "E2E test"
+    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "my-test-value" --description "E2E test"
 
     # Then list variables - should show the value (unlike secrets)
-    run $CLI_COMMAND variable list
+    run $CLI_COMMAND zero variable list
     assert_success
     assert_output --partial "$TEST_VAR_NAME"
     assert_output --partial "my-test-value"
@@ -46,43 +46,43 @@ teardown() {
     assert_output --partial "variable(s)"
 }
 
-@test "vm0 variable ls works as alias for list" {
+@test "vm0 zero variable ls works as alias for list" {
     # First create a variable
-    $CLI_COMMAND variable set "$TEST_VAR_NAME" "alias-test-value"
+    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "alias-test-value"
 
     # List using ls alias
-    run $CLI_COMMAND variable ls
+    run $CLI_COMMAND zero variable ls
     assert_success
     assert_output --partial "$TEST_VAR_NAME"
     assert_output --partial "alias-test-value"
 }
 
-@test "vm0 variable set updates existing variable" {
+@test "vm0 zero variable set updates existing variable" {
     # Create initial variable
-    $CLI_COMMAND variable set "$TEST_VAR_NAME" "initial-value"
+    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "initial-value"
 
     # Update it
-    run $CLI_COMMAND variable set "$TEST_VAR_NAME" "updated-value" --description "Updated"
+    run $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "updated-value" --description "Updated"
     assert_success
     assert_output --partial "Variable \"$TEST_VAR_NAME\" saved"
 
     # Verify value and description were updated
-    run $CLI_COMMAND variable list
+    run $CLI_COMMAND zero variable list
     assert_output --partial "updated-value"
     assert_output --partial "Updated"
 }
 
-@test "vm0 variable delete removes variable" {
+@test "vm0 zero variable delete removes variable" {
     # Create a variable
-    $CLI_COMMAND variable set "$TEST_VAR_NAME" "to-be-deleted"
+    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "to-be-deleted"
 
     # Delete it (use -y to skip confirmation)
-    run $CLI_COMMAND variable delete -y "$TEST_VAR_NAME"
+    run $CLI_COMMAND zero variable delete -y "$TEST_VAR_NAME"
     assert_success
     assert_output --partial "Variable \"$TEST_VAR_NAME\" deleted"
 
     # Verify it's gone
-    run $CLI_COMMAND variable list
+    run $CLI_COMMAND zero variable list
     assert_success
     refute_output --partial "$TEST_VAR_NAME"
 }
@@ -109,7 +109,7 @@ teardown() {
     create_test_volume "e2e-vol-var-expand"
 
     # Step 1: Create a server-stored variable
-    $CLI_COMMAND variable set "$TEST_VAR_NAME" "$var_value"
+    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "$var_value"
 
     # Step 2: Create config that uses the variable
     cat > "$test_config" <<EOF
@@ -178,7 +178,7 @@ EOF
     create_test_volume "e2e-vol-var-override"
 
     # Step 1: Create a server-stored variable
-    $CLI_COMMAND variable set "$TEST_VAR_NAME" "$server_value"
+    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "$server_value"
 
     # Step 2: Create config that uses the variable
     cat > "$test_config" <<EOF
