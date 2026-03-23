@@ -11,6 +11,8 @@ import {
   grantCreditsToOrg,
   updateOrgAutoRecharge,
   getOrgAutoRechargeFields,
+  insertOrgMembersEntry,
+  getOrgMembersEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
@@ -368,6 +370,42 @@ describe("POST /api/webhooks/stripe", () => {
       // Pending flag should be cleared
       const autoRecharge = await getOrgAutoRechargeFields(user.orgId);
       expect(autoRecharge?.autoRechargePendingAt).toBeNull();
+    });
+
+    it("resets disabled member credit flags on invoice.paid", async () => {
+      const cusId = uniqueId("cus-reset");
+      const subId = uniqueId("sub-reset");
+      const invId = uniqueId("inv-reset");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+
+      // Insert a disabled member
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        id: subId,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      const response = await sendWebhookEvent("invoice.paid", {
+        id: invId,
+        customer: cusId,
+        parent: { subscription_details: { subscription: subId } },
+      });
+
+      expect(response.status).toBe(200);
+
+      // Member should be re-enabled after invoice.paid
+      const member = await getOrgMembersEntry(user.orgId, user.userId);
+      expect(member?.creditEnabled).toBe(true);
     });
   });
 

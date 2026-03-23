@@ -42,6 +42,13 @@ describe("/api/zero/org/members/credit-cap", () => {
   }
 
   describe("GET", () => {
+    it("returns 401 for unauthenticated request", async () => {
+      mockClerk({ userId: null });
+      const request = createTestRequest(`${BASE_URL}?userId=${user.userId}`);
+      const response = await GET(request);
+      expect(response.status).toBe(401);
+    });
+
     it("returns default cap state (null cap, enabled)", async () => {
       const request = createTestRequest(`${BASE_URL}?userId=${user.userId}`);
       const response = await GET(request);
