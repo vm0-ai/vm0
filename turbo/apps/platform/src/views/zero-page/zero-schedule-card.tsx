@@ -1,8 +1,40 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 "use client";
 
-import { useCCState } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
+import {
+  scheduleViewMode$,
+  setScheduleViewMode$,
+  internalScheduleList$,
+  setScheduleList$,
+  addScheduleOpen$,
+  setAddScheduleOpen$,
+  editingScheduleId$,
+  setEditingScheduleId$,
+  newSchedulePrompt$,
+  setNewSchedulePrompt$,
+  scheduleFreq$,
+  setScheduleFreq$,
+  scheduleDate$,
+  setScheduleDate$,
+  scheduleHour$,
+  setScheduleHour$,
+  scheduleMinute$,
+  setScheduleMinute$,
+  scheduleTimezone$,
+  setScheduleTimezone$,
+  scheduleIntervalStr$,
+  setScheduleIntervalStr$,
+  scheduleDayOfWeek$,
+  setScheduleDayOfWeek$,
+  scheduleDayOfMonth$,
+  setScheduleDayOfMonth$,
+  saveError$,
+  setSaveError$,
+  togglingIds$,
+  setTogglingIds$,
+  calendarPopoverEntryId$,
+  setCalendarPopoverEntryId$,
+} from "../../signals/zero-page/schedule-card.ts";
 import {
   IconPlus,
   IconList,
@@ -394,9 +426,10 @@ function CalendarEntryPopover({
   entry: ScheduleEntry;
   onEdit: (entry: ScheduleEntry) => void;
 }) {
-  const open$ = useCCState(false);
-  const open = useGet(open$);
-  const setOpen = useSet(open$);
+  const hoveredId = useGet(calendarPopoverEntryId$);
+  const setHoveredId = useSet(setCalendarPopoverEntryId$);
+  const open = hoveredId === entry.id;
+  const setOpen = (v: boolean) => setHoveredId(v ? entry.id : null);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -478,58 +511,39 @@ export function ZeroScheduleCard({
   saving,
   defaultTimezone,
 }: ZeroScheduleCardProps) {
-  const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
   const scheduleViewMode = useGet(scheduleViewMode$);
-  const setScheduleViewMode = useSet(scheduleViewMode$);
-  const internalScheduleList$ = useCCState<ScheduleEntry[]>([
-    ...initialSchedule,
-  ]);
+  const setScheduleViewMode = useSet(setScheduleViewMode$);
   const internalScheduleList = useGet(internalScheduleList$);
-  const setScheduleList = useSet(internalScheduleList$);
+  const setScheduleList = useSet(setScheduleList$);
   // In API mode (onSave provided), use prop directly; otherwise use internal state
   const scheduleList = onSave ? [...initialSchedule] : internalScheduleList;
-  const addScheduleOpen$ = useCCState(false);
   const addScheduleOpen = useGet(addScheduleOpen$);
-  const setAddScheduleOpen = useSet(addScheduleOpen$);
-  const editingScheduleId$ = useCCState<string | null>(null);
+  const setAddScheduleOpen = useSet(setAddScheduleOpen$);
   const editingScheduleId = useGet(editingScheduleId$);
-  const setEditingScheduleId = useSet(editingScheduleId$);
-  const newSchedulePrompt$ = useCCState("");
+  const setEditingScheduleId = useSet(setEditingScheduleId$);
   const newSchedulePrompt = useGet(newSchedulePrompt$);
-  const setNewSchedulePrompt = useSet(newSchedulePrompt$);
-  const scheduleFreq$ = useCCState<string>("every_day");
+  const setNewSchedulePrompt = useSet(setNewSchedulePrompt$);
   const scheduleFreq = useGet(scheduleFreq$);
-  const setScheduleFreq = useSet(scheduleFreq$);
-  const scheduleDate$ = useCCState<string>(
-    new Date().toISOString().slice(0, 10),
-  );
+  const setScheduleFreq = useSet(setScheduleFreq$);
   const scheduleDate = useGet(scheduleDate$);
-  const setScheduleDate = useSet(scheduleDate$);
-  const scheduleHour$ = useCCState(9);
+  const setScheduleDate = useSet(setScheduleDate$);
   const scheduleHour = useGet(scheduleHour$);
-  const setScheduleHour = useSet(scheduleHour$);
-  const scheduleMinute$ = useCCState(0);
+  const setScheduleHour = useSet(setScheduleHour$);
   const scheduleMinute = useGet(scheduleMinute$);
-  const setScheduleMinute = useSet(scheduleMinute$);
+  const setScheduleMinute = useSet(setScheduleMinute$);
   const resolvedTimezone = defaultTimezone || getBrowserTimezone();
-  const scheduleTimezone$ = useCCState(resolvedTimezone);
   const scheduleTimezone = useGet(scheduleTimezone$);
-  const setScheduleTimezone = useSet(scheduleTimezone$);
-  const scheduleIntervalStr$ = useCCState("300");
+  const setScheduleTimezone = useSet(setScheduleTimezone$);
   const scheduleIntervalStr = useGet(scheduleIntervalStr$);
-  const setScheduleIntervalStr = useSet(scheduleIntervalStr$);
-  const scheduleDayOfWeek$ = useCCState("1");
+  const setScheduleIntervalStr = useSet(setScheduleIntervalStr$);
   const scheduleDayOfWeek = useGet(scheduleDayOfWeek$);
-  const setScheduleDayOfWeek = useSet(scheduleDayOfWeek$);
-  const scheduleDayOfMonth$ = useCCState("1");
+  const setScheduleDayOfWeek = useSet(setScheduleDayOfWeek$);
   const scheduleDayOfMonth = useGet(scheduleDayOfMonth$);
-  const setScheduleDayOfMonth = useSet(scheduleDayOfMonth$);
-  const saveError$ = useCCState<string | null>(null);
+  const setScheduleDayOfMonth = useSet(setScheduleDayOfMonth$);
   const saveError = useGet(saveError$);
-  const setSaveError = useSet(saveError$);
-  const togglingIds$ = useCCState<Set<string>>(new Set());
+  const setSaveError = useSet(setSaveError$);
   const togglingIds = useGet(togglingIds$);
-  const setTogglingIds = useSet(togglingIds$);
+  const setTogglingIds = useSet(setTogglingIds$);
 
   const openAddSchedule = () => {
     setEditingScheduleId(null);
