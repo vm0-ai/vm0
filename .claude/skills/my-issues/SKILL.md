@@ -57,43 +57,43 @@ Categorize each issue by reading its title, labels, and body (fetch body for eac
 
 ### Step 5: Output
 
-Output in Chinese. Use the following format:
+Use the following format:
 
 ```
-## 我的 Open Issues（共 N 个）
+## My Open Issues (N total)
 
-### P0 — 阻塞核心功能
+### P0 — Blocking Core Functionality
 
-| # | 标题 | 类型 | 来源 | 创建时间 |
-|---|------|------|------|----------|
-| #1234 | 简短描述 | Bug | @author → 我 | 03-19 |
+| # | Title | Type | Source | Created |
+|---|-------|------|--------|---------|
+| #1234 | Short description | Bug | @author → me | 03-19 |
 
-### P1 — 重要需求
-
-...same table format...
-
-### P2 — 体验优化
+### P1 — Important
 
 ...same table format...
 
-### P3 — 长期 / 运营
+### P2 — UX Improvements
+
+...same table format...
+
+### P3 — Long-term / Ops
 
 ...same table format...
 ```
 
 Column definitions:
-- **类型**: Bug / 新功能 / 重构 / 运营 — inferred from title prefix and labels
-- **来源**: Show as `@author → 我` if assigned by others, `我创建` if self-created and self-assigned, `我创建 (未分配)` if self-created with no assignee
+- **Type**: Bug / Feature / Refactor / Ops — inferred from title prefix and labels
+- **Source**: Show as `@author → me` if assigned by others, `self-created` if self-created and self-assigned, `self-created (unassigned)` if self-created with no assignee
 
 ### Step 6: Suggested Execution Order
 
-After the table, add a brief **建议执行顺序** section with a numbered list explaining the recommended order and any dependency relationships between issues.
+After the table, add a brief **Suggested Order** section with a numbered list explaining the recommended order and any dependency relationships between issues.
 
 ## Key Rules
 
 - Use `gh` CLI for all GitHub queries
 - Always deduplicate by issue number
 - Exclude issues created by me but assigned to someone else
-- Translate titles to Chinese in the output
+- Use English for all output titles and labels
 - Fetch issue body (first 500 chars) to make informed priority decisions
 - Current user determined via `gh api user --jq '.login'`

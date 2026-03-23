@@ -64,7 +64,7 @@ echo "$PIPELINE" | jq '.ci_runs'
 
 Display a status line showing all 10 runs in order (most recent first), using ✅ for success and 🔴 for failure.
 
-- If **all runs** have `conclusion == "success"`, report: "全部通过，无失败"
+- If **all runs** have `conclusion == "success"`, report: "All passed, no failures"
 - If **any run** has `conclusion == "failure"`:
   1. Identify the **most recent failed run**. Track its position (1-indexed).
   2. Get the failed job names: `gh run view <RUN_ID> --json jobs --jq '[.jobs[] | select(.conclusion == "failure") | .name]'`
@@ -125,7 +125,6 @@ Combine results, sort by `mergedAt` descending, take the top 20.
 
 ## Output Format
 
-- Titles should be translated to Chinese
 - Items with `pending` label get a `[Pending]` marker
 - Empty lanes show `-- idle`
 - Merged PRs shown as a list, each line: `Time #ID Lane — Title`
@@ -134,51 +133,51 @@ Combine results, sort by `mergedAt` descending, take the top 20.
 
 ```
 ---
-📊 主分支 CI 流水线（最近 10 次）
+📊 Main Branch CI Pipeline (Last 10 Runs)
 ✅✅✅🔴✅✅✅✅✅✅
 
-最近一次失败: 第 4/10 次
+Last failure: Run 4/10
   Run: https://github.com/vm0-ai/vm0/actions/runs/123456
-  失败 Jobs: deploy, cli-e2e
-  此后连续成功: 3 次
-  距今: 2 小时 15 分钟
+  Failed Jobs: deploy, cli-e2e
+  Consecutive successes since: 3
+  Time elapsed: 2h 15m
 
 🚦 Merge Queue
 
 - ✅ #5680 — feat: add files:write scope to Slack connector (e7h4n)
 - ⏳ #5685 — fix: persist trigger source when enqueueing runs (e7h4n)
 
-Release 状态
+Release Status
 
 📦 Open Release PR (#4950):
 - feat: add user authentication system
 - fix: resolve database connection timeout
 - refactor: remove deprecated auth middleware
 
-🚀 正在上线 (release-please in progress):
+🚀 Deploying (release-please in progress):
 - feat: add user authentication system
 - fix: resolve database connection timeout
 
-通道状态
+Lane Status
 
 vm01
-- Issue #4730 — 添加邮件退订功能 (List-Unsubscribe header + bounce/complaint webhook)
-- PR #4735 — 添加邮件退订功能
+- Issue #4730 — Add email unsubscribe (List-Unsubscribe header + bounce/complaint webhook)
+- PR #4735 — Add email unsubscribe
 
 vm02
-- [Pending] Issue #4740 — 重构通知服务重试逻辑
-- PR #4741 — 重构通知服务重试逻辑
+- [Pending] Issue #4740 — Refactor notification service retry logic
+- PR #4741 — Refactor notification service retry logic
 
 vm03 -- idle
 
 vm04
-- Issue #4738 — 修复 webhook 签名验证失败
+- Issue #4738 — Fix webhook signature verification failure
 
 ---
-近期完成 (最近 20 个已合并 PR，按时间倒序)
+Recently Merged (Last 20 merged PRs, newest first)
 
-- 3/13 08:35 #4728 vm03 — 升级平台 vite 从 v6 到 v7
-- 3/13 08:01 #4719 vm01 — 通过 tsx/tsup 升级去重 esbuild 版本
+- 3/13 08:35 #4728 vm03 — Upgrade platform vite from v6 to v7
+- 3/13 08:01 #4719 vm01 — Deduplicate esbuild version via tsx/tsup upgrade
 ---
 ```
 
@@ -192,4 +191,4 @@ vm04
 - Current user determined via `gh api user --jq '.login'`
 - No "new" markers — only `[Pending]` for items with `pending` label
 - Deduplicate issues that appear in both author and assignee queries
-- Translate titles to Chinese in the output
+- Use English for all output titles and labels
