@@ -45,7 +45,7 @@ enum Warning {
         server_token: String,
     },
     /// status.json lists a proxy port but no mitmdump process found on it.
-    NoMitmproxy { port: u16 },
+    NoMitmproxy { port: u16, base_dir: PathBuf },
     /// status.json lists a run_id but no firecracker process found for it.
     NoFirecrackerForRun { run_id: String, base_dir: PathBuf },
     /// A firecracker process exists but its run_id is not in status.json.
@@ -66,6 +66,8 @@ enum Warning {
         port: u16,
         ppid: Option<u32>,
     },
+    /// Runner is stopped but mitmproxy process is still running (leaked).
+    StaleMitmproxy { pid: u32, port: u16 },
     /// A network namespace whose pool lock is not held by any process.
     OrphanNamespace { ns_name: String, pool_idx: u32 },
 }
@@ -74,7 +76,7 @@ impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ApiUnreachable { .. } => write!(f, "API unreachable"),
-            Self::NoMitmproxy { port } => {
+            Self::NoMitmproxy { port, .. } => {
                 write!(f, "no mitmproxy process on port {port}")
             }
             Self::NoFirecrackerForRun { run_id, .. } => {
@@ -95,6 +97,12 @@ impl fmt::Display for Warning {
                 write!(
                     f,
                     "orphan mitmdump PID {pid} (port {port}, ppid={ppid_str})"
+                )
+            }
+            Self::StaleMitmproxy { pid, port } => {
+                write!(
+                    f,
+                    "stale mitmproxy PID {pid} on port {port} (runner stopped)"
                 )
             }
             Self::OrphanNamespace { ns_name, .. } => {
@@ -127,7 +135,15 @@ impl Warning {
                     .await
                     .is_err()
             }
-            Self::NoMitmproxy { port } => !fresh.mitmdumps.iter().any(|m| m.port == *port),
+            Self::NoMitmproxy { port, base_dir } => {
+                // Resolved if mitmproxy process now exists on this port.
+                if fresh.mitmdumps.iter().any(|m| m.port == *port) {
+                    return false;
+                }
+                // Resolved if mode transitioned to stopped/draining (proxy
+                // shutdown is expected in these modes).
+                !matches!(read_status(base_dir).await, Some(st) if is_inactive_mode(&st.mode))
+            }
             Self::NoFirecrackerForRun { run_id, base_dir } => {
                 // Resolved if firecracker process now exists (startup completed)
                 let fc_found = fresh.firecrackers.iter().any(|f| {
@@ -155,6 +171,10 @@ impl Warning {
                     Some(st) => !st.active_run_ids.iter().any(|id| id == run_id),
                     None => true,
                 }
+            }
+            Self::StaleMitmproxy { pid, .. } => {
+                // Resolved if the stale mitmproxy process has exited.
+                pid_exists(*pid)
             }
             Self::OrphanFirecracker { pid, .. } | Self::OrphanMitmdump { pid, .. } => {
                 // Resolved if process has exited.
@@ -363,13 +383,26 @@ async fn build_runner_report(
     // Base dir for job correlation
     let base_dir = config.as_ref().map(|c| &c.base_dir);
 
-    // Proxy check (match by port from status.json)
+    // Proxy check (match by port from status.json).
+    //   running  + proxy missing  → NoMitmproxy warning
+    //   stopped  + proxy present  → StaleMitmproxy warning
+    //   draining                  → no warning either way
     let proxy_pid = if let Some(st) = &status
         && let Some(port) = st.proxy_port
     {
         let pid = mitm_procs.iter().find(|m| m.port == port).map(|m| m.pid);
-        if pid.is_none() {
-            warnings.push(Warning::NoMitmproxy { port });
+        match (st.mode.as_str(), pid) {
+            ("running", None) => {
+                let bd = base_dir.map(|p| p.to_path_buf()).unwrap_or_default();
+                warnings.push(Warning::NoMitmproxy { port, base_dir: bd });
+            }
+            ("stopped", Some(mitm_pid)) => {
+                warnings.push(Warning::StaleMitmproxy {
+                    pid: mitm_pid,
+                    port,
+                });
+            }
+            _ => {}
         }
         pid
     } else {
@@ -518,6 +551,11 @@ struct StatusFile {
     started_at: String,
     #[serde(default)]
     proxy_port: Option<u16>,
+}
+
+/// Returns `true` for modes where proxy absence is expected (not a warning).
+fn is_inactive_mode(mode: &str) -> bool {
+    matches!(mode, "stopped" | "draining")
 }
 
 async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
@@ -1097,5 +1135,110 @@ mod tests {
             ppid: None,
         };
         assert_eq!(w.to_string(), "orphan firecracker PID 42 (run xyz, ppid=?)");
+
+        let w = Warning::StaleMitmproxy {
+            pid: 555,
+            port: 32821,
+        };
+        assert_eq!(
+            w.to_string(),
+            "stale mitmproxy PID 555 on port 32821 (runner stopped)"
+        );
+    }
+
+    #[test]
+    fn is_inactive_mode_classification() {
+        assert!(is_inactive_mode("stopped"));
+        assert!(is_inactive_mode("draining"));
+        assert!(!is_inactive_mode("running"));
+        assert!(!is_inactive_mode("starting"));
+        assert!(!is_inactive_mode(""));
+    }
+
+    /// Helper that replicates the proxy check logic from `build_runner_report`.
+    fn proxy_check_warnings(
+        mode: &str,
+        proxy_port: Option<u16>,
+        mitm_procs: &[process::MitmproxyProcessInfo],
+    ) -> Vec<Warning> {
+        let mut warnings = Vec::new();
+        let base_dir = PathBuf::from("/data/r1");
+        if let Some(port) = proxy_port {
+            let pid = mitm_procs.iter().find(|m| m.port == port).map(|m| m.pid);
+            match (mode, pid) {
+                ("running", None) => {
+                    warnings.push(Warning::NoMitmproxy {
+                        port,
+                        base_dir: base_dir.clone(),
+                    });
+                }
+                ("stopped", Some(mitm_pid)) => {
+                    warnings.push(Warning::StaleMitmproxy {
+                        pid: mitm_pid,
+                        port,
+                    });
+                }
+                _ => {}
+            }
+        }
+        warnings
+    }
+
+    #[test]
+    fn proxy_check_no_warning_for_stopped_without_proxy() {
+        let warnings = proxy_check_warnings("stopped", Some(32821), &[]);
+        assert!(
+            warnings.is_empty(),
+            "stopped runner without proxy should not warn"
+        );
+    }
+
+    #[test]
+    fn proxy_check_warns_for_running_without_proxy() {
+        let warnings = proxy_check_warnings("running", Some(32821), &[]);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].to_string().contains("no mitmproxy"));
+    }
+
+    #[test]
+    fn proxy_check_warns_stale_proxy_on_stopped_runner() {
+        let mitm_procs = vec![process::MitmproxyProcessInfo {
+            pid: 999,
+            ppid: None,
+            port: 32821,
+        }];
+        let warnings = proxy_check_warnings("stopped", Some(32821), &mitm_procs);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].to_string().contains("stale mitmproxy"));
+        assert!(warnings[0].to_string().contains("999"));
+    }
+
+    #[test]
+    fn proxy_check_no_warning_for_draining() {
+        // Draining: no warning whether proxy is present or absent
+        let warnings = proxy_check_warnings("draining", Some(32821), &[]);
+        assert!(
+            warnings.is_empty(),
+            "draining without proxy should not warn"
+        );
+
+        let mitm_procs = vec![process::MitmproxyProcessInfo {
+            pid: 999,
+            ppid: None,
+            port: 32821,
+        }];
+        let warnings = proxy_check_warnings("draining", Some(32821), &mitm_procs);
+        assert!(warnings.is_empty(), "draining with proxy should not warn");
+    }
+
+    #[test]
+    fn proxy_check_no_warning_for_running_with_proxy() {
+        let mitm_procs = vec![process::MitmproxyProcessInfo {
+            pid: 999,
+            ppid: None,
+            port: 32821,
+        }];
+        let warnings = proxy_check_warnings("running", Some(32821), &mitm_procs);
+        assert!(warnings.is_empty(), "running with proxy should not warn");
     }
 }
