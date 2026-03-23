@@ -1284,12 +1284,7 @@ export async function getRunById(
   return {
     runId: run.id,
     agentComposeVersionId: run.agentComposeVersionId,
-    status: run.status as
-      | "pending"
-      | "running"
-      | "completed"
-      | "failed"
-      | "timeout",
+    status: run.status as RunStatus,
     prompt: run.prompt,
     appendSystemPrompt: run.appendSystemPrompt,
     vars: run.vars as Record<string, string> | undefined,

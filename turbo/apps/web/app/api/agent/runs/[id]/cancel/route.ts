@@ -79,7 +79,7 @@ const router = tsr.router(runsCancelContract, {
         return {
           status: 404 as const,
           body: {
-            error: { message: (error as Error).message, code: "NOT_FOUND" },
+            error: { message: error.message, code: "NOT_FOUND" },
           },
         };
       }
@@ -87,7 +87,7 @@ const router = tsr.router(runsCancelContract, {
         return {
           status: 400 as const,
           body: {
-            error: { message: (error as Error).message, code: "BAD_REQUEST" },
+            error: { message: error.message, code: "BAD_REQUEST" },
           },
         };
       }
