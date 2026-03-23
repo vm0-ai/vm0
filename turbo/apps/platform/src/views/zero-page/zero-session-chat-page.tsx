@@ -129,7 +129,7 @@ export function ZeroSessionChatPage({
           <button
             type="button"
             onClick={onAvatarClick}
-            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             aria-label="View agent profile"
           >
             <img
@@ -163,8 +163,8 @@ export function ZeroSessionChatPage({
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
-        <main className="flex-1 px-4 sm:px-6 py-4">
-          <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
+        <main className="flex-1 px-4 sm:px-6 py-4 items-center">
+          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4">
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="flex items-center gap-2 text-destructive">
@@ -209,6 +209,7 @@ export function ZeroSessionChatPage({
               queuedMessage={queuedMessage}
               onWithdraw={withdraw}
               agentName={agentName}
+              autoFocus={messages.length === 0}
             />
           </div>
         </footer>
@@ -593,7 +594,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
             <TooltipTrigger asChild>
               <SimpleLink
                 href={`/activity/${message.runId}`}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
                 <IconChartLine size={18} stroke={1.5} />
@@ -609,7 +610,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                   aria-label="Copy message"
                 >
                   {copied ? (
@@ -648,7 +649,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
@@ -712,7 +713,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
@@ -738,7 +739,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
         {avatar}
-        <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <RunActivityLine />
         </div>
       </div>

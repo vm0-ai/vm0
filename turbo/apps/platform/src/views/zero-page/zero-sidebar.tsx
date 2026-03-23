@@ -93,6 +93,7 @@ import {
   zeroSessionListLoading$,
   zeroSessionListError$,
   startNewZeroSession$,
+  createNewChatAndNavigate$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import {
@@ -519,6 +520,7 @@ function RecentChatSection({
   recentSessionsError,
   selectedRecentId,
   onRecentSelect,
+  onNewChat,
 }: {
   agentLabel: string;
   recentSessions: ChatThreadListItem[];
@@ -526,6 +528,7 @@ function RecentChatSection({
   recentSessionsError: string | null;
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
+  onNewChat?: () => void;
 }) {
   const searchOpen = useGet(sidebarSearchOpen$);
   const setSearchOpen = useSet(setSidebarSearchOpen$);
@@ -589,6 +592,16 @@ function RecentChatSection({
             >
               <IconSearch size={14} />
             </button>
+            {onNewChat && (
+              <button
+                type="button"
+                onClick={onNewChat}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                aria-label="New chat"
+              >
+                <IconPlus size={14} />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -659,7 +672,7 @@ function SortablePinnedAgent({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors group"
+      className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors group"
     >
       <button
         type="button"
@@ -829,7 +842,7 @@ function ManagePinnedAgentsDialog({
               {unpinned.map((agent) => (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
                 >
                   <AgentAvatarImg
                     name={agent.name}
@@ -1024,6 +1037,7 @@ export function ZeroSidebar() {
   const recentSessionsError = useGet(zeroSessionListError$);
   const startNewSession = useSet(startNewZeroSession$);
   const navigateInReact = useSet(navigateInReact$);
+  const createNewChat = useSet(createNewChatAndNavigate$);
   const onNewChat = (agent: { id: string; name: string } | null) => {
     startNewSession();
     if (agent) {
@@ -1031,6 +1045,9 @@ export function ZeroSidebar() {
     } else {
       navigateInReact("/");
     }
+  };
+  const handleNewChatForRecent = () => {
+    detach(createNewChat(currentChatAgentId), Reason.DomCallback);
   };
 
   const displayName = agentName || "Zero";
@@ -1151,7 +1168,7 @@ export function ZeroSidebar() {
 
   return (
     <VM0ClerkProvider>
-      <aside className="zero-nav flex h-full w-[255px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl">
+      <aside className="zero-nav flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl">
         {/* Organization switcher */}
         <div className="shrink-0 px-2 pt-1.5 pb-0">
           <div className="flex items-center justify-between rounded-lg pr-0 py-0.5">
@@ -1229,6 +1246,7 @@ export function ZeroSidebar() {
             recentSessionsError={recentSessionsError}
             selectedRecentId={selectedRecentId}
             onRecentSelect={onRecentSelect}
+            onNewChat={handleNewChatForRecent}
           />
         </nav>
 

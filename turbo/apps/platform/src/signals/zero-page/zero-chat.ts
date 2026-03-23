@@ -119,7 +119,7 @@ async function fetchQueuePosition(
   runId: string,
 ): Promise<number> {
   const resp = await fetchFn(
-    `/api/zero/queue-position?runId=${encodeURIComponent(runId)}`,
+    `/api/app/queue-position?runId=${encodeURIComponent(runId)}`,
   );
   if (!resp.ok) {
     return 0;
@@ -618,7 +618,7 @@ export const uploadZeroAttachment$ = command(
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetchFn("/api/zero/uploads", {
+      const res = await fetchFn("/api/agent/uploads", {
         method: "POST",
         body: formData,
         signal: controller.signal,
@@ -794,7 +794,7 @@ export const switchZeroSession$ = command(
       let res = await fetchFn(`/api/zero/chat-threads/${threadId}`);
       let isLegacySession = false;
       if (!res.ok) {
-        res = await fetchFn(`/api/zero/sessions/${threadId}`);
+        res = await fetchFn(`/api/agent/sessions/${threadId}`);
         isLegacySession = true;
       }
       if (!res.ok) {
@@ -930,6 +930,32 @@ export const startNewZeroSession$ = command(({ get, set }) => {
   set(internalSending$, false);
   set(internalChatInput$, "");
 });
+
+/**
+ * Create a new chat thread for the agent and navigate directly to the chat page.
+ * When agentComposeId is null, uses default agent from onboarding status.
+ */
+export const createNewChatAndNavigate$ = command(
+  async ({ get, set }, agentComposeId: string | null) => {
+    const composeId =
+      agentComposeId ??
+      (await get(zeroOnboardingStatus$)).defaultAgentComposeId;
+    if (!composeId) {
+      return;
+    }
+    const fetchFn = get(fetch$);
+    const threadId = await createChatThread(fetchFn, composeId);
+    if (!threadId) {
+      return;
+    }
+    set(startNewZeroSession$);
+    set(navigateToZeroSession$, threadId);
+    set(fetchZeroSessionList$).catch((error: unknown) => {
+      throwIfAbort(error);
+      L.error("Failed to refresh chat list:", error);
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Commands: send message

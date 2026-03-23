@@ -8,6 +8,7 @@ const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   preview: z.string().nullable(),
+  agentComposeId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -40,7 +41,7 @@ const chatThreadDetailSchema = z.object({
 });
 
 /**
- * Chat threads list route contract (/api/zero/chat-threads)
+ * Chat threads list route contract (/api/chat-threads)
  */
 export const chatThreadsContract = c.router({
   create: {
@@ -77,7 +78,7 @@ export const chatThreadsContract = c.router({
 });
 
 /**
- * Chat thread by ID route contract (/api/zero/chat-threads/[id])
+ * Chat thread by ID route contract (/api/chat-threads/[id])
  */
 export const chatThreadByIdContract = c.router({
   get: {
@@ -95,7 +96,7 @@ export const chatThreadByIdContract = c.router({
 });
 
 /**
- * Chat thread runs route contract (/api/zero/chat-threads/[id]/runs)
+ * Chat thread runs route contract (/api/chat-threads/[id]/runs)
  */
 export const chatThreadRunsContract = c.router({
   addRun: {
