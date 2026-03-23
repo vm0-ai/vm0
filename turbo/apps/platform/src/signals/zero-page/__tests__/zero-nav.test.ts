@@ -82,11 +82,6 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).not.toBe("chat");
       expect(context.store.get(zeroActiveId$)).toBe("not-found");
     });
-
-    it("should resolve /settings to 'settings'", () => {
-      mockLocation({ pathname: "/settings", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("settings");
-    });
   });
 
   describe("setZeroActiveId$", () => {
