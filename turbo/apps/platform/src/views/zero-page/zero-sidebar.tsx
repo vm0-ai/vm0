@@ -7,6 +7,7 @@ import {
   useSet,
 } from "ccstate-react";
 import {
+  IconChartBar,
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
@@ -171,6 +172,7 @@ export type ZeroNavId =
   | "team"
   | "activity"
   | "works"
+  | "usage"
   | "settings"
   | "preferences"
   | "queue"
@@ -189,12 +191,21 @@ const FOOTER_NAV = [
     label: "Where Zero works",
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
+    featureGate: undefined as FeatureSwitchKey | undefined,
+  },
+  {
+    id: "usage" as const satisfies ZeroNavId,
+    label: "Usage",
+    icon: IconChartBar as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.Usage as FeatureSwitchKey | undefined,
   },
   {
     id: "settings" as const satisfies ZeroNavId,
     label: "Settings",
     icon: IconSettings as NavIcon,
     iconImg: undefined,
+    featureGate: undefined as FeatureSwitchKey | undefined,
   },
 ] as const;
 
@@ -1057,7 +1068,9 @@ export function ZeroSidebar() {
     ...item,
     label: item.label.replace("Zero", displayName),
   }));
-  const footerNav = FOOTER_NAV.map((item) => ({
+  const footerNav = FOOTER_NAV.filter(
+    (item) => !item.featureGate || features?.[item.featureGate],
+  ).map((item) => ({
     ...item,
     label: item.label.replace("Zero", displayName),
   }));
