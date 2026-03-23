@@ -42,7 +42,12 @@ import { canAccessCompose } from "../agent/compose-access";
 
 import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
-import { type OrgTier, type TriggerSource, orgTierSchema } from "@vm0/core";
+import {
+  type OrgTier,
+  type RunStatus,
+  type TriggerSource,
+  orgTierSchema,
+} from "@vm0/core";
 import { getOrgData } from "../org/org-cache-service";
 
 const log = logger("service:run");
@@ -490,7 +495,7 @@ export interface StartRunParams {
 
 export interface CreateRunResult {
   runId: string;
-  status: string;
+  status: RunStatus;
   sandboxId?: string;
   createdAt: Date;
 }
@@ -700,7 +705,7 @@ async function buildAndDispatchRun(opts: {
   orgId: string;
   authorizeTime: number;
   transactionTime: number;
-}): Promise<{ status: string; sandboxId?: string }> {
+}): Promise<{ status: RunStatus; sandboxId?: string }> {
   const {
     runId,
     createdAt,
