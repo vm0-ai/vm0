@@ -144,6 +144,7 @@ vi.mock("@slack/web-api", () => {
     conversations: {
       replies: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
       history: vi.fn().mockResolvedValue({ ok: true, messages: [] }),
+      list: vi.fn().mockResolvedValue({ ok: true, channels: [] }),
     },
     reactions: {
       add: vi.fn().mockResolvedValue({ ok: true }),
