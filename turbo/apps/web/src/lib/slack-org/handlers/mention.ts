@@ -175,6 +175,7 @@ export async function handleOrgMention(
 
   const { status, response, runId, errorCode } = await runAgentForSlackOrg({
     composeId,
+    zeroAgentId: agent.zeroAgentId!,
     agentName,
     sessionId: existingSessionId,
     prompt: messageContent,

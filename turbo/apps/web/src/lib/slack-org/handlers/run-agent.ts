@@ -15,6 +15,7 @@ const log = logger("slack-org:run-agent");
 
 interface RunAgentParams {
   composeId: string;
+  zeroAgentId: string;
   agentName: string;
   sessionId: string | undefined;
   prompt: string;
@@ -47,6 +48,7 @@ export async function runAgentForSlackOrg(
 ): Promise<RunAgentResult> {
   const {
     composeId,
+    zeroAgentId,
     agentName,
     sessionId,
     prompt,
@@ -75,7 +77,7 @@ export async function runAgentForSlackOrg(
 
     const result = await createZeroRun({
       userId,
-      composeId,
+      zeroAgentId,
       prompt,
       appendSystemPrompt,
       sessionId,

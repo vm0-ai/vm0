@@ -3,6 +3,7 @@ import { telegramThreadSessions } from "../../../db/schema/telegram-thread-sessi
 import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../db/schema/agent-compose";
+import { zeroAgents } from "../../../db/schema/zero-agent";
 import { getAppUrl } from "../../url";
 import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../run";
@@ -259,13 +260,38 @@ export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
  */
 export async function getWorkspaceAgent(
   composeId: string,
-): Promise<{ id: string; name: string } | undefined> {
-  const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id, name: agentComposes.name })
+): Promise<
+  { id: string; name: string; zeroAgentId: string | null } | undefined
+> {
+  const db = globalThis.services.db;
+  const [compose] = await db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      orgId: agentComposes.orgId,
+    })
     .from(agentComposes)
     .where(eq(agentComposes.id, composeId))
     .limit(1);
-  return compose ?? undefined;
+
+  if (!compose) return undefined;
+
+  const [agent] = await db
+    .select({ zeroAgentId: zeroAgents.id })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, compose.orgId),
+        eq(zeroAgents.name, compose.name),
+      ),
+    )
+    .limit(1);
+
+  return {
+    id: compose.id,
+    name: compose.name,
+    zeroAgentId: agent?.zeroAgentId ?? null,
+  };
 }
 
 /**

@@ -4,6 +4,7 @@ import { githubInstallations } from "../../../db/schema/github-installation";
 import { githubUserLinks } from "../../../db/schema/github-user-link";
 import { githubIssueSessions } from "../../../db/schema/github-issue-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
+import { zeroAgents } from "../../../db/schema/zero-agent";
 import { validateAgentSession } from "../../run";
 import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
@@ -426,6 +427,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
+      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, installation.defaultComposeId))
@@ -434,6 +436,24 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
   if (!compose) {
     throw new Error(
       `Agent compose not found: composeId=${installation.defaultComposeId}`,
+    );
+  }
+
+  // 3b. Resolve zeroAgentId from compose
+  const [zeroAgent] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, compose.orgId),
+        eq(zeroAgents.name, compose.name),
+      ),
+    )
+    .limit(1);
+
+  if (!zeroAgent) {
+    throw new Error(
+      `Zero agent not found for compose: composeId=${compose.id}`,
     );
   }
 
@@ -492,7 +512,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       userId: vm0UserId,
       prompt: resolvedPrompt,
       appendSystemPrompt,
-      composeId: compose.id,
+      zeroAgentId: zeroAgent.id,
       sessionId: existingSessionId,
       triggerSource: "github",
       callbacks: [

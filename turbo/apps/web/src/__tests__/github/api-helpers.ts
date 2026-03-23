@@ -17,6 +17,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
+import { zeroAgents } from "../../db/schema/zero-agent";
 import { githubInstallations } from "../../db/schema/github-installation";
 import { githubUserLinks } from "../../db/schema/github-user-link";
 
@@ -81,6 +82,12 @@ export async function givenGitHubInstallation(
       name: uniqueId("gh-agent"),
     })
     .returning();
+
+  // Create zero agent so handler can resolve zeroAgentId
+  await globalThis.services.db
+    .insert(zeroAgents)
+    .values({ orgId, name: compose!.name })
+    .onConflictDoNothing();
 
   // Create compose version (content-addressed: id is SHA-256 hash)
   const versionContent = {

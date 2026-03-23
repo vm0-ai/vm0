@@ -11,6 +11,7 @@ const log = logger("telegram:run-agent");
 
 interface RunAgentParams {
   composeId: string;
+  zeroAgentId: string;
   agentName: string;
   sessionId: string | undefined;
   prompt: string;
@@ -36,6 +37,7 @@ export async function runAgentForTelegram(
 ): Promise<RunAgentResult> {
   const {
     composeId,
+    zeroAgentId,
     agentName,
     sessionId,
     prompt,
@@ -57,7 +59,7 @@ export async function runAgentForTelegram(
   try {
     const result = await createZeroRun({
       userId,
-      composeId,
+      zeroAgentId,
       prompt,
       appendSystemPrompt,
       sessionId,

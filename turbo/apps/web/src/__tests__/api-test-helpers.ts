@@ -372,7 +372,24 @@ export async function createTestCompose(
       `Failed to create compose: ${error.error?.message || response.status}`,
     );
   }
-  return response.json();
+  const result: { composeId: string; versionId: string; name: string } =
+    await response.json();
+
+  // Ensure a matching zero_agents row exists so callers can resolve zeroAgentId
+  initServices();
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, result.composeId))
+    .limit(1);
+  if (compose) {
+    await globalThis.services.db
+      .insert(zeroAgents)
+      .values({ orgId: compose.orgId, name: result.name })
+      .onConflictDoNothing();
+  }
+
+  return result;
 }
 
 /**
@@ -392,13 +409,23 @@ export async function createTestZeroAgent(
   },
 ): Promise<void> {
   initServices();
-  await globalThis.services.db.insert(zeroAgents).values({
-    orgId,
-    name,
-    displayName: metadata.displayName ?? null,
-    description: metadata.description ?? null,
-    sound: metadata.sound ?? null,
-  });
+  await globalThis.services.db
+    .insert(zeroAgents)
+    .values({
+      orgId,
+      name,
+      displayName: metadata.displayName ?? null,
+      description: metadata.description ?? null,
+      sound: metadata.sound ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [zeroAgents.orgId, zeroAgents.name],
+      set: {
+        displayName: metadata.displayName ?? null,
+        description: metadata.description ?? null,
+        sound: metadata.sound ?? null,
+      },
+    });
 }
 
 /**

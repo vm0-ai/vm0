@@ -8,6 +8,7 @@ import {
   createTestCompose,
   createTestSchedule,
   createTestZeroAgent,
+  getTestZeroAgentId,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestRunnerJobEntry,
@@ -20,13 +21,14 @@ const context = testContext();
 
 describe("createZeroRun()", () => {
   let user: UserContext;
-  let composeId: string;
+  let zeroAgentId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    const compose = await createTestCompose(uniqueId("agent"));
-    composeId = compose.composeId;
+    const agentName = uniqueId("agent");
+    await createTestCompose(agentName);
+    zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
     reloadEnv();
   });
@@ -37,7 +39,7 @@ describe("createZeroRun()", () => {
     return {
       userId: user.userId,
       prompt: "Hello, world!",
-      composeId,
+      zeroAgentId,
       triggerSource: "web" as TriggerSource,
       ...overrides,
     };
@@ -72,16 +74,15 @@ describe("createZeroRun()", () => {
 
     it("should inject agent identity into appendSystemPrompt", async () => {
       const agentName = uniqueId("identity-agent");
-      const compose = await createTestCompose(agentName);
+      await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {
         displayName: "My Agent",
         description: "A helpful assistant",
         sound: "friendly",
       });
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      const result = await createZeroRun(
-        baseParams({ composeId: compose.composeId }),
-      );
+      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
 
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
@@ -91,14 +92,15 @@ describe("createZeroRun()", () => {
 
     it("should prepend identity before existing appendSystemPrompt", async () => {
       const agentName = uniqueId("prepend-agent");
-      const compose = await createTestCompose(agentName);
+      await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {
         displayName: "Bot",
       });
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
       const result = await createZeroRun(
         baseParams({
-          composeId: compose.composeId,
+          zeroAgentId: agentId,
           appendSystemPrompt: "Custom instructions",
         }),
       );
@@ -153,12 +155,17 @@ describe("createZeroRun()", () => {
       const agentName = uniqueId("sched-agent");
       const compose = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {});
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(
         compose.composeId,
         uniqueId("sched"),
       );
       const result = await createZeroRun(
-        baseParams({ scheduleId: schedule.id, triggerSource: "schedule" }),
+        baseParams({
+          zeroAgentId: agentId,
+          scheduleId: schedule.id,
+          triggerSource: "schedule",
+        }),
       );
 
       const run = await findTestRunRecord(result.runId);

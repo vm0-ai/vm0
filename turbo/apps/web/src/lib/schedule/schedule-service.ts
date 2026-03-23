@@ -1023,7 +1023,7 @@ async function executeSchedule(
       userId: schedule.userId,
       prompt: schedule.prompt,
       appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
-      composeId: compose.id,
+      zeroAgentId: schedule.zeroAgentId,
       scheduleId: schedule.id,
       triggerSource: "schedule",
       callbacks,

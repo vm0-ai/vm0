@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { eq, and } from "drizzle-orm";
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
+import { zeroAgents } from "../../../db/schema/zero-agent";
 import { getOrgBySlug } from "../../org/org-cache-service";
 import { env } from "../../../env";
 import { getAppUrl } from "../../url";
@@ -251,6 +252,7 @@ export function computeReplyRecipients(opts: {
 
 interface ResolvedAgent {
   composeId: string;
+  zeroAgentId: string;
   userId: string;
   orgId: string;
   orgSlug: string;
@@ -291,8 +293,20 @@ export async function resolveAgentByAddress(
   // Compose must have a published version to be triggerable
   if (!compose.headVersionId) return null;
 
+  // 3. Resolve zeroAgentId by (orgId, name)
+  const [agent] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(
+      and(eq(zeroAgents.orgId, orgData.orgId), eq(zeroAgents.name, agentName)),
+    )
+    .limit(1);
+
+  if (!agent) return null;
+
   return {
     composeId: compose.id,
+    zeroAgentId: agent.id,
     userId: compose.userId,
     orgId: compose.orgId,
     orgSlug,

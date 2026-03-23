@@ -2,6 +2,7 @@ import { getReceivedEmail } from "../client";
 import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
 import { verifySenderAuthenticity } from "../sender-auth";
+import { eq, and } from "drizzle-orm";
 import {
   verifyReplyToken,
   lookupEmailThreadSession,
@@ -13,6 +14,8 @@ import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
+import { agentComposes } from "../../../db/schema/agent-compose";
+import { zeroAgents } from "../../../db/schema/zero-agent";
 import { logger } from "../../logger";
 
 const log = logger("email:inbound-reply");
@@ -175,13 +178,37 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 11. Create run with integration context as system prompt
+  // 11. Resolve zeroAgentId from session's composeId
+  const [agent] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(agentComposes)
+    .innerJoin(
+      zeroAgents,
+      and(
+        eq(zeroAgents.orgId, agentComposes.orgId),
+        eq(zeroAgents.name, agentComposes.name),
+      ),
+    )
+    .where(eq(agentComposes.id, session.composeId))
+    .limit(1);
+
+  if (!agent) {
+    log.warn("No zero agent found for session compose", {
+      composeId: session.composeId,
+    });
+    return {
+      ok: false,
+      errorMessage: "The agent for this conversation could not be found.",
+    };
+  }
+
+  // 12. Create run with integration context as system prompt
   const appendSystemPrompt = buildIntegrationContext("Email");
   const result = await createZeroRun({
     userId: session.userId,
     prompt: replyContent,
     appendSystemPrompt,
-    composeId: session.composeId,
+    zeroAgentId: agent.id,
     sessionId: session.agentSessionId,
     triggerSource: "email",
     callbacks,
