@@ -121,7 +121,7 @@ describe("auto-recharge-service", () => {
         autoRechargeThreshold: 500,
         autoRechargeAmount: 5000,
       });
-      // Default credits = 2000, threshold = 500 → above threshold
+      // Default credits = 10000, threshold = 500 → above threshold
 
       await triggerAutoRecharge(user.orgId);
 
@@ -136,7 +136,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000,
+        autoRechargeThreshold: 11_000,
         autoRechargeAmount: 5000,
         autoRechargePendingAt: new Date(), // just set now
       });
@@ -154,8 +154,8 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000, // balance (2000) is below this
-        autoRechargeAmount: 10000,
+        autoRechargeThreshold: 11_000, // balance (10000) is below this
+        autoRechargeAmount: 10_000,
       });
 
       await triggerAutoRecharge(user.orgId);
@@ -199,7 +199,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000,
+        autoRechargeThreshold: 11_000,
         autoRechargeAmount: 5000,
       });
 
@@ -223,7 +223,7 @@ describe("auto-recharge-service", () => {
       const staleTime = new Date(Date.now() - 15 * 60 * 1000);
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000,
+        autoRechargeThreshold: 11_000,
         autoRechargeAmount: 5000,
         autoRechargePendingAt: staleTime,
       });
@@ -242,7 +242,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000,
+        autoRechargeThreshold: 11_000,
         autoRechargeAmount: 5000,
       });
 
@@ -264,7 +264,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000,
+        autoRechargeThreshold: 11_000,
         autoRechargeAmount: 5000,
       });
 
@@ -289,7 +289,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000,
+        autoRechargeThreshold: 11_000,
         autoRechargeAmount: 5000,
       });
 
@@ -321,7 +321,7 @@ describe("auto-recharge-service", () => {
       });
       await updateOrgAutoRecharge(user.orgId, {
         autoRechargeEnabled: true,
-        autoRechargeThreshold: 3000,
+        autoRechargeThreshold: 11_000,
         autoRechargeAmount: 5000,
       });
 
