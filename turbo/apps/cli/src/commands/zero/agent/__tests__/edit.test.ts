@@ -47,14 +47,19 @@ describe("zero agent edit command", () => {
   });
 
   describe("successful edit", () => {
-    it("should update display name and show success message", async () => {
+    it("should preserve existing connectors when --connectors not provided", async () => {
+      let capturedBody: { connectors?: string[] } | undefined;
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
-        http.put("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json({ ...mockAgent, displayName: "Updated" });
-        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as { connectors?: string[] };
+            return HttpResponse.json({ ...mockAgent, displayName: "Updated" });
+          },
+        ),
       );
 
       await editCommand.parseAsync([
@@ -65,6 +70,7 @@ describe("zero agent edit command", () => {
         "Updated",
       ]);
 
+      expect(capturedBody?.connectors).toEqual(["github"]);
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
     });
@@ -81,14 +87,17 @@ describe("zero agent edit command", () => {
         unlinkSync(instructionsPath);
       });
 
-      it("should update instructions and show success message", async () => {
+      it("should upload instructions content from file and show success message", async () => {
+        let capturedInstructionsContent: string | undefined;
         server.use(
           http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
             return HttpResponse.json(mockAgent);
           }),
           http.put(
             "http://localhost:3000/api/zero/agents/my-agent/instructions",
-            () => {
+            async ({ request }) => {
+              const body = (await request.json()) as { content: string };
+              capturedInstructionsContent = body.content;
               return HttpResponse.json(mockAgent);
             },
           ),
@@ -102,6 +111,7 @@ describe("zero agent edit command", () => {
           instructionsPath,
         ]);
 
+        expect(capturedInstructionsContent).toBe("New instructions");
         const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
         expect(logCalls).toContain("updated");
       });

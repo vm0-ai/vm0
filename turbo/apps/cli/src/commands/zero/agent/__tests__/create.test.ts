@@ -81,14 +81,17 @@ describe("zero agent create command", () => {
         unlinkSync(instructionsPath);
       });
 
-      it("should create agent and upload instructions from file", async () => {
+      it("should create agent and upload instructions content from file", async () => {
+        let capturedInstructionsContent: string | undefined;
         server.use(
           http.post("http://localhost:3000/api/zero/agents", () => {
             return HttpResponse.json(mockAgent, { status: 201 });
           }),
           http.put(
             "http://localhost:3000/api/zero/agents/new-agent/instructions",
-            () => {
+            async ({ request }) => {
+              const body = (await request.json()) as { content: string };
+              capturedInstructionsContent = body.content;
               return HttpResponse.json(mockAgent);
             },
           ),
@@ -103,6 +106,7 @@ describe("zero agent create command", () => {
           instructionsPath,
         ]);
 
+        expect(capturedInstructionsContent).toBe("You are a helpful agent.");
         const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
         expect(logCalls).toContain("new-agent");
         expect(logCalls).toContain("created");
