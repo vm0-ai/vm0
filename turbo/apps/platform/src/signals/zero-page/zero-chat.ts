@@ -299,6 +299,47 @@ export const zeroChatQueuePosition$ = computed((get) =>
   get(internalQueuePosition$),
 );
 
+// ---------------------------------------------------------------------------
+// Queued message — allows the user to queue a follow-up while agent is busy
+// ---------------------------------------------------------------------------
+
+interface QueuedMessage {
+  text: string;
+  modelProvider?: string;
+}
+
+const internalQueuedMessage$ = state<QueuedMessage | null>(null);
+export const zeroChatQueuedMessage$ = computed((get) =>
+  get(internalQueuedMessage$),
+);
+
+/** Queue a message to be sent automatically once the current run completes. */
+export const queueZeroChatMessage$ = command(
+  ({ get, set }, text: string, options?: { modelProvider?: string }) => {
+    if (!get(internalSending$)) {
+      return;
+    }
+    if (get(internalQueuedMessage$)) {
+      return;
+    }
+    set(internalQueuedMessage$, {
+      text,
+      modelProvider: options?.modelProvider,
+    });
+    set(internalChatInput$, "");
+  },
+);
+
+/** Withdraw the queued message back into the input box for editing. */
+export const withdrawQueuedMessage$ = command(({ get, set }) => {
+  const queued = get(internalQueuedMessage$);
+  if (!queued) {
+    return;
+  }
+  set(internalChatInput$, queued.text);
+  set(internalQueuedMessage$, null);
+});
+
 /** Latest event summaries for the active run (for display while thinking). */
 export const zeroChatRunSummaries$ = computed(async (get) => {
   const pages = get(internalRunEvents$);
@@ -1030,6 +1071,22 @@ export const sendZeroChatMessage$ = command(
       });
     } finally {
       set(internalSending$, false);
+
+      // Auto-send queued message if one was enqueued while the run was active
+      const queued = get(internalQueuedMessage$);
+      if (queued) {
+        set(internalQueuedMessage$, null);
+        detach(
+          set(
+            sendZeroChatMessage$,
+            queued.text,
+            queued.modelProvider
+              ? { modelProvider: queued.modelProvider }
+              : undefined,
+          ),
+          Reason.DomCallback,
+        );
+      }
     }
   },
 );

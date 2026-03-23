@@ -45,6 +45,9 @@ import {
   zeroChatRunStatus$,
   zeroChatQueuePosition$,
   cancelActiveRun$,
+  zeroChatQueuedMessage$,
+  queueZeroChatMessage$,
+  withdrawQueuedMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
@@ -83,6 +86,9 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
+  const queuedMessage = useGet(zeroChatQueuedMessage$);
+  const queueMessage = useSet(queueZeroChatMessage$);
+  const withdraw = useSet(withdrawQueuedMessage$);
   // Auto-scroll when messages change — ref callback runs at commit time
   const scrollAnchorRef = (el: HTMLDivElement | null) => {
     if (el && messages.length > 0) {
@@ -91,8 +97,12 @@ export function ZeroSessionChatPage({
   };
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
-    clearInput();
-    detach(send(text, opts), Reason.DomCallback);
+    if (sending) {
+      queueMessage(text, opts);
+    } else {
+      clearInput();
+      detach(send(text, opts), Reason.DomCallback);
+    }
   };
 
   return (
@@ -189,6 +199,8 @@ export function ZeroSessionChatPage({
               onSend={handleSend}
               sending={sending}
               onCancel={() => void cancelRun()}
+              queuedMessage={queuedMessage}
+              onWithdraw={withdraw}
               agentName={agentName}
             />
           </div>
