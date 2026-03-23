@@ -56,7 +56,7 @@ describe("VM0 managed model provider", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "vm0",
-            selectedModel: "kimi-k2.5",
+            selectedModel: "claude-sonnet-4.6",
           }),
         }),
       );
@@ -65,7 +65,7 @@ describe("VM0 managed model provider", () => {
       const data = await response.json();
       expect(data.provider.type).toBe("vm0");
       expect(data.provider.framework).toBe("claude-code");
-      expect(data.provider.selectedModel).toBe("kimi-k2.5");
+      expect(data.provider.selectedModel).toBe("claude-sonnet-4.6");
       expect(data.provider.isDefault).toBe(true);
       expect(data.created).toBe(true);
     });
@@ -80,7 +80,7 @@ describe("VM0 managed model provider", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "vm0",
-            selectedModel: "kimi-k2.5",
+            selectedModel: "claude-opus-4.6",
           }),
         }),
       );
@@ -88,7 +88,7 @@ describe("VM0 managed model provider", () => {
 
       const data = await response.json();
       expect(data.provider.type).toBe("vm0");
-      expect(data.provider.selectedModel).toBe("kimi-k2.5");
+      expect(data.provider.selectedModel).toBe("claude-opus-4.6");
       expect(data.created).toBe(true);
     });
   });
@@ -97,23 +97,23 @@ describe("VM0 managed model provider", () => {
     it("should return a random key for a vendor with keys", async () => {
       await insertVm0ApiKeys([
         {
-          vendor: "moonshot",
-          model: "kimi-k2.5",
-          apiKey: "sk-test-moonshot-1",
+          vendor: "anthropic",
+          model: "claude-sonnet-4.6",
+          apiKey: "sk-test-anthropic-1",
           label: "test key 1",
         },
         {
-          vendor: "moonshot",
-          model: "kimi-k2.5",
-          apiKey: "sk-test-moonshot-2",
+          vendor: "anthropic",
+          model: "claude-sonnet-4.6",
+          apiKey: "sk-test-anthropic-2",
           label: "test key 2",
         },
       ]);
 
-      const result = await getTestVm0ApiKey("moonshot");
+      const result = await getTestVm0ApiKey("anthropic");
       expect(result).not.toBeNull();
-      expect(result!.model).toBe("kimi-k2.5");
-      expect(["sk-test-moonshot-1", "sk-test-moonshot-2"]).toContain(
+      expect(result!.model).toBe("claude-sonnet-4.6");
+      expect(["sk-test-anthropic-1", "sk-test-anthropic-2"]).toContain(
         result!.apiKey,
       );
     });
@@ -125,28 +125,18 @@ describe("VM0 managed model provider", () => {
   });
 
   describe("model-to-provider mapping", () => {
-    it("should resolve moonshot models to moonshot-api-key", () => {
-      expect(getVm0ConcreteProviderType("kimi-k2.5")).toBe("moonshot-api-key");
-      expect(getVm0Vendor("kimi-k2.5")).toBe("moonshot");
-    });
-
-    it("should resolve anthropic models to anthropic-api-key", () => {
+    it("should resolve sonnet to anthropic-api-key", () => {
       expect(getVm0ConcreteProviderType("claude-sonnet-4.6")).toBe(
         "anthropic-api-key",
       );
       expect(getVm0Vendor("claude-sonnet-4.6")).toBe("anthropic");
     });
 
-    it("should resolve zai models to zai-api-key", () => {
-      expect(getVm0ConcreteProviderType("glm-5")).toBe("zai-api-key");
-      expect(getVm0Vendor("glm-5")).toBe("zai");
-    });
-
-    it("should resolve minimax models to minimax-api-key", () => {
-      expect(getVm0ConcreteProviderType("MiniMax-M2.1")).toBe(
-        "minimax-api-key",
+    it("should resolve opus to anthropic-api-key", () => {
+      expect(getVm0ConcreteProviderType("claude-opus-4.6")).toBe(
+        "anthropic-api-key",
       );
-      expect(getVm0Vendor("MiniMax-M2.1")).toBe("minimax");
+      expect(getVm0Vendor("claude-opus-4.6")).toBe("anthropic");
     });
 
     it("should throw for unknown models", () => {
@@ -156,20 +146,11 @@ describe("VM0 managed model provider", () => {
     });
 
     it("should have all VM0 provider models mapped", () => {
-      const vm0Models = [
-        "claude-sonnet-4.6",
-        "claude-opus-4.6",
-        "kimi-k2.5",
-        "kimi-k2-thinking-turbo",
-        "kimi-k2-thinking",
-        "glm-5",
-        "glm-4.7",
-        "glm-4.5-air",
-        "MiniMax-M2.1",
-      ];
+      const vm0Models = ["claude-sonnet-4.6", "claude-opus-4.6"];
       for (const model of vm0Models) {
         expect(VM0_MODEL_TO_PROVIDER[model]).toBeDefined();
       }
+      expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toHaveLength(2);
     });
   });
 });

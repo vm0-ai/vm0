@@ -292,7 +292,7 @@ const sandboxOperationSchema = z.object({
  */
 const networkLogSchema = z.object({
   timestamp: z.string(),
-  type: z.enum(["http", "tcp"]).optional(),
+  type: z.string().optional(),
   action: z.enum(["ALLOW", "DENY"]).optional(),
   host: z.string().optional(),
   port: z.number().optional(),

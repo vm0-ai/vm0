@@ -45,19 +45,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
-  "kimi-k2.5": { concreteType: "moonshot-api-key", vendor: "moonshot" },
-  "kimi-k2-thinking-turbo": {
-    concreteType: "moonshot-api-key",
-    vendor: "moonshot",
-  },
-  "kimi-k2-thinking": {
-    concreteType: "moonshot-api-key",
-    vendor: "moonshot",
-  },
-  "glm-5": { concreteType: "zai-api-key", vendor: "zai" },
-  "glm-4.7": { concreteType: "zai-api-key", vendor: "zai" },
-  "glm-4.5-air": { concreteType: "zai-api-key", vendor: "zai" },
-  "MiniMax-M2.1": { concreteType: "minimax-api-key", vendor: "minimax" },
 };
 
 /**

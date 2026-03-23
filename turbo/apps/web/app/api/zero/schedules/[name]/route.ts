@@ -3,25 +3,49 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroSchedulesByNameContract,
-  schedulesByNameContract,
-} from "@vm0/core";
+import { zeroSchedulesByNameContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { deleteSchedule } from "../../../../../src/lib/schedule";
+import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroSchedulesByNameContract, {
-  delete: async ({ params, query, headers }) => {
+  delete: async ({ params, query, headers }, { request }) => {
     initServices();
-    const client = createInfraClient(
-      schedulesByNameContract,
-      headers.authorization,
-    );
-    const result = await client.delete({ params, query });
-    return forwardInfra(result);
+
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "schedule:write",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const {
+        org: { orgId },
+      } = await resolveOrg(authCtx, orgSlug);
+
+      await deleteSchedule(userId, orgId, query.composeId, params.name);
+
+      return {
+        status: 204 as const,
+        body: undefined,
+      };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Resource not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      throw error;
+    }
   },
 });
 

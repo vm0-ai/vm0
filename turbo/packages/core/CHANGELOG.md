@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.93.0](https://github.com/vm0-ai/vm0/compare/core-v8.92.0...core-v8.93.0) (2026-03-23)
+
+
+### Features
+
+* add usage page showing per-member token consumption in billing period ([#6019](https://github.com/vm0-ai/vm0/issues/6019)) ([b88b6b3](https://github.com/vm0-ai/vm0/commit/b88b6b33276c7551203f6ef91318439fb94cfcb5))
+* bundle github firewall config into @vm0/core ([#6034](https://github.com/vm0-ai/vm0/issues/6034)) ([60116c9](https://github.com/vm0-ai/vm0/commit/60116c99afc538a3cf63776db90148740aa69711))
+* bundle slack firewall config into @vm0/core ([#6052](https://github.com/vm0-ai/vm0/issues/6052)) ([9251638](https://github.com/vm0-ai/vm0/commit/92516386a782340e85aa18d6054cb1fa04452944))
+* create zero-run-service to unify all zero trigger paths ([#6028](https://github.com/vm0-ai/vm0/issues/6028)) ([97f1854](https://github.com/vm0-ai/vm0/commit/97f1854c2b3458642022cb6430cf33b4db953b07))
+
+
+### Refactoring
+
+* remove non-anthropic vm0 model providers ([#6066](https://github.com/vm0-ai/vm0/issues/6066)) ([04e13fc](https://github.com/vm0-ai/vm0/commit/04e13fc8386361690f72f520d0810aeb0302c733))
+* remove vm0 model provider feature switch and auto-init during onboarding ([#6042](https://github.com/vm0-ai/vm0/issues/6042)) ([37dfd70](https://github.com/vm0-ai/vm0/commit/37dfd707b1c92def0237641293ee782843fc8bd8)), closes [#6033](https://github.com/vm0-ai/vm0/issues/6033)
+* rename organization tier 'max' to 'team' ([#6043](https://github.com/vm0-ai/vm0/issues/6043)) ([9727f5a](https://github.com/vm0-ai/vm0/commit/9727f5aee40559e7a2cc65db91c10c7f96e22556))
+
 ## [8.92.0](https://github.com/vm0-ai/vm0/compare/core-v8.91.0...core-v8.92.0) (2026-03-23)
 
 

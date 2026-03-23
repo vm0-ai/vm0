@@ -13,7 +13,6 @@ export type RoutePath =
   | "/schedule"
   | "/preferences"
   | "/usage"
-  | "/settings"
   | "/works"
   | "/__internal-connector-logos"
   | `/projects/${string}`;

@@ -21,7 +21,7 @@ describe("billing in sidebar", () => {
   });
 
   it("should show tier and credits in sidebar when pricing feature is enabled", async () => {
-    setMockBillingStatus({ tier: "free", credits: 2000 });
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await setupPage({
       context,
@@ -35,7 +35,7 @@ describe("billing in sidebar", () => {
       { timeout: 3000 },
     );
     expect(billingButton).toBeInTheDocument();
-    expect(screen.getByText("2,000")).toBeInTheDocument();
+    expect(screen.getByText("10,000")).toBeInTheDocument();
   });
 
   it("should show team tier with correct credits", async () => {
@@ -57,7 +57,7 @@ describe("billing in sidebar", () => {
   });
 
   it("should open billing dialog when clicking billing button", async () => {
-    setMockBillingStatus({ tier: "free", credits: 2000 });
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await setupPage({
       context,
@@ -103,7 +103,7 @@ describe("billing in sidebar", () => {
   });
 
   it("should show upgrade button when free user selects pro", async () => {
-    setMockBillingStatus({ tier: "free", credits: 2000 });
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await setupPage({
       context,
@@ -199,7 +199,7 @@ describe("billing in sidebar", () => {
   });
 
   it("should not show action button when current plan is selected", async () => {
-    setMockBillingStatus({ tier: "free", credits: 2000 });
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await setupPage({
       context,
@@ -271,7 +271,7 @@ describe("auto-recharge in billing dialog", () => {
   it("should not show auto-recharge section for free tier", async () => {
     setMockBillingStatus({
       tier: "free",
-      credits: 2000,
+      credits: 10_000,
       autoRecharge: { enabled: false, threshold: null, amount: null },
     });
 

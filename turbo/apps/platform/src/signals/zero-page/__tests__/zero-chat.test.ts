@@ -28,6 +28,10 @@ import {
   queueZeroChatMessage$,
   withdrawQueuedMessage$,
   cancelActiveRun$,
+  zeroChatAttachments$,
+  uploadZeroAttachment$,
+  removeZeroAttachment$,
+  cancelZeroAttachmentUpload$,
 } from "../zero-chat.ts";
 
 const context = testContext();
@@ -1103,7 +1107,7 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
 
-    it("should auto-send queued message after run cancellation", async () => {
+    it("should auto-send queued message after run cancellation (cancelActiveRun$)", async () => {
       let runCount = 0;
       let latestPrompt = "";
       server.use(
@@ -1185,6 +1189,138 @@ describe("zero-chat signals", () => {
       expect(runCount).toBe(2);
       expect(latestPrompt).toBe("after cancel");
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
+    });
+  });
+
+  describe("attachment upload and cancel", () => {
+    function useUploadHandler(options?: { delayMs?: number }) {
+      const delayMs = options?.delayMs ?? 0;
+      server.use(
+        http.post("*/api/zero/uploads", async () => {
+          if (delayMs > 0) {
+            await delay(delayMs);
+          }
+          return HttpResponse.json({
+            id: "upload-1",
+            filename: "test.png",
+            contentType: "image/png",
+            size: 1024,
+            url: "https://example.com/test.png",
+          });
+        }),
+      );
+    }
+
+    function createTestFile(name = "test.png") {
+      return new File(["file-content"], name, { type: "image/png" });
+    }
+
+    it("should upload a file and update attachment state", async () => {
+      useUploadHandler();
+      await setup();
+
+      await context.store.set(uploadZeroAttachment$, createTestFile());
+
+      const attachments = context.store.get(zeroChatAttachments$);
+      expect(attachments).toHaveLength(1);
+      expect(attachments[0]?.filename).toBe("test.png");
+      expect(attachments[0]?.uploading).toBeFalsy();
+      expect(attachments[0]?.url).toBe("https://example.com/test.png");
+    });
+
+    it("should cancel an in-flight upload and remove the attachment", async () => {
+      useUploadHandler({ delayMs: 500 });
+      await setup();
+
+      const uploadPromise = context.store
+        .set(uploadZeroAttachment$, createTestFile())
+        .catch(() => {});
+
+      // Wait for the placeholder to appear
+      await delay(10);
+      const before = context.store.get(zeroChatAttachments$);
+      expect(before).toHaveLength(1);
+      expect(before[0]?.uploading).toBeTruthy();
+      const attachmentId = before[0]!.id;
+
+      // Cancel the upload
+      context.store.set(cancelZeroAttachmentUpload$, attachmentId);
+
+      await uploadPromise;
+
+      const after = context.store.get(zeroChatAttachments$);
+      expect(after).toHaveLength(0);
+    });
+
+    it("should remove a completed attachment without aborting", async () => {
+      useUploadHandler();
+      await setup();
+
+      await context.store.set(uploadZeroAttachment$, createTestFile());
+
+      const attachments = context.store.get(zeroChatAttachments$);
+      expect(attachments).toHaveLength(1);
+      const attachmentId = attachments[0]!.id;
+
+      context.store.set(removeZeroAttachment$, attachmentId);
+
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
+    });
+
+    it("should cancel one upload without affecting others", async () => {
+      let requestCount = 0;
+      server.use(
+        http.post("*/api/zero/uploads", async () => {
+          requestCount++;
+          const currentCount = requestCount;
+          await delay(300);
+          return HttpResponse.json({
+            id: `upload-${currentCount}`,
+            filename: `file-${currentCount}.png`,
+            contentType: "image/png",
+            size: 1024,
+            url: `https://example.com/file-${currentCount}.png`,
+          });
+        }),
+      );
+      await setup();
+
+      const promise1 = context.store
+        .set(uploadZeroAttachment$, createTestFile("file-a.png"))
+        .catch(() => {});
+      const promise2 = context.store
+        .set(uploadZeroAttachment$, createTestFile("file-b.png"))
+        .catch(() => {});
+
+      // Wait for both placeholders
+      await delay(10);
+      const before = context.store.get(zeroChatAttachments$);
+      expect(before).toHaveLength(2);
+
+      // Cancel the first upload
+      const firstId = before[0]!.id;
+      context.store.set(cancelZeroAttachmentUpload$, firstId);
+
+      await Promise.all([promise1, promise2]);
+
+      const after = context.store.get(zeroChatAttachments$);
+      // Only the second upload should remain, completed
+      expect(after).toHaveLength(1);
+      expect(after[0]?.uploading).toBeFalsy();
+      expect(after[0]?.url).toContain("example.com");
+    });
+
+    it("should remove placeholder on upload failure", async () => {
+      server.use(
+        http.post("*/api/zero/uploads", () => {
+          return new HttpResponse(null, { status: 500 });
+        }),
+      );
+      await setup();
+
+      await context.store.set(uploadZeroAttachment$, createTestFile());
+
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
     });
   });
 });

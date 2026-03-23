@@ -8,7 +8,9 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 import { githubFirewall } from "./github.generated";
+import { slackFirewall } from "./slack.generated";
 
 export const builtinFirewalls: Record<string, FirewallConfig> = {
   github: githubFirewall,
+  slack: slackFirewall,
 };

@@ -9,7 +9,7 @@ import type { BillingStatus } from "../../signals/zero-page/billing.ts";
 
 let mockBillingStatus: BillingStatus = {
   tier: "free",
-  credits: 2000,
+  credits: 10_000,
   subscriptionStatus: null,
   currentPeriodEnd: null,
   hasSubscription: false,
@@ -23,7 +23,7 @@ export function setMockBillingStatus(status: Partial<BillingStatus>): void {
 export function resetMockBilling(): void {
   mockBillingStatus = {
     tier: "free",
-    credits: 2000,
+    credits: 10_000,
     subscriptionStatus: null,
     currentPeriodEnd: null,
     hasSubscription: false,

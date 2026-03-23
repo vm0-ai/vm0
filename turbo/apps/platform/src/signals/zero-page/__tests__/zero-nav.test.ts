@@ -82,11 +82,6 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).not.toBe("chat");
       expect(context.store.get(zeroActiveId$)).toBe("not-found");
     });
-
-    it("should resolve /settings to 'settings'", () => {
-      mockLocation({ pathname: "/settings", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("settings");
-    });
   });
 
   describe("setZeroActiveId$", () => {
@@ -99,7 +94,8 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/:tab", setup: noop$ },
+          { path: "/schedule", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
       );
@@ -267,7 +263,8 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/:tab", setup: noop$ },
+          { path: "/schedule", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
       );
@@ -285,7 +282,8 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/:tab", setup: noop$ },
+          { path: "/preferences", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
       );

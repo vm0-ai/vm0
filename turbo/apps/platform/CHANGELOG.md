@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.136.0](https://github.com/vm0-ai/vm0/compare/app-v0.135.0...app-v0.136.0) (2026-03-23)
+
+
+### Features
+
+* add usage page showing per-member token consumption in billing period ([#6019](https://github.com/vm0-ai/vm0/issues/6019)) ([b88b6b3](https://github.com/vm0-ai/vm0/commit/b88b6b33276c7551203f6ef91318439fb94cfcb5))
+* allow canceling attachment upload before it completes ([#6062](https://github.com/vm0-ai/vm0/issues/6062)) ([ff07c2c](https://github.com/vm0-ai/vm0/commit/ff07c2cbade3030f8d481449814991afe172a39e))
+* create zero-run-service to unify all zero trigger paths ([#6028](https://github.com/vm0-ai/vm0/issues/6028)) ([97f1854](https://github.com/vm0-ai/vm0/commit/97f1854c2b3458642022cb6430cf33b4db953b07))
+* handle no-model-provider error with dedicated deep link ([#6030](https://github.com/vm0-ai/vm0/issues/6030)) ([0707acd](https://github.com/vm0-ai/vm0/commit/0707acd4a384e0864aa947d432589b32123eef83))
+* improve chat input ux when agent is processing ([#6011](https://github.com/vm0-ai/vm0/issues/6011)) ([eff88d3](https://github.com/vm0-ai/vm0/commit/eff88d39d68de352e3908b7e32e73e1893755933))
+* increase default starter credits from 2000 to 10000 ([#6055](https://github.com/vm0-ai/vm0/issues/6055)) ([c16b93e](https://github.com/vm0-ai/vm0/commit/c16b93e63937b899234f6b38d7591fe85e3d2a28)), closes [#6049](https://github.com/vm0-ai/vm0/issues/6049)
+* **platform:** add ideation page with categorized use case gallery ([#5960](https://github.com/vm0-ai/vm0/issues/5960)) ([baa34a4](https://github.com/vm0-ai/vm0/commit/baa34a4083c58dcdf7ccfed30f323c460891b4d1))
+
+
+### Bug Fixes
+
+* prevent send mode settings flash by moving optimistic state to signals layer ([#6015](https://github.com/vm0-ai/vm0/issues/6015)) ([b22faa2](https://github.com/vm0-ai/vm0/commit/b22faa2c33aa8fc4caef21b7f304519c4a065f17))
+* show skeleton instead of send-message flash on chat page refresh ([#6018](https://github.com/vm0-ai/vm0/issues/6018)) ([0a61e05](https://github.com/vm0-ai/vm0/commit/0a61e05aba038d06379844df1f5582372df9053e))
+
+
+### Refactoring
+
+* migrate / (chat root) route to dedicated setup function ([#6058](https://github.com/vm0-ai/vm0/issues/6058)) ([ecee98d](https://github.com/vm0-ai/vm0/commit/ecee98d785ae1372ac4faa9dc4a8ab910cf9d43c))
+* migrate chat session route to dedicated setup function ([#6009](https://github.com/vm0-ai/vm0/issues/6009)) ([2cfd876](https://github.com/vm0-ai/vm0/commit/2cfd8762dd00bb2e3b24208d0f3f5bd1e38fc724))
+* remove ccstate-react/experimental from zero-chat-page.tsx ([#6038](https://github.com/vm0-ai/vm0/issues/6038)) ([0b5a9d1](https://github.com/vm0-ai/vm0/commit/0b5a9d11760aa8c76ee18e51ff518393b9639cff)), closes [#5797](https://github.com/vm0-ai/vm0/issues/5797)
+* remove ccstate-react/experimental from zero-schedule-card ([#6041](https://github.com/vm0-ai/vm0/issues/6041)) ([739b04b](https://github.com/vm0-ai/vm0/commit/739b04bcd61f45ff0ce2bcaf7796b1fbab6fd179)), closes [#5812](https://github.com/vm0-ai/vm0/issues/5812)
+* remove ccstate-react/experimental from zero-schedule-page ([#6039](https://github.com/vm0-ai/vm0/issues/6039)) ([ef82674](https://github.com/vm0-ai/vm0/commit/ef82674aa4f8b2a61de0b6ac75f13be5ff991a33)), closes [#5810](https://github.com/vm0-ai/vm0/issues/5810)
+* remove ccstate-react/experimental from zero-session-chat-page ([#6040](https://github.com/vm0-ai/vm0/issues/6040)) ([4bace52](https://github.com/vm0-ai/vm0/commit/4bace52fab384234c64db3c621f35c08f439111f))
+* remove ccstate-react/experimental from zero-settings-tab ([#6035](https://github.com/vm0-ai/vm0/issues/6035)) ([2ceb506](https://github.com/vm0-ai/vm0/commit/2ceb506abe285de54683e19f52fff8a2e2a775ae))
+* remove vm0 model provider feature switch and auto-init during onboarding ([#6042](https://github.com/vm0-ai/vm0/issues/6042)) ([37dfd70](https://github.com/vm0-ai/vm0/commit/37dfd707b1c92def0237641293ee782843fc8bd8)), closes [#6033](https://github.com/vm0-ai/vm0/issues/6033)
+* rename organization tier 'max' to 'team' ([#6043](https://github.com/vm0-ai/vm0/issues/6043)) ([9727f5a](https://github.com/vm0-ai/vm0/commit/9727f5aee40559e7a2cc65db91c10c7f96e22556))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.93.0
+
 ## [0.135.0](https://github.com/vm0-ai/vm0/compare/app-v0.134.2...app-v0.135.0) (2026-03-23)
 
 

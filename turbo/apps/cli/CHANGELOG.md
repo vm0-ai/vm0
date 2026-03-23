@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.74.2](https://github.com/vm0-ai/vm0/compare/cli-v9.74.1...cli-v9.74.2) (2026-03-23)
+
+
+### Refactoring
+
+* rename organization tier 'max' to 'team' ([#6043](https://github.com/vm0-ai/vm0/issues/6043)) ([9727f5a](https://github.com/vm0-ai/vm0/commit/9727f5aee40559e7a2cc65db91c10c7f96e22556))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.93.0
+
 ## [9.74.1](https://github.com/vm0-ai/vm0/compare/cli-v9.74.0...cli-v9.74.1) (2026-03-23)
 
 

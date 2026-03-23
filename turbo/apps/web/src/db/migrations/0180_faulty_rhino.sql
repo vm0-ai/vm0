@@ -1,0 +1,1 @@
+ALTER TABLE "org_metadata" ALTER COLUMN "credits" SET DEFAULT 10000;
