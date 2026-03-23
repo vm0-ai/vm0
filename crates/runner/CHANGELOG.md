@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.44.1...runner-rs-v0.45.0) (2026-03-23)
+
+
+### Features
+
+* **runner:** add cancel support to local provider via .cancel files ([#6048](https://github.com/vm0-ai/vm0/issues/6048)) ([d065887](https://github.com/vm0-ai/vm0/commit/d065887510d08b06d138a8d3dba30984e5aa4da9))
+
 ## [0.44.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.44.0...runner-rs-v0.44.1) (2026-03-23)
 
 

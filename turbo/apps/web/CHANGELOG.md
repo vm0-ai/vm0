@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.143.0](https://github.com/vm0-ai/vm0/compare/web-v12.142.0...web-v12.143.0) (2026-03-23)
+
+
+### Features
+
+* add clerk metadata backfill script for complete data migration ([#5973](https://github.com/vm0-ai/vm0/issues/5973)) ([c32a23b](https://github.com/vm0-ai/vm0/commit/c32a23b0b2f59f761e0041e5da6e10f6a7da48dd))
+* add org deletion service for database cascade cleanup ([#5988](https://github.com/vm0-ai/vm0/issues/5988)) ([220403f](https://github.com/vm0-ai/vm0/commit/220403fe8448534bb4a82627d7ad04105552b53c))
+* add usage page showing per-member token consumption in billing period ([#6019](https://github.com/vm0-ai/vm0/issues/6019)) ([b88b6b3](https://github.com/vm0-ai/vm0/commit/b88b6b33276c7551203f6ef91318439fb94cfcb5))
+* create zero-run-service to unify all zero trigger paths ([#6028](https://github.com/vm0-ai/vm0/issues/6028)) ([97f1854](https://github.com/vm0-ai/vm0/commit/97f1854c2b3458642022cb6430cf33b4db953b07))
+* handle no-model-provider error with dedicated deep link ([#6030](https://github.com/vm0-ai/vm0/issues/6030)) ([0707acd](https://github.com/vm0-ai/vm0/commit/0707acd4a384e0864aa947d432589b32123eef83))
+* increase default starter credits from 2000 to 10000 ([#6055](https://github.com/vm0-ai/vm0/issues/6055)) ([c16b93e](https://github.com/vm0-ai/vm0/commit/c16b93e63937b899234f6b38d7591fe85e3d2a28)), closes [#6049](https://github.com/vm0-ai/vm0/issues/6049)
+* wire org deletion cleanup into clerk webhook handler ([#6068](https://github.com/vm0-ai/vm0/issues/6068)) ([43594f0](https://github.com/vm0-ai/vm0/commit/43594f0ccc7a3c68d6576cd723a98a99de1d846b)), closes [#5981](https://github.com/vm0-ai/vm0/issues/5981)
+
+
+### Refactoring
+
+* enforce no-self-api-call eslint rule globally ([#6057](https://github.com/vm0-ai/vm0/issues/6057)) ([3f4a352](https://github.com/vm0-ai/vm0/commit/3f4a352d9c04bd098d01e12c0baa5b47af9e0f0b))
+* remove non-anthropic vm0 model providers ([#6066](https://github.com/vm0-ai/vm0/issues/6066)) ([04e13fc](https://github.com/vm0-ai/vm0/commit/04e13fc8386361690f72f520d0810aeb0302c733))
+* remove vm0 model provider feature switch and auto-init during onboarding ([#6042](https://github.com/vm0-ai/vm0/issues/6042)) ([37dfd70](https://github.com/vm0-ai/vm0/commit/37dfd707b1c92def0237641293ee782843fc8bd8)), closes [#6033](https://github.com/vm0-ai/vm0/issues/6033)
+* rename organization tier 'max' to 'team' ([#6043](https://github.com/vm0-ai/vm0/issues/6043)) ([9727f5a](https://github.com/vm0-ai/vm0/commit/9727f5aee40559e7a2cc65db91c10c7f96e22556))
+* replace http proxy with direct service calls in zero schedule routes ([#6053](https://github.com/vm0-ai/vm0/issues/6053)) ([c74a13c](https://github.com/vm0-ai/vm0/commit/c74a13c33276470d4cb61a35f2cf0ea0e7cfab8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.93.0
+
 ## [12.142.0](https://github.com/vm0-ai/vm0/compare/web-v12.141.1...web-v12.142.0) (2026-03-23)
 
 

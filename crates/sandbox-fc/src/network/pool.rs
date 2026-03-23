@@ -397,6 +397,49 @@ async fn add_proxy_redirect_rule(name: &str, peer_ip: &str, proxy_port: u16) -> 
     Ok(())
 }
 
+/// Add LOG rule for all non-TCP outbound traffic in FORWARD chain.
+///
+/// Logs packet metadata (src/dst IP, port, protocol, size) to the kernel
+/// log with a `VM0:<peer_ip>:` prefix so the runner can match entries to
+/// VMs and write them to the per-run network JSONL file.
+///
+/// Uses `-I FORWARD 1` (insert at top) instead of `-A` (append) because
+/// the ACCEPT rules from [`setup_host_iptables`] are already in the chain.
+/// LOG is a non-terminating target (packet continues to the next rule),
+/// so it must come before ACCEPT to fire.
+async fn add_non_tcp_log_rule(name: &str, peer_ip: &str) -> Result<()> {
+    let src = format!("{peer_ip}/30");
+    let prefix = format!("VM0:{peer_ip}:");
+    sudo_iptables(&[
+        "-I",
+        "FORWARD",
+        "1",
+        "-s",
+        &src,
+        "!",
+        "-p",
+        "tcp",
+        "-m",
+        "limit",
+        "--limit",
+        "10/sec",
+        "--limit-burst",
+        "50",
+        "-j",
+        "LOG",
+        "--log-prefix",
+        &prefix,
+        "--log-level",
+        "4",
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
+    Ok(())
+}
+
 async fn get_default_interface() -> Result<String> {
     let result = exec("ip", &["route", "get", "8.8.8.8"], Privilege::User).await?;
     let iface = result
@@ -955,12 +998,17 @@ async fn create_single_namespace(
 
     match result {
         Ok(()) => {
-            if let Some(port) = proxy_port
-                && let Err(e) = add_proxy_redirect_rule(&ns_name, &peer_ip, port).await
-            {
-                error!(name = %ns_name, error = %e, "failed to add proxy rules, cleaning up");
-                delete_namespace_resources(&ns_name, &host_device).await;
-                return Err(e);
+            if let Some(port) = proxy_port {
+                if let Err(e) = add_proxy_redirect_rule(&ns_name, &peer_ip, port).await {
+                    error!(name = %ns_name, error = %e, "failed to add proxy rules, cleaning up");
+                    delete_namespace_resources(&ns_name, &host_device).await;
+                    return Err(e);
+                }
+                if let Err(e) = add_non_tcp_log_rule(&ns_name, &peer_ip).await {
+                    error!(name = %ns_name, error = %e, "failed to add non-TCP log rule, cleaning up");
+                    delete_namespace_resources(&ns_name, &host_device).await;
+                    return Err(e);
+                }
             }
             info!(name = %ns_name, "namespace created");
             Ok(PooledNetns {
