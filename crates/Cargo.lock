@@ -1537,6 +1537,7 @@ dependencies = [
  "guest-download",
  "guest-init",
  "guest-mock-claude",
+ "libc",
  "nix",
  "reqeast",
  "sandbox",

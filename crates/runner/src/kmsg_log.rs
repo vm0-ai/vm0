@@ -1,8 +1,8 @@
-//! Monitor `/dev/kmsg` for iptables LOG entries from non-TCP VM traffic
+//! Monitor kernel log for iptables LOG entries from non-TCP VM traffic
 //! and write matching entries to per-run network JSONL files.
 //!
 //! The iptables rule added by `sandbox-fc` logs non-TCP packets with prefix
-//! `VM0:<peer_ip>:`. This module reads `/dev/kmsg`, parses those entries,
+//! `VM0:<peer_ip>:`. This module tails `sudo dmesg -w`, parses those entries,
 //! looks up the network log path via an in-memory IP map, and appends a
 //! JSON line matching the format used by the mitmproxy addon.
 
@@ -29,8 +29,8 @@ pub fn new_ip_log_map() -> IpLogMap {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
-/// Spawn a background task that tails `/dev/kmsg` and writes network log
-/// entries. Returns the task handle; drop or abort it to stop.
+/// Spawn a background task that tails `sudo dmesg -w` and writes network
+/// log entries. Returns the task handle; drop or abort it to stop.
 pub fn spawn(ip_log_map: IpLogMap) -> JoinHandle<()> {
     tokio::task::spawn_blocking(move || {
         if let Err(e) = run_blocking(&ip_log_map) {
@@ -51,16 +51,40 @@ pub fn spawn(ip_log_map: IpLogMap) -> JoinHandle<()> {
 /// [12345.678901] VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64 ...
 /// ```
 fn run_blocking(ip_log_map: &IpLogMap) -> std::io::Result<()> {
-    let mut child = Command::new("sudo")
-        .args(["dmesg", "-w"])
+    use std::os::unix::process::CommandExt;
+
+    let mut cmd = Command::new("sudo");
+    cmd.args(["dmesg", "-w"])
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::piped());
+
+    // SAFETY: `prctl` with `PR_SET_PDEATHSIG` is async-signal-safe.
+    // This ensures the child is killed when the parent (runner) exits.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            Ok(())
+        });
+    }
+
+    let mut child = cmd.spawn()?;
 
     let stdout = child
         .stdout
         .take()
         .ok_or_else(|| std::io::Error::other("failed to capture dmesg stdout"))?;
+
+    // Log stderr in a background thread so sudo errors are visible.
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                if !line.is_empty() {
+                    warn!(target: "dmesg", "stderr: {line}");
+                }
+            }
+        });
+    }
 
     let reader = BufReader::new(stdout);
     for line in reader.lines() {
@@ -99,12 +123,13 @@ struct LogEntry {
     packet_size: u16,
 }
 
-/// Parse the message portion of an iptables LOG entry.
+/// Parse an iptables LOG message from a `dmesg -w` output line.
 ///
-/// Input is the part after the `;` in `/dev/kmsg` format, e.g.:
+/// `dmesg -w` outputs lines like:
 /// ```text
-/// VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64 ... PROTO=UDP SPT=12345 DPT=53
+/// [12345.678901] VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64 ... PROTO=UDP SPT=12345 DPT=53
 /// ```
+/// The parser finds `VM0:` anywhere in the line, so the `[timestamp]` prefix is ignored.
 fn parse_log_message(message: &str) -> Option<LogEntry> {
     // Find our prefix
     let prefix_pos = message.find(LOG_PREFIX)?;
@@ -213,6 +238,18 @@ mod tests {
         assert_eq!(entry.dst_port, 0);
         assert_eq!(entry.protocol, "icmp");
         assert_eq!(entry.packet_size, 84);
+    }
+
+    #[test]
+    fn parse_dmesg_format_with_timestamp_prefix() {
+        // dmesg -w prefixes lines with [seconds.microseconds]
+        let msg = "[411967.804921] VM0:10.200.12.26:IN=vm0-ve-03-06 OUT=enP2p4s0 MAC=f6:59:f1:28:35:36:de:8b:c8:2e:7b:88:08:00 SRC=10.200.12.26 DST=8.8.8.8 LEN=63 TOS=0x00 PREC=0x00 TTL=125 ID=50938 DF PROTO=UDP SPT=44793 DPT=53 LEN=43";
+        let entry = parse_log_message(msg).unwrap();
+        assert_eq!(entry.source_ip, "10.200.12.26");
+        assert_eq!(entry.dst_ip, "8.8.8.8");
+        assert_eq!(entry.dst_port, 53);
+        assert_eq!(entry.protocol, "udp");
+        assert_eq!(entry.packet_size, 63);
     }
 
     #[test]
