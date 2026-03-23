@@ -157,7 +157,9 @@ export const setZeroActivityFilter$ = command(
 
     // Preserve other filters
     for (const [k, signal] of Object.entries(FILTER_SIGNALS)) {
-      if (k === key) continue;
+      if (k === key) {
+        continue;
+      }
       const current = get(signal);
       if (current !== "all") {
         params.set(k, current);
