@@ -3,23 +3,52 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroComposesListContract, composesListContract } from "@vm0/core";
+import { zeroComposesListContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-// eslint-disable-next-line web/no-self-api-call
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { listComposes } from "../../../../../src/lib/agent-compose/compose-service";
+import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroComposesListContract, {
   list: async ({ query, headers }) => {
     initServices();
-    const client = createInfraClient(
-      composesListContract,
-      headers.authorization,
-    );
-    const result = await client.list({ query });
-    return forwardInfra(result);
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+
+    let orgId: string;
+    try {
+      const { org } = await resolveOrg(authCtx, query.org);
+      orgId = org.orgId;
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 400 as const,
+          body: {
+            error: { message: "Invalid request", code: "BAD_REQUEST" },
+          },
+        };
+      }
+      if (isForbidden(error)) {
+        return {
+          status: 403 as const,
+          body: {
+            error: {
+              message: "You don't have access to this org",
+              code: "FORBIDDEN",
+            },
+          },
+        };
+      }
+      throw error;
+    }
+
+    const result = await listComposes(orgId);
+    return { status: 200 as const, body: result };
   },
 });
 

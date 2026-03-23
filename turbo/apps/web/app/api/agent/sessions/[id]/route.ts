@@ -3,16 +3,12 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { sessionsByIdContract, extractAndGroupVariables } from "@vm0/core";
-import { eq } from "drizzle-orm";
+import { sessionsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { agentSessions } from "../../../../../src/db/schema/agent-session";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveCallerOrgId } from "../../../../../src/lib/org/resolve-org";
+import { getSessionResponse } from "../../../../../src/lib/agent-session/agent-session-service";
+import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(sessionsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
@@ -29,37 +25,8 @@ const router = tsr.router(sessionsByIdContract, {
     }
     const { userId } = authCtx;
 
-    const [session] = await globalThis.services.db
-      .select()
-      .from(agentSessions)
-      .where(eq(agentSessions.id, params.id))
-      .limit(1);
-
-    if (!session) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Session not found", code: "NOT_FOUND" },
-        },
-      };
-    }
-
-    // Check authorization - user can only access their own sessions
-    if (session.userId !== userId) {
-      return {
-        status: 403 as const,
-        body: {
-          error: {
-            message: "You do not have permission to access this session",
-            code: "FORBIDDEN",
-          },
-        },
-      };
-    }
-
-    // Verify session belongs to the caller's active organization (runtime org)
     const callerOrgId = await resolveCallerOrgId(authCtx, request);
-    if (callerOrgId !== session.orgId) {
+    if (!callerOrgId) {
       return {
         status: 404 as const,
         body: {
@@ -68,41 +35,24 @@ const router = tsr.router(sessionsByIdContract, {
       };
     }
 
-    // Extract secret names from HEAD compose content
-    let secretNames: string[] | null = null;
-    const [compose] = await globalThis.services.db
-      .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, session.agentComposeId))
-      .limit(1);
-
-    if (compose?.headVersionId) {
-      const [version] = await globalThis.services.db
-        .select()
-        .from(agentComposeVersions)
-        .where(eq(agentComposeVersions.id, compose.headVersionId))
-        .limit(1);
-
-      if (version?.content) {
-        const grouped = extractAndGroupVariables(version.content);
-        const names = grouped.secrets.map((ref) => ref.name);
-        secretNames = names.length > 0 ? names : null;
+    try {
+      const session = await getSessionResponse(params.id, userId, callerOrgId);
+      return { status: 200 as const, body: session };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: { error: { message: error.message, code: "NOT_FOUND" } },
+        };
       }
+      if (isForbidden(error)) {
+        return {
+          status: 403 as const,
+          body: { error: { message: error.message, code: "FORBIDDEN" } },
+        };
+      }
+      throw error;
     }
-
-    return {
-      status: 200 as const,
-      body: {
-        id: session.id,
-        agentComposeId: session.agentComposeId,
-        conversationId: session.conversationId,
-        artifactName: session.artifactName,
-        secretNames,
-        chatMessages: session.chatMessages ?? [],
-        createdAt: session.createdAt.toISOString(),
-        updatedAt: session.updatedAt.toISOString(),
-      },
-    };
   },
 });
 

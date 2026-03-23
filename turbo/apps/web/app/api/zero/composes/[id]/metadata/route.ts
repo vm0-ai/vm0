@@ -1,14 +1,50 @@
 /**
  * PATCH /api/zero/composes/:id/metadata
- * Proxies to /api/agent/composes/:id/metadata
+ * Update agent compose metadata (displayName, description, sound).
  */
-// eslint-disable-next-line web/no-self-api-call
-import { proxyToInfra } from "../../../../../../src/lib/infra-client";
+import { NextResponse } from "next/server";
+import { initServices } from "../../../../../../src/lib/init-services";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import { updateComposeMetadata } from "../../../../../../src/lib/agent-compose/compose-service";
+import { isNotFound } from "../../../../../../src/lib/errors";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  initServices();
+
   const { id } = await params;
-  return proxyToInfra(`/api/agent/composes/${id}/metadata`, request);
+  const authorization = request.headers.get("authorization") ?? undefined;
+
+  const authCtx = await requireAuth(authorization);
+  if (isAuthError(authCtx)) {
+    return NextResponse.json(
+      { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+      { status: 401 },
+    );
+  }
+  const { userId } = authCtx;
+
+  const orgSlug = new URL(request.url).searchParams.get("org") ?? undefined;
+  const { org } = await resolveOrg(authCtx, orgSlug);
+
+  const body = await request.json();
+
+  try {
+    await updateComposeMetadata(id, userId, org.orgId, body);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (isNotFound(error)) {
+      return NextResponse.json(
+        { error: { message: error.message, code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    }
+    throw error;
+  }
 }
