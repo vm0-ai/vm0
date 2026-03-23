@@ -17,12 +17,12 @@
  */
 
 import { parseArgs } from "node:util";
-import {
-  createClerkClient,
-  type Organization,
-  type OrganizationMembership,
-  type User,
-} from "@clerk/nextjs/server";
+import { createClerkClient } from "@clerk/backend";
+import type {
+  Organization,
+  OrganizationMembership,
+  User,
+} from "@clerk/backend";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
