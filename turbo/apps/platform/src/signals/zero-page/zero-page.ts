@@ -27,6 +27,27 @@ const L = logger("ZeroPage");
 const initialDataLoaded$ = state(false);
 
 /**
+ * Load agents, onboarding, and slack data once.
+ * Shared by setupZeroPage$ and setupTalkPage$ so the first route to
+ * execute pays the cost and subsequent navigations skip it.
+ */
+export const loadInitialData$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (get(initialDataLoaded$)) {
+      return;
+    }
+    await Promise.all([
+      set(fetchAgentsList$),
+      set(initZeroOnboarding$, signal),
+      set(initSlackOrg$),
+    ]);
+    signal.throwIfAborted();
+    set(initialDataLoaded$, true);
+    set(initSidebarCollapsed$);
+  },
+);
+
+/**
  * Resolve the active agent from the URL and switch to it.
  *
  * - `/talk/:name` → find agent by name, switch to it
@@ -108,18 +129,7 @@ export const setupZeroPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroPage));
 
-    // Only fetch heavy initial data once — skip on subsequent route changes
-    // (e.g. switching between talk agents).
-    if (!get(initialDataLoaded$)) {
-      await Promise.all([
-        set(fetchAgentsList$),
-        set(initZeroOnboarding$, signal),
-        set(initSlackOrg$),
-      ]);
-      signal.throwIfAborted();
-      set(initialDataLoaded$, true);
-      set(initSidebarCollapsed$);
-    }
+    await set(loadInitialData$, signal);
 
     await resolveAndSwitchAgent(get, set, signal);
 

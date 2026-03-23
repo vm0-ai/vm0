@@ -16,6 +16,7 @@ import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
 import { setupSettingsPage$ } from "./settings-page/settings-page-setup.ts";
+import { setupTalkPage$ } from "./zero-page/talk-page-setup.ts";
 import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.ts";
 const ROUTE_CONFIG = [
   {
@@ -28,7 +29,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/talk/:name",
-    setup: setupAuthPageWrapper(setupZeroPage$),
+    setup: setupAuthPageWrapper(setupTalkPage$),
   },
   {
     path: "/team/:name",
