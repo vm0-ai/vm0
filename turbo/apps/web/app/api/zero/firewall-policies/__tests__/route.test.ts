@@ -275,4 +275,61 @@ describe("PUT /api/zero/firewall-policies", () => {
     const data = await createRes.json();
     expect(data.firewallPolicies).toBeNull();
   });
+
+  it("should return full agent response shape", async () => {
+    const created = await (
+      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+    ).json();
+
+    const policies = { github: { "issues:read": "allow" } };
+    const response = await putPolicies(
+      created.name,
+      { policies },
+      testCliToken,
+      testOrgSlug,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toMatchObject({
+      name: created.name,
+      agentComposeId: expect.any(String),
+      description: expect.toBeOneOf([null, expect.any(String)]),
+      displayName: expect.toBeOneOf([null, expect.any(String)]),
+      sound: expect.toBeOneOf([null, expect.any(String)]),
+      connectors: expect.any(Array),
+      firewallPolicies: policies,
+    });
+  });
+
+  it("should isolate policies between different agents", async () => {
+    const agent1 = await (
+      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+    ).json();
+    const agent2 = await (
+      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+    ).json();
+
+    const policies1 = { github: { "issues:read": "allow" } };
+    const policies2 = { slack: { "channels:read": "deny" } };
+
+    await putPolicies(
+      agent1.name,
+      { policies: policies1 },
+      testCliToken,
+      testOrgSlug,
+    );
+    await putPolicies(
+      agent2.name,
+      { policies: policies2 },
+      testCliToken,
+      testOrgSlug,
+    );
+
+    const get1 = await getAgent(agent1.name, testCliToken, testOrgSlug);
+    const get2 = await getAgent(agent2.name, testCliToken, testOrgSlug);
+
+    expect((await get1.json()).firewallPolicies).toStrictEqual(policies1);
+    expect((await get2.json()).firewallPolicies).toStrictEqual(policies2);
+  });
 });
