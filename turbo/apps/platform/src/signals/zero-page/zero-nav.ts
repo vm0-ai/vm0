@@ -37,7 +37,7 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
 });
 
 /**
- * Whether the user is on a chat session page — `/chat` or `/chat/:sessionId`.
+ * Whether the user is on a chat session page — `/chat`, `/chat/:sessionId`, or `/talk/:name`.
  */
 export const zeroInChat$ = computed((get): boolean => {
   const path = get(pathname$);

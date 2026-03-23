@@ -1,119 +1,15 @@
 import { command, computed, state } from "ccstate";
-import { onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
-// Demo / landing page local UI state for ZeroChatPage
+// Landing page local UI state for ZeroChatPage
 // ---------------------------------------------------------------------------
 
 const INITIAL_TAGLINE_INDEX = Math.floor(Math.random() * 18);
-const STREAM_DELAY_MS = 1400;
 
 const internalInput$ = state("");
 export const chatPageInput$ = computed((get) => get(internalInput$));
 export const setChatPageInput$ = command(({ set }, value: string) => {
   set(internalInput$, value);
-});
-
-const internalConversationActive$ = state(false);
-export const chatPageConversationActive$ = computed((get) =>
-  get(internalConversationActive$),
-);
-export const setChatPageConversationActive$ = command(
-  ({ set }, value: boolean) => {
-    set(internalConversationActive$, value);
-  },
-);
-
-const internalStreamedCount$ = state(0);
-export const chatPageStreamedCount$ = computed((get) =>
-  get(internalStreamedCount$),
-);
-
-const internalConversationEndEl$ = state<HTMLDivElement | null>(null);
-export const setChatPageConversationEndEl$ = command(
-  ({ set }, el: HTMLDivElement | null) => {
-    set(internalConversationEndEl$, el);
-  },
-);
-
-const internalStreamTimeoutId$ = state<number | null>(null);
-
-/** Start (or continue) the demo stream tick loop. */
-export const scheduleStreamTick$ = command(({ get, set }) => {
-  const active = get(internalConversationActive$);
-  const count = get(internalStreamedCount$);
-  if (!active || count >= 6) {
-    return;
-  }
-  const id = window.setTimeout(() => {
-    set(internalStreamTimeoutId$, null);
-    set(internalStreamedCount$, Math.min(count + 1, 6));
-    const el = get(internalConversationEndEl$);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth" });
-    }
-    set(scheduleStreamTick$);
-  }, STREAM_DELAY_MS);
-  set(internalStreamTimeoutId$, id);
-});
-
-/** Attach to a DOM element to clean up the stream timer on unmount. */
-const streamCleanupCommand$ = command(
-  ({ get }, _el: HTMLElement, signal: AbortSignal) => {
-    signal.addEventListener("abort", () => {
-      const id = get(internalStreamTimeoutId$);
-      if (id !== null) {
-        window.clearTimeout(id);
-      }
-    });
-  },
-);
-export const streamCleanupRef$ = onRef(streamCleanupCommand$);
-
-const internalApproveDone$ = state(false);
-export const chatPageApproveDone$ = computed((get) =>
-  get(internalApproveDone$),
-);
-export const setChatPageApproveDone$ = command(({ set }, value: boolean) => {
-  set(internalApproveDone$, value);
-});
-
-const internalSelectedOption$ = state<string | null>(null);
-export const chatPageSelectedOption$ = computed((get) =>
-  get(internalSelectedOption$),
-);
-export const setChatPageSelectedOption$ = command(
-  ({ set }, value: string | null) => {
-    set(internalSelectedOption$, value);
-  },
-);
-
-const internalTeamPersonalChoice$ = state<"team" | "personal" | null>(null);
-export const chatPageTeamPersonalChoice$ = computed((get) =>
-  get(internalTeamPersonalChoice$),
-);
-export const setChatPageTeamPersonalChoice$ = command(
-  ({ set }, value: "team" | "personal" | null) => {
-    set(internalTeamPersonalChoice$, value);
-  },
-);
-
-const internalConnectorConnected$ = state(false);
-export const chatPageConnectorConnected$ = computed((get) =>
-  get(internalConnectorConnected$),
-);
-export const setChatPageConnectorConnected$ = command(
-  ({ set }, value: boolean) => {
-    set(internalConnectorConnected$, value);
-  },
-);
-
-const internalCommandAllowed$ = state(false);
-export const chatPageCommandAllowed$ = computed((get) =>
-  get(internalCommandAllowed$),
-);
-export const setChatPageCommandAllowed$ = command(({ set }, value: boolean) => {
-  set(internalCommandAllowed$, value);
 });
 
 const internalTaglineIndex$ = state(INITIAL_TAGLINE_INDEX);

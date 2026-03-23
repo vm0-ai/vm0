@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { IconCrown, IconPlus, IconUsers } from "@tabler/icons-react";
+import {
+  IconCrown,
+  IconLoader2,
+  IconPlus,
+  IconUsers,
+} from "@tabler/icons-react";
 import {
   Card,
   CardContent,
@@ -15,17 +20,14 @@ import {
   zeroSubagents$,
   agentsLoading$,
   agentsError$,
+  createSubagent$,
 } from "../../signals/zero-page/zero-agents.ts";
 import {
   agentDisplayName$,
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroAvatarIndex$ } from "../../signals/zero-page/zero-nav.ts";
-import {
-  sendZeroChatMessage$,
-  startNewZeroSession$,
-} from "../../signals/zero-page/zero-chat.ts";
-import { updatePathname$ } from "../../signals/route.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
@@ -58,23 +60,34 @@ export function ZeroJobsPage() {
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const startNewSession = useSet(startNewZeroSession$);
-  const sendMessage = useSet(sendZeroChatMessage$);
-  const updatePathname = useSet(updatePathname$);
+  const [creating, setCreating] = useState(false);
+  const createSubagent = useSet(createSubagent$);
 
   const handleCreateTeammate = () => {
     const trimmed = newName.trim();
-    if (!trimmed) {
+    if (!trimmed || creating) {
       return;
     }
-    setDialogOpen(false);
-    updatePathname("/");
-    startNewSession();
+    setCreating(true);
     detach(
-      sendMessage(`Create a new sub-agent called "${trimmed}"`),
+      createSubagent(trimmed).then(
+        () => {
+          setDialogOpen(false);
+          setNewName("");
+          setCreating(false);
+          toast.success(`${trimmed} created successfully`);
+        },
+        (error: unknown) => {
+          setCreating(false);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to create sub-agent",
+          );
+        },
+      ),
       Reason.DomCallback,
     );
-    setNewName("");
   };
 
   return (
@@ -263,6 +276,7 @@ export function ZeroJobsPage() {
         newName={newName}
         onNameChange={setNewName}
         onConfirm={handleCreateTeammate}
+        creating={creating}
       />
     </div>
   );
@@ -274,15 +288,17 @@ function CreateTeammateDialog({
   newName,
   onNameChange,
   onConfirm,
+  creating,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   newName: string;
   onNameChange: (name: string) => void;
   onConfirm: () => void;
+  creating: boolean;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
       <DialogContent className="sm:max-w-[480px] p-0 gap-0">
         <div className="flex flex-col items-center h-[min(360px,80dvh)]">
           <DialogHeader className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
@@ -304,13 +320,14 @@ function CreateTeammateDialog({
               value={newName}
               onChange={(e) => onNameChange(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && newName.trim()) {
+                if (e.key === "Enter" && newName.trim() && !creating) {
                   onConfirm();
                 }
               }}
               placeholder="e.g. Research Assistant"
               className="max-w-[280px] text-center"
               autoFocus
+              disabled={creating}
             />
           </div>
 
@@ -319,11 +336,23 @@ function CreateTeammateDialog({
               variant="ghost"
               size="sm"
               onClick={() => onOpenChange(false)}
+              disabled={creating}
             >
               Cancel
             </Button>
-            <Button size="sm" onClick={onConfirm} disabled={!newName.trim()}>
-              Create
+            <Button
+              size="sm"
+              onClick={onConfirm}
+              disabled={!newName.trim() || creating}
+            >
+              {creating ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <IconLoader2 size={14} className="animate-spin" />
+                  Creating...
+                </span>
+              ) : (
+                "Create"
+              )}
             </Button>
           </div>
         </div>
