@@ -149,6 +149,43 @@ describe("deleteUserS3Data", () => {
     expect(context.mocks.s3.deleteS3Objects).not.toHaveBeenCalled();
   });
 
+  it("continues cleanup when one storage fails (best-effort)", async () => {
+    const name1 = uniqueId("storage");
+    const name2 = uniqueId("storage");
+    const exportKey = `exports/${userId}/${uniqueId("job")}.zip`;
+
+    await insertTestStorage({ userId, orgId, name: name1, type: "artifact" });
+    await insertTestStorage({ userId, orgId, name: name2, type: "memory" });
+    await insertTestExportJob(orgId, {
+      userId,
+      status: "completed",
+      s3Key: exportKey,
+    });
+
+    const prefix2 = `storages/${orgId}/${name2}/`;
+
+    // First storage listing throws an error
+    context.mocks.s3.listS3Objects
+      .mockRejectedValueOnce(new Error("S3 unavailable"))
+      .mockResolvedValueOnce([{ key: `${prefix2}v1/data.bin`, size: 2048 }]);
+
+    // Should complete without throwing despite first storage failure
+    await deleteUserS3Data(userId);
+
+    // Second storage should still be cleaned up
+    expect(context.mocks.s3.listS3Objects).toHaveBeenCalledTimes(2);
+    expect(context.mocks.s3.deleteS3Objects).toHaveBeenCalledWith(
+      "test-bucket",
+      [`${prefix2}v1/data.bin`],
+    );
+
+    // Export jobs should still be cleaned up
+    expect(context.mocks.s3.deleteS3Objects).toHaveBeenCalledWith(
+      "test-bucket",
+      [exportKey],
+    );
+  });
+
   it("is idempotent - calling twice produces no errors", async () => {
     const storageName = uniqueId("storage");
     await insertTestStorage({
