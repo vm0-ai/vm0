@@ -92,21 +92,18 @@ Review new comments for:
 
 2. Run `/pr-review-loop` skill to perform a full code review and fix cycle
    - The pr-review-loop skill will review the PR, post comments, fix issues, and re-review until LGTM
+   - After the review loop completes, it automatically invokes `/pr-check` to monitor and fix CI pipeline
 
-3. Run `/pr-check` skill to monitor and fix CI pipeline
-   - The pr-check skill will auto-fix lint/format issues
-   - If type or test errors occur, pr-check will exit with details for manual intervention
-
-4. **If both pr-review-loop and pr-check complete successfully**: Post comment to issue:
+3. **If pr-review-loop completes successfully (including CI check)**: Post comment to issue:
    ```bash
    gh issue comment {issue-id} --body "Work completed. PR created: {pr-url}
 
    Code review passed and all CI checks passing."
    ```
 
-5. **If pr-review-loop or pr-check exits with manual intervention required**: Add "pending" label and exit
+4. **If pr-review-loop exits with manual intervention required**: Add "pending" label and exit
 
-6. Keep issue open (user will close it after merging PR)
+5. Keep issue open (user will close it after merging PR)
 
 ## Label Management
 

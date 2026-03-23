@@ -328,3 +328,13 @@ Remaining issues need manual intervention:
 
 All review comments posted to PR.
 ```
+
+---
+
+## Phase 4: CI Check
+
+After the review loop completes, invoke `/pr-check` to monitor CI pipeline and auto-fix any remaining CI issues (lint/format failures from the fix commits, etc.):
+
+invoke skill /pr-check ${PR_NUMBER}
+
+This ensures that all fix commits pushed during the review loop pass CI before the PR is ready for merge.
