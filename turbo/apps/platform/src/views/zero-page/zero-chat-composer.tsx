@@ -450,9 +450,7 @@ export function ZeroChatComposer({
 
   const agentConnectors: ComposerConnectorItem[] = addedConnectors
     .filter((name) => connectorMap.has(name as ConnectorType))
-    .map((name) =>
-      buildConnectorItem(name, connectorMap, optimisticConnected),
-    )
+    .map((name) => buildConnectorItem(name, connectorMap, optimisticConnected))
     .sort((a, b) => Number(a.connected) - Number(b.connected));
 
   const handleConnectSuccess = (type: string) => {
