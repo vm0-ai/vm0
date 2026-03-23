@@ -13,15 +13,15 @@ const context = testContext();
 
 describe("hasFirewallConfig", () => {
   it("should return true for connectors with firewall configs", () => {
-    expect(hasFirewallConfig("github")).toBe(true);
-    expect(hasFirewallConfig("slack")).toBe(true);
-    expect(hasFirewallConfig("gmail")).toBe(true);
-    expect(hasFirewallConfig("atlassian")).toBe(true);
+    expect(hasFirewallConfig("github")).toBeTruthy();
+    expect(hasFirewallConfig("slack")).toBeTruthy();
+    expect(hasFirewallConfig("gmail")).toBeTruthy();
+    expect(hasFirewallConfig("atlassian")).toBeTruthy();
   });
 
   it("should return false for connectors without firewall configs", () => {
-    expect(hasFirewallConfig("notion" as never)).toBe(false);
-    expect(hasFirewallConfig("unknown" as never)).toBe(false);
+    expect(hasFirewallConfig("notion" as never)).toBeFalsy();
+    expect(hasFirewallConfig("unknown" as never)).toBeFalsy();
   });
 });
 

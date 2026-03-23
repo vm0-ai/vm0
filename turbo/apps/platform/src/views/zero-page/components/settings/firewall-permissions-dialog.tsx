@@ -20,6 +20,7 @@ import {
   type PermissionPolicy,
 } from "../../../../signals/zero-page/settings/firewalls.ts";
 import { IconCheck, IconBan } from "@tabler/icons-react";
+import { detach, Reason } from "../../../../signals/utils.ts";
 
 interface FirewallPermission {
   name: string;
@@ -190,14 +191,18 @@ export function FirewallPermissionsDrawer({
     setAllPolicies({ ...allPolicies, [activeRef]: next });
   };
 
-  const handleApply = async () => {
+  const handleApply = () => {
     setSaving(true);
-    try {
-      await onApply(allPolicies);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
+    detach(
+      onApply(allPolicies)
+        .then(() => {
+          onClose();
+        })
+        .finally(() => {
+          setSaving(false);
+        }),
+      Reason.DomCallback,
+    );
   };
 
   const handleRefSwitch = (ref: string) => {
