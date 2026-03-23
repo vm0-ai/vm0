@@ -108,7 +108,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(agentResponse);
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -176,7 +176,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(
               { error: "Internal Server Error" },
@@ -210,7 +210,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -251,7 +251,7 @@ describe("zero-job-detail signals", () => {
           });
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -276,7 +276,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -405,7 +405,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -446,7 +446,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -483,7 +483,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -525,7 +525,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -565,7 +565,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -606,7 +606,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -752,7 +752,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -850,7 +850,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/agent/composes/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },

@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { orgMetadata } from "../../../../src/db/schema/org-metadata";
+import {
+  getAutoRechargeConfig,
+  updateAutoRechargeConfig,
+} from "../../../../src/lib/billing/billing-service";
 import { CREDITS_PER_DOLLAR } from "../../../../src/lib/billing/auto-recharge-service";
 
 const updateBodySchema = z.object({
@@ -35,22 +37,8 @@ export async function GET(request: Request) {
   const orgSlug = new URL(request.url).searchParams.get("org");
   const { org } = await resolveOrg(authResult, orgSlug);
 
-  const db = globalThis.services.db;
-  const [row] = await db
-    .select({
-      autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
-      autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
-      autoRechargeAmount: orgMetadata.autoRechargeAmount,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, org.orgId))
-    .limit(1);
-
-  return NextResponse.json({
-    enabled: row?.autoRechargeEnabled ?? false,
-    threshold: row?.autoRechargeThreshold ?? null,
-    amount: row?.autoRechargeAmount ?? null,
-  });
+  const config = await getAutoRechargeConfig(org.orgId);
+  return NextResponse.json(config);
 }
 
 /**
@@ -90,44 +78,15 @@ export async function PUT(request: Request) {
     );
   }
 
-  const { enabled, threshold, amount } = parsed.data;
+  const result = await updateAutoRechargeConfig(
+    org.orgId,
+    org.tier,
+    parsed.data,
+  );
 
-  // When enabling, threshold and amount are required, and org must be on a paid tier
-  if (enabled) {
-    if (org.tier === "free") {
-      return NextResponse.json(
-        { error: "Auto-recharge is only available for paid plans (Pro/Max)" },
-        { status: 400 },
-      );
-    }
-
-    if (threshold === undefined || amount === undefined) {
-      return NextResponse.json(
-        {
-          error:
-            "threshold and amount are required when enabling auto-recharge",
-        },
-        { status: 400 },
-      );
-    }
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  const db = globalThis.services.db;
-  await db
-    .update(orgMetadata)
-    .set({
-      autoRechargeEnabled: enabled,
-      autoRechargeThreshold: enabled ? threshold : null,
-      autoRechargeAmount: enabled ? amount : null,
-      // Clear pending state when disabling
-      ...(!enabled ? { autoRechargePendingAt: null } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(orgMetadata.orgId, org.orgId));
-
-  return NextResponse.json({
-    enabled,
-    threshold: enabled ? threshold : null,
-    amount: enabled ? amount : null,
-  });
+  return NextResponse.json(result.data);
 }

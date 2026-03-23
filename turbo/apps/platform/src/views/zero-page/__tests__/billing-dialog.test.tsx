@@ -347,7 +347,7 @@ describe("auto-recharge in billing dialog", () => {
   it("should send correct PUT body when enabling auto-recharge via Save", async () => {
     const requestBody = vi.fn();
     server.use(
-      http.put("*/api/billing/auto-recharge", async ({ request }) => {
+      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
         requestBody(await request.json());
         return HttpResponse.json({
           enabled: true,
@@ -398,7 +398,7 @@ describe("auto-recharge in billing dialog", () => {
   it("should send enabled:false when disabling auto-recharge via Save", async () => {
     const requestBody = vi.fn();
     server.use(
-      http.put("*/api/billing/auto-recharge", async ({ request }) => {
+      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
         requestBody(await request.json());
         return HttpResponse.json({
           enabled: false,

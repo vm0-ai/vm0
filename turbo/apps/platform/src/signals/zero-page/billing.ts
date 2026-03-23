@@ -1,5 +1,11 @@
 import { command, computed, state } from "ccstate";
-import { fetch$ } from "../fetch.ts";
+import {
+  zeroBillingStatusContract,
+  zeroBillingCheckoutContract,
+  zeroBillingPortalContract,
+  zeroBillingAutoRechargeContract,
+} from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 import {
   setSelectedPlanTier$,
@@ -52,14 +58,14 @@ export const billingDialogLoading$ = computed((get) =>
  */
 export const billingStatusAsync$ = computed(async (get) => {
   get(billingReload$);
-  const fetchFn = await get(fetch$);
-  const response = await fetchFn("/api/billing/status");
-  if (!response.ok) {
-    log.error("Failed to fetch billing status", response.status);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingStatusContract);
+  const result = await client.get();
+  if (result.status !== 200) {
+    log.error("Failed to fetch billing status", result.status);
     return null;
   }
-  const data = (await response.json()) as BillingStatus;
-  return data;
+  return result.body as BillingStatus;
 });
 
 // ---------------------------------------------------------------------------
@@ -89,33 +95,28 @@ export const startCheckout$ = command(
   async ({ get, set }, tier: "pro" | "team") => {
     set(internalDialogLoading$, true);
 
-    const fetchFn = get(fetch$);
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
     successUrl.searchParams.set("billing", "success");
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
 
-    const response = await fetchFn("/api/billing/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingCheckoutContract);
+    const result = await client.create({
+      body: {
         tier,
         successUrl: successUrl.toString(),
         cancelUrl: cancelUrl.toString(),
-      }),
+      },
     });
 
-    const data = (await response.json()) as {
-      url?: string;
-      error?: string;
-    };
-
-    if (data.url) {
-      window.location.href = data.url;
+    if (result.status === 200 && result.body.url) {
+      window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
     } else {
-      log.error("Checkout failed", data.error);
+      const errorBody = result.body as { error?: { message?: string } };
+      log.error("Checkout failed", errorBody.error?.message);
       set(internalDialogLoading$, false);
     }
   },
@@ -124,22 +125,17 @@ export const startCheckout$ = command(
 export const startDowngrade$ = command(async ({ get, set }) => {
   set(internalDialogLoading$, true);
 
-  const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/billing/portal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ returnUrl: window.location.href }),
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingPortalContract);
+  const result = await client.create({
+    body: { returnUrl: window.location.href },
   });
 
-  const data = (await response.json()) as {
-    url?: string;
-    error?: string;
-  };
-
-  if (data.url) {
-    window.location.href = data.url;
+  if (result.status === 200 && result.body.url) {
+    window.location.href = result.body.url;
   } else {
-    log.error("Portal redirect failed", data.error);
+    const errorBody = result.body as { error?: { message?: string } };
+    log.error("Portal redirect failed", errorBody.error?.message);
     set(internalDialogLoading$, false);
   }
 });
@@ -155,23 +151,16 @@ export const saveAutoRecharge$ = command(
   ) => {
     set(internalDialogLoading$, true);
 
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/billing/auto-recharge", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
-    });
-
-    const data = (await response.json()) as {
-      enabled?: boolean;
-      error?: string;
-    };
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingAutoRechargeContract);
+    const result = await client.update({ body: config });
 
     set(internalDialogLoading$, false);
 
-    if (!response.ok) {
-      log.error("Auto-recharge save failed", data.error);
-      return { ok: false, error: data.error };
+    if (result.status !== 200) {
+      const errorBody = result.body as { error?: { message?: string } };
+      log.error("Auto-recharge save failed", errorBody.error?.message);
+      return { ok: false, error: errorBody.error?.message };
     }
 
     // Invalidate billing status cache so the dialog shows fresh data on re-open
