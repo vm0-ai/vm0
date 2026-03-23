@@ -170,12 +170,6 @@ export function FirewallPermissionsDrawer({
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
   const policies = allPolicies[activeRef] ?? {};
 
-  const counts = { allow: 0, deny: 0, ask: 0 };
-  for (const p of permissions) {
-    const pol = policies[p.name] ?? "allow";
-    counts[pol]++;
-  }
-
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
     setAllPolicies({
       ...allPolicies,

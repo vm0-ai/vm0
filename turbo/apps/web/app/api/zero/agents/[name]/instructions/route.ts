@@ -36,7 +36,6 @@ import { extractFileFromTar } from "../../../../../../src/lib/tar";
 import { env } from "../../../../../../src/env";
 import { extractConnectors } from "../../../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../../../src/lib/logger";
-import type { FirewallPolicies } from "@vm0/core";
 
 const log = logger("api:zero-agents:instructions");
 
@@ -269,7 +268,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
         connectors: extractConnectors(existingContent),
-        firewallPolicies: (agent?.firewallPolicies as FirewallPolicies) ?? null,
+        firewallPolicies: agent?.firewallPolicies ?? null,
       },
     };
   },

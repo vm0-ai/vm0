@@ -57,12 +57,8 @@ export const saveFirewallPolicies$ = command(
     });
 
     if (!resp.ok) {
-      const errorData = (await resp.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Save failed: ${resp.statusText}`,
-      );
+      const body = await resp.text().catch(() => resp.statusText);
+      throw new Error(`Save failed: ${body}`);
     }
 
     const data = (await resp.json()) as {

@@ -8,6 +8,7 @@ import {
   index,
   jsonb,
 } from "drizzle-orm/pg-core";
+import type { FirewallPolicies } from "@vm0/core";
 
 /**
  * Zero Agents table
@@ -23,7 +24,7 @@ export const zeroAgents = pgTable(
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
     sound: varchar("sound", { length: 64 }),
-    firewallPolicies: jsonb("firewall_policies"),
+    firewallPolicies: jsonb("firewall_policies").$type<FirewallPolicies>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

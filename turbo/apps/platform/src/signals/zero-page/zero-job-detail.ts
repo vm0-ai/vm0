@@ -436,6 +436,9 @@ const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
       `/api/zero/agents/${encodeURIComponent(name)}`,
     );
     if (!response.ok) {
+      L.warn(
+        `Failed to fetch firewall policies: ${response.statusText} (${response.status})`,
+      );
       return;
     }
 

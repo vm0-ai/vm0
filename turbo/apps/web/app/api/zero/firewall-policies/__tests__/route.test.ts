@@ -8,6 +8,7 @@ import {
   insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
@@ -234,9 +235,6 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return 401 without auth", async () => {
-    const { mockClerk } = await import(
-      "../../../../../src/__tests__/clerk-mock"
-    );
     mockClerk({ userId: null });
 
     const response = await putPolicies(
