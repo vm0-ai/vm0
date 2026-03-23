@@ -460,6 +460,9 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
             continue;
         }
 
+        // TOCTOU is not a concern here: entries are processed sequentially from a single
+        // archive stream, so no external actor can modify the filesystem between our checks
+        // and the extraction below.
         entry.unpack_in(&target).map_err(|e| DownloadError {
             message: format!("Failed to extract entry {}: {e}", entry_path.display()),
             retriable: false,

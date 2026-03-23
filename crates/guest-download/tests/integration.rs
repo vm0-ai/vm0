@@ -978,3 +978,159 @@ fn hardlink_relative_dotdot_escape_blocked() {
     );
     assert!(!mount.join("evil_hardlink").exists());
 }
+
+// ---------------------------------------------------------------------------
+// Test 28: absolute path entry is blocked
+// ---------------------------------------------------------------------------
+#[test]
+fn absolute_path_entry_blocked() {
+    let server = MockServer::start();
+
+    // Build raw tar with /etc/passwd entry — tar crate builder rejects absolute paths
+    let tar_gz = {
+        let content = b"malicious";
+        let path_bytes = b"/etc/passwd";
+
+        let mut full_tar: Vec<u8> = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut full_tar);
+            let mut h = tar::Header::new_gnu();
+            h.set_size(4);
+            h.set_mode(0o644);
+            h.set_cksum();
+            builder
+                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
+                .unwrap();
+            builder.into_inner().unwrap();
+        }
+        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
+            full_tar.truncate(full_tar.len() - 512);
+        }
+
+        let mut header_block = [0u8; 512];
+        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
+        header_block[100..108].copy_from_slice(b"0000644\0");
+        header_block[108..116].copy_from_slice(b"0000000\0");
+        header_block[116..124].copy_from_slice(b"0000000\0");
+        let size_str = format!("{:011o}\0", content.len());
+        header_block[124..136].copy_from_slice(size_str.as_bytes());
+        header_block[136..148].copy_from_slice(b"00000000000\0");
+        header_block[156] = b'0';
+        header_block[257..263].copy_from_slice(b"ustar\0");
+        header_block[263..265].copy_from_slice(b"00");
+        header_block[148..156].copy_from_slice(b"        ");
+        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
+        let cksum_str = format!("{:06o}\0 ", cksum);
+        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
+
+        full_tar.extend_from_slice(&header_block);
+        let mut data_block = [0u8; 512];
+        data_block[..content.len()].copy_from_slice(content);
+        full_tar.extend_from_slice(&data_block);
+        full_tar.extend_from_slice(&[0u8; 1024]);
+
+        let mut gz_data = Vec::new();
+        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
+        encoder.write_all(&full_tar).unwrap();
+        encoder.finish().unwrap();
+        gz_data
+    };
+
+    server.mock(|when, then| {
+        when.method(GET).path("/storage.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&tar_gz);
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("mount");
+    let url = server.url("/storage.tar.gz");
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+
+    assert!(result);
+    assert_eq!(
+        std::fs::read_to_string(mount.join("legit.txt")).unwrap(),
+        "safe"
+    );
+    // Absolute path entry should NOT be extracted
+    assert!(!mount.join("etc/passwd").exists());
+}
+
+// ---------------------------------------------------------------------------
+// Test 29: symlink with missing link target is skipped
+// ---------------------------------------------------------------------------
+#[test]
+fn symlink_missing_link_target_skipped() {
+    let server = MockServer::start();
+
+    // Build raw tar with a symlink entry that has no link target in the header
+    let tar_gz = {
+        let mut full_tar: Vec<u8> = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut full_tar);
+            let mut h = tar::Header::new_gnu();
+            h.set_size(4);
+            h.set_mode(0o644);
+            h.set_cksum();
+            builder
+                .append_data(&mut h, "legit.txt", b"safe" as &[u8])
+                .unwrap();
+            builder.into_inner().unwrap();
+        }
+        while full_tar.len() >= 512 && full_tar[full_tar.len() - 512..].iter().all(|&b| b == 0) {
+            full_tar.truncate(full_tar.len() - 512);
+        }
+
+        // Symlink header with empty link target (linkname field at bytes 157-257 is all zeros)
+        let path_bytes = b"bad_symlink";
+        let mut header_block = [0u8; 512];
+        header_block[..path_bytes.len()].copy_from_slice(path_bytes);
+        header_block[100..108].copy_from_slice(b"0000777\0");
+        header_block[108..116].copy_from_slice(b"0000000\0");
+        header_block[116..124].copy_from_slice(b"0000000\0");
+        header_block[124..136].copy_from_slice(b"00000000000\0");
+        header_block[136..148].copy_from_slice(b"00000000000\0");
+        header_block[156] = b'2'; // symlink type
+        // linkname at 157..257 left as zeros (empty target)
+        header_block[257..263].copy_from_slice(b"ustar\0");
+        header_block[263..265].copy_from_slice(b"00");
+        header_block[148..156].copy_from_slice(b"        ");
+        let cksum: u32 = header_block.iter().map(|&b| b as u32).sum();
+        let cksum_str = format!("{:06o}\0 ", cksum);
+        header_block[148..156].copy_from_slice(cksum_str.as_bytes());
+
+        full_tar.extend_from_slice(&header_block);
+        full_tar.extend_from_slice(&[0u8; 1024]);
+
+        let mut gz_data = Vec::new();
+        let mut encoder = GzEncoder::new(&mut gz_data, Compression::fast());
+        encoder.write_all(&full_tar).unwrap();
+        encoder.finish().unwrap();
+        gz_data
+    };
+
+    server.mock(|when, then| {
+        when.method(GET).path("/storage.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&tar_gz);
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let mount = dir.path().join("mount");
+    let url = server.url("/storage.tar.gz");
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = guest_download::run(manifest.to_str().unwrap());
+
+    assert!(result);
+    assert_eq!(
+        std::fs::read_to_string(mount.join("legit.txt")).unwrap(),
+        "safe"
+    );
+    // Malformed symlink should NOT be created
+    assert!(mount.join("bad_symlink").symlink_metadata().is_err());
+}
