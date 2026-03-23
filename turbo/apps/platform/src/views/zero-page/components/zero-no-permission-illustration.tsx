@@ -1,11 +1,11 @@
-import noPermissionIllustration from "../assets/no-permission-illustration.png";
+import noPermissionIllustration from "../assets/no-permission-illustration.webp";
 
 type ZeroNoPermissionIllustrationProps = {
   className?: string;
 };
 
 /**
- * Padlock illustration for restricted access / not-found states (transparent PNG).
+ * Padlock illustration for restricted access / not-found states (transparent WebP).
  */
 export function ZeroNoPermissionIllustration({
   className = "h-28 w-auto max-w-[200px] object-contain opacity-90",
@@ -15,6 +15,7 @@ export function ZeroNoPermissionIllustration({
       src={noPermissionIllustration}
       alt=""
       role="presentation"
+      loading="lazy"
       className={className}
     />
   );
