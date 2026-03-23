@@ -265,10 +265,10 @@ function AccountDropdown({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className={`flex items-center rounded-lg transition-colors duration-200 ${
+          className={`rounded-lg transition-colors duration-200 ${
             collapsed
-              ? "justify-center p-2 h-10 w-10"
-              : "w-full gap-2 p-2 text-left hover:bg-sidebar-accent/50"
+              ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent/50"
+              : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent/50"
           }`}
         >
           <AccountAvatar
@@ -507,7 +507,7 @@ function RecentChatSection({
     <div className="mt-4 flex flex-col min-h-0 flex-1">
       {searchOpen ? (
         <div
-          className="shrink-0 flex items-center gap-2 h-8 rounded-lg pl-2 pr-1 bg-sidebar-accent/60"
+          className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2"
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) {
@@ -542,7 +542,7 @@ function RecentChatSection({
           </div>
         </div>
       ) : (
-        <div className="shrink-0 zero-nav-recent-label h-8 flex items-center justify-between pl-2 pr-1">
+        <div className="zero-nav-recent-label flex h-8 shrink-0 items-center justify-between pl-2 pr-0">
           <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate">
             Chats with {agentLabel}
           </span>
@@ -649,8 +649,8 @@ function TalkToSection({
 
   return (
     <div className="shrink-0 mt-4">
-      <div className="h-8 flex items-center pl-2 pr-1">
-        <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate flex-1">
+      <div className="flex h-8 items-center justify-between pl-2 pr-0">
+        <span className="flex-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50">
           Pinned
         </span>
         <TooltipProvider delayDuration={200}>
@@ -718,7 +718,7 @@ function TalkToSection({
               <Link
                 pathname="/talk/:name"
                 options={{ pathParams: { name: agent.name } }}
-                className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 pr-8 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+                className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   isPrimarySelected
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : isFromChat
@@ -735,7 +735,7 @@ function TalkToSection({
                   {agent.displayName ?? agent.name}
                 </span>
               </Link>
-              <div className="absolute right-1 top-0 flex h-8 items-center">
+              <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -748,7 +748,7 @@ function TalkToSection({
                             pinnedIds.filter((id) => id !== agent.id),
                           );
                         }}
-                        className={`flex h-5 w-5 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                        className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
                           isPrimarySelected
                             ? "text-sidebar-primary/80 hover:text-white hover:bg-white/20"
                             : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
@@ -906,12 +906,12 @@ export function ZeroSidebar() {
   if (collapsed) {
     return (
       <VM0ClerkProvider>
-        <aside className="zero-nav flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300">
-          {/* Expand button */}
-          <div className="shrink-0 flex items-center justify-center pt-3 pb-1">
+        <aside className="zero-nav box-border flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
+          {/* Expand — same row pattern as every nav icon (centered in content column) */}
+          <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
             <button
               type="button"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
               onClick={onCollapse}
               aria-label="Expand sidebar"
             >
@@ -919,52 +919,57 @@ export function ZeroSidebar() {
             </button>
           </div>
 
-          {/* Icon-only nav */}
-          <nav className="flex-1 flex flex-col items-center gap-1 p-2">
+          {/* Icon-only nav: one centered column; inline-flex links never stretch */}
+          <nav className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0">
             <TooltipProvider delayDuration={100}>
               {allNavItems.map(({ id, label, icon: Icon }) => (
-                <Tooltip key={id}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      pathname={
-                        id === "chat" ? "/" : id === "team" ? "/team" : "/:tab"
-                      }
-                      options={
-                        id === "chat" || id === "team"
-                          ? undefined
-                          : { pathParams: { tab: id } }
-                      }
-                      onClick={(e) => {
-                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                          return;
+                <div key={id} className="flex w-full shrink-0 justify-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link
+                        pathname={
+                          id === "chat"
+                            ? "/"
+                            : id === "team"
+                              ? "/team"
+                              : "/:tab"
                         }
-                        e.preventDefault();
-                        if (id === "chat") {
-                          onSelect("chat");
-                          onNewChat?.(null);
-                        } else {
-                          onSelect(id);
+                        options={
+                          id === "chat" || id === "team"
+                            ? undefined
+                            : { pathParams: { tab: id } }
                         }
-                      }}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-200 ${
-                        activeId === id
-                          ? "bg-sidebar-active text-sidebar-primary"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
-                      }`}
-                    >
-                      <Icon size={16} className="shrink-0" />
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p className="text-xs">{label}</p>
-                  </TooltipContent>
-                </Tooltip>
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                            return;
+                          }
+                          e.preventDefault();
+                          if (id === "chat") {
+                            onSelect("chat");
+                            onNewChat?.(null);
+                          } else {
+                            onSelect(id);
+                          }
+                        }}
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                          activeId === id
+                            ? "bg-sidebar-active text-sidebar-primary"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent"
+                        }`}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p className="text-xs">{label}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               ))}
             </TooltipProvider>
           </nav>
 
-          {/* Account avatar */}
-          <div className="p-2 flex justify-center">
+          <div className="flex w-full shrink-0 justify-center pb-2 pt-1">
             <AccountDropdown onAccountAction={onAccountAction} collapsed />
           </div>
         </aside>
@@ -977,13 +982,13 @@ export function ZeroSidebar() {
       <aside className="zero-nav flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl">
         {/* Organization switcher */}
         <div className="shrink-0 px-2 pt-1.5 pb-0">
-          <div className="flex items-center justify-between rounded-lg pr-0 py-0.5">
-            <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 rounded-lg py-0.5">
+            <div className="min-w-0 flex-1">
               <ClerkOrgSwitcher />
             </div>
             <button
               type="button"
-              className="flex h-7 w-7 -mr-[3px] shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
               onClick={onCollapse}
               aria-label="Collapse sidebar"
             >
@@ -995,7 +1000,7 @@ export function ZeroSidebar() {
         <nav className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1">
           {/* Manage section */}
           <div className="shrink-0">
-            <div className="h-8 flex items-center pl-2">
+            <div className="flex h-8 items-center pl-2 pr-0">
               <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
                 Manage
               </span>

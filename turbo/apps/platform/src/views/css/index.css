@@ -84,15 +84,15 @@
     0 16px 40px hsl(220 12% 20% / 0.05);
 }
 
-/* Search bar / text input */
+/* Search bar / text input (matches form inputs: white surface in light theme) */
 .zero-app .zero-search-input {
-  background-color: hsl(var(--gray-50));
+  background-color: hsl(var(--input));
   border-color: hsl(var(--border));
 }
 .zero-app .zero-search-input::placeholder {
   color: hsl(var(--muted-foreground));
 }
-.zero-app .zero-search-input:focus {
+.zero-app .zero-search-input:focus-within {
   border-color: hsl(var(--primary));
   outline: none;
 }
