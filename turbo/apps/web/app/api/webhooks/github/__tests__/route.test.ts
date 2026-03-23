@@ -263,10 +263,14 @@ describe("POST /api/webhooks/github", () => {
       expect(startRunSpy).toHaveBeenCalledTimes(1);
       const callArgs = startRunSpy.mock.calls[0]![0] as {
         prompt: string;
+        appendSystemPrompt: string;
         callbacks: Array<{ payload: { issueNumber: number } }>;
       };
-      expect(callArgs.prompt).toContain("This is a test issue body");
-      expect(callArgs.prompt).toContain(
+      // Issue body and integration context are now in appendSystemPrompt
+      expect(callArgs.appendSystemPrompt).toContain(
+        "This is a test issue body",
+      );
+      expect(callArgs.appendSystemPrompt).toContain(
         "You are currently running inside: GitHub",
       );
       expect(callArgs.callbacks[0]!.payload.issueNumber).toBe(42);
@@ -385,10 +389,13 @@ describe("POST /api/webhooks/github", () => {
       await flushAfterCallbacks();
 
       expect(startRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = startRunSpy.mock.calls[0]![0] as { prompt: string };
-      // When body is null, falls back to issue title
-      expect(callArgs.prompt).toContain("Test Issue");
-      expect(callArgs.prompt).toContain(
+      const callArgs = startRunSpy.mock.calls[0]![0] as {
+        prompt: string;
+        appendSystemPrompt: string;
+      };
+      // When body is null, falls back to issue title in appendSystemPrompt
+      expect(callArgs.appendSystemPrompt).toContain("Test Issue");
+      expect(callArgs.appendSystemPrompt).toContain(
         "You are currently running inside: GitHub",
       );
     });
