@@ -16,7 +16,6 @@ import {
   orgModelProvidersMainContract,
   createErrorResponse,
   hasAuthMethods,
-  VM0_ORG_SLUG,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -94,12 +93,6 @@ const router = tsr.router(orgModelProvidersMainContract, {
       let created: boolean;
 
       if (type === "vm0") {
-        if (org.slug !== VM0_ORG_SLUG) {
-          return createErrorResponse(
-            "FORBIDDEN",
-            "VM0 managed provider is only available to the vm0 org",
-          );
-        }
         const result = await upsertOrgNoSecretModelProvider(
           org.orgId,
           type,

@@ -239,11 +239,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
   },
-  [FeatureSwitchKey.Vm0ModelProvider]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-  },
   [FeatureSwitchKey.Usage]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,

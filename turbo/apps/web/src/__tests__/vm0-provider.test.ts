@@ -70,8 +70,8 @@ describe("VM0 managed model provider", () => {
       expect(data.created).toBe(true);
     });
 
-    it("should return 403 for non-vm0 org", async () => {
-      const userId = uniqueId("vm0-forbid");
+    it("should create vm0 provider for any org without secret", async () => {
+      const userId = uniqueId("vm0-any-org");
       const { slug } = await setupOrg(userId, "org:admin", "my-org");
 
       const response = await POST(
@@ -84,10 +84,12 @@ describe("VM0 managed model provider", () => {
           }),
         }),
       );
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(201);
 
       const data = await response.json();
-      expect(data.error.code).toBe("FORBIDDEN");
+      expect(data.provider.type).toBe("vm0");
+      expect(data.provider.selectedModel).toBe("kimi-k2.5");
+      expect(data.created).toBe(true);
     });
   });
 

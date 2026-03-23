@@ -1,18 +1,11 @@
 import { command, computed, state } from "ccstate";
 import {
-  type ModelProviderType,
   type ZeroAgentResponse,
-  getDefaultAuthMethod,
-  getDefaultModel,
-  getSecretsForAuthMethod,
-  hasAuthMethods,
-  hasModelSelection,
   onboardingStatusResponseSchema,
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
-import { getProviderShape } from "../../views/zero-page/components/settings/provider-ui-config.ts";
 import { SEED_INSTRUCTIONS, SEED_SKILLS } from "../../data/the-seed.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -97,33 +90,10 @@ export const setMemberWelcomeStep$ = command(
 // Onboarding form state
 // ---------------------------------------------------------------------------
 
-type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
+type ZeroOnboardingStep = "1" | "3" | "4" | "done";
 
 const internalStep$ = state<ZeroOnboardingStep>("1");
 const internalAgentName$ = state("Zero");
-const internalProviderType$ = state<ModelProviderType>(
-  "claude-code-oauth-token",
-);
-
-interface ZeroFormValues {
-  secret: string;
-  selectedModel: string;
-  authMethod: string;
-  secrets: Record<string, string>;
-  useDefaultModel: boolean;
-}
-
-function defaultFormValues(): ZeroFormValues {
-  return {
-    secret: "",
-    selectedModel: "",
-    authMethod: "",
-    secrets: {},
-    useDefaultModel: true,
-  };
-}
-
-const internalFormValues$ = state<ZeroFormValues>(defaultFormValues());
 const internalSaving$ = state(false);
 const internalSelectedConnectors$ = state<string[]>([]);
 const internalOnboardingError$ = state<string | null>(null);
@@ -134,7 +104,6 @@ const internalOnboardingError$ = state<string | null>(null);
 
 export const zeroOnboardingStep$ = computed((get) => get(internalStep$));
 export const zeroAgentName$ = computed((get) => get(internalAgentName$));
-export const zeroFormValues$ = computed((get) => get(internalFormValues$));
 export const zeroSaving$ = computed((get) => get(internalSaving$));
 export const zeroSelectedConnectors$ = computed((get) =>
   get(internalSelectedConnectors$),
@@ -148,34 +117,6 @@ export const clearZeroOnboardingError$ = command(({ set }) => {
   set(internalOnboardingError$, null);
 });
 
-export const zeroCanSave$ = computed((get) => {
-  const providerType = get(internalProviderType$);
-  const formValues = get(internalFormValues$);
-  const shape = getProviderShape(providerType);
-
-  if (shape === "multi-auth") {
-    const secretsConfig = getSecretsForAuthMethod(
-      providerType,
-      formValues.authMethod,
-    );
-    if (!secretsConfig) {
-      return false;
-    }
-    for (const [key, config] of Object.entries(secretsConfig)) {
-      if (config.required && !formValues.secrets[key]?.trim()) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  if (shape === "no-secret") {
-    return true;
-  }
-
-  return formValues.secret.trim().length > 0;
-});
-
 // ---------------------------------------------------------------------------
 // Commands: form updates
 // ---------------------------------------------------------------------------
@@ -187,27 +128,6 @@ export const setZeroStep$ = command(({ set }, step: ZeroOnboardingStep) => {
 export const setZeroAgentName$ = command(({ set }, name: string) => {
   set(internalAgentName$, name);
 });
-
-export const setZeroProviderType$ = command(
-  ({ set }, type: ModelProviderType) => {
-    set(internalProviderType$, type);
-
-    const defaultAuth = hasAuthMethods(type)
-      ? (getDefaultAuthMethod(type) ?? "")
-      : "";
-    const defaultModel = hasModelSelection(type)
-      ? (getDefaultModel(type) ?? "")
-      : "";
-
-    set(internalFormValues$, {
-      secret: "",
-      selectedModel: defaultModel,
-      authMethod: defaultAuth,
-      secrets: {},
-      useDefaultModel: !defaultModel,
-    });
-  },
-);
 
 export const toggleZeroConnector$ = command(
   ({ set }, connectorValue: string) => {
@@ -243,49 +163,6 @@ export const initZeroOnboarding$ = command(
 );
 
 /**
- * Save model provider (step 2 completion).
- */
-export const saveZeroModelProvider$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    set(internalSaving$, true);
-
-    try {
-      const providerType = get(internalProviderType$);
-      const formValues = get(internalFormValues$);
-      const shape = getProviderShape(providerType);
-
-      // Build request based on provider shape
-      const request: Record<string, unknown> = { type: providerType };
-
-      if (shape === "multi-auth") {
-        request.authMethod = formValues.authMethod;
-        request.secrets = formValues.secrets;
-      } else if (shape !== "no-secret") {
-        request.secret = formValues.secret.trim();
-      }
-
-      if (
-        hasModelSelection(providerType) &&
-        !formValues.useDefaultModel &&
-        formValues.selectedModel
-      ) {
-        request.selectedModel = formValues.selectedModel;
-      }
-
-      await set(
-        createOrgModelProvider$,
-        request as Parameters<typeof createOrgModelProvider$.write>[1],
-      );
-      signal.throwIfAborted();
-
-      L.debug("Model provider created during zero onboarding");
-    } finally {
-      set(internalSaving$, false);
-    }
-  },
-);
-
-/**
  * Complete onboarding: create agent via zero agents API and set as default.
  */
 export const completeZeroOnboarding$ = command(
@@ -297,6 +174,13 @@ export const completeZeroOnboarding$ = command(
       const displayName = get(internalAgentName$);
       const selectedConnectors = get(internalSelectedConnectors$);
       const fetchFn = get(fetch$);
+
+      // Auto-initialize vm0 model provider with default model
+      await set(createOrgModelProvider$, {
+        type: "vm0",
+        selectedModel: "claude-sonnet-4.6",
+      });
+      signal.throwIfAborted();
 
       // Merge seed skills with user-selected skills (deduplicated)
       const allConnectors = [

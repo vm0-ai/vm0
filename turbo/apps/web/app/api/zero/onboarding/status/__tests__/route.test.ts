@@ -5,7 +5,6 @@ import {
   createTestCompose,
   createTestZeroAgent,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { upsertOrgModelProvider } from "../../../../../../src/lib/model-provider/model-provider-service";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { PUT as setDefaultAgent } from "../../../default-agent/route";
@@ -48,7 +47,6 @@ describe("GET /api/zero/onboarding/status", () => {
       needsOnboarding: true,
       isAdmin: false,
       hasOrg: false,
-      hasModelProvider: false,
       hasDefaultAgent: false,
       defaultAgentName: null,
       defaultAgentComposeId: null,
@@ -57,7 +55,7 @@ describe("GET /api/zero/onboarding/status", () => {
     });
   });
 
-  it("should return hasOrg=true, hasModelProvider=false when org exists but no provider", async () => {
+  it("should return hasOrg=true when org exists but no default agent", async () => {
     await context.setupUser();
 
     const request = createTestRequest(
@@ -68,30 +66,6 @@ describe("GET /api/zero/onboarding/status", () => {
 
     expect(response.status).toBe(200);
     expect(data.hasOrg).toBe(true);
-    expect(data.hasModelProvider).toBe(false);
-    expect(data.hasDefaultAgent).toBe(false);
-    expect(data.needsOnboarding).toBe(true);
-  });
-
-  it("should return hasModelProvider=true when org-level provider exists", async () => {
-    const user = await context.setupUser();
-
-    // Create org-level model provider
-    await upsertOrgModelProvider(
-      user.orgId,
-      "anthropic-api-key",
-      "test-org-secret-key",
-    );
-
-    const request = createTestRequest(
-      "http://localhost:3000/api/zero/onboarding/status",
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.hasOrg).toBe(true);
-    expect(data.hasModelProvider).toBe(true);
     expect(data.hasDefaultAgent).toBe(false);
     expect(data.needsOnboarding).toBe(true);
   });
@@ -126,7 +100,6 @@ describe("GET /api/zero/onboarding/status", () => {
       needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasModelProvider: false,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
       defaultAgentComposeId: compose.composeId,
@@ -171,7 +144,6 @@ describe("GET /api/zero/onboarding/status", () => {
       needsOnboarding: false,
       isAdmin: true,
       hasOrg: true,
-      hasModelProvider: false,
       hasDefaultAgent: true,
       defaultAgentName: "test-agent",
       defaultAgentComposeId: compose.composeId,
@@ -207,7 +179,6 @@ describe("GET /api/zero/onboarding/status", () => {
 
     expect(response.status).toBe(200);
     expect(data.hasOrg).toBe(true);
-    expect(data.hasModelProvider).toBe(false);
     expect(data.hasDefaultAgent).toBe(true);
     expect(data.needsOnboarding).toBe(false);
   });

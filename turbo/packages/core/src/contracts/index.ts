@@ -239,9 +239,6 @@ export {
   // Provider compatibility
   getProviderBaseUrl,
   areProvidersCompatible,
-  // Feature-gated provider support
-  getProviderFeatureFlag,
-  isProviderVisible,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support

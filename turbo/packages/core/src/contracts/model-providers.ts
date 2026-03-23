@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FeatureSwitchKey } from "../feature-switch-key";
+
 import type { ExpandedFirewallConfig } from "./firewalls";
 
 /**
@@ -675,32 +675,6 @@ export function hasModelSelection(type: ModelProviderType): boolean {
 export function allowsCustomModel(type: ModelProviderType): boolean {
   const config = MODEL_PROVIDER_TYPES[type];
   return "allowCustomModel" in config && config.allowCustomModel === true;
-}
-
-/**
- * Get the feature flag key for a model provider type, if any.
- * Returns undefined for providers without feature gating.
- */
-export function getProviderFeatureFlag(
-  type: ModelProviderType,
-): FeatureSwitchKey | undefined {
-  if (type === "vm0") {
-    return FeatureSwitchKey.Vm0ModelProvider;
-  }
-  return undefined;
-}
-
-/**
- * Check if a model provider type is visible given the current feature switch states.
- * Providers without a featureFlag are always visible.
- */
-export function isProviderVisible(
-  type: ModelProviderType,
-  features: Partial<Record<FeatureSwitchKey, boolean>>,
-): boolean {
-  const flag = getProviderFeatureFlag(type);
-  if (!flag) return true;
-  return features[flag] === true;
 }
 
 /**
