@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroOrgContract } from "@vm0/core";
+import { zeroOrgContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -41,12 +41,7 @@ const router = tsr.router(zeroOrgContract, {
       };
     } catch (error) {
       if (isNotFound(error) || isBadRequest(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Resource not found", code: "NOT_FOUND" },
-          },
-        };
+        return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
     }
@@ -61,26 +56,8 @@ const router = tsr.router(zeroOrgContract, {
 
     const orgSlug = new URL(request.url).searchParams.get("org");
 
-    let resolvedOrg;
     try {
-      ({ org: resolvedOrg } = await resolveOrg(authCtx, orgSlug));
-    } catch (error) {
-      if (isNotFound(error) || isBadRequest(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              message:
-                "No org configured. Set your org with: vm0 org set <slug>",
-              code: "NOT_FOUND",
-            },
-          },
-        };
-      }
-      throw error;
-    }
-
-    try {
+      const { org: resolvedOrg } = await resolveOrg(authCtx, orgSlug);
       const updatedOrg = await updateOrg(resolvedOrg.orgId, userId, {
         slug: body.slug,
         name: body.name,
@@ -99,35 +76,18 @@ const router = tsr.router(zeroOrgContract, {
     } catch (error) {
       if (isBadRequest(error)) {
         if (error.message.includes("already exists")) {
-          return {
-            status: 409 as const,
-            body: {
-              error: { message: "Resource conflict", code: "CONFLICT" },
-            },
-          };
+          return createErrorResponse("CONFLICT", "Resource conflict");
         }
-        return {
-          status: 400 as const,
-          body: {
-            error: { message: "Invalid request", code: "BAD_REQUEST" },
-          },
-        };
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
       }
       if (isForbidden(error)) {
-        return {
-          status: 403 as const,
-          body: {
-            error: { message: "Access denied", code: "FORBIDDEN" },
-          },
-        };
+        return createErrorResponse("FORBIDDEN", "Access denied");
       }
       if (isNotFound(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Resource not found", code: "NOT_FOUND" },
-          },
-        };
+        return createErrorResponse(
+          "NOT_FOUND",
+          "No org configured. Set your org with: vm0 org set <slug>",
+        );
       }
       throw error;
     }

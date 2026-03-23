@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroConnectorsByTypeContract } from "@vm0/core";
+import { zeroConnectorsByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -32,12 +32,7 @@ const router = tsr.router(zeroConnectorsByTypeContract, {
       };
     } catch (error) {
       if (isNotFound(error)) {
-        return {
-          status: 404 as const,
-          body: {
-            error: { message: "Connector not found", code: "NOT_FOUND" },
-          },
-        };
+        return createErrorResponse("NOT_FOUND", "Connector not found");
       }
       throw error;
     }
