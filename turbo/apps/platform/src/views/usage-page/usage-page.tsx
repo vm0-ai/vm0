@@ -34,6 +34,7 @@ export function UsagePage() {
   const loadable = useLoadable(usageMembersAsync$);
 
   const isLoading = loadable.state === "loading";
+  const hasError = loadable.state === "hasError";
   const data = loadable.state === "hasData" ? loadable.data : null;
 
   return (
@@ -59,6 +60,8 @@ export function UsagePage() {
         <div className="mx-auto max-w-[900px]">
           {isLoading ? (
             <UsageSkeleton />
+          ) : hasError ? (
+            <EmptyState message="Failed to load usage data. Please try again later." />
           ) : !data?.period ? (
             <EmptyState message="No active billing period. Usage tracking is available for paid plans." />
           ) : data.members.length === 0 ? (

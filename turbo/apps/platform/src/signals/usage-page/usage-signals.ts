@@ -18,13 +18,13 @@ interface UsageMembersResponse {
 
 /**
  * Async computed signal that fetches per-member usage data.
- * Returns null on error or while the fetch$ dependency is pending.
+ * Throws on non-OK responses so useLoadable enters hasError state.
  */
 export const usageMembersAsync$ = computed(async (get) => {
   const fetchFn = await get(fetch$);
   const response = await fetchFn("/api/usage/members");
   if (!response.ok) {
-    return null;
+    throw new Error(`Failed to fetch usage data: ${response.status}`);
   }
   const data = (await response.json()) as UsageMembersResponse;
   return data;
