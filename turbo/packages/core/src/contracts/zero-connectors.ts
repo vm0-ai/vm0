@@ -65,7 +65,43 @@ export const zeroConnectorScopeDiffContract = c.router({
   },
 });
 
+const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token"]);
+
+export type ConnectorSearchAuthMethod = z.infer<
+  typeof connectorSearchAuthMethodSchema
+>;
+
+const connectorSearchItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  authMethods: z.array(connectorSearchAuthMethodSchema),
+});
+
+const connectorSearchResponseSchema = z.object({
+  connectors: z.array(connectorSearchItemSchema),
+});
+
+/**
+ * Zero contract for GET /api/zero/connectors/search
+ * Returns all available connector type definitions with optional keyword search
+ */
+export const zeroConnectorsSearchContract = c.router({
+  search: {
+    method: "GET",
+    path: "/api/zero/connectors/search",
+    headers: authHeadersSchema,
+    query: z.object({ keyword: z.string().optional() }),
+    responses: {
+      200: connectorSearchResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Search available connector types",
+  },
+});
+
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
 export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
+export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;

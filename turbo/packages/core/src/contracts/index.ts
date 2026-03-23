@@ -560,9 +560,12 @@ export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
+  zeroConnectorsSearchContract,
+  type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
+  type ZeroConnectorsSearchContract,
 } from "./zero-connectors";
 export {
   zeroOrgContract,
