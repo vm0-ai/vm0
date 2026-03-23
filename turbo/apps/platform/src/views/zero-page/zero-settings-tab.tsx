@@ -1,6 +1,5 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState, useCommand } from "ccstate-react/experimental";
-import { useGet, useSet } from "ccstate-react";
+import { useState } from "react";
+import { useSet } from "ccstate-react";
 import {
   Button,
   Card,
@@ -54,25 +53,15 @@ export function ZeroSettingsTab({
   isDefaultAgent = false,
   onDelete,
 }: ZeroSettingsTabProps) {
-  const agentName$ = useCCState(resolvedAgentName);
-  const agentName = useGet(agentName$);
-  const setAgentName = useSet(agentName$);
-  const desc$ = useCCState(initialDescription);
-  const desc = useGet(desc$);
-  const setDesc = useSet(desc$);
-  const tone$ = useCCState<Tone>(initialSound);
-  const tone = useGet(tone$);
-  const setTone = useSet(tone$);
-  const savedSettings$ = useCCState<{
-    name: string;
-    description: string;
-    tone: Tone;
-  }>({
+  const [agentName, setAgentName] = useState(resolvedAgentName);
+  const [desc, setDesc] = useState(initialDescription);
+  const [tone, setTone] = useState<Tone>(initialSound);
+  const [savedSettings, setSavedSettings] = useState({
     name: resolvedAgentName,
     description: initialDescription,
     tone: initialSound,
   });
-  const savedSettings = useGet(savedSettings$);
+  const [deleting, setDeleting] = useState(false);
 
   const isSettingsDirty =
     agentName !== savedSettings.name ||
@@ -85,26 +74,20 @@ export function ZeroSettingsTab({
     setTone(savedSettings.tone);
   };
 
-  const handleSaveSettings$ = useCommand(async ({ get, set }) => {
-    const currentName = get(agentName$);
-    const currentDesc = get(desc$);
-    const currentTone = get(tone$);
-    await set(updateSettings$, {
-      displayName: currentName,
-      description: currentDesc,
-      sound: currentTone,
-    });
-    set(savedSettings$, {
-      name: currentName,
-      description: currentDesc,
-      tone: currentTone,
-    });
-  });
-  const handleSaveSettings = useSet(handleSaveSettings$);
+  const triggerUpdateSettings = useSet(updateSettings$);
 
-  const deleting$ = useCCState(false);
-  const deleting = useGet(deleting$);
-  const setDeleting = useSet(deleting$);
+  const handleSaveSettings = async () => {
+    await triggerUpdateSettings({
+      displayName: agentName,
+      description: desc,
+      sound: tone,
+    });
+    setSavedSettings({
+      name: agentName,
+      description: desc,
+      tone,
+    });
+  };
 
   const handleDelete = async () => {
     if (!onDelete) {
