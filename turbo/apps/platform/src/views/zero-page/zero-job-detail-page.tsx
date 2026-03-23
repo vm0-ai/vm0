@@ -60,7 +60,7 @@ import {
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
-import { navigateInReact$ } from "../../signals/route.ts";
+import { navigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
@@ -327,7 +327,7 @@ export function ZeroJobDetailPage({
 
   const saving = useGet(zeroJobSettingsSaving$);
   const deleteAgent = useSet(deleteZeroJobAgent$);
-  const nav = useSet(navigateInReact$);
+  const nav = useSet(navigateTo$);
 
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const isDefaultAgent =

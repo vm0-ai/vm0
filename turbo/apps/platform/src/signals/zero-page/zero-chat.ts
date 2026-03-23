@@ -20,7 +20,7 @@ import {
   zeroInChat$,
   zeroSessionId$,
 } from "./zero-nav.ts";
-import { updatePathname$ } from "../route.ts";
+import { navigateTo$ } from "../route.ts";
 import { agentsList$ } from "./agents-list.ts";
 import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
 
@@ -1293,7 +1293,7 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
 /** Send a message from the demo/home page: navigate to chat, reset session, fire message. */
 export const sendFromZeroDemo$ = command(
   ({ set }, message: string, options?: { modelProvider?: string }) => {
-    set(updatePathname$, "/chat");
+    set(navigateTo$, "/");
     set(startNewZeroSession$);
     detach(set(sendZeroChatMessage$, message, options), Reason.DomCallback);
   },

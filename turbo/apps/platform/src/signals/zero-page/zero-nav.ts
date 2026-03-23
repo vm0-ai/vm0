@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { pathname$, navigateInReact$ } from "../route.ts";
+import { pathname$, navigateTo$ } from "../route.ts";
 import type {
   ZeroNavId,
   ZeroAccountAction,
@@ -85,11 +85,11 @@ export const zeroChatAgentId$ = computed((get): string | null => {
  */
 export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
   if (id === "chat") {
-    set(navigateInReact$, "/");
+    set(navigateTo$, "/");
   } else if (id === "team") {
-    set(navigateInReact$, "/team");
+    set(navigateTo$, "/team");
   } else {
-    set(navigateInReact$, "/:tab", { pathParams: { tab: id } });
+    set(navigateTo$, "/:tab", { pathParams: { tab: id } });
   }
 });
 
@@ -122,7 +122,7 @@ export const setZeroChatAgent$ = command(
  * re-entry from an already-loaded zero page is cheap.
  */
 export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
-  set(navigateInReact$, "/chat/:sessionId", { pathParams: { sessionId } });
+  set(navigateTo$, "/chat/:sessionId", { pathParams: { sessionId } });
 });
 
 /**

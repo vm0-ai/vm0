@@ -29,6 +29,7 @@ import noStoreInParams from "./rules/no-store-in-params.ts";
 import setupPageRender from "./rules/setup-page-render.ts";
 import noSideEffectInRender from "./rules/no-side-effect-in-render.ts";
 import noUseCCStateInViews from "./rules/no-use-ccstate-in-views.ts";
+import noUpdatePathname from "./rules/no-update-pathname.ts";
 
 const plugin = {
   meta: {
@@ -49,6 +50,7 @@ const plugin = {
     "setup-page-render": setupPageRender,
     "no-side-effect-in-render": noSideEffectInRender,
     "no-use-ccstate-in-views": noUseCCStateInViews,
+    "no-update-pathname": noUpdatePathname,
   },
 };
 

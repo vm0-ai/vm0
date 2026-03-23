@@ -1,10 +1,6 @@
 import { useSet } from "ccstate-react";
 import type { MouseEvent, Ref } from "react";
-import {
-  generateRouterPath,
-  navigateInReact$,
-  updatePathname$,
-} from "../../signals/route.ts";
+import { generateRouterPath, navigateTo$ } from "../../signals/route.ts";
 
 type PathName = Parameters<typeof generateRouterPath>[0];
 type PathParams = Parameters<typeof generateRouterPath>[1];
@@ -41,7 +37,7 @@ export function Link({
   ref,
   ...rest
 }: LinkProps) {
-  const navigate = useSet(navigateInReact$);
+  const navigate = useSet(navigateTo$);
   const path = generateRouterPath(pathname, options?.pathParams);
   const href = buildHref(path, options?.searchParams);
 
@@ -74,7 +70,7 @@ export function useNavigationHandler(
   pathname: PathName,
   options?: NavigationOptions,
 ): { href: string; onClick: (e: MouseEvent) => void } {
-  const navigate = useSet(navigateInReact$);
+  const navigate = useSet(navigateTo$);
   const path = generateRouterPath(pathname, options?.pathParams);
   const href = buildHref(path, options?.searchParams);
 
@@ -87,47 +83,4 @@ export function useNavigationHandler(
   };
 
   return { href, onClick };
-}
-
-// ---------------------------------------------------------------------------
-// SimpleLink — for intra-route navigation with raw href strings.
-// Uses updatePathname$ (pushes history without re-running route setup),
-// suitable for sub-path navigation within the same route, e.g.
-// /activity → /activity/:id.
-// ---------------------------------------------------------------------------
-
-interface SimpleLinkProps
-  extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
-  href: string;
-  ref?: Ref<HTMLAnchorElement>;
-}
-
-export function SimpleLink({
-  href,
-  children,
-  onClick,
-  ref,
-  ...rest
-}: SimpleLinkProps) {
-  const updatePathname = useSet(updatePathname$);
-
-  const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
-    onClick?.(e);
-    if (e.defaultPrevented) {
-      return;
-    }
-    e.preventDefault();
-
-    if (isNewTabClick(e)) {
-      window.open(`${window.location.origin}${href}`, "_blank");
-    } else {
-      updatePathname(href);
-    }
-  };
-
-  return (
-    <a ref={ref} href={href} onClick={handleClick} {...rest}>
-      {children}
-    </a>
-  );
 }

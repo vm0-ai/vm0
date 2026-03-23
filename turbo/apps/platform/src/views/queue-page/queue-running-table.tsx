@@ -5,7 +5,7 @@ import {
   cancelQueueRun$,
   type RunningTask,
 } from "../../signals/queue-page/queue-signals.ts";
-import { SimpleLink } from "../router/link.tsx";
+import { Link } from "../router/link.tsx";
 
 const ROW_GRID = "grid grid-cols-[1fr_1fr_6rem_5rem_4rem] gap-x-6 items-center";
 
@@ -84,12 +84,13 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
                 </div>
                 <div>
                   {runId ? (
-                    <SimpleLink
-                      href={`/activity/${runId}`}
+                    <Link
+                      pathname="/activity/:logId"
+                      options={{ pathParams: { logId: runId } }}
                       className="text-sm text-primary hover:underline"
                     >
                       View logs
-                    </SimpleLink>
+                    </Link>
                   ) : (
                     <span className="text-sm text-muted-foreground">--</span>
                   )}

@@ -31,7 +31,7 @@ import {
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
 } from "../../signals/zero-page/zero-nav.ts";
-import { navigateInReact$ } from "../../signals/route.ts";
+import { navigateTo$ } from "../../signals/route.ts";
 import { sendFromZeroDemo$ } from "../../signals/zero-page/zero-chat.ts";
 
 import zeroAvatarImg from "./assets/zero-avatar.webp";
@@ -175,11 +175,11 @@ function GuestNavBar({ onAbout }: { onAbout: () => void }) {
 }
 
 function useContentNavigation(resolvedAgentName: string | null) {
-  const navigateInReact = useSet(navigateInReact$);
+  const navigateTo = useSet(navigateTo$);
 
   const handleNavigateToSchedule = () => {
     if (resolvedAgentName) {
-      navigateInReact("/team/:name", {
+      navigateTo("/team/:name", {
         pathParams: { name: resolvedAgentName },
         searchParams: new URLSearchParams({ tab: "schedule" }),
       });
@@ -189,7 +189,7 @@ function useContentNavigation(resolvedAgentName: string | null) {
   const handleNavigateToMeet = (tab?: string) => {
     if (resolvedAgentName) {
       const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
-      navigateInReact("/team/:name", {
+      navigateTo("/team/:name", {
         pathParams: { name: resolvedAgentName },
         searchParams,
       });
@@ -198,14 +198,14 @@ function useContentNavigation(resolvedAgentName: string | null) {
 
   const handleChatAvatarClick = () => {
     if (resolvedAgentName) {
-      navigateInReact("/team/:name", {
+      navigateTo("/team/:name", {
         pathParams: { name: resolvedAgentName },
       });
     }
   };
 
   return {
-    navigateInReact,
+    navigateTo,
     handleNavigateToSchedule,
     handleNavigateToMeet,
     handleChatAvatarClick,

@@ -151,7 +151,7 @@ export const navigate$ = command(
   },
 );
 
-export const navigateInReact$ = command(
+export const navigateTo$ = command(
   (
     { set, get },
     pathname: Parameters<typeof generateRouterPath>[0],
@@ -226,7 +226,7 @@ export const setupAuthPageWrapper = (
 
       if (needsSelection) {
         L.debug("redirect to /select-org because org selection is needed");
-        set(navigateInReact$, "/select-org");
+        set(navigateTo$, "/select-org");
         return;
       }
     }

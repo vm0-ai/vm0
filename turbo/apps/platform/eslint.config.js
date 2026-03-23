@@ -27,6 +27,7 @@ export default [
       "ccstate/setup-page-render": "error",
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-use-ccstate-in-views": "error",
+      "ccstate/no-update-pathname": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)
