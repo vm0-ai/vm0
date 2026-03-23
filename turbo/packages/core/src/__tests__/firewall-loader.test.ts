@@ -141,6 +141,16 @@ apis: []
     );
   });
 
+  it("should return builtin config without fetching", async () => {
+    const fetchFn = vi.fn<FetchFn>();
+    const config = await fetchFirewallConfig("github", fetchFn);
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(config.name).toBe("github");
+    expect(config.apis.length).toBeGreaterThan(0);
+    expect(config.placeholders).toBeDefined();
+  });
+
   it("should pass correct URL to fetch function", async () => {
     const fetchFn = mockFetch(
       "name: x\napis:\n  - base: https://x.com\n    auth:\n      headers:\n        X: y",

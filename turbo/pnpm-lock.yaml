@@ -608,6 +608,21 @@ importers:
         specifier: ^8.57.1
         version: 8.57.1(eslint@9.34.0(jiti@2.6.1))(typescript@5.9.3)
 
+  packages/firewalls-generator:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.3.0
+      '@vm0/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      tsx:
+        specifier: ^4.19.4
+        version: 4.21.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/proxy: {}
 
   packages/typescript-config: {}

@@ -1,0 +1,17 @@
+{
+  "name": "@vm0/firewalls-generator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "tsx src/index.ts",
+    "generate:github": "tsx src/index.ts github",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vm0/typescript-config": "workspace:*",
+    "typescript": "5.9.3",
+    "tsx": "^4.19.4"
+  }
+}

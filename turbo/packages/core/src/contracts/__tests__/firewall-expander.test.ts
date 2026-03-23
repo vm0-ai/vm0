@@ -14,16 +14,16 @@ function mockFetch(body: string, status = 200, statusText = "OK"): FetchFn {
     .mockResolvedValue(new Response(body, { status, statusText }));
 }
 
-const GITHUB_YAML = `
-name: github
-description: GitHub API
+const CUSTOM_GIT_YAML = `
+name: custom-git
+description: Custom Git API
 placeholders:
-  GITHUB_TOKEN: "gho_Vm0PlaceHolder0000000000000000000000"
+  GIT_TOKEN: "gho_Vm0PlaceHolder0000000000000000000000"
 apis:
-  - base: https://api.github.com
+  - base: https://api.custom-git.com
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.GITHUB_TOKEN }}"
+        Authorization: "Bearer \${{ secrets.GIT_TOKEN }}"
     permissions:
       - name: repo-read
         description: Read repository metadata
@@ -94,8 +94,8 @@ describe("expandFirewallConfigs", () => {
   /** Mock fetch that returns the right YAML based on URL */
   function mockMultiFetch(): FetchFn {
     return vi.fn<FetchFn>().mockImplementation((url: string) => {
-      if (url.includes("/github/")) {
-        return Promise.resolve(new Response(GITHUB_YAML, { status: 200 }));
+      if (url.includes("/custom-git/")) {
+        return Promise.resolve(new Response(CUSTOM_GIT_YAML, { status: 200 }));
       }
       if (url.includes("/slack/")) {
         return Promise.resolve(new Response(SLACK_YAML, { status: 200 }));
@@ -107,14 +107,14 @@ describe("expandFirewallConfigs", () => {
   }
 
   it("should expand firewall with permissions: all", async () => {
-    const config = makeConfig({ github: { permissions: "all" } });
-    const expanded = await getExpanded(config, mockFetch(GITHUB_YAML));
+    const config = makeConfig({ "custom-git": { permissions: "all" } });
+    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
 
     expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.name).toBe("github");
-    expect(expanded[0]!.ref).toBe("github");
+    expect(expanded[0]!.name).toBe("custom-git");
+    expect(expanded[0]!.ref).toBe("custom-git");
     expect(expanded[0]!.apis).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.base).toBe("https://api.github.com");
+    expect(expanded[0]!.apis[0]!.base).toBe("https://api.custom-git.com");
     const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => p.name);
     expect(permNames).toContain("repo-read");
     expect(permNames).toContain("issues-read");
@@ -123,9 +123,9 @@ describe("expandFirewallConfigs", () => {
 
   it("should expand firewall with specific permissions", async () => {
     const config = makeConfig({
-      github: { permissions: ["issues-read", "issues-write"] },
+      "custom-git": { permissions: ["issues-read", "issues-write"] },
     });
-    const expanded = await getExpanded(config, mockFetch(GITHUB_YAML));
+    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis[0]!.permissions).toHaveLength(2);
@@ -135,24 +135,24 @@ describe("expandFirewallConfigs", () => {
   });
 
   it("should include placeholders when config has them", async () => {
-    const config = makeConfig({ github: { permissions: "all" } });
-    const expanded = await getExpanded(config, mockFetch(GITHUB_YAML));
+    const config = makeConfig({ "custom-git": { permissions: "all" } });
+    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
 
     expect(expanded[0]!.placeholders).toEqual({
-      GITHUB_TOKEN: "gho_Vm0PlaceHolder0000000000000000000000",
+      GIT_TOKEN: "gho_Vm0PlaceHolder0000000000000000000000",
     });
   });
 
   it("should expand multiple firewall configs in parallel", async () => {
     const config = makeConfig({
-      github: { permissions: "all" },
+      "custom-git": { permissions: "all" },
       slack: { permissions: "all" },
     });
     const expanded = await getExpanded(config, mockMultiFetch());
 
     expect(expanded).toHaveLength(2);
     const names = expanded.map((s) => s.name);
-    expect(names).toContain("github");
+    expect(names).toContain("custom-git");
     expect(names).toContain("slack");
   });
 
@@ -191,20 +191,20 @@ describe("expandFirewallConfigs", () => {
   });
 
   it("should include description when config has it", async () => {
-    const config = makeConfig({ github: { permissions: "all" } });
-    const expanded = await getExpanded(config, mockFetch(GITHUB_YAML));
+    const config = makeConfig({ "custom-git": { permissions: "all" } });
+    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
 
-    expect(expanded[0]!.description).toBe("GitHub API");
+    expect(expanded[0]!.description).toBe("Custom Git API");
   });
 
   it("should throw for non-existent permission name", async () => {
     const config = makeConfig({
-      github: { permissions: ["does-not-exist"] },
+      "custom-git": { permissions: ["does-not-exist"] },
     });
     await expect(
-      expandFirewallConfigs(config, mockFetch(GITHUB_YAML)),
+      expandFirewallConfigs(config, mockFetch(CUSTOM_GIT_YAML)),
     ).rejects.toThrow(
-      'Permission "does-not-exist" does not exist in firewall "github"',
+      'Permission "does-not-exist" does not exist in firewall "custom-git"',
     );
   });
 
@@ -218,11 +218,25 @@ describe("expandFirewallConfigs", () => {
   });
 
   it("should filter permissions on fetched config", async () => {
-    const config = makeConfig({ github: { permissions: ["repo-read"] } });
-    const expanded = await getExpanded(config, mockFetch(GITHUB_YAML));
+    const config = makeConfig({
+      "custom-git": { permissions: ["repo-read"] },
+    });
+    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
 
     expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
     expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("repo-read");
+  });
+
+  it("should resolve builtin firewall without fetch", async () => {
+    const fetchFn = vi.fn<FetchFn>();
+    const config = makeConfig({ github: { permissions: "all" } });
+    const expanded = await getExpanded(config, fetchFn);
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.name).toBe("github");
+    expect(expanded[0]!.ref).toBe("github");
+    expect(expanded[0]!.apis.length).toBeGreaterThan(0);
   });
 
   it("should support full GitHub URL as ref", async () => {
