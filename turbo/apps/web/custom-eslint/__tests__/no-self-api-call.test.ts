@@ -51,11 +51,7 @@ ruleTester.run("no-self-api-call", rule, {
       errors: [
         {
           messageId: "noSelfApiCall",
-          data: { name: "createInfraClient" },
-        },
-        {
-          messageId: "noSelfApiCall",
-          data: { name: "proxyToInfra" },
+          data: { name: "createInfraClient, proxyToInfra" },
         },
       ],
     },

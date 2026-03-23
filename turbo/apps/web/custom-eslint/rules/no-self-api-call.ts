@@ -45,19 +45,22 @@ export default createRule({
           return;
         }
 
-        for (const specifier of node.specifiers) {
-          if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            specifier.imported.type === AST_NODE_TYPES.Identifier &&
-            (specifier.imported.name === "createInfraClient" ||
-              specifier.imported.name === "proxyToInfra")
-          ) {
-            context.report({
-              node: specifier,
-              messageId: "noSelfApiCall",
-              data: { name: specifier.imported.name },
-            });
-          }
+        const flaggedNames = node.specifiers
+          .filter(
+            (specifier): specifier is TSESTree.ImportSpecifier =>
+              specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+              specifier.imported.type === AST_NODE_TYPES.Identifier &&
+              (specifier.imported.name === "createInfraClient" ||
+                specifier.imported.name === "proxyToInfra"),
+          )
+          .map((specifier) => (specifier.imported as TSESTree.Identifier).name);
+
+        if (flaggedNames.length > 0) {
+          context.report({
+            node,
+            messageId: "noSelfApiCall",
+            data: { name: flaggedNames.join(", ") },
+          });
         }
       },
     };
