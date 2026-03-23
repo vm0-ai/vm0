@@ -500,6 +500,15 @@ export const zeroSessionSwitching$ = computed((get) =>
   get(internalSessionSwitching$),
 );
 
+/**
+ * Mark session as switching immediately so the UI shows a skeleton
+ * instead of flashing "Send a message" while the page setup runs.
+ * Called from setupZeroPage$ before heavy data loads when a session URL is detected.
+ */
+export const prepareSessionSwitch$ = command(({ set }) => {
+  set(internalSessionSwitching$, true);
+});
+
 // Chat input
 const internalChatInput$ = state("");
 export const zeroChatInput$ = computed((get) => get(internalChatInput$));

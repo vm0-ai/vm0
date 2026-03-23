@@ -14,6 +14,7 @@ import {
   zeroSessionListError$,
   zeroSessionError$,
   zeroChatThreadId$,
+  zeroSessionSwitching$,
   setZeroChatInput$,
   clearZeroChatInput$,
   fetchZeroSessionList$,
@@ -22,6 +23,7 @@ import {
   sendZeroChatMessage$,
   sendFromZeroDemo$,
   syncUrlSession$,
+  prepareSessionSwitch$,
 } from "../zero-chat.ts";
 
 const context = testContext();
@@ -293,6 +295,41 @@ describe("zero-chat signals", () => {
 
       expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
+    });
+  });
+
+  describe("prepareSessionSwitch$", () => {
+    it("should set sessionSwitching to true so skeleton shows immediately", async () => {
+      await setup();
+
+      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
+
+      context.store.set(prepareSessionSwitch$);
+
+      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
+    });
+
+    it("should be cleared after switchZeroSession$ completes", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "thread-1",
+            agentComposeId: "mock-compose-id",
+            chatMessages: [],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
+
+      await setup();
+
+      context.store.set(prepareSessionSwitch$);
+      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
+
+      await context.store.set(switchZeroSession$, "thread-1");
+      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
     });
   });
 

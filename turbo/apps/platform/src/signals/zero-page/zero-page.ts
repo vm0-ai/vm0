@@ -9,9 +9,14 @@ import { initSlackOrg$ } from "./zero-slack.ts";
 import {
   zeroChatAgentName$,
   zeroInChat$,
+  zeroSessionId$,
   initSidebarCollapsed$,
 } from "./zero-nav.ts";
-import { switchActiveAgent$, syncUrlSession$ } from "./zero-chat.ts";
+import {
+  switchActiveAgent$,
+  syncUrlSession$,
+  prepareSessionSwitch$,
+} from "./zero-chat.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -147,6 +152,13 @@ async function resolveAndSwitchAgent(
 export const setupZeroPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroPage));
+
+    // When landing on /chat/:sessionId (e.g. page refresh), mark session as
+    // switching immediately so the UI shows a skeleton instead of briefly
+    // flashing the "Send a message" empty state while initial data loads.
+    if (get(zeroSessionId$)) {
+      set(prepareSessionSwitch$);
+    }
 
     await set(loadInitialData$, signal);
 
