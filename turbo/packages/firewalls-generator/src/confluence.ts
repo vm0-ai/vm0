@@ -9,8 +9,16 @@
  * Endpoints without OAuth2 security are skipped.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
+import {
+  ALL_METHODS,
+  OPENAPI_PATH_KEYS,
+  fetchSpec,
+  logStats,
+  renderPermissions,
+  sortRules,
+  writeOutput,
+} from "./codegen";
+import type { OpenApiOperation, OpenApiSpec, PermissionGroup } from "./codegen";
 
 const OPENAPI_URL =
   "https://developer.atlassian.com/cloud/confluence/swagger.v3.json";
@@ -21,70 +29,8 @@ const PLACEHOLDER_VALUE =
   "ATATT3xVm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
 const OAUTH_SCHEME_KEY = "oAuthDefinitions";
-const ALL_METHODS = new Set(["get", "head", "post", "put", "patch", "delete"]);
-const OPENAPI_PATH_KEYS = new Set([
-  "summary",
-  "description",
-  "servers",
-  "parameters",
-  "$ref",
-  "options",
-  "trace",
-]);
-
-// ── OpenAPI types ────────────────────────────────────────────────────────
-
-interface OpenApiOperation {
-  security?: Array<Record<string, string[]>>;
-}
-
-type OpenApiPathItem = Record<string, unknown>;
-
-interface OpenApiSpec {
-  info?: { version?: string };
-  paths?: Record<string, OpenApiPathItem>;
-  components?: {
-    securitySchemes?: {
-      [key: string]: {
-        flows?: {
-          authorizationCode?: {
-            scopes?: Record<string, string>;
-          };
-        };
-      };
-    };
-  };
-}
 
 // ── Grouping ─────────────────────────────────────────────────────────────
-
-interface PermissionGroup {
-  name: string;
-  description: string;
-  rules: string[];
-}
-
-const METHOD_ORDER: Record<string, number> = {
-  GET: 0,
-  HEAD: 1,
-  POST: 2,
-  PUT: 3,
-  PATCH: 4,
-  DELETE: 5,
-};
-
-function ruleKey(rule: string): [string, number] {
-  const [method, rulePath] = rule.split(" ", 2) as [string, string];
-  return [rulePath, METHOD_ORDER[method] ?? 9];
-}
-
-function sortRules(rules: string[]): string[] {
-  return [...rules].sort((a, b) => {
-    const [pathA, orderA] = ruleKey(a);
-    const [pathB, orderB] = ruleKey(b);
-    return pathA < pathB ? -1 : pathA > pathB ? 1 : orderA - orderB;
-  });
-}
 
 function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
@@ -142,10 +88,6 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
 
 // ── TypeScript generation ────────────────────────────────────────────────
 
-function escapeString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function generateTypeScript(permissions: PermissionGroup[]): string {
   const lines: string[] = [
     "// Auto-generated from Confluence Cloud's official OpenAPI spec.",
@@ -173,28 +115,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     "      permissions: [",
   ];
 
-  // Catch-all: allows all endpoints
-  lines.push("        {");
-  lines.push('          name: "unrestricted",');
-  lines.push('          description: "Allow all endpoints",');
-  lines.push("          rules: [");
-  lines.push('            "ANY /{path*}",');
-  lines.push("          ],");
-  lines.push("        },");
-
-  for (const perm of permissions) {
-    lines.push("        {");
-    lines.push(`          name: "${escapeString(perm.name)}",`);
-    if (perm.description) {
-      lines.push(`          description: "${escapeString(perm.description)}",`);
-    }
-    lines.push("          rules: [");
-    for (const rule of perm.rules) {
-      lines.push(`            "${escapeString(rule)}",`);
-    }
-    lines.push("          ],");
-    lines.push("        },");
-  }
+  lines.push(...renderPermissions(permissions));
 
   lines.push("      ],");
   lines.push("    },");
@@ -208,35 +129,13 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 export async function generate(): Promise<void> {
-  console.error("Downloading Confluence OpenAPI spec…");
-  const res = await fetch(OPENAPI_URL);
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch OpenAPI spec: ${res.status} ${res.statusText}`,
-    );
-  }
+  const res = await fetchSpec(OPENAPI_URL, "Confluence OpenAPI spec");
   const spec = (await res.json()) as OpenApiSpec;
   console.error(`  Spec version: ${spec.info?.version ?? "unknown"}`);
 
   const permissions = buildGroups(spec);
   const ts = generateTypeScript(permissions);
 
-  const totalRules = permissions.reduce((sum, p) => sum + p.rules.length, 0);
-  console.error(
-    `  ${permissions.length} permission groups, ${totalRules} rules`,
-  );
-
-  const outPath = path.resolve(
-    import.meta.dirname,
-    "../../core/src/firewalls/confluence.generated.ts",
-  );
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, ts);
-  console.error(`  Written to ${outPath}`);
-
-  const stat = fs.statSync(outPath);
-  if (stat.size === 0) {
-    throw new Error("Generated file is empty");
-  }
-  console.error(`  Validated (${(stat.size / 1024).toFixed(1)} KB)`);
+  logStats(permissions);
+  writeOutput("confluence", ts, import.meta.dirname);
 }
