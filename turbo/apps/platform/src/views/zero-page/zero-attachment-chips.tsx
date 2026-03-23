@@ -170,23 +170,26 @@ function AttachmentChip({
         ) : (
           <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
         )}
-        {attachment.uploading ? (
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
+        {attachment.uploading && (
+          <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
             <IconLoader2
               size={10}
               className="animate-spin text-muted-foreground"
             />
           </span>
-        ) : (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
-            aria-label={`Remove ${attachment.filename}`}
-          >
-            <IconX size={9} stroke={2.5} />
-          </button>
         )}
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
+          aria-label={
+            attachment.uploading
+              ? `Cancel upload ${attachment.filename}`
+              : `Remove ${attachment.filename}`
+          }
+        >
+          <IconX size={9} stroke={2.5} />
+        </button>
       </div>
       {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
     </>

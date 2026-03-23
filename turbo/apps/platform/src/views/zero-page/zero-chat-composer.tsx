@@ -32,6 +32,7 @@ import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
+  cancelZeroAttachmentUpload$,
   composerFileInput$,
   setComposerFileInput$,
   composerAddDialogOpen$,
@@ -377,6 +378,7 @@ export function ZeroChatComposer({
   const attachments = useGet(zeroChatAttachments$);
   const uploadAttachment = useSet(uploadZeroAttachment$);
   const removeAttachment = useSet(removeZeroAttachment$);
+  const cancelUpload = useSet(cancelZeroAttachmentUpload$);
 
   // File picker
   const fileInputEl = useGet(composerFileInput$);
@@ -506,7 +508,14 @@ export function ZeroChatComposer({
             {attachments.length > 0 && (
               <AttachmentChips
                 attachments={attachments}
-                onRemove={removeAttachment}
+                onRemove={(id) => {
+                  const attachment = attachments.find((a) => a.id === id);
+                  if (attachment?.uploading) {
+                    cancelUpload(id);
+                  } else {
+                    removeAttachment(id);
+                  }
+                }}
               />
             )}
             {queuedMessage ? (
