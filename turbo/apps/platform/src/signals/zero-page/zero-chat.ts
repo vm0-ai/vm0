@@ -1238,7 +1238,11 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       L.error("Failed to refresh session list:", error);
     });
 
-    // Refresh again shortly so the AI-generated title lands
+    // Refresh again after a short delay so the AI-generated title (produced by
+    // the webhook's after() callback via OpenRouter) has time to land in the DB.
+    // This is a best-effort poll — the title may arrive later if the API is slow,
+    // in which case the user will see it on next navigation. A push-based approach
+    // (e.g. Ably or Zero sync) would be more reliable but is out of scope here.
     timeout(() => {
       set(fetchZeroSessionList$).catch((error: unknown) => {
         throwIfAbort(error);
