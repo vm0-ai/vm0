@@ -3,23 +3,69 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroComposesMainContract, composesMainContract } from "@vm0/core";
+import { zeroComposesMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-// eslint-disable-next-line web/no-self-api-call
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
+import { getComposeByName } from "../../../../src/lib/agent-compose/compose-service";
+import {
+  isNotFound,
+  isForbidden,
+  isBadRequest,
+} from "../../../../src/lib/errors";
 
 const router = tsr.router(zeroComposesMainContract, {
   getByName: async ({ query, headers }) => {
     initServices();
-    const client = createInfraClient(
-      composesMainContract,
-      headers.authorization,
-    );
-    const result = await client.getByName({ query });
-    return forwardInfra(result);
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+
+    let orgId: string;
+    try {
+      if (query.org) {
+        const orgBySlug = await getOrgBySlug(query.org);
+        const { org } = orgBySlug
+          ? await resolveOrg(authCtx, query.org)
+          : await resolveOrg(authCtx, undefined, query.org);
+        orgId = org.orgId;
+      } else {
+        const { org } = await resolveOrg(authCtx);
+        orgId = org.orgId;
+      }
+    } catch (error) {
+      if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {
+        return {
+          status: 404 as const,
+          body: {
+            error: {
+              message: `Agent compose not found: ${query.name}`,
+              code: "NOT_FOUND",
+            },
+          },
+        };
+      }
+      throw error;
+    }
+
+    const compose = await getComposeByName(orgId, query.name);
+    if (!compose) {
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: `Agent compose not found: ${query.name}`,
+            code: "NOT_FOUND",
+          },
+        },
+      };
+    }
+
+    return { status: 200 as const, body: compose };
   },
 });
 

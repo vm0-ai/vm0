@@ -6,7 +6,7 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import slackIcon from "./components/settings/icons/slack.svg";
-import zeroAvatarImg from "./assets/zero-avatar.png";
+import zeroAvatarImg from "./assets/zero-avatar.webp";
 import {
   Dialog,
   DialogContent,
@@ -551,7 +551,7 @@ export function ZeroOnboarding({
 
 export function MemberWelcome({
   agentName = "Zero",
-  zeroAvatarSrc = "/zero-avatar.png",
+  zeroAvatarSrc = zeroAvatarImg,
 }: {
   agentName?: string;
   zeroAvatarSrc?: string;

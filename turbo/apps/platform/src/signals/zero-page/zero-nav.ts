@@ -37,7 +37,7 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
 });
 
 /**
- * Whether the user is on a chat session page — `/chat` or `/chat/:sessionId`.
+ * Whether the user is on a chat session page — `/chat`, `/chat/:sessionId`, or `/talk/:name`.
  */
 export const zeroInChat$ = computed((get): boolean => {
   const path = get(pathname$);
@@ -123,13 +123,6 @@ export const setZeroChatAgent$ = command(
  */
 export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
   set(navigateInReact$, "/chat/:sessionId", { pathParams: { sessionId } });
-});
-
-/**
- * Navigate back from a chat session to the previous route in browser history.
- */
-export const navigateFromZeroSession$ = command(() => {
-  window.history.back();
 });
 
 // ---------------------------------------------------------------------------

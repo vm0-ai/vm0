@@ -48,6 +48,7 @@ import {
   AddConnectionDialog,
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
+import { skills$ } from "../../data/skills.ts";
 import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
@@ -87,6 +88,8 @@ interface ZeroChatComposerProps {
   /** Navigate to connectors management page. */
   onManageConnectors?: () => void;
   className?: string;
+  /** Auto-focus the textarea when mounted. */
+  autoFocus?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,18 +103,22 @@ function buildModelOpts(model: string): { modelProvider: string } | undefined {
 interface ComposerConnectorItem {
   type: string;
   label: string;
+  iconUrl?: string;
   connected: boolean;
 }
 
 function buildConnectorItem(
   name: string,
+  skillMap: Map<string, { label: string; icon?: string }>,
   connectorMap: Map<ConnectorType, { label: string; connected: boolean }>,
   optimistic: Set<string>,
 ): ComposerConnectorItem {
+  const skill = skillMap.get(name);
   const connector = connectorMap.get(name as ConnectorType);
   return {
     type: name,
-    label: connector?.label ?? name,
+    label: skill?.label ?? connector?.label ?? name,
+    iconUrl: skill?.icon,
     connected: optimistic.has(name) ? true : (connector?.connected ?? false),
   };
 }
@@ -134,9 +141,14 @@ function maybeClearOptimistic(
 
 function resolveConnectorLabel(
   type: string,
+  skillMap: Map<string, { label: string }>,
   connectorMap: Map<ConnectorType, { label: string }>,
 ): string {
-  return connectorMap.get(type as ConnectorType)?.label ?? type;
+  return (
+    skillMap.get(type)?.label ??
+    connectorMap.get(type as ConnectorType)?.label ??
+    type
+  );
 }
 
 function startConnectorFlow(
@@ -189,7 +201,11 @@ function ConnectorTriggerIcons({
           )}
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
         >
-          <ConnectorIcon type={c.type as ConnectorType} size={16} />
+          {c.iconUrl ? (
+            <img src={c.iconUrl} alt="" className="h-4 w-4" />
+          ) : (
+            <ConnectorIcon type={c.type as ConnectorType} size={16} />
+          )}
           {hasDisconnected && i === connected.length - 1 && (
             <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 z-10" />
           )}
@@ -211,7 +227,11 @@ function ConnectorRow({
   const row = (
     <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors">
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        <ConnectorIcon type={item.type as ConnectorType} size={16} />
+        {item.iconUrl ? (
+          <img src={item.iconUrl} alt="" className="h-4 w-4" />
+        ) : (
+          <ConnectorIcon type={item.type as ConnectorType} size={16} />
+        )}
       </span>
       <span
         className={cn(
@@ -373,6 +393,7 @@ export function ZeroChatComposer({
   agentName,
   onManageConnectors,
   className,
+  autoFocus,
 }: ZeroChatComposerProps) {
   // Attachments
   const attachments = useGet(zeroChatAttachments$);
@@ -411,6 +432,10 @@ export function ZeroChatComposer({
   const addDialogOpen = useGet(composerAddDialogOpen$);
   const setAddDialogOpen = useSet(setComposerAddDialogOpen$);
 
+  // Skills
+  const allSkills = useGet(skills$);
+  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
+
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
@@ -423,11 +448,13 @@ export function ZeroChatComposer({
 
   const agentConnectors: ComposerConnectorItem[] = addedConnectors
     .filter((name) => connectorMap.has(name as ConnectorType))
-    .map((name) => buildConnectorItem(name, connectorMap, optimisticConnected))
+    .map((name) =>
+      buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
+    )
     .sort((a, b) => Number(a.connected) - Number(b.connected));
 
   const handleConnectSuccess = (type: string) => {
-    const label = resolveConnectorLabel(type, connectorMap);
+    const label = resolveConnectorLabel(type, skillMap, connectorMap);
     detach(
       (async () => {
         await addConnector(type);
@@ -543,6 +570,11 @@ export function ZeroChatComposer({
               </div>
             ) : (
               <textarea
+                ref={(el) => {
+                  if (el && autoFocus) {
+                    el.focus();
+                  }
+                }}
                 className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
                 rows={3}
                 placeholder={

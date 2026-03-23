@@ -340,7 +340,7 @@ export const connectConnector$ = command(
     set(internalPollingType$, type);
 
     const authWindow = window.open(
-      `${baseUrl}/api/connectors/${type}/authorize`,
+      `${baseUrl}/api/zero/connectors/${type}/authorize`,
       "_blank",
       "width=600,height=700",
     );

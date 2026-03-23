@@ -118,6 +118,7 @@ const router = tsr.router(chatThreadsContract, {
           id: t.id,
           title: t.title,
           preview: t.preview,
+          agentComposeId: query.agentComposeId,
           createdAt: t.createdAt.toISOString(),
           updatedAt: t.updatedAt.toISOString(),
         })),

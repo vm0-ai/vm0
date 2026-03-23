@@ -5,11 +5,6 @@ import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
-import {
-  pinnedAgentIds$,
-  updatePinnedAgentIds$,
-} from "./zero-pinned-agents.ts";
-import { Reason, detach } from "../utils.ts";
 
 /** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
 const initialDataLoaded$ = state(false);
@@ -39,7 +34,7 @@ export const loadInitialData$ = command(
  * Resolve an agent by name and switch to it, auto-pinning if needed.
  *
  * - If agentName matches the default agent, switches to null (default).
- * - If agentName is found among subagents, switches to it and auto-pins.
+ * - If agentName is found among subagents, switches to it.
  * - If agentName is unknown, switches to null and redirects to default.
  * - If agentName is null, switches to null (no agent).
  *
@@ -63,14 +58,6 @@ export async function resolveAgentByName(
       const agent = subagents.find((a) => a.name === agentName);
       if (agent) {
         set(switchActiveAgent$, { id: agent.id, name: agent.name });
-        // Auto-pin agent if not already pinned
-        const pinned = await get(pinnedAgentIds$);
-        if (!pinned.includes(agent.id)) {
-          detach(
-            set(updatePinnedAgentIds$, [...pinned, agent.id]),
-            Reason.DomCallback,
-          );
-        }
       } else {
         // Unknown agent → redirect to default
         set(switchActiveAgent$, null);

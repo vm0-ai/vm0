@@ -18,11 +18,11 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 
-import zeroAvatarImg from "./assets/zero-avatar.png";
-import avatar1Img from "./assets/avatar-1.png";
-import avatar2Img from "./assets/avatar-2.png";
-import avatar3Img from "./assets/avatar-3.png";
-import avatar4Img from "./assets/avatar-4.png";
+import zeroAvatarImg from "./assets/zero-avatar.webp";
+import avatar1Img from "./assets/avatar-1.webp";
+import avatar2Img from "./assets/avatar-2.webp";
+import avatar3Img from "./assets/avatar-3.webp";
+import avatar4Img from "./assets/avatar-4.webp";
 
 const ZERO_AVATARS = [
   zeroAvatarImg,
@@ -51,7 +51,7 @@ function SidebarLayoutSkeleton() {
       }`}
     >
       {/* Sidebar skeleton */}
-      <aside className="flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
+      <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
         <div className="shrink-0 p-2 pb-1">
           <div className="rounded-lg p-2">
             <div className="h-8 w-full rounded-lg bg-muted/50 animate-pulse" />

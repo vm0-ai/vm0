@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.1...runner-rs-v0.45.2) (2026-03-23)
+
+
+### Refactoring
+
+* **runner:** remove stale dead_code allows from execution context ([#6148](https://github.com/vm0-ai/vm0/issues/6148)) ([c053ce6](https://github.com/vm0-ai/vm0/commit/c053ce6e7594d901fa511d4f4341ce8709ad88e8))
+
 ## [0.45.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.0...runner-rs-v0.45.1) (2026-03-23)
 
 

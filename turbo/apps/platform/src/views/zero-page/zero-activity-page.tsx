@@ -44,7 +44,7 @@ import {
 } from "../../signals/activity-page/activity-signals.ts";
 import { Link } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
-import emptyActivityImg from "./assets/empty-activity.png";
+import emptyActivityImg from "./assets/empty-activity.webp";
 
 const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
   queued: "Queued",
@@ -269,18 +269,24 @@ export function ZeroActivityPage() {
                   </div>
                 )}
                 {isLoading ? (
-                  <div className="flex items-center justify-center min-h-[20rem]">
-                    <IconLoader2
-                      size={20}
-                      stroke={1.5}
-                      className="animate-spin text-muted-foreground"
-                    />
+                  <div className="divide-y divide-border/40">
+                    {Array.from({ length: rowsPerPage }, (_, i) => (
+                      <div key={i} className={cn(ROW_GRID, "py-3")}>
+                        <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
+                        <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
+                        <div className="h-5 w-16 rounded-full bg-muted/50 animate-pulse" />
+                        <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
+                        <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
+                        <div />
+                      </div>
+                    ))}
                   </div>
                 ) : logs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
                     <img
                       src={emptyActivityImg}
                       alt=""
+                      loading="lazy"
                       className="h-20 w-20 object-contain opacity-80"
                     />
                     <div className="text-center">

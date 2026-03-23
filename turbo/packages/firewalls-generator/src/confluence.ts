@@ -38,7 +38,7 @@ interface OpenApiOperation {
   security?: Array<Record<string, string[]>>;
 }
 
-type OpenApiPathItem = Record<string, OpenApiOperation | unknown>;
+type OpenApiPathItem = Record<string, unknown>;
 
 interface OpenApiSpec {
   info?: { version?: string };

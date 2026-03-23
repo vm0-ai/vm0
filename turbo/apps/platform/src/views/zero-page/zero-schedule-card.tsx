@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   scheduleViewMode$,
@@ -28,6 +29,8 @@ import {
   setScheduleDayOfWeek$,
   scheduleDayOfMonth$,
   setScheduleDayOfMonth$,
+  newScheduleDescription$,
+  setNewScheduleDescription$,
   saveError$,
   setSaveError$,
   togglingIds$,
@@ -71,7 +74,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
-import emptyScheduleImg from "./assets/empty-schedule.png";
+import emptyScheduleImg from "./assets/empty-schedule.webp";
 import {
   COMMON_TIMEZONES,
   getTodayDateLocal,
@@ -130,6 +133,7 @@ export interface ScheduleEntry {
   id: string;
   time: string;
   prompt: string;
+  description?: string | null;
   /** Schedule name used for API operations (edit/delete). */
   name?: string;
   enabled?: boolean;
@@ -148,15 +152,44 @@ function DeleteButton({
   label: string;
   onDelete: (name: string) => Promise<void>;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <button
-      type="button"
-      onClick={() => void onDelete(name)}
-      className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-      aria-label={`Delete ${label}`}
-    >
-      <IconTrash size={14} stroke={1.5} />
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
+        aria-label={`Delete ${label}`}
+      >
+        <IconTrash size={14} stroke={1.5} />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete schedule?</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              This will permanently delete the schedule{" "}
+              <span className="font-medium text-foreground">{name}</span>. This
+              action cannot be undone.
+            </p>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setOpen(false);
+                detach(onDelete(name), Reason.DomCallback);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -440,9 +473,9 @@ function CalendarEntryPopover({
           onMouseLeave={() => setOpen(false)}
           onDoubleClick={() => onEdit(entry)}
           className="w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border border-blue-700/40 bg-blue-700/15 text-blue-800 hover:bg-blue-700/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/50 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25 dark:hover:bg-blue-900/35 text-left"
-          aria-label={`${entry.time}: ${entry.prompt}`}
+          aria-label={`${entry.time}: ${entry.description || entry.prompt}`}
         >
-          {entry.prompt}
+          {entry.description || entry.prompt}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -464,6 +497,11 @@ function CalendarEntryPopover({
             </button>
           </div>
           <p className="text-xs text-muted-foreground">{entry.time}</p>
+          {entry.description && (
+            <p className="text-sm font-medium text-foreground leading-snug">
+              {entry.description}
+            </p>
+          )}
           <p className="text-sm text-foreground leading-snug">{entry.prompt}</p>
         </div>
       </PopoverContent>
@@ -478,6 +516,7 @@ interface ZeroScheduleCardProps {
   /** When provided, called on save instead of local state mutation. */
   onSave?: (params: {
     prompt: string;
+    description?: string;
     freq: string;
     date: string;
     hour: number;
@@ -540,6 +579,8 @@ export function ZeroScheduleCard({
   const setScheduleDayOfWeek = useSet(setScheduleDayOfWeek$);
   const scheduleDayOfMonth = useGet(scheduleDayOfMonth$);
   const setScheduleDayOfMonth = useSet(setScheduleDayOfMonth$);
+  const newScheduleDescription = useGet(newScheduleDescription$);
+  const setNewScheduleDescription = useSet(setNewScheduleDescription$);
   const saveError = useGet(saveError$);
   const setSaveError = useSet(setSaveError$);
   const togglingIds = useGet(togglingIds$);
@@ -548,6 +589,7 @@ export function ZeroScheduleCard({
   const openAddSchedule = () => {
     setEditingScheduleId(null);
     setNewSchedulePrompt("");
+    setNewScheduleDescription("");
     setScheduleFreq("every_day");
     setScheduleDate(new Date().toISOString().slice(0, 10));
     setScheduleHour(9);
@@ -563,6 +605,7 @@ export function ZeroScheduleCard({
   const openEditSchedule = (entry: ScheduleEntry) => {
     setEditingScheduleId(entry.id);
     setNewSchedulePrompt(entry.prompt);
+    setNewScheduleDescription(entry.description ?? "");
     const parsed = parseScheduleTimeString(entry.time);
     setScheduleFreq(parsed.freq);
     setScheduleDate(parsed.date);
@@ -592,6 +635,7 @@ export function ZeroScheduleCard({
         setSaveError(null);
         await onSave({
           prompt: newSchedulePrompt.trim(),
+          description: newScheduleDescription.trim() || undefined,
           freq: scheduleFreq,
           date: scheduleDate,
           hour: scheduleHour,
@@ -702,6 +746,7 @@ export function ZeroScheduleCard({
                 <img
                   src={emptyScheduleImg}
                   alt="No entries"
+                  loading="lazy"
                   className="h-20 w-20 object-contain opacity-80"
                 />
                 <div className="text-center">
@@ -759,7 +804,7 @@ export function ZeroScheduleCard({
                         {entry.time}
                       </span>
                       <span className="min-w-0 flex-1 text-muted-foreground text-xs truncate">
-                        {entry.prompt}
+                        {entry.description || entry.prompt}
                       </span>
                       <button
                         type="button"
@@ -963,6 +1008,24 @@ export function ZeroScheduleCard({
                 placeholder="Describe your task and instruction"
                 rows={5}
                 className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="schedule-dialog-description"
+                className="text-sm font-medium text-foreground"
+              >
+                Description
+                <span className="text-muted-foreground font-normal ml-1">
+                  (optional)
+                </span>
+              </label>
+              <Input
+                id="schedule-dialog-description"
+                value={newScheduleDescription}
+                onChange={(e) => setNewScheduleDescription(e.target.value)}
+                placeholder="Leave blank to auto-generate"
+                className="h-9"
               />
             </div>
             <div className="flex flex-col gap-2">

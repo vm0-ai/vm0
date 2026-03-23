@@ -127,6 +127,9 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
+          trap-caching: false
+        env:
+          CODEQL_ACTION_OVERLAY_DATABASE_CACHE: false
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4

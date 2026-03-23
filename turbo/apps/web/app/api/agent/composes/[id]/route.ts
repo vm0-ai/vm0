@@ -3,27 +3,20 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { composesByIdContract, getInstructionsStorageName } from "@vm0/core";
-import { and, eq, inArray } from "drizzle-orm";
+import { composesByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
-import { storages } from "../../../../../src/db/schema/storage";
-import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../../src/lib/auth/capability-check";
-import { canAccessCompose } from "../../../../../src/lib/agent/compose-access";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
-  listS3Objects,
-  deleteS3Objects,
-} from "../../../../../src/lib/s3/s3-client";
-import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
+  getComposeById,
+  getComposeOrgId,
+  deleteCompose,
+} from "../../../../../src/lib/agent-compose/compose-service";
+import { isNotFound, isConflict } from "../../../../../src/lib/errors";
 
 const router = tsr.router(composesByIdContract, {
   getById: async ({ params, headers }) => {
@@ -35,75 +28,43 @@ const router = tsr.router(composesByIdContract, {
     if (isAuthError(authResult)) return authResult;
     const { userId } = authResult;
 
-    // JOIN compose + version in a single query
-    const [result] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        userId: agentComposes.userId,
-        orgId: agentComposes.orgId,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-        createdAt: agentComposes.createdAt,
-        updatedAt: agentComposes.updatedAt,
-        content: agentComposeVersions.content,
-      })
-      .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
-      .where(eq(agentComposes.id, params.id))
-      .limit(1);
-
-    if (!result) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Agent compose not found", code: "NOT_FOUND" },
-        },
-      };
+    // Sandbox tokens lack org context — pass compose's own orgId to satisfy
+    // the canAccessCompose org check. Standard auth resolves org normally.
+    let orgId: string;
+    if (authResult.capabilities) {
+      // Sandbox: derive orgId from the compose itself (deferred to service)
+      // canAccessCompose(userId, compose.orgId, compose) always matches on orgId
+      orgId = await getComposeOrgId(params.id);
+    } else {
+      orgId = (await resolveOrg(authResult)).org.orgId;
     }
 
-    // Check permission to access this compose.
-    // Sandbox tokens (with capabilities) are already authorized via requireAuth;
-    // use the compose's orgId since sandbox tokens lack org context.
-    const orgId = authResult.capabilities
-      ? result.orgId
-      : (await resolveOrg(authResult)).org.orgId;
-    const hasAccess = canAccessCompose(userId, orgId, result);
-    if (!hasAccess) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Agent compose not found", code: "NOT_FOUND" },
-        },
-      };
+    try {
+      const compose = await getComposeById(params.id, userId, orgId);
+      return { status: 200 as const, body: compose };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent compose not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      throw error;
     }
-
-    return {
-      status: 200 as const,
-      body: {
-        id: result.id,
-        name: result.name,
-        headVersionId: result.headVersionId,
-        content: (result.content as AgentComposeYaml) ?? null,
-        createdAt: result.createdAt.toISOString(),
-        updatedAt: result.updatedAt.toISOString(),
-      },
-    };
   },
 
   delete: async ({ params, headers }) => {
     initServices();
 
-    // 1. Authenticate
     const authResult = await requireAuth(headers.authorization, {
       requiredCapability: "agent:write",
     });
     if (isAuthError(authResult)) return authResult;
     const { userId } = authResult;
 
-    // 2. Block sandbox tokens — agents cannot delete other agents
+    // Block sandbox tokens — agents cannot delete other agents
     if (isSandboxAuth(authResult)) {
       return {
         status: 403 as const,
@@ -116,89 +77,24 @@ const router = tsr.router(composesByIdContract, {
       };
     }
 
-    // 3. Verify ownership (only owner can delete)
-    const [compose] = await globalThis.services.db
-      .select()
-      .from(agentComposes)
-      .where(
-        and(eq(agentComposes.id, params.id), eq(agentComposes.userId, userId)),
-      )
-      .limit(1);
-
-    if (!compose) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Agent not found", code: "NOT_FOUND" },
-        },
-      };
-    }
-
-    // 4. Check for running/pending runs
-    const runningRuns = await globalThis.services.db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .innerJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
-      .where(
-        and(
-          eq(agentComposeVersions.composeId, params.id),
-          inArray(agentRuns.status, ["pending", "running"]),
-        ),
-      )
-      .limit(1);
-
-    if (runningRuns.length > 0) {
-      return {
-        status: 409 as const,
-        body: {
-          error: {
-            message: "Cannot delete agent: agent is currently running",
-            code: "CONFLICT",
-          },
-        },
-      };
-    }
-
-    // 5. Delete agent (cascades handle related data)
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, params.id));
-
-    // 6. Clean up agent-instructions volume (DB + S3)
-    const storageName = getInstructionsStorageName(compose.name);
-    const [storage] = await globalThis.services.db
-      .select({ id: storages.id, s3Prefix: storages.s3Prefix })
-      .from(storages)
-      .where(
-        and(
-          eq(storages.orgId, compose.orgId),
-          eq(storages.name, storageName),
-          eq(storages.type, "volume"),
-        ),
-      )
-      .limit(1);
-
-    if (storage) {
-      // Delete DB record (CASCADE removes storage_versions)
-      await globalThis.services.db
-        .delete(storages)
-        .where(eq(storages.id, storage.id));
-
-      // Delete S3 objects under the storage prefix
-      const bucketName = globalThis.services.env.R2_USER_STORAGES_BUCKET_NAME;
-      const objects = await listS3Objects(bucketName, storage.s3Prefix);
-      if (objects.length > 0) {
-        await deleteS3Objects(
-          bucketName,
-          objects.map((o) => o.key),
-        );
+    try {
+      await deleteCompose(params.id, userId);
+      return { status: 204 as const, body: undefined };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: { error: { message: "Agent not found", code: "NOT_FOUND" } },
+        };
       }
+      if (isConflict(error)) {
+        return {
+          status: 409 as const,
+          body: { error: { message: error.message, code: "CONFLICT" } },
+        };
+      }
+      throw error;
     }
-
-    return { status: 204 as const, body: undefined };
   },
 });
 

@@ -86,3 +86,27 @@ export async function generateChatTitle(
   }
   return generateText(messages);
 }
+
+/**
+ * Generate a one-sentence description for a scheduled task.
+ *
+ * Returns null if the lightweight model is unavailable.
+ */
+export async function generateScheduleDescription(
+  agentName: string,
+  scheduleName: string,
+  triggerSummary: string,
+  prompt: string,
+): Promise<string | null> {
+  return generateText([
+    {
+      role: "system",
+      content:
+        "Write a one-sentence summary (max 120 chars) for a scheduled task. No quotes or punctuation at end. Return only the summary.",
+    },
+    {
+      role: "user",
+      content: `Agent: ${agentName}\nSchedule: ${scheduleName}\nTrigger: ${triggerSummary}\nPrompt: ${prompt.slice(0, 200)}`,
+    },
+  ]);
+}
