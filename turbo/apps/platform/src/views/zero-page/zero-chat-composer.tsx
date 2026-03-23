@@ -178,7 +178,7 @@ function ConnectorTriggerIcons({
         <span
           key={c.type}
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-full bg-background",
+            "flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background",
             i === connected.length - 1 && "relative",
           )}
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
