@@ -11,11 +11,21 @@ import {
 } from "./runs";
 
 /**
- * Zero run request schema — same as unified but without triggerSource
- * (the proxy injects triggerSource: "web" automatically).
+ * Zero run request schema — subset of unified schema.
+ * Server-side defaults are injected by createZeroRun():
+ * memoryName, artifactName, disallowedTools.
+ * Fields not used by zero triggers are omitted:
+ * triggerSource, artifactVersion, vars, secrets, volumeVersions.
  */
 const zeroRunRequestSchema = unifiedRunRequestSchema.omit({
   triggerSource: true,
+  memoryName: true,
+  artifactName: true,
+  artifactVersion: true,
+  disallowedTools: true,
+  volumeVersions: true,
+  vars: true,
+  secrets: true,
 });
 
 const c = initContract();

@@ -1,9 +1,9 @@
-import { startRun, isRunDispatchError } from "../../run";
+import { isRunDispatchError } from "../../run";
+import { createZeroRun } from "../../zero/zero-run-service";
 import {
   buildIntegrationContext,
   buildScheduleGuidance,
   buildSlackMessagingGuidance,
-  DISALLOWED_CRON_TOOLS,
 } from "../../integration-context";
 import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
@@ -86,12 +86,11 @@ export async function runAgentForSlackOrg(
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack/org`;
     const callbackSecret = generateCallbackSecret();
 
-    const result = await startRun({
+    const result = await createZeroRun({
       userId,
       composeId,
       prompt,
       appendSystemPrompt,
-      disallowedTools: [...DISALLOWED_CRON_TOOLS],
       sessionId,
       triggerSource: "slack",
       callbacks: [

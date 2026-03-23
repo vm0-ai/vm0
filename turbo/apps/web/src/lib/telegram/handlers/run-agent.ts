@@ -1,4 +1,5 @@
-import { startRun, isRunDispatchError } from "../../run";
+import { isRunDispatchError } from "../../run";
+import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
@@ -67,7 +68,7 @@ export async function runAgentForTelegram(
   const callbackSecret = generateCallbackSecret();
 
   try {
-    const result = await startRun({
+    const result = await createZeroRun({
       userId,
       composeId,
       prompt: fullPrompt,
