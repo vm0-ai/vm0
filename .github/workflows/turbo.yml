@@ -1573,7 +1573,7 @@ jobs:
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     concurrency:
-      group: cli-e2e-03-runner-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
       [
