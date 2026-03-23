@@ -202,8 +202,8 @@ jobs:
             MQ_REF="${{ github.event.merge_group.head_ref }}"
             PR_NUM=$(echo "$MQ_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$PR_NUM" ]; then
-              echo "job-ref=pr-${PR_NUM}-mq-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
-              echo "Job ref set to: pr-${PR_NUM}-mq-${GITHUB_RUN_ID}"
+              echo "job-ref=pr-${PR_NUM}-mq" >> "$GITHUB_OUTPUT"
+              echo "Job ref set to: pr-${PR_NUM}-mq"
             else
               echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_REF"
               exit 1

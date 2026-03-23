@@ -49,7 +49,7 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          for JOB_REF in "pr-${PR_NUMBER}" "pr-${PR_NUMBER}-merge-queue"; do
+          for JOB_REF in "pr-${PR_NUMBER}" "pr-${PR_NUMBER}-mq"; do
             if ! ansible-playbook \
               -i "${METAL_HOSTS}," \
               playbooks/cleanup-turbo-runner.yml \
@@ -68,7 +68,7 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          for JOB_REF in "pr-${PR_NUMBER}-test" "pr-${PR_NUMBER}-merge-queue-test"; do
+          for JOB_REF in "pr-${PR_NUMBER}-test" "pr-${PR_NUMBER}-mq-test"; do
             if ! ansible-playbook \
               -i "${METAL_HOSTS}," \
               playbooks/cleanup-crates-runner.yml \
@@ -93,15 +93,15 @@ jobs:
         with:
           neon-api-key: ${{ secrets.NEON_API_KEY }}
           neon-project-id: ${{ vars.NEON_PROJECT_ID }}
-          branch-name: "${{ github.event.pull_request.head.ref }}"
+          branch-name: "pr-${{ github.event.pull_request.number }}"
           action: "cleanup"
 
-      - name: Delete Neon Branch (merge-queue)
+      - name: Delete Neon Branch (mq)
         uses: ./.github/actions/neon-branch
         with:
           neon-api-key: ${{ secrets.NEON_API_KEY }}
           neon-project-id: ${{ vars.NEON_PROJECT_ID }}
-          branch-name: "pr-${{ github.event.pull_request.number }}-merge-queue"
+          branch-name: "pr-${{ github.event.pull_request.number }}-mq"
           action: "cleanup"
 
   cleanup-deployments:
@@ -118,9 +118,9 @@ jobs:
             const branchName = context.payload.pull_request.head.ref;
             const sha = context.payload.pull_request.head.sha;
             const prNumber = context.payload.pull_request.number;
-            const mergeQueueJobRef = `pr-${prNumber}-merge-queue`;
+            const mergeQueueJobRef = `pr-${prNumber}-mq`;
 
-            console.log(`Cleaning up deployments for branch: ${branchName}, sha: ${sha}, merge-queue: ${mergeQueueJobRef}`);
+            console.log(`Cleaning up deployments for branch: ${branchName}, sha: ${sha}, mq: ${mergeQueueJobRef}`);
 
             // Get all deployments and filter by branch name
             const allDeployments = await github.rest.repos.listDeployments({
@@ -129,7 +129,7 @@ jobs:
               per_page: 100
             });
 
-            // Filter deployments that belong to this branch or its merge-queue run
+            // Filter deployments that belong to this branch or its mq run
             const branchDeployments = allDeployments.data.filter(deployment => {
               // Match by ref or environment name containing branch
               return deployment.ref === branchName ||
