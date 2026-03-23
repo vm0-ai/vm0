@@ -232,7 +232,6 @@ jobs:
           workspaces: crates -> target
           shared-key: aarch64-musl-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-targets: false
 
       - name: Cross-compile guest binaries for ARM64
         run: |
