@@ -1,6 +1,11 @@
 import { useGet, useSet } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import { IconExternalLink, IconCrown } from "@tabler/icons-react";
+import {
+  billingIsPro$,
+  setBillingIsPro$,
+  billingPricingOpen$,
+  setBillingPricingOpen$,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { Button, Dialog, DialogContent, Switch } from "@vm0/ui";
 import planFreeImg from "./assets/plan-free.png";
 import planProImg from "./assets/plan-pro.png";
@@ -231,12 +236,10 @@ function PricingDialog({
 }
 
 export function OrgBillingTab() {
-  const isPro$ = useCCState(false);
-  const isPro = useGet(isPro$);
-  const setIsPro = useSet(isPro$);
-  const pricingOpen$ = useCCState(false);
-  const pricingOpen = useGet(pricingOpen$);
-  const setPricingOpen = useSet(pricingOpen$);
+  const isPro = useGet(billingIsPro$);
+  const setIsPro = useSet(setBillingIsPro$);
+  const pricingOpen = useGet(billingPricingOpen$);
+  const setPricingOpen = useSet(setBillingPricingOpen$);
 
   return (
     <div className="flex flex-col gap-8">

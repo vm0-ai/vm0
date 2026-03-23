@@ -170,6 +170,7 @@ export type ZeroNavId =
   | "team"
   | "activity"
   | "works"
+  | "settings"
   | "preferences"
   | "queue"
   | "not-found";

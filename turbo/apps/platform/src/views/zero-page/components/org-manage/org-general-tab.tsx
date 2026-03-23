@@ -1,5 +1,4 @@
 import { useLoadable, useGet, useSet } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import { IconUpload } from "@tabler/icons-react";
 import {
   Input,
@@ -25,6 +24,29 @@ import { clerk$ } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
 import { fetch$ } from "../../../../signals/fetch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import {
+  profileName$,
+  setProfileName$,
+  profileSaving$,
+  setProfileSaving$,
+  profileLogoUrl$,
+  setProfileLogoUrl$,
+  pendingLogoFile$,
+  setPendingLogoFile$,
+  pendingLogoPreview$,
+  setPendingLogoPreview$,
+  fileInputEl$,
+  setFileInputEl$,
+  logoLoaded$,
+  setLogoLoaded$,
+  profileSectionRef$,
+  leaving$,
+  setLeaving$,
+  deleting$,
+  setDeleting$,
+  deleteConfirm$,
+  setDeleteConfirm$,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
@@ -65,29 +87,25 @@ function ProfileSection({
   org: OrgResponse;
   isAdmin: boolean;
 }) {
-  const name$ = useCCState(org.name ?? "");
-  const name = useGet(name$);
-  const setName = useSet(name$);
+  const sectionRef = useSet(profileSectionRef$);
 
-  const saving$ = useCCState(false);
-  const saving = useGet(saving$);
-  const setSaving = useSet(saving$);
+  const name = useGet(profileName$);
+  const setName = useSet(setProfileName$);
 
-  const logoUrl$ = useCCState<string | null>(null);
-  const logoUrl = useGet(logoUrl$);
-  const setLogoUrl = useSet(logoUrl$);
+  const saving = useGet(profileSaving$);
+  const setSaving = useSet(setProfileSaving$);
 
-  const pendingLogoFile$ = useCCState<File | null>(null);
+  const logoUrl = useGet(profileLogoUrl$);
+  const setLogoUrl = useSet(setProfileLogoUrl$);
+
   const pendingLogoFile = useGet(pendingLogoFile$);
-  const setPendingLogoFile = useSet(pendingLogoFile$);
+  const setPendingLogoFile = useSet(setPendingLogoFile$);
 
-  const pendingLogoPreview$ = useCCState<string | null>(null);
   const pendingLogoPreview = useGet(pendingLogoPreview$);
-  const setPendingLogoPreview = useSet(pendingLogoPreview$);
+  const setPendingLogoPreview = useSet(setPendingLogoPreview$);
 
-  const fileInputEl$ = useCCState<HTMLInputElement | null>(null);
   const fileInputEl = useGet(fileInputEl$);
-  const setFileInputEl = useSet(fileInputEl$);
+  const setFileInputEl = useSet(setFileInputEl$);
 
   const fetchFn = useGet(fetch$);
   const refreshOrg = useSet(refreshOrg$);
@@ -95,9 +113,8 @@ function ProfileSection({
   const clerk =
     clerkLoadable.state === "hasData" ? clerkLoadable.data : undefined;
 
-  const logoLoaded$ = useCCState(false);
   const logoLoaded = useGet(logoLoaded$);
-  const setLogoLoaded = useSet(logoLoaded$);
+  const setLogoLoaded = useSet(setLogoLoaded$);
 
   const createClient = useGet(zeroClient$);
   const hasNameChange = name !== (org.name ?? "");
@@ -175,7 +192,7 @@ function ProfileSection({
   };
 
   return (
-    <section className="flex flex-col gap-3">
+    <section ref={sectionRef} className="flex flex-col gap-3">
       <h3 className="text-sm font-medium text-foreground">Profile</h3>
       <div
         className="overflow-hidden rounded-xl bg-card"
@@ -297,17 +314,14 @@ function DangerZoneSection({
   const createClient = useGet(zeroClient$);
   const canLeave = !isAdmin;
 
-  const leaving$ = useCCState(false);
   const leaving = useGet(leaving$);
-  const setLeaving = useSet(leaving$);
+  const setLeaving = useSet(setLeaving$);
 
-  const deleting$ = useCCState(false);
   const deleting = useGet(deleting$);
-  const setDeleting = useSet(deleting$);
+  const setDeleting = useSet(setDeleting$);
 
-  const deleteConfirm$ = useCCState("");
   const deleteConfirm = useGet(deleteConfirm$);
-  const setDeleteConfirm = useSet(deleteConfirm$);
+  const setDeleteConfirm = useSet(setDeleteConfirm$);
 
   const handleLeave = async () => {
     if (leaving) {

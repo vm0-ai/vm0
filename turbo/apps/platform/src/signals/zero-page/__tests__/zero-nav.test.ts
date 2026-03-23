@@ -83,9 +83,9 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("not-found");
     });
 
-    it("should fall back to 'chat' for removed /settings route", () => {
+    it("should resolve /settings to 'settings'", () => {
       mockLocation({ pathname: "/settings", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
+      expect(context.store.get(zeroActiveId$)).toBe("settings");
     });
   });
 

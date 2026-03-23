@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import { Dialog, DialogContent, cn } from "@vm0/ui";
 import {
   IconBuilding,
@@ -19,16 +18,13 @@ import { OrgCreditsTab } from "./org-credits-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
+import {
+  activeTab$,
+  setActiveTab$,
+  type OrgManageTab,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
-
-type OrgManageTab =
-  | "general"
-  | "providers"
-  | "members"
-  | "billing"
-  | "credits"
-  | "invoices";
 
 interface OrgManageDialogProps {
   open: boolean;
@@ -113,9 +109,8 @@ function TabContent({ tab }: { tab: OrgManageTab }) {
 }
 
 export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
-  const activeTab$ = useCCState<OrgManageTab>("general");
   const activeTab = useGet(activeTab$);
-  const setActiveTab = useSet(activeTab$);
+  const setActiveTab = useSet(setActiveTab$);
 
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =

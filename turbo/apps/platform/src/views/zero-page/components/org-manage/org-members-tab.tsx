@@ -1,5 +1,4 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { useCCState } from "ccstate-react/experimental";
 import {
   IconSearch,
   IconShieldCheck,
@@ -41,6 +40,14 @@ import { isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { user$, clerk$ } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import {
+  memberSearch$,
+  setMemberSearch$,
+  inviteEmail$,
+  setInviteEmail$,
+  inviteTouched$,
+  setInviteTouched$,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 
@@ -66,9 +73,8 @@ export function OrgMembersTab() {
   const refreshMembers = useSet(refreshOrgMembers$);
   const refreshOrg = useSet(refreshOrg$);
 
-  const search$ = useCCState("");
-  const search = useGet(search$);
-  const setSearch = useSet(search$);
+  const search = useGet(memberSearch$);
+  const setSearch = useSet(setMemberSearch$);
 
   const members =
     membersLoadable.state === "hasData" ? membersLoadable.data : [];
@@ -253,16 +259,14 @@ export function OrgMembersTab() {
 }
 
 function InviteDialog({ onInvite }: { onInvite: (email: string) => void }) {
-  const email$ = useCCState("");
-  const email = useGet(email$);
-  const setEmail = useSet(email$);
+  const email = useGet(inviteEmail$);
+  const setEmail = useSet(setInviteEmail$);
 
   const trimmed = email.trim();
   const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 
-  const touched$ = useCCState(false);
-  const touched = useGet(touched$);
-  const setTouched = useSet(touched$);
+  const touched = useGet(inviteTouched$);
+  const setTouched = useSet(setInviteTouched$);
 
   return (
     <Dialog>
