@@ -40,7 +40,7 @@ function mockQueueWithActivityLinks() {
             sessionLink: null,
           },
         ],
-        estimatedTimePerRun: 30000,
+        estimatedTimePerRun: 30_000,
       });
     }),
   );
