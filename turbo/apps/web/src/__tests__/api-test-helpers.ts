@@ -83,8 +83,8 @@ import type { ScheduleResponse } from "../lib/schedule/schedule-service";
 import { grantOrgCredits } from "../lib/org/org-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
-import { PUT as setSecretRoute } from "../../app/api/secrets/route";
-import { PUT as setVariableRoute } from "../../app/api/variables/route";
+import { POST as setSecretRoute } from "../../app/api/zero/secrets/route";
+import { POST as setVariableRoute } from "../../app/api/zero/variables/route";
 
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
 import { composeJobs } from "../db/schema/compose-job";
@@ -1459,8 +1459,8 @@ export async function createTestSecret(
   createdAt: string;
   updatedAt: string;
 }> {
-  const request = createTestRequest("http://localhost:3000/api/secrets", {
-    method: "PUT",
+  const request = createTestRequest("http://localhost:3000/api/zero/secrets", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, value, description }),
   });
@@ -1497,11 +1497,14 @@ export async function createTestVariable(
   createdAt: string;
   updatedAt: string;
 }> {
-  const request = createTestRequest("http://localhost:3000/api/variables", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, value, description }),
-  });
+  const request = createTestRequest(
+    "http://localhost:3000/api/zero/variables",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, value, description }),
+    },
+  );
   const response = await setVariableRoute(request);
   if (!response.ok) {
     const error = await response.json();
@@ -1624,8 +1627,8 @@ async function createTestApiTokenConnector(options?: {
   const secretName =
     options?.secretName ?? `${type.toUpperCase().replace(/-/g, "_")}_TOKEN`;
 
-  const request = createTestRequest("http://localhost:3000/api/secrets", {
-    method: "PUT",
+  const request = createTestRequest("http://localhost:3000/api/zero/secrets", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: secretName,

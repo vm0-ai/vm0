@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET, POST } from "../route";
 import { POST as createComposeRoute } from "../../composes/route";
-import { PUT as putSecret } from "../../../secrets/route";
-import { PUT as setVariableRoute } from "../../../variables/route";
+import { POST as putSecret } from "../../../zero/secrets/route";
+import { POST as setVariableRoute } from "../../../zero/variables/route";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
@@ -222,9 +222,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Store a secret in the database first
       const secretName = `DB_SECRET_${Date.now()}`;
       const createSecretRequest = createTestRequest(
-        "http://localhost:3000/api/secrets",
+        "http://localhost:3000/api/zero/secrets",
         {
-          method: "PUT",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: secretName,
@@ -258,9 +258,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Store a secret in the database
       const secretName = `OVERRIDE_SECRET_${Date.now()}`;
       const createSecretRequest = createTestRequest(
-        "http://localhost:3000/api/secrets",
+        "http://localhost:3000/api/zero/secrets",
         {
-          method: "PUT",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: secretName,
@@ -1363,11 +1363,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
      * Helper to create a server-stored variable
      */
     async function createVariable(name: string, value: string): Promise<void> {
-      const request = createTestRequest("http://localhost:3000/api/variables", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, value }),
-      });
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/variables",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, value }),
+        },
+      );
       const response = await setVariableRoute(request);
       if (!response.ok) {
         const error = await response.json();
