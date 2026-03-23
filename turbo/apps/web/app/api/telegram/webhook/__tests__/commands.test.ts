@@ -544,7 +544,7 @@ describe("Telegram bot commands", () => {
       const editMsg = telegramEditMessageText();
       server.use(sendMsg.handler, editMsg.handler);
 
-      vi.spyOn(runModule, "startRun").mockResolvedValue({
+      vi.spyOn(runModule, "startZeroRun").mockResolvedValue({
         runId: "mock-run-id",
         status: "queued",
         createdAt: new Date(),
@@ -579,7 +579,7 @@ describe("Telegram bot commands", () => {
       const editMsg = telegramEditMessageText();
       server.use(sendMsg.handler, editMsg.handler);
 
-      vi.spyOn(runModule, "startRun").mockResolvedValue({
+      vi.spyOn(runModule, "startZeroRun").mockResolvedValue({
         runId: "mock-run-id",
         status: "queued",
         createdAt: new Date(),

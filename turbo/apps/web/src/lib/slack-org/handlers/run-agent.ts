@@ -1,4 +1,4 @@
-import { startRun, isRunDispatchError } from "../../run";
+import { startZeroRun, isRunDispatchError } from "../../run";
 import {
   buildIntegrationContext,
   buildScheduleGuidance,
@@ -86,7 +86,7 @@ export async function runAgentForSlackOrg(
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack/org`;
     const callbackSecret = generateCallbackSecret();
 
-    const result = await startRun({
+    const result = await startZeroRun({
       userId,
       composeId,
       prompt,

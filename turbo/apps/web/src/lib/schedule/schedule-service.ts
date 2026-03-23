@@ -7,7 +7,7 @@ import { decryptSecretsMap } from "../crypto";
 import { getOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
-import { startRun } from "../run/run-service";
+import { startZeroRun } from "../run/run-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 
@@ -845,7 +845,7 @@ async function executeSchedule(
   // Delegate run creation, validation, and dispatch to startRun()
   let runId: string;
   try {
-    const result = await startRun({
+    const result = await startZeroRun({
       userId: schedule.userId,
       prompt: schedule.prompt,
       appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
