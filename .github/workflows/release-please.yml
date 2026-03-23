@@ -805,7 +805,8 @@ jobs:
           has_warnings=false
           for host in $(echo "$AWS_METAL_RUNNER_HOSTS" | tr ',' ' '); do
             [ -z "$host" ] && continue
-            # shellcheck disable=SC2029 -- RUNNER_BIN contains \$HOME (remote) + version (local)
+            # RUNNER_BIN contains \$HOME (remote) + version (local), so mixed expansion is intentional
+            # shellcheck disable=SC2029
             if ! ssh "${AWS_METAL_RUNNER_USER}@${host}" "${RUNNER_BIN} doctor" 2>&1; then
               has_warnings=true
             fi
