@@ -117,22 +117,30 @@ function getAgentCellClasses(
 
 function CalendarEntryPopover({
   entry,
+  cellKey,
   agentOrder,
   onEdit,
+  hoveredId,
+  setHoveredId,
 }: {
   entry: CombinedEntry;
+  cellKey: string;
   agentOrder: readonly string[];
   onEdit: (entry: CombinedEntry) => void;
+  hoveredId: string | null;
+  setHoveredId: (id: string | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const popoverId = `${entry.id}-${cellKey}`;
+  const open = hoveredId === popoverId;
+  const setOpen = (v: boolean) => setHoveredId(v ? popoverId : null);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
+          onMouseEnter={() => setHoveredId(popoverId)}
+          onMouseLeave={() => setHoveredId(null)}
           onDoubleClick={() => onEdit(entry)}
           className={cn(
             "w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -190,6 +198,7 @@ function ScheduleCalendarView({
   agentOrder: readonly string[];
   onEdit: (entry: CombinedEntry) => void;
 }) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const enabledEntries = combinedSchedule.filter((e) => e.enabled !== false);
   const calendarSlots = buildCalendarTimeSlots(enabledEntries);
   const [selectedDay, setSelectedDay] = useState(
@@ -284,8 +293,11 @@ function ScheduleCalendarView({
                           <CalendarEntryPopover
                             key={entry.id}
                             entry={entry}
+                            cellKey={`${selectedDay}-${timeLabel}`}
                             agentOrder={agentOrder}
                             onEdit={onEdit}
+                            hoveredId={hoveredId}
+                            setHoveredId={setHoveredId}
                           />
                         ))}
                       </div>
@@ -351,8 +363,11 @@ function ScheduleCalendarView({
                               <CalendarEntryPopover
                                 key={entry.id}
                                 entry={entry}
+                                cellKey={`${dayIndex}-${timeLabel}`}
                                 agentOrder={agentOrder}
                                 onEdit={onEdit}
+                                hoveredId={hoveredId}
+                                setHoveredId={setHoveredId}
                               />
                             ))}
                           </div>

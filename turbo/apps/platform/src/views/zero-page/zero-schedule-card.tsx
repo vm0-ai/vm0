@@ -454,15 +454,18 @@ export function getEntriesInCell(
 
 function CalendarEntryPopover({
   entry,
+  cellKey,
   onEdit,
 }: {
   entry: ScheduleEntry;
+  cellKey: string;
   onEdit: (entry: ScheduleEntry) => void;
 }) {
   const hoveredId = useGet(calendarPopoverEntryId$);
   const setHoveredId = useSet(setCalendarPopoverEntryId$);
-  const open = hoveredId === entry.id;
-  const setOpen = (v: boolean) => setHoveredId(v ? entry.id : null);
+  const popoverId = `${entry.id}-${cellKey}`;
+  const open = hoveredId === popoverId;
+  const setOpen = (v: boolean) => setHoveredId(v ? popoverId : null);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -895,6 +898,7 @@ export function ZeroScheduleCard({
                                       <CalendarEntryPopover
                                         key={entry.id}
                                         entry={entry}
+                                        cellKey={`${dayIndex}-${timeLabel}`}
                                         onEdit={openEditSchedule}
                                       />
                                     ))}
