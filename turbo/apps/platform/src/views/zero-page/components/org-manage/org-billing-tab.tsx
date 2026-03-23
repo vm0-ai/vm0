@@ -7,9 +7,9 @@ import {
   setBillingPricingOpen$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { Button, Dialog, DialogContent, Switch } from "@vm0/ui";
-import planFreeImg from "./assets/plan-free.png";
-import planProImg from "./assets/plan-pro.png";
-import planTeamImg from "./assets/plan-team.png";
+import planFreeImg from "./assets/plan-free.webp";
+import planProImg from "./assets/plan-pro.webp";
+import planTeamImg from "./assets/plan-team.webp";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 
@@ -111,6 +111,7 @@ function PlanCard({
         <img
           src={plan.image}
           alt={plan.name}
+          loading="lazy"
           className="h-28 w-28 object-contain -mb-1"
         />
       )}

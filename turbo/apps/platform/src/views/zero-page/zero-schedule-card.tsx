@@ -71,7 +71,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
-import emptyScheduleImg from "./assets/empty-schedule.png";
+import emptyScheduleImg from "./assets/empty-schedule.webp";
 import {
   COMMON_TIMEZONES,
   getTodayDateLocal,
@@ -702,6 +702,7 @@ export function ZeroScheduleCard({
                 <img
                   src={emptyScheduleImg}
                   alt="No entries"
+                  loading="lazy"
                   className="h-20 w-20 object-contain opacity-80"
                 />
                 <div className="text-center">

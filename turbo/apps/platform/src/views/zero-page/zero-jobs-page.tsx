@@ -13,12 +13,12 @@ import {
 import { zeroAvatarIndex$ } from "../../signals/zero-page/zero-nav.ts";
 import { Link } from "../router/link.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
-import zeroAvatarImg from "./assets/zero-avatar.png";
-import avatar1Img from "./assets/avatar-1.png";
-import avatar2Img from "./assets/avatar-2.png";
-import avatar3Img from "./assets/avatar-3.png";
-import avatar4Img from "./assets/avatar-4.png";
-import emptyChatImg from "./assets/empty-chat.png";
+import zeroAvatarImg from "./assets/zero-avatar.webp";
+import avatar1Img from "./assets/avatar-1.webp";
+import avatar2Img from "./assets/avatar-2.webp";
+import avatar3Img from "./assets/avatar-3.webp";
+import avatar4Img from "./assets/avatar-4.webp";
+import emptyChatImg from "./assets/empty-chat.webp";
 
 const ZERO_AVATARS = [
   zeroAvatarImg,
@@ -163,6 +163,7 @@ export function ZeroJobsPage() {
                 <img
                   src={emptyChatImg}
                   alt="No teammates"
+                  loading="lazy"
                   className="h-20 w-20 object-contain opacity-80"
                 />
                 <div className="text-center">
