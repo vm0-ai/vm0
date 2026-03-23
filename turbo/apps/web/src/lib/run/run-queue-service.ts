@@ -268,7 +268,7 @@ async function dequeueNextAtomic(
               row.run_id,
               {
                 status: "failed",
-                error: insufficientCredits(orgCredits).message,
+                error: insufficientCredits().message,
                 completedAt: new Date(),
               },
               ["queued"],

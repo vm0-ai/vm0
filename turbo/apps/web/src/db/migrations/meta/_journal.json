@@ -1289,6 +1289,13 @@
       "when": 1774260401763,
       "tag": "0183_powerful_captain_midlands",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1774263581054,
+      "tag": "0184_add_member_credit_cap",
+      "breakpoints": true
     }
   ]
 }

@@ -19,6 +19,7 @@ import {
   noModelProvider,
 } from "../errors";
 import { orgMetadata } from "../../db/schema/org-metadata";
+import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { modelProviders } from "../../db/schema/model-provider";
 import { enqueueRun, drainOrgQueue } from "./run-queue-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
@@ -149,12 +150,50 @@ export async function checkRunConcurrencyLimit(
  */
 async function checkOrgCredits(
   orgId: string,
+  userId: string,
   modelProvider: string | null | undefined,
   db: Database,
 ): Promise<void> {
   // Explicit non-VM0 provider — skip check entirely
   if (modelProvider && modelProvider !== "vm0") {
     return;
+  }
+
+  // Determine if this is a VM0 run
+  let isVm0 = modelProvider === "vm0";
+
+  if (!isVm0 && !modelProvider) {
+    // Resolve org default provider to determine if this is a VM0 run
+    const [defaultProvider] = await db
+      .select({ type: modelProviders.type })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.isDefault, true),
+        ),
+      )
+      .limit(1);
+    isVm0 = defaultProvider?.type === "vm0";
+  }
+
+  // Per-member credit cap check — only for VM0 runs
+  if (isVm0) {
+    const [memberRow] = await db
+      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, orgId),
+          eq(orgMembersMetadata.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (memberRow?.creditEnabled === false) {
+      throw insufficientCredits();
+    }
   }
 
   // Read credits from org_metadata
@@ -174,25 +213,9 @@ async function checkOrgCredits(
     return;
   }
 
-  // Credits <= 0 — resolve effective provider if needed
-  if (modelProvider === "vm0") {
-    throw insufficientCredits(orgRow.credits);
-  }
-
-  // modelProvider is null/undefined — check org default within the transaction
-  const [defaultProvider] = await db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
-  if (defaultProvider?.type === "vm0") {
-    throw insufficientCredits(orgRow.credits);
+  // Credits <= 0 and VM0 run — insufficient
+  if (isVm0) {
+    throw insufficientCredits();
   }
 
   // Effective provider is not VM0 — skip check
@@ -1138,7 +1161,7 @@ export async function createRun(
       await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
 
       // Check credit balance for VM0 provider runs
-      await checkOrgCredits(orgId, params.modelProvider, tx);
+      await checkOrgCredits(orgId, userId, params.modelProvider, tx);
 
       // Check model provider is configured (pre-INSERT to avoid ghost run records)
       await checkModelProviderConfigured(

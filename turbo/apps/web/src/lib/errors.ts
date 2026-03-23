@@ -135,8 +135,9 @@ export function concurrentRunLimit(
   return error;
 }
 
-export function insufficientCredits(credits: number): InsufficientCreditsError {
-  const message = `Insufficient credits (balance: ${credits}). Your VM0 credits are depleted. Add credits or configure your own API key to continue.`;
+export function insufficientCredits(): InsufficientCreditsError {
+  const message =
+    "Insufficient credits. Add credits or configure your own API key to continue.";
   const error = new Error(message) as InsufficientCreditsError;
   (error as { name: string }).name = "InsufficientCreditsError";
   (error as { statusCode: number }).statusCode = 402;
