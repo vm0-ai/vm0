@@ -85,6 +85,7 @@ describe("zero-chat signals", () => {
                 id: "t1",
                 title: null,
                 preview: "Hello",
+                agentComposeId: "mock-compose-id",
                 createdAt: "2026-03-10T00:00:00Z",
                 updatedAt: "2026-03-10T00:00:00Z",
               },
@@ -92,6 +93,7 @@ describe("zero-chat signals", () => {
                 id: "t2",
                 title: null,
                 preview: "World",
+                agentComposeId: "mock-compose-id",
                 createdAt: "2026-03-10T01:00:00Z",
                 updatedAt: "2026-03-10T01:00:00Z",
               },
@@ -198,11 +200,14 @@ describe("zero-chat signals", () => {
             statusText: "Not Found",
           });
         }),
-        http.get("*/api/zero/sessions/:id", () => {
+        http.get("*/api/agent/sessions/:id", () => {
           return new HttpResponse(null, {
             status: 404,
             statusText: "Not Found",
           });
+        }),
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
         }),
       );
 
@@ -1196,7 +1201,10 @@ describe("zero-chat signals", () => {
     function useUploadHandler(options?: { delayMs?: number }) {
       const delayMs = options?.delayMs ?? 0;
       server.use(
-        http.post("*/api/zero/uploads", async () => {
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/agent/uploads", async () => {
           if (delayMs > 0) {
             await delay(delayMs);
           }
@@ -1270,7 +1278,10 @@ describe("zero-chat signals", () => {
     it("should cancel one upload without affecting others", async () => {
       let requestCount = 0;
       server.use(
-        http.post("*/api/zero/uploads", async () => {
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/agent/uploads", async () => {
           requestCount++;
           const currentCount = requestCount;
           await delay(300);

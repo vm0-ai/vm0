@@ -2,7 +2,6 @@ import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconAlertCircle,
   IconLoader2,
-  IconArrowLeft,
   IconUsers,
   IconCalendar,
   IconPhoto,
@@ -11,6 +10,7 @@ import {
   IconChevronDown,
   IconCopy,
   IconCheck,
+  IconPin,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -29,6 +29,11 @@ import {
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  pinnedAgentIds$,
+  updatePinnedAgentIds$,
+} from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   zeroChatMessages$,
   zeroChatSending$,
@@ -67,7 +72,6 @@ import zeroAvatarImg from "./assets/zero-avatar.webp";
 
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
-  onBack?: () => void;
   onNavigateToSchedule?: () => void;
   onAvatarClick?: () => void;
   chatAgentName?: string;
@@ -75,7 +79,6 @@ interface ZeroSessionChatPageProps {
 
 export function ZeroSessionChatPage({
   zeroAvatarSrc = zeroAvatarImg,
-  onBack,
   onNavigateToSchedule,
   onAvatarClick,
   chatAgentName,
@@ -96,6 +99,24 @@ export function ZeroSessionChatPage({
   const queuedMessage = useGet(zeroChatQueuedMessage$);
   const queueMessage = useSet(queueZeroChatMessage$);
   const withdraw = useSet(withdrawQueuedMessage$);
+
+  // Pin pill
+  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
+  const pinnedIds =
+    pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
+  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const showPinPill =
+    currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
+  const handlePin = () => {
+    if (currentChatAgentId) {
+      detach(
+        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        Reason.DomCallback,
+      );
+    }
+  };
+
   // Auto-scroll when messages change — ref callback runs at commit time
   const scrollAnchorRef = (el: HTMLDivElement | null) => {
     if (el && messages.length > 0) {
@@ -117,28 +138,40 @@ export function ZeroSessionChatPage({
       {/* Header */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 -ml-2"
-            onClick={onBack}
-            aria-label="Back to chat home"
-          >
-            <IconArrowLeft size={20} stroke={1.5} />
-          </Button>
-          <button
-            type="button"
-            onClick={onAvatarClick}
-            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="View agent profile"
-          >
-            <img
-              src={zeroAvatarSrc}
-              alt=""
-              role="presentation"
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
-          </button>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={onAvatarClick}
+              className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="View agent profile"
+            >
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-8 w-8 rounded-full object-cover object-top"
+              />
+            </button>
+            {showPinPill && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handlePin}
+                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                      aria-label="Pin to sidebar"
+                    >
+                      <IconPin size={10} stroke={2} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Pin to sidebar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
           <span className="font-semibold text-foreground">{agentName}</span>
         </div>
         <div className="flex items-center gap-0.5">
@@ -163,8 +196,8 @@ export function ZeroSessionChatPage({
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
-        <main className="flex-1 px-4 sm:px-6 py-4">
-          <div className="mx-auto max-w-[900px] flex flex-col gap-6 pb-4">
+        <main className="flex-1 px-4 sm:px-6 py-4 items-center">
+          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4">
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="flex items-center gap-2 text-destructive">
@@ -197,8 +230,7 @@ export function ZeroSessionChatPage({
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
         <footer className="relative sticky bottom-0 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
           <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-          <div className="mx-auto max-w-[900px] grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
-            <div className="w-9 shrink-0" />
+          <div className="mx-auto max-w-[900px]">
             <ZeroChatComposer
               className="w-full min-w-0"
               input={input}
@@ -209,6 +241,7 @@ export function ZeroSessionChatPage({
               queuedMessage={queuedMessage}
               onWithdraw={withdraw}
               agentName={agentName}
+              autoFocus={messages.length === 0}
             />
           </div>
         </footer>
@@ -593,7 +626,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
             <TooltipTrigger asChild>
               <SimpleLink
                 href={`/activity/${message.runId}`}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
                 <IconChartLine size={18} stroke={1.5} />
@@ -609,7 +642,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors duration-150"
+                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                   aria-label="Copy message"
                 >
                   {copied ? (
@@ -648,7 +681,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
@@ -712,7 +745,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
@@ -738,7 +771,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
         {avatar}
-        <div className="zero-chat-bubble-assistant rounded-xl backdrop-blur-sm py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <RunActivityLine />
         </div>
       </div>

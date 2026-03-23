@@ -24,7 +24,6 @@ import {
   zeroChatAgentId$,
   zeroChatAgentName$,
   zeroTalkAgentResolved$,
-  navigateFromZeroSession$,
   zeroAvatarIndex$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
@@ -58,7 +57,7 @@ function ZeroAppSkeleton({ visible }: { visible: boolean }) {
       }`}
     >
       {/* Sidebar skeleton */}
-      <aside className="flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
+      <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
         {/* Org switcher */}
         <div className="shrink-0 p-2 pb-1">
           <div className="rounded-lg p-2">
@@ -301,8 +300,6 @@ export function ZeroAppShell() {
     handleChatAvatarClick,
   } = useContentNavigation(resolvedAgentName);
 
-  const navigateBack = useSet(navigateFromZeroSession$);
-
   const sidebarCollapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
 
@@ -340,7 +337,6 @@ export function ZeroAppShell() {
             onSendMessage={handleSendFromDemo}
             onNavigateToSchedule={handleNavigateToSchedule}
             onNavigateToMeet={handleNavigateToMeet}
-            onBackFromSession={navigateBack}
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}

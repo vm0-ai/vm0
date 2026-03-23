@@ -15,6 +15,7 @@ function mockAPIs({
       id: "thread-1",
       title: "First chat",
       preview: "Hello world",
+      agentComposeId: "mock-compose-id",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
     },
@@ -22,6 +23,7 @@ function mockAPIs({
       id: "thread-2",
       title: "Second chat",
       preview: "Goodbye moon",
+      agentComposeId: "mock-compose-id",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
     },
@@ -31,6 +33,7 @@ function mockAPIs({
     id: string;
     title: string;
     preview: string;
+    agentComposeId: string;
     createdAt: string;
     updatedAt: string;
   }[];
@@ -53,6 +56,57 @@ function mockAPIs({
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads });
+    }),
+  );
+}
+
+function mockAPIsWithSubagents() {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json({
+        composes: [
+          {
+            id: "mock-compose-id",
+            name: "zero",
+            displayName: null,
+            description: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+            isOwner: true,
+          },
+          {
+            id: "sub-agent-id",
+            name: "research-agent",
+            displayName: "Research Agent",
+            description: "Finds information",
+            headVersionId: "version_2",
+            updatedAt: "2024-01-02T00:00:00Z",
+            isOwner: false,
+          },
+        ],
+      });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({
+        threads: [
+          {
+            id: "thread-main",
+            title: "Main agent chat",
+            preview: "Hello from main",
+            agentComposeId: "mock-compose-id",
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          },
+          {
+            id: "thread-sub",
+            title: "Sub agent chat",
+            preview: "Hello from sub",
+            agentComposeId: "sub-agent-id",
+            createdAt: "2026-03-09T00:00:00Z",
+            updatedAt: "2026-03-09T00:00:00Z",
+          },
+        ],
+      });
     }),
   );
 }
@@ -106,7 +160,7 @@ describe("zero sidebar", () => {
     });
 
     // Type search query
-    const searchInput = screen.getByPlaceholderText("Search chats...");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await act(() => {
       fireEvent.change(searchInput, { target: { value: "Hello" } });
     });
@@ -132,7 +186,7 @@ describe("zero sidebar", () => {
     });
 
     // Type search query that filters out one thread
-    const searchInput = screen.getByPlaceholderText("Search chats...");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await act(() => {
       fireEvent.change(searchInput, { target: { value: "Hello" } });
     });
@@ -150,5 +204,31 @@ describe("zero sidebar", () => {
       expect(screen.getByText("Hello world")).toBeInTheDocument();
     });
     expect(screen.getByText("Goodbye moon")).toBeInTheDocument();
+  });
+
+  it("should only show main agent chats on default route", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/" });
+
+    // Wait for main agent chat to render
+    await waitFor(() => {
+      expect(screen.getByText("Hello from main")).toBeInTheDocument();
+    });
+
+    // Sub-agent chat should not appear in the default view
+    expect(screen.queryByText("Hello from sub")).not.toBeInTheDocument();
+  });
+
+  it("should show sub-agent chats when navigating to /talk/:name", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/talk/research-agent" });
+
+    // Wait for sub-agent chat to render
+    await waitFor(() => {
+      expect(screen.getByText("Hello from sub")).toBeInTheDocument();
+    });
+
+    // Main agent chat should not appear in the sub-agent view
+    expect(screen.queryByText("Hello from main")).not.toBeInTheDocument();
   });
 });

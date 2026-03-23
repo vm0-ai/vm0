@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command, computed } from "ccstate";
 import {
   agentsList$,
   agentsLoading$,
@@ -6,6 +6,9 @@ import {
   fetchAgentsList$,
 } from "./agents-list.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
+import { fetch$ } from "../fetch.ts";
+import { SEED_SKILLS } from "../../data/the-seed.ts";
+import { createZeroAgent } from "./create-zero-agent.ts";
 
 export { agentsLoading$, agentsError$, fetchAgentsList$ };
 
@@ -20,3 +23,21 @@ export const zeroSubagents$ = computed(async (get) => {
   const defaultId = status.defaultAgentComposeId;
   return agents.filter((a) => a.name !== defaultName && a.id !== defaultId);
 });
+
+/**
+ * Create a sub-agent by composing via the zero agents API.
+ * Follows the same flow as onboarding: create agent → upload instructions.
+ */
+export const createSubagent$ = command(
+  async ({ get, set }, displayName: string) => {
+    const fetchFn = get(fetch$);
+
+    await createZeroAgent(fetchFn, {
+      connectors: [...SEED_SKILLS],
+      displayName,
+    });
+
+    // Refresh the agents list so the new agent appears immediately
+    await set(fetchAgentsList$);
+  },
+);

@@ -106,14 +106,12 @@ describe("zero jobs page - team list", () => {
     });
   });
 
-  it("should show create teammate link when sub-agents exist", async () => {
+  it("should show create teammate button when sub-agents exist", async () => {
     mockTeamAPI();
     await renderTeamPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/Start a chat to create a new teammate/),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Create teammate")).toBeInTheDocument();
     });
   });
 

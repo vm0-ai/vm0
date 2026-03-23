@@ -1,18 +1,36 @@
-import { useGet, useLastResolved, useLoadable } from "ccstate-react";
-import { IconCrown, IconMessageCircle, IconUsers } from "@tabler/icons-react";
-import { Card, CardContent } from "@vm0/ui";
+import { useState } from "react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import {
+  IconCrown,
+  IconLoader2,
+  IconPlus,
+  IconUsers,
+} from "@tabler/icons-react";
+import {
+  Card,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Button,
+  Input,
+} from "@vm0/ui";
 import {
   zeroSubagents$,
   agentsLoading$,
   agentsError$,
+  createSubagent$,
 } from "../../signals/zero-page/zero-agents.ts";
 import {
   agentDisplayName$,
   defaultAgentName$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroAvatarIndex$ } from "../../signals/zero-page/zero-nav.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import { useAgentAvatar } from "./zero-sidebar.tsx";
+import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
 import zeroAvatarImg from "./assets/zero-avatar.webp";
 import avatar1Img from "./assets/avatar-1.webp";
 import avatar2Img from "./assets/avatar-2.webp";
@@ -40,6 +58,37 @@ export function ZeroJobsPage() {
   const error = useGet(agentsError$);
   const avatarIndex = useGet(zeroAvatarIndex$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const createSubagent = useSet(createSubagent$);
+
+  const handleCreateTeammate = () => {
+    const trimmed = newName.trim();
+    if (!trimmed || creating) {
+      return;
+    }
+    setCreating(true);
+    detach(
+      createSubagent(trimmed).then(
+        () => {
+          setDialogOpen(false);
+          setNewName("");
+          setCreating(false);
+          toast.success(`${trimmed} created successfully`);
+        },
+        (error: unknown) => {
+          setCreating(false);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to create sub-agent",
+          );
+        },
+      ),
+      Reason.DomCallback,
+    );
+  };
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -181,22 +230,30 @@ export function ZeroJobsPage() {
 
           {agents && agents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Create teammate — col-span-full */}
-              <Link
-                pathname="/"
-                className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] px-4 py-3.5 transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group col-span-full"
+              {/* Create teammate */}
+              <button
+                type="button"
+                onClick={() => setDialogOpen(true)}
+                className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
-                  <IconMessageCircle
-                    size={16}
-                    stroke={1.5}
-                    className="text-foreground/50 group-hover:text-foreground transition-colors"
-                  />
-                </span>
-                <span className="text-sm text-foreground/60 group-hover:text-foreground transition-colors">
-                  Start a chat to create a new teammate&hellip;
-                </span>
-              </Link>
+                <div className="flex items-center gap-3 px-4 py-3.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
+                    <IconPlus
+                      size={18}
+                      stroke={2}
+                      className="text-foreground/50 group-hover:text-foreground transition-colors"
+                    />
+                  </span>
+                  <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
+                    Create teammate
+                  </span>
+                </div>
+                <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
+                  <span className="text-xs text-muted-foreground">
+                    Chat with {agentName} to create a sub-agent
+                  </span>
+                </div>
+              </button>
 
               {agents.map((agent) => (
                 <Link
@@ -212,7 +269,95 @@ export function ZeroJobsPage() {
           )}
         </div>
       </main>
+
+      <CreateTeammateDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        newName={newName}
+        onNameChange={setNewName}
+        onConfirm={handleCreateTeammate}
+        creating={creating}
+      />
     </div>
+  );
+}
+
+function CreateTeammateDialog({
+  open,
+  onOpenChange,
+  newName,
+  onNameChange,
+  onConfirm,
+  creating,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  newName: string;
+  onNameChange: (name: string) => void;
+  onConfirm: () => void;
+  creating: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
+      <DialogContent className="sm:max-w-[480px] p-0 gap-0">
+        <div className="flex flex-col items-center h-[min(360px,80dvh)]">
+          <DialogHeader className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
+            <img
+              src={AGENT_AVATARS[0]}
+              alt="New teammate"
+              className="h-16 w-16 rounded-full object-cover object-top mb-3"
+            />
+            <DialogTitle className="text-base font-semibold">
+              Create a new teammate
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Name your sub-agent to get started.
+            </p>
+          </DialogHeader>
+
+          <div className="flex-1 flex items-center justify-center px-6">
+            <Input
+              value={newName}
+              onChange={(e) => onNameChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newName.trim() && !creating) {
+                  onConfirm();
+                }
+              }}
+              placeholder="e.g. Research Assistant"
+              className="max-w-[280px] text-center"
+              autoFocus
+              disabled={creating}
+            />
+          </div>
+
+          <div className="px-6 pb-6 pt-4 flex justify-end gap-2 w-full">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              disabled={creating}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={onConfirm}
+              disabled={!newName.trim() || creating}
+            >
+              {creating ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <IconLoader2 size={14} className="animate-spin" />
+                  Creating...
+                </span>
+              ) : (
+                "Create"
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -51,7 +51,7 @@ function SidebarLayoutSkeleton() {
       }`}
     >
       {/* Sidebar skeleton */}
-      <aside className="flex h-full w-[255px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
+      <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar overflow-hidden">
         <div className="shrink-0 p-2 pb-1">
           <div className="rounded-lg p-2">
             <div className="h-8 w-full rounded-lg bg-muted/50 animate-pulse" />

@@ -302,7 +302,7 @@
 
 /* Chat: assistant (Zero) message bubble */
 .zero-app .zero-chat-bubble-assistant {
-  background-color: hsl(var(--card));
+  background-color: transparent;
   border: none;
 }
 
