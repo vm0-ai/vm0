@@ -388,3 +388,66 @@ fn create_archive(dir_path: &str, tar_path: &Path) -> bool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs as unix_fs;
+
+    #[test]
+    fn walk_dir_skips_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Regular file
+        std::fs::write(root.join("real.txt"), "hello").unwrap();
+
+        // Symlink to file
+        unix_fs::symlink(root.join("real.txt"), root.join("link.txt")).unwrap();
+
+        // Symlink to directory outside
+        std::fs::create_dir(root.join("subdir")).unwrap();
+        std::fs::write(root.join("subdir/inner.txt"), "inner").unwrap();
+        unix_fs::symlink(root.join("subdir"), root.join("link_dir")).unwrap();
+
+        // Dangling symlink
+        unix_fs::symlink("/nonexistent", root.join("dangling")).unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+
+        // Regular files should be included
+        assert!(paths.contains(&"real.txt"));
+        assert!(paths.contains(&"subdir/inner.txt"));
+
+        // Symlinks should NOT be included
+        assert!(!paths.contains(&"link.txt"));
+        assert!(!paths.contains(&"link_dir"));
+        assert!(!paths.contains(&"dangling"));
+
+        // link_dir contents should NOT appear (symlink dir skipped, not followed)
+        assert!(!paths.iter().any(|p| p.starts_with("link_dir/")));
+    }
+
+    #[test]
+    fn walk_dir_handles_hardlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::write(root.join("original.txt"), "content").unwrap();
+        std::fs::hard_link(root.join("original.txt"), root.join("hardlink.txt")).unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+
+        // Both original and hardlink should be recorded as independent files
+        assert!(paths.contains(&"original.txt"));
+        assert!(paths.contains(&"hardlink.txt"));
+
+        // Both should have the same hash
+        let original = files.iter().find(|f| f.path == "original.txt").unwrap();
+        let hardlink = files.iter().find(|f| f.path == "hardlink.txt").unwrap();
+        assert_eq!(original.hash, hardlink.hash);
+        assert_eq!(original.size, hardlink.size);
+    }
+}
