@@ -90,9 +90,6 @@ export {
   getConnector,
 } from "./domains/connectors";
 
-// Domain modules - Usage
-export { getUsage } from "./domains/usage";
-
 // Domain modules - User Preferences
 export {
   getUserPreferences,

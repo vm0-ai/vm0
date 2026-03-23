@@ -17,7 +17,6 @@ import { orgCommand } from "./commands/org";
 import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
 import { scheduleCommand } from "./commands/schedule";
-import { usageCommand } from "./commands/usage";
 import { secretCommand } from "./commands/secret";
 import { variableCommand } from "./commands/variable";
 
@@ -50,7 +49,6 @@ program.addCommand(orgCommand);
 program.addCommand(agentCommand);
 program.addCommand(initCommand);
 program.addCommand(scheduleCommand);
-program.addCommand(usageCommand);
 program.addCommand(secretCommand);
 program.addCommand(variableCommand);
 program.addCommand(connectorCommand);

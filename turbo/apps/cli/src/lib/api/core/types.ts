@@ -30,13 +30,6 @@ export type {
   ScheduleRunsResponse,
 };
 
-// Usage API types
-export interface UsageResponse {
-  period: { start: string; end: string };
-  summary: { total_runs: number; total_run_time_ms: number };
-  daily: Array<{ date: string; run_count: number; run_time_ms: number }>;
-}
-
 // CLI-specific types (not in @vm0/core or have different structure)
 export interface CreateComposeResponse {
   composeId: string;
