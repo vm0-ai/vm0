@@ -1005,8 +1005,13 @@ describe("zero-chat signals", () => {
       completeRun = true;
       await sendPromise;
 
-      // Wait for the detached auto-send to complete
-      await delay(500);
+      // Poll until the detached auto-send completes (runCount reaches 2 and sending is false)
+      for (let i = 0; i < 50; i++) {
+        if (runCount >= 2 && !context.store.get(zeroChatSending$)) {
+          break;
+        }
+        await delay(50);
+      }
 
       expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
       // The auto-send should have triggered a second run
@@ -1084,8 +1089,13 @@ describe("zero-chat signals", () => {
       await context.store.set(cancelActiveRun$);
       await sendPromise;
 
-      // Give the detached auto-send time to fire and complete
-      await delay(500);
+      // Poll until the detached auto-send completes (runCount reaches 2 and sending is false)
+      for (let i = 0; i < 50; i++) {
+        if (runCount >= 2 && !context.store.get(zeroChatSending$)) {
+          break;
+        }
+        await delay(50);
+      }
 
       expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
       // The queued message should have triggered a second run
