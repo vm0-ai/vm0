@@ -1133,6 +1133,11 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
 
   set(internalActiveRunId$, null);
 
+  // Capture events BEFORE any await — the queued-message auto-send in
+  // sendZeroChatMessage$'s finally block may clear internalRunEvents$
+  // while we're waiting on the network.
+  const pages = get(internalRunEvents$);
+
   try {
     const fetchFn = get(fetch$);
     const res = await fetchFn(`/api/zero/runs/${runId}`);
@@ -1147,7 +1152,6 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
     }
 
     // Extract result content and summaries from telemetry events
-    const pages = get(internalRunEvents$);
     const { result: resultContent, summaries } = await extractResultFromEvents(
       pages,
       get,
