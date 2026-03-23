@@ -34,6 +34,7 @@ export interface ScheduleResponse {
   intervalSeconds: number | null;
   timezone: string;
   prompt: string;
+  description: string | null;
   appendSystemPrompt: string | null;
   vars: Record<string, string> | null;
   secretNames: string[] | null;
@@ -74,6 +75,7 @@ interface DeployScheduleRequest {
   intervalSeconds?: number;
   timezone: string;
   prompt: string;
+  description?: string;
   appendSystemPrompt?: string;
   enabled?: boolean;
   notifyEmail?: boolean;
@@ -141,6 +143,7 @@ function toResponse(
     intervalSeconds: schedule.intervalSeconds,
     timezone: schedule.timezone,
     prompt: schedule.prompt,
+    description: schedule.description,
     appendSystemPrompt: schedule.appendSystemPrompt,
     vars: schedule.vars,
     secretNames,
@@ -278,6 +281,7 @@ async function updateExistingSchedule(
       intervalSeconds: request.intervalSeconds ?? null,
       timezone: request.timezone,
       prompt: request.prompt,
+      description: request.description ?? null,
       appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
@@ -327,6 +331,7 @@ async function insertNewSchedule(
       intervalSeconds: request.intervalSeconds ?? null,
       timezone: request.timezone,
       prompt: request.prompt,
+      description: request.description ?? null,
       appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
@@ -347,6 +352,68 @@ async function insertNewSchedule(
     throw new Error(`Failed to create schedule ${request.name}`);
   }
   return created;
+}
+
+/**
+ * Generate a concise schedule description using a lightweight model.
+ * Falls back to a template-based description if the API key is not configured
+ * or if the model call fails.
+ */
+async function generateDescription(
+  request: DeployScheduleRequest,
+  composeName: string,
+): Promise<string> {
+  const apiKey = globalThis.services.env.ANTHROPIC_API_KEY;
+  if (apiKey) {
+    try {
+      const triggerSummary = request.cronExpression
+        ? `cron: ${request.cronExpression}`
+        : request.atTime
+          ? `once at ${request.atTime}`
+          : request.intervalSeconds !== undefined
+            ? `loop every ${request.intervalSeconds}s`
+            : "unknown trigger";
+
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 100,
+          messages: [
+            {
+              role: "user",
+              content: `Write a one-sentence summary (max 120 chars) for this scheduled task. No quotes or punctuation at end.\nAgent: ${composeName}\nSchedule: ${request.name}\nTrigger: ${triggerSummary}\nPrompt: ${request.prompt.slice(0, 200)}`,
+            },
+          ],
+        }),
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as {
+          content: Array<{ type: string; text: string }>;
+        };
+        const text = data.content[0]?.text?.trim();
+        if (text) {
+          return text.slice(0, 200);
+        }
+      }
+    } catch {
+      // Fall through to template-based generation
+    }
+  }
+
+  // Template fallback
+  const triggerLabel = request.cronExpression
+    ? "recurring"
+    : request.atTime
+      ? "one-time"
+      : "loop";
+  return `${composeName} ${triggerLabel} task: ${request.prompt.slice(0, 100)}`;
 }
 
 /**
@@ -373,6 +440,14 @@ export async function deploySchedule(
 
   // Reject one-time schedules with past atTime when enabled
   validateAtTimeNotPast(request);
+
+  // Auto-generate description if not provided
+  if (!request.description) {
+    request = {
+      ...request,
+      description: await generateDescription(request, compose.name),
+    };
+  }
 
   // Check for existing schedule with same name for this user on this compose
   const [existing] = await globalThis.services.db

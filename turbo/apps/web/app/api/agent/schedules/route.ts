@@ -49,6 +49,7 @@ const router = tsr.router(schedulesMainContract, {
         intervalSeconds: body.intervalSeconds,
         timezone: body.timezone,
         prompt: body.prompt,
+        description: body.description,
         appendSystemPrompt: body.appendSystemPrompt,
         enabled: body.enabled,
         notifyEmail: body.notifyEmail,
