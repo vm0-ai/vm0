@@ -59,8 +59,8 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/agent/composes/:id/instructions
-  http.get("/api/agent/composes/:id/instructions", () => {
+  // GET /api/zero/agents/:name/instructions
+  http.get("/api/zero/agents/:name/instructions", () => {
     return HttpResponse.json({
       content: null,
       filename: null,
@@ -70,10 +70,5 @@ export const apiAgentsHandlers = [
   // GET /api/zero/schedules
   http.get("/api/zero/schedules", () => {
     return HttpResponse.json({ schedules: [] });
-  }),
-
-  // GET /api/agent/required-env
-  http.get("/api/agent/required-env", () => {
-    return HttpResponse.json({ agents: [] });
   }),
 ];

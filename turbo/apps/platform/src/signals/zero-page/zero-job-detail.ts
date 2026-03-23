@@ -159,7 +159,7 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
   try {
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/agent/composes/${detail.id}/instructions`,
+      `/api/zero/agents/${encodeURIComponent(detail.name)}/instructions`,
     );
     if (!response.ok) {
       throw new Error(`Failed to fetch instructions: ${response.statusText}`);

@@ -197,7 +197,7 @@ describe("zero connector card button clicks", () => {
 
     await waitFor(() => {
       expect(mockedWindowOpen).toHaveBeenCalledWith(
-        expect.stringContaining("/api/connectors/github/authorize"),
+        expect.stringContaining("/api/zero/connectors/github/authorize"),
         "_blank",
         "width=600,height=700",
       );
@@ -223,7 +223,7 @@ describe("zero connector card button clicks", () => {
 
     await waitFor(() => {
       expect(mockedWindowOpen).toHaveBeenCalledWith(
-        expect.stringContaining("/api/connectors/github/authorize"),
+        expect.stringContaining("/api/zero/connectors/github/authorize"),
         "_blank",
         "width=600,height=700",
       );
@@ -324,7 +324,7 @@ describe("zero connector card scope review modal", () => {
 
     await waitFor(() => {
       expect(mockedWindowOpen).toHaveBeenCalledWith(
-        expect.stringContaining("/api/connectors/github/authorize"),
+        expect.stringContaining("/api/zero/connectors/github/authorize"),
         "_blank",
         "width=600,height=700",
       );

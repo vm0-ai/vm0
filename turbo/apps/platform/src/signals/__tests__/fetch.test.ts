@@ -223,15 +223,19 @@ describe("url handling", () => {
     const captured: { request: CapturedRequest | null } = { request: null };
 
     server.use(
-      createCaptureHandler("get", "http://localhost:3000/api/users", captured),
+      createCaptureHandler(
+        "get",
+        "http://localhost:3000/api/zero/users",
+        captured,
+      ),
     );
 
     const fch = context.store.get(fetch$);
-    await fch("/api/users?page=1&size=10");
+    await fch("/api/zero/users?page=1&size=10");
 
     expect(captured.request).not.toBeNull();
     expect(captured.request?.url).toBe(
-      "http://localhost:3000/api/users?page=1&size=10",
+      "http://localhost:3000/api/zero/users?page=1&size=10",
     );
   });
 });
@@ -311,14 +315,18 @@ describe("other fetch parameters", () => {
     const captured: { request: CapturedRequest | null } = { request: null };
 
     server.use(
-      createCaptureHandler("post", "http://localhost:3000/api/users", captured),
+      createCaptureHandler(
+        "post",
+        "http://localhost:3000/api/zero/users",
+        captured,
+      ),
     );
 
     const fch = context.store.get(fetch$);
-    await fch(new Request("/api/users", { method: "POST" }));
+    await fch(new Request("/api/zero/users", { method: "POST" }));
 
     expect(captured.request).not.toBeNull();
-    expect(captured.request?.url).toBe("http://localhost:3000/api/users");
+    expect(captured.request?.url).toBe("http://localhost:3000/api/zero/users");
     expect(captured.request?.method).toBe("POST");
   });
 });
