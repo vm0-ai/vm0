@@ -49,16 +49,15 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          for JOB_REF in "pr-${PR_NUMBER}" "pr-${PR_NUMBER}-mq"; do
-            if ! ansible-playbook \
-              -i "${METAL_HOSTS}," \
-              playbooks/cleanup-turbo-runner.yml \
-              -e "ansible_user=${METAL_USER}" \
-              -e "job_ref=${JOB_REF}" \
-              -v; then
-              echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
-            fi
-          done
+          JOB_REF="pr-${PR_NUMBER}"
+          if ! ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-turbo-runner.yml \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v; then
+            echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
+          fi
 
       - name: Cleanup crates runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
@@ -68,16 +67,15 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          for JOB_REF in "pr-${PR_NUMBER}-test" "pr-${PR_NUMBER}-mq-test"; do
-            if ! ansible-playbook \
-              -i "${METAL_HOSTS}," \
-              playbooks/cleanup-crates-runner.yml \
-              -e "ansible_user=${METAL_USER}" \
-              -e "job_ref=${JOB_REF}" \
-              -v; then
-              echo "::warning::Crates runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
-            fi
-          done
+          JOB_REF="pr-${PR_NUMBER}-test"
+          if ! ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-crates-runner.yml \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v; then
+            echo "::warning::Crates runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
+          fi
 
   cleanup-database:
     # Skip for release-please PRs (only version bumps and changelogs)
@@ -96,14 +94,6 @@ jobs:
           branch-name: "pr-${{ github.event.pull_request.number }}"
           action: "cleanup"
 
-      - name: Delete Neon Branch (mq)
-        uses: ./.github/actions/neon-branch
-        with:
-          neon-api-key: ${{ secrets.NEON_API_KEY }}
-          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
-          branch-name: "pr-${{ github.event.pull_request.number }}-mq"
-          action: "cleanup"
-
   cleanup-deployments:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
@@ -118,9 +108,9 @@ jobs:
             const branchName = context.payload.pull_request.head.ref;
             const sha = context.payload.pull_request.head.sha;
             const prNumber = context.payload.pull_request.number;
-            const mergeQueueJobRef = `pr-${prNumber}-mq`;
+            const jobRef = `pr-${prNumber}`;
 
-            console.log(`Cleaning up deployments for branch: ${branchName}, sha: ${sha}, mq: ${mergeQueueJobRef}`);
+            console.log(`Cleaning up deployments for branch: ${branchName}, sha: ${sha}, job-ref: ${jobRef}`);
 
             // Get all deployments and filter by branch name
             const allDeployments = await github.rest.repos.listDeployments({
@@ -129,14 +119,13 @@ jobs:
               per_page: 100
             });
 
-            // Filter deployments that belong to this branch or its mq run
+            // Filter deployments that belong to this PR
             const branchDeployments = allDeployments.data.filter(deployment => {
-              // Match by ref or environment name containing branch
               return deployment.ref === branchName ||
                      deployment.ref === `refs/heads/${branchName}` ||
                      deployment.ref === sha ||
                      deployment.environment?.includes(`preview/${branchName}`) ||
-                     deployment.environment?.includes(`preview/${mergeQueueJobRef}`);
+                     deployment.environment?.includes(`preview/${jobRef}`);
             });
 
             console.log(`Found ${branchDeployments.length} deployments to delete`);
