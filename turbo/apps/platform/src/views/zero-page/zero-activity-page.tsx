@@ -39,7 +39,7 @@ import {
 } from "../../signals/activity-page/activity-signals.ts";
 import { Link } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
-import emptyActivityImg from "./assets/empty-activity.png";
+import emptyActivityImg from "./assets/empty-activity.webp";
 
 const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "all", label: "All status" },
@@ -227,6 +227,7 @@ export function ZeroActivityPage() {
                     <img
                       src={emptyActivityImg}
                       alt=""
+                      loading="lazy"
                       className="h-20 w-20 object-contain opacity-80"
                     />
                     <div className="text-center">

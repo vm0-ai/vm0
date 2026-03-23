@@ -64,7 +64,7 @@ import {
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
-import emptyScheduleImg from "./assets/empty-schedule.png";
+import emptyScheduleImg from "./assets/empty-schedule.webp";
 
 type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -938,6 +938,7 @@ function ScheduleListView({
         <img
           src={emptyScheduleImg}
           alt="No schedules"
+          loading="lazy"
           className="h-20 w-20 object-contain opacity-80"
         />
         <div className="text-center">

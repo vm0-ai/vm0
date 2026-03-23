@@ -40,8 +40,8 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { ZeroIdeationPage, getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import zeroAvatarImg from "./assets/zero-avatar.png";
-import chatFolderImg from "./assets/chat-folder.png";
+import zeroAvatarImg from "./assets/zero-avatar.webp";
+import chatFolderImg from "./assets/chat-folder.webp";
 
 type DemoScenarioId =
   | "hello-from-zero"
@@ -1069,6 +1069,7 @@ export function ZeroChatPage({
                 src={chatFolderImg}
                 alt=""
                 role="presentation"
+                loading="lazy"
                 className="h-8 w-8 object-contain"
               />
               <div className="min-w-0 flex-1">
