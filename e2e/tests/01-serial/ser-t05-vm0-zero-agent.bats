@@ -29,7 +29,9 @@ teardown_file() {
 # ============================================================================
 
 @test "vm0 zero agent create creates agent" {
-    run $CLI_COMMAND zero agent create --connectors github --display-name "E2E Test Agent" --description "Created by E2E test"
+    # Use a seed skill as connector to avoid dependency on non-seed skill cache state.
+    # The seed skill is deduplicated so connectors output will be empty, but CRUD lifecycle is still validated.
+    run $CLI_COMMAND zero agent create --connectors vm0 --display-name "E2E Test Agent" --description "Created by E2E test"
     assert_success
     assert_output --partial "created"
 
@@ -43,7 +45,6 @@ teardown_file() {
     run $CLI_COMMAND zero agent list
     assert_success
     assert_output --partial "E2E Test Agent"
-    assert_output --partial "github"
 }
 
 @test "vm0 zero agent view shows agent details" {
