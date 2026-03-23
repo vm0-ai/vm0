@@ -34,7 +34,7 @@ teardown_file() {
     # BATS_TEST_TIMEOUT is 30s, so budget: 3 attempts * ~2s call + 2 * 3s sleep = ~12s
     local max_attempts=3
     for ((attempt=1; attempt<=max_attempts; attempt++)); do
-        run $CLI_COMMAND zero agent create --connectors vm0 --display-name "E2E Test Agent" --description "Created by E2E test"
+        run $CLI_COMMAND zero agent create --connectors github --display-name "E2E Test Agent" --description "Created by E2E test"
         if [[ "$status" -eq 0 ]]; then
             break
         fi
@@ -59,6 +59,7 @@ teardown_file() {
     run $CLI_COMMAND zero agent list
     assert_success
     assert_output --partial "E2E Test Agent"
+    assert_output --partial "github"
 }
 
 @test "vm0 zero agent view shows agent details" {
