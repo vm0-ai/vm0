@@ -67,6 +67,7 @@ export const zeroAgentSchedules = pgTable(
     // Per-schedule notification control (AND'd with user global preferences)
     notifyEmail: boolean("notify_email").default(true).notNull(),
     notifySlack: boolean("notify_slack").default(true).notNull(),
+    slackChannelId: varchar("slack_channel_id", { length: 255 }),
 
     // State
     enabled: boolean("enabled").default(true).notNull(),

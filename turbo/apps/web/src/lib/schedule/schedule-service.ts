@@ -45,6 +45,7 @@ export interface ScheduleResponse {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
+  slackChannelId: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
@@ -81,6 +82,7 @@ interface DeployScheduleRequest {
   enabled?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  slackChannelId?: string | null;
   // vars and secrets removed - now managed via server-side tables
   artifactName?: string;
   artifactVersion?: string;
@@ -178,6 +180,7 @@ function toResponse(
     enabled: schedule.enabled,
     notifyEmail: schedule.notifyEmail,
     notifySlack: schedule.notifySlack,
+    slackChannelId: schedule.slackChannelId ?? null,
     nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
     retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
@@ -362,6 +365,9 @@ async function updateExistingSchedule(
       ...(request.notifySlack !== undefined && {
         notifySlack: request.notifySlack,
       }),
+      ...(request.slackChannelId !== undefined && {
+        slackChannelId: request.slackChannelId,
+      }),
       nextRunAt,
       consecutiveFailures: 0,
       updatedAt: new Date(),
@@ -410,6 +416,7 @@ async function insertNewSchedule(
       enabled: request.enabled ?? false,
       notifyEmail: request.notifyEmail ?? true,
       notifySlack: request.notifySlack ?? true,
+      slackChannelId: request.slackChannelId ?? null,
       nextRunAt,
       consecutiveFailures: 0,
       createdAt: now,
@@ -964,6 +971,7 @@ async function executeSchedule(
       agentName: compose.name,
       userId: schedule.userId,
       orgId: schedule.orgId,
+      slackChannelId: schedule.slackChannelId,
     };
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,

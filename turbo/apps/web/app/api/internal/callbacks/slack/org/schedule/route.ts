@@ -151,8 +151,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const { agentName, userId } = payload;
+  const targetChannelId = payload.slackChannelId;
 
-  log.debug("Processing Slack org schedule callback", { runId, status });
+  log.debug("Processing Slack org schedule callback", {
+    runId,
+    status,
+    targetChannelId,
+  });
 
   const { SECRETS_ENCRYPTION_KEY } = env();
 
@@ -206,6 +211,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .limit(1);
   const displayName = agentInfo?.displayName ?? agentName;
 
+  // Use configured channel if set, otherwise fall back to user DM
+  const notifyChannel = targetChannelId ?? connection.slackUserId;
+
   if (status === "completed") {
     const allTexts = await getAllRunOutputTexts(runId);
     if (allTexts.length === 0) {
@@ -214,38 +222,40 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const { messageTs, dmChannelId } = await postScheduleResults(
       client,
-      connection.slackUserId,
+      notifyChannel,
       displayName,
       allTexts,
       logsUrl,
     );
 
-    // Create thread session so user can reply to continue
-    const [run] = await globalThis.services.db
-      .select({ result: agentRuns.result })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runId))
-      .limit(1);
+    // Create thread session so user can reply to continue (only for DM)
+    if (!targetChannelId) {
+      const [run] = await globalThis.services.db
+        .select({ result: agentRuns.result })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, runId))
+        .limit(1);
 
-    const agentSessionId = extractAgentSessionId(run?.result);
+      const agentSessionId = extractAgentSessionId(run?.result);
 
-    if (messageTs && dmChannelId && agentSessionId) {
-      await saveThreadSession({
-        connectionId: connection.id,
-        channelId: dmChannelId,
-        threadTs: messageTs,
-        existingSessionId: undefined,
-        newSessionId: agentSessionId,
-        messageTs,
-        runStatus: "completed",
-      });
+      if (messageTs && dmChannelId && agentSessionId) {
+        await saveThreadSession({
+          connectionId: connection.id,
+          channelId: dmChannelId,
+          threadTs: messageTs,
+          existingSessionId: undefined,
+          newSessionId: agentSessionId,
+          messageTs,
+          runStatus: "completed",
+        });
+      }
     }
   } else {
     // Failed run
     const errMsg = error ?? "Unknown error";
     await postMessage(
       client,
-      connection.slackUserId,
+      notifyChannel,
       `Scheduled run for "${displayName}" failed`,
       {
         blocks: [
