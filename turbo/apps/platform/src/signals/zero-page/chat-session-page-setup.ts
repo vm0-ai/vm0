@@ -17,6 +17,7 @@ export const setupChatSessionPage$ = command(
     signal.throwIfAborted();
 
     await set(syncUrlSession$);
+    signal.throwIfAborted();
     set(syncModelPreference$);
   },
 );
