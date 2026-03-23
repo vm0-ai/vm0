@@ -681,6 +681,7 @@ jobs:
         run: |
           # --- Start Neon branch creation in background ---
           (
+            set -e
             if ! command -v neonctl &> /dev/null; then
               npm install -g neonctl@2.15.0
             fi
@@ -711,8 +712,9 @@ jobs:
             fi
             echo "$DATABASE_URL" > /tmp/neon-database-url
 
-            cd turbo && DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
-            cd turbo && DATABASE_URL="$DATABASE_URL" pnpm -F web db:dev-seed
+            cd turbo
+            DATABASE_URL="$DATABASE_URL" pnpm -F web db:migrate
+            DATABASE_URL="$DATABASE_URL" pnpm -F web db:dev-seed
             echo "Neon branch ready"
           ) > /tmp/neon-log 2>&1 &
           NEON_PID=$!
