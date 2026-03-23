@@ -127,6 +127,7 @@ export async function evaluateMemberCaps(
   for (const member of cappedMembers) {
     // Only evaluate members that are currently enabled
     if (!member.creditEnabled) continue;
+    if (member.creditCap === null) continue;
 
     const usage = await db
       .select({
@@ -144,7 +145,7 @@ export async function evaluateMemberCaps(
 
     const totalUsage = usage[0]?.total ?? 0;
 
-    if (totalUsage >= member.creditCap!) {
+    if (totalUsage >= member.creditCap) {
       await db
         .update(orgMembersMetadata)
         .set({ creditEnabled: false, updatedAt: new Date() })
