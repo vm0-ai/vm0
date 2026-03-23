@@ -4,7 +4,10 @@ import {
   insertTestCreditUsage,
   updateOrgStripeFields,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 
@@ -71,14 +74,13 @@ describe("GET /api/usage/members", () => {
     const periodEnd = new Date("2026-04-20T00:00:00Z");
 
     await updateOrgStripeFields(orgId, {
-      stripeCustomerId: "cus-single",
-      stripeSubscriptionId: "sub-single",
+      stripeCustomerId: uniqueId("cus"),
+      stripeSubscriptionId: uniqueId("sub"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
       tier: "pro",
     });
 
-    // Insert processed credit usage within billing period
     await insertTestCreditUsage(orgId, {
       userId,
       inputTokens: 1000,
@@ -120,15 +122,15 @@ describe("GET /api/usage/members", () => {
     const periodEnd = new Date("2026-04-20T00:00:00Z");
 
     await updateOrgStripeFields(orgId, {
-      stripeCustomerId: "cus-multi",
-      stripeSubscriptionId: "sub-multi",
+      stripeCustomerId: uniqueId("cus"),
+      stripeSubscriptionId: uniqueId("sub"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
       tier: "pro",
     });
 
-    const user1 = "user-alpha";
-    const user2 = "user-beta";
+    const user1 = uniqueId("user-alpha");
+    const user2 = uniqueId("user-beta");
 
     await insertTestCreditUsage(orgId, {
       userId: user1,
@@ -165,8 +167,8 @@ describe("GET /api/usage/members", () => {
     const periodEnd = new Date("2026-04-20T00:00:00Z");
 
     await updateOrgStripeFields(orgId, {
-      stripeCustomerId: "cus-pending",
-      stripeSubscriptionId: "sub-pending",
+      stripeCustomerId: uniqueId("cus"),
+      stripeSubscriptionId: uniqueId("sub"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
       tier: "pro",
