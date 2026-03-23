@@ -52,8 +52,11 @@ export async function fetchFirewallConfig(
 ): Promise<FirewallConfig> {
   // Check builtin configs first (bare name only, not full URLs)
   const trimmed = ref.trim();
-  if (!trimmed.includes("/") && trimmed in builtinFirewalls) {
-    return builtinFirewalls[trimmed]!;
+  const builtin = !trimmed.includes("/")
+    ? builtinFirewalls[trimmed]
+    : undefined;
+  if (builtin) {
+    return builtin;
   }
 
   const rawUrl = buildFirewallYamlUrl(ref);
