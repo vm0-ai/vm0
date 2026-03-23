@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST } from "../route";
-import { GET } from "../[name]/route";
-import { PUT as putFirewallPolicies } from "../[name]/firewall-policies/route";
+import { POST } from "../../agents/route";
+import { GET } from "../../agents/[name]/route";
+import { PUT as putFirewallPolicies } from "../route";
 import {
   createTestRequest,
   createTestCliToken,
@@ -56,20 +56,20 @@ function putPolicies(
   const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return putFirewallPolicies(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}/firewall-policies${orgParam}`,
+      `http://localhost:3000/api/zero/firewall-policies${orgParam}`,
       {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ name, ...body }),
       },
     ),
   );
 }
 
-describe("PUT /api/zero/agents/:name/firewall-policies", () => {
+describe("PUT /api/zero/firewall-policies", () => {
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();

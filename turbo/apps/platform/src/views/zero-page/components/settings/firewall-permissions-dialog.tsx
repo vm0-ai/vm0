@@ -19,7 +19,7 @@ import {
   getFirewallRefs,
   type PermissionPolicy,
 } from "../../../../signals/zero-page/settings/firewalls.ts";
-import { IconCheck, IconBan, IconClock } from "@tabler/icons-react";
+import { IconCheck, IconBan } from "@tabler/icons-react";
 
 interface FirewallPermission {
   name: string;
@@ -31,25 +31,30 @@ interface FirewallPermissionsDrawerProps {
   connectorType: ConnectorType;
   agentName: string;
   initialPolicies: FirewallPolicies;
-  onApply: (policies: FirewallPolicies) => void;
+  onApply: (policies: FirewallPolicies) => Promise<void>;
   onClose: () => void;
 }
 
 function extractPermissions(config: FirewallConfig): FirewallPermission[] {
-  const perms: FirewallPermission[] = [];
+  const seen = new Map<string, FirewallPermission>();
   for (const api of config.apis) {
     if (!api.permissions) {
       continue;
     }
     for (const p of api.permissions) {
-      perms.push({
-        name: p.name,
-        description: p.description,
-        ruleCount: p.rules.length,
-      });
+      const existing = seen.get(p.name);
+      if (existing) {
+        existing.ruleCount += p.rules.length;
+      } else {
+        seen.set(p.name, {
+          name: p.name,
+          description: p.description,
+          ruleCount: p.rules.length,
+        });
+      }
     }
   }
-  return perms;
+  return [...seen.values()];
 }
 
 function sortPermissions(perms: FirewallPermission[]): FirewallPermission[] {
@@ -84,7 +89,6 @@ function splitPermName(name: string): [string, string] {
 
 const POLICY_OPTIONS = [
   { value: "allow" as const, label: "Allow" },
-  { value: "ask" as const, label: "Needs approval" },
   { value: "deny" as const, label: "Deny" },
 ] as const;
 
@@ -121,7 +125,6 @@ function PolicyPill({
           }`}
         >
           {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
-          {opt.value === "ask" && <IconClock size={12} stroke={2.5} />}
           {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
           {opt.label}
         </button>
@@ -160,6 +163,7 @@ export function FirewallPermissionsDrawer({
   });
 
   const [scrolled, setScrolled] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const config = builtinFirewalls[activeRef] ?? null;
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
@@ -186,9 +190,14 @@ export function FirewallPermissionsDrawer({
     setAllPolicies({ ...allPolicies, [activeRef]: next });
   };
 
-  const handleApply = () => {
-    onApply(allPolicies);
-    onClose();
+  const handleApply = async () => {
+    setSaving(true);
+    try {
+      await onApply(allPolicies);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleRefSwitch = (ref: string) => {
@@ -265,9 +274,6 @@ export function FirewallPermissionsDrawer({
                     {opt.value === "allow" && (
                       <IconCheck size={12} stroke={2.5} />
                     )}
-                    {opt.value === "ask" && (
-                      <IconClock size={12} stroke={2.5} />
-                    )}
                     {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
                     {opt.label}
                   </button>
@@ -316,8 +322,8 @@ export function FirewallPermissionsDrawer({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleApply} disabled={!config}>
-            Apply
+          <Button onClick={handleApply} disabled={!config || saving}>
+            {saving ? "Saving..." : "Apply"}
           </Button>
         </SheetFooter>
       </SheetContent>

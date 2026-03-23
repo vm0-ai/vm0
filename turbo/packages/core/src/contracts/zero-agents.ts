@@ -144,18 +144,18 @@ export const zeroAgentsByNameContract = c.router({
  * Update firewall policies request schema
  */
 export const zeroAgentFirewallPoliciesRequestSchema = z.object({
+  name: z.string(),
   policies: firewallPoliciesSchema,
 });
 
 /**
- * Contract for PUT /api/zero/agents/:name/firewall-policies
+ * Contract for PUT /api/zero/firewall-policies
  */
 export const zeroAgentFirewallPoliciesContract = c.router({
   update: {
     method: "PUT",
-    path: "/api/zero/agents/:name/firewall-policies",
+    path: "/api/zero/firewall-policies",
     headers: authHeadersSchema,
-    pathParams: z.object({ name: z.string() }),
     body: zeroAgentFirewallPoliciesRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,

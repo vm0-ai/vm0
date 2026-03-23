@@ -418,6 +418,12 @@ export const zeroJobFirewallPolicies$ = computed((get) =>
   get(internalFirewallPolicies$),
 );
 
+export const setZeroJobFirewallPolicies$ = command(
+  ({ set }, policies: FirewallPolicies | null) => {
+    set(internalFirewallPolicies$, policies);
+  },
+);
+
 const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
   const name = get(internalAgentName$);
   if (!name) {

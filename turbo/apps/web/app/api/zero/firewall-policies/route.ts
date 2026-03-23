@@ -2,25 +2,25 @@ import {
   createHandler,
   createSafeErrorHandler,
   tsr,
-} from "../../../../../../src/lib/ts-rest-handler";
+} from "../../../../src/lib/ts-rest-handler";
 import { zeroAgentFirewallPoliciesContract, builtinFirewalls } from "@vm0/core";
-import { initServices } from "../../../../../../src/lib/init-services";
+import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
-} from "../../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
+} from "../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../../../../src/db/schema/agent-compose";
+} from "../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
-import { extractConnectors } from "../../../../../../src/lib/zero/build-compose-content";
-import { logger } from "../../../../../../src/lib/logger";
+import { extractConnectors } from "../../../../src/lib/zero/build-compose-content";
+import { logger } from "../../../../src/lib/logger";
 import type { FirewallPolicies } from "@vm0/core";
 
-const log = logger("api:zero-agents:firewall-policies");
+const log = logger("api:zero:firewall-policies");
 
 function validatePolicies(policies: FirewallPolicies): string | null {
   for (const [ref, permissions] of Object.entries(policies)) {
@@ -48,7 +48,7 @@ function validatePolicies(policies: FirewallPolicies): string | null {
 }
 
 const router = tsr.router(zeroAgentFirewallPoliciesContract, {
-  update: async ({ params, body, headers }, { request }) => {
+  update: async ({ body, headers }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -100,7 +100,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, params.name),
+          eq(agentComposes.name, body.name),
         ),
       )
       .limit(1);
@@ -110,7 +110,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${params.name}`,
+            message: `Agent not found: ${body.name}`,
             code: "NOT_FOUND",
           },
         },
@@ -123,7 +123,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       .insert(zeroAgents)
       .values({
         orgId: org.orgId,
-        name: params.name,
+        name: body.name,
         firewallPolicies: body.policies,
       })
       .onConflictDoUpdate({
@@ -134,14 +134,14 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
         },
       });
 
-    log.info(`Updated firewall policies for agent: ${params.name}`);
+    log.info(`Updated firewall policies for agent: ${body.name}`);
 
     // Re-query to return actual persisted state
     const [agent] = await globalThis.services.db
       .select()
       .from(zeroAgents)
       .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, params.name)),
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, body.name)),
       )
       .limit(1);
 
@@ -164,7 +164,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
 });
 
 const handler = createHandler(zeroAgentFirewallPoliciesContract, router, {
-  errorHandler: createSafeErrorHandler("zero-agents:firewall-policies"),
+  errorHandler: createSafeErrorHandler("zero:firewall-policies"),
 });
 
 export { handler as PUT };

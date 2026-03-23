@@ -42,7 +42,9 @@ interface ZeroConnectorsTabProps {
   onSaveConnectors: () => void;
   onDiscardConnectors: () => void;
   agentName?: string;
+  agentDisplayName?: string;
   firewallPolicies?: FirewallPolicies | null;
+  onFirewallPoliciesChange?: (policies: FirewallPolicies | null) => void;
 }
 
 export function ZeroConnectorsTab({
@@ -51,7 +53,9 @@ export function ZeroConnectorsTab({
   connectorsDirty,
   connectorsSaving,
   agentName,
+  agentDisplayName,
   firewallPolicies,
+  onFirewallPoliciesChange,
   onAddConnector,
   onRemoveConnector,
   onSaveConnectors,
@@ -227,15 +231,14 @@ export function ZeroConnectorsTab({
       {firewallType && agentName && (
         <FirewallPermissionsDrawer
           connectorType={firewallType}
-          agentName={agentName}
+          agentName={agentDisplayName ?? agentName}
           initialPolicies={firewallPolicies ?? {}}
-          onApply={(policies) => {
-            detach(
-              saveFirewallPol(agentName, policies).then(() => {
-                toast.success("Permissions updated");
-              }),
-              Reason.DomCallback,
-            );
+          onApply={async (policies) => {
+            const saved = await saveFirewallPol(agentName, policies);
+            if (saved !== undefined) {
+              onFirewallPoliciesChange?.(saved);
+            }
+            toast.success("Permissions updated");
           }}
           onClose={() => setFirewallType(null)}
         />

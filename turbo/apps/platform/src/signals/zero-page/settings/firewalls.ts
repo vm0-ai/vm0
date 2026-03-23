@@ -43,17 +43,18 @@ export type PermissionPolicy = FirewallPolicyValue;
  * Persist firewall policies to the backend for an agent.
  */
 export const saveFirewallPolicies$ = command(
-  async ({ get }, agentName: string, policies: FirewallPolicies) => {
+  async (
+    { get },
+    agentName: string,
+    policies: FirewallPolicies,
+  ): Promise<FirewallPolicies | null> => {
     const fetchFn = get(fetch$);
 
-    const resp = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(agentName)}/firewall-policies`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ policies }),
-      },
-    );
+    const resp = await fetchFn("/api/zero/firewall-policies", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: agentName, policies }),
+    });
 
     if (!resp.ok) {
       const errorData = (await resp.json().catch(() => null)) as {
@@ -63,5 +64,10 @@ export const saveFirewallPolicies$ = command(
         errorData?.error?.message ?? `Save failed: ${resp.statusText}`,
       );
     }
+
+    const data = (await resp.json()) as {
+      firewallPolicies?: FirewallPolicies | null;
+    };
+    return data.firewallPolicies ?? null;
   },
 );
