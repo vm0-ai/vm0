@@ -112,3 +112,15 @@ export {
 
 // Domain modules - Skills
 export { resolveSkills } from "./domains/skills";
+
+// Domain modules - Zero Organizations
+export {
+  getZeroOrg,
+  updateZeroOrg,
+  listZeroOrgs,
+  getZeroOrgMembers,
+  inviteZeroOrgMember,
+  removeZeroOrgMember,
+  leaveZeroOrg,
+  deleteZeroOrg,
+} from "./domains/zero-orgs";
