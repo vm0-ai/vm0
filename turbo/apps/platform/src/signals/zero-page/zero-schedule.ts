@@ -30,6 +30,7 @@ interface ScheduleResponse {
   intervalSeconds: number | null;
   timezone: string;
   prompt: string;
+  description: string | null;
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
@@ -133,6 +134,7 @@ interface ZeroScheduleEntry {
   id: string;
   time: string;
   prompt: string;
+  description: string | null;
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
@@ -151,6 +153,7 @@ export const zeroScheduleEntries$ = computed((get) => {
         id: s.id,
         time: scheduleToTimeString(s),
         prompt: s.prompt,
+        description: s.description,
         enabled: s.enabled,
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
@@ -203,6 +206,7 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
 
 export interface ZeroScheduleSaveParams {
   prompt: string;
+  description?: string;
   freq: string;
   date: string;
   hour: number;
@@ -233,6 +237,7 @@ export const saveZeroSchedule$ = command(
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
+      ...(params.description && { description: params.description.trim() }),
       enabled: true,
       ...(params.notifyEmail !== undefined && {
         notifyEmail: params.notifyEmail,
@@ -381,6 +386,7 @@ export interface OrgScheduleEntry {
   id: string;
   time: string;
   prompt: string;
+  description: string | null;
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
@@ -407,6 +413,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         id: s.id,
         time: scheduleToTimeString(s),
         prompt: s.prompt,
+        description: s.description,
         enabled: s.enabled,
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
@@ -452,6 +459,7 @@ export const saveOrgSchedule$ = command(
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
+      ...(params.description && { description: params.description.trim() }),
       enabled: true,
       ...(params.notifyEmail !== undefined && {
         notifyEmail: params.notifyEmail,

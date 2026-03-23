@@ -17,6 +17,7 @@ export type ScheduleBody = {
   name: string;
   timezone: string;
   prompt: string;
+  description?: string;
   enabled?: boolean;
 } & (
   | { cronExpression: string }

@@ -34,6 +34,7 @@ export interface ScheduleResponse {
   intervalSeconds: number | null;
   timezone: string;
   prompt: string;
+  description: string | null;
   appendSystemPrompt: string | null;
   vars: Record<string, string> | null;
   secretNames: string[] | null;
@@ -74,6 +75,7 @@ interface DeployScheduleRequest {
   intervalSeconds?: number;
   timezone: string;
   prompt: string;
+  description?: string;
   appendSystemPrompt?: string;
   enabled?: boolean;
   notifyEmail?: boolean;
@@ -141,6 +143,7 @@ function toResponse(
     intervalSeconds: schedule.intervalSeconds,
     timezone: schedule.timezone,
     prompt: schedule.prompt,
+    description: schedule.description,
     appendSystemPrompt: schedule.appendSystemPrompt,
     vars: schedule.vars,
     secretNames,
@@ -278,6 +281,7 @@ async function updateExistingSchedule(
       intervalSeconds: request.intervalSeconds ?? null,
       timezone: request.timezone,
       prompt: request.prompt,
+      description: request.description ?? null,
       appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
@@ -327,6 +331,7 @@ async function insertNewSchedule(
       intervalSeconds: request.intervalSeconds ?? null,
       timezone: request.timezone,
       prompt: request.prompt,
+      description: request.description ?? null,
       appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
@@ -347,6 +352,51 @@ async function insertNewSchedule(
     throw new Error(`Failed to create schedule ${request.name}`);
   }
   return created;
+}
+
+/**
+ * Build a template-based description fallback.
+ */
+function buildTemplateDescription(
+  request: DeployScheduleRequest,
+  composeName: string,
+): string {
+  const triggerLabel = request.cronExpression
+    ? "recurring"
+    : request.atTime
+      ? "one-time"
+      : "loop";
+  return `${composeName} ${triggerLabel} task: ${request.prompt.slice(0, 100)}`;
+}
+
+/**
+ * Generate a concise schedule description using the lightweight model.
+ * Falls back to a template-based description if the model is unavailable.
+ */
+async function generateDescription(
+  request: DeployScheduleRequest,
+  composeName: string,
+): Promise<string> {
+  const { generateScheduleDescription } = await import(
+    "../ai/lightweight-model"
+  );
+
+  const triggerSummary = request.cronExpression
+    ? `cron: ${request.cronExpression}`
+    : request.atTime
+      ? `once at ${request.atTime}`
+      : request.intervalSeconds !== undefined
+        ? `loop every ${request.intervalSeconds}s`
+        : "unknown trigger";
+
+  const text = await generateScheduleDescription(
+    composeName,
+    request.name,
+    triggerSummary,
+    request.prompt,
+  );
+
+  return text ?? buildTemplateDescription(request, composeName);
 }
 
 /**
@@ -373,6 +423,15 @@ export async function deploySchedule(
 
   // Reject one-time schedules with past atTime when enabled
   validateAtTimeNotPast(request);
+
+  // Auto-generate description if not provided (undefined/null means not provided;
+  // empty string means the user explicitly cleared it — skip auto-generation)
+  if (request.description == null) {
+    request = {
+      ...request,
+      description: await generateDescription(request, compose.name),
+    };
+  }
 
   // Check for existing schedule with same name for this user on this compose
   const [existing] = await globalThis.services.db

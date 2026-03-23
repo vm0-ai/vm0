@@ -81,6 +81,7 @@ function buildCombinedSchedule(
     id: e.id,
     time: e.time,
     prompt: e.prompt,
+    description: e.description,
     enabled: e.enabled,
     notifyEmail: e.notifyEmail,
     notifySlack: e.notifySlack,
@@ -137,9 +138,9 @@ function CalendarEntryPopover({
             "w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             getAgentCellClasses(entry.agentLabel, agentOrder),
           )}
-          aria-label={`${entry.agentLabel}: ${entry.prompt}`}
+          aria-label={`${entry.agentLabel}: ${entry.description || entry.prompt}`}
         >
-          {entry.prompt}
+          {entry.description || entry.prompt}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -164,6 +165,11 @@ function CalendarEntryPopover({
             {entry.agentLabel}
           </p>
           <p className="text-xs text-muted-foreground">{entry.time}</p>
+          {entry.description && (
+            <p className="text-sm font-medium text-foreground leading-snug">
+              {entry.description}
+            </p>
+          )}
           <p className="text-sm text-foreground leading-snug">{entry.prompt}</p>
         </div>
       </PopoverContent>
@@ -586,6 +592,7 @@ function ScheduleEditDialogInner({
 }: ScheduleEditDialogProps & { entry: CombinedEntry }) {
   const parsed = parseScheduleTimeString(entry.time);
   const [prompt, setPrompt] = useState(entry.prompt);
+  const [description, setDescription] = useState(entry.description ?? "");
   const [freq, setFreq] = useState(parsed.freq);
   const [date, setDate] = useState(parsed.date);
   const [hour, setHour] = useState(parsed.hour);
@@ -601,6 +608,7 @@ function ScheduleEditDialogInner({
     }
     onSave({
       prompt: prompt.trim(),
+      description: description.trim() || undefined,
       freq,
       date,
       hour,
@@ -634,6 +642,24 @@ function ScheduleEditDialogInner({
             placeholder="Describe your task and instruction"
             rows={5}
             className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="schedule-edit-description"
+            className="text-sm font-medium text-foreground"
+          >
+            Description
+            <span className="text-muted-foreground font-normal ml-1">
+              (optional)
+            </span>
+          </label>
+          <Input
+            id="schedule-edit-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Leave blank to auto-generate"
+            className="h-9"
           />
         </div>
         <ScheduleEditFields
@@ -724,6 +750,7 @@ function ScheduleCreateDialogInner({
   defaultComposeId,
 }: Omit<ScheduleCreateDialogProps, "open">) {
   const [prompt, setPrompt] = useState("");
+  const [description, setDescription] = useState("");
   const [composeId, setComposeId] = useState(
     defaultComposeId ?? agents[0]?.id ?? "",
   );
@@ -742,6 +769,7 @@ function ScheduleCreateDialogInner({
     }
     onSave({
       prompt: prompt.trim(),
+      description: description.trim() || undefined,
       freq,
       date,
       hour,
@@ -792,6 +820,24 @@ function ScheduleCreateDialogInner({
             placeholder="Describe your task and instruction"
             rows={5}
             className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="schedule-create-description"
+            className="text-sm font-medium text-foreground"
+          >
+            Description
+            <span className="text-muted-foreground font-normal ml-1">
+              (optional)
+            </span>
+          </label>
+          <Input
+            id="schedule-create-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Leave blank to auto-generate"
+            className="h-9"
           />
         </div>
         <ScheduleEditFields
@@ -1003,7 +1049,7 @@ function ScheduleListView({
               {entry.time}
             </span>
             <span className="min-w-0 flex-1 text-muted-foreground text-xs truncate">
-              {entry.prompt}
+              {entry.description || entry.prompt}
             </span>
             <button
               type="button"

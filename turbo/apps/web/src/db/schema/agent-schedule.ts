@@ -53,6 +53,7 @@ export const agentSchedules = pgTable(
 
     // What to run
     prompt: text("prompt").notNull(),
+    description: text("description"),
     appendSystemPrompt: text("append_system_prompt"),
     vars: jsonb("vars").$type<Record<string, string>>(),
     // Secrets encrypted with AES-256-GCM (same pattern as runner_job_queue)
