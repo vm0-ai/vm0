@@ -304,6 +304,16 @@ async function downloadAndUploadSlackFile(
       return null;
     }
 
+    // Reject HTML responses — Slack returns login pages when bot tokens expire
+    const responseContentType = response.headers.get("content-type") || "";
+    if (responseContentType.includes("text/html")) {
+      log.debug("Rejected HTML response from Slack (likely expired token)", {
+        fileId: file.id,
+        contentType: responseContentType,
+      });
+      return null;
+    }
+
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -535,8 +545,8 @@ export function formatContextForAgent(
 }
 
 /**
- * Format messages into context for agent prompt with image upload
- * Uploads supported image types to R2 and provides presigned URLs
+ * Format messages into context for agent prompt with file upload
+ * Uploads files to R2 and provides presigned URLs for agent access
  *
  * @param messages - Array of Slack messages
  * @param botToken - Bot token for downloading private files
@@ -614,7 +624,7 @@ export async function formatContextForAgentWithImages(
 
 /**
  * Format files attached to the current message for inclusion in the prompt.
- * Uploads supported images to R2 and returns formatted file descriptions.
+ * Uploads files to R2 and returns formatted file descriptions.
  */
 export async function formatCurrentMessageFiles(
   files: SlackFile[],

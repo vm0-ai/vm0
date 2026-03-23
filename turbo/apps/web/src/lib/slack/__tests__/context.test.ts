@@ -462,6 +462,7 @@ describe("Feature: Format Context With Image Upload", () => {
               id: "F123",
               name: "screenshot.png",
               mimetype: "image/png",
+              filetype: "png",
               original_w: "1920",
               original_h: "1080",
               url_private_download:
@@ -482,7 +483,7 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalled();
       expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
         "test-bucket",
-        expect.stringContaining("slack-images/test-session-123/"),
+        expect.stringContaining("slack-files/test-session-123/"),
         expect.any(Buffer),
         "image/png",
       );
@@ -490,7 +491,7 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("[file]: screenshot.png (image/png)");
       expect(result).toContain("Dimensions: 1920x1080");
       expect(result).toContain(
-        'View: curl -sS -o /tmp/F123.png "https://mock-presigned-url"',
+        'Download: curl -sS -o /tmp/F123.png "https://mock-presigned-url"',
       );
       expect(result).toContain("- SENDER: {id: U123}");
     });
@@ -523,6 +524,7 @@ describe("Feature: Format Context With Image Upload", () => {
               id: "F456",
               name: "photo.jpg",
               mimetype: "image/jpeg",
+              filetype: "jpg",
               url_private_download:
                 "https://files.slack.com/download/photo.jpg",
             },
@@ -537,19 +539,31 @@ describe("Feature: Format Context With Image Upload", () => {
       );
 
       expect(result).toContain(
-        'View: curl -sS -o /tmp/F456.png "https://mock-presigned-url"',
+        'Download: curl -sS -o /tmp/F456.jpg "https://mock-presigned-url"',
       );
       expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
         "test-bucket",
-        expect.stringContaining("slack-images/test-session-123/"),
+        expect.stringContaining("slack-files/test-session-123/"),
         expect.any(Buffer),
         "image/jpeg",
       );
     });
   });
 
-  describe("Scenario: Fall back to URL for unsupported types", () => {
-    it("should not upload PDF files, use URL fallback", async () => {
+  describe("Scenario: Upload non-image file types to R2", () => {
+    it("should upload PDF files to R2 with presigned URL", async () => {
+      const pdfContent = Buffer.from("%PDF-1.4 fake pdf content");
+
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/report.pdf",
+        () => {
+          return new HttpResponse(pdfContent, {
+            headers: { "content-type": "application/pdf" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
       const messages = [
         {
           user: "U123",
@@ -557,8 +571,10 @@ describe("Feature: Format Context With Image Upload", () => {
           ts: "1234567890.001",
           files: [
             {
+              id: "F789",
               name: "report.pdf",
               mimetype: "application/pdf",
+              filetype: "pdf",
               url_private_download:
                 "https://files.slack.com/download/report.pdf",
               permalink: "https://slack.com/files/report.pdf",
@@ -573,10 +589,16 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
+        "test-bucket",
+        expect.stringContaining("slack-files/test-session-123/"),
+        expect.any(Buffer),
+        "application/pdf",
+      );
       expect(result).toContain("[file]: report.pdf (application/pdf)");
-      expect(result).toContain("URL: https://slack.com/files/report.pdf");
-      expect(result).not.toContain("Image URL:");
+      expect(result).toContain(
+        'Download: curl -sS -o /tmp/F789.pdf "https://mock-presigned-url"',
+      );
     });
   });
 
@@ -697,12 +719,12 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).not.toContain("Image URL:");
     });
 
-    it("should fall back to URL when content has invalid image magic bytes", async () => {
-      const invalidContent = Buffer.from("Not an image file content");
+    it("should upload content regardless of magic bytes since all file types are supported", async () => {
+      const arbitraryContent = Buffer.from("Not an image file content");
       const downloadHandler = http.get(
         "https://files.slack.com/download/screenshot.png",
         () => {
-          return new HttpResponse(invalidContent, {
+          return new HttpResponse(arbitraryContent, {
             headers: { "content-type": "image/png" },
           });
         },
@@ -719,6 +741,7 @@ describe("Feature: Format Context With Image Upload", () => {
               id: "F123",
               name: "screenshot.png",
               mimetype: "image/png",
+              filetype: "png",
               url_private_download:
                 "https://files.slack.com/download/screenshot.png",
               permalink: "https://slack.com/files/screenshot.png",
@@ -733,27 +756,28 @@ describe("Feature: Format Context With Image Upload", () => {
         "test-session-123",
       );
 
-      expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
-      expect(result).toContain("URL: https://slack.com/files/screenshot.png");
-      expect(result).not.toContain("Image URL:");
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalled();
+      expect(result).toContain(
+        'Download: curl -sS -o /tmp/F123.png "https://mock-presigned-url"',
+      );
     });
   });
 
   describe("Scenario: Respect file size limits", () => {
-    it("should not upload files larger than 10MB", async () => {
+    it("should not upload files larger than 100MB", async () => {
       const messages = [
         {
           user: "U123",
-          text: "Large image",
+          text: "Large file",
           ts: "1234567890.001",
           files: [
             {
-              name: "large.png",
-              mimetype: "image/png",
-              size: 15 * 1024 * 1024, // 15MB (exceeds 10MB limit)
+              name: "large.zip",
+              mimetype: "application/zip",
+              size: 150 * 1024 * 1024, // 150MB (exceeds 100MB limit)
               url_private_download:
-                "https://files.slack.com/download/large.png",
-              permalink: "https://slack.com/files/large.png",
+                "https://files.slack.com/download/large.zip",
+              permalink: "https://slack.com/files/large.zip",
             },
           ],
         },
@@ -766,8 +790,7 @@ describe("Feature: Format Context With Image Upload", () => {
       );
 
       expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
-      expect(result).toContain("URL: https://slack.com/files/large.png");
-      expect(result).not.toContain("Image URL:");
+      expect(result).toContain("URL: https://slack.com/files/large.zip");
     });
   });
 
@@ -855,7 +878,7 @@ describe("Feature: Format Context With Image Upload", () => {
       expect(result).toContain("[file]: img1.png");
       expect(result).toContain("[file]: img2.png");
       // Both should have presigned URLs
-      expect((result.match(/View: curl/g) || []).length).toBe(2);
+      expect((result.match(/Download: curl/g) || []).length).toBe(2);
     });
   });
 
@@ -1476,7 +1499,7 @@ describe("Feature: Format Current Message Files", () => {
 
     expect(result).toContain("[file]: photo.png (image/png)");
     expect(result).toContain("[file]: readme.txt (text/plain)");
-    expect(result).toContain("View: curl");
+    expect(result).toContain("Download: curl");
     expect(result).toContain("URL: https://slack.com/files/readme.txt");
     expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledTimes(1);
   });
@@ -1511,7 +1534,7 @@ describe("Feature: Format Current Message Files", () => {
 
       expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/malicious.png");
-      expect(result).not.toContain("View: curl");
+      expect(result).not.toContain("Download: curl");
     });
 
     it("should reject private IP address URL", async () => {
@@ -1533,7 +1556,7 @@ describe("Feature: Format Current Message Files", () => {
 
       expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/internal.png");
-      expect(result).not.toContain("View: curl");
+      expect(result).not.toContain("Download: curl");
     });
 
     it("should reject non-HTTPS Slack URL", async () => {
@@ -1555,7 +1578,7 @@ describe("Feature: Format Current Message Files", () => {
 
       expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/file.png");
-      expect(result).not.toContain("View: curl");
+      expect(result).not.toContain("Download: curl");
     });
 
     it("should reject cloud metadata URL", async () => {
@@ -1577,7 +1600,7 @@ describe("Feature: Format Current Message Files", () => {
 
       expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/metadata.png");
-      expect(result).not.toContain("View: curl");
+      expect(result).not.toContain("Download: curl");
     });
 
     it("should reject invalid URL string", async () => {
@@ -1599,7 +1622,7 @@ describe("Feature: Format Current Message Files", () => {
 
       expect(context.mocks.s3.uploadS3Buffer).not.toHaveBeenCalled();
       expect(result).toContain("URL: https://slack.com/files/bad.png");
-      expect(result).not.toContain("View: curl");
+      expect(result).not.toContain("Download: curl");
     });
   });
 });
