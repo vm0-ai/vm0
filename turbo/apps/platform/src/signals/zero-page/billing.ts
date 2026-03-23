@@ -4,6 +4,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
+  type BillingStatusResponse,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
@@ -20,19 +21,27 @@ const log = logger("billing");
 
 export type BillingTier = "free" | "pro" | "team";
 
-interface AutoRechargeConfig {
-  enabled: boolean;
-  threshold: number | null;
-  amount: number | null;
+export type BillingStatus = BillingStatusResponse;
+
+function isBillingTier(tier: string): tier is BillingTier {
+  return tier === "free" || tier === "pro" || tier === "team";
 }
 
-export interface BillingStatus {
-  tier: BillingTier;
-  credits: number;
-  subscriptionStatus: string | null;
-  currentPeriodEnd: string | null;
-  hasSubscription: boolean;
-  autoRecharge: AutoRechargeConfig;
+function toBillingTier(tier: string): BillingTier {
+  return isBillingTier(tier) ? tier : "free";
+}
+
+/** Extract error message from a ts-rest error response body. */
+function getErrorMessage(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null || !("error" in body)) {
+    return undefined;
+  }
+  const { error } = body;
+  if (typeof error !== "object" || error === null || !("message" in error)) {
+    return undefined;
+  }
+  const { message } = error;
+  return typeof message === "string" ? message : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,10 +71,9 @@ export const billingStatusAsync$ = computed(async (get) => {
   const client = createClient(zeroBillingStatusContract);
   const result = await client.get();
   if (result.status !== 200) {
-    log.error("Failed to fetch billing status", result.status);
-    return null;
+    throw new Error(`Failed to fetch billing status: ${result.status}`);
   }
-  return result.body as BillingStatus;
+  return result.body;
 });
 
 // ---------------------------------------------------------------------------
@@ -74,16 +82,9 @@ export const billingStatusAsync$ = computed(async (get) => {
 
 export const openBillingDialog$ = command(async ({ get, set }) => {
   const status = await get(billingStatusAsync$);
-  const currentTier = (status?.tier as BillingTier) ?? "free";
+  const currentTier = toBillingTier(status.tier);
   set(setSelectedPlanTier$, currentTier);
-  set(
-    syncAutoRechargeForm$,
-    status?.autoRecharge ?? {
-      enabled: false,
-      threshold: null,
-      amount: null,
-    },
-  );
+  set(syncAutoRechargeForm$, status.autoRecharge);
   set(internalDialogOpen$, true);
 });
 
@@ -111,12 +112,11 @@ export const startCheckout$ = command(
       },
     });
 
-    if (result.status === 200 && result.body.url) {
+    if (result.status === 200) {
       window.location.href = result.body.url;
       // Don't reset loading — page is navigating away
     } else {
-      const errorBody = result.body as { error?: { message?: string } };
-      log.error("Checkout failed", errorBody.error?.message);
+      log.error("Checkout failed", getErrorMessage(result.body));
       set(internalDialogLoading$, false);
     }
   },
@@ -131,11 +131,10 @@ export const startDowngrade$ = command(async ({ get, set }) => {
     body: { returnUrl: window.location.href },
   });
 
-  if (result.status === 200 && result.body.url) {
+  if (result.status === 200) {
     window.location.href = result.body.url;
   } else {
-    const errorBody = result.body as { error?: { message?: string } };
-    log.error("Portal redirect failed", errorBody.error?.message);
+    log.error("Portal redirect failed", getErrorMessage(result.body));
     set(internalDialogLoading$, false);
   }
 });
@@ -158,9 +157,9 @@ export const saveAutoRecharge$ = command(
     set(internalDialogLoading$, false);
 
     if (result.status !== 200) {
-      const errorBody = result.body as { error?: { message?: string } };
-      log.error("Auto-recharge save failed", errorBody.error?.message);
-      return { ok: false, error: errorBody.error?.message };
+      const message = getErrorMessage(result.body);
+      log.error("Auto-recharge save failed", message);
+      return { ok: false, error: message };
     }
 
     // Invalidate billing status cache so the dialog shows fresh data on re-open

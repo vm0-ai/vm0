@@ -1,23 +1,9 @@
 import { sql, and, eq, gte, lt, inArray } from "drizzle-orm";
+import { type MemberUsage, type UsageMembersResponse } from "@vm0/core";
 import { getOrgBillingPeriod } from "../org/org-cache-service";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { userCache } from "../../db/schema/user-cache";
 import { clerkClient } from "@clerk/nextjs/server";
-
-interface MemberUsage {
-  userId: string;
-  email: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadInputTokens: number;
-  cacheCreationInputTokens: number;
-  creditsCharged: number;
-}
-
-interface UsageMembersResponse {
-  period: { start: string; end: string } | null;
-  members: MemberUsage[];
-}
 
 /**
  * Get per-member token usage aggregation for the current billing period.

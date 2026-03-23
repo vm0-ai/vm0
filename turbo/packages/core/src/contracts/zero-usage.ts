@@ -42,3 +42,7 @@ export const zeroUsageMembersContract = c.router({
 });
 
 export type ZeroUsageMembersContract = typeof zeroUsageMembersContract;
+
+// Inferred types from Zod schemas
+export type MemberUsage = z.infer<typeof memberUsageSchema>;
+export type UsageMembersResponse = z.infer<typeof usageMembersResponseSchema>;
