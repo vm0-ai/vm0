@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { GET, POST } from "../route";
 import {
   createTestRequest,
@@ -11,6 +12,8 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { server } from "../../../../../src/mocks/server";
+import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
 
@@ -224,5 +227,128 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].id).toBeDefined();
     expect(data.threads[0].createdAt).toBeDefined();
     expect(data.threads[0].updatedAt).toBeDefined();
+  });
+});
+
+describe("POST /api/zero/chat-threads - AI Title Generation", () => {
+  const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+
+    const { composeId } = await createTestCompose(uniqueId("chat-title-gen"));
+    testComposeId = composeId;
+  });
+
+  it("should update thread title when OpenRouter returns a title", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Debugging Node.js Memory Leaks" } }],
+        });
+      }),
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          title: "How do I debug memory leaks in Node.js?",
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+
+    // Wait for the fire-and-forget title generation to complete, then verify via GET API
+    await vi.waitFor(async () => {
+      const listRequest = createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentComposeId=${testComposeId}`,
+      );
+      const listResponse = await GET(listRequest);
+      const listData = await listResponse.json();
+      expect(listData.threads[0]?.title).toBe("Debugging Node.js Memory Leaks");
+    });
+  });
+
+  it("should not call OpenRouter when API key is not configured", async () => {
+    let openRouterCalled = false;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        openRouterCalled = true;
+        return HttpResponse.json({
+          choices: [{ message: { content: "Should not reach here" } }],
+        });
+      }),
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          title: "Test without API key",
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(201);
+    // Give fire-and-forget a chance to execute
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(openRouterCalled).toBe(false);
+  });
+
+  it("should not break thread creation when OpenRouter fails", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json(
+          { error: "Rate limit exceeded" },
+          { status: 429 },
+        );
+      }),
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          title: "Test with API failure",
+        }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.id).toBeDefined();
+
+    // Give fire-and-forget a chance to execute (and fail gracefully)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Title should remain unchanged (original title) — verified via GET API
+    const listRequest = createTestRequest(
+      `http://localhost:3000/api/zero/chat-threads?agentComposeId=${testComposeId}`,
+    );
+    const listResponse = await GET(listRequest);
+    const listData = await listResponse.json();
+    expect(listData.threads[0]?.title).toBe("Test with API failure");
   });
 });
