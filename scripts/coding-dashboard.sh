@@ -25,16 +25,19 @@ LAST_LANE=$(printf "vm%02d" "$MAX_WORKERS")
 
 "$SCRIPT_DIR/lane-status.sh" "${FIRST_LANE}-${LAST_LANE}" --user "$ME" > "$WORK_DIR/lanes.json" &
 
-# Merged PRs across all lanes
+# Merged PRs across all lanes (per-lane files to avoid interleaved writes)
 for i in $(seq 1 "$MAX_WORKERS"); do
   LANE=$(printf "vm%02d" "$i")
   gh pr list --repo "$REPO" --label "$LANE" --state merged \
     --json number,title,mergedAt,labels --limit 20 \
     --jq ".[] | {number, title, mergedAt, lane: \"$LANE\"}" \
-    >> "$WORK_DIR/merged_raw.jsonl" &
+    > "$WORK_DIR/merged_${LANE}.jsonl" &
 done
 
 wait
+
+# Combine per-lane merged PR files
+cat "$WORK_DIR"/merged_vm*.jsonl > "$WORK_DIR/merged_raw.jsonl" 2>/dev/null || true
 
 # --- Render: CI Pipeline ---
 
@@ -70,10 +73,16 @@ else
     DATE_CMD="date"
   fi
   FAIL_EPOCH=$($DATE_CMD -d "$FAIL_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$FAIL_TIME" +%s 2>/dev/null || echo 0)
-  NOW_EPOCH=$($DATE_CMD +%s)
-  DIFF_SECS=$((NOW_EPOCH - FAIL_EPOCH))
-  DIFF_HOURS=$((DIFF_SECS / 3600))
-  DIFF_MINS=$(( (DIFF_SECS % 3600) / 60 ))
+
+  if [[ "$FAIL_EPOCH" == "0" ]]; then
+    ELAPSED_STR="unknown"
+  else
+    NOW_EPOCH=$($DATE_CMD +%s)
+    DIFF_SECS=$((NOW_EPOCH - FAIL_EPOCH))
+    DIFF_HOURS=$((DIFF_SECS / 3600))
+    DIFF_MINS=$(( (DIFF_SECS % 3600) / 60 ))
+    ELAPSED_STR="${DIFF_HOURS}h ${DIFF_MINS}m"
+  fi
 
   echo ""
   echo "Last failure: #${FAIL_POS}/10"
@@ -84,7 +93,7 @@ else
   FAILED_JOBS=$(gh run view "$RUN_ID" --repo "$REPO" --json jobs --jq '[.jobs[] | select(.conclusion == "failure") | .name] | join(", ")' 2>/dev/null || echo "unknown")
   echo "  Failed jobs: ${FAILED_JOBS}"
   echo "  Success since: ${SUCCESS_SINCE}"
-  echo "  Elapsed: ${DIFF_HOURS}h ${DIFF_MINS}m"
+  echo "  Elapsed: ${ELAPSED_STR}"
 fi
 
 # --- Render: Merge Queue ---
