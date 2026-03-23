@@ -55,6 +55,7 @@ import {
   discardZeroJobConnectors$,
   zeroJobActiveTab$,
   setZeroJobActiveTab$,
+  zeroJobFirewallPolicies$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
@@ -212,6 +213,7 @@ function JobConnectorsTab({ agentName }: { agentName: string }) {
   const removeConnector = useSet(removeZeroJobConnector$);
   const saveConnectors = useSet(saveZeroJobConnectors$);
   const discardConnectors = useSet(discardZeroJobConnectors$);
+  const firewallPolicies = useGet(zeroJobFirewallPolicies$);
 
   return (
     <ZeroConnectorsTab
@@ -220,6 +222,7 @@ function JobConnectorsTab({ agentName }: { agentName: string }) {
       connectorsDirty={connectorsDirty}
       connectorsSaving={connectorsSaving}
       agentName={agentName}
+      firewallPolicies={firewallPolicies}
       onAddConnector={addConnector}
       onRemoveConnector={removeConnector}
       onSaveConnectors={() => detach(saveConnectors(), Reason.DomCallback)}

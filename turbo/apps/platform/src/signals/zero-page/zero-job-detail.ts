@@ -5,6 +5,7 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { search } from "../location.ts";
 import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
+import type { FirewallPolicies } from "@vm0/core";
 import {
   buildCronExpression,
   buildAtTime,
@@ -408,6 +409,41 @@ export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Firewall policies — fetched from zero agents endpoint
+// ---------------------------------------------------------------------------
+
+const internalFirewallPolicies$ = state<FirewallPolicies | null>(null);
+
+export const zeroJobFirewallPolicies$ = computed((get) =>
+  get(internalFirewallPolicies$),
+);
+
+const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
+  const name = get(internalAgentName$);
+  if (!name) {
+    return;
+  }
+
+  try {
+    const fetchFn = get(fetch$);
+    const response = await fetchFn(
+      `/api/zero/agents/${encodeURIComponent(name)}`,
+    );
+    if (!response.ok) {
+      return;
+    }
+
+    const data = (await response.json()) as {
+      firewallPolicies?: FirewallPolicies | null;
+    };
+    set(internalFirewallPolicies$, data.firewallPolicies ?? null);
+  } catch (error) {
+    throwIfAbort(error);
+    L.error("Failed to fetch firewall policies:", error);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Agent schedule
 // ---------------------------------------------------------------------------
 
@@ -760,11 +796,13 @@ export const fetchZeroJobData$ = command(async ({ set }, agentName: string) => {
   set(jobBuilding$, false);
   set(internalSaving$, false);
   set(internalActiveTab$, getInitialTab());
+  set(internalFirewallPolicies$, null);
 
   set(setZeroJobAgentName$, agentName);
   await set(fetchZeroJobDetail$);
   await Promise.all([
     set(fetchZeroJobInstructions$),
     set(fetchZeroJobSchedule$),
+    set(fetchZeroJobFirewallPolicies$),
   ]);
 });

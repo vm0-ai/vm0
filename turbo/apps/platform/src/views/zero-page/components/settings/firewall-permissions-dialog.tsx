@@ -1,5 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
-import { useCCState, useCommand } from "ccstate-react/experimental";
+import { useState } from "react";
 import {
   Sheet,
   SheetContent,
@@ -9,22 +8,18 @@ import {
   Button,
 } from "@vm0/ui";
 import {
+  builtinFirewalls,
   CONNECTOR_TYPES,
   type ConnectorType,
   type FirewallConfig,
+  type FirewallPolicies,
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   getFirewallRefs,
-  fetchFirewallConfigByRef$,
   type PermissionPolicy,
 } from "../../../../signals/zero-page/settings/firewalls.ts";
-import {
-  IconLoader2,
-  IconCheck,
-  IconBan,
-  IconClock,
-} from "@tabler/icons-react";
+import { IconCheck, IconBan, IconClock } from "@tabler/icons-react";
 
 interface FirewallPermission {
   name: string;
@@ -35,8 +30,8 @@ interface FirewallPermission {
 interface FirewallPermissionsDrawerProps {
   connectorType: ConnectorType;
   agentName: string;
-  initialPolicies: Record<string, PermissionPolicy>;
-  onApply: (ref: string, policies: Record<string, PermissionPolicy>) => void;
+  initialPolicies: FirewallPolicies;
+  onApply: (policies: FirewallPolicies) => void;
   onClose: () => void;
 }
 
@@ -89,7 +84,7 @@ function splitPermName(name: string): [string, string] {
 
 const POLICY_OPTIONS = [
   { value: "allow" as const, label: "Allow" },
-  { value: "always_allow" as const, label: "Needs approval" },
+  { value: "ask" as const, label: "Needs approval" },
   { value: "deny" as const, label: "Deny" },
 ] as const;
 
@@ -126,7 +121,7 @@ function PolicyPill({
           }`}
         >
           {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
-          {opt.value === "always_allow" && <IconClock size={12} stroke={2.5} />}
+          {opt.value === "ask" && <IconClock size={12} stroke={2.5} />}
           {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
           {opt.label}
         </button>
@@ -144,69 +139,43 @@ export function FirewallPermissionsDrawer({
 }: FirewallPermissionsDrawerProps) {
   const refs = getFirewallRefs(connectorType);
 
-  const activeRef$ = useCCState(refs[0] ?? "");
-  const activeRef = useGet(activeRef$);
-  const setActiveRef = useSet(activeRef$);
+  const [activeRef, setActiveRef] = useState(refs[0] ?? "");
 
-  const config$ = useCCState<FirewallConfig | null>(null);
-  const config = useGet(config$);
+  // Build policies state from all refs
+  const [allPolicies, setAllPolicies] = useState(() => {
+    const result: Record<string, Record<string, PermissionPolicy>> = {};
+    for (const ref of refs) {
+      const config = builtinFirewalls[ref];
+      if (!config) {
+        continue;
+      }
+      const perms = extractPermissions(config);
+      const refPolicies: Record<string, PermissionPolicy> = {};
+      for (const p of perms) {
+        refPolicies[p.name] = initialPolicies[ref]?.[p.name] ?? "allow";
+      }
+      result[ref] = refPolicies;
+    }
+    return result;
+  });
 
-  const loading$ = useCCState(true);
-  const loading = useGet(loading$);
+  const [scrolled, setScrolled] = useState(false);
 
-  const error$ = useCCState<string | null>(null);
-  const errorMsg = useGet(error$);
-
-  const policies$ = useCCState<Record<string, PermissionPolicy>>({});
-  const policies = useGet(policies$);
-  const setPolicies = useSet(policies$);
-
-  const scrolled$ = useCCState(false);
-  const scrolled = useGet(scrolled$);
-  const setScrolled = useSet(scrolled$);
-
-  const fetchConfig = useSet(fetchFirewallConfigByRef$);
-
-  const loadConfig = useSet(
-    useCommand(({ set }, ref: string) => {
-      set(loading$, true);
-      set(error$, null);
-
-      fetchConfig(ref)
-        .then((cfg: FirewallConfig) => {
-          set(config$, cfg);
-          const perms = extractPermissions(cfg);
-          const defaultPolicies: Record<string, PermissionPolicy> = {};
-          for (const p of perms) {
-            defaultPolicies[p.name] = initialPolicies[p.name] ?? "allow";
-          }
-          set(policies$, defaultPolicies);
-          set(loading$, false);
-        })
-        .catch((error: unknown) => {
-          set(
-            error$,
-            error instanceof Error ? error.message : "Failed to load config",
-          );
-          set(loading$, false);
-        });
-    }),
-  );
-
-  if (!config && !errorMsg && loading) {
-    loadConfig(activeRef);
-  }
-
+  const config = builtinFirewalls[activeRef] ?? null;
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
+  const policies = allPolicies[activeRef] ?? {};
 
-  const counts = { allow: 0, deny: 0, always_allow: 0 };
+  const counts = { allow: 0, deny: 0, ask: 0 };
   for (const p of permissions) {
     const pol = policies[p.name] ?? "allow";
     counts[pol]++;
   }
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
-    setPolicies({ ...policies, [name]: policy });
+    setAllPolicies({
+      ...allPolicies,
+      [activeRef]: { ...policies, [name]: policy },
+    });
   };
 
   const handleSetAll = (policy: PermissionPolicy) => {
@@ -214,17 +183,16 @@ export function FirewallPermissionsDrawer({
     for (const p of permissions) {
       next[p.name] = policy;
     }
-    setPolicies(next);
+    setAllPolicies({ ...allPolicies, [activeRef]: next });
   };
 
   const handleApply = () => {
-    onApply(activeRef, policies);
+    onApply(allPolicies);
     onClose();
   };
 
   const handleRefSwitch = (ref: string) => {
     setActiveRef(ref);
-    loadConfig(ref);
   };
 
   const connectorLabel = CONNECTOR_TYPES[connectorType]?.label ?? connectorType;
@@ -264,17 +232,11 @@ export function FirewallPermissionsDrawer({
           </div>
         )}
 
-        {loading ? (
+        {!config ? (
           <div className="flex flex-1 items-center justify-center">
-            <IconLoader2
-              size={20}
-              stroke={1.5}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        ) : errorMsg ? (
-          <div className="flex flex-1 items-center justify-center">
-            <p className="text-sm text-destructive">{errorMsg}</p>
+            <p className="text-sm text-destructive">
+              No firewall config found for {activeRef}
+            </p>
           </div>
         ) : (
           <div className="flex flex-1 flex-col min-h-0">
@@ -303,7 +265,7 @@ export function FirewallPermissionsDrawer({
                     {opt.value === "allow" && (
                       <IconCheck size={12} stroke={2.5} />
                     )}
-                    {opt.value === "always_allow" && (
+                    {opt.value === "ask" && (
                       <IconClock size={12} stroke={2.5} />
                     )}
                     {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
@@ -354,7 +316,7 @@ export function FirewallPermissionsDrawer({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleApply} disabled={loading || !!errorMsg}>
+          <Button onClick={handleApply} disabled={!config}>
             Apply
           </Button>
         </SheetFooter>

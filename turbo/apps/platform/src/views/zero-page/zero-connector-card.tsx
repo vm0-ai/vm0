@@ -17,6 +17,7 @@ interface ZeroConnectorCardProps {
   connector: ConnectorTypeWithStatus | null;
   pollingType: ConnectorType | null;
   hasFirewall: boolean;
+  isAdmin?: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onRemove: () => void;
@@ -30,6 +31,7 @@ export function ZeroConnectorCard({
   connector,
   pollingType,
   hasFirewall,
+  isAdmin,
   onConnect,
   onDisconnect,
   onRemove,
@@ -128,7 +130,7 @@ export function ZeroConnectorCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            {hasFirewall && connector?.connected && (
+            {hasFirewall && connector?.connected && isAdmin && (
               <>
                 <DropdownMenuItem onClick={onManagePermissions}>
                   Permissions

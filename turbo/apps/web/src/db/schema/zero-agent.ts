@@ -6,6 +6,7 @@ import {
   varchar,
   uniqueIndex,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -22,6 +23,7 @@ export const zeroAgents = pgTable(
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
     sound: varchar("sound", { length: 64 }),
+    firewallPolicies: jsonb("firewall_policies"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

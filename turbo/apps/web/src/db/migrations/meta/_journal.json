@@ -1310,6 +1310,13 @@
       "when": 1774283087704,
       "tag": "0186_ordinary_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1774310400000,
+      "tag": "0187_add_firewall_policies",
+      "breakpoints": true
     }
   ]
 }

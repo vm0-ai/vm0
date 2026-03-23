@@ -22,6 +22,7 @@ import {
   extractConnectors,
 } from "../../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../../src/lib/logger";
+import type { FirewallPolicies } from "@vm0/core";
 
 const log = logger("api:zero-agents:name");
 
@@ -90,6 +91,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
         connectors,
+        firewallPolicies: (agent?.firewallPolicies as FirewallPolicies) ?? null,
       },
     };
   },
@@ -202,6 +204,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
         connectors: extractConnectors(content),
+        firewallPolicies: (agent?.firewallPolicies as FirewallPolicies) ?? null,
       },
     };
   },

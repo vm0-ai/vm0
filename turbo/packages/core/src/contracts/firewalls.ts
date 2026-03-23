@@ -59,6 +59,25 @@ export const firewallConfigSchema = z.object({
   placeholders: z.record(z.string(), z.string()).optional(),
 });
 
+/**
+ * Firewall policy value — per-permission access control.
+ * - "allow": always allow without prompting
+ * - "deny": always deny
+ * - "ask": prompt user for approval each time
+ */
+export const firewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
+export type FirewallPolicyValue = z.infer<typeof firewallPolicyValueSchema>;
+
+/**
+ * Firewall policies — nested map of firewall ref → permission name → policy.
+ * Example: { "github": { "repo-read": "allow", "issues-write": "deny" } }
+ */
+export const firewallPoliciesSchema = z.record(
+  z.string(),
+  z.record(z.string(), firewallPolicyValueSchema),
+);
+export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
+
 /** Inferred types */
 export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
