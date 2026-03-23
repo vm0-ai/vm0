@@ -18,7 +18,6 @@ import {
   IconPlus,
   IconChevronRight,
   IconSwitchHorizontal,
-  IconSettings,
   IconLoader2,
   IconSearch,
   IconX,
@@ -215,7 +214,7 @@ const FOOTER_NAV: readonly FooterNavItem[] = [
     iconImg: undefined,
     featureGate: undefined,
   },
-];
+] as const;
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
 

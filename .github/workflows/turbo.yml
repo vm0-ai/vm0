@@ -202,8 +202,8 @@ jobs:
             MQ_REF="${{ github.event.merge_group.head_ref }}"
             PR_NUM=$(echo "$MQ_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$PR_NUM" ]; then
-              echo "job-ref=pr-${PR_NUM}-merge-queue" >> "$GITHUB_OUTPUT"
-              echo "Job ref set to: pr-${PR_NUM}-merge-queue"
+              echo "job-ref=pr-${PR_NUM}-mq-$(printf '%s' "$GITHUB_RUN_ID" | tail -c 6)" >> "$GITHUB_OUTPUT"
+              echo "Job ref set to: pr-${PR_NUM}-mq-$(printf '%s' "$GITHUB_RUN_ID" | tail -c 6)"
             else
               echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_REF"
               exit 1
@@ -1204,7 +1204,6 @@ jobs:
           workspaces: crates -> target
           shared-key: aarch64-musl-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-targets: false
 
       - name: Cross-compile guest binaries for ARM64
         run: |

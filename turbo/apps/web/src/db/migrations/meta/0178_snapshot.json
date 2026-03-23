@@ -3426,6 +3426,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "cached_at": {
           "name": "cached_at",
           "type": "timestamp",

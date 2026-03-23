@@ -489,16 +489,20 @@ export {
   orgMembersContract,
   orgRoleSchema,
   orgMemberSchema,
+  orgPendingInvitationSchema,
   orgMembersResponseSchema,
   inviteOrgMemberRequestSchema,
   removeOrgMemberRequestSchema,
+  updateOrgMemberRoleRequestSchema,
   orgMessageResponseSchema,
   type OrgMembersContract,
   type OrgRole,
   type OrgMember,
+  type OrgPendingInvitation,
   type OrgMembersResponse,
   type InviteOrgMemberRequest,
   type RemoveOrgMemberRequest,
+  type UpdateOrgMemberRoleRequest,
   type OrgMessageResponse,
 } from "./org-members";
 export {
@@ -563,7 +567,20 @@ export {
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
 } from "./zero-connectors";
-export { zeroOrgContract, type ZeroOrgContract } from "./zero-org";
+export {
+  zeroOrgContract,
+  zeroOrgLeaveContract,
+  zeroOrgDeleteContract,
+  type ZeroOrgContract,
+  type ZeroOrgLeaveContract,
+  type ZeroOrgDeleteContract,
+} from "./zero-org";
+export {
+  zeroOrgMembersContract,
+  zeroOrgInviteContract,
+  type ZeroOrgMembersContract,
+  type ZeroOrgInviteContract,
+} from "./zero-org-members";
 export {
   zeroComposesMainContract,
   zeroComposesByIdContract,

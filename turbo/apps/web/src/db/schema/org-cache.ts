@@ -13,6 +13,7 @@ export const orgCache = pgTable(
   {
     orgId: text("org_id").primaryKey(),
     slug: text("slug").notNull(),
+    name: text("name").notNull().default(""),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
     // Billing period cache (independent TTL via billingCachedAt)
     currentPeriodStart: timestamp("current_period_start"),

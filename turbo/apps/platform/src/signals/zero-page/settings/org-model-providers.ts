@@ -327,6 +327,7 @@ export const orgSubmitDialog$ = command(
         mode: "add",
         providerType: null,
       });
+      set(internalOrgAddProviderDialogOpen$, false);
       set(internalOrgFormValues$, {
         secret: "",
         selectedModel: "",

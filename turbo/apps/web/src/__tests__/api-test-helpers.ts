@@ -327,11 +327,12 @@ export async function createTestOrg(
     .values({
       orgId,
       slug,
+      name: slug,
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, cachedAt: new Date() },
+      set: { slug, name: slug, cachedAt: new Date() },
     });
 
   // Ensure org row exists (source of truth for tier and default agent)
@@ -2856,6 +2857,7 @@ export async function findTestOutboxItemById(id: string) {
 export async function insertOrgCacheEntry(entry: {
   orgId: string;
   slug: string;
+  name?: string;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
@@ -2864,12 +2866,14 @@ export async function insertOrgCacheEntry(entry: {
     .values({
       orgId: entry.orgId,
       slug: entry.slug,
+      name: entry.name ?? entry.slug,
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
       set: {
         slug: entry.slug,
+        name: entry.name ?? entry.slug,
         cachedAt: entry.cachedAt ?? new Date(),
       },
     });
