@@ -7,6 +7,11 @@
     "generate": "tsx src/index.ts",
     "generate:github": "tsx src/index.ts github",
     "generate:slack": "tsx src/index.ts slack",
+    "generate:gmail": "tsx src/index.ts gmail",
+    "generate:google-calendar": "tsx src/index.ts google-calendar",
+    "generate:google-docs": "tsx src/index.ts google-docs",
+    "generate:google-drive": "tsx src/index.ts google-drive",
+    "generate:google-sheets": "tsx src/index.ts google-sheets",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {

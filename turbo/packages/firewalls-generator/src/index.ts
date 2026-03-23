@@ -8,10 +8,14 @@
 
 import { generate as generateGitHub } from "./github";
 import { generate as generateSlack } from "./slack";
+import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   slack: generateSlack,
+  ...Object.fromEntries(
+    googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
+  ),
 };
 
 async function main(): Promise<void> {
