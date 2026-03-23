@@ -353,7 +353,7 @@ export async function createTestOrg(
 export async function createTestCompose(
   agentName: string,
   options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
-): Promise<{ composeId: string; versionId: string }> {
+): Promise<{ composeId: string; versionId: string; name: string }> {
   const config = createDefaultComposeConfig(agentName, options);
   const request = createTestRequest(
     "http://localhost:3000/api/agent/composes",
