@@ -4466,3 +4466,59 @@ export async function insertTestTelegramUserLink(params: {
     .returning({ id: telegramUserLinks.id });
   return row!;
 }
+
+// ============================================================================
+// User Deletion Test Helpers (find/query)
+// ============================================================================
+
+export async function findTestGitHubUserLinksByVm0UserId(vm0UserId: string) {
+  return globalThis.services.db
+    .select()
+    .from(githubUserLinks)
+    .where(eq(githubUserLinks.vm0UserId, vm0UserId));
+}
+
+export async function findTestTelegramUserLinksByVm0UserId(vm0UserId: string) {
+  return globalThis.services.db
+    .select()
+    .from(telegramUserLinks)
+    .where(eq(telegramUserLinks.vm0UserId, vm0UserId));
+}
+
+export async function findTestSlackOrgConnectionsByVm0UserId(
+  vm0UserId: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.vm0UserId, vm0UserId));
+}
+
+export async function findTestSlackOrgPendingQuestionsByConnectionId(
+  connectionId: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(slackOrgPendingQuestions)
+    .where(eq(slackOrgPendingQuestions.connectionId, connectionId));
+}
+
+export async function insertTestSlackOrgPendingQuestionNoSession(params: {
+  connectionId: string;
+  composeId: string;
+  runId: string;
+  slackWorkspaceId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(slackOrgPendingQuestions).values({
+    connectionId: params.connectionId,
+    composeId: params.composeId,
+    runId: params.runId,
+    slackWorkspaceId: params.slackWorkspaceId,
+    slackChannelId: "C-test",
+    slackThreadTs: "1234.5678",
+    slackMessageTs: "1234.5679",
+    agentName: "test-agent",
+    questions: [{ question: "test?" }],
+    expiresAt: new Date(Date.now() + 3600000),
+  });
+}
