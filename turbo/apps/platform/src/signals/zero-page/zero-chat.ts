@@ -790,7 +790,7 @@ export const switchZeroSession$ = command(
       const fetchFn = get(fetch$);
 
       // Try chat-threads API first; fall back to legacy sessions API
-      L.info("loading thread:", threadId);
+      L.debug("loading thread:", threadId);
       let res = await fetchFn(`/api/zero/chat-threads/${threadId}`);
       let isLegacySession = false;
       if (!res.ok) {
@@ -821,7 +821,7 @@ export const switchZeroSession$ = command(
         }[];
       };
 
-      L.info("loaded:", {
+      L.debug("loaded:", {
         isLegacySession,
         agentComposeId: data.agentComposeId,
         latestSessionId: data.latestSessionId,
