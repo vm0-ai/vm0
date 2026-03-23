@@ -11,10 +11,7 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { createZeroRun } from "../../../../src/lib/zero/zero-run-service";
 import { isApiError } from "../../../../src/lib/errors";
-import {
-  isRunDispatchError,
-  type RunDispatchError,
-} from "../../../../src/lib/run";
+import { isRunDispatchError } from "../../../../src/lib/run";
 
 /**
  * Translate createZeroRun() errors into API response format.
@@ -22,20 +19,20 @@ import {
  * Mirrors the handleCreateRunError pattern from /api/agent/runs.
  */
 function handleCreateRunError(error: unknown) {
-  if (isApiError(error)) {
-    const dispatchError = error as RunDispatchError;
-    if (dispatchError.runId) {
-      return {
-        status: 201 as const,
-        body: {
-          runId: dispatchError.runId,
-          status: "failed" as const,
-          error: error.message,
-          createdAt: dispatchError.createdAt?.toISOString() ?? "",
-        },
-      };
-    }
+  // Dispatch errors with a runId take priority — return partial result
+  if (isRunDispatchError(error) && error.runId) {
+    return {
+      status: 201 as const,
+      body: {
+        runId: error.runId,
+        status: "failed" as const,
+        error: error.message,
+        createdAt: error.createdAt?.toISOString() ?? "",
+      },
+    };
+  }
 
+  if (isApiError(error)) {
     const status = error.code === "UNAUTHORIZED" ? 404 : error.statusCode;
     const code = error.code === "UNAUTHORIZED" ? "NOT_FOUND" : error.code;
     const message =
@@ -43,18 +40,6 @@ function handleCreateRunError(error: unknown) {
     return {
       status: status as 400 | 401 | 403 | 404,
       body: { error: { message, code } },
-    };
-  }
-
-  if (isRunDispatchError(error) && error.runId) {
-    return {
-      status: 201 as const,
-      body: {
-        runId: error.runId,
-        status: "failed" as const,
-        error: "Run failed",
-        createdAt: error.createdAt?.toISOString() ?? "",
-      },
     };
   }
 
