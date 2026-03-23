@@ -266,6 +266,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_malformed_len_defaults_to_zero() {
+        let msg = "VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=abc PROTO=UDP SPT=1234 DPT=53";
+        let entry = parse_log_message(msg).unwrap();
+        assert_eq!(entry.packet_size, 0);
+    }
+
+    #[test]
+    fn parse_malformed_dpt_defaults_to_zero() {
+        let msg = "VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64 PROTO=UDP SPT=1234 DPT=99999";
+        let entry = parse_log_message(msg).unwrap();
+        assert_eq!(entry.dst_port, 0); // u16 overflow → parse fails → default 0
+    }
+
+    #[test]
+    fn parse_missing_proto_returns_none() {
+        let msg = "VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64";
+        assert!(parse_log_message(msg).is_none());
+    }
+
+    #[test]
     fn write_jsonl_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jsonl");
