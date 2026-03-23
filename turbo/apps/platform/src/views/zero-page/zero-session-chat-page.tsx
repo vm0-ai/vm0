@@ -1,5 +1,3 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconAlertCircle,
@@ -24,7 +22,7 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, onRef, Reason } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
@@ -53,6 +51,14 @@ import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link, SimpleLink } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import {
+  thinkingMessage$,
+  cycleThinkingRef$,
+  timelineExpandedIds$,
+  toggleTimelineExpanded$,
+  copiedMessageIdValue$,
+  copyMessageContent$,
+} from "../../signals/zero-page/zero-session-chat-ui.ts";
 import zeroAvatarImg from "./assets/zero-avatar.png";
 
 // ---------------------------------------------------------------------------
@@ -373,23 +379,6 @@ function deduplicateSummaries(summaries: string[]): string[] {
   return result;
 }
 
-const THINKING_MESSAGES = [
-  "On it, grab a coffee",
-  "Thinking hard...",
-  "Cooking up something good...",
-  "Give me a sec...",
-  "Working my magic...",
-  "Hang tight...",
-  "Let me figure this out...",
-  "Brewing ideas...",
-  "Crunching the numbers...",
-  "Just a moment...",
-] as const;
-
-const INITIAL_THINKING_INDEX = Math.floor(
-  Math.random() * THINKING_MESSAGES.length,
-);
-
 function RunActivityLine() {
   const summariesLoadable = useLastLoadable(zeroChatRunSummaries$);
   const rawSummaries =
@@ -398,22 +387,8 @@ function RunActivityLine() {
   const queuePosition = useGet(zeroChatQueuePosition$);
   const isQueued = runStatus === "queued";
 
-  const thinkingIndex$ = useCCState(INITIAL_THINKING_INDEX);
-  const thinkingIndex = useGet(thinkingIndex$);
-  const thinkingMsg = THINKING_MESSAGES[thinkingIndex]!;
-
-  const cycleThinking$ = useCommand(
-    ({ set }, _el: HTMLDivElement, signal: AbortSignal) => {
-      const id = window.setInterval(() => {
-        set(thinkingIndex$, (prev) => (prev + 1) % THINKING_MESSAGES.length);
-      }, 3000);
-      signal.addEventListener("abort", () => {
-        window.clearInterval(id);
-      });
-    },
-  );
-  const cycleRef$ = onRef(cycleThinking$);
-  const cycleRef = useSet(cycleRef$);
+  const thinkingMsg = useGet(thinkingMessage$);
+  const cycleRef = useSet(cycleThinkingRef$);
 
   if (isQueued) {
     return (
@@ -506,10 +481,16 @@ function queueLabel(position: number): string {
   return `In queue, ${position - 1} task${position - 1 === 1 ? "" : "s"} ahead...`;
 }
 
-function CollapsibleTimeline({ summaries }: { summaries: string[] }) {
-  const expanded$ = useCCState(false);
-  const expanded = useGet(expanded$);
-  const setExpanded = useSet(expanded$);
+function CollapsibleTimeline({
+  summaries,
+  messageId,
+}: {
+  summaries: string[];
+  messageId: string;
+}) {
+  const expandedIds = useGet(timelineExpandedIds$);
+  const expanded = expandedIds.has(messageId);
+  const toggleExpanded = useSet(toggleTimelineExpanded$);
 
   if (summaries.length === 0) {
     return null;
@@ -521,7 +502,7 @@ function CollapsibleTimeline({ summaries }: { summaries: string[] }) {
     <div className="mb-6">
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => toggleExpanded(messageId)}
         className="flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
       >
         <IconChevronDown
@@ -592,17 +573,15 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
 
   const hasSummaries = message.summaries && message.summaries.length > 0;
 
-  const copied$ = useCCState(false);
-  const copied = useGet(copied$);
-  const setCopied = useSet(copied$);
+  const copiedId = useGet(copiedMessageIdValue$);
+  const copied = copiedId === message.id;
+  const copyMessage = useSet(copyMessageContent$);
 
   const handleCopy = () => {
     if (!message.content) {
       return;
     }
-    navigator.clipboard.writeText(message.content).catch(() => {});
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    copyMessage(message.id, message.content);
   };
 
   const logButton = message.runId ? (
@@ -671,7 +650,10 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           {avatar}
           <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
-              <CollapsibleTimeline summaries={message.summaries!} />
+              <CollapsibleTimeline
+                summaries={message.summaries!}
+                messageId={message.id}
+              />
             )}
             {isNoModelProvider ? (
               <div className="flex items-start gap-2 text-foreground">
@@ -732,7 +714,10 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           {avatar}
           <div className="zero-chat-bubble-assistant backdrop-blur-sm px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
-              <CollapsibleTimeline summaries={message.summaries!} />
+              <CollapsibleTimeline
+                summaries={message.summaries!}
+                messageId={message.id}
+              />
             )}
             <Markdown source={message.content} />
             {message.cancelled && (
