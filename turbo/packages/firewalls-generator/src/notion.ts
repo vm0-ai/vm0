@@ -28,7 +28,7 @@ interface OpenApiOperation {
   tags?: string[];
 }
 
-type OpenApiPathItem = Record<string, OpenApiOperation | unknown>;
+type OpenApiPathItem = Record<string, unknown>;
 
 interface OpenApiSpec {
   info?: { version?: string };
@@ -190,11 +190,17 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
   return [...groups.entries()]
     .filter(([, ruleSet]) => ruleSet.size > 0)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, ruleSet]) => ({
-      name,
-      description: CAPABILITY_DESCRIPTIONS[name] ?? "",
-      rules: sortRules([...ruleSet]),
-    }));
+    .map(([name, ruleSet]) => {
+      const description = CAPABILITY_DESCRIPTIONS[name];
+      if (!description) {
+        throw new Error(`Unknown capability: ${name}`);
+      }
+      return {
+        name,
+        description,
+        rules: sortRules([...ruleSet]),
+      };
+    });
 }
 
 // ── TypeScript generation ────────────────────────────────────────────────
