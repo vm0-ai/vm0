@@ -14,6 +14,11 @@ import {
 
 const L = logger("ZeroSchedule");
 
+function scheduleSaveFailure(message: string): never {
+  toast.error(message);
+  throw new Error(message);
+}
+
 // ---------------------------------------------------------------------------
 // Schedule response type (matches API schema)
 // ---------------------------------------------------------------------------
@@ -232,7 +237,7 @@ export const saveZeroSchedule$ = command(
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentId;
     if (!composeId) {
-      throw new Error("No default agent configured");
+      scheduleSaveFailure("No default agent configured");
     }
 
     const fetchFn = get(fetch$);
@@ -264,7 +269,7 @@ export const saveZeroSchedule$ = command(
       if (
         isAtTimePast(params.date, String(params.hour), String(params.minute))
       ) {
-        throw new Error("Scheduled time must be in the future");
+        scheduleSaveFailure("Scheduled time must be in the future");
       }
       const atTime = buildAtTime(
         params.date,
@@ -285,7 +290,7 @@ export const saveZeroSchedule$ = command(
       };
       const timeOption = freqMap[params.freq];
       if (!timeOption) {
-        throw new Error(`Unknown schedule frequency: ${params.freq}`);
+        scheduleSaveFailure(`Unknown schedule frequency: ${params.freq}`);
       }
       const cronExpression = buildCronExpression({
         timeOption,
@@ -307,7 +312,7 @@ export const saveZeroSchedule$ = command(
       const errorData = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      throw new Error(
+      scheduleSaveFailure(
         errorData?.error?.message ?? `Save failed: ${response.statusText}`,
       );
     }
@@ -326,7 +331,7 @@ export const toggleZeroScheduleEnabled$ = command(
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentId;
     if (!composeId) {
-      throw new Error("No default agent configured");
+      scheduleSaveFailure("No default agent configured");
     }
 
     const fetchFn = get(fetch$);
@@ -498,7 +503,7 @@ export const saveOrgSchedule$ = command(
       if (
         isAtTimePast(params.date, String(params.hour), String(params.minute))
       ) {
-        throw new Error("Scheduled time must be in the future");
+        scheduleSaveFailure("Scheduled time must be in the future");
       }
       const atTime = buildAtTime(
         params.date,
@@ -517,7 +522,7 @@ export const saveOrgSchedule$ = command(
       };
       const timeOption = freqMap[params.freq];
       if (!timeOption) {
-        throw new Error(`Unknown schedule frequency: ${params.freq}`);
+        scheduleSaveFailure(`Unknown schedule frequency: ${params.freq}`);
       }
       const cronExpression = buildCronExpression({
         timeOption,
@@ -539,7 +544,7 @@ export const saveOrgSchedule$ = command(
       const errorData = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      throw new Error(
+      scheduleSaveFailure(
         errorData?.error?.message ?? `Save failed: ${response.statusText}`,
       );
     }

@@ -47,6 +47,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -81,6 +82,10 @@ import {
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
+import {
+  agentsError$,
+  agentsLoading$,
+} from "../../signals/zero-page/zero-agents.ts";
 import emptyScheduleImg from "./assets/empty-schedule.webp";
 import { navigateInReact$ } from "../../signals/route.ts";
 
@@ -610,6 +615,8 @@ interface ScheduleCreateDialogProps {
   saving: boolean;
   agents: { id: string; name: string; displayName?: string | null }[];
   defaultComposeId: string | null;
+  agentsLoading: boolean;
+  agentsError: string | null;
 }
 
 function ScheduleCreateDialogInner({
@@ -618,9 +625,11 @@ function ScheduleCreateDialogInner({
   saving,
   agents,
   defaultComposeId,
+  agentsLoading,
+  agentsError,
 }: Omit<ScheduleCreateDialogProps, "open">) {
   const [prompt, setPrompt] = useState("");
-  const [agentId, setComposeId] = useState(
+  const [agentId, setAgentId] = useState(
     defaultComposeId ?? agents[0]?.id ?? "",
   );
   const [freq, setFreq] = useState("every_day");
@@ -633,7 +642,7 @@ function ScheduleCreateDialogInner({
   const [loopMinutes, setLoopMinutes] = useState(15);
 
   const handleSave = () => {
-    if (!prompt.trim() || !agentId) {
+    if (!prompt.trim() || !agentId || agents.length === 0) {
       return;
     }
     onSave({
@@ -648,10 +657,17 @@ function ScheduleCreateDialogInner({
     });
   };
 
+  const canPickAgent = !agentsLoading && agents.length > 0 && !agentsError;
+  const createDisabled =
+    !prompt.trim() || !agentId || !canPickAgent || saving;
+
   return (
     <DialogContent className="sm:max-w-lg gap-6">
       <DialogHeader>
         <DialogTitle>New schedule</DialogTitle>
+        <DialogDescription>
+          Choose an agent, describe the task, and set when it should run.
+        </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
@@ -661,18 +677,29 @@ function ScheduleCreateDialogInner({
           >
             Agent
           </label>
-          <Select value={agentId} onValueChange={setComposeId}>
-            <SelectTrigger id="schedule-create-agent" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.displayName ?? a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {agentsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading agents…</p>
+          ) : agentsError ? (
+            <p className="text-sm text-destructive">{agentsError}</p>
+          ) : agents.length === 0 ? (
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              No agents in this workspace yet. Create an agent from Team before
+              adding a schedule.
+            </p>
+          ) : (
+            <Select value={agentId} onValueChange={setAgentId}>
+              <SelectTrigger id="schedule-create-agent" className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.displayName ?? a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="flex flex-col gap-2">
           <label
@@ -714,11 +741,7 @@ function ScheduleCreateDialogInner({
         >
           Cancel
         </Button>
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!prompt.trim() || !agentId || saving}
-        >
+        <Button type="button" onClick={handleSave} disabled={createDisabled}>
           {saving ? "Creating\u2026" : "Create"}
         </Button>
       </DialogFooter>
@@ -1096,6 +1119,8 @@ export function ZeroSchedulePage() {
 
   const agentsLoadable = useLoadable(agentsList$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
+  const agentsLoading = useGet(agentsLoading$);
+  const agentsError = useGet(agentsError$);
   const nameToDisplay = new Map(
     agents.filter((a) => a.displayName).map((a) => [a.id, a.displayName!]),
   );
@@ -1141,6 +1166,9 @@ export function ZeroSchedulePage() {
       saveSchedule(params)
         .then(() => {
           setCreateOpen(false);
+        })
+        .catch(() => {
+          /* Error surfaced via toast in saveOrgSchedule$ */
         })
         .finally(() => {
           setSaving(false);
@@ -1289,7 +1317,38 @@ export function ZeroSchedulePage() {
         saving={saving}
         agents={agents}
         defaultComposeId={defaultComposeId}
+        agentsLoading={agentsLoading}
+        agentsError={agentsError}
       />
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete schedule?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the schedule{" "}
+              <span className="font-medium text-foreground">
+                {pendingDelete?.name}
+              </span>
+              . This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

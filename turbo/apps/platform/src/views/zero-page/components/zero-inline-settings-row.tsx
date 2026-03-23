@@ -23,7 +23,7 @@ export function InlineSettingsRow({
         alignControls === "center" ? "sm:items-center" : "sm:items-start",
       )}
     >
-      <div className="min-w-0 shrink-0 sm:max-w-[46%]">
+      <div className="min-w-0 w-full sm:w-[46%] sm:shrink-0">
         <p className="text-sm font-medium text-foreground">{label}</p>
         {description ? (
           <p className="text-xs text-muted-foreground mt-1 leading-snug">

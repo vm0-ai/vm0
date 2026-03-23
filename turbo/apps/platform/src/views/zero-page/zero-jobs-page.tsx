@@ -250,7 +250,7 @@ export function ZeroJobsPage() {
                 </div>
                 <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
                   <span className="text-xs text-muted-foreground">
-                    Chat with {agentName} to create a sub-agent
+                    Create a new subagent
                   </span>
                 </div>
               </button>

@@ -536,21 +536,21 @@ function ScheduleDetailView({
           <div className="mx-auto max-w-[900px]">
             <div
               className={cn(
-                "flex items-stretch gap-4 min-w-0",
+                "flex items-center justify-center gap-4 min-w-0",
                 dimmed && "opacity-90",
               )}
             >
               <div
-                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
+                className="h-[54px] w-[54px] shrink-0 sm:h-[54px] sm:w-[54px] flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
                 aria-hidden
               >
                 <IconCalendar
-                  size={28}
+                  size={24}
                   stroke={1.25}
                   className="shrink-0 opacity-90"
                 />
               </div>
-              <div className="min-w-0 flex-1 h-14 sm:h-16 flex flex-col justify-center gap-3 overflow-hidden">
+              <div className="min-w-0 flex-1 h-14 sm:h-16 flex flex-col justify-center gap-1.5 overflow-hidden">
                 <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>

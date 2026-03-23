@@ -110,6 +110,7 @@ export function ZeroSettingsTab({
             <InlineSettingsRow
               label="Name"
               description="Shown in the team list and when this agent speaks."
+              wideControls
             >
               <div className="min-w-0 w-full">
                 <Input
@@ -126,6 +127,7 @@ export function ZeroSettingsTab({
             <InlineSettingsRow
               label="Description"
               description="What this agent helps with—visible to teammates."
+              wideControls
             >
               <div className="min-w-0 w-full">
                 <textarea

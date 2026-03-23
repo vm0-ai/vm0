@@ -249,11 +249,17 @@ async function loadZeroAgent(
 }
 
 /**
- * Load org slug by ID
+ * Load org slug by ID.
+ * Never throws — Clerk/cache failures would otherwise turn schedule APIs into 500s.
  */
 async function getOrgSlug(orgId: string): Promise<string> {
-  const orgData = await getOrgData(orgId);
-  return orgData.slug;
+  try {
+    const orgData = await getOrgData(orgId);
+    return orgData.slug;
+  } catch (error) {
+    log.warn("getOrgSlug: getOrgData failed", { orgId, error });
+    return "";
+  }
 }
 
 /**
@@ -451,16 +457,13 @@ function buildTemplateDescription(
 
 /**
  * Generate a concise schedule description using the lightweight model.
- * Falls back to a template-based description if the model is unavailable.
+ * Falls back to a template-based description if the model is unavailable
+ * or if the model call fails (rate limits, network, empty response, etc.).
  */
 async function generateDescription(
   request: DeployScheduleRequest,
   agentName: string,
 ): Promise<string> {
-  const { generateScheduleDescription } = await import(
-    "../ai/lightweight-model"
-  );
-
   const triggerSummary = request.cronExpression
     ? `cron: ${request.cronExpression}`
     : request.atTime
@@ -469,14 +472,26 @@ async function generateDescription(
         ? `loop every ${request.intervalSeconds}s`
         : "unknown trigger";
 
-  const text = await generateScheduleDescription(
-    agentName,
-    request.name,
-    triggerSummary,
-    request.prompt,
-  );
+  try {
+    const { generateScheduleDescription } = await import(
+      "../ai/lightweight-model"
+    );
 
-  return text ?? buildTemplateDescription(request, agentName);
+    const text = await generateScheduleDescription(
+      agentName,
+      request.name,
+      triggerSummary,
+      request.prompt,
+    );
+
+    return text ?? buildTemplateDescription(request, agentName);
+  } catch (error) {
+    log.warn(
+      "Schedule description generation failed; using template fallback",
+      error,
+    );
+    return buildTemplateDescription(request, agentName);
+  }
 }
 
 /**
@@ -609,7 +624,22 @@ export async function listSchedules(
   // Load org slugs via org cache (by orgId from schedule records)
   const uniqueClerkOrgIds = [...new Set(userSchedules.map((s) => s.orgId))];
   const orgDataEntries = await Promise.all(
-    uniqueClerkOrgIds.map(async (id) => [id, await getOrgData(id)] as const),
+    uniqueClerkOrgIds.map(async (id) => {
+      try {
+        return [id, await getOrgData(id)] as const;
+      } catch (error) {
+        log.warn("listSchedules: getOrgData failed", { orgId: id, error });
+        return [
+          id,
+          {
+            orgId: id,
+            slug: "",
+            name: "",
+            tier: "free",
+          },
+        ] as const;
+      }
+    }),
   );
   const orgDataMap = new Map(orgDataEntries);
 
