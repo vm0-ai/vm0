@@ -131,18 +131,12 @@ describe("createZeroRun()", () => {
       expect(callbacks[0]!.url).toBe("https://example.com/callback");
     });
 
-    it("should propagate sessionId", async () => {
-      // First run to create a session
-      const firstResult = await createZeroRun(baseParams());
-      const firstRun = await findTestRunRecord(firstResult.runId);
-      const sessionId = firstRun!.sessionId;
+    it("should leave continuedFromSessionId null when no sessionId given", async () => {
+      const result = await createZeroRun(baseParams());
 
-      // Second run continuing the session
-      if (sessionId) {
-        const secondResult = await createZeroRun(baseParams({ sessionId }));
-        const secondRun = await findTestRunRecord(secondResult.runId);
-        expect(secondRun!.sessionId).toBe(sessionId);
-      }
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.continuedFromSessionId).toBeNull();
     });
 
     it("should propagate appendSystemPrompt", async () => {

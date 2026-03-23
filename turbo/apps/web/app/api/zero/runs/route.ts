@@ -11,7 +11,10 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { createZeroRun } from "../../../../src/lib/zero/zero-run-service";
 import { isApiError } from "../../../../src/lib/errors";
-import type { RunDispatchError } from "../../../../src/lib/run";
+import {
+  isRunDispatchError,
+  type RunDispatchError,
+} from "../../../../src/lib/run";
 
 /**
  * Translate createZeroRun() errors into API response format.
@@ -43,15 +46,14 @@ function handleCreateRunError(error: unknown) {
     };
   }
 
-  const dispatchError = error as RunDispatchError;
-  if (dispatchError.runId) {
+  if (isRunDispatchError(error) && error.runId) {
     return {
       status: 201 as const,
       body: {
-        runId: dispatchError.runId,
+        runId: error.runId,
         status: "failed" as const,
         error: "Run failed",
-        createdAt: dispatchError.createdAt?.toISOString() ?? "",
+        createdAt: error.createdAt?.toISOString() ?? "",
       },
     };
   }
