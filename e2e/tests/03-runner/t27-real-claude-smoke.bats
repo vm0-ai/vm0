@@ -36,7 +36,7 @@ VOLEOF
     cd - >/dev/null
 
     # Set up model-provider once for all tests
-    $CLI_COMMAND org model-provider setup \
+    $CLI_COMMAND zero org model-provider setup \
         --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY"
 
     # Compose agents separately (only one agent per compose is supported)
@@ -92,7 +92,7 @@ EOF
 
 teardown_file() {
     # Clean up model provider (best-effort)
-    $CLI_COMMAND org model-provider remove "anthropic-api-key" 2>/dev/null || true
+    $CLI_COMMAND zero org model-provider remove "anthropic-api-key" 2>/dev/null || true
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi

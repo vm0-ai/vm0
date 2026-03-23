@@ -19,7 +19,7 @@ teardown() {
 @test "vm0 zero secret --help shows command description" {
     run $CLI_COMMAND zero secret --help
     assert_success
-    assert_output --partial "Manage stored secrets"
+    assert_output --partial "Manage secrets"
     assert_output --partial "list"
     assert_output --partial "set"
     assert_output --partial "delete"

@@ -19,7 +19,7 @@ teardown() {
 @test "vm0 zero variable --help shows command description" {
     run $CLI_COMMAND zero variable --help
     assert_success
-    assert_output --partial "Manage stored variables"
+    assert_output --partial "Manage variables"
     assert_output --partial "list"
     assert_output --partial "set"
     assert_output --partial "delete"
