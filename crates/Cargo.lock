@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.44.1"
+version = "0.45.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -1537,7 +1537,6 @@ dependencies = [
  "guest-download",
  "guest-init",
  "guest-mock-claude",
- "libc",
  "nix",
  "reqeast",
  "sandbox",
