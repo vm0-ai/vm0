@@ -184,7 +184,7 @@ async function devSeed() {
       });
       const result = await sql`
         INSERT INTO skills (url, name, full_path, version_hash, frontmatter)
-        VALUES (${url}, ${name}, ${fullPath}, 'dev-seed', ${frontmatter}::jsonb)
+        VALUES (${url}, ${name}, ${fullPath}, NULL, ${frontmatter}::jsonb)
         ON CONFLICT (url) DO NOTHING
       `;
       if (result.count > 0) seededCount++;
