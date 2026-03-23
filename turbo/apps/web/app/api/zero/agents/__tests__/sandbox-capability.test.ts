@@ -9,6 +9,7 @@ import {
   createTestCliToken,
   createTestRequest,
   insertOrgMembersCacheEntry,
+  seedSeedSkills,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -27,6 +28,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
     context.setupMocks();
     user = await context.setupUser();
     orgSlug = `org-${user.userId.slice(-8)}`;
+    await seedSeedSkills();
   });
 
   describe("POST /api/zero/agents (create)", () => {
