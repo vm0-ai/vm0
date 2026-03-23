@@ -15,6 +15,7 @@ import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { jiraFirewall } from "./jira.generated";
+import { notionFirewall } from "./notion.generated";
 import { slackFirewall } from "./slack.generated";
 
 export const builtinFirewalls: Record<string, FirewallConfig> = {
@@ -26,5 +27,6 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "google-drive": googleDriveFirewall,
   "google-sheets": googleSheetsFirewall,
   jira: jiraFirewall,
+  notion: notionFirewall,
   slack: slackFirewall,
 };

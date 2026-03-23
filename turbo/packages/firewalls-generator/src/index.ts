@@ -9,6 +9,7 @@
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateGitHub } from "./github";
 import { generate as generateJira } from "./jira";
+import { generate as generateNotion } from "./notion";
 import { generate as generateSlack } from "./slack";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
@@ -16,6 +17,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   confluence: generateConfluence,
   github: generateGitHub,
   jira: generateJira,
+  notion: generateNotion,
   slack: generateSlack,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
