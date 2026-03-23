@@ -300,6 +300,18 @@ fn walk_dir(current: &str, relative: &str, out: &mut Vec<FileEntry>) {
         if name_str == ".git" || name_str == ".vm0" {
             continue;
         }
+
+        // Use file_type() which does NOT follow symlinks (uses d_type from getdents64
+        // on Linux, no extra syscall). This avoids the manifest/archive mismatch where
+        // is_file()/is_dir() follow symlinks but tar stores them as symlink entries.
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if ft.is_symlink() {
+            continue; // Skip symlinks — v1 manifest cannot represent them
+        }
+
         let full = entry.path();
         let rel = if relative.is_empty() {
             name_str.to_string()
@@ -307,11 +319,11 @@ fn walk_dir(current: &str, relative: &str, out: &mut Vec<FileEntry>) {
             format!("{relative}/{name_str}")
         };
 
-        if full.is_dir() {
+        if ft.is_dir() {
             if let Some(s) = full.to_str() {
                 walk_dir(s, &rel, out);
             }
-        } else if full.is_file() {
+        } else if ft.is_file() {
             match compute_file_hash(&full) {
                 Ok((hash, size)) => out.push(FileEntry {
                     path: rel,
@@ -348,6 +360,7 @@ fn compute_file_hash(path: &Path) -> Result<(String, u64), std::io::Error> {
 fn create_archive(dir_path: &str, tar_path: &Path) -> bool {
     let output = std::process::Command::new("tar")
         .args([
+            "--hard-dereference",
             "-czf",
             &tar_path.to_string_lossy(),
             "--exclude=.git",
