@@ -1,24 +1,32 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
 import { POST } from "../../route";
+import { POST as POST_RUN } from "../runs/route";
 import {
   createTestRequest,
   createTestCompose,
+  createTestSessionWithConversation,
+  createTestRunInDb,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { appendChatMessages } from "../../../../../../src/lib/agent-session/agent-session-service";
+import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { eq } from "drizzle-orm";
 
 const context = testContext();
 
 describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
   let testComposeId: string;
+  let testUserId: string;
 
   beforeEach(async () => {
     context.setupMocks();
-    await context.setupUser();
+    const user = await context.setupUser();
+    testUserId = user.userId;
 
     const { composeId } = await createTestCompose(uniqueId("chat-detail"));
     testComposeId = composeId;
@@ -78,6 +86,83 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(data.unsavedRuns).toEqual([]);
     expect(data.createdAt).toBeDefined();
     expect(data.updatedAt).toBeDefined();
+  });
+
+  it("should return chat messages with summaries after run completes", async () => {
+    const userId = testUserId;
+
+    // 1. Create thread
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          title: "Summaries thread",
+        }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    // 2. Create a session (linked to a conversation)
+    const session = await createTestSessionWithConversation(
+      userId,
+      testComposeId,
+    );
+
+    // 3. Create a completed run whose result references the session
+    const { runId } = await createTestRunInDb(userId, testComposeId, {
+      status: "completed",
+      prompt: "What files changed?",
+    });
+
+    // Set run.result to reference the session
+    await globalThis.services.db
+      .update(agentRuns)
+      .set({ result: { agentSessionId: session.id } })
+      .where(eq(agentRuns.id, runId));
+
+    // 4. Append chat messages with summaries to the session
+    await appendChatMessages(session.id, userId, [
+      { role: "user", content: "What files changed?" },
+      {
+        role: "assistant",
+        content: "Here are the changed files.",
+        runId,
+        summaries: ["Bash", "Read", "Grep"],
+      },
+    ]);
+
+    // 5. Link run to thread
+    await POST_RUN(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/runs`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId }),
+        },
+      ),
+    );
+
+    // 6. GET thread detail — summaries should be present
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.chatMessages).toHaveLength(2);
+
+    const assistantMsg = data.chatMessages.find(
+      (m: { role: string }) => m.role === "assistant",
+    );
+    expect(assistantMsg).toBeDefined();
+    expect(assistantMsg.content).toBe("Here are the changed files.");
+    expect(assistantMsg.runId).toBe(runId);
+    expect(assistantMsg.summaries).toEqual(["Bash", "Read", "Grep"]);
   });
 
   it("should not return thread owned by another user", async () => {
