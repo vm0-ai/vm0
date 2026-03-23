@@ -132,6 +132,66 @@ async function devSeed() {
       console.log(`  ${k.vendor}/${k.model}`);
     }
     console.log(`✅ Seeded ${apiKeys.length} vm0 API key entries`);
+
+    // --- skills (seed skills + common connectors) ---
+    console.log("Seeding skills...");
+    const skillNames = [
+      "vm0",
+      "deep-dive",
+      "account-reconciliation",
+      "analysis-qa",
+      "audit-readiness",
+      "brand-guidelines",
+      "campaign-strategy",
+      "competitor-matrix",
+      "contract-redline",
+      "copywriting",
+      "customer-intel",
+      "customer-reply",
+      "data-profiling",
+      "escalation-brief",
+      "flux-analysis",
+      "gaap-reporting",
+      "issue-triage",
+      "journal-entries",
+      "kb-authoring",
+      "legal-briefing",
+      "legal-risk-scoring",
+      "marketing-analytics",
+      "nda-screening",
+      "period-close",
+      "prd-writing",
+      "privacy-compliance",
+      "product-metrics",
+      "reply-templates",
+      "research-synthesis",
+      "roadmap-planning",
+      "sql-cookbook",
+      "stats-methods",
+      "status-updates",
+      // Common connectors used in E2E tests
+      "github",
+    ];
+    let seededCount = 0;
+    for (const name of skillNames) {
+      const url = `https://github.com/vm0-ai/vm0-skills/tree/main/${name}`;
+      const fullPath = `vm0-ai/vm0-skills/tree/main/${name}`;
+      const frontmatter = JSON.stringify({
+        name,
+        description: `${name} skill`,
+        vm0_secrets: [],
+        vm0_vars: [],
+      });
+      const result = await sql`
+        INSERT INTO skills (url, name, full_path, version_hash, frontmatter)
+        VALUES (${url}, ${name}, ${fullPath}, 'dev-seed', ${frontmatter}::jsonb)
+        ON CONFLICT (url) DO NOTHING
+      `;
+      if (result.count > 0) seededCount++;
+    }
+    console.log(
+      `✅ Seeded skills: ${seededCount} new, ${skillNames.length - seededCount} already existed`,
+    );
   } finally {
     await sql.end();
   }
