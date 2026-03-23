@@ -482,4 +482,266 @@ describe("GET /api/zero/logs", () => {
       expect(data.data[0].triggerSource).toBe("cli");
     });
   });
+
+  describe("triggerSource filter", () => {
+    let testComposeId: string;
+
+    beforeEach(async () => {
+      const { composeId } = await createTestCompose(
+        `source-filter-${randomUUID().slice(0, 8)}`,
+      );
+      testComposeId = composeId;
+
+      // Create runs with different trigger sources
+      for (const source of ["web", "cli", "slack", "schedule"]) {
+        await createTestRunInDb(user.userId, testComposeId, {
+          status: "completed",
+          triggerSource: source,
+          startedAt: new Date(),
+          completedAt: new Date(),
+        });
+      }
+    });
+
+    it("should filter runs by triggerSource", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/logs?triggerSource=slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].triggerSource).toBe("slack");
+    });
+
+    it("should return all runs when triggerSource is not specified", async () => {
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(4);
+    });
+
+    it("should return empty list when no runs match the triggerSource", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/logs?triggerSource=github",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toEqual([]);
+    });
+
+    it("should combine triggerSource with status filter", async () => {
+      // Add a failed web run
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "failed",
+        triggerSource: "web",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      // Filter for completed + web should return 1 (not the failed one)
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/logs?triggerSource=web&status=completed",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].triggerSource).toBe("web");
+      expect(data.data[0].status).toBe("completed");
+    });
+
+    it("should combine triggerSource with agent filter", async () => {
+      // Create a second agent with a slack run
+      const otherName = `other-agent-${randomUUID().slice(0, 8)}`;
+      const { composeId: otherComposeId } = await createTestCompose(otherName);
+      await createTestRunInDb(user.userId, otherComposeId, {
+        status: "completed",
+        triggerSource: "slack",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      // Filter for slack source + the other agent
+      const request = createTestRequest(
+        `http://localhost:3000/api/zero/logs?triggerSource=slack&agent=${otherName}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.data[0].agentName).toBe(otherName);
+      expect(data.data[0].triggerSource).toBe("slack");
+    });
+
+    it("should correctly count total pages with triggerSource filter", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/logs?triggerSource=web&limit=1",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.pagination.totalPages).toBe(1);
+    });
+  });
+
+  describe("filters response", () => {
+    it("should return empty filters when user has no runs", async () => {
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.filters).toEqual({
+        statuses: [],
+        sources: [],
+        agents: [],
+      });
+    });
+
+    it("should return available statuses from user's runs", async () => {
+      const { composeId } = await createTestCompose(
+        `filter-status-${randomUUID().slice(0, 8)}`,
+      );
+
+      await createTestRunInDb(user.userId, composeId, {
+        status: "completed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+      await createTestRunInDb(user.userId, composeId, {
+        status: "failed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.filters.statuses).toContain("completed");
+      expect(data.filters.statuses).toContain("failed");
+    });
+
+    it("should return available trigger sources from user's runs", async () => {
+      const { composeId } = await createTestCompose(
+        `filter-source-${randomUUID().slice(0, 8)}`,
+      );
+
+      await createTestRunInDb(user.userId, composeId, {
+        status: "completed",
+        triggerSource: "slack",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+      await createTestRunInDb(user.userId, composeId, {
+        status: "completed",
+        triggerSource: "web",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.filters.sources).toContain("slack");
+      expect(data.filters.sources).toContain("web");
+    });
+
+    it("should return available agent names from user's runs", async () => {
+      const agentA = `filter-agent-a-${randomUUID().slice(0, 8)}`;
+      const agentB = `filter-agent-b-${randomUUID().slice(0, 8)}`;
+      const { composeId: composeA } = await createTestCompose(agentA);
+      const { composeId: composeB } = await createTestCompose(agentB);
+
+      await createTestRunInDb(user.userId, composeA, {
+        status: "completed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+      await createTestRunInDb(user.userId, composeB, {
+        status: "completed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.filters.agents).toContain(agentA);
+      expect(data.filters.agents).toContain(agentB);
+    });
+
+    it("should not include null trigger sources in filters", async () => {
+      const { composeId } = await createTestCompose(
+        `filter-null-src-${randomUUID().slice(0, 8)}`,
+      );
+
+      // Create a run without triggerSource (will be null in DB)
+      await createTestRunInDb(user.userId, composeId, {
+        status: "completed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      // filters.sources should not contain null entries
+      for (const source of data.filters.sources) {
+        expect(source).not.toBeNull();
+      }
+    });
+
+    it("should return filters independent of current query filters", async () => {
+      const { composeId } = await createTestCompose(
+        `filter-independent-${randomUUID().slice(0, 8)}`,
+      );
+
+      await createTestRunInDb(user.userId, composeId, {
+        status: "completed",
+        triggerSource: "slack",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+      await createTestRunInDb(user.userId, composeId, {
+        status: "failed",
+        triggerSource: "web",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      // Even when filtering by triggerSource=slack, filters should still
+      // include "web" as an available source (filters are org-wide, not
+      // filtered by the current query)
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/logs?triggerSource=slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.filters.sources).toContain("slack");
+      expect(data.filters.sources).toContain("web");
+      expect(data.filters.statuses).toContain("completed");
+      expect(data.filters.statuses).toContain("failed");
+    });
+  });
 });
