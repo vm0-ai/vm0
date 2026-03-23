@@ -239,18 +239,27 @@ export async function getOrgBillingPeriod(
   let periodEnd = orgRow?.currentPeriodEnd ?? null;
 
   if (!periodEnd && orgRow?.stripeSubscriptionId) {
-    // Has subscription but no period cached in metadata — fetch from Stripe
+    // Has subscription but no period cached in metadata — fetch from Stripe.
+    // In Stripe v2025 API, current_period_end was removed from Subscription.
+    // Use the latest_invoice.period_end instead.
     const stripe = getStripe();
     const subscription = await stripe.subscriptions.retrieve(
       orgRow.stripeSubscriptionId,
     );
-    periodEnd = new Date(subscription.current_period_end * 1000);
+    if (subscription.latest_invoice) {
+      const invoiceId =
+        typeof subscription.latest_invoice === "string"
+          ? subscription.latest_invoice
+          : subscription.latest_invoice.id;
+      const latestInvoice = await stripe.invoices.retrieve(invoiceId);
+      periodEnd = new Date(latestInvoice.period_end * 1000);
 
-    // Update org_metadata so future lookups skip Stripe
-    await db
-      .update(orgMetadata)
-      .set({ currentPeriodEnd: periodEnd, updatedAt: new Date() })
-      .where(eq(orgMetadata.orgId, orgId));
+      // Update org_metadata so future lookups skip Stripe
+      await db
+        .update(orgMetadata)
+        .set({ currentPeriodEnd: periodEnd, updatedAt: new Date() })
+        .where(eq(orgMetadata.orgId, orgId));
+    }
   }
 
   const now = new Date();
