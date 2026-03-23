@@ -13,7 +13,7 @@ import {
   type ConnectorType,
 } from "@vm0/core";
 import { getApiUrl, getActiveToken } from "../../lib/api/config";
-import { deleteConnector, setSecret } from "../../lib/api";
+import { deleteConnector, setZeroSecret } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
 import {
   checkComputerDependencies,
@@ -105,7 +105,7 @@ async function connectViaApiToken(
   }
 
   for (const [name, value] of Object.entries(inputSecrets)) {
-    await setSecret({
+    await setZeroSecret({
       name,
       value,
       description: `API token for ${config.label} connector`,

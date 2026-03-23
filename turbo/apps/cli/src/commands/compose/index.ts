@@ -13,9 +13,9 @@ import {
 import {
   getComposeByName,
   createOrUpdateCompose,
-  getOrg,
-  listSecrets,
-  listVariables,
+  getZeroOrg,
+  listZeroSecrets,
+  listZeroVariables,
   listConnectors,
   resolveSkills,
 } from "../../lib/api";
@@ -390,8 +390,8 @@ async function checkAndPromptMissingItems(
 
   const [secretsResponse, variablesResponse, connectorsResponse] =
     await Promise.all([
-      requiredSecrets.size > 0 ? listSecrets() : { secrets: [] },
-      requiredVars.size > 0 ? listVariables() : { variables: [] },
+      requiredSecrets.size > 0 ? listZeroSecrets() : { secrets: [] },
+      requiredVars.size > 0 ? listZeroVariables() : { variables: [] },
       listConnectors(),
     ]);
 
@@ -480,7 +480,7 @@ async function finalizeCompose(
   // In --json mode, skip getOrg() — the org prefix in displayName is for human display only
   const displayName = options.json
     ? response.name
-    : `${(await getOrg()).slug}/${response.name}`;
+    : `${(await getZeroOrg()).slug}/${response.name}`;
 
   // Build result
   const result: ComposeResult = {

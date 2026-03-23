@@ -42,13 +42,13 @@ export const apiHandlers = [
     return HttpResponse.json({ versionId: "default" }, { status: 200 });
   }),
 
-  // GET /api/secrets - listSecrets
-  http.get("http://localhost:3000/api/secrets", () => {
+  // GET /api/zero/secrets - listZeroSecrets
+  http.get("http://localhost:3000/api/zero/secrets", () => {
     return HttpResponse.json({ secrets: [] }, { status: 200 });
   }),
 
-  // GET /api/variables - listVariables
-  http.get("http://localhost:3000/api/variables", () => {
+  // GET /api/zero/variables - listZeroVariables
+  http.get("http://localhost:3000/api/zero/variables", () => {
     return HttpResponse.json({ variables: [] }, { status: 200 });
   }),
 
@@ -60,8 +60,8 @@ export const apiHandlers = [
     );
   }),
 
-  // GET /api/org - getOrg
-  http.get("http://localhost:3000/api/org", () => {
+  // GET /api/zero/org - getZeroOrg
+  http.get("http://localhost:3000/api/zero/org", () => {
     return HttpResponse.json(
       {
         id: "org-default",

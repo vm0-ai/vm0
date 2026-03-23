@@ -152,7 +152,7 @@ const composeCreationHandlers = [
       action: "created",
     });
   }),
-  http.get("http://localhost:3000/api/org", () => {
+  http.get("http://localhost:3000/api/zero/org", () => {
     return HttpResponse.json(orgResponse);
   }),
 ];
