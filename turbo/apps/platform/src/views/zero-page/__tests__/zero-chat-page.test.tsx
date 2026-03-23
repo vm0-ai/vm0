@@ -21,50 +21,37 @@ async function renderChatPage() {
 }
 
 describe("zero chat page - suggested prompts", () => {
-  it("should render 3 suggested prompt cards", async () => {
+  it("should render suggested prompt cards and explore card", async () => {
     await renderChatPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Auto-organize inbox")).toBeInTheDocument();
+      expect(screen.getByText("Explore more ideas")).toBeInTheDocument();
     });
-    expect(screen.getByText("Daily morning brief")).toBeInTheDocument();
-    expect(screen.getByText("Create a sub-agent")).toBeInTheDocument();
+
+    // 3 random prompt cards + 1 "Explore more ideas" card = 4 zero-card buttons
+    const cards = document.querySelectorAll(".zero-card");
+    expect(cards).toHaveLength(4);
   });
 
-  it("should render descriptions for suggested prompts", async () => {
+  it("should populate composer input when a suggested prompt card is clicked", async () => {
     await renderChatPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Smart categorization, reply, and daily email digest"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(
-        "Trending topics on a schedule, your personalized digest",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Build a specialized agent for a specific workflow"),
-    ).toBeInTheDocument();
-  });
-
-  it("should populate composer input when suggested prompt is clicked", async () => {
-    await renderChatPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Auto-organize inbox")).toBeInTheDocument();
+      expect(screen.getByText("Explore more ideas")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText("Auto-organize inbox"));
+    // Click the first random prompt card (not the "Explore more ideas" card)
+    const cards = document.querySelectorAll<HTMLButtonElement>(".zero-card");
+    fireEvent.click(cards[0]);
 
     await waitFor(() => {
       const textarea = screen.getByPlaceholderText(
         "Ask me to automate workflows, manage tasks...",
       );
-      expect(textarea).toHaveValue(
-        "Set up auto-organization for my inbox with smart categorization, auto-reply rules, and a daily email digest",
-      );
+      expect(
+        textarea.getAttribute("value") ??
+          (textarea as HTMLTextAreaElement).value,
+      ).toBeTruthy();
     });
   });
 });
