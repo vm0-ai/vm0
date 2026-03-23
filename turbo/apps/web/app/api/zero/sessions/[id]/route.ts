@@ -3,45 +3,45 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroSessionsByIdContract,
-  sessionsByIdContract,
-  type ApiErrorResponse,
-} from "@vm0/core";
+import { zeroSessionsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-// eslint-disable-next-line web/no-self-api-call
-import { createInfraClient } from "../../../../../src/lib/infra-client";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { getSessionResponse } from "../../../../../src/lib/agent-session/agent-session-service";
+import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroSessionsByIdContract, {
-  getById: async ({ params, headers }) => {
+  getById: async ({ params, headers }, { request }) => {
     initServices();
 
-    const client = createInfraClient(
-      sessionsByIdContract,
-      headers.authorization,
-    );
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
-    const result = await client.getById({ params: { id: params.id } });
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
-    if (result.status === 200) {
-      return { status: 200 as const, body: result.body };
+    try {
+      const session = await getSessionResponse(params.id, userId, org.orgId);
+      return { status: 200 as const, body: session };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: { error: { message: error.message, code: "NOT_FOUND" } },
+        };
+      }
+      if (isForbidden(error)) {
+        return {
+          status: 403 as const,
+          body: { error: { message: error.message, code: "FORBIDDEN" } },
+        };
+      }
+      throw error;
     }
-    if (result.status === 401) {
-      return {
-        status: 401 as const,
-        body: result.body as ApiErrorResponse,
-      };
-    }
-    if (result.status === 403) {
-      return {
-        status: 403 as const,
-        body: result.body as ApiErrorResponse,
-      };
-    }
-    return {
-      status: 404 as const,
-      body: result.body as ApiErrorResponse,
-    };
   },
 });
 

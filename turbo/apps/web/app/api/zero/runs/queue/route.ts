@@ -3,20 +3,29 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroRunsQueueContract, runsQueueContract } from "@vm0/core";
+import { zeroRunsQueueContract, orgTierSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-// eslint-disable-next-line web/no-self-api-call
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { getRunQueueStatus } from "../../../../../src/lib/run/run-queue-service";
 
 const router = tsr.router(zeroRunsQueueContract, {
-  getQueue: async ({ headers }) => {
+  getQueue: async ({ headers }, { request }) => {
     initServices();
-    const client = createInfraClient(runsQueueContract, headers.authorization);
-    const result = await client.getQueue({ headers: {} });
-    return forwardInfra(result);
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+    const orgTier = orgTierSchema.parse(org.tier);
+
+    const result = await getRunQueueStatus(userId, org.orgId, orgTier);
+    return { status: 200 as const, body: result };
   },
 });
 

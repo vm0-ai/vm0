@@ -20,6 +20,7 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
+import { getComposeByName } from "../../../../src/lib/agent-compose/compose-service";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
 import {
@@ -27,7 +28,6 @@ import {
   isForbidden,
   isBadRequest,
 } from "../../../../src/lib/errors";
-import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 
 const router = tsr.router(composesMainContract, {
   getByName: async ({ query, headers }) => {
@@ -70,29 +70,8 @@ const router = tsr.router(composesMainContract, {
       throw error;
     }
 
-    // JOIN compose + version in a single query
-    const [result] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        userId: agentComposes.userId,
-        orgId: agentComposes.orgId,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-        createdAt: agentComposes.createdAt,
-        updatedAt: agentComposes.updatedAt,
-        content: agentComposeVersions.content,
-      })
-      .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
-      .where(
-        and(eq(agentComposes.orgId, orgId), eq(agentComposes.name, query.name)),
-      )
-      .limit(1);
-
-    if (!result) {
+    const compose = await getComposeByName(orgId, query.name);
+    if (!compose) {
       return {
         status: 404 as const,
         body: {
@@ -104,17 +83,7 @@ const router = tsr.router(composesMainContract, {
       };
     }
 
-    return {
-      status: 200 as const,
-      body: {
-        id: result.id,
-        name: result.name,
-        headVersionId: result.headVersionId,
-        content: (result.content as AgentComposeYaml) ?? null,
-        createdAt: result.createdAt.toISOString(),
-        updatedAt: result.updatedAt.toISOString(),
-      },
-    };
+    return { status: 200 as const, body: compose };
   },
 
   create: async ({ body, headers }, { request }) => {

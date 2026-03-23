@@ -1,144 +1,71 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { http, HttpResponse } from "msw";
+import { randomUUID } from "crypto";
 import { GET } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
-import { server } from "../../../../../../src/mocks/server";
+import {
+  createTestRequest,
+  createTestOrg,
+  createTestCompose,
+  createTestAgentSession,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-const SESSION_ID = "test-session-id-001";
-const BASE_URL = `http://localhost:3000/api/zero/sessions/${SESSION_ID}`;
-const INFRA_URL = `http://localhost:3000/api/agent/sessions/${SESSION_ID}`;
+async function setupOrg(userId: string) {
+  const slug = uniqueId("zsess");
+  const orgId = `org_mock_${userId}`;
+  mockClerk({ userId, orgId, orgRole: "org:admin" });
+  await createTestOrg(slug);
+  return { slug, orgId };
+}
 
-const mockSessionResponse = {
-  id: SESSION_ID,
-  agentComposeId: "compose-001",
-  conversationId: "conv-001",
-  artifactName: null,
-  secretNames: [],
-  chatMessages: [],
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-};
+function sessionUrl(slug: string, sessionId: string): string {
+  return `http://localhost:3000/api/zero/sessions/${sessionId}?org=${slug}`;
+}
 
 describe("GET /api/zero/sessions/:id", () => {
   beforeEach(() => {
     context.setupMocks();
   });
 
-  it("should proxy 200 response from infra endpoint", async () => {
-    server.use(
-      http.get(INFRA_URL, () => {
-        return HttpResponse.json(mockSessionResponse, { status: 200 });
-      }),
-    );
+  it("should return session details", async () => {
+    const userId = uniqueId("zsess-get");
+    const { slug } = await setupOrg(userId);
+    const compose = await createTestCompose(`agent-${uniqueId("zsess")}`);
+    const session = await createTestAgentSession(userId, compose.composeId);
 
-    const request = createTestRequest(BASE_URL, {
-      headers: { authorization: "Bearer test-token" },
-    });
-    const response = await GET(request);
-    const data = await response.json();
-
+    const response = await GET(createTestRequest(sessionUrl(slug, session.id)));
     expect(response.status).toBe(200);
-    expect(data.id).toBe(SESSION_ID);
-    expect(data.agentComposeId).toBe("compose-001");
+
+    const data = await response.json();
+    expect(data.id).toBe(session.id);
+    expect(data.agentComposeId).toBe(compose.composeId);
+    expect(data.createdAt).toBeDefined();
+    expect(data.updatedAt).toBeDefined();
   });
 
-  it("should proxy 401 response from infra endpoint", async () => {
-    server.use(
-      http.get(INFRA_URL, () => {
-        return HttpResponse.json(
-          { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-          { status: 401 },
-        );
-      }),
+  it("should return 404 when session not found", async () => {
+    const userId = uniqueId("zsess-nf");
+    const { slug } = await setupOrg(userId);
+
+    const response = await GET(
+      createTestRequest(sessionUrl(slug, randomUUID())),
     );
+    expect(response.status).toBe(404);
+  });
 
-    const request = createTestRequest(BASE_URL, {
-      headers: { authorization: "Bearer invalid-token" },
-    });
-    const response = await GET(request);
-    const data = await response.json();
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
 
+    const response = await GET(
+      createTestRequest(
+        "http://localhost:3000/api/zero/sessions/some-id?org=test",
+      ),
+    );
     expect(response.status).toBe(401);
-    expect(data.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("should proxy 403 response from infra endpoint", async () => {
-    server.use(
-      http.get(INFRA_URL, () => {
-        return HttpResponse.json(
-          { error: { message: "Forbidden", code: "FORBIDDEN" } },
-          { status: 403 },
-        );
-      }),
-    );
-
-    const request = createTestRequest(BASE_URL, {
-      headers: { authorization: "Bearer test-token" },
-    });
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(403);
-    expect(data.error.code).toBe("FORBIDDEN");
-  });
-
-  it("should proxy 404 response from infra endpoint", async () => {
-    server.use(
-      http.get(INFRA_URL, () => {
-        return HttpResponse.json(
-          { error: { message: "Session not found", code: "NOT_FOUND" } },
-          { status: 404 },
-        );
-      }),
-    );
-
-    const request = createTestRequest(BASE_URL, {
-      headers: { authorization: "Bearer test-token" },
-    });
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(404);
-    expect(data.error.code).toBe("NOT_FOUND");
-  });
-
-  it("should forward authorization header to infra endpoint", async () => {
-    let capturedAuthHeader: string | null = null;
-
-    server.use(
-      http.get(INFRA_URL, ({ request }) => {
-        capturedAuthHeader = request.headers.get("authorization");
-        return HttpResponse.json(mockSessionResponse, { status: 200 });
-      }),
-    );
-
-    const request = createTestRequest(BASE_URL, {
-      headers: { authorization: "Bearer my-secret-token" },
-    });
-    await GET(request);
-
-    expect(capturedAuthHeader).toBe("Bearer my-secret-token");
-  });
-
-  it("should map unexpected status codes to 404", async () => {
-    server.use(
-      http.get(INFRA_URL, () => {
-        return HttpResponse.json(
-          { error: { message: "Server error", code: "INTERNAL_SERVER_ERROR" } },
-          { status: 500 },
-        );
-      }),
-    );
-
-    const request = createTestRequest(BASE_URL, {
-      headers: { authorization: "Bearer test-token" },
-    });
-    const response = await GET(request);
-
-    // The proxy maps any unhandled status to 404 (the fallback)
-    expect(response.status).toBe(404);
   });
 });
