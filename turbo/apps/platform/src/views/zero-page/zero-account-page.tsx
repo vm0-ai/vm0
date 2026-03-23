@@ -19,14 +19,12 @@ import {
 import { sendMode$ } from "../../signals/send-mode.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { SendMode } from "@vm0/core";
-import { updateNotificationPreference$ } from "../../signals/zero-page/settings/notification-settings.ts";
 import {
   preferencesTab$,
   setPreferencesTab$,
   sendModeSaving$,
-  setSendModeSaving$,
+  updateSendMode$,
 } from "../../signals/zero-page/settings/preferences-page.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
 
 function AppearanceSettings() {
   const THEME_OPTIONS = [
@@ -99,22 +97,11 @@ function SendModeSettings() {
   const prefsLoadable = useLoadable(sendMode$);
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
-  const updatePref = useSet(updateNotificationPreference$);
   const saving = useGet(sendModeSaving$);
-  const setSaving = useSet(setSendModeSaving$);
+  const saveSendMode = useSet(updateSendMode$);
 
   const handleChange = (value: SendMode) => {
-    setSaving(value);
-    detach(
-      (async () => {
-        await updatePref({ sendMode: value });
-        setSaving(null);
-      })().catch(() => {
-        setSaving(null);
-        toast.error("Failed to save send mode preference");
-      }),
-      Reason.DomCallback,
-    );
+    detach(saveSendMode(value), Reason.DomCallback);
   };
 
   return (
@@ -140,7 +127,7 @@ function SendModeSettings() {
             Send message with
           </div>
           <div className="text-sm text-muted-foreground">
-            {current === "enter"
+            {(saving ?? current) === "enter"
               ? "Press Enter to send, Shift+Enter for new line"
               : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
           </div>
