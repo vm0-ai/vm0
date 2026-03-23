@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.148.0](https://github.com/vm0-ai/vm0/compare/web-v12.147.0...web-v12.148.0) (2026-03-23)
+
+
+### Features
+
+* add stripe webhook forwarding to dev environment ([#6161](https://github.com/vm0-ai/vm0/issues/6161)) ([8bb7223](https://github.com/vm0-ai/vm0/commit/8bb7223b420b7ebb946054e7f714d09d45233a27))
+* add user deletion service for database cascade cleanup ([#6169](https://github.com/vm0-ai/vm0/issues/6169)) ([#6181](https://github.com/vm0-ai/vm0/issues/6181)) ([772a7f9](https://github.com/vm0-ai/vm0/commit/772a7f926bfc654e1d24ece3184e8d150b6cfb26))
+* **api:** add get and delete endpoints for zero secrets and variables ([#6144](https://github.com/vm0-ai/vm0/issues/6144)) ([5b41bac](https://github.com/vm0-ai/vm0/commit/5b41bac8297c8f924261b53dd58a3ca40cd9a749)), closes [#6138](https://github.com/vm0-ai/vm0/issues/6138)
+* per-member credit cap for VM0 model provider organizations ([#6173](https://github.com/vm0-ai/vm0/issues/6173)) ([1a551aa](https://github.com/vm0-ai/vm0/commit/1a551aa4a6b11bc0e7865a44e11d3b1737551bac))
+
+
+### CI
+
+* upgrade deploy-web job to ubuntu-8core runner ([#6122](https://github.com/vm0-ai/vm0/issues/6122)) ([eba7167](https://github.com/vm0-ai/vm0/commit/eba7167567cbce76db7b0878d863e89784fe3191))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.98.0
+
 ## [12.147.0](https://github.com/vm0-ai/vm0/compare/web-v12.146.0...web-v12.147.0) (2026-03-23)
 
 

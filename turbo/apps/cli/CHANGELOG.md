@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.75.2](https://github.com/vm0-ai/vm0/compare/cli-v9.75.1...cli-v9.75.2) (2026-03-23)
+
+
+### CI
+
+* upgrade deploy-web job to ubuntu-8core runner ([#6122](https://github.com/vm0-ai/vm0/issues/6122)) ([eba7167](https://github.com/vm0-ai/vm0/commit/eba7167567cbce76db7b0878d863e89784fe3191))
+
+
+### Refactoring
+
+* rename e2e test directory 03-experimental-runner to 03-runner ([#6167](https://github.com/vm0-ai/vm0/issues/6167)) ([32785ae](https://github.com/vm0-ai/vm0/commit/32785ae875806a583716347c3491a1311511d337))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.98.0
+
 ## [9.75.1](https://github.com/vm0-ai/vm0/compare/cli-v9.75.0...cli-v9.75.1) (2026-03-23)
 
 

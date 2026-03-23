@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/vm0-ai/vm0/compare/guest-download-v0.15.1...guest-download-v0.15.2) (2026-03-23)
+
+
+### Bug Fixes
+
+* prevent symlink path traversal in guest-download tar extraction ([#6160](https://github.com/vm0-ai/vm0/issues/6160)) ([06375dc](https://github.com/vm0-ai/vm0/commit/06375dc978e7795806c32f6fb1f38592893a9976))
+
 ## [0.15.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.15.0...guest-download-v0.15.1) (2026-03-09)
 
 

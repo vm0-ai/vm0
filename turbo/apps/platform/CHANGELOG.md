@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.141.0](https://github.com/vm0-ai/vm0/compare/app-v0.140.0...app-v0.141.0) (2026-03-23)
+
+
+### Features
+
+* add stripe webhook forwarding to dev environment ([#6161](https://github.com/vm0-ai/vm0/issues/6161)) ([8bb7223](https://github.com/vm0-ai/vm0/commit/8bb7223b420b7ebb946054e7f714d09d45233a27))
+* **platform:** set document.title for every route ([#6164](https://github.com/vm0-ai/vm0/issues/6164)) ([a64f6ec](https://github.com/vm0-ai/vm0/commit/a64f6ec4b2ee155d7ceb15dcc052882d631c56e9))
+
+
+### CI
+
+* upgrade deploy-web job to ubuntu-8core runner ([#6122](https://github.com/vm0-ai/vm0/issues/6122)) ([eba7167](https://github.com/vm0-ai/vm0/commit/eba7167567cbce76db7b0878d863e89784fe3191))
+
+
+### Refactoring
+
+* downgrade zerochat thread-loading logs from info to debug ([#6179](https://github.com/vm0-ai/vm0/issues/6179)) ([bd63c88](https://github.com/vm0-ai/vm0/commit/bd63c8861a52a7520a267bece88df4cb67b5bfcf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.98.0
+
 ## [0.140.0](https://github.com/vm0-ai/vm0/compare/app-v0.139.0...app-v0.140.0) (2026-03-23)
 
 

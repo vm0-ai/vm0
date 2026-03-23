@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.98.0](https://github.com/vm0-ai/vm0/compare/core-v8.97.0...core-v8.98.0) (2026-03-23)
+
+
+### Features
+
+* **api:** add get and delete endpoints for zero secrets and variables ([#6144](https://github.com/vm0-ai/vm0/issues/6144)) ([5b41bac](https://github.com/vm0-ai/vm0/commit/5b41bac8297c8f924261b53dd58a3ca40cd9a749)), closes [#6138](https://github.com/vm0-ai/vm0/issues/6138)
+
+
+### CI
+
+* upgrade deploy-web job to ubuntu-8core runner ([#6122](https://github.com/vm0-ai/vm0/issues/6122)) ([eba7167](https://github.com/vm0-ai/vm0/commit/eba7167567cbce76db7b0878d863e89784fe3191))
+
 ## [8.97.0](https://github.com/vm0-ai/vm0/compare/core-v8.96.0...core-v8.97.0) (2026-03-23)
 
 
