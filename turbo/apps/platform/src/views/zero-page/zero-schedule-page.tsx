@@ -1,5 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
-import { useCCState } from "ccstate-react/experimental";
+import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconPencil,
@@ -124,9 +123,7 @@ function CalendarEntryPopover({
   agentOrder: readonly string[];
   onEdit: (entry: CombinedEntry) => void;
 }) {
-  const open$ = useCCState(false);
-  const open = useGet(open$);
-  const setOpen = useSet(open$);
+  const [open, setOpen] = useState(false);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -189,11 +186,9 @@ function ScheduleCalendarView({
 }) {
   const enabledEntries = combinedSchedule.filter((e) => e.enabled !== false);
   const calendarSlots = buildCalendarTimeSlots(enabledEntries);
-  const selectedDay$ = useCCState(
+  const [selectedDay, setSelectedDay] = useState(
     new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
   );
-  const selectedDay = useGet(selectedDay$);
-  const setSelectedDay = useSet(selectedDay$);
 
   const loopEntries = enabledEntries.filter((e) =>
     e.time.match(/Every \d+ (minutes?|seconds?)/),
@@ -590,33 +585,15 @@ function ScheduleEditDialogInner({
   saving,
 }: ScheduleEditDialogProps & { entry: CombinedEntry }) {
   const parsed = parseScheduleTimeString(entry.time);
-  const prompt$ = useCCState(entry.prompt);
-  const prompt = useGet(prompt$);
-  const setPrompt = useSet(prompt$);
-  const freq$ = useCCState(parsed.freq);
-  const freq = useGet(freq$);
-  const setFreq = useSet(freq$);
-  const date$ = useCCState(parsed.date);
-  const date = useGet(date$);
-  const setDate = useSet(date$);
-  const hour$ = useCCState(parsed.hour);
-  const hour = useGet(hour$);
-  const setHour = useSet(hour$);
-  const minute$ = useCCState(parsed.minute);
-  const minute = useGet(minute$);
-  const setMinute = useSet(minute$);
-  const timezone$ = useCCState(parsed.timezone);
-  const timezone = useGet(timezone$);
-  const setTimezone = useSet(timezone$);
-  const loopMinutes$ = useCCState(parsed.loopMinutes);
-  const loopMinutes = useGet(loopMinutes$);
-  const setLoopMinutes = useSet(loopMinutes$);
-  const notifyEmail$ = useCCState(entry.notifyEmail);
-  const notifyEmail = useGet(notifyEmail$);
-  const setNotifyEmail = useSet(notifyEmail$);
-  const notifySlack$ = useCCState(entry.notifySlack);
-  const notifySlack = useGet(notifySlack$);
-  const setNotifySlack = useSet(notifySlack$);
+  const [prompt, setPrompt] = useState(entry.prompt);
+  const [freq, setFreq] = useState(parsed.freq);
+  const [date, setDate] = useState(parsed.date);
+  const [hour, setHour] = useState(parsed.hour);
+  const [minute, setMinute] = useState(parsed.minute);
+  const [timezone, setTimezone] = useState(parsed.timezone);
+  const [loopMinutes, setLoopMinutes] = useState(parsed.loopMinutes);
+  const [notifyEmail, setNotifyEmail] = useState(entry.notifyEmail);
+  const [notifySlack, setNotifySlack] = useState(entry.notifySlack);
 
   const handleSave = () => {
     if (!prompt.trim()) {
@@ -746,32 +723,18 @@ function ScheduleCreateDialogInner({
   agents,
   defaultComposeId,
 }: Omit<ScheduleCreateDialogProps, "open">) {
-  const prompt$ = useCCState("");
-  const prompt = useGet(prompt$);
-  const setPrompt = useSet(prompt$);
-  const composeId$ = useCCState(defaultComposeId ?? agents[0]?.id ?? "");
-  const composeId = useGet(composeId$);
-  const setComposeId = useSet(composeId$);
-  const freq$ = useCCState("every_day");
-  const freq = useGet(freq$);
-  const setFreq = useSet(freq$);
-  const date$ = useCCState(new Date().toISOString().slice(0, 10));
-  const date = useGet(date$);
-  const setDate = useSet(date$);
-  const hour$ = useCCState(9);
-  const hour = useGet(hour$);
-  const setHour = useSet(hour$);
-  const minute$ = useCCState(0);
-  const minute = useGet(minute$);
-  const setMinute = useSet(minute$);
-  const timezone$ = useCCState(
+  const [prompt, setPrompt] = useState("");
+  const [composeId, setComposeId] = useState(
+    defaultComposeId ?? agents[0]?.id ?? "",
+  );
+  const [freq, setFreq] = useState("every_day");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [hour, setHour] = useState(9);
+  const [minute, setMinute] = useState(0);
+  const [timezone, setTimezone] = useState(
     new Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
-  const timezone = useGet(timezone$);
-  const setTimezone = useSet(timezone$);
-  const loopMinutes$ = useCCState(15);
-  const loopMinutes = useGet(loopMinutes$);
-  const setLoopMinutes = useSet(loopMinutes$);
+  const [loopMinutes, setLoopMinutes] = useState(15);
 
   const handleSave = () => {
     if (!prompt.trim() || !composeId) {
@@ -967,9 +930,7 @@ function ScheduleListView({
   onDelete: (entry: CombinedEntry) => void;
   onNew?: () => void;
 }) {
-  const togglingIds$ = useCCState<Set<string>>(new Set());
-  const togglingIds = useGet(togglingIds$);
-  const setTogglingIds = useSet(togglingIds$);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
   if (combinedSchedule.length === 0) {
     return (
@@ -1099,18 +1060,12 @@ export function ZeroSchedulePage() {
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
 
-  const scheduleViewMode$ = useCCState<"list" | "calendar">("list");
-  const scheduleViewMode = useGet(scheduleViewMode$);
-  const setScheduleViewMode = useSet(scheduleViewMode$);
-  const editingEntry$ = useCCState<CombinedEntry | null>(null);
-  const editingEntry = useGet(editingEntry$);
-  const setEditingEntry = useSet(editingEntry$);
-  const saving$ = useCCState(false);
-  const saving = useGet(saving$);
-  const setSaving = useSet(saving$);
-  const createOpen$ = useCCState(false);
-  const createOpen = useGet(createOpen$);
-  const setCreateOpen = useSet(createOpen$);
+  const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
+    "list",
+  );
+  const [editingEntry, setEditingEntry] = useState<CombinedEntry | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
