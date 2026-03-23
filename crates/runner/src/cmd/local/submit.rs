@@ -44,13 +44,10 @@ pub struct SubmitArgs {
 /// Try to read a non-empty result file.  Returns `None` if the file does
 /// not exist, is empty, or cannot be read.
 fn try_read_result(result_path: &std::path::Path) -> Option<Vec<u8>> {
-    if result_path.exists()
-        && let Ok(b) = std::fs::read(result_path)
-        && !b.is_empty()
-    {
-        return Some(b);
+    match std::fs::read(result_path) {
+        Ok(b) if !b.is_empty() => Some(b),
+        _ => None,
     }
-    None
 }
 
 /// Clean up all queue files for a job.

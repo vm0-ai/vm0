@@ -89,7 +89,10 @@ impl LocalProvider {
     fn scan_cancel_files(&self) {
         let entries = match std::fs::read_dir(&self.group_dir) {
             Ok(e) => e,
-            Err(_) => return,
+            Err(e) => {
+                warn!(path = %self.group_dir.display(), error = %e, "local: cannot read group dir for cancel scan");
+                return;
+            }
         };
         // Collect cancel run_ids first, then lock once to process them all.
         let mut cancel_ids = Vec::new();
