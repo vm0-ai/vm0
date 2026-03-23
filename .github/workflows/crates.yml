@@ -501,6 +501,108 @@ jobs:
           echo "=== Exec test passed ==="
           REMOTE_SCRIPT
 
+  runner-cancel:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test runner local cancel
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-cancel \
+            --group vm0/cancel-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-cancel \
+            --max-concurrent 2 \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running cancel test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-cancel"
+          SVC="${JOB_REF}-cancel"
+          GROUP="vm0/cancel-${JOB_REF}"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # Start transient runner service
+          echo "--- Starting runner ---"
+          "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Submit a long-running job in background
+          echo "--- Submitting long-running job ---"
+          "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+          SUBMIT_PID=$!
+
+          # Wait for sandbox to be running
+          echo "--- Waiting for sandbox ---"
+          for i in $(seq 1 60); do
+            RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
+              "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
+            [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
+            RUN_ID=""
+            sleep 1
+          done
+          [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
+          echo "Found sandbox: $RUN_ID"
+
+          # Test 1: cancel the job via runner local cancel
+          echo "--- Test: runner local cancel ---"
+          "$BIN_DIR/runner" local cancel --group "$GROUP" "$RUN_ID" || fail "cancel command failed"
+          echo "PASS: cancel command succeeded"
+
+          # Test 2: submit should exit quickly (not after 300s timeout)
+          echo "--- Test: waiting for submit to finish ---"
+          SECONDS=0
+          wait "$SUBMIT_PID"
+          SUBMIT_EXIT=$?
+          ELAPSED=$SECONDS
+          echo "Submit exited with code $SUBMIT_EXIT in ${ELAPSED}s"
+          # Cancel should kill the job within 30s, not after the 300s submit timeout
+          [ "$ELAPSED" -lt 30 ] || fail "submit took ${ELAPSED}s to exit — cancel likely did not work"
+          # Cancelled job returns non-zero exit code
+          [ "$SUBMIT_EXIT" -ne 0 ] || fail "expected non-zero exit from cancelled job, got 0"
+          echo "PASS: submit exited with non-zero after cancel (${ELAPSED}s)"
+
+          # Stop transient service
+          "$BIN_DIR/runner" service stop --name "$SVC"
+          trap - EXIT
+
+          echo "=== Cancel test passed ==="
+          REMOTE_SCRIPT
+
   runner-balloon:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -861,7 +963,7 @@ jobs:
 
   runner-cleanup:
     runs-on: ubuntu-latest
-    needs: [runner-build, runner-benchmark, runner-exec, runner-balloon, runner-upgrade-local]
+    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-balloon, runner-upgrade-local]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v6

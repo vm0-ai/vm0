@@ -230,7 +230,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         std::fs::create_dir_all(&group_dir).map_err(|e| {
             RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
         })?;
-        let provider = LocalProvider::new(group_dir, cancel.clone());
+        let provider = LocalProvider::new(group_dir, cancel.clone(), Arc::clone(&cancel_tokens));
         (provider, group)
     } else {
         let group_name = group.clone();
@@ -290,7 +290,8 @@ struct RunConfig {
     mitm: proxy::MitmProxy,
     mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
     provider: Arc<dyn JobProvider>,
-    /// Per-job cancel tokens shared with ApiProvider for Ably cancel events.
+    /// Per-job cancel tokens shared with the provider for cancel events
+    /// (Ably for ApiProvider, `.cancel` files for LocalProvider).
     cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
     cancel: CancellationToken,
     exec_config: Arc<ExecutorConfig>,
