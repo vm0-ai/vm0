@@ -48,8 +48,9 @@ yarn-error.log*
 *.pem
 .env*.local
 
-# Dev server task ID (written by /dev-start, read by /dev-logs)
+# Dev server files (written by /dev-start, read by /dev-logs)
 .dev-task-id
+.dev-server.log
 
 # SBOM
 sbom.json

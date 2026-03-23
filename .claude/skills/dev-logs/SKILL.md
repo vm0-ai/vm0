@@ -3,7 +3,7 @@ name: dev-logs
 description: View development server logs with optional filtering
 ---
 
-View development server output by reading the background task output via TaskOutput.
+View development server output. Uses a persistent log file as the primary source, with TaskOutput as fallback.
 
 ## Arguments Format
 
@@ -20,26 +20,35 @@ Your args are: `$ARGUMENTS`
 
 ## Workflow
 
-### Step 1: Find the Dev Server Task
+### Step 1: Read Logs from File (Primary)
 
-First, try to read the persisted task ID from the local file:
+The dev server writes logs to a persistent file via `tee`. Read from it:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+tail -n 200 "$PROJECT_ROOT/turbo/.dev-server.log" 2>/dev/null
+```
+
+If the file exists and has content, use this output — proceed to Step 3.
+
+If the file does not exist or is empty, fall back to Step 2.
+
+### Step 2: Fallback — TaskOutput
+
+Try to read the task ID from the persisted file:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
 cat "$PROJECT_ROOT/turbo/.dev-task-id" 2>/dev/null
 ```
 
-If the file exists and contains a task ID, use that ID directly.
+If the file exists and contains a task ID, use **TaskOutput** with that ID (`block: false`) to read the dev server logs.
 
-If the file does not exist, fall back to **TaskList** to find the dev server background task. Look for a task whose command contains `pnpm dev` — this is the task created by `/dev-start`.
+If the file does not exist, fall back to **TaskList** to find a task whose command contains `pnpm dev`.
 
 If neither method finds a task, inform the user:
-- "No dev server task found. Please run `/dev-start` to start the server."
-
-### Step 2: Read Task Output
-
-Use **TaskOutput** with the task_id from Step 1 to read the dev server logs. Use `block: false` to avoid waiting.
+- "No dev server logs found. Please run `/dev-start` to start the server."
 
 ### Step 3: Display Output
 
-Show the output in readable format. If a filter pattern was provided, grep the output for matching lines.
+Show the output in readable format. If a filter pattern was provided in the arguments, filter the output for matching lines only.

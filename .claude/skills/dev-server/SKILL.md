@@ -67,21 +67,23 @@ cd "$PROJECT_ROOT" && bash scripts/prepare.sh
 
 After `prepare.sh` completes successfully, start the dev server using Bash tool with `run_in_background: true` parameter.
 
+**Important**: Use `tee` to write output to a persistent log file so `/dev-logs` works even after context compaction. The log file is the primary way `/dev-logs` reads output.
+
 If `--tunnel-hostname=<fqdn>` was provided in args, pass it as `TUNNEL_HOSTNAME` env var:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && TUNNEL_HOSTNAME=<fqdn> pnpm dev
+cd "$PROJECT_ROOT/turbo" && TUNNEL_HOSTNAME=<fqdn> pnpm dev 2>&1 | tee "$PROJECT_ROOT/turbo/.dev-server.log"
 ```
 
 Otherwise (default):
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && pnpm dev
+cd "$PROJECT_ROOT/turbo" && pnpm dev 2>&1 | tee "$PROJECT_ROOT/turbo/.dev-server.log"
 ```
 
-**Save the dev server task_id** to a local file so `/dev-logs` can find it across conversation sessions:
+**Save the dev server task_id** to a local file for TaskOutput fallback:
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
@@ -315,10 +317,10 @@ cd "$PROJECT_ROOT/turbo" && pnpm build
 
 Use Bash tool with `run_in_background: true` for **both** commands in parallel (two separate Bash calls in the same message):
 
-**Dev server:**
+**Dev server** (use `tee` to persist logs for `/dev-logs` after context compaction):
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT/turbo" && pnpm dev
+cd "$PROJECT_ROOT/turbo" && pnpm dev 2>&1 | tee "$PROJECT_ROOT/turbo/.dev-server.log"
 ```
 
 **Runner:**
