@@ -1,6 +1,4 @@
-/* eslint-disable ccstate/no-use-ccstate-in-views */
 import { Component } from "react";
-import { useCCState, useCommand } from "ccstate-react/experimental";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { user$ } from "../../signals/auth.ts";
 import {
@@ -18,6 +16,28 @@ import { ZERO_TEAM_JOBS } from "./zero-mock-data";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
+import {
+  chatPageInput$,
+  setChatPageInput$,
+  chatPageConversationActive$,
+  setChatPageConversationActive$,
+  chatPageStreamedCount$,
+  setChatPageConversationEndEl$,
+  setChatPageSubAgentListEl$,
+  chatPageApproveDone$,
+  setChatPageApproveDone$,
+  chatPageSelectedOption$,
+  setChatPageSelectedOption$,
+  chatPageTeamPersonalChoice$,
+  setChatPageTeamPersonalChoice$,
+  chatPageConnectorConnected$,
+  setChatPageConnectorConnected$,
+  chatPageCommandAllowed$,
+  setChatPageCommandAllowed$,
+  chatPageShowSubAgentList$,
+  chatPageTaglineIndex$,
+  toggleChatPageSubAgentList$,
+} from "../../signals/zero-page/zero-chat-page.ts";
 import chatFolderImg from "./assets/chat-folder.png";
 import chatCoffeeImg from "./assets/chat-coffee.png";
 import chatMacImg from "./assets/chat-mac.png";
@@ -104,8 +124,6 @@ function getStreamedScenarios(agentName: string): readonly Readonly<{
     },
   ];
 }
-
-const INITIAL_TAGLINE_INDEX = Math.floor(Math.random() * 18);
 
 function getTagline(
   agentName: string,
@@ -758,54 +776,27 @@ export function ZeroChatPage({
   const agentName = chatAgentName ?? defaultAgentName;
   const userName = useUserFirstName();
 
-  const input$ = useCCState("");
-  const input = useGet(input$);
-  const setInput = useSet(input$);
-  const conversationActive$ = useCCState(false);
-  const conversationActive = useGet(conversationActive$);
-  const setConversationActive = useSet(conversationActive$);
-  const streamedCount$ = useCCState(0);
-  const streamedCount = useGet(streamedCount$);
-  const conversationEndEl$ = useCCState<HTMLDivElement | null>(null);
-  const setConversationEndEl = useSet(conversationEndEl$);
-  const subAgentListEl$ = useCCState<HTMLDivElement | null>(null);
-  const setSubAgentListEl = useSet(subAgentListEl$);
-  const approveDone$ = useCCState(false);
-  const approveDone = useGet(approveDone$);
-  const setApproveDone = useSet(approveDone$);
-  const selectedOption$ = useCCState<string | null>(null);
-  const selectedOption = useGet(selectedOption$);
-  const setSelectedOption = useSet(selectedOption$);
-  const teamPersonalChoice$ = useCCState<"team" | "personal" | null>(null);
-  const teamPersonalChoice = useGet(teamPersonalChoice$);
-  const setTeamPersonalChoice = useSet(teamPersonalChoice$);
-  const connectorConnected$ = useCCState(false);
-  const connectorConnected = useGet(connectorConnected$);
-  const setConnectorConnected = useSet(connectorConnected$);
-  const commandAllowed$ = useCCState(false);
-  const commandAllowed = useGet(commandAllowed$);
-  const setCommandAllowed = useSet(commandAllowed$);
-  const showSubAgentList$ = useCCState(false);
-  const showSubAgentList = useGet(showSubAgentList$);
-  const taglineIndex$ = useCCState(INITIAL_TAGLINE_INDEX);
-  const taglineIndex = useGet(taglineIndex$);
+  const input = useGet(chatPageInput$);
+  const setInput = useSet(setChatPageInput$);
+  const conversationActive = useGet(chatPageConversationActive$);
+  const setConversationActive = useSet(setChatPageConversationActive$);
+  const streamedCount = useGet(chatPageStreamedCount$);
+  const setConversationEndEl = useSet(setChatPageConversationEndEl$);
+  const setSubAgentListEl = useSet(setChatPageSubAgentListEl$);
+  const approveDone = useGet(chatPageApproveDone$);
+  const setApproveDone = useSet(setChatPageApproveDone$);
+  const selectedOption = useGet(chatPageSelectedOption$);
+  const setSelectedOption = useSet(setChatPageSelectedOption$);
+  const teamPersonalChoice = useGet(chatPageTeamPersonalChoice$);
+  const setTeamPersonalChoice = useSet(setChatPageTeamPersonalChoice$);
+  const connectorConnected = useGet(chatPageConnectorConnected$);
+  const setConnectorConnected = useSet(setChatPageConnectorConnected$);
+  const commandAllowed = useGet(chatPageCommandAllowed$);
+  const setCommandAllowed = useSet(setChatPageCommandAllowed$);
+  const showSubAgentList = useGet(chatPageShowSubAgentList$);
+  const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(agentName, userName, taglineIndex);
-
-  // Toggle sub-agent list with auto-scroll when opening
-  const toggleSubAgentList$ = useCommand(({ get, set }) => {
-    const current = get(showSubAgentList$);
-    set(showSubAgentList$, !current);
-    if (!current) {
-      // Becoming visible — scroll into view after next paint
-      window.requestAnimationFrame(() => {
-        const el = get(subAgentListEl$);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth" });
-        }
-      });
-    }
-  });
-  const toggleSubAgentList = useSet(toggleSubAgentList$);
+  const toggleSubAgentList = useSet(toggleChatPageSubAgentList$);
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
     setInput("");
