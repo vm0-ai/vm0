@@ -13,12 +13,9 @@ import { memoryCommand } from "./commands/memory";
 import { cookCommand } from "./commands/cook";
 import { logsCommand } from "./commands/logs";
 
-import { orgCommand } from "./commands/org";
 import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
 import { scheduleCommand } from "./commands/schedule";
-import { secretCommand } from "./commands/secret";
-import { variableCommand } from "./commands/variable";
 
 import { connectorCommand } from "./commands/connector";
 import { preferenceCommand } from "./commands/preference";
@@ -45,13 +42,10 @@ program.addCommand(artifactCommand);
 program.addCommand(memoryCommand);
 program.addCommand(cookCommand);
 program.addCommand(logsCommand);
-program.addCommand(orgCommand);
 
 program.addCommand(agentCommand);
 program.addCommand(initCommand);
 program.addCommand(scheduleCommand);
-program.addCommand(secretCommand);
-program.addCommand(variableCommand);
 program.addCommand(connectorCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);
