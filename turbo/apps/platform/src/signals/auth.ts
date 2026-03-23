@@ -1,4 +1,3 @@
-import { Clerk } from "@clerk/clerk-js";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 
@@ -32,6 +31,11 @@ export const clerk$ = computed(async () => {
   if (!publishableKey) {
     throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
   }
+
+  // Dynamic import: @clerk/clerk-js is a 2.8MB webpack monolith (53%
+  // Web3/Solana/Coinbase code we don't use) that cannot be tree-shaken.
+  // Moving it to a separate async chunk avoids blocking initial JS parsing.
+  const { Clerk } = await import("@clerk/clerk-js");
 
   const webOrigin = resolveWebOrigin();
   const clerkInstance = new Clerk(publishableKey);
