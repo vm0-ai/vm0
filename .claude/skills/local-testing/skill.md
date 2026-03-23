@@ -152,7 +152,7 @@ cd turbo && pnpm vitest run --project web
 ```
 e2e/tests/
 ├── 01-serial/              # Tests that MUST run serially (scope setup)
-└── 03-experimental-runner/ # All parallel tests (runs on runner)
+└── 03-runner/ # All parallel tests (runs on runner)
 ```
 
 ### Environment Variables for E2E
@@ -178,7 +178,7 @@ BATS_TEST_TIMEOUT=30 \
 VM0_API_URL=http://localhost:3000 \
 USE_MOCK_CLAUDE=true \
 BATS_TEST_TIMEOUT=60 \
-./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/03-experimental-runner/*.bats
+./e2e/test/libs/bats/bin/bats -T -j 10 --no-parallelize-within-files ./e2e/tests/03-runner/*.bats
 ```
 
 ### Running a Single Test File
@@ -187,7 +187,7 @@ BATS_TEST_TIMEOUT=60 \
 VM0_API_URL=http://localhost:3000 \
 USE_MOCK_CLAUDE=true \
 BATS_TEST_TIMEOUT=60 \
-./e2e/test/libs/bats/bin/bats -T ./e2e/tests/03-experimental-runner/t17-vm0-simplified-compose.bats
+./e2e/test/libs/bats/bin/bats -T ./e2e/tests/03-runner/t17-vm0-simplified-compose.bats
 ```
 
 ### Running a Specific Test by Name
@@ -196,7 +196,7 @@ BATS_TEST_TIMEOUT=60 \
 VM0_API_URL=http://localhost:3000 \
 USE_MOCK_CLAUDE=true \
 BATS_TEST_TIMEOUT=60 \
-./e2e/test/libs/bats/bin/bats -T ./e2e/tests/03-experimental-runner/t17-vm0-simplified-compose.bats \
+./e2e/test/libs/bats/bin/bats -T ./e2e/tests/03-runner/t17-vm0-simplified-compose.bats \
   --filter "vm0 compose with both instructions and skills"
 ```
 

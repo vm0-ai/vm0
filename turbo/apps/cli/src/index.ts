@@ -1,4 +1,4 @@
-// VM0 CLI entry point
+// VM0 CLI entry point - main module
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
@@ -17,7 +17,6 @@ import { orgCommand } from "./commands/org";
 import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
 import { scheduleCommand } from "./commands/schedule";
-import { usageCommand } from "./commands/usage";
 import { secretCommand } from "./commands/secret";
 import { variableCommand } from "./commands/variable";
 
@@ -25,6 +24,7 @@ import { connectorCommand } from "./commands/connector";
 import { preferenceCommand } from "./commands/preference";
 import { upgradeCommand } from "./commands/upgrade";
 import { whoamiCommand } from "./commands/whoami";
+import { zeroCommand } from "./commands/zero";
 
 const program = new Command();
 
@@ -50,13 +50,13 @@ program.addCommand(orgCommand);
 program.addCommand(agentCommand);
 program.addCommand(initCommand);
 program.addCommand(scheduleCommand);
-program.addCommand(usageCommand);
 program.addCommand(secretCommand);
 program.addCommand(variableCommand);
 program.addCommand(connectorCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(whoamiCommand);
+program.addCommand(zeroCommand);
 
 export { program };
 

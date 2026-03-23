@@ -12,8 +12,14 @@
  * or manual mapping needed — the classification is entirely data-driven.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
+import {
+  fetchSpec,
+  logStats,
+  renderPermissions,
+  sortRules,
+  writeOutput,
+} from "./codegen";
+import type { PermissionGroup } from "./codegen";
 
 const PERMS_URL =
   "https://raw.githubusercontent.com/github/docs/main/src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json";
@@ -93,34 +99,6 @@ type PermsData = Record<string, PermEntry>;
 
 // ── Grouping ─────────────────────────────────────────────────────────────
 
-const METHOD_ORDER: Record<string, number> = {
-  GET: 0,
-  HEAD: 1,
-  POST: 2,
-  PUT: 3,
-  PATCH: 4,
-  DELETE: 5,
-};
-
-function ruleKey(rule: string): [string, number] {
-  const [method, rulePath] = rule.split(" ", 2) as [string, string];
-  return [rulePath, METHOD_ORDER[method] ?? 9];
-}
-
-function sortRules(rules: string[]): string[] {
-  return [...rules].sort((a, b) => {
-    const [pathA, orderA] = ruleKey(a);
-    const [pathB, orderB] = ruleKey(b);
-    return pathA < pathB ? -1 : pathA > pathB ? 1 : orderA - orderB;
-  });
-}
-
-interface PermissionGroup {
-  name: string;
-  description: string;
-  rules: string[];
-}
-
 function buildGroups(permsData: PermsData): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   const descriptions = new Map<string, string>();
@@ -158,10 +136,6 @@ function buildGroups(permsData: PermsData): PermissionGroup[] {
 
 // ── TypeScript generation ────────────────────────────────────────────────
 
-function escapeString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function generateTypeScript(permissions: PermissionGroup[]): string {
   const placeholder = makeGitHubPlaceholder();
 
@@ -192,28 +166,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     "      permissions: [",
   ];
 
-  // Catch-all: allows all endpoints (for users who only need token injection)
-  lines.push("        {");
-  lines.push('          name: "unrestricted",');
-  lines.push('          description: "Allow all endpoints",');
-  lines.push("          rules: [");
-  lines.push('            "ANY /{path*}",');
-  lines.push("          ],");
-  lines.push("        },");
-
-  for (const perm of permissions) {
-    lines.push("        {");
-    lines.push(`          name: "${escapeString(perm.name)}",`);
-    if (perm.description) {
-      lines.push(`          description: "${escapeString(perm.description)}",`);
-    }
-    lines.push("          rules: [");
-    for (const rule of perm.rules) {
-      lines.push(`            "${escapeString(rule)}",`);
-    }
-    lines.push("          ],");
-    lines.push("        },");
-  }
+  lines.push(...renderPermissions(permissions));
 
   lines.push("      ],");
   lines.push("    },");
@@ -255,43 +208,13 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 export async function generate(): Promise<void> {
-  console.error("Downloading GitHub permissions data…");
-  const res = await fetch(PERMS_URL);
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch permissions data: ${res.status} ${res.statusText}`,
-    );
-  }
+  const res = await fetchSpec(PERMS_URL, "GitHub permissions data");
   const permsData = (await res.json()) as PermsData;
   console.error(`  ${Object.keys(permsData).length} permissions`);
 
   const permissions = buildGroups(permsData);
   const ts = generateTypeScript(permissions);
 
-  const totalRules = permissions.reduce((sum, p) => sum + p.rules.length, 0);
-  console.error(
-    `  ${permissions.length} permission groups, ${totalRules} rules`,
-  );
-
-  const outPath = path.resolve(
-    import.meta.dirname,
-    "../../core/src/firewalls/github.generated.ts",
-  );
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, ts);
-  console.error(`  Written to ${outPath}`);
-
-  // Validate the generated config matches the schema
-  validateGeneratedConfig(outPath);
-}
-
-function validateGeneratedConfig(outPath: string): void {
-  // We can't dynamically import the generated TS at this point,
-  // but type-checking via tsc will catch schema mismatches.
-  // Just verify the file was written and is non-empty.
-  const stat = fs.statSync(outPath);
-  if (stat.size === 0) {
-    throw new Error("Generated file is empty");
-  }
-  console.error(`  Validated (${(stat.size / 1024).toFixed(1)} KB)`);
+  logStats(permissions);
+  writeOutput("github", ts, import.meta.dirname);
 }

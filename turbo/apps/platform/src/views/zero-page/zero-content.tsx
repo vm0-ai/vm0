@@ -14,7 +14,6 @@ interface ZeroContentProps {
   ) => void;
   onNavigateToSchedule?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
-  onBackFromSession?: () => void;
   zeroAvatarSrc?: string;
   /** Override agent name for the chat page when a sub-agent is selected. */
   chatAgentName?: string;
@@ -30,7 +29,6 @@ export function ZeroContent({
   onSendMessage,
   onNavigateToSchedule,
   onNavigateToMeet,
-  onBackFromSession,
   zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
   chatAvatarSrc,
@@ -42,7 +40,6 @@ export function ZeroContent({
         <ZeroSessionChatPage
           zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
           chatAgentName={chatAgentName}
-          onBack={onBackFromSession}
           onNavigateToSchedule={onNavigateToSchedule}
           onAvatarClick={onChatAvatarClick}
         />
@@ -51,7 +48,6 @@ export function ZeroContent({
     return (
       <ZeroChatPage
         onSendMessage={onSendMessage}
-        onNavigateToSchedule={onNavigateToSchedule}
         onNavigateToMeet={onNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc ?? zeroAvatarSrc}
         chatAgentName={chatAgentName}

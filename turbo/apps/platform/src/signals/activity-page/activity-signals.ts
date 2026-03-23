@@ -86,6 +86,7 @@ export const initZeroActivity$ = command(async ({ set }) => {
 export const {
   limit$: zeroActivityLimit$,
   data$: zeroActivityData$,
+  refresh$: refreshZeroActivity$,
   seedCursorHistory$: seedZeroActivityCursorHistory$,
   hasPrev$: zeroActivityHasPrev$,
   currentPage$: zeroActivityCurrentPage$,

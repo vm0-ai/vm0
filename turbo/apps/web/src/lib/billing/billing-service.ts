@@ -5,6 +5,7 @@ import { env } from "../../env";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
 import { handleAutoRechargeInvoicePaid } from "./auto-recharge-service";
+import { resetMemberCreditFlags } from "../credit/member-credit-cap-service";
 import { logger } from "../logger";
 
 const log = logger("billing");
@@ -310,6 +311,9 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
       .where(eq(orgMetadata.orgId, org.orgId));
   });
 
+  // Reset member credit cap flags for the new billing period
+  await resetMemberCreditFlags(org.orgId);
+
   log.info("credits granted via invoice.paid", {
     orgId: org.orgId,
     credits,
@@ -399,6 +403,90 @@ export async function createBillingPortalSession(
   });
 
   return session.url;
+}
+
+/**
+ * Get auto-recharge configuration for an org.
+ */
+export async function getAutoRechargeConfig(orgId: string): Promise<{
+  enabled: boolean;
+  threshold: number | null;
+  amount: number | null;
+}> {
+  const db = globalThis.services.db;
+  const [row] = await db
+    .select({
+      autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
+      autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
+      autoRechargeAmount: orgMetadata.autoRechargeAmount,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  return {
+    enabled: row?.autoRechargeEnabled ?? false,
+    threshold: row?.autoRechargeThreshold ?? null,
+    amount: row?.autoRechargeAmount ?? null,
+  };
+}
+
+/**
+ * Update auto-recharge configuration for an org.
+ * Validates tier and required fields when enabling.
+ */
+export async function updateAutoRechargeConfig(
+  orgId: string,
+  orgTier: string,
+  config: { enabled: boolean; threshold?: number; amount?: number },
+): Promise<
+  | {
+      ok: true;
+      data: {
+        enabled: boolean;
+        threshold: number | null;
+        amount: number | null;
+      };
+    }
+  | { ok: false; error: string }
+> {
+  const { enabled, threshold, amount } = config;
+
+  if (enabled) {
+    if (orgTier === "free") {
+      return {
+        ok: false,
+        error: "Auto-recharge is only available for paid plans (Pro/Max)",
+      };
+    }
+    if (threshold === undefined || amount === undefined) {
+      return {
+        ok: false,
+        error: "threshold and amount are required when enabling auto-recharge",
+      };
+    }
+  }
+
+  const db = globalThis.services.db;
+  await db
+    .update(orgMetadata)
+    .set({
+      autoRechargeEnabled: enabled,
+      autoRechargeThreshold: enabled ? threshold : null,
+      autoRechargeAmount: enabled ? amount : null,
+      ...(!enabled ? { autoRechargePendingAt: null } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(orgMetadata.orgId, orgId));
+
+  return {
+    ok: true,
+    data: {
+      enabled,
+      threshold: enabled ? (threshold ?? null) : null,
+      amount: enabled ? (amount ?? null) : null,
+    },
+  };
 }
 
 /**

@@ -67,6 +67,7 @@ const deployScheduleRequestSchema = z
     intervalSeconds: z.number().int().min(0).optional(),
     timezone: z.string().default("UTC"),
     prompt: z.string().min(1, "Prompt required"),
+    description: z.string().optional(),
     appendSystemPrompt: z.string().optional(),
     // vars and secrets removed - now managed via server-side tables
     artifactName: z.string().optional(),
@@ -111,6 +112,7 @@ const scheduleResponseSchema = z.object({
   intervalSeconds: z.number().nullable(),
   timezone: z.string(),
   prompt: z.string(),
+  description: z.string().nullable(),
   appendSystemPrompt: z.string().nullable(),
   vars: z.record(z.string(), z.string()).nullable(),
   // Secret names only (values are never returned)

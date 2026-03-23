@@ -308,7 +308,7 @@ agents:
   });
 
   // Note: resolveScheduleByAgent is tested via E2E tests in
-  // e2e/tests/03-experimental-runner/t20-vm0-schedule.bats (global resolution tests)
+  // e2e/tests/03-runner/t20-vm0-schedule.bats (global resolution tests)
   // since it requires real API calls and mocking internal modules is not acceptable
 
   describe("extractRequiredConfiguration", () => {

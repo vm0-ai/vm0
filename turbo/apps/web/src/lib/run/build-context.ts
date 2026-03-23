@@ -892,6 +892,54 @@ interface BuildContextResult {
 }
 
 /**
+ * Check if a compose base URL covers an auto-generated base URL.
+ * A compose URL covers an auto URL when the auto URL starts with the compose URL
+ * (with a path-boundary check so "https://a.com/x" covers "https://a.com/x/y"
+ * but not "https://a.com/xy").
+ *
+ * @internal Exported for testing.
+ */
+export function baseUrlCoveredBy(
+  autoBase: string,
+  composeBase: string,
+): boolean {
+  // Strip trailing slashes for consistent comparison
+  const a = autoBase.replace(/\/+$/, "");
+  const c = composeBase.replace(/\/+$/, "");
+  if (a === c) return true;
+  return a.startsWith(c + "/");
+}
+
+/**
+ * Drop auto-generated firewalls when ANY of their API base URLs overlap with
+ * a compose-declared firewall. A single overlapping base URL means the user
+ * is managing that service's firewall — the entire auto firewall is dropped.
+ *
+ * @internal Exported for testing.
+ */
+export function deduplicateAutoFirewalls<
+  T extends { name: string; apis: { base: string }[] },
+>(autoFirewalls: T[], composeFirewalls: { apis: { base: string }[] }[]): T[] {
+  if (composeFirewalls.length === 0) return autoFirewalls;
+
+  const composeBases = composeFirewalls.flatMap((fw) =>
+    fw.apis.map((api) => api.base),
+  );
+
+  return autoFirewalls.filter((autoFw) => {
+    const covered = autoFw.apis.some((api) =>
+      composeBases.some((cb) => baseUrlCoveredBy(api.base, cb)),
+    );
+    if (covered) {
+      log.debug(
+        `Skipping auto-generated firewall "${autoFw.name}" — base URL overlaps with compose firewalls`,
+      );
+    }
+    return !covered;
+  });
+}
+
+/**
  * Build ExperimentalFirewalls manifest from agent compose's expanded experimental_firewalls.
  * Returns null if no firewall configs are declared.
  *
@@ -1073,10 +1121,14 @@ export async function buildExecutionContext(
 
   // Build experimental firewall manifest (base + auth entries for the runner).
   // Merge compose-declared firewalls with auto-generated model provider firewall.
+  // Auto-generated firewalls are skipped when compose already covers the same
+  // base URLs (prefix match — compose "https://api.x.com" covers auto
+  // "https://api.x.com/v1" but not vice versa).
   const composeFirewalls = buildExperimentalFirewalls(agentCompose);
+  const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
   const allFirewalls = [
     ...(composeFirewalls ?? []),
-    ...(modelProviderFirewall ? [modelProviderFirewall] : []),
+    ...deduplicateAutoFirewalls(autoFirewalls, composeFirewalls ?? []),
   ];
   const experimentalFirewalls =
     allFirewalls.length > 0 ? allFirewalls : undefined;

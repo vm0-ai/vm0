@@ -3,13 +3,19 @@ import {
   agentSessions,
   type StoredChatMessage,
 } from "../../db/schema/agent-session";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
-import { notFound } from "../errors";
+import { extractAndGroupVariables } from "@vm0/core";
+import { notFound, forbidden } from "../errors";
 import type {
   AgentSessionData,
   AgentSessionWithConversation,
   CreateAgentSessionInput,
 } from "./types";
+import type { SessionResponse } from "@vm0/core";
 
 /**
  * Agent Session Service - Pure Functions
@@ -208,5 +214,71 @@ function mapToAgentSessionData(
     memoryName: session.memoryName,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+  };
+}
+
+/**
+ * Get a session by ID with ownership + org verification,
+ * returning the full API response shape including secret names.
+ *
+ * Throws notFound if session doesn't exist or belongs to different org.
+ * Throws forbidden if session belongs to a different user.
+ */
+export async function getSessionResponse(
+  sessionId: string,
+  userId: string,
+  orgId: string,
+): Promise<SessionResponse> {
+  const db = globalThis.services.db;
+
+  const [session] = await db
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+
+  if (!session) {
+    throw notFound("Session not found");
+  }
+
+  if (session.userId !== userId) {
+    throw forbidden("You do not have permission to access this session");
+  }
+
+  if (orgId !== session.orgId) {
+    throw notFound("Session not found");
+  }
+
+  // Extract secret names from HEAD compose content
+  let secretNames: string[] | null = null;
+  const [compose] = await db
+    .select()
+    .from(agentComposes)
+    .where(eq(agentComposes.id, session.agentComposeId))
+    .limit(1);
+
+  if (compose?.headVersionId) {
+    const [version] = await db
+      .select()
+      .from(agentComposeVersions)
+      .where(eq(agentComposeVersions.id, compose.headVersionId))
+      .limit(1);
+
+    if (version?.content) {
+      const grouped = extractAndGroupVariables(version.content);
+      const names = grouped.secrets.map((ref) => ref.name);
+      secretNames = names.length > 0 ? names : null;
+    }
+  }
+
+  return {
+    id: session.id,
+    agentComposeId: session.agentComposeId,
+    conversationId: session.conversationId,
+    artifactName: session.artifactName,
+    secretNames,
+    chatMessages: session.chatMessages ?? [],
+    createdAt: session.createdAt.toISOString(),
+    updatedAt: session.updatedAt.toISOString(),
   };
 }

@@ -8,9 +8,62 @@
 use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
 use serde::Deserialize;
 use std::fs;
+use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Lexically normalize a path by collapsing `.` and `..` components.
+/// Unlike `canonicalize()`, this does not touch the filesystem.
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut components: Vec<Component> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                // Only pop Normal components; don't pop RootDir or Prefix
+                if matches!(components.last(), Some(Component::Normal(_))) {
+                    components.pop();
+                }
+            }
+            Component::CurDir => {}
+            c => components.push(c),
+        }
+    }
+    components.iter().collect()
+}
+
+/// Check whether `path` stays within `target` after lexical normalization.
+fn is_within(path: &Path, target: &Path) -> bool {
+    normalize_path(path).starts_with(target)
+}
+
+/// Walk up from `path`'s parent toward `target`, find the deepest existing ancestor,
+/// canonicalize it, and verify it still resolves within `target`.
+/// Returns false if any ancestor resolves outside `target` (e.g., a symlink directory
+/// was planted earlier in the archive to redirect writes outside the target).
+fn ancestors_within_target(path: &Path, target: &Path) -> bool {
+    // Start from parent — path itself is the entry being extracted (doesn't exist yet).
+    let Some(mut ancestor) = path.parent() else {
+        return true;
+    };
+    loop {
+        if ancestor == target {
+            return true; // Reached target itself, which is already canonical
+        }
+        // Use symlink_metadata (lstat) instead of exists (stat) so we detect
+        // dangling symlinks — exists() follows symlinks and returns false for them.
+        if ancestor.symlink_metadata().is_ok() {
+            return match ancestor.canonicalize() {
+                Ok(canonical) => canonical.starts_with(target),
+                Err(_) => false, // dangling symlink or permission error
+            };
+        }
+        match ancestor.parent() {
+            Some(parent) => ancestor = parent,
+            None => return true,
+        }
+    }
+}
 
 const LOG_TAG: &str = "sandbox:download";
 
@@ -299,13 +352,123 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     let decoder = flate2::read::GzDecoder::new(reader);
     let mut archive = tar::Archive::new(decoder);
 
-    // Extract to target path
-    // Note: tar crate handles empty archives gracefully (returns Ok with 0 entries)
-    archive.unpack(target_path).map_err(|e| DownloadError {
-        message: format!("Failed to extract archive: {e}"),
+    // Extract entries one by one, validating paths to prevent symlink path traversal.
+    let target = Path::new(target_path)
+        .canonicalize()
+        .map_err(|e| DownloadError {
+            message: format!("Failed to canonicalize target path {target_path}: {e}"),
+            retriable: false,
+            status_code: None,
+        })?;
+
+    for entry in archive.entries().map_err(|e| DownloadError {
+        message: format!("Failed to read archive entries: {e}"),
         retriable: false,
         status_code: None,
-    })?;
+    })? {
+        let mut entry = entry.map_err(|e| DownloadError {
+            message: format!("Failed to read archive entry: {e}"),
+            retriable: false,
+            status_code: None,
+        })?;
+
+        let entry_path = entry
+            .path()
+            .map_err(|e| DownloadError {
+                message: format!("Failed to read entry path: {e}"),
+                retriable: false,
+                status_code: None,
+            })?
+            .into_owned();
+
+        let entry_type = entry.header().entry_type();
+
+        // Check that the entry path lexically stays within the target directory
+        // (normalize to collapse any .. components before checking)
+        let full_path = target.join(&entry_path);
+        if !is_within(&full_path, &target) {
+            log_warn!(
+                LOG_TAG,
+                "Skipping entry with path escaping target dir: {}",
+                entry_path.display()
+            );
+            continue;
+        }
+
+        // For symlinks, validate the resolved link target stays within the target directory
+        if entry_type.is_symlink() {
+            let link_target = match entry.link_name() {
+                Ok(Some(t)) => t,
+                _ => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Skipping symlink with unreadable target: {}",
+                        entry_path.display()
+                    );
+                    continue;
+                }
+            };
+            let link_dir = full_path.parent().unwrap_or(&target);
+            let resolved = link_dir.join(&*link_target);
+            if !is_within(&resolved, &target) {
+                log_warn!(
+                    LOG_TAG,
+                    "Skipping symlink with target escaping dir: {} -> {}",
+                    entry_path.display(),
+                    link_target.display()
+                );
+                continue;
+            }
+        }
+
+        // For hardlinks, validate the link source stays within the target directory
+        if entry_type == tar::EntryType::Link {
+            let link_name = match entry.link_name() {
+                Ok(Some(t)) => t,
+                _ => {
+                    log_warn!(
+                        LOG_TAG,
+                        "Skipping hardlink with unreadable source: {}",
+                        entry_path.display()
+                    );
+                    continue;
+                }
+            };
+            let resolved = target.join(&*link_name);
+            if !is_within(&resolved, &target) {
+                log_warn!(
+                    LOG_TAG,
+                    "Skipping hardlink with source escaping dir: {} -> {}",
+                    entry_path.display(),
+                    link_name.display()
+                );
+                continue;
+            }
+        }
+
+        // Verify that parent directories haven't been replaced by symlinks pointing outside
+        // the target (two-step attack: first create a symlink dir, then write entries through
+        // it). Walk up to the deepest existing ancestor since the immediate parent may not
+        // exist yet. This applies to ALL entry types — a symlink/hardlink entry extracted
+        // through a malicious symlink directory is equally dangerous.
+        if !ancestors_within_target(&full_path, &target) {
+            log_warn!(
+                LOG_TAG,
+                "Skipping entry whose parent resolves outside target: {}",
+                entry_path.display()
+            );
+            continue;
+        }
+
+        // TOCTOU is not a concern here: entries are processed sequentially from a single
+        // archive stream, so no external actor can modify the filesystem between our checks
+        // and the extraction below.
+        entry.unpack_in(&target).map_err(|e| DownloadError {
+            message: format!("Failed to extract entry {}: {e}", entry_path.display()),
+            retriable: false,
+            status_code: None,
+        })?;
+    }
 
     Ok(())
 }

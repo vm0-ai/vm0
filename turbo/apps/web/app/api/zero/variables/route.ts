@@ -10,13 +10,42 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { setVariable } from "../../../../src/lib/variable/variable-service";
+import {
+  listVariables,
+  setVariable,
+} from "../../../../src/lib/variable/variable-service";
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
 
 const log = logger("api:zero-variables");
 
 const router = tsr.router(zeroVariablesContract, {
+  list: async ({ headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+    const vars = await listVariables(org.orgId, userId);
+
+    return {
+      status: 200 as const,
+      body: {
+        variables: vars.map((v) => ({
+          id: v.id,
+          name: v.name,
+          value: v.value,
+          description: v.description,
+          createdAt: v.createdAt.toISOString(),
+          updatedAt: v.updatedAt.toISOString(),
+        })),
+      },
+    };
+  },
+
   set: async ({ body, headers }, { request }) => {
     initServices();
 
@@ -63,4 +92,4 @@ const handler = createHandler(zeroVariablesContract, router, {
   errorHandler: createSafeErrorHandler("zero-variables"),
 });
 
-export { handler as POST };
+export { handler as GET, handler as POST };

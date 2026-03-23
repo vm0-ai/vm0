@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { ZeroActivityDetailPageWrapper } from "../../views/activity-page/zero-activity-detail-page-wrapper.tsx";
+import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
@@ -11,6 +12,7 @@ import { setZeroActivitySelectedLogId$ } from "./activity-signals.ts";
 export const setupActivityDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroActivityDetailPageWrapper));
+    set(updateDocumentTitle$, "Activity");
 
     // Set logId immediately so the component shows skeleton instead of stale data
     const params = get(pathParams$);

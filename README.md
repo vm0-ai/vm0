@@ -39,16 +39,8 @@
 From zero to workflow agent in 5 minutes
 
 ```bash
-npm install -g @vm0/cli && vm0 onboard
+npm install -g @vm0/cli && vm0 init
 ```
-
-## 📕 Showcase
-
-### Onboard
-<img src="./docs/vhs/onboard.gif" alt="VM0 CLI Onboard Demo" width="600">
-
-### Agent Build
-<img src="./docs/vhs/agent-build.gif" alt="VM0 Agent Build Demo" width="600">
 
 ## 📚 Architecture
 

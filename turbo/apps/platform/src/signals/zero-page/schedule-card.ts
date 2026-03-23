@@ -61,6 +61,11 @@ export const { get$: scheduleDayOfWeek$, set$: setScheduleDayOfWeek$ } =
 export const { get$: scheduleDayOfMonth$, set$: setScheduleDayOfMonth$ } =
   cell("1");
 
+export const {
+  get$: newScheduleDescription$,
+  set$: setNewScheduleDescription$,
+} = cell("");
+
 export const { get$: saveError$, set$: setSaveError$ } = cell<string | null>(
   null,
 );

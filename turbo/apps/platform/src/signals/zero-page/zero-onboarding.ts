@@ -1,12 +1,10 @@
 import { command, computed, state } from "ccstate";
-import {
-  type ZeroAgentResponse,
-  onboardingStatusResponseSchema,
-} from "@vm0/core";
+import { onboardingStatusResponseSchema } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
-import { SEED_INSTRUCTIONS, SEED_SKILLS } from "../../data/the-seed.ts";
+import { SEED_SKILLS } from "../../data/the-seed.ts";
+import { createZeroAgent } from "./create-zero-agent.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 
@@ -187,51 +185,13 @@ export const completeZeroOnboarding$ = command(
         ...new Set([...SEED_SKILLS, ...selectedConnectors]),
       ];
 
-      // Create agent via zero agents API
-      const createResp = await fetchFn("/api/zero/agents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          connectors: allConnectors,
-          displayName,
-          sound: "professional",
-        }),
+      // Create agent and upload instructions
+      const agent = await createZeroAgent(fetchFn, {
+        connectors: allConnectors,
+        displayName,
+        sound: "professional",
       });
       signal.throwIfAborted();
-
-      if (!createResp.ok) {
-        const errorData = (await createResp.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(
-          errorData?.error?.message ??
-            `Failed to create agent: ${createResp.statusText}`,
-        );
-      }
-
-      const agent = (await createResp.json()) as ZeroAgentResponse;
-      signal.throwIfAborted();
-
-      // Upload instructions via zero agents API
-      const instrResp = await fetchFn(
-        `/api/zero/agents/${encodeURIComponent(agent.name)}/instructions`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: SEED_INSTRUCTIONS }),
-        },
-      );
-      signal.throwIfAborted();
-
-      if (!instrResp.ok) {
-        const errorData = (await instrResp.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(
-          errorData?.error?.message ??
-            `Failed to upload instructions: ${instrResp.statusText}`,
-        );
-      }
 
       // Set as default agent
       const defaultResp = await fetchFn("/api/zero/default-agent", {

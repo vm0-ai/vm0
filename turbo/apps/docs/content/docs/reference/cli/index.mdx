@@ -350,24 +350,6 @@ vm0 logs search "timeout" --agent my-agent --since 30d
 vm0 logs search "connection" --run 11007483-20b2-42b1-8f2a-b42a10186810
 ```
 
-## Usage Statistics
-
-| Command | Description | Options |
-| ------- | ----------- | ------- |
-| `vm0 usage` | View usage statistics | `--since <date>`, `--until <date>` |
-
-**Examples:**
-```bash
-# View last 7 days (default)
-vm0 usage
-
-# View last 30 days
-vm0 usage --since 30d
-
-# View specific date range
-vm0 usage --since 2026-01-01 --until 2026-01-15
-```
-
 ## Environment Variables
 
 - `VM0_TOKEN` - Authentication token for API access

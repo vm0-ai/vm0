@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { ZeroPreferencesPageWrapper } from "../../views/preferences-page/zero-preferences-page-wrapper.tsx";
+import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
@@ -9,6 +10,7 @@ import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
 export const setupPreferencesPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroPreferencesPageWrapper));
+    set(updateDocumentTitle$, "Preferences");
     await Promise.all([
       set(fetchAgentsList$),
       set(initZeroOnboarding$, signal),

@@ -33,7 +33,7 @@ import { githubIssueSessions } from "../db/schema/github-issue-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentRunQueue } from "../db/schema/agent-run-queue";
-import { agentSchedules } from "../db/schema/agent-schedule";
+import { zeroAgentSchedules } from "../db/schema/zero-agent-schedule";
 import { emailOutbox } from "../db/schema/email-outbox";
 import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
@@ -87,6 +87,7 @@ import { PUT as setSecretRoute } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
 
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
+import { composeJobs } from "../db/schema/compose-job";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
@@ -353,7 +354,7 @@ export async function createTestOrg(
 export async function createTestCompose(
   agentName: string,
   options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
-): Promise<{ composeId: string; versionId: string }> {
+): Promise<{ composeId: string; versionId: string; name: string }> {
   const config = createDefaultComposeConfig(agentName, options);
   const request = createTestRequest(
     "http://localhost:3000/api/agent/composes",
@@ -2351,9 +2352,9 @@ export async function updateTestScheduleState(
   },
 ): Promise<void> {
   await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set(state)
-    .where(eq(agentSchedules.id, scheduleId));
+    .where(eq(zeroAgentSchedules.id, scheduleId));
 }
 
 /**
@@ -2366,8 +2367,8 @@ export async function updateTestScheduleState(
 export async function findTestScheduleById(scheduleId: string) {
   const [row] = await globalThis.services.db
     .select()
-    .from(agentSchedules)
-    .where(eq(agentSchedules.id, scheduleId))
+    .from(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.id, scheduleId))
     .limit(1);
   return row;
 }
@@ -3068,6 +3069,8 @@ export async function insertOrgMembersEntry(entry: {
   pinnedAgentIds?: string[];
   sendMode?: string;
   onboardingDone?: boolean;
+  creditCap?: number | null;
+  creditEnabled?: boolean;
 }): Promise<void> {
   initServices();
   const now = new Date();
@@ -3082,6 +3085,8 @@ export async function insertOrgMembersEntry(entry: {
       pinnedAgentIds: entry.pinnedAgentIds ?? [],
       sendMode: entry.sendMode ?? "enter",
       onboardingDone: entry.onboardingDone ?? false,
+      creditCap: entry.creditCap ?? null,
+      creditEnabled: entry.creditEnabled ?? true,
       createdAt: now,
       updatedAt: now,
     })
@@ -3101,6 +3106,10 @@ export async function insertOrgMembersEntry(entry: {
         ...(entry.sendMode !== undefined && { sendMode: entry.sendMode }),
         ...(entry.onboardingDone !== undefined && {
           onboardingDone: entry.onboardingDone,
+        }),
+        ...(entry.creditCap !== undefined && { creditCap: entry.creditCap }),
+        ...(entry.creditEnabled !== undefined && {
+          creditEnabled: entry.creditEnabled,
         }),
         updatedAt: now,
       },
@@ -3223,9 +3232,9 @@ export async function findTestRunnerJobEntry(runId: string) {
  */
 export async function disableAllSchedules(): Promise<void> {
   await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set({ enabled: false })
-    .where(eq(agentSchedules.enabled, true));
+    .where(eq(zeroAgentSchedules.enabled, true));
 }
 
 /**
@@ -3593,6 +3602,7 @@ export async function insertTestCreditUsage(
     resultUuid?: string;
     status?: string;
     creditsCharged?: number;
+    processedAt?: Date | null;
   },
 ): Promise<string> {
   initServices();
@@ -3626,6 +3636,14 @@ export async function insertTestCreditUsage(
     })
     .returning();
 
+  // Auto-set processedAt for processed records if not explicitly provided
+  const processedAt =
+    options.processedAt !== undefined
+      ? options.processedAt
+      : options.status === "processed"
+        ? new Date()
+        : null;
+
   const [record] = await globalThis.services.db
     .insert(creditUsage)
     .values({
@@ -3643,6 +3661,7 @@ export async function insertTestCreditUsage(
       costUsd: options.costUsd ?? null,
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
+      processedAt,
     })
     .returning();
 
@@ -4279,4 +4298,171 @@ export async function insertTestOrgSentinelVariable(params: {
     userId: ORG_SENTINEL_USER_ID,
     orgId: params.orgId,
   });
+}
+
+/**
+ * Count rows in a table where user_id matches.
+ * Mirror of countOrgRows for user-scoped deletion verification.
+ */
+export async function countUserRows(
+  tableName:
+    | "agent_runs"
+    | "agent_run_queue"
+    | "agent_composes"
+    | "storages"
+    | "secrets"
+    | "model_providers"
+    | "connectors"
+    | "variables"
+    | "usage_daily"
+    | "export_jobs"
+    | "zero_agent_schedules"
+    | "cli_tokens"
+    | "compose_jobs"
+    | "connector_sessions"
+    | "device_codes"
+    | "org_members_cache"
+    | "org_members_metadata"
+    | "user_cache"
+    | "users",
+  userId: string,
+): Promise<number> {
+  const columnName = tableName === "users" ? "id" : "user_id";
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE ${sql.identifier(columnName)} = ${userId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Count rows in slack_org_connections where vm0_user_id matches.
+ */
+export async function countSlackConnectionRows(
+  vm0UserId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM slack_org_connections WHERE vm0_user_id = ${vm0UserId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Count rows in github_user_links where vm0_user_id matches.
+ */
+export async function countGithubUserLinkRows(
+  vm0UserId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM github_user_links WHERE vm0_user_id = ${vm0UserId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Count rows in telegram_user_links where vm0_user_id matches.
+ */
+export async function countTelegramUserLinkRows(
+  vm0UserId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM telegram_user_links WHERE vm0_user_id = ${vm0UserId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Insert a test compose job directly in the database.
+ */
+export async function insertTestComposeJob(params: {
+  userId: string;
+  status?: string;
+  githubUrl?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(composeJobs)
+    .values({
+      userId: params.userId,
+      status: params.status ?? "completed",
+      githubUrl: params.githubUrl ?? "https://github.com/test/repo",
+    })
+    .returning({ id: composeJobs.id });
+  return row!;
+}
+
+/**
+ * Insert a test GitHub installation for a compose.
+ */
+export async function insertTestGithubInstallation(params: {
+  composeId: string;
+  installationId?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(githubInstallations)
+    .values({
+      defaultComposeId: params.composeId,
+      installationId: params.installationId ?? `gh-inst-${Date.now()}`,
+    })
+    .returning({ id: githubInstallations.id });
+  return row!;
+}
+
+/**
+ * Insert a test GitHub user link.
+ */
+export async function insertTestGithubUserLink(params: {
+  installationId: string;
+  githubUserId: string;
+  vm0UserId: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(githubUserLinks)
+    .values({
+      installationId: params.installationId,
+      githubUserId: params.githubUserId,
+      vm0UserId: params.vm0UserId,
+    })
+    .returning({ id: githubUserLinks.id });
+  return row!;
+}
+
+/**
+ * Insert a test Telegram installation for a compose.
+ */
+export async function insertTestTelegramInstallation(params: {
+  composeId: string;
+  adminUserId: string;
+  botUsername?: string;
+}): Promise<{ id: string }> {
+  const botId = `tg-bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const [row] = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      defaultComposeId: params.composeId,
+      telegramBotId: botId,
+      encryptedBotToken: `encrypted-test-token-${botId}`,
+      webhookSecret: `webhook-secret-${botId}`,
+      botUsername: params.botUsername ?? `test_bot_${Date.now()}`,
+      adminUserId: params.adminUserId,
+    })
+    .returning({ id: telegramInstallations.id });
+  return row!;
+}
+
+/**
+ * Insert a test Telegram user link.
+ */
+export async function insertTestTelegramUserLink(params: {
+  installationId: string;
+  telegramUserId: string;
+  vm0UserId: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(telegramUserLinks)
+    .values({
+      installationId: params.installationId,
+      telegramUserId: params.telegramUserId,
+      vm0UserId: params.vm0UserId,
+    })
+    .returning({ id: telegramUserLinks.id });
+  return row!;
 }

@@ -36,6 +36,7 @@ describe("schedule page", () => {
               intervalSeconds: null,
               timezone: "UTC",
               prompt: "Daily standup summary",
+              description: null,
               enabled: true,
               notifyEmail: false,
               notifySlack: false,

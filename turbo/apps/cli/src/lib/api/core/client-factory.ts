@@ -19,7 +19,7 @@ export class ApiRequestError extends Error {
 /**
  * Get authentication headers for API requests
  */
-export async function getHeaders(): Promise<Record<string, string>> {
+async function getHeaders(): Promise<Record<string, string>> {
   const token = await getActiveToken();
   if (!token) {
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);

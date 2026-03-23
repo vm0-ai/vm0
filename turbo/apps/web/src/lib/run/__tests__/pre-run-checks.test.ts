@@ -119,7 +119,7 @@ describe("pre-run checks", () => {
     });
 
     it("should identify InsufficientCreditsError as API error", () => {
-      const error = insufficientCredits(0);
+      const error = insufficientCredits();
       expect(isApiError(error)).toBe(true);
       expect(error.statusCode).toBe(402);
       expect(error.code).toBe("INSUFFICIENT_CREDITS");

@@ -5,8 +5,15 @@
  * API format: resources → methods → {path, httpMethod, scopes}.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
+import {
+  escapeString,
+  fetchSpec,
+  logStats,
+  renderPermissions,
+  sortRules,
+  writeOutput,
+} from "./codegen";
+import type { PermissionGroup } from "./codegen";
 
 // Short scope names: strip the common prefix for readable permission names.
 const SCOPE_PREFIX = "https://www.googleapis.com/auth/";
@@ -68,34 +75,6 @@ function extractMethods(
 }
 
 // ── Grouping ─────────────────────────────────────────────────────────────
-
-interface PermissionGroup {
-  name: string;
-  description: string;
-  rules: string[];
-}
-
-const METHOD_ORDER: Record<string, number> = {
-  GET: 0,
-  HEAD: 1,
-  POST: 2,
-  PUT: 3,
-  PATCH: 4,
-  DELETE: 5,
-};
-
-function ruleKey(rule: string): [string, number] {
-  const [method, rulePath] = rule.split(" ", 2) as [string, string];
-  return [rulePath, METHOD_ORDER[method] ?? 9];
-}
-
-function sortRules(rules: string[]): string[] {
-  return [...rules].sort((a, b) => {
-    const [pathA, orderA] = ruleKey(a);
-    const [pathB, orderB] = ruleKey(b);
-    return pathA < pathB ? -1 : pathA > pathB ? 1 : orderA - orderB;
-  });
-}
 
 function buildGroups(
   discovery: DiscoveryDocument,
@@ -173,10 +152,6 @@ function buildGroups(
 
 // ── TypeScript generation ────────────────────────────────────────────────
 
-function escapeString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function generateTypeScript(
   permissions: PermissionGroup[],
   config: GoogleFirewallConfig,
@@ -212,28 +187,7 @@ function generateTypeScript(
     "      permissions: [",
   ];
 
-  // Catch-all: allows all endpoints
-  lines.push("        {");
-  lines.push('          name: "unrestricted",');
-  lines.push('          description: "Allow all endpoints",');
-  lines.push("          rules: [");
-  lines.push('            "ANY /{path*}",');
-  lines.push("          ],");
-  lines.push("        },");
-
-  for (const perm of permissions) {
-    lines.push("        {");
-    lines.push(`          name: "${escapeString(perm.name)}",`);
-    if (perm.description) {
-      lines.push(`          description: "${escapeString(perm.description)}",`);
-    }
-    lines.push("          rules: [");
-    for (const rule of perm.rules) {
-      lines.push(`            "${escapeString(rule)}",`);
-    }
-    lines.push("          ],");
-    lines.push("        },");
-  }
+  lines.push(...renderPermissions(permissions));
 
   lines.push("      ],");
   lines.push("    },");
@@ -269,13 +223,10 @@ async function generateGoogleFirewall(
   const allPermissions: PermissionGroup[] = [];
 
   for (const discoveryUrl of config.discoveryUrls) {
-    console.error(`Downloading ${config.serviceName} discovery document…`);
-    const res = await fetch(discoveryUrl);
-    if (!res.ok) {
-      throw new Error(
-        `Failed to fetch discovery doc: ${res.status} ${res.statusText}`,
-      );
-    }
+    const res = await fetchSpec(
+      discoveryUrl,
+      `${config.serviceName} discovery document`,
+    );
     const discovery = (await res.json()) as DiscoveryDocument;
     console.error(`  API version: ${discovery.version ?? "unknown"}`);
 
@@ -302,24 +253,8 @@ async function generateGoogleFirewall(
 
   const ts = generateTypeScript(allPermissions, config);
 
-  const totalRules = allPermissions.reduce((sum, p) => sum + p.rules.length, 0);
-  console.error(
-    `  ${allPermissions.length} permission groups, ${totalRules} rules`,
-  );
-
-  const outPath = path.resolve(
-    import.meta.dirname,
-    `../../core/src/firewalls/${config.serviceName}.generated.ts`,
-  );
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, ts);
-  console.error(`  Written to ${outPath}`);
-
-  const stat = fs.statSync(outPath);
-  if (stat.size === 0) {
-    throw new Error("Generated file is empty");
-  }
-  console.error(`  Validated (${(stat.size / 1024).toFixed(1)} KB)`);
+  logStats(allPermissions);
+  writeOutput(config.serviceName, ts, import.meta.dirname);
 }
 
 // ── Service configs ──────────────────────────────────────────────────────

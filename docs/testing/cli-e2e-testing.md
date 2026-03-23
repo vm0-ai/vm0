@@ -94,7 +94,7 @@ Each test case has a timeout: **30s for serial**, **60s for parallel/runner test
 ```
 e2e/tests/
 ├── 01-serial/              # Tests that MUST run serially (scope setup)
-└── 03-experimental-runner/ # All parallel tests (runs on runner)
+└── 03-runner/ # All parallel tests (runs on runner)
 ```
 
 ### When to Create Separate Files

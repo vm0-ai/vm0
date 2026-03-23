@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.28.3](https://github.com/vm0-ai/vm0/compare/docs-v2.28.2...docs-v2.28.3) (2026-03-23)
+
+
+### Refactoring
+
+* remove unused vm0 setup-claude command ([#6083](https://github.com/vm0-ai/vm0/issues/6083)) ([5f499a2](https://github.com/vm0-ai/vm0/commit/5f499a2f50f7d9c4c2c83c8e1e4e71a2c880d295))
+* remove unused vm0 usage CLI command ([#6084](https://github.com/vm0-ai/vm0/issues/6084)) ([5b95e85](https://github.com/vm0-ai/vm0/commit/5b95e85d7e16e0faf1cde04b02931ebb1d41c626))
+
 ## [2.28.2](https://github.com/vm0-ai/vm0/compare/docs-v2.28.1...docs-v2.28.2) (2026-03-22)
 
 

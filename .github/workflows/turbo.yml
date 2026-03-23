@@ -520,7 +520,7 @@ jobs:
 
   # Deploy web application with database
   deploy-web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
     concurrency:
       group: deploy-web-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -1315,7 +1315,7 @@ jobs:
 
           # Compute weight per file: count @test declarations
           declare -A WEIGHTS
-          for f in e2e/tests/03-experimental-runner/*.bats; do
+          for f in e2e/tests/03-runner/*.bats; do
             count=$(grep -cE '^@test\b' "$f" || true)
             WEIGHTS[$f]=$(( count > 0 ? count : 1 ))
           done
