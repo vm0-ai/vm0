@@ -112,6 +112,30 @@ function calculateNextRun(
 }
 
 /**
+ * Resolve the agent compose associated with a zero agent ID.
+ * Uses a single JOIN query instead of two sequential lookups.
+ */
+export async function resolveComposeByZeroAgentId(
+  zeroAgentId: string,
+): Promise<typeof agentComposes.$inferSelect | null> {
+  const [result] = await globalThis.services.db
+    .select({
+      compose: agentComposes,
+    })
+    .from(zeroAgents)
+    .innerJoin(
+      agentComposes,
+      and(
+        eq(agentComposes.orgId, zeroAgents.orgId),
+        eq(agentComposes.name, zeroAgents.name),
+      ),
+    )
+    .where(eq(zeroAgents.id, zeroAgentId))
+    .limit(1);
+  return result?.compose ?? null;
+}
+
+/**
  * Convert schedule row to API response format
  */
 function toResponse(
@@ -840,35 +864,11 @@ async function executeSchedule(
 ): Promise<void> {
   log.debug(`Executing schedule ${schedule.name} (${schedule.id})`);
 
-  // Resolve compose via zero agent's (orgId, name)
-  const [agent] = await globalThis.services.db
-    .select()
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, schedule.zeroAgentId))
-    .limit(1);
-
-  if (!agent) {
-    log.error(`Agent for schedule ${schedule.name} not found`);
-    await globalThis.services.db
-      .update(zeroAgentSchedules)
-      .set({ enabled: false })
-      .where(eq(zeroAgentSchedules.id, schedule.id));
-    return;
-  }
-
-  const [compose] = await globalThis.services.db
-    .select()
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, agent.orgId),
-        eq(agentComposes.name, agent.name),
-      ),
-    )
-    .limit(1);
+  // Resolve compose via zero agent (single JOIN query)
+  const compose = await resolveComposeByZeroAgentId(schedule.zeroAgentId);
 
   if (!compose) {
-    log.error(`Compose for schedule ${schedule.name} not found`);
+    log.error(`Agent or compose for schedule ${schedule.name} not found`);
     await globalThis.services.db
       .update(zeroAgentSchedules)
       .set({ enabled: false })

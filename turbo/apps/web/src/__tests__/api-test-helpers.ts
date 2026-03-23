@@ -306,6 +306,18 @@ export async function findTestCliToken(token: string) {
 }
 
 /**
+ * Get the test auth context (userId + orgId) from the mock Clerk setup.
+ */
+async function getTestAuthContext(): Promise<{
+  userId: string;
+  orgId: string;
+}> {
+  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
+  if (!userId) throw new Error("Mock Clerk userId is null");
+  return { userId, orgId: `org_mock_${userId}` };
+}
+
+/**
  * Create a test org by inserting into org_cache.
  *
  * Pre-populates org_cache so getOrgData() works without Clerk API calls.
@@ -319,8 +331,7 @@ export async function createTestOrg(
   initServices();
 
   // Use the mock Clerk orgId pattern from clerk-mock.ts
-  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
-  const orgId = `org_mock_${userId}`;
+  const { orgId } = await getTestAuthContext();
 
   // Pre-populate org_cache so getOrgData() works without Clerk API calls
   await globalThis.services.db
@@ -969,18 +980,6 @@ async function resolveZeroAgentIdFromCompose(
   if (!agent) throw new Error(`Zero agent not found for compose ${composeId}`);
 
   return agent.id;
-}
-
-/**
- * Get the test auth context (userId + orgId) from the mock Clerk setup.
- */
-async function getTestAuthContext(): Promise<{
-  userId: string;
-  orgId: string;
-}> {
-  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
-  if (!userId) throw new Error("Mock Clerk userId is null");
-  return { userId, orgId: `org_mock_${userId}` };
 }
 
 /**
