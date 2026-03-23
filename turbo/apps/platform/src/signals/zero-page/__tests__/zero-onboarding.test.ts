@@ -5,13 +5,9 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
-  saveZeroModelProvider$,
   setZeroAgentName$,
-  setZeroProviderType$,
   setZeroStep$,
-  toggleZeroSkill$,
-  zeroCanSave$,
-  zeroFormValues$,
+  toggleZeroConnector$,
   zeroOnboardingStep$,
   zeroOnboardingError$,
   zeroSaving$,
@@ -36,6 +32,12 @@ describe("completeZeroOnboarding$", () => {
     let capturedInstructions: InstructionsPayload | null = null;
 
     server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
       http.post("*/api/zero/agents", async ({ request }) => {
         capturedPayload = (await request.json()) as CreateAgentPayload;
         return HttpResponse.json({
@@ -88,6 +90,12 @@ describe("completeZeroOnboarding$", () => {
     let capturedPayload: CreateAgentPayload | null = null;
 
     server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
       http.post("*/api/zero/agents", async ({ request }) => {
         capturedPayload = (await request.json()) as CreateAgentPayload;
         return HttpResponse.json({
@@ -117,8 +125,8 @@ describe("completeZeroOnboarding$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     // Select a connector skill and a duplicate seed skill
-    context.store.set(toggleZeroSkill$, "slack");
-    context.store.set(toggleZeroSkill$, "vm0"); // duplicate of seed skill
+    context.store.set(toggleZeroConnector$, "slack");
+    context.store.set(toggleZeroConnector$, "vm0"); // duplicate of seed skill
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
@@ -131,6 +139,12 @@ describe("completeZeroOnboarding$", () => {
     let defaultAgentBody: Record<string, unknown> | null = null;
 
     server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
@@ -166,8 +180,14 @@ describe("completeZeroOnboarding$", () => {
     });
   });
 
-  it("should set step to done and saving to false after completion", async () => {
+  it("should reset saving to false after completion (step remains unchanged)", async () => {
     server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
@@ -197,12 +217,18 @@ describe("completeZeroOnboarding$", () => {
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    expect(context.store.get(zeroOnboardingStep$)).toBe("done");
+    // Step no longer auto-set to "done"; callers use dismissZeroOnboarding$
     expect(context.store.get(zeroSaving$)).toBeFalsy();
   });
 
   it("should set error state and reset saving on build failure", async () => {
     server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json(
           { error: { message: "Build failed: sandbox error" } },
@@ -229,6 +255,12 @@ describe("completeZeroOnboarding$", () => {
   it("should clear error state on successful retry", async () => {
     // First call: fail
     server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json(
           { error: { message: "Build failed" } },
@@ -245,6 +277,12 @@ describe("completeZeroOnboarding$", () => {
 
     // Second call: succeed
     server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
@@ -273,76 +311,58 @@ describe("completeZeroOnboarding$", () => {
     await context.store.set(completeZeroOnboarding$, context.signal);
 
     expect(context.store.get(zeroOnboardingError$)).toBeNull();
-    expect(context.store.get(zeroOnboardingStep$)).toBe("done");
+    // Step is no longer auto-set to "done" by completeZeroOnboarding$;
+    // callers use dismissZeroOnboarding$ to dismiss the dialog.
+    expect(context.store.get(zeroOnboardingStep$)).toBe("4");
   });
 });
 
-describe("zero-onboarding vm0 no-secret provider", () => {
-  it("should allow saving without a secret for vm0 provider", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    // Switch to vm0 provider type
-    context.store.set(setZeroProviderType$, "vm0");
-
-    // zeroCanSave$ should return true without entering any secret
-    const canSave = context.store.get(zeroCanSave$);
-    expect(canSave).toBeTruthy();
-  });
-
-  it("should initialize useDefaultModel to false when provider has a default model", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    // Switch to vm0 provider — vm0 has a default model (claude-sonnet-4.6)
-    context.store.set(setZeroProviderType$, "vm0");
-
-    const formValues = context.store.get(zeroFormValues$);
-    expect(formValues.useDefaultModel).toBeFalsy();
-    expect(formValues.selectedModel).toBe("claude-sonnet-4.6");
-  });
-
-  it("should not include secret in request when saving vm0 provider", async () => {
-    let capturedBody: Record<string, unknown> | null = null;
+describe("completeZeroOnboarding$ auto-init model provider", () => {
+  it("should auto-create vm0 model provider with claude-sonnet-4.6 before creating agent", async () => {
+    let capturedProviderBody: Record<string, unknown> | null = null;
 
     server.use(
       http.post("*/api/zero/model-providers", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
+        capturedProviderBody = (await request.json()) as Record<
+          string,
+          unknown
+        >;
         return HttpResponse.json(
-          {
-            provider: {
-              id: "test-id",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: (capturedBody.selectedModel as string) ?? null,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
-            created: true,
-          },
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
           { status: 201 },
         );
+      }),
+      http.post("*/api/zero/agents", () => {
+        return HttpResponse.json({
+          name: "test-agent-uuid",
+          agentComposeId: "new-compose-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          connectors: [],
+        });
+      }),
+      http.put("*/api/zero/agents/test-agent-uuid/instructions", () => {
+        return HttpResponse.json({
+          name: "test-agent-uuid",
+          agentComposeId: "new-compose-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          connectors: [],
+        });
+      }),
+      http.put("*/api/zero/default-agent", () => {
+        return HttpResponse.json({ ok: true });
       }),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    // Switch to vm0 provider type
-    context.store.set(setZeroProviderType$, "vm0");
+    await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // Save the model provider
-    await context.store.set(saveZeroModelProvider$, context.signal);
-
-    // Should have sent the request
-    expect(capturedBody).not.toBeNull();
-    expect(capturedBody!.type).toBe("vm0");
-
-    // Should NOT include a secret field
-    expect(capturedBody).not.toHaveProperty("secret");
-
-    // Should include the pre-selected model
-    expect(capturedBody!.selectedModel).toBe("claude-sonnet-4.6");
+    expect(capturedProviderBody).not.toBeNull();
+    expect(capturedProviderBody!.type).toBe("vm0");
+    expect(capturedProviderBody!.selectedModel).toBe("claude-sonnet-4.6");
   });
 });

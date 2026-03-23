@@ -9,7 +9,7 @@ import {
   getFromDomain,
   type HandlerResult,
 } from "./shared";
-import { startRun } from "../../run";
+import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
@@ -178,7 +178,7 @@ export async function handleInboundEmailReply(
   // 11. Inject integration context and create run
   // startRun resolves compose version + org internally
   const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${replyContent}`;
-  const result = await startRun({
+  const result = await createZeroRun({
     userId: session.userId,
     prompt: fullPrompt,
     composeId: session.composeId,

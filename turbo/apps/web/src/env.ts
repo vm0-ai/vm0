@@ -113,6 +113,8 @@ function initEnv() {
       STRIPE_SECRET_KEY: z.string().min(1).optional(),
       STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
       ZERO_PRO_PLAN_PRICE_ID: z.string().min(1).optional(),
+      // Clerk Webhooks
+      CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1).optional(),
       ZERO_MAX_PLAN_PRICE_ID: z.string().min(1).optional(),
       // Stripe OAuth (for connector)
       STRIPE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -205,6 +207,8 @@ function initEnv() {
       NEXT_PUBLIC_STRAPI_URL: z.url().optional(),
       // App UI URL (for settings page links, Navbar, LandingPage)
       NEXT_PUBLIC_APP_URL: z.url(),
+      // Analytics (Plausible)
+      NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: z.url().optional(),
     },
     runtimeEnv: {
       DATABASE_URL: process.env.DATABASE_URL,
@@ -282,6 +286,7 @@ function initEnv() {
       STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
       ZERO_PRO_PLAN_PRICE_ID: process.env.ZERO_PRO_PLAN_PRICE_ID,
       ZERO_MAX_PLAN_PRICE_ID: process.env.ZERO_MAX_PLAN_PRICE_ID,
+      CLERK_WEBHOOK_SIGNING_SECRET: process.env.CLERK_WEBHOOK_SIGNING_SECRET,
       STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
       STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
       GARMIN_CONNECT_OAUTH_CLIENT_ID:
@@ -346,6 +351,8 @@ function initEnv() {
       NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
       NEXT_PUBLIC_DATA_SOURCE: process.env.NEXT_PUBLIC_DATA_SOURCE,
       NEXT_PUBLIC_STRAPI_URL: process.env.NEXT_PUBLIC_STRAPI_URL,
+      NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL:
+        process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL,
     },
     emptyStringAsUndefined: true,
   });

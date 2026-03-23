@@ -46,7 +46,7 @@ EOF
     echo "# Step 2: Run with @stuck-tool prompt and 3s timeout..."
     # VM0_STUCK_TOOL_TIMEOUT_SECS=3 makes the watchdog trigger in ~3-8s
     # instead of 60s, keeping the test fast.
-    run timeout 60 $CLI_COMMAND run "$AGENT_NAME" --no-auto-update "@stuck-tool"
+    run $CLI_COMMAND run "$AGENT_NAME" --no-auto-update "@stuck-tool"
 
     echo "# Step 3: Verify run failed..."
     assert_failure

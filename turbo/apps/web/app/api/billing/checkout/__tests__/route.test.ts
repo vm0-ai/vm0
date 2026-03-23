@@ -36,7 +36,7 @@ vi.mock("stripe", () => ({
 import { POST } from "../route";
 
 const TEST_PRICE_PRO = "price_test_pro";
-const TEST_PRICE_MAX = "price_test_max";
+const TEST_PRICE_TEAM = "price_test_team";
 
 const context = testContext();
 
@@ -47,7 +47,7 @@ describe("POST /api/billing/checkout", () => {
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
-    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_MAX);
+    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_TEAM);
     reloadEnv();
 
     stripeMocks.checkoutSessionsCreate.mockReset();

@@ -64,6 +64,18 @@ export default [
     },
     rules: {
       "web/no-request-json-as": "error",
+      "web/no-self-api-call": "error",
+    },
+  },
+  {
+    // Legacy zero API routes that still use infra-client for HTTP round-trips.
+    // These should be refactored to call underlying logic directly.
+    files: ["app/api/zero/**/route.ts"],
+    plugins: {
+      web: webPlugin,
+    },
+    rules: {
+      "web/no-self-api-call": "off",
     },
   },
   {
@@ -77,6 +89,12 @@ export default [
     },
   },
   {
-    ignores: ["custom-eslint/**"],
+    ignores: [
+      "custom-eslint/**",
+      "scripts/migrations/001-backfill-clerk-orgs/**",
+      "scripts/migrations/002-backfill-clerk-metadata/**",
+      "scripts/migrations/003-sync-clerk-slugs/**",
+      "scripts/migrations/004-backfill-default-agent/**",
+    ],
   },
 ];

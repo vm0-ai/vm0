@@ -161,6 +161,7 @@ export async function getChatThreadMessages(
     content: string;
     runId?: string;
     error?: string;
+    summaries?: string[];
     createdAt: string;
   }>;
   latestSessionId: string | null;
@@ -201,6 +202,7 @@ export async function getChatThreadMessages(
     role: "user" | "assistant";
     content: string;
     runId?: string;
+    summaries?: string[];
     createdAt: string;
   };
   let messages: StoredMessage[] = [];

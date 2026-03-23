@@ -3,15 +3,20 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { orgCache } from "../../db/schema/org-cache";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { logger } from "../logger";
+import { getStripe } from "../stripe";
 
 const log = logger("service:org-cache");
 
 /** Cache TTL aligned with Clerk JWT TTL */
 const CACHE_TTL_MS = 60_000; // 1 minute
 
+/** Billing period cache TTL — period changes monthly, no need for frequent refresh */
+const BILLING_CACHE_TTL_MS = 300_000; // 5 minutes
+
 interface OrgData {
   orgId: string;
   slug: string;
+  name: string;
   tier: string;
 }
 
@@ -80,7 +85,7 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
     // Cache hit — no Clerk metadata available for tier fallback
     const tier = await readTier(orgId);
-    return { orgId, slug: cached.slug, tier };
+    return { orgId, slug: cached.slug, name: cached.name, tier };
   }
 
   // Cache miss — fetch from Clerk (source of truth for slug)
@@ -93,6 +98,7 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
     throw new Error(`Clerk organization ${orgId} has no slug — cannot cache`);
   }
   const slug = clerkOrg.slug;
+  const name = clerkOrg.name;
 
   // Read tier with Clerk metadata fallback (lazy migration)
   const tier = await readTier(
@@ -104,15 +110,15 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId, slug, cachedAt: now })
+    .values({ orgId, slug, name, cachedAt: now })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, cachedAt: now },
+      set: { slug, name, cachedAt: now },
     });
 
   log.debug("org cache refreshed", { orgId, slug, tier });
 
-  return { orgId, slug, tier };
+  return { orgId, slug, name, tier };
 }
 
 /**
@@ -146,7 +152,7 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
     // Cache hit — no Clerk metadata available for tier fallback
     const tier = await readTier(cached.orgId);
-    return { orgId: cached.orgId, slug: cached.slug, tier };
+    return { orgId: cached.orgId, slug: cached.slug, name: cached.name, tier };
   }
 
   // Fetch from Clerk by slug
@@ -173,10 +179,15 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId: clerkOrg.id, slug: clerkOrg.slug, cachedAt: now })
+    .values({
+      orgId: clerkOrg.id,
+      slug: clerkOrg.slug,
+      name: clerkOrg.name,
+      cachedAt: now,
+    })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug: clerkOrg.slug, cachedAt: now },
+      set: { slug: clerkOrg.slug, name: clerkOrg.name, cachedAt: now },
     });
 
   log.debug("org cache refreshed (by slug)", {
@@ -185,5 +196,106 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
     tier,
   });
 
-  return { orgId: clerkOrg.id, slug: clerkOrg.slug, tier };
+  return { orgId: clerkOrg.id, slug: clerkOrg.slug, name: clerkOrg.name, tier };
+}
+
+/**
+ * Get the current billing period for an org, using org_cache as a read-through
+ * cache with independent 5-min TTL.
+ *
+ * Returns `{ start, end }` for paying orgs, or `null` for free tier (no billing period).
+ * Free-tier null results are cached to avoid repeated DB/Stripe lookups.
+ */
+export async function getOrgBillingPeriod(
+  orgId: string,
+): Promise<{ start: Date; end: Date } | null> {
+  const db = globalThis.services.db;
+
+  // 1. Check cache
+  const [cached] = await db
+    .select({
+      currentPeriodStart: orgCache.currentPeriodStart,
+      currentPeriodEnd: orgCache.currentPeriodEnd,
+      billingCachedAt: orgCache.billingCachedAt,
+    })
+    .from(orgCache)
+    .where(eq(orgCache.orgId, orgId))
+    .limit(1);
+
+  if (
+    cached?.billingCachedAt &&
+    Date.now() - cached.billingCachedAt.getTime() < BILLING_CACHE_TTL_MS
+  ) {
+    // Cache hit — return cached values or null (negative cache for free tier)
+    if (cached.currentPeriodEnd && cached.currentPeriodStart) {
+      return { start: cached.currentPeriodStart, end: cached.currentPeriodEnd };
+    }
+    return null;
+  }
+
+  // 2. Cache miss/stale — read from org_metadata
+  const [orgRow] = await db
+    .select({
+      currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  let periodEnd = orgRow?.currentPeriodEnd ?? null;
+
+  if (!periodEnd && orgRow?.stripeSubscriptionId) {
+    // Has subscription but no period cached in metadata — fetch from Stripe.
+    // In Stripe v2025 API, current_period_end was removed from Subscription.
+    // Use the latest_invoice.period_end instead.
+    const stripe = getStripe();
+    const subscription = await stripe.subscriptions.retrieve(
+      orgRow.stripeSubscriptionId,
+    );
+    if (subscription.latest_invoice) {
+      const invoiceId =
+        typeof subscription.latest_invoice === "string"
+          ? subscription.latest_invoice
+          : subscription.latest_invoice.id;
+      const latestInvoice = await stripe.invoices.retrieve(invoiceId);
+      periodEnd = new Date(latestInvoice.period_end * 1000);
+
+      // Update org_metadata so future lookups skip Stripe
+      await db
+        .update(orgMetadata)
+        .set({ currentPeriodEnd: periodEnd, updatedAt: new Date() })
+        .where(eq(orgMetadata.orgId, orgId));
+    }
+  }
+
+  const now = new Date();
+
+  if (periodEnd) {
+    // Compute start = end - 1 month
+    const periodStart = new Date(periodEnd);
+    periodStart.setMonth(periodStart.getMonth() - 1);
+
+    // Cache the result
+    await db
+      .update(orgCache)
+      .set({
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        billingCachedAt: now,
+      })
+      .where(eq(orgCache.orgId, orgId));
+
+    log.debug("billing period cached", { orgId, periodStart, periodEnd });
+    return { start: periodStart, end: periodEnd };
+  }
+
+  // Free tier — cache negative result
+  await db
+    .update(orgCache)
+    .set({ billingCachedAt: now })
+    .where(eq(orgCache.orgId, orgId));
+
+  log.debug("billing period cached (free tier)", { orgId });
+  return null;
 }

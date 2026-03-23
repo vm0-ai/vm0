@@ -51,7 +51,7 @@ const log = logger("run:build-context");
  * Model provider environment variables that indicate explicit configuration.
  * Includes both model-provider supported vars and alternative auth methods.
  */
-const MODEL_PROVIDER_ENV_VARS = [
+export const MODEL_PROVIDER_ENV_VARS = [
   // Model-provider supported
   "CLAUDE_CODE_OAUTH_TOKEN",
   "ANTHROPIC_API_KEY",

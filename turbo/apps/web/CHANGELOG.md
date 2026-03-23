@@ -1,5 +1,68 @@
 # Changelog
 
+## [12.142.0](https://github.com/vm0-ai/vm0/compare/web-v12.141.1...web-v12.142.0) (2026-03-23)
+
+
+### Features
+
+* add clerk webhook endpoint with svix verification ([#5983](https://github.com/vm0-ai/vm0/issues/5983)) ([c2467d0](https://github.com/vm0-ai/vm0/commit/c2467d02132ae38e192bc9cc2f13031f6241b39b)), closes [#5977](https://github.com/vm0-ai/vm0/issues/5977)
+* add no-self-api-call eslint rule ([#6001](https://github.com/vm0-ai/vm0/issues/6001)) ([0d2b26f](https://github.com/vm0-ai/vm0/commit/0d2b26f0df6bf2661561a34539f9ae32e897e449))
+* add org external service cleanup function ([#5987](https://github.com/vm0-ai/vm0/issues/5987)) ([5acfc43](https://github.com/vm0-ai/vm0/commit/5acfc430c834f7488e7844a1edf19eef1864aca5))
+* add org s3 data cleanup service for org deletion ([#5984](https://github.com/vm0-ai/vm0/issues/5984)) ([1981651](https://github.com/vm0-ai/vm0/commit/1981651631fcc2e9fbbd772fec01818d9fd50b55)), closes [#5979](https://github.com/vm0-ai/vm0/issues/5979)
+* **platform:** add org management dialog with billing, members, and invoices tabs ([#5605](https://github.com/vm0-ai/vm0/issues/5605)) ([a7b3e28](https://github.com/vm0-ai/vm0/commit/a7b3e28c9bd1dbc61d79ee0d8d1155faea14915c))
+
+
+### Bug Fixes
+
+* return chat message summaries on page refresh ([#6003](https://github.com/vm0-ai/vm0/issues/6003)) ([51aa74f](https://github.com/vm0-ai/vm0/commit/51aa74f9e4b6d0ac7bf44b8776064b78a22ce49b))
+
+
+### Refactoring
+
+* add zero model-providers update-model endpoint and cleanup orphans ([#5759](https://github.com/vm0-ai/vm0/issues/5759)) ([298a384](https://github.com/vm0-ai/vm0/commit/298a384ad2c95de4af1a685875ebf25a552e64b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.92.0
+
+## [12.141.1](https://github.com/vm0-ai/vm0/compare/web-v12.141.0...web-v12.141.1) (2026-03-22)
+
+
+### Refactoring
+
+* make plausible analytics config environment-driven ([#5985](https://github.com/vm0-ai/vm0/issues/5985)) ([7ec3011](https://github.com/vm0-ai/vm0/commit/7ec3011f04eb0ae66e328012fdd2a28af8ebe01d))
+
+## [12.141.0](https://github.com/vm0-ai/vm0/compare/web-v12.140.1...web-v12.141.0) (2026-03-22)
+
+
+### Features
+
+* add integration-slack:write capability and proxy api endpoint ([#5970](https://github.com/vm0-ai/vm0/issues/5970)) ([afafbfc](https://github.com/vm0-ai/vm0/commit/afafbfc74e3f82ec9c80170869d0594713bf0385))
+* add pre-flight credit check for vm0 model provider runs ([#5917](https://github.com/vm0-ai/vm0/issues/5917)) ([3bc42e8](https://github.com/vm0-ai/vm0/commit/3bc42e8662e8b7f54aab394401444fb7e6d74794))
+* **runner:** add job cancellation via ably real-time notifications ([#5949](https://github.com/vm0-ai/vm0/issues/5949)) ([e157f92](https://github.com/vm0-ai/vm0/commit/e157f925312c50ff8de62e986d7bc7afac0a3d53)), closes [#5762](https://github.com/vm0-ai/vm0/issues/5762)
+* **slack:** add system prompt guidance for Slack messaging API ([#5967](https://github.com/vm0-ai/vm0/issues/5967)) ([2149427](https://github.com/vm0-ai/vm0/commit/2149427761367ad0ea2b520d88def8491b9d97d9)), closes [#5966](https://github.com/vm0-ai/vm0/issues/5966)
+* structured error codes for pre-run checks with client-side guidance ([#5936](https://github.com/vm0-ai/vm0/issues/5936)) ([c6c0dda](https://github.com/vm0-ai/vm0/commit/c6c0ddaebfc7b0b2fc188a537e16d45fa7a65c02))
+
+
+### Bug Fixes
+
+* add missing fields to claim route response ([#5940](https://github.com/vm0-ai/vm0/issues/5940)) ([881e0b9](https://github.com/vm0-ai/vm0/commit/881e0b9f36653f08f2214e661c6404708746ff8e))
+
+
+### Refactoring
+
+* migrate remaining agent api routes to ts-rest contracts ([#5971](https://github.com/vm0-ai/vm0/issues/5971)) ([0dabe60](https://github.com/vm0-ai/vm0/commit/0dabe60a38e3d8bb96326ab701a272a1a3ac2d6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.91.0
+
 ## [12.140.1](https://github.com/vm0-ai/vm0/compare/web-v12.140.0...web-v12.140.1) (2026-03-21)
 
 

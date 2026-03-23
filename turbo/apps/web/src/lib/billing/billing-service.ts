@@ -48,13 +48,13 @@ interface SubscriptionDeletedInput {
 const TIER_MONTHLY_CREDITS: Record<OrgTier, number> = {
   free: 0,
   pro: 20_000,
-  max: 80_000,
+  team: 80_000,
 };
 
 function tierFromPriceId(priceId: string): OrgTier {
   const e = env();
   if (priceId === e.ZERO_PRO_PLAN_PRICE_ID) return "pro";
-  if (priceId === e.ZERO_MAX_PLAN_PRICE_ID) return "max";
+  if (priceId === e.ZERO_MAX_PLAN_PRICE_ID) return "team";
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
 

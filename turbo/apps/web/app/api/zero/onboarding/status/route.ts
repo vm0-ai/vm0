@@ -8,8 +8,6 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isBadRequest, isNotFound } from "../../../../../src/lib/errors";
-import { modelProviders } from "../../../../../src/db/schema/model-provider";
-import { ORG_SENTINEL_USER_ID } from "../../../../../src/lib/org/org-sentinel";
 import {
   agentComposes,
   agentComposeVersions,
@@ -118,7 +116,6 @@ const router = tsr.router(onboardingStatusContract, {
 
     let hasOrg = false;
     let resolvedOrgId: string | null = null;
-    let hasModelProvider = false;
     let defaultAgent: DefaultAgentInfo | null = null;
     let isAdmin = false;
 
@@ -128,20 +125,6 @@ const router = tsr.router(onboardingStatusContract, {
       hasOrg = true;
       resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
-
-      // Check if the org has an org-level model provider configured
-      const [provider] = await globalThis.services.db
-        .select({ id: modelProviders.id })
-        .from(modelProviders)
-        .where(
-          and(
-            eq(modelProviders.orgId, resolvedOrg.orgId),
-            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          ),
-        )
-        .limit(1);
-
-      hasModelProvider = provider !== undefined;
 
       // Read default agent compose ID from org table
       const [orgRow] = await globalThis.services.db
@@ -185,7 +168,6 @@ const router = tsr.router(onboardingStatusContract, {
         needsOnboarding,
         isAdmin,
         hasOrg,
-        hasModelProvider,
         hasDefaultAgent: defaultAgent !== null,
         defaultAgentName: defaultAgent?.name ?? null,
         defaultAgentComposeId: defaultAgent?.composeId ?? null,

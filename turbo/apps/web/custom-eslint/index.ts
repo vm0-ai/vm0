@@ -5,12 +5,14 @@
  * - no-direct-db-in-tests: Don't access database directly in test files
  * - no-relative-vi-mock: Don't use relative paths in vi.mock()
  * - no-duplicate-migration-prefix: Prevent duplicate migration file prefixes
+ * - no-self-api-call: Don't call the same server's API routes via HTTP
  */
 
 import noDirectDbInTests from "./rules/no-direct-db-in-tests.ts";
 import noDuplicateMigrationPrefix from "./rules/no-duplicate-migration-prefix.ts";
 import noRelativeViMock from "./rules/no-relative-vi-mock.ts";
 import noRequestJsonAs from "./rules/no-request-json-as.ts";
+import noSelfApiCall from "./rules/no-self-api-call.ts";
 
 const plugin = {
   meta: {
@@ -22,6 +24,7 @@ const plugin = {
     "no-duplicate-migration-prefix": noDuplicateMigrationPrefix,
     "no-relative-vi-mock": noRelativeViMock,
     "no-request-json-as": noRequestJsonAs,
+    "no-self-api-call": noSelfApiCall,
   },
 };
 

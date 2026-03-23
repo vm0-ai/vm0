@@ -3,16 +3,19 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   CONNECTOR_TYPES,
   hasRequiredScopes,
+  zeroConnectorScopeDiffContract,
   zeroSecretsContract,
   zeroVariablesContract,
   type ConnectorType,
   type ConnectorResponse,
+  type ScopeDiff,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { throwIfAbort } from "../../utils.ts";
+import { detach, Reason, throwIfAbort } from "../../utils.ts";
+import { logger } from "../../log.ts";
 import { delay } from "signal-timers";
 import { localStorageSignals } from "../../external/local-storage.ts";
 
@@ -174,13 +177,47 @@ export const setSelectedConnectorType$ = command(
 // Scope review modal state
 // ---------------------------------------------------------------------------
 
+const L = logger("ScopeReviewModal");
+
 const internalScopeReviewType$ = state<ConnectorType | null>(null);
 export const scopeReviewType$ = computed((get) =>
   get(internalScopeReviewType$),
 );
+
+const internalScopeDiff$ = state<ScopeDiff | null>(null);
+export const scopeDiff$ = computed((get) => get(internalScopeDiff$));
+
+const internalScopeReviewLoading$ = state(false);
+export const scopeReviewLoading$ = computed((get) =>
+  get(internalScopeReviewLoading$),
+);
+
+const loadScopeDiff$ = command(async ({ get, set }, type: ConnectorType) => {
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroConnectorScopeDiffContract);
+  try {
+    const result = await client.getScopeDiff({ params: { type } });
+    if (result.status === 200) {
+      set(internalScopeDiff$, result.body);
+    } else {
+      L.error(`Failed to fetch scope diff: ${result.status}`, result.body);
+    }
+  } catch (error: unknown) {
+    throwIfAbort(error);
+    L.error("Failed to fetch scope diff:", error);
+  } finally {
+    set(internalScopeReviewLoading$, false);
+  }
+});
+
 export const setScopeReviewType$ = command(
   ({ set }, type: ConnectorType | null) => {
     set(internalScopeReviewType$, type);
+    if (type) {
+      set(internalScopeDiff$, null);
+      set(internalScopeReviewLoading$, true);
+      detach(set(loadScopeDiff$, type), Reason.Entrance);
+    }
   },
 );
 

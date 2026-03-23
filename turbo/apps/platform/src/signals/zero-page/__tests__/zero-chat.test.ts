@@ -14,6 +14,7 @@ import {
   zeroSessionListError$,
   zeroSessionError$,
   zeroChatThreadId$,
+  zeroSessionSwitching$,
   setZeroChatInput$,
   clearZeroChatInput$,
   fetchZeroSessionList$,
@@ -22,6 +23,11 @@ import {
   sendZeroChatMessage$,
   sendFromZeroDemo$,
   syncUrlSession$,
+  prepareSessionSwitch$,
+  zeroChatQueuedMessage$,
+  queueZeroChatMessage$,
+  withdrawQueuedMessage$,
+  cancelActiveRun$,
 } from "../zero-chat.ts";
 
 const context = testContext();
@@ -296,6 +302,85 @@ describe("zero-chat signals", () => {
     });
   });
 
+  describe("prepareSessionSwitch$", () => {
+    it("should set sessionSwitching to true so skeleton shows immediately", async () => {
+      await setup();
+
+      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
+
+      context.store.set(prepareSessionSwitch$);
+
+      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
+    });
+
+    it("should clear messages and session error", async () => {
+      useChatThreadHandlers();
+      server.use(
+        http.post("*/api/zero/runs", () => {
+          return HttpResponse.json({ runId: "run-1" });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          return HttpResponse.json({
+            id: "run-1",
+            status: "completed",
+            error: null,
+            prompt: "test",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: "2026-03-10T00:00:02Z",
+          });
+        }),
+        http.get("*/api/zero/runs/:runId", () => {
+          return HttpResponse.json({
+            result: { agentSessionId: "s1" },
+          });
+        }),
+      );
+
+      await setup();
+
+      // Send a message to populate messages
+      await context.store.set(sendZeroChatMessage$, "Hello");
+      await delay(50);
+      expect(context.store.get(zeroChatMessages$).length).toBeGreaterThan(0);
+
+      context.store.set(prepareSessionSwitch$);
+
+      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
+      expect(context.store.get(zeroSessionError$)).toBeNull();
+    });
+
+    it("should be cleared after switchZeroSession$ completes", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "thread-1",
+            agentComposeId: "mock-compose-id",
+            chatMessages: [],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
+
+      await setup();
+
+      context.store.set(prepareSessionSwitch$);
+      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
+
+      await context.store.set(switchZeroSession$, "thread-1");
+      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
+    });
+  });
+
   describe("startNewZeroSession$", () => {
     it("should reset all chat state", async () => {
       await setup();
@@ -418,7 +503,6 @@ describe("zero-chat signals", () => {
       expect(capturedRunBody).toBeTruthy();
       expect(capturedRunBody!.agentComposeId).toBe("mock-compose-id");
       expect(capturedRunBody!.prompt).toBe("What can you do?");
-      expect(capturedRunBody!.memoryName).toBe("memory");
 
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
       expect(context.store.get(zeroChatThreadId$)).toBe("thread-new");
@@ -473,7 +557,7 @@ describe("zero-chat signals", () => {
       const messages = context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
       expect(lastMsg?.error).toBe(
-        "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key",
+        "Provider not compatible: This session was created with a different provider type.",
       );
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
@@ -741,6 +825,366 @@ describe("zero-chat signals", () => {
       // Second sync with same URL should skip
       await context.store.set(syncUrlSession$);
       expect(switchCount).toBe(1);
+    });
+
+    it("should reset sessionSwitching when thread is already loaded", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "already-loaded",
+            title: null,
+            agentComposeId: "mock-compose-id",
+            chatMessages: [
+              {
+                role: "user",
+                content: "Existing",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+            ],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
+
+      await setupPage({
+        context,
+        path: "/chat/already-loaded",
+        withoutRender: true,
+      });
+
+      // First sync loads the thread
+      await context.store.set(syncUrlSession$);
+      expect(context.store.get(zeroChatThreadId$)).toBe("already-loaded");
+
+      // Simulate prepareSessionSwitch$ being called (e.g. by route setup)
+      context.store.set(prepareSessionSwitch$);
+      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
+
+      // Second sync detects thread matches — must reset switching
+      await context.store.set(syncUrlSession$);
+      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
+    });
+  });
+
+  describe("message queueing", () => {
+    it("should queue a message while sending and clear the input", async () => {
+      let pollCount = 0;
+      server.use(
+        http.post("*/api/zero/runs", () => {
+          return HttpResponse.json({ runId: "run-q1" });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          pollCount++;
+          return HttpResponse.json({
+            id: "run-q1",
+            status: "running",
+            error: null,
+            prompt: "first",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: null,
+          });
+        }),
+      );
+      useChatThreadHandlers();
+
+      await setup();
+
+      // Start a send — this puts the system into "sending" state
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "first message")
+        .catch(() => {});
+
+      await delay(50);
+      expect(pollCount).toBeGreaterThan(0);
+      expect(context.store.get(zeroChatSending$)).toBeTruthy();
+
+      // Set some input text then queue it
+      context.store.set(setZeroChatInput$, "follow-up");
+      context.store.set(queueZeroChatMessage$, "follow-up");
+
+      // Queued message should be stored and input cleared
+      expect(context.store.get(zeroChatQueuedMessage$)).toStrictEqual({
+        text: "follow-up",
+        modelProvider: undefined,
+      });
+      expect(context.store.get(zeroChatInput$)).toBe("");
+
+      // Clean up: abort the send
+      context.store.set(startNewZeroSession$);
+      await sendPromise;
+    });
+
+    it("should not queue when agent is idle", async () => {
+      await setup();
+
+      context.store.set(queueZeroChatMessage$, "should not queue");
+
+      expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
+    });
+
+    it("should reject a second queued message", async () => {
+      server.use(
+        http.post("*/api/zero/runs", () => {
+          return HttpResponse.json({ runId: "run-q2" });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          return HttpResponse.json({
+            id: "run-q2",
+            status: "running",
+            error: null,
+            prompt: "first",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: null,
+          });
+        }),
+      );
+      useChatThreadHandlers();
+
+      await setup();
+
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "first")
+        .catch(() => {});
+
+      await delay(50);
+
+      context.store.set(queueZeroChatMessage$, "queued-1");
+      context.store.set(queueZeroChatMessage$, "queued-2");
+
+      // Only the first queued message should be stored
+      expect(context.store.get(zeroChatQueuedMessage$)?.text).toBe("queued-1");
+
+      context.store.set(startNewZeroSession$);
+      await sendPromise;
+    });
+
+    it("should withdraw a queued message back into the input", async () => {
+      server.use(
+        http.post("*/api/zero/runs", () => {
+          return HttpResponse.json({ runId: "run-q3" });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          return HttpResponse.json({
+            id: "run-q3",
+            status: "running",
+            error: null,
+            prompt: "first",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: null,
+          });
+        }),
+      );
+      useChatThreadHandlers();
+
+      await setup();
+
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "first")
+        .catch(() => {});
+
+      await delay(50);
+
+      context.store.set(queueZeroChatMessage$, "edit me");
+      expect(context.store.get(zeroChatQueuedMessage$)).toBeTruthy();
+
+      // Withdraw the queued message
+      context.store.set(withdrawQueuedMessage$);
+
+      expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
+      expect(context.store.get(zeroChatInput$)).toBe("edit me");
+
+      context.store.set(startNewZeroSession$);
+      await sendPromise;
+    });
+
+    it("should auto-send queued message when the run completes", async () => {
+      let runCount = 0;
+      let latestPrompt = "";
+      let completeRun = false;
+      server.use(
+        http.post("*/api/zero/runs", async ({ request }) => {
+          runCount++;
+          const body = (await request.json()) as Record<string, string>;
+          latestPrompt = body.prompt;
+          return HttpResponse.json({ runId: `run-auto-${runCount}` });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          if (completeRun) {
+            return HttpResponse.json({
+              id: `run-auto-${runCount}`,
+              status: "completed",
+              error: null,
+              prompt: latestPrompt,
+              createdAt: "2026-03-10T00:00:00Z",
+              startedAt: "2026-03-10T00:00:01Z",
+              completedAt: "2026-03-10T00:00:02Z",
+            });
+          }
+          return HttpResponse.json({
+            id: `run-auto-${runCount}`,
+            status: "running",
+            error: null,
+            prompt: latestPrompt,
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: null,
+          });
+        }),
+        http.get("*/api/zero/runs/:runId", () => {
+          return HttpResponse.json({
+            result: { agentSessionId: "session-auto" },
+          });
+        }),
+      );
+      useChatThreadHandlers();
+
+      await setup();
+
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "first message")
+        .catch(() => {});
+
+      await delay(50);
+      expect(context.store.get(zeroChatSending$)).toBeTruthy();
+
+      // Queue a follow-up while the first run is in progress
+      context.store.set(queueZeroChatMessage$, "auto follow-up");
+      expect(context.store.get(zeroChatQueuedMessage$)).toBeTruthy();
+
+      // Let both the first run and auto-sent second run complete immediately
+      completeRun = true;
+      await sendPromise;
+
+      // Poll until the detached auto-send completes (runCount reaches 2 and sending is false)
+      for (let i = 0; i < 50; i++) {
+        if (runCount >= 2 && !context.store.get(zeroChatSending$)) {
+          break;
+        }
+        await delay(50);
+      }
+
+      expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
+      // The auto-send should have triggered a second run
+      expect(runCount).toBe(2);
+      expect(latestPrompt).toBe("auto follow-up");
+      expect(context.store.get(zeroChatSending$)).toBeFalsy();
+    });
+
+    it("should auto-send queued message after run cancellation", async () => {
+      let runCount = 0;
+      let latestPrompt = "";
+      server.use(
+        http.post("*/api/zero/runs", async ({ request }) => {
+          runCount++;
+          const body = (await request.json()) as Record<string, string>;
+          latestPrompt = body.prompt;
+          return HttpResponse.json({ runId: `run-cancel-${runCount}` });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          // First run stays "running" until cancelled; second run completes immediately
+          if (runCount >= 2) {
+            return HttpResponse.json({
+              id: `run-cancel-${runCount}`,
+              status: "completed",
+              error: null,
+              prompt: latestPrompt,
+              createdAt: "2026-03-10T00:00:00Z",
+              startedAt: "2026-03-10T00:00:01Z",
+              completedAt: "2026-03-10T00:00:02Z",
+            });
+          }
+          return HttpResponse.json({
+            id: `run-cancel-${runCount}`,
+            status: "running",
+            error: null,
+            prompt: latestPrompt,
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: null,
+          });
+        }),
+        http.post("*/api/zero/runs/:runId/cancel", () => {
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.get("*/api/zero/runs/:runId", () => {
+          return HttpResponse.json({
+            result: { agentSessionId: "session-cancel" },
+          });
+        }),
+      );
+      useChatThreadHandlers();
+
+      await setup();
+
+      const sendPromise = context.store
+        .set(sendZeroChatMessage$, "first message")
+        .catch(() => {});
+
+      await delay(50);
+      expect(context.store.get(zeroChatSending$)).toBeTruthy();
+
+      // Queue a follow-up
+      context.store.set(queueZeroChatMessage$, "after cancel");
+      expect(context.store.get(zeroChatQueuedMessage$)).toBeTruthy();
+
+      // Cancel the active run — this aborts polling, which causes
+      // sendZeroChatMessage$ to hit its finally block and auto-send
+      await context.store.set(cancelActiveRun$);
+      await sendPromise;
+
+      // Poll until the detached auto-send completes (runCount reaches 2 and sending is false)
+      for (let i = 0; i < 50; i++) {
+        if (runCount >= 2 && !context.store.get(zeroChatSending$)) {
+          break;
+        }
+        await delay(50);
+      }
+
+      expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
+      // The queued message should have triggered a second run
+      expect(runCount).toBe(2);
+      expect(latestPrompt).toBe("after cancel");
+      expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
   });
 });

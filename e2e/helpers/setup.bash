@@ -7,8 +7,8 @@ TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
 
-# Path to the CLI
-export CLI_COMMAND="vm0"
+# Path to the CLI (trace wrapper logs each invocation for timeout debugging)
+export CLI_COMMAND="${TEST_ROOT}/helpers/trace-cli.sh"
 
 # Show system logs when test fails
 # This hook is called by BATS before teardown() when a test fails

@@ -58,7 +58,7 @@ async function createDueSchedule(
       body: JSON.stringify({ composeId }),
     },
   );
-  await enableScheduleRoute(enableReq, { params: Promise.resolve({ name }) });
+  await enableScheduleRoute(enableReq);
 
   // Make it due by setting nextRunAt to the past
   const pastTime = new Date(Date.now() - 60_000);

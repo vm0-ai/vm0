@@ -17,6 +17,7 @@ const storedChatMessageSchema = z.object({
   content: z.string(),
   runId: z.string().optional(),
   error: z.string().optional(),
+  summaries: z.array(z.string()).optional(),
   createdAt: z.string(),
 });
 

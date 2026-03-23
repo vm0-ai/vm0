@@ -78,7 +78,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should inject agent identity into appendSystemPrompt", async () => {
+    it("should not inject agent identity (CLI path)", async () => {
       const agentName = uniqueId("identity-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {
@@ -90,31 +90,17 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Hello");
       const run = await getTestRun(data.runId);
 
-      expect(run.appendSystemPrompt).toContain("My Agent");
-      expect(run.appendSystemPrompt).toContain("A helpful assistant");
-      expect(run.appendSystemPrompt).toContain("warm, approachable");
-    });
-
-    it("should not inject identity when no metadata exists", async () => {
-      const data = await createTestRun(testComposeId, "Hello");
-      const run = await getTestRun(data.runId);
-
+      // CLI path (startRun) does not inject agent identity — that's done by createZeroRun
       expect(run.appendSystemPrompt).toBeNull();
     });
 
-    it("should prepend identity before existing appendSystemPrompt", async () => {
-      const agentName = uniqueId("prepend-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await createTestZeroAgent(user.orgId, agentName, {
-        displayName: "Bot",
-      });
-
-      const data = await createTestRun(composeId, "Hello", {
+    it("should pass through appendSystemPrompt unchanged", async () => {
+      const data = await createTestRun(testComposeId, "Hello", {
         appendSystemPrompt: "Custom instructions",
       });
       const run = await getTestRun(data.runId);
 
-      expect(run.appendSystemPrompt).toMatch(/Bot[\s\S]*Custom instructions/);
+      expect(run.appendSystemPrompt).toBe("Custom instructions");
     });
   });
 
@@ -444,15 +430,24 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Set User B's active org to owner's org (simulates org selection in Clerk)
       mockClerk({ userId: runnerUser.userId, orgId: ownerUser.orgId });
 
-      // User B runs the org member agent — should fail because no model provider in org
-      const data = await createTestRun(
-        sharedComposeId,
-        "Run without model provider",
+      // User B runs the org member agent — pre-INSERT check rejects with 422
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: sharedComposeId,
+            prompt: "Run without model provider",
+          }),
+        },
       );
-      expect(data.status).toBe("failed");
+      const response = await POST(request);
+      const data = await response.json();
 
-      const run = await getTestRun(data.runId);
-      expect(run.error).toMatch(/model provider/i);
+      expect(response.status).toBe(422);
+      expect(data.error.code).toBe("NO_MODEL_PROVIDER");
+      expect(data.error.message).toMatch(/model provider/i);
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -737,24 +732,30 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should fail run when no model provider and no API key in compose", async () => {
+    it("should reject run when no model provider and no API key in compose", async () => {
       // Create compose without API key and no environment block
       const { composeId } = await createTestCompose(uniqueId("no-mp"), {
         noEnvironmentBlock: true,
       });
 
-      const data = await createTestRun(
-        composeId,
-        "Test without model provider",
+      // Pre-INSERT check rejects with structured error (no run record created)
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test without model provider",
+          }),
+        },
       );
+      const response = await POST(request);
+      const data = await response.json();
 
-      // Route creates run first, then fails during preparation
-      expect(data.status).toBe("failed");
-
-      // Verify error via API
-      const run = await getTestRun(data.runId);
-
-      expect(run.error).toMatch(/model provider/i);
+      expect(response.status).toBe(422);
+      expect(data.error.code).toBe("NO_MODEL_PROVIDER");
+      expect(data.error.message).toMatch(/model provider/i);
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {

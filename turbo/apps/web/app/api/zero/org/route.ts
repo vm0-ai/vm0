@@ -24,10 +24,24 @@ const router = tsr.router(zeroOrgContract, {
     const result = await client.get({ headers: {} });
     return forwardInfra(result);
   },
+
+  update: async ({ body, headers }, { request }) => {
+    initServices();
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const client = createInfraClient(
+      orgContract,
+      headers.authorization,
+      orgSlug ? { query: { org: orgSlug } } : undefined,
+    );
+
+    const result = await client.update({ body });
+    return forwardInfra(result);
+  },
 });
 
 const handler = createHandler(zeroOrgContract, router, {
   errorHandler: createSafeErrorHandler("zero-org"),
 });
 
-export { handler as GET };
+export { handler as GET, handler as PUT };

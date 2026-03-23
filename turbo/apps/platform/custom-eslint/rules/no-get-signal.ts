@@ -77,7 +77,7 @@ export default createRule({
     function hasDirectAbortSignalGeneric(type: Type): boolean {
       const typeString = checker.typeToString(type);
 
-      // Matches：
+      // Matches:
       // State<AbortSignal>
       // Computed<AbortSignal>
       // State<AbortSignal | undefined>

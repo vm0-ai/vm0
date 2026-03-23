@@ -1,8 +1,8 @@
 /**
- * GitHub-hosted firewall config loader.
+ * Firewall config loader.
  *
- * Fetches firewall YAML files from GitHub repositories, parses them,
- * and validates against the FirewallConfig schema.
+ * Checks builtin (generated) configs first, then falls back to fetching
+ * firewall YAML files from GitHub repositories.
  */
 
 import { parse as parseYaml } from "yaml";
@@ -11,6 +11,7 @@ import {
   firewallConfigSchema,
   type FirewallConfig,
 } from "./contracts/firewalls";
+import { builtinFirewalls } from "./firewalls";
 
 /** Minimal fetch function signature for dependency injection in tests */
 export type FetchFn = (url: string) => Promise<Response>;
@@ -35,9 +36,12 @@ export function buildFirewallYamlUrl(ref: string): string {
 }
 
 /**
- * Fetch and parse a firewall config from a GitHub-hosted YAML file.
+ * Fetch and parse a firewall config.
  *
- * @param ref - Bare firewall name (e.g. "custom-api") or full GitHub URL
+ * For builtin firewalls (e.g. "github"), returns the bundled config directly
+ * without any network request. For custom firewalls, fetches from GitHub.
+ *
+ * @param ref - Bare firewall name (e.g. "github") or full GitHub URL
  * @param fetchFn - Optional fetch function (defaults to global fetch, injectable for tests)
  * @returns Validated FirewallConfig
  * @throws Error if fetch fails, YAML is invalid, or schema validation fails
@@ -46,6 +50,15 @@ export async function fetchFirewallConfig(
   ref: string,
   fetchFn: FetchFn = fetch,
 ): Promise<FirewallConfig> {
+  // Check builtin configs first (bare name only, not full URLs)
+  const trimmed = ref.trim();
+  const builtin = !trimmed.includes("/")
+    ? builtinFirewalls[trimmed]
+    : undefined;
+  if (builtin) {
+    return builtin;
+  }
+
   const rawUrl = buildFirewallYamlUrl(ref);
 
   const res = await fetchFn(rawUrl);

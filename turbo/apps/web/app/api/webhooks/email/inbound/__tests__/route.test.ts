@@ -11,6 +11,7 @@ import {
   findTestRunsByUserAndPrompt,
   findTestRunsByUserAndPromptContaining,
   findTestCallbacksByRunId,
+  insertOrgDefaultModelProvider,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -137,6 +138,7 @@ describe("POST /api/webhooks/email/inbound", () => {
   it("should process inbound email reply and dispatch agent run", async () => {
     // Given a user with a compose and email thread session
     const user = await context.setupUser();
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     const { composeId } = await createTestCompose(uniqueId("email-agent"));
     const agentSession = await createTestSessionWithConversation(
       user.userId,
@@ -1001,6 +1003,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
   it("should extract content from HTML when text is empty (reply)", async () => {
     const user = await context.setupUser({ prefix: "html-reply" });
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     const { composeId } = await createTestCompose(uniqueId("html-reply-agent"));
     const agentSession = await createTestSessionWithConversation(
       user.userId,
@@ -1551,6 +1554,7 @@ describe("POST /api/webhooks/email/inbound", () => {
   describe("Email Reply with Attachments", () => {
     it("should include attachment URLs in prompt when reply has attachments", async () => {
       const user = await context.setupUser({ prefix: "att-reply" });
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
       const { composeId } = await createTestCompose(
         uniqueId("att-reply-agent"),
       );

@@ -10,7 +10,7 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { createCheckoutSession } from "../../../../src/lib/billing/billing-service";
 
 const checkoutBodySchema = z.object({
-  tier: z.enum(["pro", "max"]),
+  tier: z.enum(["pro", "team"]),
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
 });
@@ -19,7 +19,7 @@ const checkoutBodySchema = z.object({
  * POST /api/billing/checkout
  *
  * Create a Stripe Checkout session for subscribing to a plan.
- * Body: { tier: "pro" | "max" }
+ * Body: { tier: "pro" | "team" }
  * Returns: { url: string }
  */
 export async function POST(request: Request) {
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          'Invalid body — requires tier ("pro"|"max"), successUrl, cancelUrl',
+          'Invalid body — requires tier ("pro"|"team"), successUrl, cancelUrl',
       },
       { status: 400 },
     );

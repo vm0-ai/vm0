@@ -7,7 +7,7 @@ import { decryptSecretsMap } from "../crypto";
 import { getOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
-import { startRun } from "../run/run-service";
+import { createZeroRun } from "../zero/zero-run-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 
@@ -845,16 +845,13 @@ async function executeSchedule(
   // Delegate run creation, validation, and dispatch to startRun()
   let runId: string;
   try {
-    const result = await startRun({
+    const result = await createZeroRun({
       userId: schedule.userId,
       prompt: schedule.prompt,
       appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
       composeId: compose.id,
       scheduleId: schedule.id,
       triggerSource: "schedule",
-      artifactName: schedule.artifactName ?? undefined,
-      artifactVersion: schedule.artifactVersion ?? undefined,
-      volumeVersions: schedule.volumeVersions ?? undefined,
       callbacks,
     });
     runId = result.runId;

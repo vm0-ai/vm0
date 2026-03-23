@@ -55,37 +55,60 @@ export async function getOrgMembers(
   orgId: string,
   orgSlug: string,
 ) {
-  // Get members and org info from Clerk
   const client = await clerkClient();
-  const org = await client.organizations.getOrganization({
-    organizationId: orgId,
-  });
+
+  // Parallel: org info + memberships + invitations
+  const [org, memberships, invitations] = await Promise.all([
+    client.organizations.getOrganization({ organizationId: orgId }),
+    client.organizations.getOrganizationMembershipList({
+      organizationId: orgId,
+    }),
+    client.organizations.getOrganizationInvitationList({
+      organizationId: orgId,
+      status: ["pending"],
+    }),
+  ]);
+
   const createdAt = new Date(org.createdAt);
-  const memberships = await client.organizations.getOrganizationMembershipList({
-    organizationId: orgId,
-  });
 
   // Batch-resolve emails for all members in a single Clerk API call
   const userIds = memberships.data
     .map((m) => m.publicUserData?.userId)
     .filter((id): id is string => Boolean(id));
 
-  const emailMap = new Map<string, string>();
+  const userMap = new Map<
+    string,
+    {
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+      imageUrl: string;
+    }
+  >();
   if (userIds.length > 0) {
     const users = await client.users.getUserList({ userId: userIds });
     for (const user of users.data) {
       const primaryEmail = user.emailAddresses.find(
         (e) => e.id === user.primaryEmailAddressId,
       );
-      emailMap.set(user.id, primaryEmail?.emailAddress ?? "");
+      userMap.set(user.id, {
+        email: primaryEmail?.emailAddress ?? "",
+        firstName: user.firstName,
+        lastName: user.lastName,
+        imageUrl: user.imageUrl,
+      });
     }
   }
 
   const members = memberships.data.map((membership) => {
-    const userId = membership.publicUserData?.userId ?? "";
+    const uid = membership.publicUserData?.userId ?? "";
+    const profile = userMap.get(uid);
     return {
-      userId,
-      email: emailMap.get(userId) ?? "",
+      userId: uid,
+      email: profile?.email ?? "",
+      firstName: profile?.firstName ?? null,
+      lastName: profile?.lastName ?? null,
+      imageUrl: profile?.imageUrl ?? "",
       role: mapClerkRole(membership.role),
       joinedAt: membership.createdAt
         ? new Date(membership.createdAt).toISOString()
@@ -101,10 +124,21 @@ export async function getOrgMembers(
     ? mapClerkRole(callerMembership.role)
     : "member";
 
+  // Only expose pending invitations to admins
+  const pendingInvitations =
+    callerRole === "admin"
+      ? invitations.data.map((inv) => ({
+          email: inv.emailAddress,
+          role: mapClerkRole(inv.role),
+          createdAt: new Date(inv.createdAt).toISOString(),
+        }))
+      : [];
+
   return {
     slug: orgSlug,
     role: callerRole,
     members,
+    pendingInvitations,
     createdAt: createdAt.toISOString(),
   };
 }
@@ -195,6 +229,58 @@ async function cleanupOrgMember(userId: string, orgId: string): Promise<void> {
 }
 
 /**
+ * Update a member's role in the org.
+ * Requires admin role.
+ */
+export async function updateMemberRole(
+  callerUserId: string,
+  orgId: string,
+  callerRole: OrgRole,
+  targetEmail: string,
+  newRole: OrgRole,
+) {
+  if (callerRole !== "admin") {
+    throw forbidden("Only admins can change member roles");
+  }
+
+  const client = await clerkClient();
+  const users = await client.users.getUserList({ emailAddress: [targetEmail] });
+
+  if (users.data.length === 0) {
+    throw notFound(`User with email "${targetEmail}" not found`);
+  }
+
+  const targetUserId = users.data[0]!.id;
+
+  // Self-demotion: admin can downgrade themselves only if another admin exists
+  if (targetUserId === callerUserId) {
+    if (newRole !== "member") {
+      throw badRequest("Cannot change your own role");
+    }
+    const memberships =
+      await client.organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+      });
+    const adminCount = memberships.data.filter(
+      (m) => m.role === "org:admin",
+    ).length;
+    if (adminCount < 2) {
+      throw badRequest(
+        "Cannot demote yourself — you are the only admin. Add another admin first.",
+      );
+    }
+  }
+
+  await client.organizations.updateOrganizationMembership({
+    organizationId: orgId,
+    userId: targetUserId,
+    role: newRole === "admin" ? "org:admin" : "org:member",
+  });
+
+  log.debug("Member role updated", { orgId, targetEmail, newRole });
+}
+
+/**
  * Remove a member from the org.
  * Requires admin role.
  */
@@ -266,6 +352,41 @@ export async function leaveOrg(userId: string, orgId: string, role: OrgRole) {
 
   await cleanupOrgMember(userId, orgId);
   log.debug("User left org", { orgId, userId });
+}
+
+/**
+ * Delete an org.
+ * Requires admin role. Deletes from Clerk and cleans up local data.
+ */
+export async function deleteOrg(
+  callerUserId: string,
+  orgId: string,
+  callerRole: OrgRole,
+) {
+  if (callerRole !== "admin") {
+    throw forbidden("Only admins can delete the organization");
+  }
+
+  const client = await clerkClient();
+
+  // Get all members to clean up their data
+  const memberships = await client.organizations.getOrganizationMembershipList({
+    organizationId: orgId,
+  });
+
+  const memberUserIds = memberships.data
+    .map((m) => m.publicUserData?.userId)
+    .filter((id): id is string => Boolean(id));
+
+  // Clean up each member's org-scoped data
+  for (const userId of memberUserIds) {
+    await cleanupOrgMember(userId, orgId);
+  }
+
+  // Delete the org from Clerk
+  await client.organizations.deleteOrganization(orgId);
+
+  log.debug("Organization deleted", { orgId, callerUserId });
 }
 
 /**

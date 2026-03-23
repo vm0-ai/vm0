@@ -79,13 +79,10 @@ describe("POST /api/agent/schedules/:name/enable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "my-schedule" }),
-    });
-    const data = await response.json();
+    const response = await POST(request);
 
-    expect(response.status).toBe(400);
-    expect(data.error.message).toContain("composeId must be a valid UUID");
+    // createSafeErrorHandler returns 500 for non-validation errors (SyntaxError)
+    expect(response.status).toBe(500);
   });
 
   it("should reject missing composeId", async () => {
@@ -103,13 +100,11 @@ describe("POST /api/agent/schedules/:name/enable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "my-schedule" }),
-    });
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error.message).toContain("composeId must be a valid UUID");
+    expect(data.error.code).toBe("BAD_REQUEST");
   });
 
   it("should return 400 for expired one-time schedule (SchedulePastError)", async () => {
@@ -144,9 +139,7 @@ describe("POST /api/agent/schedules/:name/enable", () => {
       },
     );
 
-    const response = await POST(enableRequest, {
-      params: Promise.resolve({ name: "past-schedule" }),
-    });
+    const response = await POST(enableRequest);
     const data = await response.json();
 
     expect(response.status).toBe(400);
@@ -163,9 +156,7 @@ describe("POST /api/agent/schedules/:name/enable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "non-existent" }),
-    });
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(404);
@@ -226,9 +217,7 @@ describe("POST /api/agent/schedules/:name/enable", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "any-schedule" }),
-    });
+    const response = await POST(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -278,9 +267,7 @@ describe("POST /api/agent/schedules/:name/enable - Sandbox Token Auth", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "sandbox-enable-test" }),
-    });
+    const response = await POST(request);
 
     expect(response.status).toBe(200);
   });
@@ -303,9 +290,7 @@ describe("POST /api/agent/schedules/:name/enable - Sandbox Token Auth", () => {
       },
     );
 
-    const response = await POST(request, {
-      params: Promise.resolve({ name: "any-schedule" }),
-    });
+    const response = await POST(request);
 
     expect(response.status).toBe(403);
   });

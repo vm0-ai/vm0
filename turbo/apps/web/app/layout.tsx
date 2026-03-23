@@ -11,6 +11,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
 import { getAppUrl } from "../src/lib/url";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
 import "./blog.css";
@@ -169,18 +170,18 @@ export default function RootLayout({
               `,
             }}
           />
-          <Script
-            src="https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js"
-            data-domain="vm0.ai"
-            strategy="afterInteractive"
-            async
-          />
-          <Script id="plausible-init" strategy="afterInteractive">
-            {`
-                window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
-                plausible.init({domain:"vm0.ai"})
-              `}
-          </Script>
+          {env().NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL && (
+            <>
+              <Script
+                src={env().NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL}
+                strategy="afterInteractive"
+                async
+              />
+              <Script id="plausible-init" strategy="afterInteractive">
+                {`window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init({transformRequest:function(p){p.u=p.u.replace(/\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,'/:id');return p}})`}
+              </Script>
+            </>
+          )}
         </head>
         <body
           className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}

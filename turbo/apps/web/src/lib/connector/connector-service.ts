@@ -336,7 +336,7 @@ export async function upsertOAuthConnector(
  * and calls the handler's revokeToken method if available.
  * Errors are logged and swallowed — revocation must never block disconnect.
  */
-async function revokeConnectorToken(
+export async function revokeConnectorToken(
   orgId: string,
   userId: string,
   type: ConnectorType,

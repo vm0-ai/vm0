@@ -82,3 +82,33 @@ export async function publishJobNotification(
     return false;
   }
 }
+
+/**
+ * Publish cancel notification to a runner group's Ably channel.
+ * Non-blocking - logs errors but doesn't throw.
+ */
+export async function publishCancelNotification(
+  group: string,
+  runId: string,
+): Promise<boolean> {
+  const client = getAblyClient();
+  if (!client) {
+    log.debug("Ably not configured, skipping cancel notification");
+    return false;
+  }
+
+  try {
+    const channel = client.channels.get(getRunnerGroupChannelName(group));
+    await channel.publish("cancel", { runId });
+    log.debug(
+      `Published cancel notification ${runId} to runner-group:${group}`,
+    );
+    return true;
+  } catch (error) {
+    log.error(
+      `Ably cancel notification failed for runner-group:${group}:`,
+      error,
+    );
+    return false;
+  }
+}

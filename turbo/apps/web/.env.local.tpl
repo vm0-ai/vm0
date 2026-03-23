@@ -34,6 +34,9 @@ VM0_DEFAULT_AGENT=op://Development/vm0/VM0_DEFAULT_AGENT
 # Required: Claude Code Version URL
 CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest
 
+# Optional: Analytics (Plausible)
+PLAUSIBLE_SCRIPT_URL=
+
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
 

@@ -16,6 +16,7 @@ export {
   apiErrorSchema,
   ApiError,
   createErrorResponse,
+  RUN_ERROR_GUIDANCE,
   type ApiErrorKey,
   type ApiErrorResponse,
 } from "./errors";
@@ -24,10 +25,14 @@ export {
   composesByIdContract,
   composesVersionsContract,
   composesListContract,
+  composesMetadataContract,
+  composesInstructionsContract,
   type ComposesMainContract,
   type ComposesByIdContract,
   type ComposesVersionsContract,
   type ComposesListContract,
+  type ComposesMetadataContract,
+  type ComposesInstructionsContract,
   AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
@@ -36,6 +41,8 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
+  metadataUpdateSchema,
+  composeInstructionsResponseSchema,
   VALID_CAPABILITIES,
   CAPABILITY_META,
   type ValidCapability,
@@ -232,9 +239,6 @@ export {
   // Provider compatibility
   getProviderBaseUrl,
   areProvidersCompatible,
-  // Feature-gated provider support
-  getProviderFeatureFlag,
-  isProviderVisible,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
@@ -326,7 +330,9 @@ export {
   schedulesMainContract,
   schedulesByNameContract,
   schedulesEnableContract,
+  schedulesDisableContract,
   scheduleRunsContract,
+  schedulesMissingSecretsContract,
   scheduleYamlSchema,
   scheduleTriggerSchema,
   scheduleRunConfigSchema,
@@ -337,10 +343,13 @@ export {
   deployScheduleResponseSchema,
   runSummarySchema,
   scheduleRunsResponseSchema,
+  agentMissingSecretsSchema,
   type SchedulesMainContract,
   type SchedulesByNameContract,
   type SchedulesEnableContract,
+  type SchedulesDisableContract,
   type ScheduleRunsContract,
+  type SchedulesMissingSecretsContract,
   // Inferred types
   type ScheduleTrigger,
   type ScheduleRunConfig,
@@ -361,18 +370,15 @@ export {
 export {
   logsListContract,
   logsByIdContract,
-  artifactDownloadContract,
   logStatusSchema,
   logEntrySchema,
   paginationSchema,
   logsListResponseSchema,
   artifactSchema,
   logDetailSchema,
-  artifactDownloadResponseSchema,
   triggerSourceSchema,
   type LogsListContract,
   type LogsByIdContract,
-  type ArtifactDownloadContract,
   // Inferred types
   type LogStatus,
   type LogEntry,
@@ -380,7 +386,6 @@ export {
   type LogsListResponse,
   type Artifact,
   type LogDetail,
-  type ArtifactDownloadResponse,
   type TriggerSource,
 } from "./logs";
 
@@ -481,16 +486,20 @@ export {
   orgMembersContract,
   orgRoleSchema,
   orgMemberSchema,
+  orgPendingInvitationSchema,
   orgMembersResponseSchema,
   inviteOrgMemberRequestSchema,
   removeOrgMemberRequestSchema,
+  updateOrgMemberRoleRequestSchema,
   orgMessageResponseSchema,
   type OrgMembersContract,
   type OrgRole,
   type OrgMember,
+  type OrgPendingInvitation,
   type OrgMembersResponse,
   type InviteOrgMemberRequest,
   type RemoveOrgMemberRequest,
+  type UpdateOrgMemberRoleRequest,
   type OrgMessageResponse,
 } from "./org-members";
 export {
@@ -527,6 +536,11 @@ export {
   type OrgVariablesByNameContract,
 } from "./org-variables";
 export {
+  requiredEnvContract,
+  agentRequiredEnvSchema,
+  type RequiredEnvContract,
+} from "./required-env";
+export {
   zeroAgentsMainContract,
   zeroAgentsByNameContract,
   zeroAgentInstructionsContract,
@@ -550,7 +564,20 @@ export {
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
 } from "./zero-connectors";
-export { zeroOrgContract, type ZeroOrgContract } from "./zero-org";
+export {
+  zeroOrgContract,
+  zeroOrgLeaveContract,
+  zeroOrgDeleteContract,
+  type ZeroOrgContract,
+  type ZeroOrgLeaveContract,
+  type ZeroOrgDeleteContract,
+} from "./zero-org";
+export {
+  zeroOrgMembersContract,
+  zeroOrgInviteContract,
+  type ZeroOrgMembersContract,
+  type ZeroOrgInviteContract,
+} from "./zero-org-members";
 export {
   zeroComposesMainContract,
   zeroComposesByIdContract,
@@ -583,9 +610,11 @@ export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   zeroModelProvidersDefaultContract,
+  zeroModelProvidersUpdateModelContract,
   type ZeroModelProvidersMainContract,
   type ZeroModelProvidersByTypeContract,
   type ZeroModelProvidersDefaultContract,
+  type ZeroModelProvidersUpdateModelContract,
 } from "./zero-model-providers";
 export {
   zeroUserPreferencesContract,
@@ -601,3 +630,7 @@ export {
   zeroSessionsByIdContract,
   type ZeroSessionsByIdContract,
 } from "./zero-sessions";
+export {
+  integrationsSlackMessageContract,
+  type IntegrationsSlackMessageContract,
+} from "./integrations";

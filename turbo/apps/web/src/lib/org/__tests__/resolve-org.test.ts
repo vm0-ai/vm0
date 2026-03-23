@@ -260,11 +260,11 @@ describe("resolveOrg", () => {
     const result1 = await resolveOrg(authCtx({ userId, orgId }));
     expect(result1.org.tier).toBe("free");
 
-    // Update tier to "max"
-    await updateOrgTier(orgId, "max");
+    // Update tier to "team"
+    await updateOrgTier(orgId, "team");
 
     const result2 = await resolveOrg(authCtx({ userId, orgId }));
-    expect(result2.org.tier).toBe("max");
+    expect(result2.org.tier).toBe("team");
   });
 
   it("returns member with correct role", async () => {

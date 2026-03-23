@@ -25,12 +25,12 @@ import {
   zeroJobBuildError$,
   zeroJobUpdateSettings$,
   zeroJobSettingsSaving$,
-  zeroJobAddedSkills$,
-  zeroJobSkillsDirty$,
-  addZeroJobSkill$,
-  removeZeroJobSkill$,
-  saveZeroJobSkills$,
-  discardZeroJobSkills$,
+  zeroJobAddedConnectors$,
+  zeroJobConnectorsDirty$,
+  addZeroJobConnector$,
+  removeZeroJobConnector$,
+  saveZeroJobConnectors$,
+  discardZeroJobConnectors$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
 import { SEED_SKILLS } from "../../../data/the-seed.ts";
@@ -843,7 +843,7 @@ describe("zero-job-detail signals", () => {
     });
   });
 
-  describe("skills management", () => {
+  describe("connectors management", () => {
     async function setupWithAgent() {
       server.use(
         http.get("http://localhost:3000/api/zero/composes", () => {
@@ -867,46 +867,46 @@ describe("zero-job-detail signals", () => {
     it("should seed skills from agent detail", async () => {
       await setupWithAgent();
 
-      const skills = context.store.get(zeroJobAddedSkills$);
+      const skills = context.store.get(zeroJobAddedConnectors$);
       // SEED_SKILLS are always included, plus agent-specific skills
       expect(skills).toStrictEqual([...SEED_SKILLS, "search"]);
-      expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
+      expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
     });
 
     it("should add and remove skills with dirty tracking", async () => {
       await setupWithAgent();
 
-      context.store.set(addZeroJobSkill$, "gmail");
+      context.store.set(addZeroJobConnector$, "gmail");
 
-      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual([
+      expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
         ...SEED_SKILLS,
         "search",
         "gmail",
       ]);
-      expect(context.store.get(zeroJobSkillsDirty$)).toBeTruthy();
+      expect(context.store.get(zeroJobConnectorsDirty$)).toBeTruthy();
 
-      context.store.set(removeZeroJobSkill$, "search");
+      context.store.set(removeZeroJobConnector$, "search");
 
-      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual([
+      expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
         ...SEED_SKILLS,
         "gmail",
       ]);
-      expect(context.store.get(zeroJobSkillsDirty$)).toBeTruthy();
+      expect(context.store.get(zeroJobConnectorsDirty$)).toBeTruthy();
     });
 
     it("should discard skill changes", async () => {
       await setupWithAgent();
 
-      context.store.set(addZeroJobSkill$, "gmail");
-      expect(context.store.get(zeroJobSkillsDirty$)).toBeTruthy();
+      context.store.set(addZeroJobConnector$, "gmail");
+      expect(context.store.get(zeroJobConnectorsDirty$)).toBeTruthy();
 
-      context.store.set(discardZeroJobSkills$);
+      context.store.set(discardZeroJobConnectors$);
 
-      expect(context.store.get(zeroJobAddedSkills$)).toStrictEqual([
+      expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
         ...SEED_SKILLS,
         "search",
       ]);
-      expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
+      expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
     });
 
     it("should save skills via zero agents api", async () => {
@@ -934,8 +934,8 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      context.store.set(addZeroJobSkill$, "gmail");
-      await context.store.set(saveZeroJobSkills$);
+      context.store.set(addZeroJobConnector$, "gmail");
+      await context.store.set(saveZeroJobConnectors$);
 
       // Verify connectors were sent as short names
       expect(capturedBody).toBeTruthy();
@@ -946,7 +946,7 @@ describe("zero-job-detail signals", () => {
       ]);
 
       // After save, dirty state should be reset
-      expect(context.store.get(zeroJobSkillsDirty$)).toBeFalsy();
+      expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
@@ -962,10 +962,10 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      context.store.set(addZeroJobSkill$, "gmail");
+      context.store.set(addZeroJobConnector$, "gmail");
 
       // Should not throw — errors are caught and shown via toast
-      await context.store.set(saveZeroJobSkills$);
+      await context.store.set(saveZeroJobConnectors$);
 
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });

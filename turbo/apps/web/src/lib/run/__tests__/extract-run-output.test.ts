@@ -54,7 +54,6 @@ describe("extractRunOutput", () => {
     expect(output).toEqual({
       result: null,
       askUserDenials: [],
-      modelProviderIssue: false,
       connectorIssue: false,
       error: null,
     });
@@ -80,7 +79,7 @@ describe("extractRunOutput", () => {
     expect(output.result).toBeNull();
   });
 
-  it("detects model provider issues in result text", async () => {
+  it("does not flag model provider issues (handled via error code)", async () => {
     mockQuery.mockResolvedValue(
       axiomResponse([
         { eventData: { result: "model provider not configured" } },
@@ -89,7 +88,6 @@ describe("extractRunOutput", () => {
 
     const output = await extractRunOutput("run-1");
 
-    expect(output.modelProviderIssue).toBe(true);
     expect(output.connectorIssue).toBe(false);
   });
 
@@ -311,7 +309,6 @@ describe("buildDeepLinksFromFlags", () => {
   const baseOutput: RunOutput = {
     result: null,
     askUserDenials: [],
-    modelProviderIssue: false,
     connectorIssue: false,
     error: null,
   };
@@ -320,16 +317,6 @@ describe("buildDeepLinksFromFlags", () => {
     expect(buildDeepLinksFromFlags(baseOutput, "https://app.vm0.ai")).toEqual(
       [],
     );
-  });
-
-  it("returns provider link when modelProviderIssue is true", () => {
-    const links = buildDeepLinksFromFlags(
-      { ...baseOutput, modelProviderIssue: true },
-      "https://app.vm0.ai",
-    );
-
-    expect(links).toHaveLength(1);
-    expect(links[0]!.url).toBe("https://app.vm0.ai/settings");
   });
 
   it("returns connector link with agent name", () => {
@@ -343,12 +330,13 @@ describe("buildDeepLinksFromFlags", () => {
     expect(links[0]!.url).toContain("/team/my-agent?tab=connectors");
   });
 
-  it("returns both links when both issues present", () => {
+  it("returns connector link without agent name", () => {
     const links = buildDeepLinksFromFlags(
-      { ...baseOutput, modelProviderIssue: true, connectorIssue: true },
+      { ...baseOutput, connectorIssue: true },
       "https://app.vm0.ai",
     );
 
-    expect(links).toHaveLength(2);
+    expect(links).toHaveLength(1);
+    expect(links[0]!.url).toBe("https://app.vm0.ai/team");
   });
 });

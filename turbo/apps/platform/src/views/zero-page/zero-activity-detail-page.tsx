@@ -14,6 +14,7 @@ import { Button, Input } from "@vm0/ui";
 import {
   MODEL_PROVIDER_TYPES,
   FeatureSwitchKey,
+  RUN_ERROR_GUIDANCE,
   type ModelProviderType,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -30,6 +31,7 @@ import {
   zeroActivityEvents$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
+  zeroActivitySelectedLogId$,
   formatLogTime,
   formatDuration,
 } from "../../signals/activity-page/activity-signals.ts";
@@ -42,6 +44,41 @@ import { GroupedMessageCard } from "./components/logs/grouped-message-card.tsx";
 import { StatusDot } from "./components/logs/status-dot.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
+
+// ---------------------------------------------------------------------------
+// Error Banner
+// ---------------------------------------------------------------------------
+
+function getErrorGuidance(error: string) {
+  for (const [, guidance] of Object.entries(RUN_ERROR_GUIDANCE)) {
+    if (error.toLowerCase().includes(guidance.title.toLowerCase())) {
+      return guidance;
+    }
+  }
+  return null;
+}
+
+function RunErrorBanner({ error }: { error: string }) {
+  const guidance = getErrorGuidance(error);
+  if (guidance) {
+    return (
+      <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="font-medium">{guidance.title}</div>
+        <div className="mt-1 text-destructive/80">{guidance.guidance}</div>
+        {guidance.cliHint && (
+          <div className="mt-1 font-mono text-xs text-destructive/60">
+            $ {guidance.cliHint}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
+      {error}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -204,21 +241,23 @@ function ActivityHeaderCard({
         </Button>
       </div>
       {detail.error && status === "failed" && (
-        <div className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive break-words whitespace-pre-wrap">
-          {detail.error}
-        </div>
+        <RunErrorBanner error={detail.error} />
       )}
     </div>
   );
 }
 
 export function ZeroActivityDetailPage() {
+  const selectedLogId = useGet(zeroActivitySelectedLogId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   // Resolve agent display name from the detail response
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const agentName = detail ? (detail.displayName ?? detail.agentName) : "Agent";
+  // Detect stale detail from previous navigation (useLastLoadable keeps old data)
+  const isStale = detail !== null && detail.id !== selectedLogId;
+  const agentName =
+    detail && !isStale ? (detail.displayName ?? detail.agentName) : "Agent";
 
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
@@ -226,7 +265,7 @@ export function ZeroActivityDetailPage() {
 
   // Skeleton until both detail and initial events are loaded
   const eventsReady = eventsLoadable.state === "hasData";
-  if (!detail || !eventsReady) {
+  if (!detail || isStale || !eventsReady) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
     }

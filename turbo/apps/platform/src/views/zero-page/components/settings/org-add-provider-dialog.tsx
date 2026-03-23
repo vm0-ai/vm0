@@ -5,16 +5,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import {
-  isProviderVisible,
-  getSelectableProviderTypes,
-  type ModelProviderType,
-} from "@vm0/core";
+import { getSelectableProviderTypes, type ModelProviderType } from "@vm0/core";
 import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
@@ -71,7 +66,6 @@ export function OrgAddProviderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
-  const features = useLastResolved(featureSwitch$);
   const openAdd = useSet(orgOpenAddDialog$);
   const configuredSet = new Set(configuredProviders?.map((p) => p.type) ?? []);
 
@@ -80,8 +74,7 @@ export function OrgAddProviderDialog({
   };
 
   const availableTypes = getProviderTypes().filter(
-    (type) =>
-      !configuredSet.has(type) && isProviderVisible(type, features ?? {}),
+    (type) => !configuredSet.has(type),
   );
 
   return (

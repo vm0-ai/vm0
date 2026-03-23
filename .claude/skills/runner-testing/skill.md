@@ -37,7 +37,7 @@ dev-runner.sh deploy-local
   -> runner service start --local --env USE_MOCK_CLAUDE=true
 
 dev-runner.sh submit <profile> <prompt>
-  -> runner submit --group <group> --profile <profile> --prompt <prompt>
+  -> runner local submit --group <group> --profile <profile> --prompt <prompt>
   -> file queue: writes .job file, runner picks up, spawns VM
   -> mock-claude executes prompt as bash, outputs Claude-compatible JSONL
   -> returns JSON: {"run_id":"...","exit_code":0,"error":null}
@@ -154,7 +154,7 @@ In local mode, runner watches `~/.vm0-runner/groups/<group>/` for `.job` files. 
 | `scripts/dev-runner.sh` | Build, deploy, submit, exec commands |
 | `crates/runner/src/profile.rs` | Profile definitions (vCPU, memory) |
 | `crates/runner/src/resource_budget.rs` | Concurrency admission control |
-| `crates/runner/src/cmd/submit.rs` | Local file queue job submission |
+| `crates/runner/src/cmd/local/submit.rs` | Local file queue job submission |
 | `crates/runner/src/cmd/exec.rs` | Execute command in running VM |
 | `crates/runner/src/proxy.rs` | mitmproxy lifecycle and registry |
 | `crates/runner/mitm-addon/src/mitm_addon.py` | mitmproxy addon (firewall, logging) |

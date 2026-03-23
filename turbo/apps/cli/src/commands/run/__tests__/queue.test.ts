@@ -32,7 +32,7 @@ describe("run queue command", () => {
     server.use(
       http.get("http://localhost:3000/api/agent/runs/queue", () => {
         return HttpResponse.json({
-          concurrency: { tier: "max", limit: 5, active: 3, available: 2 },
+          concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
           queue: [
             {
               position: 1,
@@ -57,7 +57,7 @@ describe("run queue command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("3/5 slots used");
-    expect(logCalls).toContain("max tier");
+    expect(logCalls).toContain("team tier");
     expect(logCalls).toContain("2 runs waiting");
     expect(logCalls).toContain("AGENT");
     expect(logCalls).toContain("USER");
@@ -72,7 +72,7 @@ describe("run queue command", () => {
     server.use(
       http.get("http://localhost:3000/api/agent/runs/queue", () => {
         return HttpResponse.json({
-          concurrency: { tier: "max", limit: 5, active: 3, available: 2 },
+          concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
           queue: [
             {
               position: 1,

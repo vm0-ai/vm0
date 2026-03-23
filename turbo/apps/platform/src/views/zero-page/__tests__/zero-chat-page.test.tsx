@@ -1,9 +1,51 @@
+import type { ConnectorType } from "@vm0/core";
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+
+/** Deterministic cards for tests (landing uses random prompts from ideation data). */
+vi.mock("../zero-ideation-page.tsx", async (importOriginal) => {
+  const mod =
+    await importOriginal<typeof import("../zero-ideation-page.tsx")>();
+  return {
+    ...mod,
+    getRandomPrompts: (count: number) => {
+      const prompts: Array<{
+        title: string;
+        description: string;
+        prompt: string;
+        connectors: ConnectorType[];
+      }> = [
+        {
+          title: "Auto-organize inbox",
+          description: "Smart categorization, reply, and daily email digest",
+          prompt:
+            "Set up auto-organization for my inbox with smart categorization, auto-reply rules, and a daily email digest",
+          connectors: ["gmail"],
+        },
+        {
+          title: "Daily morning brief",
+          description:
+            "Trending topics on a schedule, your personalized digest",
+          prompt:
+            "Create a daily morning brief that curates trending topics and delivers a personalized digest every morning",
+          connectors: ["slack"],
+        },
+        {
+          title: "Create a sub-agent",
+          description: "Build a specialized agent for a specific workflow",
+          prompt:
+            "I want to create a new sub-agent to handle a specific workflow for my team",
+          connectors: ["github"],
+        },
+      ];
+      return prompts.slice(0, count);
+    },
+  };
+});
 
 const context = testContext();
 

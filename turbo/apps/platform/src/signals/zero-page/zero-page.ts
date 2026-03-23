@@ -1,4 +1,4 @@
-import { command, state } from "ccstate";
+import { command, state, type Getter, type Setter } from "ccstate";
 import { createElement } from "react";
 import { ZeroPage } from "../../views/zero-page/zero-page.tsx";
 import { updatePage$ } from "../react-router.ts";
@@ -9,14 +9,20 @@ import { initSlackOrg$ } from "./zero-slack.ts";
 import {
   zeroChatAgentName$,
   zeroInChat$,
+  zeroSessionId$,
   initSidebarCollapsed$,
 } from "./zero-nav.ts";
-import { switchActiveAgent$, syncUrlSession$ } from "./zero-chat.ts";
+import {
+  switchActiveAgent$,
+  syncUrlSession$,
+  prepareSessionSwitch$,
+} from "./zero-chat.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "./zero-pinned-agents.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
+import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
 import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
@@ -27,46 +33,43 @@ const L = logger("ZeroPage");
 const initialDataLoaded$ = state(false);
 
 /**
- * Resolve the active agent from the URL and switch to it.
- *
- * - `/talk/:name` → find agent by name, switch to it
- * - `/chat/:threadId` → sync session via syncUrlSession$
- * - `/` → redirect to `/talk/:defaultAgent`
- * - other `/*` → switch to default agent
- *
- * switchActiveAgent$ sets the agent AND fetches the session list atomically.
+ * Load agents, onboarding, and slack data once.
+ * Shared by setupZeroPage$ and setupTalkPage$ so the first route to
+ * execute pays the cost and subsequent navigations skip it.
  */
-async function resolveAndSwitchAgent(
-  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
-  signal: AbortSignal,
-) {
-  const currentPath = get(pathname$);
-
-  // On /chat/:threadId, syncUrlSession$ switches to the correct session.
-  // Don't resolve agent here — switchZeroSession$ handles that internally.
-  if (get(zeroInChat$)) {
-    L.info("on chat URL, syncing session");
-    await set(syncUrlSession$);
-    return;
-  }
-  L.info("resolveAgent path:", currentPath);
-
-  // If on bare /, redirect to /talk/:defaultAgent
-  if (/^\/?$/.test(currentPath)) {
-    const rawName = await get(defaultAgentName$);
-    signal.throwIfAborted();
-    if (rawName) {
-      window.history.replaceState(
-        {},
-        "",
-        `/talk/${encodeURIComponent(rawName)}`,
-      );
+export const loadInitialData$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (get(initialDataLoaded$)) {
+      return;
     }
-  }
+    await Promise.all([
+      set(fetchAgentsList$),
+      set(initZeroOnboarding$, signal),
+      set(initSlackOrg$),
+    ]);
+    signal.throwIfAborted();
+    set(initialDataLoaded$, true);
+    set(initSidebarCollapsed$);
+  },
+);
 
-  // Resolve agent from /talk/:name
-  const agentName = get(zeroChatAgentName$);
+/**
+ * Resolve an agent by name and switch to it, auto-pinning if needed.
+ *
+ * - If agentName matches the default agent, switches to null (default).
+ * - If agentName is found among subagents, switches to it and auto-pins.
+ * - If agentName is unknown, switches to null and redirects to default.
+ * - If agentName is null, switches to null (no agent).
+ *
+ * Shared by setupZeroPage$ and setupTalkPage$ to avoid duplicating
+ * the lookup / pin / redirect logic.
+ */
+export async function resolveAgentByName(
+  get: Getter,
+  set: Setter,
+  signal: AbortSignal,
+  agentName: string | null,
+): Promise<void> {
   if (agentName) {
     const subagents = await get(zeroSubagents$);
     const rawDefaultName = await get(defaultAgentName$);
@@ -99,27 +102,69 @@ async function resolveAndSwitchAgent(
       }
     }
   } else {
-    // Non-talk, non-chat URL (e.g. /schedule)
     set(switchActiveAgent$, null);
   }
+}
+
+/**
+ * Resolve the active agent from the URL and switch to it.
+ *
+ * - `/talk/:name` → find agent by name, switch to it
+ * - `/chat/:threadId` → sync session via syncUrlSession$
+ * - `/` → redirect to `/talk/:defaultAgent`
+ * - other `/*` → switch to default agent
+ *
+ * switchActiveAgent$ sets the agent AND fetches the session list atomically.
+ */
+async function resolveAndSwitchAgent(
+  get: Getter,
+  set: Setter,
+  signal: AbortSignal,
+) {
+  const currentPath = get(pathname$);
+
+  // On /chat/:threadId, syncUrlSession$ switches to the correct session.
+  // Don't resolve agent here — switchZeroSession$ handles that internally.
+  if (get(zeroInChat$)) {
+    L.info("on chat URL, syncing session");
+    await set(syncUrlSession$);
+    return;
+  }
+  L.info("resolveAgent path:", currentPath);
+
+  // If on bare /, redirect to /talk/:defaultAgent
+  if (/^\/?$/.test(currentPath)) {
+    const rawName = await get(defaultAgentName$);
+    signal.throwIfAborted();
+    if (rawName) {
+      window.history.replaceState(
+        {},
+        "",
+        `/talk/${encodeURIComponent(rawName)}`,
+      );
+    }
+  }
+
+  // Resolve agent from /talk/:name
+  const agentName = get(zeroChatAgentName$);
+  await resolveAgentByName(get, set, signal, agentName);
 }
 
 export const setupZeroPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroPage));
 
-    // Only fetch heavy initial data once — skip on subsequent route changes
-    // (e.g. switching between talk agents).
-    if (!get(initialDataLoaded$)) {
-      await Promise.all([
-        set(fetchAgentsList$),
-        set(initZeroOnboarding$, signal),
-        set(initSlackOrg$),
-      ]);
-      signal.throwIfAborted();
-      set(initialDataLoaded$, true);
-      set(initSidebarCollapsed$);
+    // When landing on /chat/:sessionId (e.g. page refresh), mark session as
+    // switching immediately so the UI shows a skeleton instead of briefly
+    // flashing the "Send a message" empty state while initial data loads.
+    if (get(zeroSessionId$)) {
+      set(prepareSessionSwitch$);
     }
+
+    await set(loadInitialData$, signal);
+
+    // Consume ?settings=<tab> param before resolveAndSwitchAgent replaces the URL
+    set(checkSettingsParam$);
 
     await resolveAndSwitchAgent(get, set, signal);
 

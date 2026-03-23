@@ -6,7 +6,7 @@ import {
 import { orgContract, createErrorResponse, ApiError } from "@vm0/core";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
-import { updateOrgSlug } from "../../../src/lib/org/org-service";
+import { updateOrg } from "../../../src/lib/org/org-service";
 import { resolveOrg } from "../../../src/lib/org/resolve-org";
 import type { ResolvedOrg } from "../../../src/lib/org/resolve-org";
 import { logger } from "../../../src/lib/logger";
@@ -19,6 +19,7 @@ function resolvedOrgToResponse(resolved: ResolvedOrg, role?: OrgRole) {
   return {
     id: resolved.orgId,
     slug: resolved.slug,
+    name: resolved.name,
     tier: resolved.tier,
     role,
   };
@@ -71,10 +72,10 @@ const router = tsr.router(orgContract, {
     }
     const { userId } = authCtx;
 
-    const { slug, force } = body;
+    const { slug, name, force } = body;
     const orgSlug = new URL(request.url).searchParams.get("org");
 
-    log.debug("updating org", { userId, slug, force });
+    log.debug("updating org", { userId, slug, name, force });
 
     let resolvedOrg;
     try {
@@ -90,12 +91,11 @@ const router = tsr.router(orgContract, {
     }
 
     try {
-      const updatedOrg = await updateOrgSlug(
-        resolvedOrg.orgId,
+      const updatedOrg = await updateOrg(resolvedOrg.orgId, userId, {
         slug,
-        userId,
+        name,
         force,
-      );
+      });
 
       return { status: 200 as const, body: resolvedOrgToResponse(updatedOrg) };
     } catch (error) {

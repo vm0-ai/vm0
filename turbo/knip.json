@@ -110,7 +110,11 @@
     "apps/web/src/lib/auth/sandbox-token.ts",
     "apps/web/src/lib/infra-client.ts",
     "scripts/rebuild-snapshots.ts",
-    "scripts/rebuild-snapshots-from-db.ts"
+    "scripts/rebuild-snapshots-from-db.ts",
+    "apps/web/scripts/migrations/001-backfill-clerk-orgs/**",
+    "apps/web/scripts/migrations/002-backfill-clerk-metadata/**",
+    "apps/web/scripts/migrations/003-sync-clerk-slugs/**",
+    "apps/web/scripts/migrations/004-backfill-default-agent/**"
   ],
   "ignoreDependencies": ["@commitlint/cli"],
   "ignoreWorkspaces": [],

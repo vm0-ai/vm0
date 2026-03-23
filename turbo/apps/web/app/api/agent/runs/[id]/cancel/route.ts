@@ -19,6 +19,7 @@ import {
 import { drainOrgQueue } from "../../../../../../src/lib/run/run-queue-service";
 import { dispatchQueuedRun } from "../../../../../../src/lib/run/run-service";
 import { processOrgCredits } from "../../../../../../src/lib/credit/credit-service";
+import { publishCancelNotification } from "../../../../../../src/lib/realtime/client";
 import { after } from "next/server";
 
 const log = logger("api:runs:cancel");
@@ -125,8 +126,26 @@ const router = tsr.router(runsCancelContract, {
       };
     }
 
-    // Dispatch callbacks (e.g., loop schedule advancement) and drain queue
+    // Dispatch side effects after the response is sent:
+    // - Ably cancel notification (best-effort, DB status is already "cancelled")
+    // - Terminal callbacks (e.g., loop schedule advancement)
+    // - Queue drain + credit processing
     after(async () => {
+      // Notify runner via Ably so it can kill the VM.
+      // Only needed for running jobs with a runner group — queued/pending
+      // runs are handled by the DB status change alone.
+      if (run.status === "running" && run.runnerGroup) {
+        const published = await publishCancelNotification(
+          run.runnerGroup,
+          runId,
+        );
+        if (!published) {
+          log.warn(
+            `Ably cancel notification failed for run ${runId}, VM will run until natural completion`,
+          );
+        }
+      }
+
       const shouldDrain = run.status === "running" || run.status === "pending";
       await dispatchTerminalSideEffects(
         runId,

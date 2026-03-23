@@ -48,43 +48,56 @@ function validateOrgSlug(slug: string): void {
 }
 
 /**
- * Update an org's slug.
- * Updates the Clerk org slug and refreshes org_cache.
- * Requires force flag since this can break existing references.
+ * Update an org's slug and/or name.
+ * Updates the Clerk org and refreshes org_cache.
+ * Requires force flag for slug changes since they can break existing references.
  */
-export async function updateOrgSlug(
+export async function updateOrg(
   orgId: string,
-  newSlug: string,
   userId: string,
-  force: boolean = false,
+  updates: { slug?: string; name?: string; force?: boolean },
 ): Promise<ResolvedOrg> {
+  const { slug: newSlug, name: newName, force } = updates;
+
   // Verify membership (requireOrgMember throws 403 if not a member)
   await requireOrgMember(orgId, userId);
 
-  // Require force flag for slug changes
-  if (!force) {
-    throw badRequest(
-      "Changing org slug may break existing references. Use --force to confirm.",
-    );
+  const clerkUpdate: Record<string, string> = {};
+
+  if (newSlug) {
+    // Require force flag for slug changes
+    if (!force) {
+      throw badRequest(
+        "Changing org slug may break existing references. Use --force to confirm.",
+      );
+    }
+
+    validateOrgSlug(newSlug);
+
+    // Check if new slug already exists via org_cache
+    const existing = await getOrgBySlug(newSlug);
+    if (existing && existing.orgId !== orgId) {
+      throw badRequest(`Org "${newSlug}" already exists`);
+    }
+
+    clerkUpdate.slug = newSlug;
   }
 
-  validateOrgSlug(newSlug);
-
-  // Check if new slug already exists via org_cache
-  const existing = await getOrgBySlug(newSlug);
-  if (existing && existing.orgId !== orgId) {
-    throw badRequest(`Org "${newSlug}" already exists`);
+  if (newName) {
+    clerkUpdate.name = newName;
   }
 
-  log.debug("updating org slug", { orgId, newSlug });
+  if (Object.keys(clerkUpdate).length === 0) {
+    return await getOrgData(orgId);
+  }
 
-  // Primary write: update Clerk org slug
+  log.debug("updating org", { orgId, ...clerkUpdate });
+
+  // Primary write: update Clerk org
   const client = await clerkClient();
-  await client.organizations.updateOrganization(orgId, {
-    slug: newSlug,
-  });
+  await client.organizations.updateOrganization(orgId, clerkUpdate);
 
-  log.debug("org slug updated", { orgId, newSlug });
+  log.debug("org updated", { orgId, ...clerkUpdate });
 
   // Invalidate stale cache, then re-fetch from Clerk
   await invalidateOrgCache(orgId);

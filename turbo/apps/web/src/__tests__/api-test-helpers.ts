@@ -26,6 +26,7 @@ import { usageDaily } from "../db/schema/usage-daily";
 import { slackOrgInstallations } from "../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../db/schema/slack-org-connection";
 import { slackOrgPendingQuestions } from "../db/schema/slack-org-pending-question";
+import { slackOrgThreadSessions } from "../db/schema/slack-org-thread-session";
 import { githubInstallations } from "../db/schema/github-installation";
 import { githubUserLinks } from "../db/schema/github-user-link";
 import { githubIssueSessions } from "../db/schema/github-issue-session";
@@ -89,6 +90,7 @@ import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/c
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
+import { variables } from "../db/schema/variable";
 import { hashFileContent } from "../lib/storage/content-hash";
 import {
   encryptSecretValue,
@@ -327,11 +329,12 @@ export async function createTestOrg(
     .values({
       orgId,
       slug,
+      name: slug,
       cachedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, cachedAt: new Date() },
+      set: { slug, name: slug, cachedAt: new Date() },
     });
 
   // Ensure org row exists (source of truth for tier and default agent)
@@ -598,6 +601,7 @@ async function createTestRunDirect(
     createdAt?: Date;
     startedAt?: Date;
     completedAt?: Date;
+    result?: Record<string, unknown>;
   },
 ): Promise<{ id: string }> {
   const [run] = await globalThis.services.db
@@ -614,6 +618,7 @@ async function createTestRunDirect(
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
       ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
       ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
+      ...(options?.result ? { result: options.result } : {}),
     })
     .returning({ id: agentRuns.id });
   return run!;
@@ -693,6 +698,7 @@ export async function createTestRunInDb(
     orgId?: string;
     startedAt?: Date;
     completedAt?: Date;
+    result?: Record<string, unknown>;
   },
 ): Promise<{ runId: string }> {
   // Look up orgId from compose
@@ -720,6 +726,7 @@ export async function createTestRunInDb(
       createdAt: options?.createdAt,
       startedAt: options?.startedAt,
       completedAt: options?.completedAt,
+      result: options?.result,
     },
   );
   return { runId: run.id };
@@ -1039,9 +1046,7 @@ export async function enableTestSchedule(
       body: JSON.stringify({ composeId }),
     },
   );
-  const response = await enableScheduleRoute(request, {
-    params: Promise.resolve({ name }),
-  });
+  const response = await enableScheduleRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
@@ -1070,9 +1075,7 @@ export async function disableTestSchedule(
       body: JSON.stringify({ composeId }),
     },
   );
-  const response = await disableScheduleRoute(request, {
-    params: Promise.resolve({ name }),
-  });
+  const response = await disableScheduleRoute(request);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(
@@ -2856,6 +2859,7 @@ export async function findTestOutboxItemById(id: string) {
 export async function insertOrgCacheEntry(entry: {
   orgId: string;
   slug: string;
+  name?: string;
   cachedAt?: Date;
 }): Promise<void> {
   initServices();
@@ -2864,12 +2868,14 @@ export async function insertOrgCacheEntry(entry: {
     .values({
       orgId: entry.orgId,
       slug: entry.slug,
+      name: entry.name ?? entry.slug,
       cachedAt: entry.cachedAt ?? new Date(),
     })
     .onConflictDoUpdate({
       target: orgCache.orgId,
       set: {
         slug: entry.slug,
+        name: entry.name ?? entry.slug,
         cachedAt: entry.cachedAt ?? new Date(),
       },
     });
@@ -2954,6 +2960,7 @@ export async function insertOrgDefaultModelProvider(
  * Inserts with defaults if missing, does nothing if already present.
  */
 export async function ensureOrgRow(orgId: string): Promise<void> {
+  initServices();
   await globalThis.services.db
     .insert(orgMetadata)
     .values({ orgId })
@@ -3100,6 +3107,101 @@ export async function insertOrgMembersEntry(entry: {
     });
 }
 
+/**
+ * Return the Drizzle DB instance from globalThis.services.
+ * Useful for passing to script functions under test that need a db parameter.
+ */
+export function getTestDb() {
+  initServices();
+  return globalThis.services.db;
+}
+
+/**
+ * Read a full org_metadata row by orgId.
+ * Returns undefined if no row exists.
+ */
+export async function getOrgRow(orgId: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Read a full org_members_metadata row by (orgId, userId).
+ * Returns undefined if no row exists.
+ */
+export async function getOrgMembersEntry(orgId: string, userId: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    );
+  return row;
+}
+
+/**
+ * Delete an org_members_metadata row by (orgId, userId).
+ */
+export async function deleteOrgMembersEntry(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    );
+}
+
+/**
+ * Read a full users row by userId.
+ * Returns undefined if no row exists.
+ */
+export async function getUserRow(userId: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Insert a user row for testing.
+ */
+export async function insertUserRow(
+  userId: string,
+  emailUnsubscribed: boolean,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(users)
+    .values({ id: userId, emailUnsubscribed })
+    .onConflictDoNothing();
+}
+
+/**
+ * Delete a user row by userId.
+ */
+export async function deleteUserRow(userId: string): Promise<void> {
+  initServices();
+  await globalThis.services.db.delete(users).where(eq(users.id, userId));
+}
+
 export async function findTestRunnerJobEntry(runId: string) {
   const rows = await globalThis.services.db
     .select()
@@ -3157,6 +3259,32 @@ export async function findTestExportJobById(id: string) {
     .where(eq(exportJobs.id, id))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Insert a test export job for a specific org.
+ *
+ * Direct DB insert is required because export jobs are normally created
+ * via async workflow, and tests need to control the exact state (status, s3Key).
+ */
+export async function insertTestExportJob(
+  orgId: string,
+  options: {
+    userId: string;
+    status: string;
+    s3Key?: string | null;
+  },
+): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(exportJobs)
+    .values({
+      orgId,
+      userId: options.userId,
+      status: options.status,
+      s3Key: options.s3Key ?? null,
+    })
+    .returning({ id: exportJobs.id });
+  return row!;
 }
 
 /**
@@ -3872,4 +4000,283 @@ export async function getOrgAutoRechargeFields(orgId: string) {
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Set Stripe subscription fields on org_metadata for testing billing-related flows.
+ */
+export async function updateOrgStripeSubscription(
+  orgId: string,
+  subscriptionId: string,
+  status: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(orgMetadata)
+    .set({
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: status,
+      updatedAt: new Date(),
+    })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+/**
+ * Update agent compose's orgId. Useful when tests need telegram installations
+ * or other compose-linked entities to belong to a specific org.
+ */
+export async function updateAgentComposeOrg(
+  composeId: string,
+  orgId: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ orgId })
+    .where(eq(agentComposes.id, composeId));
+}
+
+/**
+ * Create a telegram installation for a specific compose with a known bot token.
+ * Returns the installation ID.
+ */
+export async function createTelegramInstallationForCompose(
+  composeId: string,
+  adminUserId: string,
+  botToken: string,
+): Promise<string> {
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  const encryptedBotToken = encryptSecretValue(botToken, encryptionKey);
+
+  const rows = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      telegramBotId: `bot-${randomUUID().slice(0, 8)}`,
+      encryptedBotToken,
+      webhookSecret: `secret-${randomUUID().slice(0, 8)}`,
+      defaultComposeId: composeId,
+      adminUserId,
+    })
+    .returning();
+
+  if (!rows[0]) throw new Error("Failed to create telegram installation");
+  return rows[0].id;
+}
+
+/**
+ * Create a Slack org installation for a specific org.
+ */
+export async function createSlackInstallationForOrg(
+  orgId: string,
+  workspaceId: string,
+): Promise<void> {
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+
+  await globalThis.services.db
+    .insert(slackOrgInstallations)
+    .values({
+      slackWorkspaceId: workspaceId,
+      orgId,
+      encryptedBotToken: encryptSecretValue("xoxb-test-token", encryptionKey),
+      botUserId: `U${randomUUID().slice(0, 8)}`,
+    })
+    .onConflictDoNothing();
+}
+
+// ============================================================================
+// Org Deletion Test Helpers
+// ============================================================================
+
+export async function insertTestSlackOrgInstallation(params: {
+  slackWorkspaceId: string;
+  slackWorkspaceName: string;
+  orgId: string;
+  installedByUserId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(slackOrgInstallations).values({
+    slackWorkspaceId: params.slackWorkspaceId,
+    slackWorkspaceName: params.slackWorkspaceName,
+    orgId: params.orgId,
+    encryptedBotToken: "enc-token-test",
+    botUserId: "bot-user-test",
+    installedByUserId: params.installedByUserId,
+  });
+}
+
+export async function insertTestSlackOrgConnection(params: {
+  slackUserId: string;
+  slackWorkspaceId: string;
+  vm0UserId: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(slackOrgConnections)
+    .values({
+      slackUserId: params.slackUserId,
+      slackWorkspaceId: params.slackWorkspaceId,
+      vm0UserId: params.vm0UserId,
+    })
+    .returning({ id: slackOrgConnections.id });
+  return row!;
+}
+
+export async function insertTestSlackOrgPendingQuestion(params: {
+  connectionId: string;
+  composeId: string;
+  sessionId: string;
+  runId: string;
+  slackWorkspaceId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(slackOrgPendingQuestions).values({
+    connectionId: params.connectionId,
+    composeId: params.composeId,
+    sessionId: params.sessionId,
+    runId: params.runId,
+    slackWorkspaceId: params.slackWorkspaceId,
+    slackChannelId: "C-test",
+    slackThreadTs: "1234.5678",
+    slackMessageTs: "1234.5679",
+    agentName: "test-agent",
+    questions: [{ question: "test?" }],
+    expiresAt: new Date(Date.now() + 3600000),
+  });
+}
+
+export async function insertTestSlackOrgThreadSession(params: {
+  connectionId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(slackOrgThreadSessions).values({
+    connectionId: params.connectionId,
+    slackChannelId: "C-test",
+    slackThreadTs: uniqueId("ts"),
+  });
+}
+
+export async function insertTestCreditUsageForRun(params: {
+  runId: string;
+  orgId: string;
+  userId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(creditUsage).values({
+    runId: params.runId,
+    orgId: params.orgId,
+    userId: params.userId,
+    model: "claude-3-5-sonnet-20241022",
+    modelProvider: "anthropic",
+    inputTokens: 100,
+    outputTokens: 50,
+  });
+}
+
+export async function insertTestConversation(params: {
+  runId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(conversations).values({
+    runId: params.runId,
+    cliAgentType: "claude-code",
+    cliAgentSessionId: uniqueId("session"),
+  });
+}
+
+export async function insertTestStorage(params: {
+  userId: string;
+  orgId: string;
+  name: string;
+  type?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(storages)
+    .values({
+      userId: params.userId,
+      name: params.name,
+      type: params.type ?? "volume",
+      orgId: params.orgId,
+      s3Prefix: `storages/${params.orgId}/${params.name}/`,
+    })
+    .returning({ id: storages.id });
+  return row!;
+}
+
+export async function insertTestStorageVersion(params: {
+  storageId: string;
+  createdBy: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(storageVersions).values({
+    id: uniqueId("sv"),
+    storageId: params.storageId,
+    s3Key: "test-key",
+    size: 100,
+    fileCount: 1,
+    createdBy: params.createdBy,
+  });
+}
+
+export async function insertTestUsageDaily(params: {
+  userId: string;
+  orgId: string;
+  date: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(usageDaily).values({
+    userId: params.userId,
+    orgId: params.orgId,
+    date: params.date,
+    runCount: 5,
+  });
+}
+
+/** Count rows by org_id in a given table using raw SQL to avoid type casts. */
+export async function countOrgRows(
+  tableName:
+    | "agent_runs"
+    | "agent_run_queue"
+    | "agent_composes"
+    | "storages"
+    | "secrets"
+    | "model_providers"
+    | "connectors"
+    | "variables"
+    | "usage_daily"
+    | "export_jobs"
+    | "zero_agents"
+    | "credit_usage"
+    | "agent_sessions"
+    | "email_thread_sessions"
+    | "slack_org_installations"
+    | "org_members_cache"
+    | "org_members_metadata"
+    | "org_cache"
+    | "org_metadata",
+  orgId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE org_id = ${orgId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+export async function insertTestOrgSentinelSecret(params: {
+  orgId: string;
+  name: string;
+}): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const encrypted = encryptSecretValue(
+    "sentinel-test-value",
+    SECRETS_ENCRYPTION_KEY,
+  );
+  await globalThis.services.db.insert(secrets).values({
+    name: params.name,
+    encryptedValue: encrypted,
+    type: "user",
+    userId: ORG_SENTINEL_USER_ID,
+    orgId: params.orgId,
+  });
+}
+
+export async function insertTestOrgSentinelVariable(params: {
+  orgId: string;
+  name: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(variables).values({
+    name: params.name,
+    value: "sentinel-test-value",
+    userId: ORG_SENTINEL_USER_ID,
+    orgId: params.orgId,
+  });
 }

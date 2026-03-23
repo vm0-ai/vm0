@@ -174,17 +174,18 @@ async fn run_snapshot_workflow(
         "spawning firecracker"
     );
 
+    // Use `exec` to replace the bash process with firecracker, keeping all
+    // descendants in the same process group so `kill_process_group` can
+    // reach them.  Without `exec`, `sudo` creates a new process group for
+    // the inner `sudo -u` child, which escapes `killpg` and becomes orphan.
+    let inner_cmd = r#"exec ip netns exec "$1" sudo -u "$2" "$3" --api-sock "$4""#;
+
     let mut child = tokio::process::Command::new("sudo")
-        .arg("ip")
-        .arg("netns")
-        .arg("exec")
-        .arg(&network.name)
-        .arg("sudo")
-        .arg("-u")
-        .arg(&username)
-        .arg(&config.binary_path)
-        .arg("--api-sock")
-        .arg(&api_sock)
+        .args(["bash", "-c", inner_cmd, "_"])
+        .arg(&network.name) // $1
+        .arg(&username) // $2
+        .arg(&config.binary_path) // $3
+        .arg(&api_sock) // $4
         .current_dir(paths.workspace())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

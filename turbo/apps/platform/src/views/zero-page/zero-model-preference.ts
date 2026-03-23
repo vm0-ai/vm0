@@ -16,7 +16,7 @@ export function useModelSelection() {
   const modelProvidersLoadable = useLastLoadable(orgModelProviders$);
   const configuredProviders =
     modelProvidersLoadable.state === "hasData"
-      ? modelProvidersLoadable.data.modelProviders
+      ? (modelProvidersLoadable.data.modelProviders ?? [])
       : [];
   const modelOptions = [
     { value: "default", label: "Default" },

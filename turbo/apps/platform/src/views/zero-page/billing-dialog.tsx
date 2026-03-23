@@ -46,8 +46,8 @@ const PLANS = [
     features: ["20,000 credits/month", "Credits rollover", "Priority support"],
   },
   {
-    tier: "max" as const,
-    name: "Max",
+    tier: "team" as const,
+    name: "Team",
     price: "$99",
     period: "/month",
     features: ["80,000 credits/month", "Credits rollover", "Priority support"],
@@ -57,7 +57,7 @@ const PLANS = [
 const TIER_ORDER = {
   free: 0,
   pro: 1,
-  max: 2,
+  team: 2,
 } as const satisfies Record<BillingTier, number>;
 
 function PlanCard({
@@ -247,7 +247,7 @@ export function BillingDialog() {
 
   const handleAction = () => {
     if (isUpgrade) {
-      detach(checkout(selectedTier as "pro" | "max"), Reason.DomCallback);
+      detach(checkout(selectedTier as "pro" | "team"), Reason.DomCallback);
     } else if (isDowngrade) {
       detach(downgrade(), Reason.DomCallback);
     }

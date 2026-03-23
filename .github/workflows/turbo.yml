@@ -12,10 +12,59 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Detect release-please context across all event types (PR, push, merge queue).
+  # github.head_ref is empty in merge_group events, so we extract the PR number
+  # from the merge queue head_ref and check via GitHub API.
+  detect-release:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - name: Check for release-please
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref || '' }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          # PR event: check branch name
+          if [[ "$HEAD_REF" == release-please--branches--* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please PR detected (branch: $HEAD_REF)"
+            exit 0
+          fi
+
+          # Push event: check commit message
+          if [[ "$EVENT_NAME" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please push detected (message: $COMMIT_MSG)"
+            exit 0
+          fi
+
+          # Merge queue event: extract PR number, check branch via API
+          if [[ "$EVENT_NAME" == "merge_group" ]] && [[ -n "$MQ_HEAD_REF" ]]; then
+            PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [[ -n "$PR_NUM" ]]; then
+              PR_BRANCH=$(gh pr view "$PR_NUM" --repo "$REPO" --json headRefName --jq .headRefName 2>/dev/null || echo "")
+              if [[ "$PR_BRANCH" == release-please--branches--* ]]; then
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                echo "Release-please merge queue entry detected (PR #$PR_NUM, branch: $PR_BRANCH)"
+                exit 0
+              fi
+            fi
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Not a release-please context"
+
   # Prepare: detect changes and set job-ref identifier
   prepare:
+    needs: [detect-release]
     # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -153,8 +202,8 @@ jobs:
             MQ_REF="${{ github.event.merge_group.head_ref }}"
             PR_NUM=$(echo "$MQ_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$PR_NUM" ]; then
-              echo "job-ref=pr-${PR_NUM}-merge-queue" >> "$GITHUB_OUTPUT"
-              echo "Job ref set to: pr-${PR_NUM}-merge-queue"
+              echo "job-ref=pr-${PR_NUM}-mq-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+              echo "Job ref set to: pr-${PR_NUM}-mq-${GITHUB_RUN_ID}"
             else
               echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_REF"
               exit 1
@@ -181,9 +230,10 @@ jobs:
           fi
 
   file-size-check:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -220,9 +270,10 @@ jobs:
 
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -233,9 +284,10 @@ jobs:
         run: pnpm lint
 
   lint-types:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -246,9 +298,10 @@ jobs:
         run: pnpm check-types
 
   lint-format:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -259,9 +312,10 @@ jobs:
         run: pnpm prettier --check .
 
   lint-knip:
+    needs: [detect-release]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
     steps:
@@ -275,8 +329,6 @@ jobs:
   test-web:
     needs: prepare
     runs-on: ubuntu-latest
-    # Skip for release-please PRs and release-please commits
-    if: "${{ !startsWith(github.head_ref || '', 'release-please--branches--') && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) }}"
     strategy:
       matrix:
         shard: [1, 2, 3, 4]
@@ -348,8 +400,9 @@ jobs:
         run: pnpm tsx scripts/test-migration-consistency-schema.ts
 
   test-cli:
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -376,8 +429,9 @@ jobs:
           report_type: test_results
 
   test-app:
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -404,8 +458,9 @@ jobs:
           report_type: test_results
 
   test-other:
-    # Skip for release-please PRs (only version bumps and changelogs)
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
@@ -500,6 +555,7 @@ jobs:
           SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
           SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
           SLACK_REDIRECT_BASE_URL: ${{ needs.prepare.outputs.web-preview-url }}
+          PLAUSIBLE_SCRIPT_URL: ${{ vars.PLAUSIBLE_SCRIPT_URL }}
           SENTRY_DSN_WEB: ${{ secrets.SENTRY_DSN_WEB }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
@@ -702,6 +758,7 @@ jobs:
             SLACK_CLIENT_SECRET=${{ secrets.SLACK_CLIENT_SECRET }}
             SLACK_SIGNING_SECRET=${{ secrets.SLACK_SIGNING_SECRET }}
             SLACK_REDIRECT_BASE_URL=${{ needs.prepare.outputs.web-preview-url }}
+            PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
             SENTRY_DSN_WEB=${{ secrets.SENTRY_DSN_WEB }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
@@ -821,7 +878,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
       - name: Upload E2E test tokens
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-tokens
           path: |
@@ -854,6 +911,8 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
           environment: preview
           deployment-env: docs
+          environment-variables: |
+            NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
           meta-branch: ${{ github.head_ref || github.ref_name }}
           meta-pr: ${{ needs.prepare.outputs.job-ref }}
           skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
@@ -899,6 +958,7 @@ jobs:
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
+            VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
             VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
@@ -935,11 +995,11 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -956,7 +1016,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
       - name: Upload auth screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-auth-screenshots
           path: /tmp/e2e-auth-screenshots/
@@ -989,7 +1049,7 @@ jobs:
       - name: Deploy CLI with production dependencies
         run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted /tmp/cli-deploy
       - name: Upload CLI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1026,18 +1086,18 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
       - name: Link CLI globally
         run: cd /tmp/cli-deploy && sudo npm link
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: e2e-tokens
           path: /tmp
@@ -1065,6 +1125,14 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
 
+      - name: Print E2E trace log
+        if: always()
+        run: |
+          if [ -f /tmp/e2e-trace.log ]; then
+            echo "=== E2E CLI Trace (Serial) ==="
+            cat /tmp/e2e-trace.log
+          fi
+
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
@@ -1076,7 +1144,7 @@ jobs:
 
       - name: Upload JUnit XML artifact
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-serial-junit-xml
           path: e2e/results/
@@ -1136,7 +1204,6 @@ jobs:
           workspaces: crates -> target
           shared-key: aarch64-musl-ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-targets: false
 
       - name: Cross-compile guest binaries for ARM64
         run: |
@@ -1453,18 +1520,18 @@ jobs:
       )
     timeout-minutes: 2
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
       - name: Link CLI globally
         run: cd /tmp/cli-deploy && sudo npm link
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: e2e-tokens
           path: /tmp
@@ -1508,11 +1575,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Download CLI artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cli-dist
           path: /tmp/cli-deploy
@@ -1521,7 +1588,7 @@ jobs:
       - name: Install GNU parallel for bats
         run: sudo curl -sL https://raw.githubusercontent.com/martinda/gnu-parallel/master/src/parallel -o /usr/local/bin/parallel && sudo chmod +x /usr/local/bin/parallel
       - name: Download E2E test tokens
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: e2e-tokens
           path: /tmp
@@ -1561,6 +1628,14 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Print E2E trace log
+        if: always()
+        run: |
+          if [ -f /tmp/e2e-trace.log ]; then
+            echo "=== E2E CLI Trace (Chunk ${{ matrix.index }}) ==="
+            cat /tmp/e2e-trace.log
+          fi
+
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
@@ -1572,7 +1647,7 @@ jobs:
 
       - name: Upload JUnit XML artifact
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-runner-junit-xml-${{ matrix.index }}
           path: e2e/results/
@@ -1624,7 +1699,7 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Install Chrome for Puppeteer
@@ -1655,7 +1730,7 @@ jobs:
           echo "dir=" >> "$GITHUB_OUTPUT"
       - name: Upload Lighthouse report (web)
         if: always() && steps.lhci-dir-web.outputs.dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report-web
           path: ${{ steps.lhci-dir-web.outputs.dir }}/
@@ -1672,7 +1747,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Post Lighthouse comment (web)
         if: steps.lighthouse-comment-web.outcome == 'success'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: lighthouse-web
           message: ${{ steps.lighthouse-comment-web.outputs.body }}
@@ -1691,7 +1766,7 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Install Chrome for Puppeteer
@@ -1723,7 +1798,7 @@ jobs:
           echo "dir=" >> "$GITHUB_OUTPUT"
       - name: Upload Lighthouse report (app)
         if: always() && steps.lhci-dir-app.outputs.dir != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report-app
           path: ${{ steps.lhci-dir-app.outputs.dir }}/
@@ -1740,7 +1815,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Post Lighthouse comment (app)
         if: steps.lighthouse-comment-app.outcome == 'success'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: lighthouse-app
           message: ${{ steps.lighthouse-comment-app.outputs.body }}
@@ -1753,6 +1828,7 @@ jobs:
     runs-on: ubuntu-latest
     # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
+      - detect-release
       - prepare
       - file-size-check
       - lint-eslint
@@ -1783,14 +1859,11 @@ jobs:
     steps:
       - name: Validate CI results
         env:
-          HEAD_REF: ${{ github.head_ref || '' }}
-          COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
-          EVENT_NAME: ${{ github.event_name }}
+          IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
         run: |
-          # Auto-pass for release-please PRs (only version bumps and changelogs)
-          if [[ "$HEAD_REF" == release-please--branches--* ]] || \
-             { [[ "$EVENT_NAME" == "push" ]] && [[ "$COMMIT_MSG" == chore:\ release* ]]; }; then
-            echo "✅ Release-please PR — skipping CI gate"
+          # Auto-pass for release-please PRs, commits, and merge queue entries
+          if [[ "$IS_RELEASE" == "true" ]]; then
+            echo "✅ Release-please — skipping CI gate"
             exit 0
           fi
 

@@ -11,13 +11,34 @@
     />
     <script type="module" src="/src/main.ts" defer></script>
     <script>
-      if (location.hostname === "app.vm0.ai") {
-        var s = document.createElement("script");
-        s.defer = true;
-        s.dataset.domain = "vm0.ai";
-        s.src = "https://plausible.io/js/pa-eEj_2G8vS8xPlTUzW2A3U.js";
-        document.head.appendChild(s);
-      }
+      (function () {
+        var url = "%VITE_PLAUSIBLE_SCRIPT_URL%";
+        if (url && url.indexOf("plausible") !== -1) {
+          var s = document.createElement("script");
+          s.async = true;
+          s.src = url;
+          document.head.appendChild(s);
+          ((window.plausible =
+            window.plausible ||
+            function () {
+              (plausible.q = plausible.q || []).push(arguments);
+            }),
+            (plausible.init =
+              plausible.init ||
+              function (i) {
+                plausible.o = i || {};
+              }));
+          plausible.init({
+            transformRequest: function (payload) {
+              payload.u = payload.u.replace(
+                /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+                "/:id",
+              );
+              return payload;
+            },
+          });
+        }
+      })();
     </script>
   </head>
   <body>

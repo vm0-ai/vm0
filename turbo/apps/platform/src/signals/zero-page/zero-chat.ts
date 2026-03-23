@@ -14,7 +14,7 @@ import {
 } from "./zero-nav.ts";
 import { updatePathname$ } from "../route.ts";
 import { agentsList$ } from "./agents-list.ts";
-import type { ChatThreadListItem } from "@vm0/core";
+import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
 
@@ -146,7 +146,6 @@ async function startAgentRun(
   const body: Record<string, string> = {
     agentComposeId: composeId,
     prompt: prompt.trim(),
-    memoryName: "memory",
   };
   if (sessionId) {
     body.sessionId = sessionId;
@@ -163,9 +162,14 @@ async function startAgentRun(
 
   if (!response.ok) {
     const errBody = (await response.json().catch(() => null)) as {
-      error?: { message?: string };
+      error?: { message?: string; code?: string };
     } | null;
-    throw new Error(errBody?.error?.message ?? "Failed to start agent run");
+    const code = errBody?.error?.code;
+    const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
+    const message = guidance
+      ? `${guidance.title}: ${guidance.guidance}`
+      : (errBody?.error?.message ?? "Failed to start agent run");
+    throw new Error(message);
   }
 
   const data = (await response.json()) as { runId: string };
@@ -293,6 +297,47 @@ const internalQueuePosition$ = state(0);
 export const zeroChatQueuePosition$ = computed((get) =>
   get(internalQueuePosition$),
 );
+
+// ---------------------------------------------------------------------------
+// Queued message — allows the user to queue a follow-up while agent is busy
+// ---------------------------------------------------------------------------
+
+interface QueuedMessage {
+  text: string;
+  modelProvider?: string;
+}
+
+const internalQueuedMessage$ = state<QueuedMessage | null>(null);
+export const zeroChatQueuedMessage$ = computed((get) =>
+  get(internalQueuedMessage$),
+);
+
+/** Queue a message to be sent automatically once the current run completes. */
+export const queueZeroChatMessage$ = command(
+  ({ get, set }, text: string, options?: { modelProvider?: string }) => {
+    if (!get(internalSending$)) {
+      return;
+    }
+    if (get(internalQueuedMessage$)) {
+      return;
+    }
+    set(internalQueuedMessage$, {
+      text,
+      modelProvider: options?.modelProvider,
+    });
+    set(internalChatInput$, "");
+  },
+);
+
+/** Withdraw the queued message back into the input box for editing. */
+export const withdrawQueuedMessage$ = command(({ get, set }) => {
+  const queued = get(internalQueuedMessage$);
+  if (!queued) {
+    return;
+  }
+  set(internalChatInput$, queued.text);
+  set(internalQueuedMessage$, null);
+});
 
 /** Latest event summaries for the active run (for display while thinking). */
 export const zeroChatRunSummaries$ = computed(async (get) => {
@@ -494,6 +539,17 @@ const internalSessionSwitching$ = state(false);
 export const zeroSessionSwitching$ = computed((get) =>
   get(internalSessionSwitching$),
 );
+
+/**
+ * Mark session as switching immediately so the UI shows a skeleton
+ * instead of flashing "Send a message" while the page setup runs.
+ * Called from setupZeroPage$ before heavy data loads when a session URL is detected.
+ */
+export const prepareSessionSwitch$ = command(({ set }) => {
+  set(internalSessionSwitching$, true);
+  set(internalMessages$, []);
+  set(internalSessionError$, null);
+});
 
 // Chat input
 const internalChatInput$ = state("");
@@ -1016,6 +1072,22 @@ export const sendZeroChatMessage$ = command(
       });
     } finally {
       set(internalSending$, false);
+
+      // Auto-send queued message if one was enqueued while the run was active
+      const queued = get(internalQueuedMessage$);
+      if (queued) {
+        set(internalQueuedMessage$, null);
+        detach(
+          set(
+            sendZeroChatMessage$,
+            queued.text,
+            queued.modelProvider
+              ? { modelProvider: queued.modelProvider }
+              : undefined,
+          ),
+          Reason.DomCallback,
+        );
+      }
     }
   },
 );
@@ -1062,6 +1134,11 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
 
   set(internalActiveRunId$, null);
 
+  // Capture events BEFORE any await — the queued-message auto-send in
+  // sendZeroChatMessage$'s finally block may clear internalRunEvents$
+  // while we're waiting on the network.
+  const pages = get(internalRunEvents$);
+
   try {
     const fetchFn = get(fetch$);
     const res = await fetchFn(`/api/zero/runs/${runId}`);
@@ -1076,7 +1153,6 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
     }
 
     // Extract result content and summaries from telemetry events
-    const pages = get(internalRunEvents$);
     const { result: resultContent, summaries } = await extractResultFromEvents(
       pages,
       get,
@@ -1139,6 +1215,7 @@ export const syncUrlSession$ = command(async ({ get, set }) => {
   }
   const currentThreadId = get(zeroChatThreadId$);
   if (urlSessionId === currentThreadId) {
+    set(internalSessionSwitching$, false);
     return;
   }
   await set(switchZeroSession$, urlSessionId);

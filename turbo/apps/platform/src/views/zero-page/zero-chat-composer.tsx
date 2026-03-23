@@ -3,10 +3,11 @@ import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconSend,
   IconPaperclip,
-  IconLoader2,
   IconPlayerStop,
   IconPlug,
   IconPlus,
+  IconClock,
+  IconArrowBackUp,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -60,10 +61,10 @@ import {
 } from "../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  zeroAddedSkills$,
-  addZeroSkill$,
-  saveZeroSkills$,
-} from "../../signals/zero-page/zero-skills.ts";
+  zeroAddedConnectors$,
+  addZeroConnector$,
+  saveZeroConnectors$,
+} from "../../signals/zero-page/zero-connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
@@ -77,6 +78,10 @@ interface ZeroChatComposerProps {
   sending?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
+  /** Message queued for delivery after the current run completes. */
+  queuedMessage?: { text: string } | null;
+  /** Withdraw the queued message back into the input for editing. */
+  onWithdraw?: () => void;
   agentName: string;
   /** Navigate to connectors management page. */
   onManageConnectors?: () => void;
@@ -386,6 +391,8 @@ export function ZeroChatComposer({
   onSend,
   sending,
   onCancel,
+  queuedMessage,
+  onWithdraw,
   agentName,
   onManageConnectors,
   className,
@@ -409,7 +416,7 @@ export function ZeroChatComposer({
 
   // Connectors
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const addedSkillsLoadable = useLastLoadable(zeroAddedSkills$);
+  const addedConnectorsLoadable = useLastLoadable(zeroAddedConnectors$);
   const connectConnector = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
@@ -419,8 +426,8 @@ export function ZeroChatComposer({
   const isOnboarding =
     (onboardingActive.state === "hasData" && onboardingActive.data) ||
     (memberOnboardingActive.state === "hasData" && memberOnboardingActive.data);
-  const addSkill = useSet(addZeroSkill$);
-  const saveSkills = useSet(saveZeroSkills$);
+  const addConnector = useSet(addZeroConnector$);
+  const saveConnectors = useSet(saveZeroConnectors$);
   const optimisticConnected = useGet(justConnectedTypes$);
   const clearOptimistic = useSet(clearJustConnectedTypes$);
   const addDialogOpen = useGet(composerAddDialogOpen$);
@@ -430,11 +437,13 @@ export function ZeroChatComposer({
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
   maybeClearOptimistic(optimisticConnected, connectorMap, clearOptimistic);
-  const addedSkills =
-    addedSkillsLoadable.state === "hasData" ? addedSkillsLoadable.data : [];
-  const addedSet = new Set(addedSkills);
+  const addedConnectors =
+    addedConnectorsLoadable.state === "hasData"
+      ? addedConnectorsLoadable.data
+      : [];
+  const addedSet = new Set(addedConnectors);
 
-  const agentConnectors: ComposerConnectorItem[] = addedSkills
+  const agentConnectors: ComposerConnectorItem[] = addedConnectors
     .filter((name) => connectorMap.has(name as ConnectorType))
     .map((name) => buildConnectorItem(name, connectorMap, optimisticConnected))
     .sort((a, b) => Number(a.connected) - Number(b.connected));
@@ -443,9 +452,9 @@ export function ZeroChatComposer({
     const label = resolveConnectorLabel(type, connectorMap);
     detach(
       (async () => {
-        await addSkill(type);
+        await addConnector(type);
         try {
-          await saveSkills();
+          await saveConnectors();
         } catch (error) {
           throwIfAbort(error);
           // May fail during onboarding when compose doesn't exist yet — ignore
@@ -465,10 +474,10 @@ export function ZeroChatComposer({
       pageSignal,
     );
 
-  // Send
+  // Send (or queue if agent is busy — parent decides)
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || sending) {
+    if (!trimmed || !!queuedMessage) {
       return;
     }
     persistSelection();
@@ -524,18 +533,46 @@ export function ZeroChatComposer({
                 onRemove={removeAttachment}
               />
             )}
-            <textarea
-              className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
-              rows={3}
-              placeholder="Ask me to automate workflows, manage tasks..."
-              value={input}
-              onChange={(e) => onInputChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onCompositionStart={onCompositionStart}
-              onCompositionEnd={onCompositionEnd}
-              onPaste={handlePaste}
-              disabled={sending}
-            />
+            {queuedMessage ? (
+              <div className="flex items-start gap-3 px-5 pt-4 pb-2 min-h-[88px]">
+                <IconClock
+                  size={16}
+                  className="text-muted-foreground shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Will send when the agent finishes
+                  </p>
+                  <p className="text-sm text-foreground line-clamp-3 break-words">
+                    {queuedMessage.text}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onWithdraw}
+                  className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <IconArrowBackUp size={14} />
+                  Withdraw
+                </button>
+              </div>
+            ) : (
+              <textarea
+                className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
+                rows={3}
+                placeholder={
+                  sending
+                    ? "Type your next message\u2026"
+                    : "Ask me to automate workflows, manage tasks..."
+                }
+                value={input}
+                onChange={(e) => onInputChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onCompositionStart={onCompositionStart}
+                onCompositionEnd={onCompositionEnd}
+                onPaste={handlePaste}
+              />
+            )}
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <div className="flex items-center gap-1 text-muted-foreground">
                 <button
@@ -571,7 +608,7 @@ export function ZeroChatComposer({
                     ))}
                   </SelectContent>
                 </Select>
-                {sending && onCancel ? (
+                {sending && onCancel && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -581,19 +618,16 @@ export function ZeroChatComposer({
                   >
                     <IconPlayerStop size={16} />
                   </Button>
-                ) : (
+                )}
+                {!queuedMessage && (
                   <Button
                     size="sm"
                     className="rounded-lg h-9 w-9 p-0 shrink-0"
                     onClick={handleSend}
-                    disabled={!input.trim() || sending}
-                    aria-label="Send"
+                    disabled={!input.trim()}
+                    aria-label={sending ? "Queue message" : "Send"}
                   >
-                    {sending ? (
-                      <IconLoader2 size={16} className="animate-spin" />
-                    ) : (
-                      <IconSend size={16} stroke={2} />
-                    )}
+                    <IconSend size={16} stroke={2} />
                   </Button>
                 )}
               </div>

@@ -15,7 +15,7 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import { fetchAgentsList$ } from "./zero-agents.ts";
-import { reloadZeroCompose$ } from "./zero-skills.ts";
+import { reloadZeroCompose$ } from "./zero-connectors.ts";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 
 const L = logger("ZeroJobDetail");
@@ -312,12 +312,12 @@ export const zeroJobUpdateSettings$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Skills management
+// Connectors management
 // ---------------------------------------------------------------------------
 
-const internalAddedSkills$ = state<string[] | null>(null);
+const internalAddedConnectors$ = state<string[] | null>(null);
 
-const seededSkills$ = computed((get) => {
+const seededConnectors$ = computed((get) => {
   const detail = get(zeroJobDetail$);
   const fromContent: string[] = [];
   if (detail?.content) {
@@ -330,20 +330,20 @@ const seededSkills$ = computed((get) => {
   return [...new Set([...SEED_SKILLS, ...fromContent])];
 });
 
-export const zeroJobAddedSkills$ = computed((get) => {
-  const local = get(internalAddedSkills$);
+export const zeroJobAddedConnectors$ = computed((get) => {
+  const local = get(internalAddedConnectors$);
   if (local !== null) {
     return local;
   }
-  return get(seededSkills$);
+  return get(seededConnectors$);
 });
 
-export const zeroJobSkillsDirty$ = computed((get) => {
-  const local = get(internalAddedSkills$);
+export const zeroJobConnectorsDirty$ = computed((get) => {
+  const local = get(internalAddedConnectors$);
   if (local === null) {
     return false;
   }
-  const seeded = get(seededSkills$);
+  const seeded = get(seededConnectors$);
   if (local.length !== seeded.length) {
     return true;
   }
@@ -352,25 +352,27 @@ export const zeroJobSkillsDirty$ = computed((get) => {
   return sorted.some((s, i) => s !== seededSorted[i]);
 });
 
-export const addZeroJobSkill$ = command(({ get, set }, name: string) => {
-  if (get(internalAddedSkills$) === null) {
-    set(internalAddedSkills$, get(seededSkills$));
+export const addZeroJobConnector$ = command(({ get, set }, name: string) => {
+  if (get(internalAddedConnectors$) === null) {
+    set(internalAddedConnectors$, get(seededConnectors$));
   }
-  set(internalAddedSkills$, (prev) => [...(prev ?? []), name]);
+  set(internalAddedConnectors$, (prev) => [...(prev ?? []), name]);
 });
 
-export const removeZeroJobSkill$ = command(({ get, set }, name: string) => {
-  if (get(internalAddedSkills$) === null) {
-    set(internalAddedSkills$, get(seededSkills$));
+export const removeZeroJobConnector$ = command(({ get, set }, name: string) => {
+  if (get(internalAddedConnectors$) === null) {
+    set(internalAddedConnectors$, get(seededConnectors$));
   }
-  set(internalAddedSkills$, (prev) => (prev ?? []).filter((s) => s !== name));
+  set(internalAddedConnectors$, (prev) =>
+    (prev ?? []).filter((s) => s !== name),
+  );
 });
 
-export const discardZeroJobSkills$ = command(({ set }) => {
-  set(internalAddedSkills$, null);
+export const discardZeroJobConnectors$ = command(({ set }) => {
+  set(internalAddedConnectors$, null);
 });
 
-export const saveZeroJobSkills$ = command(async ({ get, set }) => {
+export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
   if (!detail?.content) {
     throw new Error("No compose content found");
@@ -378,7 +380,7 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
 
   set(internalSaving$, true);
   try {
-    const newSkills = get(internalAddedSkills$) ?? [];
+    const newConnectors = get(internalAddedConnectors$) ?? [];
     const fetchFn = get(fetch$);
 
     const resp = await fetchFn(
@@ -386,7 +388,7 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectors: newSkills }),
+        body: JSON.stringify({ connectors: newConnectors }),
       },
     );
 
@@ -399,15 +401,15 @@ export const saveZeroJobSkills$ = command(async ({ get, set }) => {
       );
     }
 
-    set(internalAddedSkills$, null);
+    set(internalAddedConnectors$, null);
     await set(fetchZeroJobDetail$);
     set(reloadZeroCompose$);
-    toast.success("Skills saved");
+    toast.success("Connectors saved");
   } catch (error) {
     throwIfAbort(error);
-    L.error("Failed to save skills:", error);
+    L.error("Failed to save connectors:", error);
     toast.error(
-      error instanceof Error ? error.message : "Failed to save skills",
+      error instanceof Error ? error.message : "Failed to save connectors",
     );
   } finally {
     set(internalSaving$, false);
@@ -761,7 +763,7 @@ export const fetchZeroJobData$ = command(async ({ set }, agentName: string) => {
   set(instructionsState$, { instructions: null, loading: false, error: null });
   set(scheduleState$, { schedules: [], error: null });
   set(editedContent$, null);
-  set(internalAddedSkills$, null);
+  set(internalAddedConnectors$, null);
   set(internalBuildError$, null);
   set(jobBuilding$, false);
   set(internalSaving$, false);

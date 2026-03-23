@@ -396,7 +396,7 @@ export async function drainStaleQueues(
   return drained;
 }
 
-const VALID_ORG_TIERS = new Set<string>(["free", "pro", "max"]);
+const VALID_ORG_TIERS = new Set<string>(["free", "pro", "team"]);
 
 /** Parse a raw tier string into OrgTier, defaulting to "free". */
 function parseOrgTier(raw: string | undefined): OrgTier {

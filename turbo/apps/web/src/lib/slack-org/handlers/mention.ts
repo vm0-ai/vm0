@@ -6,6 +6,7 @@ import {
   buildLoginPromptMessage,
   detectDeepLinks,
 } from "../../slack/blocks";
+import { buildModelProviderLink } from "../../deep-links";
 import type { SlackFile } from "../../slack/context";
 import { runAgentForSlackOrg } from "./run-agent";
 import type { SlackOrgCallbackContext } from "./run-agent";
@@ -172,7 +173,7 @@ export async function handleOrgMention(
     existingSessionId,
   };
 
-  const { status, response, runId } = await runAgentForSlackOrg({
+  const { status, response, runId, errorCode } = await runAgentForSlackOrg({
     composeId,
     agentName,
     sessionId: existingSessionId,
@@ -220,6 +221,9 @@ export async function handleOrgMention(
         response ?? "Sorry, an error occurred. Please try again.";
       const logsUrl = buildAgentLogsUrl();
       const deepLinks = detectDeepLinks(errorText, getAppUrl(), agentName);
+      if (errorCode === "NO_MODEL_PROVIDER") {
+        deepLinks.push(buildModelProviderLink(getAppUrl()));
+      }
       await client.chat.postMessage({
         channel: context.channelId,
         thread_ts: threadTs,
