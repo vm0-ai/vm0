@@ -547,6 +547,8 @@ export const zeroSessionSwitching$ = computed((get) =>
  */
 export const prepareSessionSwitch$ = command(({ set }) => {
   set(internalSessionSwitching$, true);
+  set(internalMessages$, []);
+  set(internalSessionError$, null);
 });
 
 // Chat input
@@ -582,6 +584,8 @@ export const setZeroDragOver$ = command(({ set }, value: boolean) => {
   set(internalDragOver$, value);
 });
 
+const uploadAbortControllers$ = state(new Map<string, AbortController>());
+
 export const uploadZeroAttachment$ = command(
   async ({ get, set }, file: File) => {
     const id = crypto.randomUUID();
@@ -595,6 +599,9 @@ export const uploadZeroAttachment$ = command(
     };
     set(internalAttachments$, (prev) => [...prev, placeholder]);
 
+    const controller = new AbortController();
+    set(uploadAbortControllers$, (prev) => new Map(prev).set(id, controller));
+
     try {
       const fetchFn = get(fetch$);
       const formData = new FormData();
@@ -603,6 +610,7 @@ export const uploadZeroAttachment$ = command(
       const res = await fetchFn("/api/zero/uploads", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -634,6 +642,15 @@ export const uploadZeroAttachment$ = command(
       L.error("Upload failed:", error);
       // Remove the failed placeholder
       set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
+    } finally {
+      // Clean up the controller entry. When cancel triggers this path, the
+      // entry was already removed by cancelZeroAttachmentUpload$ — Map.delete
+      // on a missing key is a safe no-op.
+      set(uploadAbortControllers$, (prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
     }
   },
 );
@@ -641,6 +658,22 @@ export const uploadZeroAttachment$ = command(
 export const removeZeroAttachment$ = command(({ set }, id: string) => {
   set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
 });
+
+export const cancelZeroAttachmentUpload$ = command(
+  ({ get, set }, id: string) => {
+    const controllers = get(uploadAbortControllers$);
+    const controller = controllers.get(id);
+    if (controller) {
+      controller.abort();
+      set(uploadAbortControllers$, (prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+    set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Commands: session list management
@@ -1213,6 +1246,7 @@ export const syncUrlSession$ = command(async ({ get, set }) => {
   }
   const currentThreadId = get(zeroChatThreadId$);
   if (urlSessionId === currentThreadId) {
+    set(internalSessionSwitching$, false);
     return;
   }
   await set(switchZeroSession$, urlSessionId);

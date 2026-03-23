@@ -26,6 +26,7 @@ import { usageDaily } from "../db/schema/usage-daily";
 import { slackOrgInstallations } from "../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../db/schema/slack-org-connection";
 import { slackOrgPendingQuestions } from "../db/schema/slack-org-pending-question";
+import { slackOrgThreadSessions } from "../db/schema/slack-org-thread-session";
 import { githubInstallations } from "../db/schema/github-installation";
 import { githubUserLinks } from "../db/schema/github-user-link";
 import { githubIssueSessions } from "../db/schema/github-issue-session";
@@ -89,6 +90,7 @@ import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/c
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
+import { variables } from "../db/schema/variable";
 import { hashFileContent } from "../lib/storage/content-hash";
 import {
   encryptSecretValue,
@@ -4077,4 +4079,204 @@ export async function createSlackInstallationForOrg(
       botUserId: `U${randomUUID().slice(0, 8)}`,
     })
     .onConflictDoNothing();
+}
+
+// ============================================================================
+// Org Deletion Test Helpers
+// ============================================================================
+
+export async function insertTestSlackOrgInstallation(params: {
+  slackWorkspaceId: string;
+  slackWorkspaceName: string;
+  orgId: string;
+  installedByUserId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(slackOrgInstallations).values({
+    slackWorkspaceId: params.slackWorkspaceId,
+    slackWorkspaceName: params.slackWorkspaceName,
+    orgId: params.orgId,
+    encryptedBotToken: "enc-token-test",
+    botUserId: "bot-user-test",
+    installedByUserId: params.installedByUserId,
+  });
+}
+
+export async function insertTestSlackOrgConnection(params: {
+  slackUserId: string;
+  slackWorkspaceId: string;
+  vm0UserId: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(slackOrgConnections)
+    .values({
+      slackUserId: params.slackUserId,
+      slackWorkspaceId: params.slackWorkspaceId,
+      vm0UserId: params.vm0UserId,
+    })
+    .returning({ id: slackOrgConnections.id });
+  return row!;
+}
+
+export async function insertTestSlackOrgPendingQuestion(params: {
+  connectionId: string;
+  composeId: string;
+  sessionId: string;
+  runId: string;
+  slackWorkspaceId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(slackOrgPendingQuestions).values({
+    connectionId: params.connectionId,
+    composeId: params.composeId,
+    sessionId: params.sessionId,
+    runId: params.runId,
+    slackWorkspaceId: params.slackWorkspaceId,
+    slackChannelId: "C-test",
+    slackThreadTs: "1234.5678",
+    slackMessageTs: "1234.5679",
+    agentName: "test-agent",
+    questions: [{ question: "test?" }],
+    expiresAt: new Date(Date.now() + 3600000),
+  });
+}
+
+export async function insertTestSlackOrgThreadSession(params: {
+  connectionId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(slackOrgThreadSessions).values({
+    connectionId: params.connectionId,
+    slackChannelId: "C-test",
+    slackThreadTs: uniqueId("ts"),
+  });
+}
+
+export async function insertTestCreditUsageForRun(params: {
+  runId: string;
+  orgId: string;
+  userId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(creditUsage).values({
+    runId: params.runId,
+    orgId: params.orgId,
+    userId: params.userId,
+    model: "claude-3-5-sonnet-20241022",
+    modelProvider: "anthropic",
+    inputTokens: 100,
+    outputTokens: 50,
+  });
+}
+
+export async function insertTestConversation(params: {
+  runId: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(conversations).values({
+    runId: params.runId,
+    cliAgentType: "claude-code",
+    cliAgentSessionId: uniqueId("session"),
+  });
+}
+
+export async function insertTestStorage(params: {
+  userId: string;
+  orgId: string;
+  name: string;
+  type?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(storages)
+    .values({
+      userId: params.userId,
+      name: params.name,
+      type: params.type ?? "volume",
+      orgId: params.orgId,
+      s3Prefix: `storages/${params.orgId}/${params.name}/`,
+    })
+    .returning({ id: storages.id });
+  return row!;
+}
+
+export async function insertTestStorageVersion(params: {
+  storageId: string;
+  createdBy: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(storageVersions).values({
+    id: uniqueId("sv"),
+    storageId: params.storageId,
+    s3Key: "test-key",
+    size: 100,
+    fileCount: 1,
+    createdBy: params.createdBy,
+  });
+}
+
+export async function insertTestUsageDaily(params: {
+  userId: string;
+  orgId: string;
+  date: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(usageDaily).values({
+    userId: params.userId,
+    orgId: params.orgId,
+    date: params.date,
+    runCount: 5,
+  });
+}
+
+/** Count rows by org_id in a given table using raw SQL to avoid type casts. */
+export async function countOrgRows(
+  tableName:
+    | "agent_runs"
+    | "agent_run_queue"
+    | "agent_composes"
+    | "storages"
+    | "secrets"
+    | "model_providers"
+    | "connectors"
+    | "variables"
+    | "usage_daily"
+    | "export_jobs"
+    | "zero_agents"
+    | "credit_usage"
+    | "agent_sessions"
+    | "email_thread_sessions"
+    | "slack_org_installations"
+    | "org_members_cache"
+    | "org_members_metadata"
+    | "org_cache"
+    | "org_metadata",
+  orgId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE org_id = ${orgId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+export async function insertTestOrgSentinelSecret(params: {
+  orgId: string;
+  name: string;
+}): Promise<void> {
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const encrypted = encryptSecretValue(
+    "sentinel-test-value",
+    SECRETS_ENCRYPTION_KEY,
+  );
+  await globalThis.services.db.insert(secrets).values({
+    name: params.name,
+    encryptedValue: encrypted,
+    type: "user",
+    userId: ORG_SENTINEL_USER_ID,
+    orgId: params.orgId,
+  });
+}
+
+export async function insertTestOrgSentinelVariable(params: {
+  orgId: string;
+  name: string;
+}): Promise<void> {
+  await globalThis.services.db.insert(variables).values({
+    name: params.name,
+    value: "sentinel-test-value",
+    userId: ORG_SENTINEL_USER_ID,
+    orgId: params.orgId,
+  });
 }

@@ -1,0 +1,351 @@
+import { describe, it, expect } from "vitest";
+import { testContext, uniqueId } from "../../../__tests__/test-helpers";
+import {
+  createTestCompose,
+  createTestRunInDb,
+  createTestSecret,
+  createTestVariable,
+  createTestAgentSession,
+  createTestEmailThreadSession,
+  findTestRunRecord,
+  findTestQueueEntry,
+  insertOrgDefaultModelProvider,
+  createTestZeroAgent,
+  insertTestQueueEntry,
+  insertTestSlackOrgInstallation,
+  insertTestSlackOrgConnection,
+  insertTestSlackOrgPendingQuestion,
+  insertTestSlackOrgThreadSession,
+  insertTestCreditUsageForRun,
+  insertTestConversation,
+  insertTestStorage,
+  insertTestStorageVersion,
+  insertTestUsageDaily,
+  insertTestExportJob,
+  insertOrgMembersCacheEntry,
+  insertOrgMembersEntry,
+  findTestSlackOrgInstallation,
+  countOrgRows,
+  insertTestOrgSentinelSecret,
+  insertTestOrgSentinelVariable,
+} from "../../../__tests__/api-test-helpers";
+import { deleteOrgData } from "../org-deletion-service";
+
+const context = testContext();
+
+describe("deleteOrgData", () => {
+  it("should complete without error for a nonexistent org (idempotency)", async () => {
+    context.setupMocks();
+    await context.setupUser();
+
+    await expect(
+      deleteOrgData("org_nonexistent_test"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("should cancel running runs and delete queue entries", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    const { composeId } = await createTestCompose("cancel-test");
+    const { runId: queuedRunId } = await createTestRunInDb(userId, composeId, {
+      status: "queued",
+    });
+    const { runId: pendingRunId } = await createTestRunInDb(userId, composeId, {
+      status: "pending",
+    });
+    const { runId: runningRunId } = await createTestRunInDb(userId, composeId, {
+      status: "running",
+      startedAt: new Date(),
+    });
+    await createTestRunInDb(userId, composeId, {
+      status: "completed",
+      completedAt: new Date(),
+    });
+
+    await insertTestQueueEntry(queuedRunId);
+
+    await deleteOrgData(orgId);
+
+    expect(await findTestRunRecord(queuedRunId)).toBeUndefined();
+    expect(await findTestRunRecord(pendingRunId)).toBeUndefined();
+    expect(await findTestRunRecord(runningRunId)).toBeUndefined();
+    expect(await findTestQueueEntry(queuedRunId)).toBeUndefined();
+  });
+
+  it("should cascade delete agent composes and children", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    const { composeId } = await createTestCompose("cascade-compose-test");
+    await createTestAgentSession(userId, composeId);
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("agent_composes", orgId)).toBe(0);
+    expect(await countOrgRows("agent_sessions", orgId)).toBe(0);
+  });
+
+  it("should cascade delete agent runs and children", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    const { composeId } = await createTestCompose("cascade-run-test");
+    const { runId } = await createTestRunInDb(userId, composeId, {
+      status: "completed",
+      completedAt: new Date(),
+    });
+
+    await insertTestCreditUsageForRun({ runId, orgId, userId });
+    await insertTestConversation({ runId });
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("agent_runs", orgId)).toBe(0);
+    expect(await countOrgRows("credit_usage", orgId)).toBe(0);
+  });
+
+  it("should cascade delete storages and versions", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    const storage = await insertTestStorage({
+      userId,
+      orgId,
+      name: "test-volume",
+    });
+    await insertTestStorageVersion({
+      storageId: storage.id,
+      createdBy: userId,
+    });
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("storages", orgId)).toBe(0);
+  });
+
+  it("should cascade delete secrets and model providers", async () => {
+    context.setupMocks();
+    const { orgId } = await context.setupUser();
+
+    await createTestSecret("TEST_KEY", "test-value");
+    await insertOrgDefaultModelProvider(orgId, "anthropic");
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("secrets", orgId)).toBe(0);
+    expect(await countOrgRows("model_providers", orgId)).toBe(0);
+  });
+
+  it("should delete independent tables", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    await createTestVariable("TEST_VAR", "test-value");
+    await createTestZeroAgent(orgId, "test-zero-agent", {
+      displayName: "Test",
+    });
+    await insertTestUsageDaily({ userId, orgId, date: "2026-01-01" });
+    await insertTestExportJob(orgId, { userId, status: "completed" });
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("variables", orgId)).toBe(0);
+    expect(await countOrgRows("zero_agents", orgId)).toBe(0);
+    expect(await countOrgRows("usage_daily", orgId)).toBe(0);
+    expect(await countOrgRows("export_jobs", orgId)).toBe(0);
+  });
+
+  it("should clean up Slack installation, connections, and pending questions", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    const workspaceId = uniqueId("ws");
+
+    await insertTestSlackOrgInstallation({
+      slackWorkspaceId: workspaceId,
+      slackWorkspaceName: "Test Workspace",
+      orgId,
+      installedByUserId: userId,
+    });
+
+    const connection = await insertTestSlackOrgConnection({
+      slackUserId: uniqueId("slack-user"),
+      slackWorkspaceId: workspaceId,
+      vm0UserId: userId,
+    });
+
+    const { composeId } = await createTestCompose("slack-test");
+    const session = await createTestAgentSession(userId, composeId);
+
+    await insertTestSlackOrgPendingQuestion({
+      connectionId: connection.id,
+      composeId,
+      sessionId: session.id,
+      runId: uniqueId("run"),
+      slackWorkspaceId: workspaceId,
+    });
+
+    await insertTestSlackOrgThreadSession({ connectionId: connection.id });
+
+    await deleteOrgData(orgId);
+
+    expect(await findTestSlackOrgInstallation(workspaceId)).toBeUndefined();
+    expect(await countOrgRows("slack_org_installations", orgId)).toBe(0);
+  });
+
+  it("should delete membership and org identity tables", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
+    await insertOrgMembersEntry({ orgId, userId });
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("org_members_cache", orgId)).toBe(0);
+    expect(await countOrgRows("org_members_metadata", orgId)).toBe(0);
+    expect(await countOrgRows("org_cache", orgId)).toBe(0);
+    expect(await countOrgRows("org_metadata", orgId)).toBe(0);
+  });
+
+  it("should delete all data in a fully populated org", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    // Composes, sessions, runs
+    const { composeId } = await createTestCompose("full-org-test");
+    const session = await createTestAgentSession(userId, composeId);
+    const { runId } = await createTestRunInDb(userId, composeId, {
+      status: "running",
+      startedAt: new Date(),
+    });
+
+    await insertTestCreditUsageForRun({ runId, orgId, userId });
+    await insertTestConversation({ runId });
+    await insertTestQueueEntry(runId);
+
+    // Storage
+    const storage = await insertTestStorage({
+      userId,
+      orgId,
+      name: "full-test-volume",
+    });
+    await insertTestStorageVersion({
+      storageId: storage.id,
+      createdBy: userId,
+    });
+
+    // Secrets + model providers
+    await createTestSecret("FULL_TEST_KEY", "value");
+    await insertOrgDefaultModelProvider(orgId, "anthropic");
+
+    // Variables, zero agents, usage, exports
+    await createTestVariable("FULL_TEST_VAR", "value");
+    await createTestZeroAgent(orgId, "full-org-test", {
+      displayName: "Full Test",
+    });
+    await insertTestUsageDaily({ userId, orgId, date: "2026-03-01" });
+    await insertTestExportJob(orgId, { userId, status: "completed" });
+
+    // Email thread session
+    await createTestEmailThreadSession({
+      userId,
+      composeId,
+      agentSessionId: session.id,
+      replyToToken: uniqueId("reply"),
+    });
+
+    // Slack
+    const workspaceId = uniqueId("ws");
+    await insertTestSlackOrgInstallation({
+      slackWorkspaceId: workspaceId,
+      slackWorkspaceName: "Full Test Workspace",
+      orgId,
+      installedByUserId: userId,
+    });
+    const connection = await insertTestSlackOrgConnection({
+      slackUserId: uniqueId("slack-user"),
+      slackWorkspaceId: workspaceId,
+      vm0UserId: userId,
+    });
+    await insertTestSlackOrgPendingQuestion({
+      connectionId: connection.id,
+      composeId,
+      sessionId: session.id,
+      runId: uniqueId("run"),
+      slackWorkspaceId: workspaceId,
+    });
+
+    // Membership
+    await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
+    await insertOrgMembersEntry({ orgId, userId });
+
+    // Execute deletion
+    await deleteOrgData(orgId);
+
+    // Verify ALL tables are empty for this org
+    const tables = [
+      "agent_runs",
+      "agent_run_queue",
+      "agent_composes",
+      "storages",
+      "secrets",
+      "model_providers",
+      "connectors",
+      "variables",
+      "usage_daily",
+      "export_jobs",
+      "zero_agents",
+      "credit_usage",
+      "agent_sessions",
+      "email_thread_sessions",
+      "slack_org_installations",
+      "org_members_cache",
+      "org_members_metadata",
+      "org_cache",
+      "org_metadata",
+    ] as const;
+
+    for (const table of tables) {
+      expect(
+        await countOrgRows(table, orgId),
+        `Expected 0 rows in ${table}`,
+      ).toBe(0);
+    }
+  });
+
+  it("should delete org-level sentinel resources (userId = __org__)", async () => {
+    context.setupMocks();
+    const { orgId } = await context.setupUser();
+
+    // Create org-level sentinel resources
+    await insertTestOrgSentinelSecret({ orgId, name: "ORG_API_KEY" });
+    await insertTestOrgSentinelVariable({ orgId, name: "ORG_CONFIG" });
+    await insertOrgDefaultModelProvider(orgId, "anthropic");
+
+    // Also create a user-level secret to ensure both are deleted
+    await createTestSecret("USER_KEY", "user-value");
+
+    await deleteOrgData(orgId);
+
+    expect(await countOrgRows("secrets", orgId)).toBe(0);
+    expect(await countOrgRows("variables", orgId)).toBe(0);
+    expect(await countOrgRows("model_providers", orgId)).toBe(0);
+  });
+
+  it("should be idempotent — calling twice produces no errors", async () => {
+    context.setupMocks();
+    const { userId, orgId } = await context.setupUser();
+
+    const { composeId } = await createTestCompose("idempotent-test");
+    await createTestRunInDb(userId, composeId, {
+      status: "running",
+      startedAt: new Date(),
+    });
+    await createTestSecret("IDEM_KEY", "value");
+
+    await deleteOrgData(orgId);
+    await expect(deleteOrgData(orgId)).resolves.toBeUndefined();
+  });
+});

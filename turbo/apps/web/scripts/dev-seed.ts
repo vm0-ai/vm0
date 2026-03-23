@@ -54,65 +54,6 @@ const MODEL_PRICING: ModelPricing[] = [
     cacheReadTokenPrice: usd(1.5),
     cacheCreationTokenPrice: usd(18.75),
   },
-  // Moonshot
-  {
-    model: "kimi-k2.5",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.5),
-    outputTokenPrice: usd(2),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
-  {
-    model: "kimi-k2-thinking-turbo",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.5),
-    outputTokenPrice: usd(2),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
-  {
-    model: "kimi-k2-thinking",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(1),
-    outputTokenPrice: usd(4),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
-  // Z.AI (GLM)
-  {
-    model: "glm-5",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(1),
-    outputTokenPrice: usd(4),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
-  {
-    model: "glm-4.7",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.5),
-    outputTokenPrice: usd(2),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
-  {
-    model: "glm-4.5-air",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.2),
-    outputTokenPrice: usd(0.8),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
-  // MiniMax
-  {
-    model: "MiniMax-M2.1",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(1),
-    outputTokenPrice: usd(4),
-    cacheReadTokenPrice: 0,
-    cacheCreationTokenPrice: 0,
-  },
 ];
 
 /**
@@ -124,18 +65,6 @@ function buildVm0ApiKeys(): Vm0ApiKey[] {
     anthropic: {
       envVar: "DEV_MODEL_ANTHROPIC_KEY",
       models: ["claude-sonnet-4.6", "claude-opus-4.6"],
-    },
-    moonshot: {
-      envVar: "DEV_MODEL_MOONSHOT_KEY",
-      models: ["kimi-k2.5", "kimi-k2-thinking-turbo", "kimi-k2-thinking"],
-    },
-    zai: {
-      envVar: "DEV_MODEL_ZAI_KEY",
-      models: ["glm-5", "glm-4.7", "glm-4.5-air"],
-    },
-    minimax: {
-      envVar: "DEV_MODEL_MINIMAX_KEY",
-      models: ["MiniMax-M2.1"],
     },
   };
 

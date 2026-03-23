@@ -6,6 +6,7 @@
   "scripts": {
     "generate": "tsx src/index.ts",
     "generate:github": "tsx src/index.ts github",
+    "generate:slack": "tsx src/index.ts slack",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {

@@ -7,9 +7,11 @@
  */
 
 import { generate as generateGitHub } from "./github";
+import { generate as generateSlack } from "./slack";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
+  slack: generateSlack,
 };
 
 async function main(): Promise<void> {
