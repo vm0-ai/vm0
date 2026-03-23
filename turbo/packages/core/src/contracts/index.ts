@@ -576,6 +576,7 @@ export {
   type ZeroOrgLeaveContract,
   type ZeroOrgDeleteContract,
 } from "./zero-org";
+export { zeroOrgListContract, type ZeroOrgListContract } from "./zero-org-list";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
