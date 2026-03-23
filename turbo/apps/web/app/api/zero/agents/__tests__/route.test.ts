@@ -215,9 +215,6 @@ describe("Zero Agents API", () => {
     });
 
     it("should return 401 without auth", async () => {
-      const { mockClerk } = await import(
-        "../../../../../src/__tests__/clerk-mock"
-      );
       mockClerk({ userId: null });
 
       const response = await postAgent({ connectors: [] }, "no-token");

@@ -241,17 +241,21 @@ const router = tsr.router(zeroAgentsByNameContract, {
       };
     }
 
-    // Delete compose (cascades to zero_agent_schedules via composeId FK)
-    await globalThis.services.db
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, compose.id));
+    // Delete compose and metadata atomically
+    await globalThis.services.db.transaction(async (tx) => {
+      // Delete compose (cascades to zero_agent_schedules via composeId FK)
+      await tx.delete(agentComposes).where(eq(agentComposes.id, compose.id));
 
-    // Delete zero_agents metadata record
-    await globalThis.services.db
-      .delete(zeroAgents)
-      .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, params.name)),
-      );
+      // Delete zero_agents metadata record
+      await tx
+        .delete(zeroAgents)
+        .where(
+          and(
+            eq(zeroAgents.orgId, org.orgId),
+            eq(zeroAgents.name, params.name),
+          ),
+        );
+    });
 
     log.info(`Deleted zero agent: ${params.name}`);
 
