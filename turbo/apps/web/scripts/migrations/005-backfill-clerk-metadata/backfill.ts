@@ -13,7 +13,7 @@
  *
  * Environment:
  *   DATABASE_URL        — Required
- *   CLERK_SECRET_KEY    — Required only with --migrate
+ *   CLERK_SECRET_KEY    — Required
  */
 
 import { parseArgs } from "node:util";
@@ -328,15 +328,11 @@ async function main(): Promise<void> {
   );
   console.log();
 
-  let clerk: ClerkClient | null = null;
-
-  if (!dryRun) {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) {
-      throw new Error("CLERK_SECRET_KEY is required for --migrate");
-    }
-    clerk = createClerkClient({ secretKey: clerkSecretKey });
+  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+  if (!clerkSecretKey) {
+    throw new Error("CLERK_SECRET_KEY is required");
   }
+  const clerk = createClerkClient({ secretKey: clerkSecretKey });
 
   const pg = postgres(databaseUrl, { max: 1 });
   const db = drizzle(pg);
@@ -344,19 +340,13 @@ async function main(): Promise<void> {
 
   try {
     console.log("Phase 1: Backfilling org_metadata...");
-    if (clerk) {
-      await backfillOrgMetadata(clerk, db, stats, dryRun);
-    }
+    await backfillOrgMetadata(clerk, db, stats, dryRun);
 
     console.log("\nPhase 2: Backfilling org_members_metadata...");
-    if (clerk) {
-      await backfillOrgMembersMetadata(clerk, db, stats, dryRun);
-    }
+    await backfillOrgMembersMetadata(clerk, db, stats, dryRun);
 
     console.log("\nPhase 3: Backfilling users...");
-    if (clerk) {
-      await backfillUsers(clerk, db, stats, dryRun);
-    }
+    await backfillUsers(clerk, db, stats, dryRun);
 
     console.log("\n=== Summary ===");
     console.log(
