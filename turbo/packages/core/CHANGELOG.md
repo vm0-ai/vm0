@@ -13,6 +13,7 @@
 
 * migrate remaining non-zero api calls to /api/zero/ and add lint rule ([#6116](https://github.com/vm0-ai/vm0/issues/6116)) ([853e76a](https://github.com/vm0-ai/vm0/commit/853e76ac623682e91e31b5a9e87338fb3875cc0c))
 
+
 ## [8.96.0](https://github.com/vm0-ai/vm0/compare/core-v8.95.0...core-v8.96.0) (2026-03-23)
 
 

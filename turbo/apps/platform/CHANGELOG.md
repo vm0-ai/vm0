@@ -29,6 +29,7 @@
   * dependencies
     * @vm0/core bumped to 8.97.0
 
+
 ## [0.139.0](https://github.com/vm0-ai/vm0/compare/app-v0.138.0...app-v0.139.0) (2026-03-23)
 
 

@@ -20,6 +20,7 @@
   * dependencies
     * @vm0/core bumped to 8.97.0
 
+
 ## [12.146.0](https://github.com/vm0-ai/vm0/compare/web-v12.145.0...web-v12.146.0) (2026-03-23)
 
 
