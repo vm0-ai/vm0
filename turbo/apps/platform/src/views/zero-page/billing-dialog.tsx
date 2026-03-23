@@ -36,21 +36,21 @@ const PLANS = [
     name: "Free",
     price: "$0",
     period: "/month",
-    features: ["2,000 starter credits", "Community support"],
+    features: ["10,000 starter credits", "Community support"],
   },
   {
     tier: "pro" as const,
     name: "Pro",
-    price: "$29",
+    price: "$40",
     period: "/month",
     features: ["20,000 credits/month", "Credits rollover", "Priority support"],
   },
   {
     tier: "team" as const,
     name: "Team",
-    price: "$99",
+    price: "$200",
     period: "/month",
-    features: ["80,000 credits/month", "Credits rollover", "Priority support"],
+    features: ["120,000 credits/month", "Credits rollover", "Priority support"],
   },
 ] as const;
 

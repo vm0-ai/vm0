@@ -48,7 +48,7 @@ interface SubscriptionDeletedInput {
 const TIER_MONTHLY_CREDITS: Record<OrgTier, number> = {
   free: 0,
   pro: 20_000,
-  team: 80_000,
+  team: 120_000,
 };
 
 function tierFromPriceId(priceId: string): OrgTier {
