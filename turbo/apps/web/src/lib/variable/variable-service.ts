@@ -63,40 +63,6 @@ export async function listVariables(
 }
 
 /**
- * Get a variable by name for an org (includes value)
- */
-export async function getVariable(
-  orgId: string,
-  userId: string,
-  name: string,
-): Promise<VariableInfo | null> {
-  const result = await globalThis.services.db
-    .select({
-      id: variables.id,
-      name: variables.name,
-      value: variables.value,
-      description: variables.description,
-      createdAt: variables.createdAt,
-      updatedAt: variables.updatedAt,
-    })
-    .from(variables)
-    .where(
-      and(
-        eq(variables.orgId, orgId),
-        eq(variables.userId, userId),
-        eq(variables.name, name),
-      ),
-    )
-    .limit(1);
-
-  if (!result[0]) {
-    return null;
-  }
-
-  return result[0];
-}
-
-/**
  * Get all variable values for an org as a map
  * Used for batch variable resolution during agent execution
  */

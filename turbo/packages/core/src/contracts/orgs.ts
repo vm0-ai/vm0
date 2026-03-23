@@ -52,51 +52,6 @@ export const updateOrgRequestSchema = z.object({
 export type UpdateOrgRequest = z.infer<typeof updateOrgRequestSchema>;
 
 /**
- * Org contract for /api/org
- */
-export const orgContract = c.router({
-  /**
-   * GET /api/org
-   * Get current user's default org
-   */
-  get: {
-    method: "GET",
-    path: "/api/org",
-    headers: authHeadersSchema,
-    responses: {
-      200: orgResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Get current user's default org",
-  },
-
-  /**
-   * PUT /api/org
-   * Update org slug
-   */
-  update: {
-    method: "PUT",
-    path: "/api/org",
-    headers: authHeadersSchema,
-    body: updateOrgRequestSchema,
-    responses: {
-      200: orgResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Update org slug",
-  },
-});
-
-export type OrgContract = typeof orgContract;
-
-/**
  * Org default agent contract for /api/zero/default-agent
  */
 export const orgDefaultAgentContract = c.router({

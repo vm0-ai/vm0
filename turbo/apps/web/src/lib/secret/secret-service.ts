@@ -68,45 +68,6 @@ export async function listSecrets(
 }
 
 /**
- * Get a secret by name for a user's default org (metadata only)
- * Only returns user-type secrets; model-provider secrets are managed via model-provider commands
- */
-export async function getSecret(
-  orgId: string,
-  userId: string,
-  name: string,
-): Promise<SecretInfo | null> {
-  const result = await globalThis.services.db
-    .select({
-      id: secrets.id,
-      name: secrets.name,
-      description: secrets.description,
-      type: secrets.type,
-      createdAt: secrets.createdAt,
-      updatedAt: secrets.updatedAt,
-    })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.userId, userId),
-        eq(secrets.name, name),
-        eq(secrets.type, "user"),
-      ),
-    )
-    .limit(1);
-
-  if (!result[0]) {
-    return null;
-  }
-
-  return {
-    ...result[0],
-    type: result[0].type as SecretType,
-  };
-}
-
-/**
  * Get decrypted secret value by name
  * Used internally for variable expansion during agent execution
  * @param type - Optional type filter to isolate user vs model-provider secrets
