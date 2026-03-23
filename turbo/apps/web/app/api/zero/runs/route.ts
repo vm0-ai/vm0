@@ -5,11 +5,7 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import { zeroRunsMainContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
-import {
-  startZeroRun,
-  isRunDispatchError,
-  type RunDispatchError,
-} from "../../../../src/lib/run";
+import { startZeroRun, isRunDispatchError } from "../../../../src/lib/run";
 import {
   requireAuth,
   isAuthError,
@@ -21,21 +17,23 @@ import { isApiError } from "../../../../src/lib/errors";
  * Mirrors handleCreateRunError in /api/agent/runs/route.ts.
  */
 function handleStartZeroRunError(error: unknown) {
-  if (isApiError(error)) {
-    const dispatchError = error as RunDispatchError;
-    const runId = dispatchError.runId;
-    if (runId) {
-      return {
-        status: 201 as const,
-        body: {
-          runId,
-          status: "failed" as const,
-          error: error.message,
-          createdAt: dispatchError.createdAt?.toISOString() ?? "",
-        },
-      };
-    }
+  // Post-INSERT errors have runId attached by markRunFailed().
+  // Return 201 with failed status so the client can track the run.
+  if (isRunDispatchError(error) && error.runId) {
+    return {
+      status: 201 as const,
+      body: {
+        runId: error.runId,
+        status: "failed" as const,
+        error: error.message,
+        createdAt: error.createdAt?.toISOString() ?? "",
+      },
+    };
+  }
 
+  // Pre-INSERT errors — return proper HTTP error with structured code.
+  // Map UNAUTHORIZED → NOT_FOUND for security (don't leak resource existence).
+  if (isApiError(error)) {
     const status = error.code === "UNAUTHORIZED" ? 404 : error.statusCode;
     const code = error.code === "UNAUTHORIZED" ? "NOT_FOUND" : error.code;
     const message =
@@ -43,18 +41,6 @@ function handleStartZeroRunError(error: unknown) {
     return {
       status: status as 400 | 401 | 403 | 404,
       body: { error: { message, code } },
-    };
-  }
-
-  if (isRunDispatchError(error)) {
-    return {
-      status: 201 as const,
-      body: {
-        runId: error.runId!,
-        status: "failed" as const,
-        error: "Run failed",
-        createdAt: error.createdAt?.toISOString() ?? "",
-      },
     };
   }
 

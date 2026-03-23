@@ -842,7 +842,7 @@ async function executeSchedule(
     });
   }
 
-  // Delegate run creation, validation, and dispatch to startRun()
+  // Delegate run creation, validation, and dispatch to startZeroRun()
   let runId: string;
   try {
     const result = await startZeroRun({
