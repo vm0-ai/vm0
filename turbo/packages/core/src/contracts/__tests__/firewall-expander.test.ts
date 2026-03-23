@@ -44,23 +44,23 @@ apis:
           - GET /search/code
 `;
 
-const SLACK_YAML = `
-name: slack
+const CUSTOM_CHAT_YAML = `
+name: custom-chat
 placeholders:
-  SLACK_TOKEN: "xoxb-0000-0000-Vm0PlaceHolder0000000000"
+  CHAT_TOKEN: "xoxb-0000-0000-Vm0PlaceHolder0000000000"
 apis:
-  - base: https://slack.com/api
+  - base: https://custom-chat.com/api
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.SLACK_TOKEN }}"
+        Authorization: "Bearer \${{ secrets.CHAT_TOKEN }}"
     permissions:
       - name: full-access
         rules:
           - ANY /{path+}
-  - base: https://files.slack.com
+  - base: https://files.custom-chat.com
     auth:
       headers:
-        Authorization: "Bearer \${{ secrets.SLACK_TOKEN }}"
+        Authorization: "Bearer \${{ secrets.CHAT_TOKEN }}"
     permissions:
       - name: full-access
         rules:
@@ -97,8 +97,8 @@ describe("expandFirewallConfigs", () => {
       if (url.includes("/custom-git/")) {
         return Promise.resolve(new Response(CUSTOM_GIT_YAML, { status: 200 }));
       }
-      if (url.includes("/slack/")) {
-        return Promise.resolve(new Response(SLACK_YAML, { status: 200 }));
+      if (url.includes("/custom-chat/")) {
+        return Promise.resolve(new Response(CUSTOM_CHAT_YAML, { status: 200 }));
       }
       return Promise.resolve(
         new Response("Not Found", { status: 404, statusText: "Not Found" }),
@@ -146,19 +146,21 @@ describe("expandFirewallConfigs", () => {
   it("should expand multiple firewall configs in parallel", async () => {
     const config = makeConfig({
       "custom-git": { permissions: "all" },
-      slack: { permissions: "all" },
+      "custom-chat": { permissions: "all" },
     });
     const expanded = await getExpanded(config, mockMultiFetch());
 
     expect(expanded).toHaveLength(2);
     const names = expanded.map((s) => s.name);
     expect(names).toContain("custom-git");
-    expect(names).toContain("slack");
+    expect(names).toContain("custom-chat");
   });
 
   it("should keep all api_entries when shared permission is selected", async () => {
-    const config = makeConfig({ slack: { permissions: ["full-access"] } });
-    const expanded = await getExpanded(config, mockFetch(SLACK_YAML));
+    const config = makeConfig({
+      "custom-chat": { permissions: ["full-access"] },
+    });
+    const expanded = await getExpanded(config, mockFetch(CUSTOM_CHAT_YAML));
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis).toHaveLength(2);
@@ -227,7 +229,7 @@ describe("expandFirewallConfigs", () => {
     expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("repo-read");
   });
 
-  it("should resolve builtin firewall without fetch", async () => {
+  it("should resolve builtin github firewall without fetch", async () => {
     const fetchFn = vi.fn<FetchFn>();
     const config = makeConfig({ github: { permissions: "all" } });
     const expanded = await getExpanded(config, fetchFn);
@@ -236,6 +238,18 @@ describe("expandFirewallConfigs", () => {
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.name).toBe("github");
     expect(expanded[0]!.ref).toBe("github");
+    expect(expanded[0]!.apis.length).toBeGreaterThan(0);
+  });
+
+  it("should resolve builtin slack firewall without fetch", async () => {
+    const fetchFn = vi.fn<FetchFn>();
+    const config = makeConfig({ slack: { permissions: "all" } });
+    const expanded = await getExpanded(config, fetchFn);
+
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.name).toBe("slack");
+    expect(expanded[0]!.ref).toBe("slack");
     expect(expanded[0]!.apis.length).toBeGreaterThan(0);
   });
 
