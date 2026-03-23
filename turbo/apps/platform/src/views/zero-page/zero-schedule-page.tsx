@@ -602,24 +602,29 @@ function ConfirmCloseOverlay({
   onContinue: () => void;
 }) {
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirm-close-title"
+      aria-describedby="confirm-close-desc"
+    >
       <div
         className="fixed inset-0 bg-black/50 dark:bg-black/70"
         onClick={onContinue}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            onContinue();
-          }
-        }}
-        role="button"
-        tabIndex={-1}
-        aria-label="Continue editing"
+        role="presentation"
       />
       <div className="relative z-10 mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
-        <p className="text-sm font-medium text-foreground mb-1">
+        <p
+          id="confirm-close-title"
+          className="text-sm font-medium text-foreground mb-1"
+        >
           You have unsaved changes
         </p>
-        <p className="text-sm text-muted-foreground mb-4">
+        <p
+          id="confirm-close-desc"
+          className="text-sm text-muted-foreground mb-4"
+        >
           Are you sure you want to close? Your changes will be lost.
         </p>
         <div className="flex justify-end gap-2">
