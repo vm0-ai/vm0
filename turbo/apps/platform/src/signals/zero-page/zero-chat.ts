@@ -1202,6 +1202,14 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
       throwIfAbort(error);
       L.error("Failed to refresh session list:", error);
     });
+
+    // Refresh again shortly so the AI-generated title lands
+    setTimeout(() => {
+      set(fetchZeroSessionList$).catch((error: unknown) => {
+        throwIfAbort(error);
+        L.error("Failed to refresh session list (delayed):", error);
+      });
+    }, 1_000);
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to extract run result:", error);
