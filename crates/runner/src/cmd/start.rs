@@ -169,7 +169,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     // Start background kmsg monitor for non-TCP traffic logging.
     let ip_log_map = kmsg_log::new_ip_log_map();
-    let _kmsg_handle = kmsg_log::spawn(ip_log_map.clone());
+    let kmsg_handle = kmsg_log::spawn(ip_log_map.clone());
 
     // Resource budget from host resources + config.
     let config::SandboxConfig {
@@ -279,6 +279,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         base_dir: runner_config.base_dir,
         min_vcpu,
         min_memory_mb,
+        kmsg_handle,
     };
 
     run(config).await
@@ -305,6 +306,7 @@ struct RunConfig {
     base_dir: std::path::PathBuf,
     min_vcpu: u32,
     min_memory_mb: u32,
+    kmsg_handle: kmsg_log::KmsgHandle,
 }
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
@@ -329,6 +331,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         base_dir,
         min_vcpu,
         min_memory_mb,
+        kmsg_handle,
     } = config;
 
     // Build per-profile factories with shared netns pool.
@@ -557,6 +560,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
+
+    // Stop the kmsg monitor and wait for the `dmesg -w` child process
+    // to be killed and reaped.
+    kmsg_handle.stop().await;
 
     status.set_mode(RunnerMode::Stopped).await;
     info!("runner stopped");

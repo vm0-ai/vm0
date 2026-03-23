@@ -7,15 +7,15 @@
 //! JSON line matching the format used by the mitmproxy addon.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 
 use chrono::Utc;
+use tokio::io::AsyncBufReadExt;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
-use tracing::{debug, warn};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, info, warn};
 
 /// Prefix used in iptables `--log-prefix` to identify our log lines.
 const LOG_PREFIX: &str = "VM0:";
@@ -29,17 +29,37 @@ pub fn new_ip_log_map() -> IpLogMap {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
-/// Spawn a background task that tails `sudo dmesg -w` and writes network
-/// log entries. Returns the task handle; drop or abort it to stop.
-pub fn spawn(ip_log_map: IpLogMap) -> JoinHandle<()> {
-    tokio::task::spawn_blocking(move || {
-        if let Err(e) = run_blocking(&ip_log_map) {
-            warn!(error = %e, "kmsg log monitor exited");
-        }
-    })
+/// Handle to the background kmsg monitor. Call [`KmsgHandle::stop`] during
+/// shutdown to cancel the async task and kill the `dmesg -w` child process.
+pub struct KmsgHandle {
+    cancel: CancellationToken,
+    task: tokio::task::JoinHandle<()>,
 }
 
-/// Blocking loop that reads kernel log messages via `sudo dmesg -w`.
+impl KmsgHandle {
+    /// Stop the kmsg monitor and wait for the child process to be reaped.
+    pub async fn stop(self) {
+        self.cancel.cancel();
+        let _ = self.task.await;
+        info!("kmsg monitor stopped");
+    }
+}
+
+/// Spawn a background async task that tails `sudo dmesg -w` and writes
+/// network log entries. Returns a handle; call [`KmsgHandle::stop`] during
+/// shutdown so the tokio runtime can exit cleanly.
+pub fn spawn(ip_log_map: IpLogMap) -> KmsgHandle {
+    let cancel = CancellationToken::new();
+    let token = cancel.clone();
+    let task = tokio::spawn(async move {
+        if let Err(e) = run_async(&ip_log_map, token).await {
+            warn!(error = %e, "kmsg log monitor exited");
+        }
+    });
+    KmsgHandle { cancel, task }
+}
+
+/// Async loop that reads kernel log messages via `sudo dmesg -w`.
 ///
 /// Reading `/dev/kmsg` directly requires `CAP_SYSLOG` when
 /// `dmesg_restrict=1` (the default on hardened systems). Using `sudo dmesg -w`
@@ -50,68 +70,76 @@ pub fn spawn(ip_log_map: IpLogMap) -> JoinHandle<()> {
 /// ```text
 /// [12345.678901] VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64 ...
 /// ```
-fn run_blocking(ip_log_map: &IpLogMap) -> std::io::Result<()> {
-    use std::os::unix::process::CommandExt;
-
-    let mut cmd = Command::new("sudo");
-    cmd.args(["dmesg", "-w"])
+async fn run_async(ip_log_map: &IpLogMap, cancel: CancellationToken) -> std::io::Result<()> {
+    let mut child = tokio::process::Command::new("sudo")
+        .args(["dmesg", "-w"])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    // SAFETY: `prctl` with `PR_SET_PDEATHSIG` is async-signal-safe.
-    // This ensures the child is killed when the parent (runner) exits.
-    unsafe {
-        cmd.pre_exec(|| {
-            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
-            Ok(())
-        });
-    }
-
-    let mut child = cmd.spawn()?;
+        .stderr(Stdio::piped())
+        .spawn()?;
 
     let stdout = child
         .stdout
         .take()
         .ok_or_else(|| std::io::Error::other("failed to capture dmesg stdout"))?;
 
-    // Log stderr in a background thread so sudo errors are visible.
+    // Log stderr in a background task so sudo errors are visible.
+    // Shares the cancel token so the task exits promptly on shutdown,
+    // dropping the pipe and allowing the orphaned dmesg to receive SIGPIPE.
     if let Some(stderr) = child.stderr.take() {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines().map_while(Result::ok) {
-                if !line.is_empty() {
-                    warn!(target: "dmesg", "stderr: {line}");
+        let stderr_cancel = cancel.clone();
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            loop {
+                tokio::select! {
+                    _ = stderr_cancel.cancelled() => break,
+                    result = lines.next_line() => {
+                        match result {
+                            Ok(Some(line)) if !line.is_empty() => {
+                                warn!(target: "dmesg", "stderr: {line}");
+                            }
+                            Ok(None) | Err(_) => break,
+                            _ => {}
+                        }
+                    }
                 }
             }
         });
     }
 
-    let reader = BufReader::new(stdout);
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
-        };
+    let mut lines = tokio::io::BufReader::new(stdout).lines();
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            result = lines.next_line() => {
+                let line = match result {
+                    Ok(Some(l)) => l,
+                    Ok(None) | Err(_) => break,
+                };
 
-        // Fast check before acquiring lock.
-        if !line.contains(LOG_PREFIX) {
-            continue;
-        }
+                // Fast check before acquiring lock.
+                if !line.contains(LOG_PREFIX) {
+                    continue;
+                }
 
-        if let Some(entry) = parse_log_message(&line) {
-            let log_path = {
-                let map = ip_log_map.blocking_lock();
-                map.get(&entry.source_ip).cloned()
-            };
-            if let Some(path) = log_path {
-                write_jsonl(&path, &entry);
+                if let Some(entry) = parse_log_message(&line) {
+                    let log_path = {
+                        let map = ip_log_map.lock().await;
+                        map.get(&entry.source_ip).cloned()
+                    };
+                    if let Some(path) = log_path {
+                        write_jsonl(&path, &entry);
+                    }
+                }
             }
         }
     }
 
-    // If dmesg exits, log the exit status.
-    let status = child.wait()?;
-    Err(std::io::Error::other(format!("dmesg exited: {status}")))
+    // Kill the child and reap it. start_kill may fail if dmesg already
+    // exited (e.g. stdout EOF triggered the break above) — that's fine,
+    // but we must still wait() to avoid a zombie process.
+    let _ = child.start_kill();
+    let _ = child.wait().await;
+    Ok(())
 }
 
 /// Parsed fields from a single iptables LOG line.
