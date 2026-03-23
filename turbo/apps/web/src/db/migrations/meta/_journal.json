@@ -1282,6 +1282,13 @@
       "when": 1774258215464,
       "tag": "0182_lame_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1774260401763,
+      "tag": "0183_powerful_captain_midlands",
+      "breakpoints": true
     }
   ]
 }

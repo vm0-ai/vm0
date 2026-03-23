@@ -13,6 +13,7 @@ import {
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
+import { zeroAgents } from "./zero-agent";
 
 /**
  * Zero Agent Schedules table
@@ -36,6 +37,7 @@ export const zeroAgentSchedules = pgTable(
     composeId: uuid("compose_id")
       .notNull()
       .references(() => agentComposes.id, { onDelete: "cascade" }),
+    zeroAgentId: uuid("zero_agent_id").references(() => zeroAgents.id),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
@@ -85,6 +87,7 @@ export const zeroAgentSchedules = pgTable(
   (table) => [
     // Index for finding schedules by compose
     index("idx_zero_agent_schedules_compose").on(table.composeId),
+    index("idx_zero_agent_schedules_zero_agent").on(table.zeroAgentId),
     index("idx_zero_agent_schedules_org").on(table.orgId),
     uniqueIndex("idx_zero_agent_schedules_compose_name_org_user").on(
       table.composeId,
