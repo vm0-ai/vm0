@@ -25,7 +25,12 @@ import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { setupChatSessionPage$ } from "./zero-page/chat-session-page-setup.ts";
 import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.ts";
 
-/** Catch-all fallback — redirects unknown paths to /. */
+/**
+ * Catch-all fallback — redirects unknown paths to /.
+ * Intentionally not wrapped with setupAuthPageWrapper: the / route
+ * already enforces auth, so wrapping here would add an unnecessary
+ * sign-in round-trip before the redirect.
+ */
 const setupNotFoundRedirect$ = command(({ set }) => {
   set(navigateInReact$, "/");
 });

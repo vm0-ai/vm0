@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroChatPageWrapper } from "../../views/zero-page/zero-chat-page-wrapper.tsx";
+import { ZeroAppShell } from "../../views/zero-page/zero-app-shell.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { pathname$ } from "../route.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
@@ -14,7 +14,7 @@ const L = logger("ChatPage");
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroChatPageWrapper));
+    set(updatePage$, createElement(ZeroAppShell));
 
     await set(loadInitialData$, signal);
 
