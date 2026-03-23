@@ -277,7 +277,7 @@ jobs:
           elif [ "$EVENT_NAME" = "merge_group" ]; then
             MQ_PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$MQ_PR_NUM" ]; then
-              JOB_REF="pr-${MQ_PR_NUM}-mq-$(printf '%s' "$GITHUB_RUN_ID" | tail -c 6)-test"
+              JOB_REF="pr-${MQ_PR_NUM}-mq-${GITHUB_RUN_ID}-test"
             else
               echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_HEAD_REF"
               exit 1
