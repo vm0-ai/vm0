@@ -87,6 +87,7 @@ import { PUT as setSecretRoute } from "../../app/api/secrets/route";
 import { PUT as setVariableRoute } from "../../app/api/variables/route";
 
 import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
+import { composeJobs } from "../db/schema/compose-job";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
@@ -4279,4 +4280,171 @@ export async function insertTestOrgSentinelVariable(params: {
     userId: ORG_SENTINEL_USER_ID,
     orgId: params.orgId,
   });
+}
+
+/**
+ * Count rows in a table where user_id matches.
+ * Mirror of countOrgRows for user-scoped deletion verification.
+ */
+export async function countUserRows(
+  tableName:
+    | "agent_runs"
+    | "agent_run_queue"
+    | "agent_composes"
+    | "storages"
+    | "secrets"
+    | "model_providers"
+    | "connectors"
+    | "variables"
+    | "usage_daily"
+    | "export_jobs"
+    | "zero_agent_schedules"
+    | "cli_tokens"
+    | "compose_jobs"
+    | "connector_sessions"
+    | "device_codes"
+    | "org_members_cache"
+    | "org_members_metadata"
+    | "user_cache"
+    | "users",
+  userId: string,
+): Promise<number> {
+  const columnName = tableName === "users" ? "id" : "user_id";
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE ${sql.identifier(columnName)} = ${userId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Count rows in slack_org_connections where vm0_user_id matches.
+ */
+export async function countSlackConnectionRows(
+  vm0UserId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM slack_org_connections WHERE vm0_user_id = ${vm0UserId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Count rows in github_user_links where vm0_user_id matches.
+ */
+export async function countGithubUserLinkRows(
+  vm0UserId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM github_user_links WHERE vm0_user_id = ${vm0UserId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Count rows in telegram_user_links where vm0_user_id matches.
+ */
+export async function countTelegramUserLinkRows(
+  vm0UserId: string,
+): Promise<number> {
+  const rows = await globalThis.services.db.execute(
+    sql`SELECT COUNT(*)::int AS count FROM telegram_user_links WHERE vm0_user_id = ${vm0UserId}`,
+  );
+  return (rows.rows[0] as { count: number }).count;
+}
+
+/**
+ * Insert a test compose job directly in the database.
+ */
+export async function insertTestComposeJob(params: {
+  userId: string;
+  status?: string;
+  githubUrl?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(composeJobs)
+    .values({
+      userId: params.userId,
+      status: params.status ?? "completed",
+      githubUrl: params.githubUrl ?? "https://github.com/test/repo",
+    })
+    .returning({ id: composeJobs.id });
+  return row!;
+}
+
+/**
+ * Insert a test GitHub installation for a compose.
+ */
+export async function insertTestGithubInstallation(params: {
+  composeId: string;
+  installationId?: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(githubInstallations)
+    .values({
+      defaultComposeId: params.composeId,
+      installationId: params.installationId ?? `gh-inst-${Date.now()}`,
+    })
+    .returning({ id: githubInstallations.id });
+  return row!;
+}
+
+/**
+ * Insert a test GitHub user link.
+ */
+export async function insertTestGithubUserLink(params: {
+  installationId: string;
+  githubUserId: string;
+  vm0UserId: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(githubUserLinks)
+    .values({
+      installationId: params.installationId,
+      githubUserId: params.githubUserId,
+      vm0UserId: params.vm0UserId,
+    })
+    .returning({ id: githubUserLinks.id });
+  return row!;
+}
+
+/**
+ * Insert a test Telegram installation for a compose.
+ */
+export async function insertTestTelegramInstallation(params: {
+  composeId: string;
+  adminUserId: string;
+  botUsername?: string;
+}): Promise<{ id: string }> {
+  const botId = `tg-bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const [row] = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      defaultComposeId: params.composeId,
+      telegramBotId: botId,
+      encryptedBotToken: `encrypted-test-token-${botId}`,
+      webhookSecret: `webhook-secret-${botId}`,
+      botUsername: params.botUsername ?? `test_bot_${Date.now()}`,
+      adminUserId: params.adminUserId,
+    })
+    .returning({ id: telegramInstallations.id });
+  return row!;
+}
+
+/**
+ * Insert a test Telegram user link.
+ */
+export async function insertTestTelegramUserLink(params: {
+  installationId: string;
+  telegramUserId: string;
+  vm0UserId: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(telegramUserLinks)
+    .values({
+      installationId: params.installationId,
+      telegramUserId: params.telegramUserId,
+      vm0UserId: params.vm0UserId,
+    })
+    .returning({ id: telegramUserLinks.id });
+  return row!;
 }
