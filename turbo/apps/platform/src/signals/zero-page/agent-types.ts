@@ -1,32 +1,10 @@
 export interface AgentDetail {
-  id: string;
   name: string;
-  headVersionId: string | null;
-  content: AgentComposeYaml | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface AgentComposeYaml {
-  version: string;
-  agents: Record<string, AgentDefinition>;
-  volumes?: Record<string, VolumeConfig>;
-}
-
-interface AgentDefinition {
-  description?: string;
-  framework: string;
-  instructions?: string;
-  skills?: string[];
-  environment?: Record<string, string>;
-  experimental_runner?: { group: string };
-  experimental_capabilities?: string[];
-}
-
-interface VolumeConfig {
-  name: string;
-  version: string;
-  optional?: boolean;
+  agentComposeId: string;
+  description: string | null;
+  displayName: string | null;
+  sound: string | null;
+  connectors: string[];
 }
 
 export interface AgentInstructions {

@@ -1,73 +1,61 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
-import {
-  zeroOnboardingStatus$,
-  reloadOnboardingStatus$,
-} from "./zero-onboarding.ts";
+import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { skillUrlToValue } from "../../data/skills.ts";
-import { SEED_SKILLS } from "../../data/the-seed.ts";
-import { zeroChatAgentId$ } from "./zero-nav.ts";
+import { zeroChatAgentName$ } from "./zero-nav.ts";
+import { defaultAgentName$ } from "./zero-agent-name.ts";
 
 const L = logger("ZeroConnectors");
 
 // ---------------------------------------------------------------------------
-// Default agent compose
+// Agent name resolution
 // ---------------------------------------------------------------------------
 
-const zeroComposeId$ = computed(async (get) => {
-  const chatAgentId = get(zeroChatAgentId$);
-  if (chatAgentId !== null) {
-    return chatAgentId;
+const zeroAgentName$ = computed(async (get) => {
+  const chatAgentName = get(zeroChatAgentName$);
+  if (chatAgentName !== null) {
+    return chatAgentName;
   }
-  const status = await get(zeroOnboardingStatus$);
-  return status.defaultAgentComposeId;
+  return await get(defaultAgentName$);
 });
 
-interface ZeroAgentDef {
-  framework: string;
-  skills?: string[];
-  [key: string]: unknown;
-}
-
-interface ZeroComposeContent {
-  version: string;
-  agents: Record<string, ZeroAgentDef>;
-}
-
-interface ZeroCompose {
-  id: string;
+interface ZeroAgentResponse {
   name: string;
-  headVersionId: string | null;
-  content: ZeroComposeContent | null;
+  agentComposeId: string;
+  description: string | null;
+  displayName: string | null;
+  sound: string | null;
+  connectors: string[];
 }
 
 const internalComposeReload$ = state(0);
 
-/** Bump to force `zeroCompose$` to re-fetch from the API. */
+/** Bump to force `zeroAgent$` to re-fetch from the API. */
 export const reloadZeroCompose$ = command(({ set }) => {
   set(internalComposeReload$, (x) => x + 1);
 });
 
-const zeroCompose$ = computed(async (get) => {
+const zeroAgent$ = computed(async (get) => {
   get(internalComposeReload$);
-  const composeId = await get(zeroComposeId$);
-  if (!composeId) {
+  const agentName = await get(zeroAgentName$);
+  if (!agentName) {
     return null;
   }
 
   const fetchFn = get(fetch$);
-  const resp = await fetchFn(`/api/zero/composes/${composeId}`);
+  const resp = await fetchFn(
+    `/api/zero/agents/${encodeURIComponent(agentName)}`,
+  );
   if (!resp.ok) {
-    throw new Error(`Failed to fetch compose: ${resp.statusText}`);
+    throw new Error(`Failed to fetch agent: ${resp.statusText}`);
   }
-  return (await resp.json()) as ZeroCompose;
+  return (await resp.json()) as ZeroAgentResponse;
 });
 
 // ---------------------------------------------------------------------------
-// Connectors list: derived from compose content, synced via compose jobs
+// Connectors list: derived from agent response, synced via agents API
 // ---------------------------------------------------------------------------
 
 const internalSaving$ = state(false);
@@ -75,21 +63,13 @@ const internalSaving$ = state(false);
 // null = not initialized (fallback to seeded), string[] = user's local draft
 const internalAddedConnectors$ = state<string[] | null>(null);
 
-/** Connectors seeded from compose content, always includes default seed skills. */
+/** Connectors from agent response (server already filters out seed skills). */
 const seededConnectors$ = computed(async (get) => {
-  const compose = await get(zeroCompose$);
-  const fromContent: string[] = [];
-  if (compose?.content) {
-    const agentKey = Object.keys(compose.content.agents)[0];
-    if (agentKey) {
-      const agent = compose.content.agents[agentKey];
-      fromContent.push(...(agent?.skills ?? []).map(skillUrlToValue));
-    }
-  }
-  return [...new Set([...SEED_SKILLS, ...fromContent])];
+  const agent = await get(zeroAgent$);
+  return agent?.connectors ?? [];
 });
 
-/** Added connectors: local draft takes precedence, otherwise seeded from compose. */
+/** Added connectors: local draft takes precedence, otherwise seeded from agent. */
 export const zeroAddedConnectors$ = computed(async (get) => {
   const local = get(internalAddedConnectors$);
   if (local !== null) {
@@ -112,7 +92,7 @@ export const saveZeroConnectors$ = command(async ({ get, set }) => {
   try {
     const newConnectors = get(internalAddedConnectors$) ?? [];
     await set(syncConnectorsToCompose$, newConnectors);
-    // Reset to null so seeded picks up the new compose state
+    // Reset to null so seeded picks up the new agent state
     set(internalAddedConnectors$, null);
     toast.success("Connectors saved");
   } catch (error) {
@@ -129,15 +109,15 @@ export const saveZeroConnectors$ = command(async ({ get, set }) => {
 /** Sync the connectors list via zero agents API. */
 const syncConnectorsToCompose$ = command(
   async ({ get, set }, connectorValues: string[]) => {
-    const compose = await get(zeroCompose$);
-    if (!compose?.content) {
-      throw new Error("No compose content available");
+    const agent = await get(zeroAgent$);
+    if (!agent) {
+      throw new Error("No agent available");
     }
 
     const fetchFn = get(fetch$);
 
     const resp = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(compose.name)}`,
+      `/api/zero/agents/${encodeURIComponent(agent.name)}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

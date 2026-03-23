@@ -3,7 +3,6 @@ import { onboardingStatusResponseSchema } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { clerk$ } from "../auth.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
-import { SEED_SKILLS } from "../../data/the-seed.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -180,14 +179,9 @@ export const completeZeroOnboarding$ = command(
       });
       signal.throwIfAborted();
 
-      // Merge seed skills with user-selected skills (deduplicated)
-      const allConnectors = [
-        ...new Set([...SEED_SKILLS, ...selectedConnectors]),
-      ];
-
-      // Create agent and upload instructions
+      // Create agent and upload instructions (server injects seed skills)
       const agent = await createZeroAgent(fetchFn, {
-        connectors: allConnectors,
+        connectors: selectedConnectors,
         displayName,
         sound: "professional",
       });

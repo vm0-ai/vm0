@@ -36,18 +36,14 @@ function mockAPIs() {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
-    http.get("*/api/zero/composes", () => {
+    http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
-        id: "agent-detail-id",
         name: "my-agent",
-        content: {
-          agents: {
-            "my-agent": {
-              description: "A helpful agent",
-              framework: null,
-            },
-          },
-        },
+        agentComposeId: "agent-detail-id",
+        description: "A helpful agent",
+        displayName: "My Agent",
+        sound: null,
+        connectors: [],
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -123,7 +119,7 @@ describe("zero job detail page", () => {
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
       }),
-      http.get("*/api/zero/composes", () => {
+      http.get("*/api/zero/agents/:name", () => {
         return HttpResponse.json({ error: "Not found" }, { status: 404 });
       }),
     );
@@ -181,18 +177,14 @@ function mockAPIsWithSchedules() {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
-    http.get("*/api/zero/composes", () => {
+    http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
-        id: "agent-detail-id",
         name: "my-agent",
-        content: {
-          agents: {
-            "my-agent": {
-              description: "A helpful agent",
-              framework: null,
-            },
-          },
-        },
+        agentComposeId: "agent-detail-id",
+        description: "A helpful agent",
+        displayName: "My Agent",
+        sound: null,
+        connectors: [],
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

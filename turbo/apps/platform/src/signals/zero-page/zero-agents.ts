@@ -7,7 +7,6 @@ import {
 } from "./agents-list.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import { fetch$ } from "../fetch.ts";
-import { SEED_SKILLS } from "../../data/the-seed.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
 
 export { agentsLoading$, agentsError$, fetchAgentsList$ };
@@ -33,7 +32,7 @@ export const createSubagent$ = command(
     const fetchFn = get(fetch$);
 
     await createZeroAgent(fetchFn, {
-      connectors: [...SEED_SKILLS],
+      connectors: [],
       displayName,
     });
 

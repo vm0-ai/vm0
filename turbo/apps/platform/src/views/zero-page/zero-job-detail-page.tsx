@@ -188,14 +188,15 @@ function extractAgentFields(
     sound?: string | null;
   },
 ) {
-  const agentDef = detail?.content
-    ? Object.values(detail.content.agents)[0]
-    : null;
   return {
-    description: listItem?.description ?? agentDef?.description ?? "",
-    framework: agentDef?.framework ?? null,
-    sound: listItem?.sound ?? "professional",
-    displayName: listItem?.displayName ?? detail?.name ?? fallbackName,
+    description: listItem?.description ?? detail?.description ?? "",
+    framework: null,
+    sound: listItem?.sound ?? detail?.sound ?? "professional",
+    displayName:
+      listItem?.displayName ??
+      detail?.displayName ??
+      detail?.name ??
+      fallbackName,
   };
 }
 
@@ -329,7 +330,7 @@ export function ZeroJobDetailPage({
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
     (statusLoadable.data.defaultAgentName === agentName ||
-      statusLoadable.data.defaultAgentComposeId === detail?.id);
+      statusLoadable.data.defaultAgentComposeId === detail?.agentComposeId);
 
   const handleDelete = async () => {
     await deleteAgent();

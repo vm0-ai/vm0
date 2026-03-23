@@ -41,19 +41,16 @@ function mockConnectors(connectors: ConnectorResponse[]) {
   );
 }
 
-async function renderTeamPage(skills: string[]) {
+async function renderTeamPage(connectors: string[]) {
   server.use(
-    http.get("*/api/zero/composes", () => {
+    http.get("*/api/zero/agents/zero", () => {
       return HttpResponse.json({
-        id: "compose-1",
         name: "zero",
-        headVersionId: "version_1",
-        content: {
-          version: "1",
-          agents: { zero: { framework: "claude-code", skills } },
-        },
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: "2024-01-01T00:00:00Z",
+        agentComposeId: "compose-1",
+        description: null,
+        displayName: null,
+        sound: null,
+        connectors,
       });
     }),
   );

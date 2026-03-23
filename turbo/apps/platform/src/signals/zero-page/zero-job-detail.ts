@@ -5,8 +5,6 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { search } from "../location.ts";
 import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
-import { skillUrlToValue } from "../../data/skills.ts";
-import { SEED_SKILLS } from "../../data/the-seed.ts";
 import {
   buildCronExpression,
   buildAtTime,
@@ -95,9 +93,10 @@ const fetchZeroJobDetail$ = command(async ({ get, set }) => {
 
   try {
     const fetchFn = get(fetch$);
-    const params = new URLSearchParams({ name });
 
-    const response = await fetchFn(`/api/zero/composes?${params.toString()}`);
+    const response = await fetchFn(
+      `/api/zero/agents/${encodeURIComponent(name)}`,
+    );
     if (!response.ok) {
       const status = response.status;
       const text = response.statusText || `HTTP ${status}`;
@@ -215,7 +214,7 @@ export const zeroJobBuildError$ = computed((get) => get(internalBuildError$));
 export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
   const raw = get(editedContent$);
-  if (!detail?.content || raw === null) {
+  if (!detail?.name || raw === null) {
     return;
   }
   const edited = raw.trim();
@@ -286,7 +285,7 @@ export const zeroJobUpdateSettings$ = command(
     try {
       const fetchFn = get(fetch$);
       const response = await fetchFn(
-        `/api/zero/composes/${detail.id}/metadata`,
+        `/api/zero/agents/${encodeURIComponent(detail.name)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -319,15 +318,7 @@ const internalAddedConnectors$ = state<string[] | null>(null);
 
 const seededConnectors$ = computed((get) => {
   const detail = get(zeroJobDetail$);
-  const fromContent: string[] = [];
-  if (detail?.content) {
-    const agentKey = Object.keys(detail.content.agents)[0];
-    if (agentKey) {
-      const agent = detail.content.agents[agentKey];
-      fromContent.push(...(agent?.skills ?? []).map(skillUrlToValue));
-    }
-  }
-  return [...new Set([...SEED_SKILLS, ...fromContent])];
+  return detail?.connectors ?? [];
 });
 
 export const zeroJobAddedConnectors$ = computed((get) => {
@@ -374,8 +365,8 @@ export const discardZeroJobConnectors$ = command(({ set }) => {
 
 export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
-  if (!detail?.content) {
-    throw new Error("No compose content found");
+  if (!detail?.name) {
+    throw new Error("No agent detail loaded");
   }
 
   set(internalSaving$, true);
@@ -591,7 +582,7 @@ export const saveZeroJobSchedule$ = command(
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      composeId: detail.id,
+      composeId: detail.agentComposeId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -671,7 +662,7 @@ export const toggleZeroJobScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ composeId: detail.id }),
+        body: JSON.stringify({ composeId: detail.agentComposeId }),
       },
     );
 
@@ -699,7 +690,7 @@ export const deleteZeroJobSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(detail.id)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(detail.agentComposeId)}`,
       { method: "DELETE" },
     );
 
@@ -728,9 +719,10 @@ export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
   }
 
   const fetchFn = get(fetch$);
-  const response = await fetchFn(`/api/zero/composes/${detail.id}`, {
-    method: "DELETE",
-  });
+  const response = await fetchFn(
+    `/api/zero/agents/${encodeURIComponent(detail.name)}`,
+    { method: "DELETE" },
+  );
 
   if (response.status === 409) {
     throw new Error("Cannot delete agent while it is running");

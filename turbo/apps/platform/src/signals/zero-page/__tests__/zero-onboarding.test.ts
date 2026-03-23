@@ -12,7 +12,7 @@ import {
   zeroOnboardingError$,
   zeroSaving$,
 } from "../zero-onboarding.ts";
-import { SEED_INSTRUCTIONS, SEED_SKILLS } from "../../../data/the-seed.ts";
+import { SEED_INSTRUCTIONS } from "../../../data/the-seed.ts";
 
 const context = testContext();
 
@@ -75,9 +75,9 @@ describe("completeZeroOnboarding$", () => {
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // Verify agent was created with connectors
+    // Verify agent was created — frontend sends only user connectors (empty)
     expect(capturedPayload).toBeTruthy();
-    expect(capturedPayload!.connectors).toStrictEqual([...SEED_SKILLS]);
+    expect(capturedPayload!.connectors).toStrictEqual([]);
     expect(capturedPayload!.displayName).toBe("My Assistant");
     expect(capturedPayload!.sound).toBe("professional");
 
@@ -86,7 +86,7 @@ describe("completeZeroOnboarding$", () => {
     expect(capturedInstructions!.content).toBe(SEED_INSTRUCTIONS);
   });
 
-  it("should merge user-selected skills with seed skills and deduplicate", async () => {
+  it("should send only user-selected connectors (server adds seed skills)", async () => {
     let capturedPayload: CreateAgentPayload | null = null;
 
     server.use(
@@ -124,15 +124,13 @@ describe("completeZeroOnboarding$", () => {
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    // Select a connector skill and a duplicate seed skill
+    // Select a user connector
     context.store.set(toggleZeroConnector$, "slack");
-    context.store.set(toggleZeroConnector$, "vm0"); // duplicate of seed skill
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // All seed skills + "slack" (vm0 deduplicated)
-    const expectedConnectors = [...SEED_SKILLS, "slack"];
-    expect(capturedPayload!.connectors).toStrictEqual(expectedConnectors);
+    // Only user-selected connectors sent (server injects seed skills)
+    expect(capturedPayload!.connectors).toStrictEqual(["slack"]);
   });
 
   it("should set default agent after creating compose", async () => {

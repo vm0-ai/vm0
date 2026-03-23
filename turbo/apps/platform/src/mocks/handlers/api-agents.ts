@@ -39,7 +39,7 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/zero/composes/:id
+  // GET /api/zero/composes/:id (kept for backwards compat with other tests)
   http.get("/api/zero/composes/:id", ({ params }) => {
     // Skip if it matches a sub-route like "list"
     if (params.id === "list") {
@@ -56,6 +56,26 @@ export const apiAgentsHandlers = [
       },
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
+    });
+  }),
+
+  // GET /api/zero/agents/:name
+  http.get("/api/zero/agents/:name", ({ params }) => {
+    // Skip if it matches sub-routes like "instructions"
+    if (
+      params.name === "instructions" ||
+      (typeof params.name === "string" && params.name.includes("/"))
+    ) {
+      return;
+    }
+
+    return HttpResponse.json({
+      name: params.name,
+      agentComposeId: "mock-compose-id",
+      description: null,
+      displayName: null,
+      sound: null,
+      connectors: [],
     });
   }),
 

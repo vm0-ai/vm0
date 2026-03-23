@@ -33,27 +33,17 @@ import {
   discardZeroJobConnectors$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
-import { SEED_SKILLS } from "../../../data/the-seed.ts";
 
 const context = testContext();
 
 function mockAgentResponse() {
   return {
-    id: "compose-1",
     name: "my-agent",
-    headVersionId: "v1",
-    content: {
-      version: "1",
-      agents: {
-        main: {
-          description: "A test agent",
-          framework: "claude-code",
-          skills: ["search"],
-        },
-      },
-    },
-    createdAt: "2024-01-01T00:00:00Z",
-    updatedAt: "2024-06-15T12:00:00Z",
+    agentComposeId: "compose-1",
+    description: null,
+    displayName: null,
+    sound: null,
+    connectors: ["search"],
   };
 }
 
@@ -104,7 +94,7 @@ describe("zero-job-detail signals", () => {
     it("should fetch detail, instructions, and schedules successfully", async () => {
       const agentResponse = mockAgentResponse();
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(agentResponse);
         }),
         http.get(
@@ -150,7 +140,7 @@ describe("zero-job-detail signals", () => {
 
     it("should set error state when detail API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/:name", () => {
           return HttpResponse.json(
             { error: "Not Found" },
             { status: 404, statusText: "Not Found" },
@@ -172,7 +162,7 @@ describe("zero-job-detail signals", () => {
 
     it("should set instructions error when instructions API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -206,7 +196,7 @@ describe("zero-job-detail signals", () => {
 
     it("should set schedule error when schedules API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -239,19 +229,21 @@ describe("zero-job-detail signals", () => {
 
     it("should pass agent name directly to API", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", ({ request }) => {
-          const url = new URL(request.url);
-          const name = url.searchParams.get("name");
-
-          expect(name).toBe("my-org/sub-agent");
-
-          return HttpResponse.json({
-            ...mockAgentResponse(),
-            name: "sub-agent",
-          });
-        }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/:name",
+          ({ params }) => {
+            expect(decodeURIComponent(params["name"] as string)).toBe(
+              "my-org/sub-agent",
+            );
+
+            return HttpResponse.json({
+              ...mockAgentResponse(),
+              name: "sub-agent",
+            });
+          },
+        ),
+        http.get(
+          "http://localhost:3000/api/zero/agents/:name/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -272,7 +264,7 @@ describe("zero-job-detail signals", () => {
   describe("saveZeroJobSchedule$", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -401,7 +393,7 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
 
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -442,7 +434,7 @@ describe("zero-job-detail signals", () => {
 
     it("should throw when delete API returns error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -479,7 +471,7 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
 
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -521,7 +513,7 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
 
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -561,7 +553,7 @@ describe("zero-job-detail signals", () => {
 
     it("should show toast error when toggle API fails", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -602,7 +594,7 @@ describe("zero-job-detail signals", () => {
   describe("instructions editing", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -664,7 +656,7 @@ describe("zero-job-detail signals", () => {
             });
           },
         ),
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );
@@ -748,7 +740,7 @@ describe("zero-job-detail signals", () => {
   describe("zeroJobUpdateSettings$", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -766,20 +758,27 @@ describe("zero-job-detail signals", () => {
       await context.store.set(fetchZeroJobData$, "my-agent");
     }
 
-    it("should update settings via metadata PATCH and refetch", async () => {
+    it("should update settings via PATCH agents API and refetch", async () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
 
       server.use(
         http.patch(
-          "http://localhost:3000/api/zero/composes/compose-1/metadata",
+          "http://localhost:3000/api/zero/agents/my-agent",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return new HttpResponse(null, { status: 204 });
+            return HttpResponse.json({
+              name: "my-agent",
+              agentComposeId: "compose-1",
+              displayName: "New Name",
+              description: null,
+              sound: "friendly",
+              connectors: [],
+            });
           },
         ),
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );
@@ -789,7 +788,7 @@ describe("zero-job-detail signals", () => {
         sound: "friendly",
       });
 
-      // Should have sent the update fields directly to the metadata endpoint
+      // Should have sent the update fields directly to the agents PATCH endpoint
       expect(capturedBody["displayName"]).toBe("New Name");
       expect(capturedBody["sound"]).toBe("friendly");
 
@@ -797,20 +796,24 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
-    it("should send empty update via metadata PATCH", async () => {
+    it("should send empty update via PATCH agents API", async () => {
       let patchCalled = false;
 
       await setupWithAgent();
 
       server.use(
-        http.patch(
-          "http://localhost:3000/api/zero/composes/compose-1/metadata",
-          () => {
-            patchCalled = true;
-            return new HttpResponse(null, { status: 204 });
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.patch("http://localhost:3000/api/zero/agents/my-agent", () => {
+          patchCalled = true;
+          return HttpResponse.json({
+            name: "my-agent",
+            agentComposeId: "compose-1",
+            displayName: null,
+            description: null,
+            sound: null,
+            connectors: [],
+          });
+        }),
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );
@@ -822,16 +825,13 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
-    it("should show error toast on metadata PATCH failure", async () => {
+    it("should show error toast on PATCH failure", async () => {
       await setupWithAgent();
 
       server.use(
-        http.patch(
-          "http://localhost:3000/api/zero/composes/compose-1/metadata",
-          () => {
-            return new HttpResponse("Internal error", { status: 500 });
-          },
-        ),
+        http.patch("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return new HttpResponse("Internal error", { status: 500 });
+        }),
       );
 
       // Should not throw — errors are caught and shown via toast
@@ -846,7 +846,7 @@ describe("zero-job-detail signals", () => {
   describe("connectors management", () => {
     async function setupWithAgent() {
       server.use(
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
@@ -864,22 +864,21 @@ describe("zero-job-detail signals", () => {
       await context.store.set(fetchZeroJobData$, "my-agent");
     }
 
-    it("should seed skills from agent detail", async () => {
+    it("should seed connectors from agent response", async () => {
       await setupWithAgent();
 
-      const skills = context.store.get(zeroJobAddedConnectors$);
-      // SEED_SKILLS are always included, plus agent-specific skills
-      expect(skills).toStrictEqual([...SEED_SKILLS, "search"]);
+      const connectors = context.store.get(zeroJobAddedConnectors$);
+      // Server filters out seed skills, only user connectors remain
+      expect(connectors).toStrictEqual(["search"]);
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
     });
 
-    it("should add and remove skills with dirty tracking", async () => {
+    it("should add and remove connectors with dirty tracking", async () => {
       await setupWithAgent();
 
       context.store.set(addZeroJobConnector$, "gmail");
 
       expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
-        ...SEED_SKILLS,
         "search",
         "gmail",
       ]);
@@ -888,13 +887,12 @@ describe("zero-job-detail signals", () => {
       context.store.set(removeZeroJobConnector$, "search");
 
       expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
-        ...SEED_SKILLS,
         "gmail",
       ]);
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeTruthy();
     });
 
-    it("should discard skill changes", async () => {
+    it("should discard connector changes", async () => {
       await setupWithAgent();
 
       context.store.set(addZeroJobConnector$, "gmail");
@@ -903,13 +901,12 @@ describe("zero-job-detail signals", () => {
       context.store.set(discardZeroJobConnectors$);
 
       expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
-        ...SEED_SKILLS,
         "search",
       ]);
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
     });
 
-    it("should save skills via zero agents api", async () => {
+    it("should save connectors via zero agents api", async () => {
       let capturedBody: { connectors: string[] } | null = null;
 
       await setupWithAgent();
@@ -929,7 +926,7 @@ describe("zero-job-detail signals", () => {
             });
           },
         ),
-        http.get("http://localhost:3000/api/zero/composes", () => {
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
       );
@@ -939,11 +936,7 @@ describe("zero-job-detail signals", () => {
 
       // Verify connectors were sent as short names
       expect(capturedBody).toBeTruthy();
-      expect(capturedBody!.connectors).toStrictEqual([
-        ...SEED_SKILLS,
-        "search",
-        "gmail",
-      ]);
+      expect(capturedBody!.connectors).toStrictEqual(["search", "gmail"]);
 
       // After save, dirty state should be reset
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
