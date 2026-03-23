@@ -54,13 +54,10 @@ const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
 
 const SOURCE_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
   { value: "all", label: "All sources" },
-  { value: "web", label: "Web" },
-  { value: "cli", label: "CLI" },
-  { value: "schedule", label: "Schedule" },
-  { value: "slack", label: "Slack" },
-  { value: "email", label: "Email" },
-  { value: "telegram", label: "Telegram" },
-  { value: "github", label: "GitHub" },
+  ...Object.entries(TRIGGER_SOURCE_LABELS).map(([value, label]) => ({
+    value,
+    label,
+  })),
 ];
 
 const ROW_GRID =
