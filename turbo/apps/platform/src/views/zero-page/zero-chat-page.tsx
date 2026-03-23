@@ -6,10 +6,8 @@ import {
   IconUser,
   IconUsers,
   IconCheck,
-  IconArrowLeft,
   IconArrowUpRight,
   IconChartLine,
-  IconCalendar,
   IconPin,
 } from "@tabler/icons-react";
 import {
@@ -46,9 +44,7 @@ import {
   setChatPageConnectorConnected$,
   chatPageCommandAllowed$,
   setChatPageCommandAllowed$,
-  chatPageShowSubAgentList$,
   chatPageTaglineIndex$,
-  toggleChatPageSubAgentList$,
   scheduleStreamTick$,
   streamCleanupRef$,
 } from "../../signals/zero-page/zero-chat-page.ts";
@@ -733,8 +729,6 @@ function filterScenariosToShow(
 
 interface ZeroChatPageProps {
   initialScenarioId?: DemoScenarioId;
-  onClearScenario?: () => void;
-  onNavigateToSchedule?: () => void;
   onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (
     message: string,
@@ -749,8 +743,6 @@ interface ZeroChatPageProps {
 
 export function ZeroChatPage({
   initialScenarioId,
-  onClearScenario,
-  onNavigateToSchedule,
   onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,
@@ -783,7 +775,6 @@ export function ZeroChatPage({
   const tagline = getTagline(agentName, userName, taglineIndex);
   const [showIdeation, setShowIdeation] = useState(false);
   const [suggestedPrompts] = useState(() => getRandomPrompts(3));
-  const toggleSubAgentList = useSet(toggleChatPageSubAgentList$);
   const scheduleStreamTick = useSet(scheduleStreamTick$);
   const streamCleanupRef = useSet(streamCleanupRef$);
 
@@ -837,7 +828,6 @@ export function ZeroChatPage({
   }
 
   if (showConversation && scenariosToShow.length > 0) {
-    const isScenarioFromSidebar = initialScenarioId !== undefined;
     return (
       <div
         ref={streamCleanupRef}
@@ -845,19 +835,6 @@ export function ZeroChatPage({
       >
         <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 -ml-2"
-              onClick={() =>
-                isScenarioFromSidebar
-                  ? onClearScenario?.()
-                  : setConversationActive(false)
-              }
-              aria-label="Back to chat home"
-            >
-              <IconArrowLeft size={20} stroke={1.5} />
-            </Button>
             <div className="relative shrink-0">
               <button
                 type="button"
@@ -902,15 +879,6 @@ export function ZeroChatPage({
             >
               <IconUsers size={18} stroke={1.5} />
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={onNavigateToSchedule}
-              aria-label={`${agentName} scheduled tasks`}
-            >
-              <IconCalendar size={18} stroke={1.5} />
-            </Button>
           </div>
         </header>
         <main className="flex-1 overflow-auto px-4 sm:px-6 py-4">

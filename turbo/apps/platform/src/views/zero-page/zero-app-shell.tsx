@@ -24,7 +24,6 @@ import {
   zeroChatAgentId$,
   zeroChatAgentName$,
   zeroTalkAgentResolved$,
-  navigateFromZeroSession$,
   zeroAvatarIndex$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
@@ -301,8 +300,6 @@ export function ZeroAppShell() {
     handleChatAvatarClick,
   } = useContentNavigation(resolvedAgentName);
 
-  const navigateBack = useSet(navigateFromZeroSession$);
-
   const sidebarCollapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
 
@@ -340,7 +337,6 @@ export function ZeroAppShell() {
             onSendMessage={handleSendFromDemo}
             onNavigateToSchedule={handleNavigateToSchedule}
             onNavigateToMeet={handleNavigateToMeet}
-            onBackFromSession={navigateBack}
             zeroAvatarSrc={zeroAvatarSrc}
             chatAgentName={chatAgentName}
             chatAvatarSrc={chatAvatarSrc}

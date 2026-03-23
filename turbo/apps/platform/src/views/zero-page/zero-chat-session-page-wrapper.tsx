@@ -5,7 +5,6 @@ import { useAgentAvatar } from "./zero-sidebar.tsx";
 import {
   zeroChatAgentId$,
   zeroAvatarIndex$,
-  navigateFromZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import {
@@ -46,7 +45,6 @@ export function ZeroChatSessionPageWrapper() {
   const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
 
   const navigateInReact = useSet(navigateInReact$);
-  const navigateBack = useSet(navigateFromZeroSession$);
 
   const handleNavigateToSchedule = () => {
     if (resolvedAgentName) {
@@ -70,7 +68,6 @@ export function ZeroChatSessionPageWrapper() {
       <ZeroSessionChatPage
         zeroAvatarSrc={chatAvatarSrc}
         chatAgentName={chatAgentName}
-        onBack={navigateBack}
         onNavigateToSchedule={handleNavigateToSchedule}
         onAvatarClick={handleChatAvatarClick}
       />

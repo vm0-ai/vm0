@@ -125,13 +125,6 @@ export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
   set(navigateInReact$, "/chat/:sessionId", { pathParams: { sessionId } });
 });
 
-/**
- * Navigate back from a chat session to the previous route in browser history.
- */
-export const navigateFromZeroSession$ = command(() => {
-  window.history.back();
-});
-
 // ---------------------------------------------------------------------------
 // Shell UI state — avatar, about page, sidebar
 // ---------------------------------------------------------------------------

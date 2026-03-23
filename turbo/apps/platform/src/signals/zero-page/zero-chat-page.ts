@@ -116,28 +116,7 @@ export const setChatPageCommandAllowed$ = command(({ set }, value: boolean) => {
   set(internalCommandAllowed$, value);
 });
 
-const internalShowSubAgentList$ = state(false);
-export const chatPageShowSubAgentList$ = computed((get) =>
-  get(internalShowSubAgentList$),
-);
-
 const internalTaglineIndex$ = state(INITIAL_TAGLINE_INDEX);
 export const chatPageTaglineIndex$ = computed((get) =>
   get(internalTaglineIndex$),
 );
-
-const internalSubAgentListEl$ = state<HTMLElement | null>(null);
-
-/** Toggle sub-agent list visibility with auto-scroll when opening. */
-export const toggleChatPageSubAgentList$ = command(({ get, set }) => {
-  const current = get(internalShowSubAgentList$);
-  set(internalShowSubAgentList$, !current);
-  if (!current) {
-    window.requestAnimationFrame(() => {
-      const el = get(internalSubAgentListEl$);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth" });
-      }
-    });
-  }
-});

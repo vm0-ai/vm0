@@ -15,6 +15,7 @@ function mockAPIs({
       id: "thread-1",
       title: "First chat",
       preview: "Hello world",
+      agentComposeId: "mock-compose-id",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
     },
@@ -22,6 +23,7 @@ function mockAPIs({
       id: "thread-2",
       title: "Second chat",
       preview: "Goodbye moon",
+      agentComposeId: "mock-compose-id",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
     },
@@ -31,6 +33,7 @@ function mockAPIs({
     id: string;
     title: string;
     preview: string;
+    agentComposeId: string;
     createdAt: string;
     updatedAt: string;
   }[];
@@ -106,7 +109,7 @@ describe("zero sidebar", () => {
     });
 
     // Type search query
-    const searchInput = screen.getByPlaceholderText("Search chats...");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await act(() => {
       fireEvent.change(searchInput, { target: { value: "Hello" } });
     });
@@ -132,7 +135,7 @@ describe("zero sidebar", () => {
     });
 
     // Type search query that filters out one thread
-    const searchInput = screen.getByPlaceholderText("Search chats...");
+    const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await act(() => {
       fireEvent.change(searchInput, { target: { value: "Hello" } });
     });

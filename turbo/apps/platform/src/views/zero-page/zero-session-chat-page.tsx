@@ -2,7 +2,6 @@ import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconAlertCircle,
   IconLoader2,
-  IconArrowLeft,
   IconUsers,
   IconCalendar,
   IconPhoto,
@@ -73,7 +72,6 @@ import zeroAvatarImg from "./assets/zero-avatar.webp";
 
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
-  onBack?: () => void;
   onNavigateToSchedule?: () => void;
   onAvatarClick?: () => void;
   chatAgentName?: string;
@@ -81,7 +79,6 @@ interface ZeroSessionChatPageProps {
 
 export function ZeroSessionChatPage({
   zeroAvatarSrc = zeroAvatarImg,
-  onBack,
   onNavigateToSchedule,
   onAvatarClick,
   chatAgentName,
@@ -141,15 +138,6 @@ export function ZeroSessionChatPage({
       {/* Header */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 -ml-2"
-            onClick={onBack}
-            aria-label="Back to chat home"
-          >
-            <IconArrowLeft size={20} stroke={1.5} />
-          </Button>
           <div className="relative shrink-0">
             <button
               type="button"

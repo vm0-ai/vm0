@@ -931,32 +931,6 @@ export const startNewZeroSession$ = command(({ get, set }) => {
   set(internalChatInput$, "");
 });
 
-/**
- * Create a new chat thread for the agent and navigate directly to the chat page.
- * When agentComposeId is null, uses default agent from onboarding status.
- */
-export const createNewChatAndNavigate$ = command(
-  async ({ get, set }, agentComposeId: string | null) => {
-    const composeId =
-      agentComposeId ??
-      (await get(zeroOnboardingStatus$)).defaultAgentComposeId;
-    if (!composeId) {
-      return;
-    }
-    const fetchFn = get(fetch$);
-    const threadId = await createChatThread(fetchFn, composeId);
-    if (!threadId) {
-      return;
-    }
-    set(startNewZeroSession$);
-    set(navigateToZeroSession$, threadId);
-    set(fetchZeroSessionList$).catch((error: unknown) => {
-      throwIfAbort(error);
-      L.error("Failed to refresh chat list:", error);
-    });
-  },
-);
-
 // ---------------------------------------------------------------------------
 // Commands: send message
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   useLoadable,
   useLastLoadable,
@@ -94,7 +94,6 @@ import {
   zeroSessionListLoading$,
   zeroSessionListError$,
   startNewZeroSession$,
-  createNewChatAndNavigate$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { navigateInReact$ } from "../../signals/route.ts";
 import {
@@ -515,7 +514,9 @@ function AccountDropdown({
 }
 
 function RecentChatSection({
-  agentLabel,
+  currentChatAgentId,
+  displayName,
+  subagents,
   recentSessions,
   recentSessionsLoading,
   recentSessionsError,
@@ -523,31 +524,54 @@ function RecentChatSection({
   onRecentSelect,
   onNewChat,
 }: {
-  agentLabel: string;
+  currentChatAgentId: string | null;
+  displayName: string;
+  subagents: SubagentInfo[];
   recentSessions: ChatThreadListItem[];
   recentSessionsLoading: boolean;
   recentSessionsError: string | null;
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
-  onNewChat?: () => void;
+  onNewChat?: (agent: { id: string; name: string } | null) => void;
 }) {
   const searchOpen = useGet(sidebarSearchOpen$);
   const setSearchOpen = useSet(setSidebarSearchOpen$);
   const searchTerm = useGet(sidebarSearchTerm$);
   const setSearchTerm = useSet(setSidebarSearchTerm$);
 
+  // Filter sessions by current agent
+  const subagentIds = new Set(subagents.map((a) => a.id));
+  const agentSessions = currentChatAgentId
+    ? recentSessions.filter((s) => s.agentComposeId === currentChatAgentId)
+    : recentSessions.filter((s) => !subagentIds.has(s.agentComposeId));
+
+  const agentLabel = currentChatAgentId
+    ? (subagents.find((a) => a.id === currentChatAgentId)?.displayName ??
+      subagents.find((a) => a.id === currentChatAgentId)?.name ??
+      displayName)
+    : displayName;
+
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
-    ? recentSessions.filter((s) =>
+    ? agentSessions.filter((s) =>
         (s.preview ?? "").toLowerCase().includes(trimmedTerm),
       )
-    : recentSessions;
+    : agentSessions;
+
+  const handleNewChat = onNewChat
+    ? () => {
+        const agent = currentChatAgentId
+          ? subagents.find((a) => a.id === currentChatAgentId)
+          : null;
+        onNewChat(agent ?? null);
+      }
+    : undefined;
 
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
       {searchOpen ? (
         <div
-          className="shrink-0 flex items-center gap-2 h-7 rounded-lg px-2.5 bg-sidebar-accent/60"
+          className="shrink-0 flex items-center gap-2 h-8 rounded-lg pl-2 pr-1 bg-sidebar-accent/60"
           style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) {
@@ -556,31 +580,33 @@ function RecentChatSection({
           }}
         >
           <IconSearch
-            size={14}
-            stroke={1.5}
+            size={15}
+            stroke={2.5}
             className="shrink-0 text-sidebar-foreground/50"
           />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search chats..."
+            placeholder={`Search chat with ${agentLabel}`}
             autoFocus
             className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
           />
-          <button
-            type="button"
-            onClick={() => {
-              setSearchOpen(false);
-            }}
-            className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-            aria-label="Close search"
-          >
-            <IconX size={13} stroke={1.5} />
-          </button>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchOpen(false);
+              }}
+              className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              aria-label="Close search"
+            >
+              <IconX size={12} stroke={2} />
+            </button>
+          </div>
         </div>
       ) : (
-        <div className="shrink-0 zero-nav-recent-label h-7 flex items-center justify-between pl-2 pr-1">
+        <div className="shrink-0 zero-nav-recent-label h-8 flex items-center justify-between pl-2 pr-1">
           <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate">
             Chats with {agentLabel}
           </span>
@@ -588,25 +614,25 @@ function RecentChatSection({
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
               aria-label="Search chats"
             >
-              <IconSearch size={14} />
+              <IconSearch size={15} stroke={2.5} />
             </button>
-            {onNewChat && (
+            {handleNewChat && (
               <button
                 type="button"
-                onClick={onNewChat}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-                aria-label="New chat"
+                onClick={handleNewChat}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                aria-label={`New chat with ${agentLabel}`}
               >
-                <IconPlus size={14} />
+                <IconPlus size={15} stroke={2.5} />
               </button>
             )}
           </div>
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden mt-1">
         <div className="flex flex-col gap-1">
           {recentSessionsLoading && recentSessions.length === 0 ? (
             <div className="flex items-center justify-center py-3">
@@ -639,7 +665,7 @@ function RecentChatSection({
                 }}
                 className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
                   selectedRecentId === session.id
-                    ? "bg-sidebar-accent text-sidebar-foreground"
+                    ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
@@ -892,75 +918,421 @@ function ManagePinnedAgentsDialog({
   );
 }
 
+function ChatListDialog({
+  open,
+  onOpenChange,
+  zeroAvatarSrc,
+  displayName,
+  subagents,
+  pinnedIds,
+  onPinnedIdsChange,
+  onNewChat,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  zeroAvatarSrc: string;
+  displayName: string;
+  subagents: SubagentInfo[];
+  pinnedIds: string[];
+  onPinnedIdsChange: (ids: string[]) => void;
+  onNewChat?: (agent: { id: string; name: string } | null) => void;
+}) {
+  const [query, setQuery] = useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const pinned = pinnedIds
+    .map((id) => subagents.find((a) => a.id === id))
+    .filter((a): a is SubagentInfo => a !== undefined);
+
+  const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
+
+  const trimmedQuery = query.trim().toLowerCase();
+  const filteredPinned = trimmedQuery
+    ? pinned.filter(
+        (a) =>
+          a.name.toLowerCase().includes(trimmedQuery) ||
+          (a.displayName ?? "").toLowerCase().includes(trimmedQuery),
+      )
+    : pinned;
+  const filteredUnpinned = trimmedQuery
+    ? unpinned.filter(
+        (a) =>
+          a.name.toLowerCase().includes(trimmedQuery) ||
+          (a.displayName ?? "").toLowerCase().includes(trimmedQuery),
+      )
+    : unpinned;
+  const showLead =
+    !trimmedQuery || displayName.toLowerCase().includes(trimmedQuery);
+
+  const togglePin = (agentId: string) => {
+    if (pinnedIds.includes(agentId)) {
+      onPinnedIdsChange(pinnedIds.filter((id) => id !== agentId));
+    } else {
+      onPinnedIdsChange([...pinnedIds, agentId]);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+    const oldIndex = pinnedIds.indexOf(String(active.id));
+    const newIndex = pinnedIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+    const next = [...pinnedIds];
+    next.splice(oldIndex, 1);
+    next.splice(newIndex, 0, pinnedIds[oldIndex]!);
+    onPinnedIdsChange(next);
+  };
+
+  const handleChat = (agent: { id: string; name: string } | null) => {
+    onOpenChange(false);
+    setQuery("");
+    onNewChat?.(agent);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[400px] p-0 gap-0">
+        <DialogHeader className="px-5 pt-5 pb-3">
+          <DialogTitle className="text-base font-semibold">Talk to</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Pick an agent to start a conversation.
+          </p>
+        </DialogHeader>
+
+        {/* Search */}
+        <div className="px-5 pb-3">
+          <div
+            className="flex items-center gap-2 h-8 rounded-lg pl-2 pr-1 bg-sidebar-accent/60"
+            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          >
+            <IconSearch
+              size={15}
+              stroke={2.5}
+              className="shrink-0 text-muted-foreground/50"
+            />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search agents..."
+              className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="shrink-0 flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground transition-colors"
+              >
+                <IconX size={12} stroke={2} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="max-h-[400px] overflow-y-auto">
+          {/* Lead agent */}
+          {showLead && (
+            <div className="px-5 pb-2">
+              <span className="text-xs font-medium text-muted-foreground px-1">
+                Lead
+              </span>
+              <button
+                type="button"
+                onClick={() => handleChat(null)}
+                className="flex w-full items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
+              >
+                <img
+                  src={zeroAvatarSrc}
+                  alt={displayName}
+                  className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+                />
+                <div className="flex-1 min-w-0 text-left">
+                  <span className="text-sm font-medium text-foreground truncate block">
+                    {displayName}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Your lead assistant, always here for you
+                  </span>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Pinned agents */}
+          {filteredPinned.length > 0 && (
+            <div className="px-5 pb-2">
+              <span className="text-xs font-medium text-muted-foreground px-1">
+                Pinned
+              </span>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={filteredPinned.map((a) => a.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col mt-1">
+                    {filteredPinned.map((agent) => (
+                      <SortablePinnedAgent
+                        key={agent.id}
+                        agent={agent}
+                        onUnpin={() => togglePin(agent.id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+          )}
+
+          {/* Unpinned agents */}
+          {filteredUnpinned.length > 0 && (
+            <div className="px-5 pb-3">
+              <span className="text-xs font-medium text-muted-foreground px-1">
+                Others
+              </span>
+              <div className="flex flex-col mt-1">
+                {filteredUnpinned.map((agent) => (
+                  <div
+                    key={agent.id}
+                    className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors group"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleChat({ id: agent.id, name: agent.name })
+                      }
+                      className="flex items-center gap-2 flex-1 min-w-0"
+                    >
+                      <AgentAvatarImg
+                        name={agent.name}
+                        alt={agent.displayName ?? agent.name}
+                        className="h-8 w-8 shrink-0 rounded-lg object-cover object-top opacity-60"
+                      />
+                      <span className="text-sm text-muted-foreground truncate">
+                        {agent.displayName ?? agent.name}
+                      </span>
+                    </button>
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 px-2 py-0.5 rounded-md text-xs font-medium text-primary hover:text-primary/80 hover:bg-primary/10"
+                            onClick={() => togglePin(agent.id)}
+                          >
+                            Pin to sidebar
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p className="text-xs">Pin to sidebar</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {subagents.length === 0 && (
+            <div className="px-5 pb-5">
+              <p className="text-xs text-muted-foreground px-1 py-2">
+                No sub-agents available yet.
+              </p>
+            </div>
+          )}
+
+          {trimmedQuery &&
+            !showLead &&
+            filteredPinned.length === 0 &&
+            filteredUnpinned.length === 0 && (
+              <div className="px-5 pb-5">
+                <p className="text-xs text-muted-foreground px-1 py-2">
+                  No agents found
+                </p>
+              </div>
+            )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TalkToSection({
   activeId,
   currentChatAgentId,
   selectedRecentId,
+  selectedAgentIdFromChat,
   displayName,
   defaultAgentRawName,
   zeroAvatarSrc,
   pinnedAgents,
+  pinnedIds,
+  subagents,
+  onPinnedIdsChange,
+  onNewChat,
 }: {
   activeId: ZeroNavId | "chat";
   currentChatAgentId: string | null;
   selectedRecentId: string | null;
+  selectedAgentIdFromChat: string | null | undefined;
   displayName: string;
   defaultAgentRawName?: string | null;
   zeroAvatarSrc: string;
   pinnedAgents: SubagentInfo[];
+  pinnedIds: string[];
+  subagents: SubagentInfo[];
+  onPinnedIdsChange: (ids: string[]) => void;
+  onNewChat?: (agent: { id: string; name: string } | null) => void;
 }) {
+  const [chatListOpen, setChatListOpen] = useState(false);
+
   return (
     <div className="shrink-0 mt-4">
-      <div className="h-7 flex items-center pl-2">
+      <div className="h-8 flex items-center pl-2 pr-1">
         <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate flex-1">
           Pinned
         </span>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => setChatListOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                aria-label="Open a conversation"
+              >
+                <IconPlus size={15} stroke={2.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="text-xs">Open a conversation</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
-      <div className="flex flex-col gap-0.5 max-h-[170px] overflow-y-auto">
-        <Link
-          pathname={defaultAgentRawName ? "/talk/:name" : "/"}
-          options={
-            defaultAgentRawName
-              ? { pathParams: { name: defaultAgentRawName } }
-              : undefined
-          }
-          className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+      <div className="flex flex-col gap-0.5 max-h-[170px] overflow-y-auto mt-1">
+        {/* Lead agent */}
+        {(() => {
+          const isPrimarySelected =
             activeId === "chat" &&
             !selectedRecentId &&
-            currentChatAgentId === null
-              ? "bg-sidebar-active text-sidebar-primary font-medium"
-              : "text-sidebar-foreground hover:bg-sidebar-accent"
-          }`}
-        >
-          <img
-            src={zeroAvatarSrc}
-            alt={displayName}
-            className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
-          />
-          <span className="truncate">{displayName}</span>
-        </Link>
-        {pinnedAgents.map((agent) => (
-          <Link
-            key={agent.id}
-            pathname="/talk/:name"
-            options={{ pathParams: { name: agent.name } }}
-            className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-              activeId === "chat" &&
-              !selectedRecentId &&
-              currentChatAgentId === agent.id
-                ? "bg-sidebar-active text-sidebar-primary font-medium"
-                : "text-sidebar-foreground hover:bg-sidebar-accent"
-            }`}
-          >
-            <AgentAvatarImg
-              name={agent.name}
-              alt={agent.displayName ?? agent.name}
-              className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
-            />
-            <span className="truncate">{agent.displayName ?? agent.name}</span>
-          </Link>
-        ))}
+            currentChatAgentId === null;
+          const isFromChat =
+            selectedAgentIdFromChat !== undefined &&
+            selectedAgentIdFromChat === null;
+          return (
+            <Link
+              pathname={defaultAgentRawName ? "/talk/:name" : "/"}
+              options={
+                defaultAgentRawName
+                  ? { pathParams: { name: defaultAgentRawName } }
+                  : undefined
+              }
+              className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+                isPrimarySelected
+                  ? "bg-sidebar-active text-sidebar-primary font-medium"
+                  : isFromChat
+                    ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+              }`}
+            >
+              <img
+                src={zeroAvatarSrc}
+                alt={displayName}
+                className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+              />
+              <span className="truncate">{displayName}</span>
+            </Link>
+          );
+        })()}
+        {/* Pinned agents */}
+        {pinnedAgents.map((agent) => {
+          const isPrimarySelected =
+            activeId === "chat" &&
+            !selectedRecentId &&
+            currentChatAgentId === agent.id;
+          const isFromChat = selectedAgentIdFromChat === agent.id;
+          return (
+            <div key={agent.id} className="flex items-center group">
+              <Link
+                pathname="/talk/:name"
+                options={{ pathParams: { name: agent.name } }}
+                className={`flex flex-1 min-w-0 h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+                  isPrimarySelected
+                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    : isFromChat
+                      ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                }`}
+              >
+                <AgentAvatarImg
+                  name={agent.name}
+                  alt={agent.displayName ?? agent.name}
+                  className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                />
+                <span className="truncate">
+                  {agent.displayName ?? agent.name}
+                </span>
+              </Link>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onPinnedIdsChange(
+                            pinnedIds.filter((id) => id !== agent.id),
+                          );
+                        }}
+                        className={`flex h-5 w-5 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                          isPrimarySelected
+                            ? "text-sidebar-primary/80 hover:text-white hover:bg-white/20"
+                            : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                        }`}
+                        aria-label="Remove from list"
+                      >
+                        <IconX size={12} stroke={2} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p className="text-xs">Remove from list</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      <ChatListDialog
+        open={chatListOpen}
+        onOpenChange={setChatListOpen}
+        zeroAvatarSrc={zeroAvatarSrc}
+        displayName={displayName}
+        subagents={subagents}
+        pinnedIds={pinnedIds}
+        onPinnedIdsChange={onPinnedIdsChange}
+        onNewChat={onNewChat}
+      />
     </div>
   );
 }
@@ -1026,7 +1398,6 @@ export function ZeroSidebar() {
   const recentSessionsError = useGet(zeroSessionListError$);
   const startNewSession = useSet(startNewZeroSession$);
   const navigateInReact = useSet(navigateInReact$);
-  const createNewChat = useSet(createNewChatAndNavigate$);
   const onNewChat = (agent: { id: string; name: string } | null) => {
     startNewSession();
     if (agent) {
@@ -1035,10 +1406,6 @@ export function ZeroSidebar() {
       navigateInReact("/");
     }
   };
-  const handleNewChatForRecent = () => {
-    detach(createNewChat(currentChatAgentId), Reason.DomCallback);
-  };
-
   const displayName = agentName || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
@@ -1054,13 +1421,19 @@ export function ZeroSidebar() {
   const features = useLastResolved(featureSwitch$);
   const showPricing = features?.[FeatureSwitchKey.Pricing] ?? false;
 
-  // Resolve the selected agent label
-  const selectedAgent = currentChatAgentId
-    ? subagents.find((a) => a.id === currentChatAgentId)
-    : null;
-  const talkToLabel = selectedAgent
-    ? (selectedAgent.displayName ?? selectedAgent.name)
-    : displayName;
+  // Compute selectedAgentIdFromChat for grey highlight
+  const subagentIds = new Set(subagents.map((a) => a.id));
+  const selectedAgentIdFromChat: string | null | undefined = selectedRecentId
+    ? (() => {
+        const thread = recentSessions.find((s) => s.id === selectedRecentId);
+        if (!thread) {
+          return undefined;
+        }
+        return subagentIds.has(thread.agentComposeId)
+          ? thread.agentComposeId
+          : null;
+      })()
+    : undefined;
 
   // Pinned agents resolved from IDs
   const pinnedAgents = pinnedIds
@@ -1176,7 +1549,7 @@ export function ZeroSidebar() {
         <nav className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1">
           {/* Manage section */}
           <div className="shrink-0">
-            <div className="h-7 flex items-center pl-2">
+            <div className="h-8 flex items-center pl-2">
               <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
                 Manage
               </span>
@@ -1214,21 +1587,28 @@ export function ZeroSidebar() {
             activeId={activeId}
             currentChatAgentId={currentChatAgentId}
             selectedRecentId={selectedRecentId}
+            selectedAgentIdFromChat={selectedAgentIdFromChat}
             displayName={displayName}
             defaultAgentRawName={defaultAgentRawName}
             zeroAvatarSrc={zeroAvatarSrc}
             pinnedAgents={pinnedAgents}
+            pinnedIds={pinnedIds}
+            subagents={subagents}
+            onPinnedIdsChange={setPinnedIds}
+            onNewChat={onNewChat}
           />
 
           {/* Recent chat sessions */}
           <RecentChatSection
-            agentLabel={talkToLabel}
+            currentChatAgentId={currentChatAgentId}
+            displayName={displayName}
+            subagents={subagents}
             recentSessions={recentSessions}
             recentSessionsLoading={recentSessionsLoading}
             recentSessionsError={recentSessionsError}
             selectedRecentId={selectedRecentId}
             onRecentSelect={onRecentSelect}
-            onNewChat={handleNewChatForRecent}
+            onNewChat={onNewChat}
           />
         </nav>
 
