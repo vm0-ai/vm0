@@ -51,7 +51,7 @@ export const mockLogDetail: LogDetail = {
     "<@UMOCK_MENTION01> Take a look at the content of this image I sent you and draft a blog post outline",
     "[file]: IMG_8408.png (PNG)",
     "   Dimensions: 1206x2622",
-    "   Image URL: https://mock-r2-storage.example.com/slack-images/CMOCK_CHAN01-1770813781.383159/FMOCK_FILE01-IMG_8408.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=FAKE_ACCESS_KEY_ID%2F20260211%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260211T125301Z&X-Amz-Expires=3600&X-Amz-Signature=0000000000000000000000000000000000000000000000000000000000000000&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+    '   Download: curl -sS -o /tmp/FMOCK_FILE01.png "https://mock-r2-storage.example.com/slack-files/CMOCK_CHAN01-1770813781.383159/FMOCK_FILE01-IMG_8408.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=FAKE_ACCESS_KEY_ID%2F20260211%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260211T125301Z&X-Amz-Expires=3600&X-Amz-Signature=0000000000000000000000000000000000000000000000000000000000000000&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"',
     "",
     "---",
     "",

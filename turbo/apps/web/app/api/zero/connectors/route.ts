@@ -3,26 +3,45 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroConnectorsMainContract, connectorsMainContract } from "@vm0/core";
+import {
+  zeroConnectorsMainContract,
+  getConnectorProvidedSecretNames,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { listConnectors } from "../../../../src/lib/connector/connector-service";
+import { getConfiguredConnectorTypes } from "../../../../src/lib/connector/provider-registry";
 
 const router = tsr.router(zeroConnectorsMainContract, {
   list: async ({ headers }, { request }) => {
     initServices();
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const client = createInfraClient(
-      connectorsMainContract,
-      headers.authorization,
-      orgSlug ? { query: { org: orgSlug } } : undefined,
-    );
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
-    const result = await client.list({ headers: {} });
-    return forwardInfra(result);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+    const connectorList = await listConnectors(org.orgId, userId);
+    const configuredTypes = getConfiguredConnectorTypes(
+      globalThis.services.env,
+    );
+    const connectorProvidedSecretNames = [
+      ...getConnectorProvidedSecretNames(connectorList.map((c) => c.type)),
+    ];
+
+    return {
+      status: 200 as const,
+      body: {
+        connectors: connectorList,
+        configuredTypes,
+        connectorProvidedSecretNames,
+      },
+    };
   },
 });
 

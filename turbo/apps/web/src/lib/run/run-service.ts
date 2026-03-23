@@ -45,9 +45,13 @@ import {
   type OrgTier,
   type RunStatus,
   type TriggerSource,
+  type GetRunResponse,
   orgTierSchema,
 } from "@vm0/core";
 import { getOrgData } from "../org/org-cache-service";
+import { agentRunQueue } from "../../db/schema/agent-run-queue";
+import { publishCancelNotification } from "../realtime/client";
+import { processOrgCredits } from "../credit/credit-service";
 
 const log = logger("service:run");
 
@@ -1252,4 +1256,152 @@ export async function dispatchQueuedRun(
     authorizeTime,
     transactionTime,
   });
+}
+
+/**
+ * Get a run by ID, scoped to user and org for security.
+ * Returns the run response object or null if not found.
+ */
+export async function getRunById(
+  runId: string,
+  userId: string,
+  orgId: string,
+): Promise<GetRunResponse | null> {
+  const [run] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(agentRuns.userId, userId),
+        eq(agentRuns.orgId, orgId),
+      ),
+    )
+    .limit(1);
+
+  if (!run) return null;
+
+  return {
+    runId: run.id,
+    agentComposeVersionId: run.agentComposeVersionId,
+    status: run.status as RunStatus,
+    prompt: run.prompt,
+    appendSystemPrompt: run.appendSystemPrompt,
+    vars: run.vars as Record<string, string> | undefined,
+    sandboxId: run.sandboxId || undefined,
+    result: run.result as Record<string, unknown> | undefined,
+    error: run.error || undefined,
+    createdAt: run.createdAt.toISOString(),
+    startedAt: run.startedAt?.toISOString(),
+    completedAt: run.completedAt?.toISOString(),
+  };
+}
+
+/**
+ * Result of a successful run cancellation, used to dispatch side effects.
+ */
+interface CancelRunResult {
+  runId: string;
+  previousStatus: string;
+  orgId: string;
+  sandboxId: string | null;
+  runnerGroup: string | null;
+}
+
+/**
+ * Cancel a run. Atomically deletes queue entry and transitions status.
+ * Throws NotFound if run doesn't exist, BadRequest if run can't be cancelled.
+ */
+export async function cancelRun(
+  runId: string,
+  userId: string,
+  orgId: string,
+): Promise<CancelRunResult> {
+  const db = globalThis.services.db;
+
+  const [run] = await db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(agentRuns.userId, userId),
+        eq(agentRuns.orgId, orgId),
+      ),
+    )
+    .limit(1);
+
+  if (!run) {
+    throw notFound(`No such run: '${runId}'`);
+  }
+
+  if (
+    run.status !== "queued" &&
+    run.status !== "pending" &&
+    run.status !== "running"
+  ) {
+    throw badRequest(
+      `Run cannot be cancelled: current status is '${run.status}'`,
+    );
+  }
+
+  const cancelled = await db.transaction(async (tx) => {
+    await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
+    return transitionRunStatus(
+      runId,
+      { status: "cancelled", completedAt: new Date() },
+      ["queued", "pending", "running"],
+      tx,
+    );
+  });
+
+  if (!cancelled) {
+    throw badRequest(`Run cannot be cancelled: status has already changed`);
+  }
+
+  return {
+    runId,
+    previousStatus: run.status,
+    orgId: run.orgId,
+    sandboxId: run.sandboxId,
+    runnerGroup: run.runnerGroup,
+  };
+}
+
+/**
+ * Dispatch post-cancellation side effects (Ably notification, callbacks, queue drain, credits).
+ * Designed to be called inside `after()` so it runs after the response is sent.
+ */
+export async function dispatchCancelSideEffects(
+  result: CancelRunResult,
+): Promise<void> {
+  const log = logger("service:run:cancel");
+
+  if (result.previousStatus === "running" && result.runnerGroup) {
+    const published = await publishCancelNotification(
+      result.runnerGroup,
+      result.runId,
+    );
+    if (!published) {
+      log.warn(
+        `Ably cancel notification failed for run ${result.runId}, VM will run until natural completion`,
+      );
+    }
+  }
+
+  const shouldDrain =
+    result.previousStatus === "running" || result.previousStatus === "pending";
+
+  await dispatchTerminalSideEffects(
+    result.runId,
+    "cancelled",
+    "Run cancelled",
+    shouldDrain
+      ? () => drainOrgQueue(result.orgId, dispatchQueuedRun)
+      : undefined,
+  );
+
+  if (shouldDrain) {
+    await processOrgCredits(result.orgId);
+  }
 }

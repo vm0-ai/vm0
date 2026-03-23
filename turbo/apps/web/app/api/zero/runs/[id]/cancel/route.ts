@@ -3,19 +3,53 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroRunsCancelContract, runsCancelContract } from "@vm0/core";
+import { zeroRunsCancelContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import {
+  cancelRun,
+  dispatchCancelSideEffects,
+} from "../../../../../../src/lib/run/run-service";
+import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
+import { after } from "next/server";
 
 const router = tsr.router(zeroRunsCancelContract, {
-  cancel: async ({ params, headers }) => {
+  cancel: async ({ params, headers }, { request }) => {
     initServices();
-    const client = createInfraClient(runsCancelContract, headers.authorization);
-    const result = await client.cancel({ params });
-    return forwardInfra(result);
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+
+    try {
+      const result = await cancelRun(params.id, userId, org.orgId);
+
+      after(() => dispatchCancelSideEffects(result));
+
+      return {
+        status: 200 as const,
+        body: {
+          id: result.runId,
+          status: "cancelled" as const,
+          message: "Run cancelled successfully",
+        },
+      };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return createErrorResponse("NOT_FOUND", error.message);
+      }
+      if (isBadRequest(error)) {
+        return createErrorResponse("BAD_REQUEST", error.message);
+      }
+      throw error;
+    }
   },
 });
 

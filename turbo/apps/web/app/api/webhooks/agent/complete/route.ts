@@ -25,6 +25,9 @@ import { dispatchQueuedRun } from "../../../../../src/lib/run/run-service";
 import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
 import { extractRunOutput } from "../../../../../src/lib/run/extract-run-output";
+import { chatThreadRuns } from "../../../../../src/db/schema/chat-thread";
+import { updateChatThreadTitle } from "../../../../../src/lib/chat-thread";
+import { generateChatTitle } from "../../../../../src/lib/ai/lightweight-model";
 import {
   queryAxiom,
   getDatasetName,
@@ -99,13 +102,15 @@ async function extractSummariesFromAxiom(runId: string): Promise<string[]> {
 /**
  * Persist user prompt and assistant result as chat messages on the session.
  * Runs in after() — best-effort, errors are logged but not propagated.
+ *
+ * Returns the assistant result text (if any) so callers can reuse it.
  */
 async function persistChatMessages(
   runId: string,
   sessionId: string,
   userId: string,
   prompt: string,
-): Promise<void> {
+): Promise<string | null> {
   const [output, summaries] = await Promise.all([
     extractRunOutput(runId),
     extractSummariesFromAxiom(runId),
@@ -129,6 +134,7 @@ async function persistChatMessages(
 
   await appendChatMessages(sessionId, userId, messages);
   log.debug(`Persisted ${messages.length} chat messages for run ${runId}`);
+  return output.result;
 }
 
 /**
@@ -314,17 +320,38 @@ const router = tsr.router(webhookCompleteContract, {
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
 
-      // Persist chat messages to session (non-blocking)
+      // Persist chat messages and regenerate thread title (non-blocking)
       if (session) {
         after(async () => {
-          await persistChatMessages(
+          const assistantResult = await persistChatMessages(
             body.runId,
             session.id,
             userId,
             run.prompt,
-          ).catch((err) =>
-            log.error("Failed to persist chat messages", { err }),
-          );
+          ).catch((err) => {
+            log.error("Failed to persist chat messages", { err });
+            return null;
+          });
+
+          // Regenerate chat thread title from full context
+          const [threadRun] = await globalThis.services.db
+            .select({ chatThreadId: chatThreadRuns.chatThreadId })
+            .from(chatThreadRuns)
+            .where(eq(chatThreadRuns.runId, body.runId))
+            .limit(1);
+
+          if (threadRun) {
+            const title = await generateChatTitle(
+              run.prompt,
+              assistantResult,
+            ).catch((err: unknown) => {
+              log.warn("Failed to generate chat title", { err });
+              return null;
+            });
+            if (title) {
+              await updateChatThreadTitle(threadRun.chatThreadId, title);
+            }
+          }
         });
       }
     } else {

@@ -3,19 +3,37 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroRunsByIdContract, runsByIdContract } from "@vm0/core";
+import { zeroRunsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { getRunById } from "../../../../../src/lib/run/run-service";
 
 const router = tsr.router(zeroRunsByIdContract, {
-  getById: async ({ params, headers }) => {
+  getById: async ({ params, headers }, { request }) => {
     initServices();
-    const client = createInfraClient(runsByIdContract, headers.authorization);
-    const result = await client.getById({ params });
-    return forwardInfra(result);
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+
+    const run = await getRunById(params.id, userId, org.orgId);
+    if (!run) {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    return { status: 200 as const, body: run };
   },
 });
 

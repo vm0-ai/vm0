@@ -3,40 +3,39 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroConnectorsByTypeContract,
-  connectorsByTypeContract,
-  type ApiErrorResponse,
-} from "@vm0/core";
+import { zeroConnectorsByTypeContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { createInfraClient } from "../../../../../src/lib/infra-client";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { deleteConnector } from "../../../../../src/lib/connector/connector-service";
+import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroConnectorsByTypeContract, {
   delete: async ({ params, headers }, { request }) => {
     initServices();
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const client = createInfraClient(
-      connectorsByTypeContract,
-      headers.authorization,
-      orgSlug ? { query: { org: orgSlug } } : undefined,
-    );
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
-    const result = await client.delete({ params: { type: params.type } });
+    try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org } = await resolveOrg(authCtx, orgSlug);
+      await deleteConnector(org.orgId, userId, params.type);
 
-    if (result.status === 204) {
-      return { status: 204 as const, body: undefined };
-    }
-    if (result.status === 401) {
       return {
-        status: 401 as const,
-        body: result.body as ApiErrorResponse,
+        status: 204 as const,
+        body: undefined,
       };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return createErrorResponse("NOT_FOUND", "Connector not found");
+      }
+      throw error;
     }
-    return {
-      status: 404 as const,
-      body: result.body as ApiErrorResponse,
-    };
   },
 });
 

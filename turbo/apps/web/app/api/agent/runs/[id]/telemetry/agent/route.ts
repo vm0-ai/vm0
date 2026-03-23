@@ -5,24 +5,10 @@ import {
 } from "../../../../../../../src/lib/ts-rest-handler";
 import { runAgentEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
-import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
-import { agentComposeVersions } from "../../../../../../../src/db/schema/agent-compose";
-import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../../src/lib/org/resolve-org";
-import {
-  queryAxiom,
-  getDatasetName,
-  DATASETS,
-} from "../../../../../../../src/lib/axiom";
-interface AxiomAgentEvent {
-  _time: string;
-  runId: string;
-  userId: string;
-  sequenceNumber: number;
-  eventType: string;
-  eventData: Record<string, unknown>;
-}
+import { getRunAgentEvents } from "../../../../../../../src/lib/run/run-telemetry-service";
+import { isNotFound } from "../../../../../../../src/lib/errors";
 
 const router = tsr.router(runAgentEventsContract, {
   getAgentEvents: async ({ params, query, headers }, { request }) => {
@@ -44,74 +30,25 @@ const router = tsr.router(runAgentEventsContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Verify run exists and belongs to user+org, join with compose version to get framework
-    const [runWithCompose] = await globalThis.services.db
-      .select({
-        id: agentRuns.id,
-        composeContent: agentComposeVersions.content,
-      })
-      .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
-      .where(
-        and(
-          eq(agentRuns.id, params.id),
-          eq(agentRuns.userId, userId),
-          eq(agentRuns.orgId, org.orgId),
-        ),
-      )
-      .limit(1);
-
-    if (!runWithCompose) {
-      return {
-        status: 404 as const,
-        body: {
-          error: { message: "Agent run not found", code: "NOT_FOUND" },
-        },
-      };
+    try {
+      const result = await getRunAgentEvents(
+        params.id,
+        userId,
+        org.orgId,
+        query,
+      );
+      return { status: 200 as const, body: result };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent run not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      throw error;
     }
-
-    // Extract framework from compose content
-    const composeContent = runWithCompose.composeContent as {
-      agent?: { framework?: string };
-    } | null;
-    const framework = composeContent?.agent?.framework ?? "claude-code";
-
-    const { since, limit, order } = query;
-
-    // Build APL query for Axiom
-    const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-    const sinceFilter = since
-      ? `| where _time > datetime("${new Date(since).toISOString()}")`
-      : "";
-    const apl = `['${dataset}']
-| where runId == "${params.id}"
-${sinceFilter}
-| order by _time ${order}
-| limit ${limit + 1}`;
-
-    // Query Axiom for agent events
-    const events = await queryAxiom<AxiomAgentEvent>(apl);
-
-    // Check if there are more events
-    const hasMore = events.length > limit;
-    const resultEvents = hasMore ? events.slice(0, limit) : events;
-
-    return {
-      status: 200 as const,
-      body: {
-        events: resultEvents.map((e) => ({
-          sequenceNumber: e.sequenceNumber,
-          eventType: e.eventType,
-          eventData: e.eventData,
-          createdAt: e._time,
-        })),
-        hasMore,
-        framework,
-      },
-    };
   },
 });
 

@@ -52,7 +52,11 @@ export const chatThreadsContract = c.router({
       title: z.string().optional(),
     }),
     responses: {
-      201: z.object({ id: z.string(), createdAt: z.string() }),
+      201: z.object({
+        id: z.string(),
+        title: z.string().nullable(),
+        createdAt: z.string(),
+      }),
       401: apiErrorSchema,
     },
     summary: "Create a new chat thread",

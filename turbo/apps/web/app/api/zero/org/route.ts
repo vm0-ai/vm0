@@ -3,40 +3,94 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroOrgContract, orgContract } from "@vm0/core";
+import { zeroOrgContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { updateOrg } from "../../../../src/lib/org/org-service";
+import {
+  isBadRequest,
+  isForbidden,
+  isNotFound,
+} from "../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgContract, {
   get: async ({ headers }, { request }) => {
     initServices();
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const client = createInfraClient(
-      orgContract,
-      headers.authorization,
-      orgSlug ? { query: { org: orgSlug } } : undefined,
-    );
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
 
-    const result = await client.get({ headers: {} });
-    return forwardInfra(result);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+
+    try {
+      const { org: resolvedOrg, member } = await resolveOrg(authCtx, orgSlug);
+
+      return {
+        status: 200 as const,
+        body: {
+          id: resolvedOrg.orgId,
+          slug: resolvedOrg.slug,
+          name: resolvedOrg.name,
+          tier: resolvedOrg.tier,
+          role: member.role,
+        },
+      };
+    } catch (error) {
+      if (isNotFound(error) || isBadRequest(error)) {
+        return createErrorResponse("NOT_FOUND", "Resource not found");
+      }
+      throw error;
+    }
   },
 
   update: async ({ body, headers }, { request }) => {
     initServices();
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const client = createInfraClient(
-      orgContract,
-      headers.authorization,
-      orgSlug ? { query: { org: orgSlug } } : undefined,
-    );
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
 
-    const result = await client.update({ body });
-    return forwardInfra(result);
+    const orgSlug = new URL(request.url).searchParams.get("org");
+
+    try {
+      const { org: resolvedOrg } = await resolveOrg(authCtx, orgSlug);
+      const updatedOrg = await updateOrg(resolvedOrg.orgId, userId, {
+        slug: body.slug,
+        name: body.name,
+        force: body.force,
+      });
+
+      return {
+        status: 200 as const,
+        body: {
+          id: updatedOrg.orgId,
+          slug: updatedOrg.slug,
+          name: updatedOrg.name,
+          tier: updatedOrg.tier,
+        },
+      };
+    } catch (error) {
+      if (isBadRequest(error)) {
+        if (error.message.includes("already exists")) {
+          return createErrorResponse("CONFLICT", "Resource conflict");
+        }
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
+      }
+      if (isForbidden(error)) {
+        return createErrorResponse("FORBIDDEN", "Access denied");
+      }
+      if (isNotFound(error)) {
+        return createErrorResponse(
+          "NOT_FOUND",
+          "No org configured. Set your org with: vm0 org set <slug>",
+        );
+      }
+      throw error;
+    }
   },
 });
 
