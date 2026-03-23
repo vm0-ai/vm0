@@ -374,7 +374,7 @@ function mpFirewall(
       {
         base: getFirewallBaseUrl(type),
         auth: { headers: authHeaders },
-        permissions: [{ name: "all", rules: ["ANY /{path*}"] }],
+        permissions: [{ name: "unrestricted", rules: ["ANY /{path*}"] }],
       },
     ],
     placeholders,
