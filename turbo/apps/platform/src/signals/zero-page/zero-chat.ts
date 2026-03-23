@@ -196,28 +196,6 @@ async function createChatThread(
   return { id: data.id, title: data.title };
 }
 
-/**
- * Regenerate thread title from the latest prompt via the server.
- * Returns the new title or null on failure.
- */
-async function regenerateChatThreadTitle(
-  fetchFn: typeof fetch,
-  threadId: string,
-  prompt: string,
-): Promise<string | null> {
-  const res = await fetchFn(
-    `/api/zero/chat-threads/${threadId}/regenerate-title`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: prompt.trim().slice(0, 200) }),
-    },
-  );
-  if (!res.ok) return null;
-  const data = (await res.json()) as { title: string };
-  return data.title;
-}
-
 async function addRunToThread(
   fetchFn: typeof fetch,
   threadId: string,
@@ -1045,21 +1023,6 @@ export const sendZeroChatMessage$ = command(
 
       // Associate run to thread (must complete before polling so refresh works)
       await addRunToThread(fetchFn, threadId, runId);
-
-      // Regenerate title based on latest prompt (fire-and-forget)
-      regenerateChatThreadTitle(fetchFn, threadId, prompt)
-        .then((newTitle) => {
-          if (newTitle) {
-            set(internalSessionList$, (prev) =>
-              prev.map((t) =>
-                t.id === threadId ? { ...t, title: newTitle } : t,
-              ),
-            );
-          }
-        })
-        .catch((err: unknown) => {
-          L.warn("Failed to regenerate chat title:", err);
-        });
 
       // Refresh sidebar after run is associated (has preview now)
       set(fetchZeroSessionList$).catch((error: unknown) => {

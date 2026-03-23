@@ -62,19 +62,27 @@ async function generateText(messages: ChatMessage[]): Promise<string | null> {
 }
 
 /**
- * Generate a short title for a chat thread from the user's first message.
+ * Generate a short title for a chat thread from conversation context.
+ *
+ * Accepts the user prompt and (optionally) the assistant's response so the
+ * title can reflect the actual outcome rather than just the question.
  *
  * Returns null if the lightweight model is unavailable.
  */
 export async function generateChatTitle(
   userMessage: string,
+  assistantMessage?: string | null,
 ): Promise<string | null> {
-  return generateText([
+  const messages: ChatMessage[] = [
     {
       role: "system",
       content:
-        "Generate a short, descriptive title (max 60 chars) for a chat conversation based on the user's first message. Return only the title, no quotes or extra text.",
+        "Generate a short, descriptive title (max 60 chars) for a chat conversation based on the messages below. Return only the title, no quotes or extra text.",
     },
     { role: "user", content: userMessage },
-  ]);
+  ];
+  if (assistantMessage) {
+    messages.push({ role: "assistant", content: assistantMessage });
+  }
+  return generateText(messages);
 }

@@ -9,13 +9,10 @@ import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import {
   createChatThread,
   listChatThreads,
-  updateChatThreadTitle,
 } from "../../../../src/lib/chat-thread";
 import { resolveCallerOrgId } from "../../../../src/lib/org/resolve-org";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
-import { generateChatTitle } from "../../../../src/lib/ai/lightweight-model";
-import { logger } from "../../../../src/lib/logger";
 
 const router = tsr.router(chatThreadsContract, {
   create: async ({ body, headers }, { request }) => {
@@ -63,30 +60,11 @@ const router = tsr.router(chatThreadsContract, {
       body.title,
     );
 
-    // Generate AI title synchronously so the frontend gets it immediately
-    let title: string | null = body.title ?? null;
-    if (body.title) {
-      const log = logger("zero-chat-threads");
-      const aiTitle = await generateChatTitle(body.title).catch(
-        (err: unknown) => {
-          log.warn("Failed to generate AI chat title", {
-            threadId: thread.id,
-            error: err,
-          });
-          return null;
-        },
-      );
-      if (aiTitle) {
-        await updateChatThreadTitle(thread.id, aiTitle);
-        title = aiTitle;
-      }
-    }
-
     return {
       status: 201 as const,
       body: {
         id: thread.id,
-        title,
+        title: body.title ?? null,
         createdAt: thread.createdAt.toISOString(),
       },
     };

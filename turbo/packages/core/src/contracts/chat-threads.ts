@@ -95,27 +95,6 @@ export const chatThreadByIdContract = c.router({
 });
 
 /**
- * Chat thread title regeneration contract (/api/zero/chat-threads/[id]/regenerate-title)
- */
-export const chatThreadRegenerateTitleContract = c.router({
-  regenerateTitle: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:id/regenerate-title",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
-    body: z.object({
-      prompt: z.string().min(1),
-    }),
-    responses: {
-      200: z.object({ title: z.string() }),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Regenerate chat thread title from latest prompt",
-  },
-});
-
-/**
  * Chat thread runs route contract (/api/zero/chat-threads/[id]/runs)
  */
 export const chatThreadRunsContract = c.router({
@@ -138,8 +117,6 @@ export const chatThreadRunsContract = c.router({
 
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
-export type ChatThreadRegenerateTitleContract =
-  typeof chatThreadRegenerateTitleContract;
 export type ChatThreadRunsContract = typeof chatThreadRunsContract;
 
 export { chatThreadListItemSchema, chatThreadDetailSchema };

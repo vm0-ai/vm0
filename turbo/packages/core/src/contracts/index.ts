@@ -294,13 +294,11 @@ export {
 export {
   chatThreadsContract,
   chatThreadByIdContract,
-  chatThreadRegenerateTitleContract,
   chatThreadRunsContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
-  type ChatThreadRegenerateTitleContract,
   type ChatThreadRunsContract,
   type ChatThreadListItem,
   type ChatThreadDetail,
