@@ -14,8 +14,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { appendChatMessages } from "../../../../../../src/lib/agent-session/agent-session-service";
-import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { eq } from "drizzle-orm";
 
 const context = testContext();
 
@@ -114,13 +112,8 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const { runId } = await createTestRunInDb(userId, testComposeId, {
       status: "completed",
       prompt: "What files changed?",
+      result: { agentSessionId: session.id },
     });
-
-    // Set run.result to reference the session
-    await globalThis.services.db
-      .update(agentRuns)
-      .set({ result: { agentSessionId: session.id } })
-      .where(eq(agentRuns.id, runId));
 
     // 4. Append chat messages with summaries to the session
     await appendChatMessages(session.id, userId, [
