@@ -1,1 +1,19 @@
-<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>ClickUp</title><path d="M2 18.439l3.69-2.828c1.961 2.56 4.044 3.739 6.363 3.739 2.307 0 4.33-1.166 6.203-3.704L22 18.405C19.298 22.065 15.941 24 12.053 24 8.178 24 4.788 22.078 2 18.439zM12.04 6.15l-6.568 5.66-3.036-3.52L12.055 0l9.543 8.296-3.05 3.509z"/></svg>
+<svg width="66" height="66" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_10_52)">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M6 50.6L16.1 42.8C21.5 49.8 27.2 53.1 33.5 53.1C39.8 53.1 45.4 49.9 50.5 42.9L60.8 50.5C53.4 60.5 44.2 65.8 33.5 65.8C22.9 65.8 13.6 60.5 6 50.6Z" fill="url(#paint0_linear_10_52)"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M33.5 16.9L15.5 32.4L7.2 22.7L33.6 0L59.8 22.7L51.4 32.3L33.5 16.9Z" fill="url(#paint1_linear_10_52)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_10_52" x1="6" y1="54.3112" x2="60.8446" y2="54.3112" gradientUnits="userSpaceOnUse">
+<stop stop-color="#8930FD"/>
+<stop offset="1" stop-color="#49CCF9"/>
+</linearGradient>
+<linearGradient id="paint1_linear_10_52" x1="7.1953" y1="16.1944" x2="59.7447" y2="16.1944" gradientUnits="userSpaceOnUse">
+<stop stop-color="#FF02F0"/>
+<stop offset="1" stop-color="#FFC800"/>
+</linearGradient>
+<clipPath id="clip0_10_52">
+<rect width="65.8" height="65.8" fill="white"/>
+</clipPath>
+</defs>
+</svg>
