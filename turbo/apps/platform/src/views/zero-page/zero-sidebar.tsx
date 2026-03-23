@@ -185,29 +185,37 @@ const MANAGE_NAV = [
   { id: "activity", label: "Activity logs", icon: IconChartLine as NavIcon },
 ] as const;
 
-const FOOTER_NAV = [
+interface FooterNavItem {
+  id: ZeroNavId;
+  label: string;
+  icon: NavIcon;
+  iconImg: string | undefined;
+  featureGate: FeatureSwitchKey | undefined;
+}
+
+const FOOTER_NAV: readonly FooterNavItem[] = [
   {
-    id: "works" as const satisfies ZeroNavId,
+    id: "works",
     label: "Where Zero works",
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
-    featureGate: undefined as FeatureSwitchKey | undefined,
+    featureGate: undefined,
   },
   {
-    id: "usage" as const satisfies ZeroNavId,
+    id: "usage",
     label: "Usage",
     icon: IconChartBar as NavIcon,
     iconImg: undefined,
-    featureGate: FeatureSwitchKey.Usage as FeatureSwitchKey | undefined,
+    featureGate: FeatureSwitchKey.Usage,
   },
   {
-    id: "settings" as const satisfies ZeroNavId,
+    id: "settings",
     label: "Settings",
     icon: IconSettings as NavIcon,
     iconImg: undefined,
-    featureGate: undefined as FeatureSwitchKey | undefined,
+    featureGate: undefined,
   },
-] as const;
+];
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
 

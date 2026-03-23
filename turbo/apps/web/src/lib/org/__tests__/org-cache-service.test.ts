@@ -2,15 +2,47 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { clerkClient } from "@clerk/nextjs/server";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
+import type { StripeMockFns } from "../../../__tests__/stripe-mock";
 import {
   createTestOrg,
   insertOrgCacheEntry,
   deleteOrgCacheEntry,
   getOrgCacheEntry,
   updateOrgTier,
+  updateOrgStripeFields,
   ensureOrgRow,
 } from "../../../__tests__/api-test-helpers";
-import { getOrgData, getOrgBySlug } from "../org-cache-service";
+import { reloadEnv } from "../../../env";
+import {
+  getOrgData,
+  getOrgBySlug,
+  getOrgBillingPeriod,
+} from "../org-cache-service";
+
+// Mock stripe module (external dependency)
+const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
+  subscriptionsRetrieve: vi.fn(),
+  invoicesRetrieve: vi.fn(),
+  customersCreate: vi.fn(),
+  checkoutSessionsCreate: vi.fn(),
+  billingPortalSessionsCreate: vi.fn(),
+  constructEvent: vi.fn(),
+}));
+
+vi.mock("stripe", () => ({
+  default: function MockStripe() {
+    return {
+      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      invoices: { retrieve: stripeMocks.invoicesRetrieve },
+      customers: { create: stripeMocks.customersCreate },
+      checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
+      billingPortal: {
+        sessions: { create: stripeMocks.billingPortalSessionsCreate },
+      },
+      webhooks: { constructEvent: stripeMocks.constructEvent },
+    };
+  },
+}));
 
 const context = testContext();
 
@@ -321,5 +353,88 @@ describe("getOrgBySlug", () => {
     expect(client.organizations.getOrganization).toHaveBeenCalledWith({
       slug,
     });
+  });
+});
+
+describe("getOrgBillingPeriod", () => {
+  beforeEach(() => {
+    context.setupMocks();
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
+    reloadEnv();
+  });
+
+  it("returns billing period from Stripe invoice when currentPeriodEnd is not cached", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    const subId = uniqueId("sub");
+
+    // Set subscription ID but no currentPeriodEnd — triggers Stripe fallback
+    await updateOrgStripeFields(orgId, {
+      stripeSubscriptionId: subId,
+      stripeCustomerId: uniqueId("cus"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: null,
+    });
+
+    const periodEndUnix = Math.floor(
+      new Date("2026-05-01T00:00:00Z").getTime() / 1000,
+    );
+
+    stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
+      latest_invoice: "inv_abc123",
+    });
+    stripeMocks.invoicesRetrieve.mockResolvedValueOnce({
+      period_end: periodEndUnix,
+    });
+
+    const result = await getOrgBillingPeriod(orgId);
+
+    expect(result).not.toBeNull();
+    expect(result!.end).toEqual(new Date("2026-05-01T00:00:00Z"));
+
+    // Start should be 1 month before end
+    const expectedStart = new Date("2026-04-01T00:00:00Z");
+    expect(result!.start).toEqual(expectedStart);
+
+    // Verify Stripe was called with the correct subscription ID
+    expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
+    expect(stripeMocks.invoicesRetrieve).toHaveBeenCalledWith("inv_abc123");
+  });
+
+  it("returns null for free tier org without subscription", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    const result = await getOrgBillingPeriod(orgId);
+
+    expect(result).toBeNull();
+    expect(stripeMocks.subscriptionsRetrieve).not.toHaveBeenCalled();
+  });
+
+  it("returns null when subscription has no latest_invoice", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    await updateOrgStripeFields(orgId, {
+      stripeSubscriptionId: uniqueId("sub"),
+      stripeCustomerId: uniqueId("cus"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: null,
+    });
+
+    stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
+      latest_invoice: null,
+    });
+
+    const result = await getOrgBillingPeriod(orgId);
+
+    expect(result).toBeNull();
   });
 });
