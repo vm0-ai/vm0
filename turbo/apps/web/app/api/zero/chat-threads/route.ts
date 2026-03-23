@@ -64,6 +64,7 @@ const router = tsr.router(chatThreadsContract, {
       status: 201 as const,
       body: {
         id: thread.id,
+        title: body.title ?? null,
         createdAt: thread.createdAt.toISOString(),
       },
     };

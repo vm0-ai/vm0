@@ -226,3 +226,52 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(data.threads[0].updatedAt).toBeDefined();
   });
 });
+
+describe("POST /api/zero/chat-threads - Title Handling", () => {
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+
+    const { composeId } = await createTestCompose(uniqueId("chat-title"));
+    testComposeId = composeId;
+  });
+
+  it("should use raw prompt as thread title without calling OpenRouter", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          title: "How do I debug memory leaks in Node.js?",
+        }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.title).toBe("How do I debug memory leaks in Node.js?");
+  });
+
+  it("should return null title when no title is provided", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+        }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.title).toBeNull();
+  });
+});

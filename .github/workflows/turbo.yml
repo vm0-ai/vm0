@@ -551,6 +551,7 @@ jobs:
           USE_MOCK_CLAUDE: "true"
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CONCURRENT_RUN_LIMIT_CAP: "0"
           VM0_DEBUG: "*"
           CLAUDE_CODE_VERSION_URL: ${{ vars.CLAUDE_CODE_VERSION_URL }}
@@ -754,6 +755,7 @@ jobs:
             USE_MOCK_CLAUDE=true
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
             CONCURRENT_RUN_LIMIT_CAP=0
             VM0_DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}

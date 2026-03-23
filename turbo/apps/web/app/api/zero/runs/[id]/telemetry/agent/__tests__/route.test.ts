@@ -1,0 +1,74 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { randomUUID } from "crypto";
+import { GET } from "../route";
+import {
+  createTestRequest,
+  createTestOrg,
+  createTestCompose,
+  createTestRunInDb,
+} from "../../../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
+
+const context = testContext();
+
+async function setupOrg(userId: string) {
+  const slug = uniqueId("ztele");
+  const orgId = `org_mock_${userId}`;
+  mockClerk({ userId, orgId, orgRole: "org:admin" });
+  await createTestOrg(slug);
+  return { slug, orgId };
+}
+
+function telemetryUrl(slug: string, runId: string): string {
+  return `http://localhost:3000/api/zero/runs/${runId}/telemetry/agent?org=${slug}&limit=10&order=desc`;
+}
+
+describe("GET /api/zero/runs/:id/telemetry/agent", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return agent events for a run", async () => {
+    const userId = uniqueId("ztele-get");
+    const { slug } = await setupOrg(userId);
+    const compose = await createTestCompose(`agent-${uniqueId("ztele")}`);
+    const { runId } = await createTestRunInDb(userId, compose.composeId, {
+      status: "running",
+    });
+
+    context.mocks.axiom.queryAxiom.mockResolvedValue([]);
+
+    const response = await GET(createTestRequest(telemetryUrl(slug, runId)));
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.events).toEqual([]);
+    expect(data.hasMore).toBe(false);
+    expect(data.framework).toBeDefined();
+  });
+
+  it("should return 404 when run not found", async () => {
+    const userId = uniqueId("ztele-nf");
+    const { slug } = await setupOrg(userId);
+
+    const response = await GET(
+      createTestRequest(telemetryUrl(slug, randomUUID())),
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/runs/${randomUUID()}/telemetry/agent?org=test&limit=10&order=desc`,
+      ),
+    );
+    expect(response.status).toBe(401);
+  });
+});

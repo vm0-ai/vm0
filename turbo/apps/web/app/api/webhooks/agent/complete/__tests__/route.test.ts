@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Resend } from "resend";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -30,6 +31,11 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
+import { http } from "../../../../../../src/__tests__/msw";
+import { server } from "../../../../../../src/mocks/server";
+import { POST as createThreadHandler } from "../../../../zero/chat-threads/route";
+import { POST as addRunToThreadHandler } from "../../../../zero/chat-threads/[id]/runs/route";
+import { GET as getThreadDetailHandler } from "../../../../zero/chat-threads/[id]/route";
 
 const context = testContext();
 
@@ -538,6 +544,517 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(chatMessages).toHaveLength(1);
       expect(chatMessages[0]!.role).toBe("user");
       expect(chatMessages[0]!.content).toBe("Test prompt");
+    });
+  });
+
+  describe("Title Regeneration", () => {
+    /**
+     * Helper: fetch a thread's title via the GET /api/zero/chat-threads/:id endpoint.
+     * Temporarily switches Clerk mock to the given userId, then restores null.
+     */
+    async function getThreadTitle(
+      threadId: string,
+      userId: string,
+    ): Promise<string | null> {
+      mockClerk({ userId });
+      const res = await getThreadDetailHandler(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        ),
+      );
+      mockClerk({ userId: null });
+      const data = (await res.json()) as { title: string | null };
+      return data.title;
+    }
+
+    /**
+     * Helper: create a chat thread, link a run to it, and return the thread ID.
+     * Requires the caller to have mockClerk set to the correct user first.
+     */
+    async function createThreadAndLinkRun(
+      composeId: string,
+      runId: string,
+    ): Promise<string> {
+      const createRes = await createThreadHandler(
+        createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            title: "Initial title",
+          }),
+        }),
+      );
+      const { id: threadId } = (await createRes.json()) as { id: string };
+
+      await addRunToThreadHandler(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads/${threadId}/runs`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ runId }),
+          },
+        ),
+      );
+
+      return threadId;
+    }
+
+    /**
+     * Set up MSW handler for OpenRouter that returns a generated title.
+     */
+    function mockOpenRouter(title: string) {
+      const { handler, mocked } = http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        () =>
+          HttpResponse.json({
+            choices: [{ message: { content: title } }],
+          }),
+      );
+      server.use(handler);
+      return mocked;
+    }
+
+    /**
+     * Set up MSW handler for OpenRouter that returns an error.
+     */
+    function mockOpenRouterError(status: number) {
+      const { handler, mocked } = http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        () => new HttpResponse("Internal Server Error", { status }),
+      );
+      server.use(handler);
+      return mocked;
+    }
+
+    it("should regenerate thread title after successful completion", async () => {
+      // Set up: user, compose, run, checkpoint, thread
+      const titleUser = await context.setupUser({ prefix: "title-regen" });
+      mockClerk({ userId: titleUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("title-agent"));
+      const { runId } = await createTestRun(composeId, "How do I debug Node?");
+      const token = await createTestSandboxToken(titleUser.userId, runId);
+      const threadId = await createThreadAndLinkRun(composeId, runId);
+
+      // Create checkpoint
+      mockClerk({ userId: null });
+      const checkpointRes = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              runId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "title-session",
+              cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+              artifactSnapshot: {
+                artifactName: "test-artifact",
+                artifactVersion: "v1",
+              },
+            }),
+          },
+        ),
+      );
+      expect(checkpointRes.status).toBe(200);
+
+      // Mock Axiom to return an assistant result
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Use --inspect flag for debugging." } },
+      ]);
+
+      // Mock OpenRouter to return a generated title
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+      const openRouterMock = mockOpenRouter("Debugging Node.js Apps");
+
+      // Complete the run
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      // Flush after() callbacks (chat persistence + title regeneration)
+      await context.mocks.flushAfter();
+
+      // Verify OpenRouter was called
+      expect(openRouterMock).toHaveBeenCalledTimes(1);
+
+      // Verify thread title was updated via the API
+      const title = await getThreadTitle(threadId, titleUser.userId);
+      expect(title).toBe("Debugging Node.js Apps");
+    });
+
+    it("should pass both prompt and assistant result to OpenRouter", async () => {
+      const titleUser = await context.setupUser({ prefix: "title-body" });
+      mockClerk({ userId: titleUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("body-agent"));
+      const { runId } = await createTestRun(composeId, "Fix my CSS layout");
+      const token = await createTestSandboxToken(titleUser.userId, runId);
+      await createThreadAndLinkRun(composeId, runId);
+
+      mockClerk({ userId: null });
+      const cpRes = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              runId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "body-session",
+              cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+              artifactSnapshot: {
+                artifactName: "test-artifact",
+                artifactVersion: "v1",
+              },
+            }),
+          },
+        ),
+      );
+      expect(cpRes.status).toBe(200);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Use flexbox for centering" } },
+      ]);
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+
+      // Capture the request body sent to OpenRouter
+      let capturedBody: {
+        messages: Array<{ role: string; content: string }>;
+      } | null = null;
+      const { handler } = http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          capturedBody = (await request.json()) as typeof capturedBody;
+          return HttpResponse.json({
+            choices: [{ message: { content: "CSS Flexbox Layout Fix" } }],
+          });
+        },
+      );
+      server.use(handler);
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Verify both user prompt and assistant result were sent
+      expect(capturedBody).not.toBeNull();
+      const messages = capturedBody!.messages;
+      expect(messages).toHaveLength(3); // system + user + assistant
+      expect(messages[0]!.role).toBe("system");
+      expect(messages[1]!.role).toBe("user");
+      expect(messages[1]!.content).toBe("Fix my CSS layout");
+      expect(messages[2]!.role).toBe("assistant");
+      expect(messages[2]!.content).toBe("Use flexbox for centering");
+    });
+
+    it("should not regenerate title when run has no linked thread", async () => {
+      // Create checkpoint without linking to a thread
+      const checkpointRes = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${testToken}`,
+            },
+            body: JSON.stringify({
+              runId: testRunId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "no-thread-session",
+              cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+              artifactSnapshot: {
+                artifactName: "test-artifact",
+                artifactVersion: "v1",
+              },
+            }),
+          },
+        ),
+      );
+      expect(checkpointRes.status).toBe(200);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+      const openRouterMock = mockOpenRouter("Should not be called");
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({ runId: testRunId, exitCode: 0 }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // OpenRouter should NOT have been called (no thread linked)
+      expect(openRouterMock).not.toHaveBeenCalled();
+    });
+
+    it("should skip title generation when OPENROUTER_API_KEY is not set", async () => {
+      const titleUser = await context.setupUser({ prefix: "title-nokey" });
+      mockClerk({ userId: titleUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("nokey-agent"));
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      const token = await createTestSandboxToken(titleUser.userId, runId);
+      const threadId = await createThreadAndLinkRun(composeId, runId);
+
+      mockClerk({ userId: null });
+      const cpRes = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              runId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "nokey-session",
+              cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+              artifactSnapshot: {
+                artifactName: "test-artifact",
+                artifactVersion: "v1",
+              },
+            }),
+          },
+        ),
+      );
+      expect(cpRes.status).toBe(200);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Some result" } },
+      ]);
+
+      // Do NOT set OPENROUTER_API_KEY — feature should be a no-op
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Thread title should remain as initial value (not regenerated)
+      const title = await getThreadTitle(threadId, titleUser.userId);
+      expect(title).toBe("Initial title");
+    });
+
+    it("should not fail completion when OpenRouter returns an error", async () => {
+      const titleUser = await context.setupUser({ prefix: "title-err" });
+      mockClerk({ userId: titleUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("err-agent"));
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      const token = await createTestSandboxToken(titleUser.userId, runId);
+      const threadId = await createThreadAndLinkRun(composeId, runId);
+
+      mockClerk({ userId: null });
+      const cpRes = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              runId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "err-session",
+              cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+              artifactSnapshot: {
+                artifactName: "test-artifact",
+                artifactVersion: "v1",
+              },
+            }),
+          },
+        ),
+      );
+      expect(cpRes.status).toBe(200);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Some result" } },
+      ]);
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+      mockOpenRouterError(500);
+
+      // Completion should still succeed even though title generation fails
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        }),
+      );
+      expect(response.status).toBe(200);
+
+      // Should not throw — title error is caught and logged
+      await context.mocks.flushAfter();
+
+      // Thread title should remain unchanged (error was swallowed)
+      const title = await getThreadTitle(threadId, titleUser.userId);
+      expect(title).toBe("Initial title");
+    });
+
+    it("should not regenerate title on failed completion", async () => {
+      const titleUser = await context.setupUser({ prefix: "title-fail" });
+      mockClerk({ userId: titleUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("fail-agent"));
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      const token = await createTestSandboxToken(titleUser.userId, runId);
+      await createThreadAndLinkRun(composeId, runId);
+
+      mockClerk({ userId: null });
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+      const openRouterMock = mockOpenRouter("Should not be called");
+
+      // Fail the run (exitCode ≠ 0, no checkpoint needed)
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            runId,
+            exitCode: 1,
+            error: "Agent crashed",
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Title regeneration only happens on success — OpenRouter should not be called
+      expect(openRouterMock).not.toHaveBeenCalled();
+    });
+
+    it("should regenerate title with only prompt when Axiom returns no result", async () => {
+      const titleUser = await context.setupUser({ prefix: "title-noresult" });
+      mockClerk({ userId: titleUser.userId });
+      const { composeId } = await createTestCompose(uniqueId("noresult-agent"));
+      const { runId } = await createTestRun(composeId, "Deploy to production");
+      const token = await createTestSandboxToken(titleUser.userId, runId);
+      const threadId = await createThreadAndLinkRun(composeId, runId);
+
+      mockClerk({ userId: null });
+      const cpRes = await checkpointWebhook(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              runId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "noresult-session",
+              cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+              artifactSnapshot: {
+                artifactName: "test-artifact",
+                artifactVersion: "v1",
+              },
+            }),
+          },
+        ),
+      );
+      expect(cpRes.status).toBe(200);
+
+      // Axiom returns no result
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+
+      let capturedBody: {
+        messages: Array<{ role: string; content: string }>;
+      } | null = null;
+      const { handler } = http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          capturedBody = (await request.json()) as typeof capturedBody;
+          return HttpResponse.json({
+            choices: [{ message: { content: "Production Deployment" } }],
+          });
+        },
+      );
+      server.use(handler);
+
+      const response = await POST(
+        createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ runId, exitCode: 0 }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Only system + user messages (no assistant since Axiom returned nothing)
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody!.messages).toHaveLength(2);
+      expect(capturedBody!.messages[1]!.role).toBe("user");
+      expect(capturedBody!.messages[1]!.content).toBe("Deploy to production");
+
+      // Title should be updated
+      const title = await getThreadTitle(threadId, titleUser.userId);
+      expect(title).toBe("Production Deployment");
     });
   });
 
