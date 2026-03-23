@@ -51,8 +51,8 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    // Home renders the zero page directly
-    expect(context.store.get(pathname$)).toBe("/");
+    // Home redirects to /talk/:name, not /select-org
+    expect(context.store.get(pathname$)).not.toBe("/select-org");
   });
 
   it("does not redirect when active org is already set", async () => {
@@ -67,8 +67,8 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    // Should stay on / (normal flow), not /select-org
-    expect(context.store.get(pathname$)).toBe("/");
+    // Should not redirect to /select-org (normal flow)
+    expect(context.store.get(pathname$)).not.toBe("/select-org");
   });
 
   it("does not redirect when already on /select-org", async () => {
@@ -100,7 +100,7 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    // Should stay on / (normal flow), not /select-org
-    expect(context.store.get(pathname$)).toBe("/");
+    // Should not redirect to /select-org (normal flow)
+    expect(context.store.get(pathname$)).not.toBe("/select-org");
   });
 });

@@ -78,10 +78,34 @@ function mockOnboardingNeededMember() {
 }
 
 describe("onboarding navigation", () => {
-  it("should navigate to / after completing admin onboarding via web", async () => {
+  it("should redirect to /onboarding when admin needs onboarding", async () => {
     mockOnboardingNeededAdmin();
 
     await setupPage({ context, path: "/" });
+
+    // The / route should redirect to /onboarding
+    await waitFor(
+      () => {
+        expect(pathname()).toBe("/onboarding");
+      },
+      { timeout: 5000 },
+    );
+
+    // Onboarding dialog should be rendered
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Meet Zero, your new teammate/),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  }, 15_000);
+
+  it("should navigate to / after completing admin onboarding via web", async () => {
+    mockOnboardingNeededAdmin();
+
+    await setupPage({ context, path: "/onboarding" });
 
     // Step 1: Wait for welcome screen
     await waitFor(
@@ -124,10 +148,34 @@ describe("onboarding navigation", () => {
     );
   }, 15_000);
 
-  it("should navigate to / after completing member onboarding via web", async () => {
+  it("should redirect to /onboarding when member needs onboarding", async () => {
     mockOnboardingNeededMember();
 
     await setupPage({ context, path: "/" });
+
+    // The / route should redirect to /onboarding
+    await waitFor(
+      () => {
+        expect(pathname()).toBe("/onboarding");
+      },
+      { timeout: 5000 },
+    );
+
+    // Member welcome dialog should be rendered
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Meet .+, your new teammate/),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  }, 15_000);
+
+  it("should navigate to / after completing member onboarding via web", async () => {
+    mockOnboardingNeededMember();
+
+    await setupPage({ context, path: "/onboarding" });
 
     // Step 1: Wait for member welcome screen
     await waitFor(

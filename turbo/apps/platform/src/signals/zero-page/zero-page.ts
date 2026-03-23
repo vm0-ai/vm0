@@ -5,6 +5,7 @@ import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
+import { navigateTo$ } from "../route.ts";
 
 /** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
 const initialDataLoaded$ = state(false);
@@ -62,11 +63,10 @@ export async function resolveAgentByName(
         // Unknown agent → redirect to default
         set(switchActiveAgent$, null);
         if (rawDefaultName) {
-          window.history.replaceState(
-            {},
-            "",
-            `/talk/${encodeURIComponent(rawDefaultName)}`,
-          );
+          set(navigateTo$, "/talk/:name", {
+            pathParams: { name: rawDefaultName },
+            replace: true,
+          });
         }
       }
     }

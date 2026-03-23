@@ -50,10 +50,6 @@ import {
 } from "./components/settings/add-connection-dialog.tsx";
 import { skills$ } from "../../data/skills.ts";
 import {
-  zeroNeedsOnboarding$,
-  zeroNeedsMemberOnboarding$,
-} from "../../signals/zero-page/zero-onboarding.ts";
-import {
   allConnectorTypes$,
   connectConnector$,
   selectedConnectorType$,
@@ -444,11 +440,6 @@ export function ZeroChatComposer({
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
   const setSelectedConnType = useSet(setSelectedConnectorType$);
-  const onboardingActive = useLastLoadable(zeroNeedsOnboarding$);
-  const memberOnboardingActive = useLastLoadable(zeroNeedsMemberOnboarding$);
-  const isOnboarding =
-    (onboardingActive.state === "hasData" && onboardingActive.data) ||
-    (memberOnboardingActive.state === "hasData" && memberOnboardingActive.data);
   const addConnector = useSet(addZeroConnector$);
   const saveConnectors = useSet(saveZeroConnectors$);
   const optimisticConnected = useGet(justConnectedTypes$);
@@ -685,7 +676,7 @@ export function ZeroChatComposer({
         onAdd={handleConnectSuccess}
         agentName={agentName}
       />
-      {selectedConnType && !isOnboarding && (
+      {selectedConnType && (
         <ConnectModal
           onClose={() => setSelectedConnType(null)}
           onSuccess={() => {

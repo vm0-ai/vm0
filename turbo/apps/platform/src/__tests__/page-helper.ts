@@ -8,6 +8,7 @@ import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
 import {
   mockPushState,
+  mockReplaceState,
   pushState,
   setPathname,
   setSearch,
@@ -88,16 +89,28 @@ export async function setupPage(options: {
 
 // Helper to create a pushState mock that updates mockLocation
 export function createPushStateMock(signal: AbortSignal) {
+  const updateLocation = (url?: string | URL | null) => {
+    if (typeof url === "string") {
+      const urlObj = new URL(url, "http://localhost");
+      setPathname(urlObj.pathname);
+      setSearch(urlObj.search);
+    }
+  };
+
   const fn = vi.fn(
     (_data: unknown, _unused: string, url?: string | URL | null) => {
-      if (typeof url === "string") {
-        const urlObj = new URL(url, "http://localhost");
-        setPathname(urlObj.pathname);
-        setSearch(urlObj.search);
-      }
+      updateLocation(url);
     },
   ) as unknown as typeof window.history.pushState;
   mockPushState(fn, signal);
+
+  const replaceFn = vi.fn(
+    (_data: unknown, _unused: string, url?: string | URL | null) => {
+      updateLocation(url);
+    },
+  ) as unknown as typeof window.history.replaceState;
+  mockReplaceState(replaceFn, signal);
+
   return fn;
 }
 

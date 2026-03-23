@@ -2,7 +2,7 @@ import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
 import { clerk$, needsOrgSelection$ } from "./auth.ts";
-import { pathname, pushState, search } from "./location.ts";
+import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
@@ -127,6 +127,7 @@ export const initRoutes$ = command(
 
 interface NavigateOptions {
   searchParams?: URLSearchParams;
+  replace?: boolean;
 }
 
 export const navigate$ = command(
@@ -139,7 +140,11 @@ export const navigate$ = command(
     const searchStr = options.searchParams?.toString();
     const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}`;
     L.debug("navigating to", newPath);
-    pushState({}, "", newPath);
+    if (options.replace) {
+      replaceState({}, "", newPath);
+    } else {
+      pushState({}, "", newPath);
+    }
     set(reloadPathname$, (x) => x + 1);
     // Use rootSignal$ (not the caller's route signal) so the new route gets
     // a fresh, non-aborted signal.  resetRouteSignal$ inside loadRoute$ will
@@ -158,6 +163,7 @@ export const navigateTo$ = command(
     options?: {
       pathParams?: Parameters<typeof generateRouterPath>[1];
       searchParams?: URLSearchParams;
+      replace?: boolean;
     },
   ) => {
     const signal = get(rootSignal$).signal;

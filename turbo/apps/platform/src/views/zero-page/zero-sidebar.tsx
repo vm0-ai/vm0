@@ -102,11 +102,7 @@ import {
 } from "./zero-sidebar-dialogs.tsx";
 
 // Re-export shared types/components for backward compatibility
-export {
-  AGENT_AVATARS,
-  useAgentAvatar,
-  type SubagentInfo,
-} from "./zero-sidebar-shared.tsx";
+export { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar-shared.tsx";
 
 export type ZeroNavId =
   | "chat"

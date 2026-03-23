@@ -14,5 +14,6 @@ export type RoutePath =
   | "/preferences"
   | "/usage"
   | "/works"
+  | "/onboarding"
   | "/__internal-connector-logos"
   | `/projects/${string}`;

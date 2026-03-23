@@ -17,10 +17,8 @@ import {
   navigateToZeroSession$,
   zeroChatAgentId$,
   setZeroChatAgent$,
-  zeroInChat$,
   zeroSessionId$,
 } from "./zero-nav.ts";
-import { navigateTo$ } from "../route.ts";
 import { agentsList$ } from "./agents-list.ts";
 import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
 
@@ -1031,8 +1029,8 @@ async function ensureChatThread(
     },
     ...prev,
   ]);
-  // Navigate immediately so URL updates
-  if (get(zeroInChat$)) {
+  // Navigate immediately so URL updates (only when not already on a session page)
+  if (!get(zeroSessionId$)) {
     set(navigateToZeroSession$, thread.id);
   }
 
@@ -1290,15 +1288,6 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
 // ---------------------------------------------------------------------------
 // Composite shell commands
 // ---------------------------------------------------------------------------
-
-/** Send a message from the demo/home page: navigate to chat, reset session, fire message. */
-export const sendFromZeroDemo$ = command(
-  ({ set }, message: string, options?: { modelProvider?: string }) => {
-    set(navigateTo$, "/");
-    set(startNewZeroSession$);
-    detach(set(sendZeroChatMessage$, message, options), Reason.DomCallback);
-  },
-);
 
 /**
  * Sync URL session ID to the chat signal.
