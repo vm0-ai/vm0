@@ -10,13 +10,42 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { setSecret } from "../../../../src/lib/secret/secret-service";
+import {
+  listSecrets,
+  setSecret,
+} from "../../../../src/lib/secret/secret-service";
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
 
 const log = logger("api:zero-secrets");
 
 const router = tsr.router(zeroSecretsContract, {
+  list: async ({ headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+    const secrets = await listSecrets(org.orgId, userId);
+
+    return {
+      status: 200 as const,
+      body: {
+        secrets: secrets.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          type: s.type,
+          createdAt: s.createdAt.toISOString(),
+          updatedAt: s.updatedAt.toISOString(),
+        })),
+      },
+    };
+  },
+
   set: async ({ body, headers }, { request }) => {
     initServices();
 
@@ -63,4 +92,4 @@ const handler = createHandler(zeroSecretsContract, router, {
   errorHandler: createSafeErrorHandler("zero-secrets"),
 });
 
-export { handler as POST };
+export { handler as GET, handler as POST };

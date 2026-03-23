@@ -627,9 +627,13 @@ export {
 } from "./zero-user-preferences";
 export {
   zeroSecretsContract,
+  zeroSecretsByNameContract,
   zeroVariablesContract,
+  zeroVariablesByNameContract,
   type ZeroSecretsContract,
+  type ZeroSecretsByNameContract,
   type ZeroVariablesContract,
+  type ZeroVariablesByNameContract,
 } from "./zero-secrets";
 export {
   zeroSessionsByIdContract,

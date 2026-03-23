@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST } from "../route";
+import { GET, POST } from "../route";
 import {
   createTestRequest,
   createTestOrg,
@@ -28,6 +28,68 @@ async function setupOrg(userId: string) {
 function variableUrl(slug: string): string {
   return `http://localhost:3000/api/zero/variables?org=${slug}`;
 }
+
+describe("GET /api/zero/variables", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return empty array when no variables exist", async () => {
+    const userId = uniqueId("zvar-empty");
+    const { slug } = await setupOrg(userId);
+
+    const response = await GET(
+      createTestRequest(variableUrl(slug), { method: "GET" }),
+    );
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.variables).toEqual([]);
+  });
+
+  it("should list variables for authenticated user", async () => {
+    const userId = uniqueId("zvar-list");
+    const { slug } = await setupOrg(userId);
+
+    // Create a variable first
+    await POST(
+      createTestRequest(variableUrl(slug), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "MY_VARIABLE",
+          value: "variable-value-123",
+          description: "Test variable",
+        }),
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest(variableUrl(slug), { method: "GET" }),
+    );
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.variables).toHaveLength(1);
+    expect(data.variables[0].name).toBe("MY_VARIABLE");
+    expect(data.variables[0].value).toBe("variable-value-123");
+    expect(data.variables[0].description).toBe("Test variable");
+    expect(data.variables[0].id).toBeDefined();
+    expect(data.variables[0].createdAt).toBeDefined();
+    expect(data.variables[0].updatedAt).toBeDefined();
+  });
+
+  it("should reject unauthenticated requests", async () => {
+    mockClerk({ userId: null });
+
+    const response = await GET(
+      createTestRequest("http://localhost:3000/api/zero/variables?org=test", {
+        method: "GET",
+      }),
+    );
+    expect(response.status).toBe(401);
+  });
+});
 
 describe("POST /api/zero/variables", () => {
   beforeEach(() => {

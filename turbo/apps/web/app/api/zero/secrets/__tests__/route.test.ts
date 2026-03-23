@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { POST } from "../route";
+import { GET, POST } from "../route";
 import {
   createTestRequest,
   createTestOrg,
@@ -28,6 +28,71 @@ async function setupOrg(userId: string) {
 function secretUrl(slug: string): string {
   return `http://localhost:3000/api/zero/secrets?org=${slug}`;
 }
+
+describe("GET /api/zero/secrets", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return empty array when no secrets exist", async () => {
+    const userId = uniqueId("zsec-empty");
+    const { slug } = await setupOrg(userId);
+
+    const response = await GET(
+      createTestRequest(secretUrl(slug), { method: "GET" }),
+    );
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.secrets).toEqual([]);
+  });
+
+  it("should list secrets for authenticated user", async () => {
+    const userId = uniqueId("zsec-list");
+    const { slug } = await setupOrg(userId);
+
+    // Create a secret first
+    await POST(
+      createTestRequest(secretUrl(slug), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "MY_SECRET",
+          value: "secret-value-123",
+          description: "Test secret",
+        }),
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest(secretUrl(slug), { method: "GET" }),
+    );
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.secrets).toHaveLength(1);
+    expect(data.secrets[0].name).toBe("MY_SECRET");
+    expect(data.secrets[0].description).toBe("Test secret");
+    expect(data.secrets[0].type).toBe("user");
+    expect(data.secrets[0].id).toBeDefined();
+    expect(data.secrets[0].createdAt).toBeDefined();
+    expect(data.secrets[0].updatedAt).toBeDefined();
+    // Secrets should not expose values
+    expect(data.secrets[0]).not.toHaveProperty("value");
+    expect(data.secrets[0]).not.toHaveProperty("encryptedValue");
+  });
+
+  it("should reject unauthenticated requests", async () => {
+    mockClerk({ userId: null });
+
+    const response = await GET(
+      createTestRequest("http://localhost:3000/api/zero/secrets?org=test", {
+        method: "GET",
+      }),
+    );
+    expect(response.status).toBe(401);
+  });
+});
 
 describe("POST /api/zero/secrets", () => {
   beforeEach(() => {
