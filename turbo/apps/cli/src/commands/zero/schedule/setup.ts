@@ -334,7 +334,9 @@ async function gatherTimezone(
     const prefs = await getUserPreferences();
     userTimezone = prefs.timezone;
   } catch {
-    // Ignore error - fall back to detected timezone
+    console.log(
+      chalk.dim("Could not fetch timezone preference, using detected timezone"),
+    );
   }
 
   const defaultTimezone = userTimezone || detectTimezone();
