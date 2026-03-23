@@ -158,6 +158,11 @@ export const setZeroActivityFilter$ = command(
 const internalPollingAbort$ = state<AbortController | null>(null);
 const lastSyncedLogId$ = state<string | null>(null);
 
+/** Currently selected log ID (readable). */
+export const zeroActivitySelectedLogId$ = computed((get) =>
+  get(lastSyncedLogId$),
+);
+
 // ---------------------------------------------------------------------------
 // Detail step search — component-local filter for the detail view
 // ---------------------------------------------------------------------------

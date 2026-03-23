@@ -32,6 +32,7 @@ import {
   zeroActivityEvents$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
+  zeroActivitySelectedLogId$,
   formatLogTime,
   formatDuration,
 } from "../../signals/activity-page/activity-signals.ts";
@@ -249,12 +250,16 @@ function ActivityHeaderCard({
 }
 
 export function ZeroActivityDetailPage() {
+  const selectedLogId = useGet(zeroActivitySelectedLogId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   // Resolve agent display name from the detail response
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const agentName = detail ? (detail.displayName ?? detail.agentName) : "Agent";
+  // Detect stale detail from previous navigation (useLastLoadable keeps old data)
+  const isStale = detail != null && detail.id !== selectedLogId;
+  const agentName =
+    detail && !isStale ? (detail.displayName ?? detail.agentName) : "Agent";
 
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
@@ -262,7 +267,7 @@ export function ZeroActivityDetailPage() {
 
   // Skeleton until both detail and initial events are loaded
   const eventsReady = eventsLoadable.state === "hasData";
-  if (!detail || !eventsReady) {
+  if (!detail || isStale || !eventsReady) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
     }

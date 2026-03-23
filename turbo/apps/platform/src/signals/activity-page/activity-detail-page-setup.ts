@@ -11,12 +11,8 @@ import { setZeroActivitySelectedLogId$ } from "./activity-signals.ts";
 export const setupActivityDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroActivityDetailPageWrapper));
-    await Promise.all([
-      set(fetchAgentsList$),
-      set(initZeroOnboarding$, signal),
-    ]);
-    signal.throwIfAborted();
 
+    // Set logId immediately so the component shows skeleton instead of stale data
     const params = get(pathParams$);
     const logId =
       params && typeof params === "object" && "logId" in params
@@ -26,6 +22,13 @@ export const setupActivityDetailPage$ = command(
     if (logId) {
       set(setZeroActivitySelectedLogId$, logId);
     }
+
+    await Promise.all([
+      set(fetchAgentsList$),
+      set(initZeroOnboarding$, signal),
+    ]);
+    signal.throwIfAborted();
+
     set(switchActiveAgent$, null);
   },
 );
