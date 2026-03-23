@@ -245,10 +245,10 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing?.lastProcessedInvoiceId).toBe(invId);
     });
 
-    it("grants 80k credits for max tier", async () => {
-      const cusId = uniqueId("cus-inv-max");
-      const subId = uniqueId("sub-inv-max");
-      const invId = uniqueId("inv-max");
+    it("grants 80k credits for team tier", async () => {
+      const cusId = uniqueId("cus-inv-team");
+      const subId = uniqueId("sub-inv-team");
+      const invId = uniqueId("inv-team");
 
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
