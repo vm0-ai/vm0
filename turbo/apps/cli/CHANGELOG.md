@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.75.0](https://github.com/vm0-ai/vm0/compare/cli-v9.74.4...cli-v9.75.0) (2026-03-23)
+
+
+### Features
+
+* **cli:** add vm0 zero command group skeleton ([#6120](https://github.com/vm0-ai/vm0/issues/6120)) ([3ef917d](https://github.com/vm0-ai/vm0/commit/3ef917d64d788376de945be58781c8be929dd837)), closes [#6118](https://github.com/vm0-ai/vm0/issues/6118)
+
+
+### Refactoring
+
+* remove unused vm0 setup-claude command ([#6083](https://github.com/vm0-ai/vm0/issues/6083)) ([5f499a2](https://github.com/vm0-ai/vm0/commit/5f499a2f50f7d9c4c2c83c8e1e4e71a2c880d295))
+* remove unused vm0 usage CLI command ([#6084](https://github.com/vm0-ai/vm0/issues/6084)) ([5b95e85](https://github.com/vm0-ai/vm0/commit/5b95e85d7e16e0faf1cde04b02931ebb1d41c626))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.96.0
+
 ## [9.74.4](https://github.com/vm0-ai/vm0/compare/cli-v9.74.3...cli-v9.74.4) (2026-03-23)
 
 
