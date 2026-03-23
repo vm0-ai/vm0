@@ -63,6 +63,9 @@ export function setupClerkOrgMock(options: {
         createdAt: m.createdAt ?? Date.now(),
       })),
     }),
+    getOrganizationInvitationList: vi.fn().mockResolvedValue({
+      data: [],
+    }),
     createOrganizationInvitation: vi.fn().mockResolvedValue({
       id: "inv_test",
     }),
