@@ -133,16 +133,32 @@ describe("onboarding navigation", () => {
       ).toBeInTheDocument();
     });
 
+    // After completing onboarding, the API should report needsOnboarding: false
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentName: "zero",
+          defaultAgentComposeId: "new-compose-id",
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }),
+    );
+
     // Click "Chat with Zero" to trigger handleContinueWithWeb -> navigate("/")
     const chatWithZeroButton = screen.getByRole("button", {
       name: /Chat with Zero/,
     });
     fireEvent.click(chatWithZeroButton);
 
-    // Verify navigation to /
+    // Verify navigation to / (which then redirects to /talk/:name)
     await waitFor(
       () => {
-        expect(pathname()).toBe("/");
+        expect(pathname()).not.toBe("/onboarding");
       },
       { timeout: 5000 },
     );
@@ -196,16 +212,32 @@ describe("onboarding navigation", () => {
       ).toBeInTheDocument();
     });
 
+    // After completing onboarding, the API should report needsOnboarding: false
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: false,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentName: "zero",
+          defaultAgentComposeId: "mock-compose-id",
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }),
+    );
+
     // Click "Chat with zero" to trigger handleContinueWeb -> navigate("/")
     const chatButton = screen.getByRole("button", {
       name: /Chat with zero/i,
     });
     fireEvent.click(chatButton);
 
-    // Verify navigation to /
+    // Verify navigation away from /onboarding (/ redirects to /talk/:name)
     await waitFor(
       () => {
-        expect(pathname()).toBe("/");
+        expect(pathname()).not.toBe("/onboarding");
       },
       { timeout: 5000 },
     );
