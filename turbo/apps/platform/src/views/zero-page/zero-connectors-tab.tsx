@@ -203,7 +203,7 @@ export function ZeroConnectorsTab({
         excludeTypes={addedSet}
         onConnectSuccess={handleConnectSuccess}
         onAdd={handleConnectSuccess}
-        agentName={agentName}
+        agentName={agentDisplayName ?? agentName}
       />
 
       {selectedType && (
