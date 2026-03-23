@@ -246,6 +246,42 @@ describe("zero chat page - add connector dialog", () => {
   });
 });
 
+describe("zero chat page - connector label casing", () => {
+  it("should display connector label from CONNECTOR_TYPES (e.g. 'Axiom') not the raw key ('axiom')", async () => {
+    server.use(
+      http.get("*/api/zero/agents/:name", ({ params }) => {
+        if (
+          params.name === "instructions" ||
+          (typeof params.name === "string" && params.name.includes("/"))
+        ) {
+          return;
+        }
+        return HttpResponse.json({
+          name: params.name,
+          agentComposeId: "mock-compose-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          connectors: ["axiom"],
+        });
+      }),
+    );
+    mockChatAPI();
+    await setupPage({ context, path: "/" });
+
+    const connectorsButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Connectors" }),
+    );
+
+    fireEvent.click(connectorsButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("axiom")).not.toBeInTheDocument();
+  });
+});
+
 describe("zero chat page - agent avatar and greeting", () => {
   it("should render agent avatar on the landing page", async () => {
     await renderChatPage();
