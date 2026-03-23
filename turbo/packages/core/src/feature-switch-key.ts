@@ -42,4 +42,5 @@ export enum FeatureSwitchKey {
   DataExport = "dataExport",
   ShowSystemPrompt = "showSystemPrompt",
   Vm0ModelProvider = "vm0ModelProvider",
+  Usage = "usage",
 }

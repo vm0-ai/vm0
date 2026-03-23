@@ -3,11 +3,15 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { orgCache } from "../../db/schema/org-cache";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { logger } from "../logger";
+import { getStripe } from "../stripe";
 
 const log = logger("service:org-cache");
 
 /** Cache TTL aligned with Clerk JWT TTL */
 const CACHE_TTL_MS = 60_000; // 1 minute
+
+/** Billing period cache TTL — period changes monthly, no need for frequent refresh */
+const BILLING_CACHE_TTL_MS = 300_000; // 5 minutes
 
 interface OrgData {
   orgId: string;
@@ -186,4 +190,96 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
   });
 
   return { orgId: clerkOrg.id, slug: clerkOrg.slug, tier };
+}
+
+/**
+ * Get the current billing period for an org, using org_cache as a read-through
+ * cache with independent 5-min TTL.
+ *
+ * Returns `{ start, end }` for paying orgs, or `null` for free tier (no billing period).
+ * Free-tier null results are cached to avoid repeated DB/Stripe lookups.
+ */
+export async function getOrgBillingPeriod(
+  orgId: string,
+): Promise<{ start: Date; end: Date } | null> {
+  const db = globalThis.services.db;
+
+  // 1. Check cache
+  const [cached] = await db
+    .select({
+      currentPeriodStart: orgCache.currentPeriodStart,
+      currentPeriodEnd: orgCache.currentPeriodEnd,
+      billingCachedAt: orgCache.billingCachedAt,
+    })
+    .from(orgCache)
+    .where(eq(orgCache.orgId, orgId))
+    .limit(1);
+
+  if (
+    cached?.billingCachedAt &&
+    Date.now() - cached.billingCachedAt.getTime() < BILLING_CACHE_TTL_MS
+  ) {
+    // Cache hit — return cached values or null (negative cache for free tier)
+    if (cached.currentPeriodEnd && cached.currentPeriodStart) {
+      return { start: cached.currentPeriodStart, end: cached.currentPeriodEnd };
+    }
+    return null;
+  }
+
+  // 2. Cache miss/stale — read from org_metadata
+  const [orgRow] = await db
+    .select({
+      currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  let periodEnd = orgRow?.currentPeriodEnd ?? null;
+
+  if (!periodEnd && orgRow?.stripeSubscriptionId) {
+    // Has subscription but no period cached in metadata — fetch from Stripe
+    const stripe = getStripe();
+    const subscription = await stripe.subscriptions.retrieve(
+      orgRow.stripeSubscriptionId,
+    );
+    periodEnd = new Date(subscription.current_period_end * 1000);
+
+    // Update org_metadata so future lookups skip Stripe
+    await db
+      .update(orgMetadata)
+      .set({ currentPeriodEnd: periodEnd, updatedAt: new Date() })
+      .where(eq(orgMetadata.orgId, orgId));
+  }
+
+  const now = new Date();
+
+  if (periodEnd) {
+    // Compute start = end - 1 month
+    const periodStart = new Date(periodEnd);
+    periodStart.setMonth(periodStart.getMonth() - 1);
+
+    // Cache the result
+    await db
+      .update(orgCache)
+      .set({
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        billingCachedAt: now,
+      })
+      .where(eq(orgCache.orgId, orgId));
+
+    log.debug("billing period cached", { orgId, periodStart, periodEnd });
+    return { start: periodStart, end: periodEnd };
+  }
+
+  // Free tier — cache negative result
+  await db
+    .update(orgCache)
+    .set({ billingCachedAt: now })
+    .where(eq(orgCache.orgId, orgId));
+
+  log.debug("billing period cached (free tier)", { orgId });
+  return null;
 }
