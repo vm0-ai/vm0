@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.96.0](https://github.com/vm0-ai/vm0/compare/core-v8.95.0...core-v8.96.0) (2026-03-23)
+
+
+### Features
+
+* add description field to schedule with auto-generation fallback ([#6113](https://github.com/vm0-ai/vm0/issues/6113)) ([699c2ac](https://github.com/vm0-ai/vm0/commit/699c2acc587f3a118c49d3c2943090c1c923eab7))
+* bundle confluence firewall into @vm0/core ([#6110](https://github.com/vm0-ai/vm0/issues/6110)) ([3bc2deb](https://github.com/vm0-ai/vm0/commit/3bc2deba9537282a6dca4d63af58f84edb3541dc))
+* bundle jira firewall into @vm0/core ([#6128](https://github.com/vm0-ai/vm0/issues/6128)) ([fb111bb](https://github.com/vm0-ai/vm0/commit/fb111bb57a7765629156586c31f14b740024fc59))
+* **platform:** zero chat ux improvements ([#6067](https://github.com/vm0-ai/vm0/issues/6067)) ([8f1b188](https://github.com/vm0-ai/vm0/commit/8f1b188ffb795440858dc16b6f45a23d4ae55c40))
+
+
+### Bug Fixes
+
+* rename reserved "all" permission to "unrestricted" in model provider firewalls ([#6114](https://github.com/vm0-ai/vm0/issues/6114)) ([64f294b](https://github.com/vm0-ai/vm0/commit/64f294b70cd4bd194662e5a821ce26b327b57a12))
+
 ## [8.95.0](https://github.com/vm0-ai/vm0/compare/core-v8.94.0...core-v8.95.0) (2026-03-23)
 
 

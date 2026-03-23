@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.146.0](https://github.com/vm0-ai/vm0/compare/web-v12.145.0...web-v12.146.0) (2026-03-23)
+
+
+### Features
+
+* add description field to schedule with auto-generation fallback ([#6113](https://github.com/vm0-ai/vm0/issues/6113)) ([699c2ac](https://github.com/vm0-ai/vm0/commit/699c2acc587f3a118c49d3c2943090c1c923eab7))
+* deduplicate auto-generated firewalls against compose-declared firewalls ([#6126](https://github.com/vm0-ai/vm0/issues/6126)) ([ced37df](https://github.com/vm0-ai/vm0/commit/ced37df6596e791085544e22bc3744507d286a46))
+* **platform:** zero chat ux improvements ([#6067](https://github.com/vm0-ai/vm0/issues/6067)) ([8f1b188](https://github.com/vm0-ai/vm0/commit/8f1b188ffb795440858dc16b6f45a23d4ae55c40))
+
+
+### Refactoring
+
+* extract service functions for queue, sessions, and composes zero routes ([#6103](https://github.com/vm0-ai/vm0/issues/6103)) ([48476ba](https://github.com/vm0-ai/vm0/commit/48476ba7286af5a5ab3250e9ffb3128155865f0a))
+* remove infra-client.ts and knip ignore entry ([#6127](https://github.com/vm0-ai/vm0/issues/6127)) ([f0fd988](https://github.com/vm0-ai/vm0/commit/f0fd988b30d5fb716383aca15afdc835146ebd31))
+* rename agent_schedules to zero_agent_schedules ([#6119](https://github.com/vm0-ai/vm0/issues/6119)) ([#6124](https://github.com/vm0-ai/vm0/issues/6124)) ([b40ed1d](https://github.com/vm0-ai/vm0/commit/b40ed1d09fd1bee713a3d50a803560ca77c29f84))
+* unify zero trigger params — typed callbacks and prompt standardization ([#6106](https://github.com/vm0-ai/vm0/issues/6106)) ([254529d](https://github.com/vm0-ai/vm0/commit/254529d854512b521dd48cbdd29914ec8e6dc230))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.96.0
+
 ## [12.145.0](https://github.com/vm0-ai/vm0/compare/web-v12.144.0...web-v12.145.0) (2026-03-23)
 
 

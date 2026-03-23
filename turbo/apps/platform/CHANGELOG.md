@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.139.0](https://github.com/vm0-ai/vm0/compare/app-v0.138.0...app-v0.139.0) (2026-03-23)
+
+
+### Features
+
+* add description field to schedule with auto-generation fallback ([#6113](https://github.com/vm0-ai/vm0/issues/6113)) ([699c2ac](https://github.com/vm0-ai/vm0/commit/699c2acc587f3a118c49d3c2943090c1c923eab7))
+* **platform:** unify zero access-denied states with lock illustration ([#5962](https://github.com/vm0-ai/vm0/issues/5962)) ([a039707](https://github.com/vm0-ai/vm0/commit/a0397071dbb25bf1ec721d59d43ad810882335f3))
+* **platform:** zero chat ux improvements ([#6067](https://github.com/vm0-ai/vm0/issues/6067)) ([8f1b188](https://github.com/vm0-ai/vm0/commit/8f1b188ffb795440858dc16b6f45a23d4ae55c40))
+
+
+### Performance Improvements
+
+* **platform:** convert zero-page images from png to webp ([#6105](https://github.com/vm0-ai/vm0/issues/6105)) ([d7d93af](https://github.com/vm0-ai/vm0/commit/d7d93af32b1a544630c144ed069e7b8efeb3ff03))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.96.0
+
 ## [0.138.0](https://github.com/vm0-ai/vm0/compare/app-v0.137.0...app-v0.138.0) (2026-03-23)
 
 
