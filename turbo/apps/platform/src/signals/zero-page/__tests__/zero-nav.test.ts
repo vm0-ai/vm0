@@ -99,7 +99,8 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/:tab", setup: noop$ },
+          { path: "/schedule", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
       );
@@ -267,7 +268,8 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/:tab", setup: noop$ },
+          { path: "/schedule", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
       );
@@ -285,7 +287,8 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/:tab", setup: noop$ },
+          { path: "/preferences", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
       );

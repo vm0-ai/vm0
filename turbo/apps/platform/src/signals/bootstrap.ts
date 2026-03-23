@@ -1,10 +1,13 @@
 import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
-import { initRoutes$, setupAuthPageWrapper } from "./route.ts";
+import {
+  initRoutes$,
+  navigateInReact$,
+  setupAuthPageWrapper,
+} from "./route.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
-import { setupZeroPage$ } from "./zero-page/zero-page.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupQueuePage$ } from "./queue-page/queue-page-setup.ts";
@@ -21,6 +24,12 @@ import { setupChatPage$ } from "./zero-page/chat-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { setupChatSessionPage$ } from "./zero-page/chat-session-page-setup.ts";
 import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.ts";
+
+/** Catch-all fallback — redirects unknown paths to /. */
+const setupNotFoundRedirect$ = command(({ set }) => {
+  set(navigateInReact$, "/");
+});
+
 const ROUTE_CONFIG = [
   {
     path: "/select-org",
@@ -83,16 +92,13 @@ const ROUTE_CONFIG = [
     setup: setupInternalConnectorLogos$,
   },
   {
-    path: "/:tab/:sub",
-    setup: setupAuthPageWrapper(setupZeroPage$),
-  },
-  {
-    path: "/:tab",
-    setup: setupAuthPageWrapper(setupZeroPage$),
-  },
-  {
     path: "/",
     setup: setupAuthPageWrapper(setupChatPage$),
+  },
+  {
+    // Catch-all: redirect unknown paths to /
+    path: "{/*path}",
+    setup: setupNotFoundRedirect$,
   },
 ] as const;
 
