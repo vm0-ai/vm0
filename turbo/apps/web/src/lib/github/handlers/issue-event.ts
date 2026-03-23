@@ -8,6 +8,7 @@ import { validateAgentSession } from "../../run";
 import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
+import type { GitHubIssuesCallbackPayload } from "../../callback/callback-payloads";
 import { getInstallationAccessToken } from "../github-app";
 import {
   type IssueComment,
@@ -80,21 +81,6 @@ type GitHubIssuesEvent = z.infer<typeof gitHubIssuesEventSchema>;
 type GitHubIssueCommentEvent = z.infer<typeof gitHubIssueCommentEventSchema>;
 type GitHubIssue = z.infer<typeof gitHubIssueSchema>;
 type GitHubComment = z.infer<typeof gitHubCommentSchema>;
-
-// ─── Callback Context ──────────────────────────────────────────────
-
-interface GitHubCallbackContext {
-  installationId: string;
-  repo: string;
-  issueNumber: number;
-  userId: string;
-  agentName: string;
-  composeId: string;
-  existingSessionId?: string;
-  triggerCommentId?: string;
-  triggerCommentBody?: string;
-  triggerReactionId?: string;
-}
 
 // ─── Event Handlers ────────────────────────────────────────────────
 
@@ -311,23 +297,27 @@ async function validateSessionAgent(
 }
 
 /**
- * Build a full prompt with issue context.
+ * Build prompt and system context from issue context.
+ * Integration context and issue context go to appendSystemPrompt;
+ * only the user message remains in prompt.
  */
-function buildFullPrompt(
+function buildPromptParts(
   prompt: string,
   issueContext: string,
   isCommentTrigger: boolean,
-): string {
+): { prompt: string; appendSystemPrompt: string | undefined } {
   const integrationContext = buildIntegrationContext("GitHub");
+  const contextParts = [integrationContext, issueContext].filter(Boolean);
+  const appendSystemPrompt =
+    contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
 
-  if (!issueContext) {
-    return `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
-  }
+  const userPrompt = isCommentTrigger
+    ? prompt
+    : issueContext
+      ? "Based on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action."
+      : prompt;
 
-  if (isCommentTrigger) {
-    return `${integrationContext}\n\n${issueContext}\n\n# User Prompt\n\n${prompt}`;
-  }
-  return `${integrationContext}\n\n${issueContext}\n\nBased on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action.`;
+  return { prompt: userPrompt, appendSystemPrompt };
 }
 
 /**
@@ -476,16 +466,19 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       commentId,
     );
   }
-  const fullPrompt = buildFullPrompt(prompt, issueContext, !!commentId);
+  const { prompt: resolvedPrompt, appendSystemPrompt } = buildPromptParts(
+    prompt,
+    issueContext,
+    !!commentId,
+  );
 
   // 6. Create agent run with callback
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/github/issues`;
   const callbackSecret = generateCallbackSecret();
-  const callbackContext: GitHubCallbackContext = {
+  const callbackContext: GitHubIssuesCallbackPayload = {
     installationId: installation.id,
     repo,
     issueNumber,
-    userId: vm0UserId,
     agentName: compose.name,
     composeId: compose.id,
     existingSessionId,
@@ -497,7 +490,8 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
   try {
     const result = await createZeroRun({
       userId: vm0UserId,
-      prompt: fullPrompt,
+      prompt: resolvedPrompt,
+      appendSystemPrompt,
       composeId: compose.id,
       sessionId: existingSessionId,
       triggerSource: "github",

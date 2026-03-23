@@ -167,7 +167,7 @@ describe("createZeroRun()", () => {
             {
               url: "https://example.com/callback",
               secret: "test-secret",
-              payload: { key: "value" },
+              payload: { scheduleId: "test-schedule", intervalSeconds: 300 },
             },
           ],
         }),

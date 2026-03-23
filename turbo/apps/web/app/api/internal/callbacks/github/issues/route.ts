@@ -17,23 +17,12 @@ import {
 } from "../../../../../../src/lib/run/extract-run-output";
 import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
+import type { GitHubIssuesCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:github-issues");
 
-interface CallbackPayload {
-  installationId: string; // GitHub App installation ID (DB primary key)
-  repo: string; // "owner/repo"
-  issueNumber: number;
-  composeId: string;
-  agentName: string;
-  existingSessionId?: string;
-  triggerCommentId?: string;
-  triggerCommentBody?: string;
-  triggerReactionId?: string;
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): GitHubIssuesCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -45,7 +34,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return p as unknown as GitHubIssuesCallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -128,7 +117,10 @@ function formatGitHubComment(opts: {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<GitHubIssuesCallbackPayload>(
+    request,
+    log,
+  );
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;

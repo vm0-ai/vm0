@@ -5,24 +5,9 @@ import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { logger } from "../../logger";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
+import type { TelegramCallbackPayload } from "../../callback/callback-payloads";
 
 const log = logger("telegram:run-agent");
-
-/**
- * Telegram-specific context to include in the callback payload
- */
-interface TelegramCallbackContext {
-  installationId: string;
-  chatId: string;
-  messageId: string;
-  rootMessageId: string | null;
-  userLinkId: string;
-  agentName: string;
-  composeId: string;
-  existingSessionId: string | null;
-  isDM: boolean;
-  thinkingMessageId: string | null;
-}
 
 interface RunAgentParams {
   composeId: string;
@@ -31,7 +16,7 @@ interface RunAgentParams {
   prompt: string;
   threadContext: string;
   userId: string;
-  callbackContext: TelegramCallbackContext;
+  callbackContext: TelegramCallbackPayload;
 }
 
 interface RunAgentResult {
@@ -59,10 +44,12 @@ export async function runAgentForTelegram(
     callbackContext,
   } = params;
 
-  const integrationContext = buildIntegrationContext("Telegram");
-  const fullPrompt = threadContext
-    ? `${integrationContext}\n\n${threadContext}\n\n# User Prompt\n\n${prompt}`
-    : `${integrationContext}\n\n# User Prompt\n\n${prompt}`;
+  const contextParts = [
+    buildIntegrationContext("Telegram"),
+    threadContext,
+  ].filter(Boolean);
+  const appendSystemPrompt =
+    contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
 
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/telegram`;
   const callbackSecret = generateCallbackSecret();
@@ -71,7 +58,8 @@ export async function runAgentForTelegram(
     const result = await createZeroRun({
       userId,
       composeId,
-      prompt: fullPrompt,
+      prompt,
+      appendSystemPrompt,
       sessionId,
       triggerSource: "telegram",
       callbacks: [

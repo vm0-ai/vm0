@@ -274,11 +274,12 @@ export async function handleInboundEmailTrigger(
     },
   ];
 
-  // 12. Inject integration context and create run
-  const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${prompt}`;
+  // 12. Create run with integration context as system prompt
+  const appendSystemPrompt = buildIntegrationContext("Email");
   const result = await createZeroRun({
     userId,
-    prompt: fullPrompt,
+    prompt,
+    appendSystemPrompt,
     composeId: compose.composeId,
     triggerSource: "email",
     callbacks,

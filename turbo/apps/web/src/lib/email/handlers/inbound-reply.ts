@@ -175,12 +175,12 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 11. Inject integration context and create run
-  // startRun resolves compose version + org internally
-  const fullPrompt = `${buildIntegrationContext("Email")}\n\n# User Prompt\n\n${replyContent}`;
+  // 11. Create run with integration context as system prompt
+  const appendSystemPrompt = buildIntegrationContext("Email");
   const result = await createZeroRun({
     userId: session.userId,
-    prompt: fullPrompt,
+    prompt: replyContent,
+    appendSystemPrompt,
     composeId: session.composeId,
     sessionId: session.agentSessionId,
     triggerSource: "email",

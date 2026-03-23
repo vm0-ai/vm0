@@ -16,18 +16,12 @@ import {
 } from "../../../../../../src/lib/email/handlers/shared";
 import { isUserUnsubscribed } from "../../../../../../src/lib/email/unsubscribe-service";
 import { env } from "../../../../../../src/env";
+import type { EmailScheduleCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:email:schedule");
 
-interface CallbackPayload {
-  scheduleId: string;
-  composeId: string;
-  composeName: string;
-  userId: string;
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): EmailScheduleCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -38,7 +32,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return p as unknown as EmailScheduleCallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -53,7 +47,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, skipped: true });
   }
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<EmailScheduleCallbackPayload>(
+    request,
+    log,
+  );
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;

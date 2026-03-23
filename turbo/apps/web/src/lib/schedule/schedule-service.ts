@@ -10,6 +10,11 @@ import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
+import type {
+  EmailScheduleCallbackPayload,
+  SlackScheduleCallbackPayload,
+  ScheduleLoopCallbackPayload,
+} from "../callback/callback-payloads";
 
 const log = logger("service:schedule");
 
@@ -797,14 +802,14 @@ async function executeSchedule(
   const orgData = await getOrgData(schedule.orgId);
 
   // Build callbacks for run completion notifications
-  const callbacks: Array<{ url: string; secret: string; payload: unknown }> =
-    [];
-  const callbackPayload = {
-    scheduleId: schedule.id,
-    composeId: schedule.composeId,
-    composeName: compose.name,
-    userId: schedule.userId,
-  };
+  const callbacks: Array<{
+    url: string;
+    secret: string;
+    payload:
+      | EmailScheduleCallbackPayload
+      | SlackScheduleCallbackPayload
+      | ScheduleLoopCallbackPayload;
+  }> = [];
 
   const prefs = await getUserPreferences(orgData.orgId, schedule.userId);
 
@@ -814,31 +819,45 @@ async function executeSchedule(
     prefs.notifyEmail &&
     schedule.notifyEmail
   ) {
+    const emailPayload: EmailScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      composeId: schedule.composeId,
+      composeName: compose.name,
+      userId: schedule.userId,
+    };
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
       secret: generateCallbackSecret(),
-      payload: callbackPayload,
+      payload: emailPayload,
     });
   }
 
   // Slack schedule DM notification callback (only if user + schedule opted in)
   if (prefs.notifySlack && schedule.notifySlack) {
+    const slackPayload: SlackScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      composeId: schedule.composeId,
+      composeName: compose.name,
+      userId: schedule.userId,
+      orgId: schedule.orgId,
+    };
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,
       secret: generateCallbackSecret(),
-      payload: callbackPayload,
+      payload: slackPayload,
     });
   }
 
   // Loop schedule advancement callback (triggers next iteration on completion)
   if (schedule.triggerType === "loop") {
+    const loopPayload: ScheduleLoopCallbackPayload = {
+      scheduleId: schedule.id,
+      intervalSeconds: schedule.intervalSeconds!,
+    };
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/schedule/loop`,
       secret: generateCallbackSecret(),
-      payload: {
-        scheduleId: schedule.id,
-        intervalSeconds: schedule.intervalSeconds,
-      },
+      payload: loopPayload,
     });
   }
 

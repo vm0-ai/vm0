@@ -9,7 +9,7 @@ import {
 import { buildModelProviderLink } from "../../deep-links";
 import type { SlackFile } from "../../slack/context";
 import { runAgentForSlackOrg } from "./run-agent";
-import type { SlackOrgCallbackContext } from "./run-agent";
+import type { SlackOrgCallbackPayload } from "../../callback/callback-payloads";
 import {
   resolveOrgFromWorkspace,
   resolveConnectionFromSlackUser,
@@ -162,7 +162,7 @@ export async function handleOrgMention(
   );
 
   // 8. Dispatch agent run
-  const callbackContext: SlackOrgCallbackContext = {
+  const callbackContext: SlackOrgCallbackPayload = {
     workspaceId: context.workspaceId,
     channelId: context.channelId,
     threadTs,

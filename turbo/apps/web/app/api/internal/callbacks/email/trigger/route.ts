@@ -14,26 +14,12 @@ import {
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/email/handlers/shared";
 import { env } from "../../../../../../src/env";
+import type { EmailTriggerCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:email:trigger");
 
-interface CallbackPayload {
-  senderEmail: string;
-  composeId: string;
-  userId: string;
-  inboundEmailId: string;
-  replyToken: string;
-  inboundMessageId?: string;
-  inboundReferences?: string;
-  subject?: string;
-  triggerLocalPart?: string;
-  runtimeOrgId?: string;
-  replyRecipientTo?: string[];
-  replyRecipientCc?: string[];
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): EmailTriggerCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -45,7 +31,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return p as unknown as EmailTriggerCallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -120,7 +106,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, skipped: true });
   }
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<EmailTriggerCallbackPayload>(
+    request,
+    log,
+  );
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;

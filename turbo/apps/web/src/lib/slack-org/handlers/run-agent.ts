@@ -9,23 +9,9 @@ import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { logger } from "../../logger";
+import type { SlackOrgCallbackPayload } from "../../callback/callback-payloads";
 
 const log = logger("slack-org:run-agent");
-
-/**
- * Org-aware callback context for Slack.
- * orgId is derived from composeId -> agentComposes.orgId at dispatch time.
- */
-export interface SlackOrgCallbackContext {
-  workspaceId: string;
-  channelId: string;
-  threadTs: string;
-  messageTs: string;
-  connectionId: string;
-  agentName: string;
-  composeId: string;
-  existingSessionId?: string;
-}
 
 interface RunAgentParams {
   composeId: string;
@@ -36,7 +22,7 @@ interface RunAgentParams {
   userContext: string;
   userId: string;
   botUserId: string;
-  callbackContext: SlackOrgCallbackContext;
+  callbackContext: SlackOrgCallbackPayload;
 }
 
 interface RunAgentResult {

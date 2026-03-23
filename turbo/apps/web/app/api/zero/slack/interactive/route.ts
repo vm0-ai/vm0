@@ -22,7 +22,7 @@ import {
 } from "../../../../../src/lib/slack/blocks";
 import type { AskUserQuestion } from "../../../../../src/lib/slack/blocks";
 import { runAgentForSlackOrg } from "../../../../../src/lib/slack-org/handlers/run-agent";
-import type { SlackOrgCallbackContext } from "../../../../../src/lib/slack-org/handlers/run-agent";
+import type { SlackOrgCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
 import { getWorkspaceAgent } from "../../../../../src/lib/slack-org/handlers/shared";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import { disconnect } from "../../../../../src/lib/slack-org/connect-service";
@@ -546,7 +546,7 @@ async function finishSubmit(
   }
 
   // Dispatch new agent run with the user's answer
-  const callbackContext: SlackOrgCallbackContext = {
+  const callbackContext: SlackOrgCallbackPayload = {
     workspaceId: claimed.slackWorkspaceId,
     channelId: claimed.slackChannelId,
     threadTs: claimed.slackThreadTs,

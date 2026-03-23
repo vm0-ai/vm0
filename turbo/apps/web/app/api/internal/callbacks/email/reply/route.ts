@@ -15,20 +15,12 @@ import {
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/email/handlers/shared";
+import type { EmailReplyCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:email:reply");
 
-interface CallbackPayload {
-  emailThreadSessionId: string;
-  inboundEmailId: string;
-  inboundMessageId?: string;
-  inboundReferences?: string;
-  replyRecipientTo?: string[];
-  replyRecipientCc?: string[];
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): EmailReplyCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -37,7 +29,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return p as unknown as EmailReplyCallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -69,7 +61,7 @@ function formatOutput(
 }
 
 function buildThreadingHeaders(
-  payload: CallbackPayload,
+  payload: EmailReplyCallbackPayload,
   lastEmailMessageId: string | null,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -98,7 +90,7 @@ function buildThreadingHeaders(
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<EmailReplyCallbackPayload>(request, log);
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;

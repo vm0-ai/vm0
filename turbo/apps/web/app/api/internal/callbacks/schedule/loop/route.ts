@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentSchedules } from "../../../../../../src/db/schema/agent-schedule";
+import type { ScheduleLoopCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:schedule:loop");
@@ -10,12 +11,7 @@ const log = logger("callback:schedule:loop");
 // Auto-disable after this many consecutive failures
 const MAX_CONSECUTIVE_FAILURES = 3;
 
-interface CallbackPayload {
-  scheduleId: string;
-  intervalSeconds: number;
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): ScheduleLoopCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -24,7 +20,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return p as unknown as ScheduleLoopCallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -34,7 +30,10 @@ function errorResponse(message: string, status: number): NextResponse {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<ScheduleLoopCallbackPayload>(
+    request,
+    log,
+  );
   if (!result.ok) return result.response;
 
   const { status, payload: rawPayload } = result.data;

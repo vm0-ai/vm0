@@ -28,6 +28,7 @@ import {
 } from "../../../../../../src/lib/slack-org/handlers/shared";
 import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
+import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 import type { WebClient } from "@slack/web-api";
 import type {
@@ -37,18 +38,7 @@ import type {
 
 const log = logger("callback:slack-org");
 
-interface CallbackPayload {
-  workspaceId: string;
-  channelId: string;
-  threadTs: string;
-  messageTs: string;
-  connectionId: string;
-  agentName: string;
-  composeId: string;
-  existingSessionId?: string;
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -62,7 +52,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return p as unknown as SlackOrgCallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -95,7 +85,7 @@ async function findNewSessionId(
 async function postAskUserInteractiveCard(
   client: WebClient,
   resultData: { askUserDenials: PermissionDenial[] },
-  payload: CallbackPayload,
+  payload: SlackOrgCallbackPayload,
   runId: string,
   resolvedSessionId: string | undefined,
 ): Promise<void> {
@@ -169,7 +159,7 @@ function buildResponseText(
  * Returns the resolved session ID.
  */
 async function saveOrgThreadSession(
-  payload: CallbackPayload,
+  payload: SlackOrgCallbackPayload,
   runId: string,
   status: string,
 ): Promise<string | undefined> {
@@ -217,7 +207,7 @@ async function saveOrgThreadSession(
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<SlackOrgCallbackPayload>(request, log);
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;

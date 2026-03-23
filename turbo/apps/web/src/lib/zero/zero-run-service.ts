@@ -2,6 +2,7 @@ import type { TriggerSource } from "@vm0/core";
 import { startRun, type CreateRunResult } from "../run";
 import { DISALLOWED_CRON_TOOLS } from "../integration-context";
 import { buildAgentIdentityPrompt } from "../agent-identity";
+import type { CallbackPayload } from "../callback/callback-payloads";
 
 /**
  * Parameters accepted by createZeroRun().
@@ -16,7 +17,7 @@ interface ZeroRunParams {
   sessionId?: string;
   appendSystemPrompt?: string;
   modelProvider?: string;
-  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
+  callbacks?: Array<{ url: string; secret: string; payload: CallbackPayload }>;
   scheduleId?: string;
 }
 

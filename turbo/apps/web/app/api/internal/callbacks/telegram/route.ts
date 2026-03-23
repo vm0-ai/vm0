@@ -32,24 +32,12 @@ import {
   buildLogsUrl,
 } from "../../../../../src/lib/telegram/handlers/shared";
 import { env } from "../../../../../src/env";
+import type { TelegramCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("callback:telegram");
 
-interface CallbackPayload {
-  installationId: string;
-  chatId: string;
-  messageId: string;
-  rootMessageId: string | null;
-  userLinkId: string;
-  agentName: string;
-  composeId: string;
-  existingSessionId: string | null;
-  isDM: boolean;
-  thinkingMessageId: string | null;
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): TelegramCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -121,7 +109,7 @@ interface CompletionContext {
   runId: string;
   status: "completed" | "failed";
   error: string | undefined;
-  payload: CallbackPayload;
+  payload: TelegramCallbackPayload;
 }
 
 async function handleCompletion(ctx: CompletionContext): Promise<void> {
@@ -243,7 +231,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<TelegramCallbackPayload>(request, log);
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;

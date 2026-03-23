@@ -18,19 +18,12 @@ import {
   getWorkspaceAgent,
 } from "../../../../../../../src/lib/slack-org/handlers/shared";
 import { env } from "../../../../../../../src/env";
+import type { SlackScheduleCallbackPayload } from "../../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../../src/lib/logger";
 
 const log = logger("callback:slack-org:schedule");
 
-interface CallbackPayload {
-  scheduleId: string;
-  composeId: string;
-  composeName: string;
-  userId: string;
-  orgId: string;
-}
-
-function parsePayload(payload: unknown): CallbackPayload | null {
+function parsePayload(payload: unknown): SlackScheduleCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (
@@ -42,7 +35,7 @@ function parsePayload(payload: unknown): CallbackPayload | null {
   ) {
     return null;
   }
-  return p as unknown as CallbackPayload;
+  return p as unknown as SlackScheduleCallbackPayload;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -144,7 +137,10 @@ async function postScheduleResults(
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
 
-  const result = await verifyCallback<CallbackPayload>(request, log);
+  const result = await verifyCallback<SlackScheduleCallbackPayload>(
+    request,
+    log,
+  );
   if (!result.ok) return result.response;
 
   const { runId, status, error } = result.data;
