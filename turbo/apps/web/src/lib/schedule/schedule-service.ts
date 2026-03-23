@@ -354,9 +354,6 @@ async function insertNewSchedule(
   return created;
 }
 
-/** Base URL for the Anthropic Messages API */
-const ANTHROPIC_API_BASE = "https://api.anthropic.com";
-
 /**
  * Build a template-based description fallback.
  */
@@ -373,18 +370,16 @@ function buildTemplateDescription(
 }
 
 /**
- * Generate a concise schedule description using a lightweight model.
- * Falls back to a template-based description if the API key is not configured
- * or if the model call fails.
+ * Generate a concise schedule description using the lightweight model.
+ * Falls back to a template-based description if the model is unavailable.
  */
 async function generateDescription(
   request: DeployScheduleRequest,
   composeName: string,
 ): Promise<string> {
-  const apiKey = globalThis.services.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return buildTemplateDescription(request, composeName);
-  }
+  const { generateScheduleDescription } = await import(
+    "../ai/lightweight-model"
+  );
 
   const triggerSummary = request.cronExpression
     ? `cron: ${request.cronExpression}`
@@ -394,45 +389,14 @@ async function generateDescription(
         ? `loop every ${request.intervalSeconds}s`
         : "unknown trigger";
 
-  const response = await fetch(`${ANTHROPIC_API_BASE}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 100,
-      messages: [
-        {
-          role: "user",
-          content: `Write a one-sentence summary (max 120 chars) for this scheduled task. No quotes or punctuation at end.\nAgent: ${composeName}\nSchedule: ${request.name}\nTrigger: ${triggerSummary}\nPrompt: ${request.prompt.slice(0, 200)}`,
-        },
-      ],
-    }),
-  });
+  const text = await generateScheduleDescription(
+    composeName,
+    request.name,
+    triggerSummary,
+    request.prompt,
+  );
 
-  if (!response.ok) {
-    log.warn(
-      `Anthropic API returned ${response.status} for description generation, using template fallback`,
-    );
-    return buildTemplateDescription(request, composeName);
-  }
-
-  const data: unknown = await response.json();
-  const content = data as {
-    content?: Array<{ type?: string; text?: string }>;
-  };
-  const text = content.content?.[0]?.text?.trim();
-  if (!text) {
-    log.warn(
-      "Anthropic API returned empty or unexpected response for description generation, using template fallback",
-    );
-    return buildTemplateDescription(request, composeName);
-  }
-
-  return text.slice(0, 200);
+  return text ?? buildTemplateDescription(request, composeName);
 }
 
 /**
