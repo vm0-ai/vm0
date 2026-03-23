@@ -200,7 +200,7 @@ describe("zero-chat signals", () => {
             statusText: "Not Found",
           });
         }),
-        http.get("*/api/agent/sessions/:id", () => {
+        http.get("*/api/zero/sessions/:id", () => {
           return new HttpResponse(null, {
             status: 404,
             statusText: "Not Found",
@@ -1204,7 +1204,7 @@ describe("zero-chat signals", () => {
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
-        http.post("*/api/agent/uploads", async () => {
+        http.post("*/api/zero/uploads", async () => {
           if (delayMs > 0) {
             await delay(delayMs);
           }
@@ -1281,7 +1281,7 @@ describe("zero-chat signals", () => {
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
-        http.post("*/api/agent/uploads", async () => {
+        http.post("*/api/zero/uploads", async () => {
           requestCount++;
           const currentCount = requestCount;
           await delay(300);

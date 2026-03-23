@@ -119,7 +119,7 @@ async function fetchQueuePosition(
   runId: string,
 ): Promise<number> {
   const resp = await fetchFn(
-    `/api/app/queue-position?runId=${encodeURIComponent(runId)}`,
+    `/api/zero/queue-position?runId=${encodeURIComponent(runId)}`,
   );
   if (!resp.ok) {
     return 0;
@@ -618,7 +618,7 @@ export const uploadZeroAttachment$ = command(
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetchFn("/api/agent/uploads", {
+      const res = await fetchFn("/api/zero/uploads", {
         method: "POST",
         body: formData,
         signal: controller.signal,
@@ -794,7 +794,7 @@ export const switchZeroSession$ = command(
       let res = await fetchFn(`/api/zero/chat-threads/${threadId}`);
       let isLegacySession = false;
       if (!res.ok) {
-        res = await fetchFn(`/api/agent/sessions/${threadId}`);
+        res = await fetchFn(`/api/zero/sessions/${threadId}`);
         isLegacySession = true;
       }
       if (!res.ok) {

@@ -14,6 +14,7 @@
  * - no-store-in-params: Prevent Store type in function params
  * - no-side-effect-in-render: Prevent side-effect calls (set, detach) directly in render
  * - no-use-ccstate-in-views: Disallow useCCState() in views/ — signals must be in signals/
+ * - no-non-zero-api: Enforce that platform app only calls /api/zero/ endpoints
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -29,6 +30,7 @@ import noStoreInParams from "./rules/no-store-in-params.ts";
 import setupPageRender from "./rules/setup-page-render.ts";
 import noSideEffectInRender from "./rules/no-side-effect-in-render.ts";
 import noUseCCStateInViews from "./rules/no-use-ccstate-in-views.ts";
+import noNonZeroApi from "./rules/no-non-zero-api.ts";
 
 const plugin = {
   meta: {
@@ -49,6 +51,7 @@ const plugin = {
     "setup-page-render": setupPageRender,
     "no-side-effect-in-render": noSideEffectInRender,
     "no-use-ccstate-in-views": noUseCCStateInViews,
+    "no-non-zero-api": noNonZeroApi,
   },
 };
 

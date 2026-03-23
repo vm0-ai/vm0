@@ -1,31 +1,17 @@
 import { computed } from "ccstate";
-import { fetch$ } from "../fetch.ts";
-
-interface MemberUsage {
-  userId: string;
-  email: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadInputTokens: number;
-  cacheCreationInputTokens: number;
-  creditsCharged: number;
-}
-
-interface UsageMembersResponse {
-  period: { start: string; end: string } | null;
-  members: MemberUsage[];
-}
+import { zeroUsageMembersContract } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 
 /**
  * Async computed signal that fetches per-member usage data.
  * Throws on non-OK responses so useLoadable enters hasError state.
  */
 export const usageMembersAsync$ = computed(async (get) => {
-  const fetchFn = await get(fetch$);
-  const response = await fetchFn("/api/usage/members");
-  if (!response.ok) {
-    throw new Error(`Failed to fetch usage data: ${response.status}`);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroUsageMembersContract);
+  const result = await client.get();
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch usage data: ${result.status}`);
   }
-  const data = (await response.json()) as UsageMembersResponse;
-  return data;
+  return result.body;
 });

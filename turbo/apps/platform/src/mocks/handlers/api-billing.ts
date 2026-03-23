@@ -1,7 +1,7 @@
 /**
  * Billing API Handlers
  *
- * Mock handlers for /api/billing endpoints.
+ * Mock handlers for /api/zero/billing endpoints.
  */
 
 import { http, HttpResponse } from "msw";
@@ -32,11 +32,11 @@ export function resetMockBilling(): void {
 }
 
 export const apiBillingHandlers = [
-  http.get("*/api/billing/status", () => {
+  http.get("*/api/zero/billing/status", () => {
     return HttpResponse.json(mockBillingStatus);
   }),
 
-  http.post("*/api/billing/checkout", async ({ request }) => {
+  http.post("*/api/zero/billing/checkout", async ({ request }) => {
     const body = (await request.json()) as {
       tier: string;
       successUrl: string;
@@ -47,17 +47,17 @@ export const apiBillingHandlers = [
     });
   }),
 
-  http.post("*/api/billing/portal", () => {
+  http.post("*/api/zero/billing/portal", () => {
     return HttpResponse.json({
       url: "https://billing.stripe.com/test-portal",
     });
   }),
 
-  http.get("*/api/billing/auto-recharge", () => {
+  http.get("*/api/zero/billing/auto-recharge", () => {
     return HttpResponse.json(mockBillingStatus.autoRecharge);
   }),
 
-  http.put("*/api/billing/auto-recharge", async ({ request }) => {
+  http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
     const body = (await request.json()) as {
       enabled: boolean;
       threshold?: number;
