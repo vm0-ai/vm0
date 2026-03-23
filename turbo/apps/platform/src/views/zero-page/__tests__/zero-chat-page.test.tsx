@@ -56,6 +56,35 @@ vi.mock("../zero-ideation-page.tsx", async (importOriginal) => {
   };
 });
 
+vi.mock("../zero-ideation-page.tsx", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../zero-ideation-page.tsx")>();
+  return {
+    ...actual,
+    getRandomPrompts: () => [
+      {
+        title: "Auto-organize inbox",
+        description: "Smart categorization, reply, and daily email digest",
+        prompt:
+          "Set up auto-organization for my inbox with smart categorization, auto-reply rules, and a daily email digest",
+        connectors: ["gmail"],
+      },
+      {
+        title: "Daily morning brief",
+        description: "Trending topics on a schedule, your personalized digest",
+        prompt: "Morning brief prompt",
+        connectors: ["slack"],
+      },
+      {
+        title: "Create a sub-agent",
+        description: "Build a specialized agent for a specific workflow",
+        prompt: "Sub-agent prompt",
+        connectors: ["notion"],
+      },
+    ],
+  };
+});
+
 const context = testContext();
 
 function mockChatAPI() {
