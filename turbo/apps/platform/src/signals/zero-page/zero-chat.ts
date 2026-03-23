@@ -642,6 +642,9 @@ export const uploadZeroAttachment$ = command(
       // Remove the failed placeholder
       set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
     } finally {
+      // Clean up the controller entry. When cancel triggers this path, the
+      // entry was already removed by cancelZeroAttachmentUpload$ — Map.delete
+      // on a missing key is a safe no-op.
       set(uploadAbortControllers$, (prev) => {
         const next = new Map(prev);
         next.delete(id);
