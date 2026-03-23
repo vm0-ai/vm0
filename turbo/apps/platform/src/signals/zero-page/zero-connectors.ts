@@ -6,6 +6,7 @@ import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroChatAgentName$ } from "./zero-nav.ts";
 import { defaultAgentName$ } from "./zero-agent-name.ts";
+import type { AgentDetail } from "./agent-types.ts";
 
 const L = logger("ZeroConnectors");
 
@@ -20,15 +21,6 @@ const zeroAgentName$ = computed(async (get) => {
   }
   return await get(defaultAgentName$);
 });
-
-interface ZeroAgentResponse {
-  name: string;
-  agentComposeId: string;
-  description: string | null;
-  displayName: string | null;
-  sound: string | null;
-  connectors: string[];
-}
 
 const internalComposeReload$ = state(0);
 
@@ -51,7 +43,7 @@ const zeroAgent$ = computed(async (get) => {
   if (!resp.ok) {
     throw new Error(`Failed to fetch agent: ${resp.statusText}`);
   }
-  return (await resp.json()) as ZeroAgentResponse;
+  return (await resp.json()) as AgentDetail;
 });
 
 // ---------------------------------------------------------------------------
