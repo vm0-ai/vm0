@@ -507,6 +507,8 @@ export const zeroSessionSwitching$ = computed((get) =>
  */
 export const prepareSessionSwitch$ = command(({ set }) => {
   set(internalSessionSwitching$, true);
+  set(internalMessages$, []);
+  set(internalSessionError$, null);
 });
 
 // Chat input
@@ -1153,6 +1155,7 @@ export const syncUrlSession$ = command(async ({ get, set }) => {
   }
   const currentThreadId = get(zeroChatThreadId$);
   if (urlSessionId === currentThreadId) {
+    set(internalSessionSwitching$, false);
     return;
   }
   await set(switchZeroSession$, urlSessionId);

@@ -309,6 +309,50 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
     });
 
+    it("should clear messages and session error", async () => {
+      useChatThreadHandlers();
+      server.use(
+        http.post("*/api/zero/runs", () => {
+          return HttpResponse.json({ runId: "run-1" });
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          return HttpResponse.json({
+            id: "run-1",
+            status: "completed",
+            error: null,
+            prompt: "test",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: "2026-03-10T00:00:02Z",
+          });
+        }),
+        http.get("*/api/zero/runs/:runId", () => {
+          return HttpResponse.json({
+            result: { agentSessionId: "s1" },
+          });
+        }),
+      );
+
+      await setup();
+
+      // Send a message to populate messages
+      await context.store.set(sendZeroChatMessage$, "Hello");
+      await delay(50);
+      expect(context.store.get(zeroChatMessages$).length).toBeGreaterThan(0);
+
+      context.store.set(prepareSessionSwitch$);
+
+      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
+      expect(context.store.get(zeroSessionError$)).toBeNull();
+    });
+
     it("should be cleared after switchZeroSession$ completes", async () => {
       server.use(
         http.get("*/api/zero/chat-threads/:id", () => {
@@ -778,6 +822,46 @@ describe("zero-chat signals", () => {
       // Second sync with same URL should skip
       await context.store.set(syncUrlSession$);
       expect(switchCount).toBe(1);
+    });
+
+    it("should reset sessionSwitching when thread is already loaded", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "already-loaded",
+            title: null,
+            agentComposeId: "mock-compose-id",
+            chatMessages: [
+              {
+                role: "user",
+                content: "Existing",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+            ],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
+
+      await setupPage({
+        context,
+        path: "/chat/already-loaded",
+        withoutRender: true,
+      });
+
+      // First sync loads the thread
+      await context.store.set(syncUrlSession$);
+      expect(context.store.get(zeroChatThreadId$)).toBe("already-loaded");
+
+      // Simulate prepareSessionSwitch$ being called (e.g. by route setup)
+      context.store.set(prepareSessionSwitch$);
+      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
+
+      // Second sync detects thread matches — must reset switching
+      await context.store.set(syncUrlSession$);
+      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
     });
   });
 });

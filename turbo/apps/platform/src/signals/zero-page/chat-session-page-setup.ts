@@ -2,18 +2,29 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import { ZeroChatSessionPageWrapper } from "../../views/zero-page/zero-chat-session-page-wrapper.tsx";
 import { updatePage$ } from "../react-router.ts";
-import { fetchAgentsList$ } from "./zero-agents.ts";
-import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { syncUrlSession$ } from "./zero-chat.ts";
+import {
+  syncUrlSession$,
+  prepareSessionSwitch$,
+  zeroChatThreadId$,
+} from "./zero-chat.ts";
+import { zeroSessionId$ } from "./zero-nav.ts";
+import { loadInitialData$ } from "./zero-page.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
 
 export const setupChatSessionPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroChatSessionPageWrapper));
-    await Promise.all([
-      set(fetchAgentsList$),
-      set(initZeroOnboarding$, signal),
-    ]);
+
+    // Show skeleton only when the URL points to a different thread than
+    // what's already loaded.  This covers page refresh (threadId is null)
+    // and sidebar navigation (threadId differs).  When arriving from
+    // /talk after sending a message the thread is already set and messages
+    // are in-flight, so we must NOT clear them.
+    if (get(zeroSessionId$) !== get(zeroChatThreadId$)) {
+      set(prepareSessionSwitch$);
+    }
+
+    await set(loadInitialData$, signal);
     signal.throwIfAborted();
 
     await set(syncUrlSession$);
