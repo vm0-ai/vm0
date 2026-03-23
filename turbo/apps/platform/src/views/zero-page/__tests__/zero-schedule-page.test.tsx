@@ -332,7 +332,7 @@ describe("zero schedule page - delete confirmation", () => {
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
     });
-    expect(deleteCalled).toBe(false);
+    expect(deleteCalled).toBeFalsy();
   });
 
   it("should call delete API when Delete is confirmed", async () => {
