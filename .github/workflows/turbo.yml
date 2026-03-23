@@ -408,11 +408,18 @@ jobs:
           DELETED_JOURNAL=$(git diff --diff-filter=D --name-only "$BASE_REF" -- \
             'turbo/apps/web/src/db/migrations/meta/_journal.json')
 
-          VIOLATIONS="${CHANGED}${DELETED_JOURNAL}"
-
-          if [ -n "$VIOLATIONS" ]; then
+          FAILED=0
+          if [ -n "$CHANGED" ]; then
             echo "::error::Migration files must not be modified or deleted once on main:"
-            echo "$VIOLATIONS"
+            echo "$CHANGED"
+            FAILED=1
+          fi
+          if [ -n "$DELETED_JOURNAL" ]; then
+            echo "::error::Migration journal must not be deleted:"
+            echo "$DELETED_JOURNAL"
+            FAILED=1
+          fi
+          if [ "$FAILED" -eq 1 ]; then
             echo ""
             echo "These files may already be deployed to production."
             echo "Create a NEW migration instead of modifying existing ones."
