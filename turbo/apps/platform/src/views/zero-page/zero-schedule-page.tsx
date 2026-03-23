@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconPencil,
@@ -8,6 +9,7 @@ import {
   IconPlus,
   IconChevronLeft,
   IconChevronRight,
+  IconX,
 } from "@tabler/icons-react";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
@@ -68,7 +70,7 @@ import emptyScheduleImg from "./assets/empty-schedule.webp";
 
 type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
-  zeroAgentId: string;
+  composeId: string;
 };
 
 function buildCombinedSchedule(
@@ -88,10 +90,10 @@ function buildCombinedSchedule(
     name: e.name,
     intervalSeconds: e.intervalSeconds,
     agentLabel:
-      e.zeroAgentId === defaultComposeId
+      e.composeId === defaultComposeId
         ? agentName
-        : (nameToDisplay.get(e.agentName) ?? e.agentName),
-    zeroAgentId: e.zeroAgentId,
+        : (nameToDisplay.get(e.composeName) ?? e.composeName),
+    composeId: e.composeId,
   }));
 }
 
@@ -589,13 +591,59 @@ function ScheduleEditFields({
 }
 
 // ---------------------------------------------------------------------------
+// Confirm close overlay
+// ---------------------------------------------------------------------------
+
+function ConfirmCloseOverlay({
+  onDiscard,
+  onContinue,
+}: {
+  onDiscard: () => void;
+  onContinue: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+      <div
+        className="fixed inset-0 bg-black/50 dark:bg-black/70"
+        onClick={onContinue}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            onContinue();
+          }
+        }}
+        role="button"
+        tabIndex={-1}
+        aria-label="Continue editing"
+      />
+      <div className="relative z-10 mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
+        <p className="text-sm font-medium text-foreground mb-1">
+          You have unsaved changes
+        </p>
+        <p className="text-sm text-muted-foreground mb-4">
+          Are you sure you want to close? Your changes will be lost.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onContinue}>
+            Continue Editing
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onDiscard}>
+            Discard Changes
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Edit dialog
 // ---------------------------------------------------------------------------
 
 interface ScheduleEditDialogProps {
   entry: CombinedEntry | null;
   onClose: () => void;
-  onSave: (params: ZeroScheduleSaveParams & { zeroAgentId: string }) => void;
+  onSave: (params: ZeroScheduleSaveParams & { composeId: string }) => void;
   saving: boolean;
 }
 
@@ -616,6 +664,27 @@ function ScheduleEditDialogInner({
   const [loopMinutes, setLoopMinutes] = useState(parsed.loopMinutes);
   const [notifyEmail, setNotifyEmail] = useState(entry.notifyEmail);
   const [notifySlack, setNotifySlack] = useState(entry.notifySlack);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const isDirty =
+    prompt !== entry.prompt ||
+    description !== (entry.description ?? "") ||
+    freq !== parsed.freq ||
+    date !== parsed.date ||
+    hour !== parsed.hour ||
+    minute !== parsed.minute ||
+    timezone !== parsed.timezone ||
+    loopMinutes !== parsed.loopMinutes ||
+    notifyEmail !== entry.notifyEmail ||
+    notifySlack !== entry.notifySlack;
+
+  const requestClose = () => {
+    if (isDirty) {
+      setShowConfirm(true);
+    } else {
+      onClose();
+    }
+  };
 
   const handleSave = () => {
     if (!prompt.trim()) {
@@ -631,112 +700,131 @@ function ScheduleEditDialogInner({
       timezone,
       intervalSeconds: loopMinutes * 60,
       editName: entry.name,
-      zeroAgentId: entry.zeroAgentId,
+      composeId: entry.composeId,
       notifyEmail,
       notifySlack,
     });
   };
 
   return (
-    <DialogContent className="sm:max-w-lg gap-6">
-      <DialogHeader>
-        <DialogTitle>Edit schedule</DialogTitle>
-      </DialogHeader>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-dialog-prompt"
-            className="text-sm font-medium text-foreground"
-          >
-            Prompt
-          </label>
-          <textarea
-            id="schedule-dialog-prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe your task and instruction"
-            rows={5}
-            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+    <>
+      <DialogContent
+        className="sm:max-w-lg gap-6 [&>button[aria-label=Close]]:hidden"
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          requestClose();
+        }}
+        onInteractOutside={(e) => {
+          e.preventDefault();
+          requestClose();
+        }}
+      >
+        <button
+          type="button"
+          className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100 focus:outline-none"
+          aria-label="Close"
+          onClick={requestClose}
+        >
+          <IconX size={20} className="text-foreground" />
+        </button>
+        <DialogHeader>
+          <DialogTitle>Edit schedule</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="schedule-dialog-prompt"
+              className="text-sm font-medium text-foreground"
+            >
+              Prompt
+            </label>
+            <textarea
+              id="schedule-dialog-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe your task and instruction"
+              rows={5}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="schedule-edit-description"
+              className="text-sm font-medium text-foreground"
+            >
+              Description
+              <span className="text-muted-foreground font-normal ml-1">
+                (optional)
+              </span>
+            </label>
+            <Input
+              id="schedule-edit-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Leave blank to auto-generate"
+              className="h-9"
+            />
+          </div>
+          <ScheduleEditFields
+            freq={freq}
+            setFreq={setFreq}
+            loopMinutes={loopMinutes}
+            setLoopMinutes={setLoopMinutes}
+            date={date}
+            setDate={setDate}
+            hour={hour}
+            setHour={setHour}
+            minute={minute}
+            setMinute={setMinute}
+            timezone={timezone}
+            setTimezone={setTimezone}
           />
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-foreground">
+              Notifications
+            </label>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-foreground">Email</span>
+              <Switch checked={notifyEmail} onCheckedChange={setNotifyEmail} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-foreground">Slack</span>
+              <Switch checked={notifySlack} onCheckedChange={setNotifySlack} />
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-edit-description"
-            className="text-sm font-medium text-foreground"
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            className="zero-btn-morandi"
+            onClick={requestClose}
           >
-            Description
-            <span className="text-muted-foreground font-normal ml-1">
-              (optional)
-            </span>
-          </label>
-          <Input
-            id="schedule-edit-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Leave blank to auto-generate"
-            className="h-9"
-          />
-        </div>
-        <ScheduleEditFields
-          freq={freq}
-          setFreq={setFreq}
-          loopMinutes={loopMinutes}
-          setLoopMinutes={setLoopMinutes}
-          date={date}
-          setDate={setDate}
-          hour={hour}
-          setHour={setHour}
-          minute={minute}
-          setMinute={setMinute}
-          timezone={timezone}
-          setTimezone={setTimezone}
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={!prompt.trim() || saving}
+          >
+            {saving ? "Saving\u2026" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+      {showConfirm && (
+        <ConfirmCloseOverlay
+          onDiscard={onClose}
+          onContinue={() => setShowConfirm(false)}
         />
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground">
-            Notifications
-          </label>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-foreground">Email</span>
-            <Switch checked={notifyEmail} onCheckedChange={setNotifyEmail} />
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-foreground">Slack</span>
-            <Switch checked={notifySlack} onCheckedChange={setNotifySlack} />
-          </div>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          className="zero-btn-morandi"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!prompt.trim() || saving}
-        >
-          {saving ? "Saving\u2026" : "Save"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
+      )}
+    </>
   );
 }
 
 function ScheduleEditDialog(props: ScheduleEditDialogProps) {
-  const { entry, onClose } = props;
+  const { entry } = props;
   return (
-    <Dialog
-      open={entry !== null}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={entry !== null} onOpenChange={() => {}}>
       {entry && (
         <ScheduleEditDialogInner key={entry.id} {...props} entry={entry} />
       )}
@@ -751,7 +839,7 @@ function ScheduleEditDialog(props: ScheduleEditDialogProps) {
 interface ScheduleCreateDialogProps {
   open: boolean;
   onClose: () => void;
-  onSave: (params: ZeroScheduleSaveParams & { zeroAgentId: string }) => void;
+  onSave: (params: ZeroScheduleSaveParams & { composeId: string }) => void;
   saving: boolean;
   agents: { id: string; name: string; displayName?: string | null }[];
   defaultComposeId: string | null;
@@ -766,7 +854,7 @@ function ScheduleCreateDialogInner({
 }: Omit<ScheduleCreateDialogProps, "open">) {
   const [prompt, setPrompt] = useState("");
   const [description, setDescription] = useState("");
-  const [zeroAgentId, setZeroAgentId] = useState(
+  const [composeId, setComposeId] = useState(
     defaultComposeId ?? agents[0]?.id ?? "",
   );
   const [freq, setFreq] = useState("every_day");
@@ -777,9 +865,20 @@ function ScheduleCreateDialogInner({
     new Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
   const [loopMinutes, setLoopMinutes] = useState(15);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const isDirty = prompt.trim() !== "" || description.trim() !== "";
+
+  const requestClose = () => {
+    if (isDirty) {
+      setShowConfirm(true);
+    } else {
+      onClose();
+    }
+  };
 
   const handleSave = () => {
-    if (!prompt.trim() || !zeroAgentId) {
+    if (!prompt.trim() || !composeId) {
       return;
     }
     onSave({
@@ -791,103 +890,129 @@ function ScheduleCreateDialogInner({
       minute,
       timezone,
       intervalSeconds: loopMinutes * 60,
-      zeroAgentId,
+      composeId,
     });
   };
 
   return (
-    <DialogContent className="sm:max-w-lg gap-6">
-      <DialogHeader>
-        <DialogTitle>New schedule</DialogTitle>
-      </DialogHeader>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-agent"
-            className="text-sm font-medium text-foreground"
-          >
-            Agent
-          </label>
-          <Select value={zeroAgentId} onValueChange={setZeroAgentId}>
-            <SelectTrigger id="schedule-create-agent" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.displayName ?? a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-prompt"
-            className="text-sm font-medium text-foreground"
-          >
-            Prompt
-          </label>
-          <textarea
-            id="schedule-create-prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe your task and instruction"
-            rows={5}
-            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+    <>
+      <DialogContent
+        className="sm:max-w-lg gap-6 [&>button[aria-label=Close]]:hidden"
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          requestClose();
+        }}
+        onInteractOutside={(e) => {
+          e.preventDefault();
+          requestClose();
+        }}
+      >
+        <button
+          type="button"
+          className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100 focus:outline-none"
+          aria-label="Close"
+          onClick={requestClose}
+        >
+          <IconX size={20} className="text-foreground" />
+        </button>
+        <DialogHeader>
+          <DialogTitle>New schedule</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="schedule-create-agent"
+              className="text-sm font-medium text-foreground"
+            >
+              Agent
+            </label>
+            <Select value={composeId} onValueChange={setComposeId}>
+              <SelectTrigger id="schedule-create-agent" className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.displayName ?? a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="schedule-create-prompt"
+              className="text-sm font-medium text-foreground"
+            >
+              Prompt
+            </label>
+            <textarea
+              id="schedule-create-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe your task and instruction"
+              rows={5}
+              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="schedule-create-description"
+              className="text-sm font-medium text-foreground"
+            >
+              Description
+              <span className="text-muted-foreground font-normal ml-1">
+                (optional)
+              </span>
+            </label>
+            <Input
+              id="schedule-create-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Leave blank to auto-generate"
+              className="h-9"
+            />
+          </div>
+          <ScheduleEditFields
+            freq={freq}
+            setFreq={setFreq}
+            loopMinutes={loopMinutes}
+            setLoopMinutes={setLoopMinutes}
+            date={date}
+            setDate={setDate}
+            hour={hour}
+            setHour={setHour}
+            minute={minute}
+            setMinute={setMinute}
+            timezone={timezone}
+            setTimezone={setTimezone}
           />
         </div>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-description"
-            className="text-sm font-medium text-foreground"
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            className="zero-btn-morandi"
+            onClick={requestClose}
           >
-            Description
-            <span className="text-muted-foreground font-normal ml-1">
-              (optional)
-            </span>
-          </label>
-          <Input
-            id="schedule-create-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Leave blank to auto-generate"
-            className="h-9"
-          />
-        </div>
-        <ScheduleEditFields
-          freq={freq}
-          setFreq={setFreq}
-          loopMinutes={loopMinutes}
-          setLoopMinutes={setLoopMinutes}
-          date={date}
-          setDate={setDate}
-          hour={hour}
-          setHour={setHour}
-          minute={minute}
-          setMinute={setMinute}
-          timezone={timezone}
-          setTimezone={setTimezone}
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={!prompt.trim() || !composeId || saving}
+          >
+            {saving ? "Creating\u2026" : "Create"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+      {showConfirm && (
+        <ConfirmCloseOverlay
+          onDiscard={onClose}
+          onContinue={() => setShowConfirm(false)}
         />
-      </div>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          className="zero-btn-morandi"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!prompt.trim() || !zeroAgentId || saving}
-        >
-          {saving ? "Creating\u2026" : "Create"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
+      )}
+    </>
   );
 }
 
@@ -897,14 +1022,7 @@ function ScheduleCreateDialog({
   ...rest
 }: ScheduleCreateDialogProps) {
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={open} onOpenChange={() => {}}>
       {open && <ScheduleCreateDialogInner onClose={onClose} {...rest} />}
     </Dialog>
   );
@@ -1148,7 +1266,7 @@ export function ZeroSchedulePage() {
   };
 
   const handleCreateSave = (
-    params: ZeroScheduleSaveParams & { zeroAgentId: string },
+    params: ZeroScheduleSaveParams & { composeId: string },
   ) => {
     setSaving(true);
     detach(
@@ -1164,7 +1282,7 @@ export function ZeroSchedulePage() {
   };
 
   const handleDialogSave = (
-    params: ZeroScheduleSaveParams & { zeroAgentId: string },
+    params: ZeroScheduleSaveParams & { composeId: string },
   ) => {
     setSaving(true);
     detach(
@@ -1186,7 +1304,7 @@ export function ZeroSchedulePage() {
     await toggleEnabled({
       name: entry.name,
       enabled,
-      zeroAgentId: entry.zeroAgentId,
+      composeId: entry.composeId,
     });
   };
 
@@ -1204,7 +1322,7 @@ export function ZeroSchedulePage() {
     detach(
       deleteSchedule({
         name: pendingDelete.name,
-        zeroAgentId: pendingDelete.zeroAgentId,
+        composeId: pendingDelete.composeId,
       }),
       Reason.DomCallback,
     );
