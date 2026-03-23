@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.137.0](https://github.com/vm0-ai/vm0/compare/app-v0.136.0...app-v0.137.0) (2026-03-23)
+
+
+### Features
+
+* auto-generate chat thread titles via lightweight model ([#6063](https://github.com/vm0-ai/vm0/issues/6063)) ([86f3bfb](https://github.com/vm0-ai/vm0/commit/86f3bfb82258ebe9cc8740e58755e03bf6d6eebb))
+
+
+### Refactoring
+
+* generalize slack file handling to support all file types ([#6093](https://github.com/vm0-ai/vm0/issues/6093)) ([a44492d](https://github.com/vm0-ai/vm0/commit/a44492dd0364d902e7b47ad7b2600d39dc463139))
+* remove settings menu item and /settings route ([#6095](https://github.com/vm0-ai/vm0/issues/6095)) ([b65e940](https://github.com/vm0-ai/vm0/commit/b65e9405c30aafd9698483d82caa9c41a6674444))
+* remove wildcard routes and migrate / to dedicated setup ([#6069](https://github.com/vm0-ai/vm0/issues/6069)) ([81a31fb](https://github.com/vm0-ai/vm0/commit/81a31fb5bbd3008f91d411141f1db240f8111dbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.94.0
+
 ## [0.136.0](https://github.com/vm0-ai/vm0/compare/app-v0.135.0...app-v0.136.0) (2026-03-23)
 
 

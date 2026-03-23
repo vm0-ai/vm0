@@ -5,6 +5,7 @@ import {
   IconLoader2,
   IconUsers,
   IconCircleDot,
+  IconPlugConnected,
 } from "@tabler/icons-react";
 import {
   Select,
@@ -17,13 +18,14 @@ import {
 import {
   TRIGGER_SOURCE_LABELS,
   type LogEntry,
+  type LogStatus,
 } from "../../signals/zero-page/log-types.ts";
 import { StatusBadge } from "./components/logs/status-badge.tsx";
 import { Pagination } from "../components/pagination.tsx";
 import {
   zeroActivityAgentFilter$,
   zeroActivityStatusFilter$,
-  zeroActivityOrgAgents$,
+  zeroActivitySourceFilter$,
   setZeroActivityFilter$,
   zeroActivityData$,
   zeroActivityLimit$,
@@ -36,19 +38,23 @@ import {
   setZeroActivityRowsPerPage$,
   formatLogTime,
   formatDuration,
+  zeroActivityAvailableStatuses$,
+  zeroActivityAvailableSources$,
+  zeroActivityAvailableAgents$,
 } from "../../signals/activity-page/activity-signals.ts";
 import { Link } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
 import emptyActivityImg from "./assets/empty-activity.webp";
 
-const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
-  { value: "all", label: "All status" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "running", label: "Running" },
-  { value: "timeout", label: "Timeout" },
-  { value: "cancelled", label: "Cancelled" },
-];
+const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
+  queued: "Queued",
+  pending: "Pending",
+  running: "Running",
+  completed: "Completed",
+  failed: "Failed",
+  timeout: "Timeout",
+  cancelled: "Cancelled",
+};
 
 const ROW_GRID =
   "grid grid-cols-[1fr_5rem_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
@@ -123,8 +129,11 @@ export function ZeroActivityPage() {
 
   const agentFilter = useGet(zeroActivityAgentFilter$);
   const statusFilter = useGet(zeroActivityStatusFilter$);
+  const sourceFilter = useGet(zeroActivitySourceFilter$);
   const setFilter = useSet(setZeroActivityFilter$);
-  const orgAgents = useGet(zeroActivityOrgAgents$);
+  const availableStatusesLoadable = useLoadable(zeroActivityAvailableStatuses$);
+  const availableSourcesLoadable = useLoadable(zeroActivityAvailableSources$);
+  const availableAgentsLoadable = useLoadable(zeroActivityAvailableAgents$);
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
   const hasNext =
@@ -135,10 +144,35 @@ export function ZeroActivityPage() {
       : undefined;
   const isLoading = dataLoadable.state === "loading";
 
-  // Agent filter options: show display names, map back to compose name
+  // Agent filter options: only agents with activity records
   const agentOptions = [
     { value: "all", label: "All agents" },
-    ...orgAgents.map((a) => ({ value: a.name, label: a.displayName })),
+    ...(availableAgentsLoadable.state === "hasData"
+      ? availableAgentsLoadable.data.map((a) => ({
+          value: a.name,
+          label: a.displayName,
+        }))
+      : []),
+  ];
+
+  const statusOptions = [
+    { value: "all", label: "All status" },
+    ...(availableStatusesLoadable.state === "hasData"
+      ? availableStatusesLoadable.data.map((s) => ({
+          value: s,
+          label: STATUS_LABELS[s],
+        }))
+      : []),
+  ];
+
+  const sourceOptions = [
+    { value: "all", label: "All sources" },
+    ...(availableSourcesLoadable.state === "hasData"
+      ? availableSourcesLoadable.data.map((s) => ({
+          value: s,
+          label: TRIGGER_SOURCE_LABELS[s],
+        }))
+      : []),
   ];
 
   return (
@@ -181,7 +215,27 @@ export function ZeroActivityPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((opt) => (
+                  {statusOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={sourceFilter}
+                onValueChange={(v) => setFilter("source", v)}
+              >
+                <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
+                  <IconPlugConnected
+                    size={14}
+                    stroke={1.5}
+                    className="shrink-0"
+                  />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {sourceOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
@@ -232,12 +286,16 @@ export function ZeroActivityPage() {
                     />
                     <div className="text-center">
                       <p className="text-sm font-medium text-foreground">
-                        {agentFilter === "all" && statusFilter === "all"
+                        {agentFilter === "all" &&
+                        statusFilter === "all" &&
+                        sourceFilter === "all"
                           ? "All quiet for now"
                           : "Nothing matches those filters"}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {agentFilter === "all" && statusFilter === "all"
+                        {agentFilter === "all" &&
+                        statusFilter === "all" &&
+                        sourceFilter === "all"
                           ? "When your agents start working, their activity will show up here."
                           : "Try different filters to find what you're looking for."}
                       </p>

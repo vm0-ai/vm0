@@ -37,6 +37,11 @@ export interface LogsListResponse {
     nextCursor: string | null;
     totalPages: number;
   };
+  filters: {
+    statuses: LogStatus[];
+    sources: TriggerSource[];
+    agents: string[];
+  };
 }
 
 // Detail response - full log information

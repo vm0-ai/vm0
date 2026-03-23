@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.94.0](https://github.com/vm0-ai/vm0/compare/core-v8.93.0...core-v8.94.0) (2026-03-23)
+
+
+### Features
+
+* add connector search endpoint for connector discovery ([#6065](https://github.com/vm0-ai/vm0/issues/6065)) ([54cf245](https://github.com/vm0-ai/vm0/commit/54cf245a0fc4d768ded13aadb30b0437c2e79700))
+* auto-generate chat thread titles via lightweight model ([#6063](https://github.com/vm0-ai/vm0/issues/6063)) ([86f3bfb](https://github.com/vm0-ai/vm0/commit/86f3bfb82258ebe9cc8740e58755e03bf6d6eebb))
+* bundle google firewalls into @vm0/core ([#6097](https://github.com/vm0-ai/vm0/issues/6097)) ([cd1dfd5](https://github.com/vm0-ai/vm0/commit/cd1dfd50ca0b69a352940747ecd45ada282a4e68))
+
 ## [8.93.0](https://github.com/vm0-ai/vm0/compare/core-v8.92.0...core-v8.93.0) (2026-03-23)
 
 

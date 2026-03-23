@@ -6,11 +6,11 @@ const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 
 const MOCK_INVOICES = [
-  { id: "INV-2026-003", date: "3/1/2026", amount: "$29.00", status: "Paid" },
-  { id: "INV-2026-002", date: "2/1/2026", amount: "$29.00", status: "Paid" },
-  { id: "INV-2026-001", date: "1/1/2026", amount: "$29.00", status: "Paid" },
+  { id: "INV-2026-003", date: "3/1/2026", amount: "$40.00", status: "Paid" },
+  { id: "INV-2026-002", date: "2/1/2026", amount: "$40.00", status: "Paid" },
+  { id: "INV-2026-001", date: "1/1/2026", amount: "$40.00", status: "Paid" },
   { id: "INV-2025-012", date: "12/1/2025", amount: "$49.00", status: "Paid" },
-  { id: "INV-2025-011", date: "11/1/2025", amount: "$29.00", status: "Paid" },
+  { id: "INV-2025-011", date: "11/1/2025", amount: "$40.00", status: "Paid" },
 ] as const;
 
 export function OrgInvoicesTab() {

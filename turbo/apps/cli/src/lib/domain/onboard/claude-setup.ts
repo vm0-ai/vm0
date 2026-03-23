@@ -67,21 +67,6 @@ async function runClaudeCommand(
 }
 
 /**
- * Handle installation error with user-friendly message and exit
- */
-export function handlePluginError(error: unknown, context?: string): never {
-  const displayContext = context ?? "Claude plugin";
-  console.error(chalk.red(`✗ Failed to install ${displayContext}`));
-  if (error instanceof Error) {
-    console.error(chalk.red(`✗ ${error.message}`));
-  }
-  console.error(
-    chalk.dim("Please ensure Claude CLI is installed and accessible."),
-  );
-  process.exit(1);
-}
-
-/**
  * Check if the VM0 skills marketplace is already added
  */
 async function isMarketplaceInstalled(): Promise<boolean> {

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.45.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.0...runner-rs-v0.45.1) (2026-03-23)
+
+
+### Bug Fixes
+
+* add missing libc dependency to runner crate ([#6092](https://github.com/vm0-ai/vm0/issues/6092)) ([5ba363c](https://github.com/vm0-ai/vm0/commit/5ba363c94e1fb094c339fc4982f93880f52b6503))
+* unify pr and mq job-ref and add job-level concurrency groups ([#6086](https://github.com/vm0-ai/vm0/issues/6086)) ([e25f45a](https://github.com/vm0-ai/vm0/commit/e25f45aa5cbcde73a3cf850b67df550a8626885c))
+
 ## [0.45.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.44.1...runner-rs-v0.45.0) (2026-03-23)
 
 

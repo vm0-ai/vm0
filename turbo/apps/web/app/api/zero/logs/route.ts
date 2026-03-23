@@ -8,7 +8,13 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { logsListContract, type LogStatus } from "@vm0/core";
+import {
+  logsListContract,
+  logStatusSchema,
+  triggerSourceSchema,
+  type LogStatus,
+  type TriggerSource,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
@@ -23,7 +29,17 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { inferTriggerSource } from "../../../../src/lib/run/trigger-source";
-import { eq, and, desc, lt, or, ilike, count, type SQL } from "drizzle-orm";
+import {
+  eq,
+  and,
+  desc,
+  lt,
+  or,
+  ilike,
+  count,
+  isNotNull,
+  type SQL,
+} from "drizzle-orm";
 
 const log = logger("api:zero:logs");
 
@@ -38,6 +54,7 @@ interface LogsQuery {
   agent?: string;
   search?: string;
   status?: LogStatus;
+  triggerSource?: TriggerSource;
   cursor?: string;
   limit?: number;
 }
@@ -94,6 +111,9 @@ async function getTotalCount(
   if (query.status) {
     conditions.push(eq(agentRuns.status, query.status));
   }
+  if (query.triggerSource) {
+    conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
+  }
 
   const [result] = await globalThis.services.db
     .select({ count: count() })
@@ -120,6 +140,63 @@ function extractFramework(composeContent: unknown): string | null {
   const firstAgent =
     agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
   return firstAgent?.framework ?? null;
+}
+
+/**
+ * Get distinct statuses, trigger sources, and agent names for filter dropdowns.
+ */
+async function getAvailableFilters(
+  userId: string,
+  orgId: string,
+): Promise<{
+  statuses: LogStatus[];
+  sources: TriggerSource[];
+  agents: string[];
+}> {
+  const db = globalThis.services.db;
+  const baseConditions = [
+    eq(agentRuns.userId, userId),
+    eq(agentRuns.orgId, orgId),
+  ];
+
+  const [statusRows, sourceRows, agentRows] = await Promise.all([
+    db
+      .selectDistinct({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(and(...baseConditions)),
+    db
+      .selectDistinct({ triggerSource: agentRuns.triggerSource })
+      .from(agentRuns)
+      .where(and(...baseConditions, isNotNull(agentRuns.triggerSource))),
+    db
+      .selectDistinct({ name: agentComposes.name })
+      .from(agentRuns)
+      .leftJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .leftJoin(
+        agentComposes,
+        eq(agentComposeVersions.composeId, agentComposes.id),
+      )
+      .where(and(...baseConditions, isNotNull(agentComposes.name))),
+  ]);
+
+  const statuses = statusRows
+    .map((r) => logStatusSchema.safeParse(r.status))
+    .filter((r) => r.success)
+    .map((r) => r.data);
+
+  const sources = sourceRows
+    .map((r) => triggerSourceSchema.safeParse(r.triggerSource))
+    .filter((r) => r.success)
+    .map((r) => r.data);
+
+  const agents = agentRows
+    .map((r) => r.name)
+    .filter((name): name is string => name !== null);
+
+  return { statuses, sources, agents };
 }
 
 const router = tsr.router(logsListContract, {
@@ -151,6 +228,7 @@ const router = tsr.router(logsListContract, {
           body: {
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 0 },
+            filters: { statuses: [], sources: [], agents: [] },
           },
         };
       }
@@ -175,6 +253,9 @@ const router = tsr.router(logsListContract, {
 
     if (query.status) {
       conditions.push(eq(agentRuns.status, query.status));
+    }
+    if (query.triggerSource) {
+      conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
     }
 
     const runs = await globalThis.services.db
@@ -234,7 +315,10 @@ const router = tsr.router(logsListContract, {
       }),
     );
 
-    const totalCount = await getTotalCount(userId, query, orgId);
+    const [totalCount, filters] = await Promise.all([
+      getTotalCount(userId, query, orgId),
+      getAvailableFilters(userId, orgId),
+    ]);
     const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
     // Determine pagination info
@@ -269,6 +353,7 @@ const router = tsr.router(logsListContract, {
           nextCursor,
           totalPages,
         },
+        filters,
       },
     };
   },

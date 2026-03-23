@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.144.0](https://github.com/vm0-ai/vm0/compare/web-v12.143.0...web-v12.144.0) (2026-03-23)
+
+
+### Features
+
+* add connector search endpoint for connector discovery ([#6065](https://github.com/vm0-ai/vm0/issues/6065)) ([54cf245](https://github.com/vm0-ai/vm0/commit/54cf245a0fc4d768ded13aadb30b0437c2e79700))
+* auto-generate chat thread titles via lightweight model ([#6063](https://github.com/vm0-ai/vm0/issues/6063)) ([86f3bfb](https://github.com/vm0-ai/vm0/commit/86f3bfb82258ebe9cc8740e58755e03bf6d6eebb))
+
+
+### Refactoring
+
+* extract run service functions and replace infra-client proxy in run routes ([#6094](https://github.com/vm0-ai/vm0/issues/6094)) ([3bd8770](https://github.com/vm0-ai/vm0/commit/3bd877009ffac52c6dc1e4d7879ab45d6e680e27))
+* generalize slack file handling to support all file types ([#6093](https://github.com/vm0-ai/vm0/issues/6093)) ([a44492d](https://github.com/vm0-ai/vm0/commit/a44492dd0364d902e7b47ad7b2600d39dc463139))
+* replace infra-client proxy with direct service calls in connector and org zero routes ([#6081](https://github.com/vm0-ai/vm0/issues/6081)) ([3f87c28](https://github.com/vm0-ai/vm0/commit/3f87c288259f330cb50c0e5cb87bace164d434c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.94.0
+
 ## [12.143.0](https://github.com/vm0-ai/vm0/compare/web-v12.142.0...web-v12.143.0) (2026-03-23)
 
 

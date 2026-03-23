@@ -36,7 +36,7 @@ export const setSelectedModel$ = command(({ set }, value: string) => {
 
 /**
  * Sync model preference from localStorage for the current agent.
- * Called from setupZeroPage$ on each navigation — eliminates the
+ * Called from each route's setup function on navigation — eliminates the
  * prevAgentName + queueMicrotask pattern entirely.
  */
 export const syncModelPreference$ = command(({ get, set }) => {

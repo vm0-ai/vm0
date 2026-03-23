@@ -34,7 +34,7 @@ const PLANS = [
     cta: "Current plan",
     image: planFreeImg,
     features: [
-      "500 credits / month",
+      "10,000 starter credits",
       "1 active agent",
       "Unlimited total agents",
       "Bring your own LLM keys",
@@ -43,7 +43,7 @@ const PLANS = [
   },
   {
     name: "Pro",
-    price: "$29",
+    price: "$40",
     period: "/month",
     description: "More power and seamless collaboration for your team.",
     cta: "Upgrade to Pro",
@@ -51,7 +51,7 @@ const PLANS = [
     badge: "Popular",
     image: planProImg,
     features: [
-      "5,000 credits / month",
+      "20,000 credits / month",
       "2 active agents",
       "Unlimited total agents",
       "Bring your own LLM keys",
@@ -61,13 +61,13 @@ const PLANS = [
   },
   {
     name: "Team",
-    price: "$99",
+    price: "$200",
     period: "/month",
     description: "Scale fast with zero friction and full flexibility.",
     cta: "Upgrade to Team",
     image: planTeamImg,
     features: [
-      "25,000 credits / month",
+      "120,000 credits / month",
       "5 active agents",
       "Unlimited total agents",
       "Bring your own LLM keys",

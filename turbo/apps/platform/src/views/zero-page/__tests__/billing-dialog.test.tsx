@@ -123,7 +123,7 @@ describe("billing in sidebar", () => {
     await screen.findByText("Choose your plan");
 
     // Find the Pro plan card and click it
-    const proPlanCard = screen.getByText("$29").closest("button");
+    const proPlanCard = screen.getByText("$40").closest("button");
     expect(proPlanCard).toBeTruthy();
     await act(() => {
       fireEvent.click(proPlanCard!);
@@ -189,7 +189,7 @@ describe("billing in sidebar", () => {
     await screen.findByText("Choose your plan");
 
     // Click pro plan
-    const proPlanCard = screen.getByText("$29").closest("button");
+    const proPlanCard = screen.getByText("$40").closest("button");
     expect(proPlanCard).toBeTruthy();
     await act(() => {
       fireEvent.click(proPlanCard!);

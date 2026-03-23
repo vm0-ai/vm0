@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.14.1...sandbox-fc-v0.15.0) (2026-03-23)
+
+
+### Features
+
+* log non-tcp traffic from sandbox vms via iptables and /dev/kmsg ([#6060](https://github.com/vm0-ai/vm0/issues/6060)) ([ddf2a0c](https://github.com/vm0-ai/vm0/commit/ddf2a0c3c2c99928d4f12eda1f48a887cfd5533a))
+
 ## [0.14.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.14.0...sandbox-fc-v0.14.1) (2026-03-22)
 
 

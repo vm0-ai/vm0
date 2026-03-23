@@ -130,6 +130,19 @@ export async function addRunToThread(
     .where(eq(chatThreads.id, threadId));
 }
 
+/**
+ * Update a chat thread's title.
+ */
+export async function updateChatThreadTitle(
+  threadId: string,
+  title: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ title })
+    .where(eq(chatThreads.id, threadId));
+}
+
 function hasAgentSessionId(
   value: unknown,
 ): value is { agentSessionId: string } {

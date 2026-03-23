@@ -245,7 +245,7 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing?.lastProcessedInvoiceId).toBe(invId);
     });
 
-    it("grants 80k credits for team tier", async () => {
+    it("grants 120k credits for team tier", async () => {
       const cusId = uniqueId("cus-inv-team");
       const subId = uniqueId("sub-inv-team");
       const invId = uniqueId("inv-team");
@@ -271,7 +271,7 @@ describe("POST /api/webhooks/stripe", () => {
       expect(response.status).toBe(200);
 
       const creditsAfter = await getOrgCredits(user.orgId);
-      expect(creditsAfter! - creditsBefore!).toBe(80_000);
+      expect(creditsAfter! - creditsBefore!).toBe(120_000);
     });
 
     it("credits rollover — adds to existing balance", async () => {

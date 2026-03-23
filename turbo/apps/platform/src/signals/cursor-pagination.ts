@@ -208,6 +208,7 @@ export function createCursorPagination(config: CursorPaginationConfig) {
       return {
         data: [],
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
       } satisfies LogsListResponse;
     }
 

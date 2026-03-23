@@ -1,41 +1,23 @@
 import { command, state, type Getter, type Setter } from "ccstate";
-import { createElement } from "react";
-import { ZeroPage } from "../../views/zero-page/zero-page.tsx";
-import { updatePage$ } from "../react-router.ts";
 import { fetchAgentsList$, zeroSubagents$ } from "./zero-agents.ts";
 import { defaultAgentName$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
-import {
-  zeroChatAgentName$,
-  zeroInChat$,
-  zeroSessionId$,
-  initSidebarCollapsed$,
-} from "./zero-nav.ts";
-import {
-  switchActiveAgent$,
-  syncUrlSession$,
-  prepareSessionSwitch$,
-} from "./zero-chat.ts";
+import { initSidebarCollapsed$ } from "./zero-nav.ts";
+import { switchActiveAgent$ } from "./zero-chat.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "./zero-pinned-agents.ts";
-import { syncModelPreference$ } from "./zero-model-preference.ts";
-import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
-import { logger } from "../log.ts";
-import { pathname$ } from "../route.ts";
 import { Reason, detach } from "../utils.ts";
-
-const L = logger("ZeroPage");
 
 /** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
 const initialDataLoaded$ = state(false);
 
 /**
  * Load agents, onboarding, and slack data once.
- * Shared by setupZeroPage$ and setupTalkPage$ so the first route to
- * execute pays the cost and subsequent navigations skip it.
+ * Shared by route setup functions (chat, talk, chat-session) so the first
+ * route to execute pays the cost and subsequent navigations skip it.
  */
 export const loadInitialData$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -61,7 +43,7 @@ export const loadInitialData$ = command(
  * - If agentName is unknown, switches to null and redirects to default.
  * - If agentName is null, switches to null (no agent).
  *
- * Shared by setupZeroPage$ and setupTalkPage$ to avoid duplicating
+ * Used by setupTalkPage$ to avoid duplicating
  * the lookup / pin / redirect logic.
  */
 export async function resolveAgentByName(
@@ -105,58 +87,3 @@ export async function resolveAgentByName(
     set(switchActiveAgent$, null);
   }
 }
-
-/**
- * Resolve the active agent from the URL and switch to it.
- *
- * - `/chat/:threadId` → sync session via syncUrlSession$
- * - `/talk/:name` → find agent by name, switch to it
- * - other `/:tab` / `/:tab/:sub` → switch to default agent
- *
- * Note: bare `/` is handled by `setupChatPage$` in bootstrap.ts.
- *
- * switchActiveAgent$ sets the agent AND fetches the session list atomically.
- */
-async function resolveAndSwitchAgent(
-  get: Getter,
-  set: Setter,
-  signal: AbortSignal,
-) {
-  const currentPath = get(pathname$);
-
-  // On /chat/:threadId, syncUrlSession$ switches to the correct session.
-  // Don't resolve agent here — switchZeroSession$ handles that internally.
-  if (get(zeroInChat$)) {
-    L.info("on chat URL, syncing session");
-    await set(syncUrlSession$);
-    return;
-  }
-  L.info("resolveAgent path:", currentPath);
-
-  // Resolve agent from /talk/:name
-  const agentName = get(zeroChatAgentName$);
-  await resolveAgentByName(get, set, signal, agentName);
-}
-
-export const setupZeroPage$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroPage));
-
-    // When landing on /chat/:sessionId (e.g. page refresh), mark session as
-    // switching immediately so the UI shows a skeleton instead of briefly
-    // flashing the "Send a message" empty state while initial data loads.
-    if (get(zeroSessionId$)) {
-      set(prepareSessionSwitch$);
-    }
-
-    await set(loadInitialData$, signal);
-
-    // Consume ?settings=<tab> param before resolveAndSwitchAgent replaces the URL
-    set(checkSettingsParam$);
-
-    await resolveAndSwitchAgent(get, set, signal);
-
-    // Reset model selection for the (possibly new) active agent
-    set(syncModelPreference$);
-  },
-);

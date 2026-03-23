@@ -30,6 +30,11 @@ export const zeroActivityStatusFilter$ = computed((get) => {
   return get(searchParams$).get("status") ?? "all";
 });
 
+/** Source filter derived from URL `?source=` query param. */
+export const zeroActivitySourceFilter$ = computed((get) => {
+  return get(searchParams$).get("source") ?? "all";
+});
+
 // ---------------------------------------------------------------------------
 // Org agents — fetch all composes for name → displayName mapping
 // ---------------------------------------------------------------------------
@@ -41,10 +46,8 @@ interface AgentOption {
 
 const internalOrgAgents$ = state<AgentOption[]>([]);
 
-/** All agents in the current org with display names. */
-export const zeroActivityOrgAgents$ = computed((get) =>
-  get(internalOrgAgents$),
-);
+/** All agents in the current org with display names (used internally for display name mapping). */
+const orgAgents$ = computed((get) => get(internalOrgAgents$));
 
 const fetchOrgAgents$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
@@ -111,6 +114,10 @@ export const {
     if (statusFilter !== "all") {
       params.set("status", statusFilter);
     }
+    const sourceFilter = get(zeroActivitySourceFilter$);
+    if (sourceFilter !== "all") {
+      params.set("triggerSource", sourceFilter);
+    }
     return params;
   },
   preserveUrlParams: (get) => {
@@ -123,24 +130,65 @@ export const {
     if (status !== "all") {
       result.status = status;
     }
+    const source = get(zeroActivitySourceFilter$);
+    if (source !== "all") {
+      result.source = source;
+    }
     return result;
   },
 });
 
+/** Available status values from the server (only statuses that exist in the data). */
+export const zeroActivityAvailableStatuses$ = computed(async (get) => {
+  const response = await get(zeroActivityData$);
+  return response.filters.statuses;
+});
+
+/** Available source values from the server (only sources that exist in the data). */
+export const zeroActivityAvailableSources$ = computed(async (get) => {
+  const response = await get(zeroActivityData$);
+  return response.filters.sources;
+});
+
+/** Available agent names from the server (only agents that have activity). */
+export const zeroActivityAvailableAgents$ = computed(async (get) => {
+  const response = await get(zeroActivityData$);
+  const orgAgents = get(orgAgents$);
+  // Map agent names to display names using org agents data
+  return response.filters.agents.map((name) => {
+    const agent = orgAgents.find((a) => a.name === name);
+    return {
+      name,
+      displayName:
+        agent?.displayName ?? name.charAt(0).toUpperCase() + name.slice(1),
+    };
+  });
+});
+
+/** All filter keys and their corresponding signals. */
+const FILTER_SIGNALS = {
+  agent: zeroActivityAgentFilter$,
+  status: zeroActivityStatusFilter$,
+  source: zeroActivitySourceFilter$,
+} as const;
+
+type FilterKey = keyof typeof FILTER_SIGNALS;
+
 /** Update a filter — resets pagination and writes to URL. */
 export const setZeroActivityFilter$ = command(
-  ({ get, set }, key: "agent" | "status", value: string) => {
+  ({ get, set }, key: FilterKey, value: string) => {
     set(resetZeroActivityPagination$);
     const params = new URLSearchParams();
 
-    // Preserve other filter
-    const otherKey = key === "agent" ? "status" : "agent";
-    const otherValue =
-      otherKey === "agent"
-        ? get(zeroActivityAgentFilter$)
-        : get(zeroActivityStatusFilter$);
-    if (otherValue !== "all") {
-      params.set(otherKey, otherValue);
+    // Preserve other filters
+    for (const [k, signal] of Object.entries(FILTER_SIGNALS)) {
+      if (k === key) {
+        continue;
+      }
+      const current = get(signal);
+      if (current !== "all") {
+        params.set(k, current);
+      }
     }
 
     if (value !== "all") {

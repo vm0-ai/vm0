@@ -1,14 +1,58 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import { HttpResponse } from "msw";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../src/__tests__/test-helpers";
+import { http } from "../../../../../src/__tests__/msw";
+import { server } from "../../../../../src/mocks/server";
+import { reloadEnv } from "../../../../../src/env";
 import * as externalCleanup from "../../../../../src/lib/org/org-external-cleanup";
 import * as s3Cleanup from "../../../../../src/lib/org/org-s3-cleanup";
 import * as dbCleanup from "../../../../../src/lib/org/org-deletion-service";
+import {
+  createTestCompose,
+  createTestRunInDb,
+  createTestSecret,
+  createTestVariable,
+  createTestAgentSession,
+  createTestEmailThreadSession,
+  insertOrgDefaultModelProvider,
+  createTestZeroAgent,
+  insertTestStorage,
+  insertTestStorageVersion,
+  insertTestUsageDaily,
+  insertTestExportJob,
+  insertOrgMembersCacheEntry,
+  insertOrgMembersEntry,
+  insertTestSlackOrgInstallation,
+  insertTestSlackOrgConnection,
+  insertTestSlackOrgPendingQuestion,
+  countOrgRows,
+  updateOrgStripeSubscription,
+  updateAgentComposeOrg,
+  createTelegramInstallationForCompose,
+} from "../../../../../src/__tests__/api-test-helpers";
 
 // Mock @clerk/nextjs/webhooks (external dependency)
 const mockVerifyWebhook = vi.hoisted(() => vi.fn());
 vi.mock("@clerk/nextjs/webhooks", () => ({
   verifyWebhook: mockVerifyWebhook,
+}));
+
+// Mock stripe (external dependency)
+const stripeMocks = vi.hoisted(() => ({
+  subscriptionsCancel: vi.fn(),
+}));
+vi.mock("stripe", () => ({
+  default: function MockStripe() {
+    return {
+      subscriptions: {
+        cancel: stripeMocks.subscriptionsCancel,
+      },
+    };
+  },
 }));
 
 // Import route handler AFTER mocks are set up
@@ -157,5 +201,174 @@ describe("POST /api/webhooks/clerk", () => {
       expect(spyDeleteS3).not.toHaveBeenCalled();
       expect(spyDeleteOrgData).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * E2E test block — cleanup functions run for real (no spies).
+ * Separate from the dispatch tests above to avoid inheriting the
+ * beforeEach that spy-mocks cleanupOrgExternalServices / deleteOrgS3Data / deleteOrgData.
+ */
+describe("organization.deleted e2e cleanup", () => {
+  beforeEach(() => {
+    // Restore spies from the dispatch-test describe block so cleanup
+    // functions execute for real instead of returning undefined.
+    vi.restoreAllMocks();
+    context.setupMocks();
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
+    reloadEnv();
+    stripeMocks.subscriptionsCancel.mockResolvedValue({ id: "sub_cancelled" });
+  });
+
+  it("deletes all org data through the full pipeline", async () => {
+    const { userId, orgId } = await context.setupUser();
+
+    // --- Populate org with data across all table types ---
+
+    // Composes + sessions + runs
+    const { composeId } = await createTestCompose("e2e-org-test");
+    const session = await createTestAgentSession(userId, composeId);
+    await createTestRunInDb(userId, composeId, {
+      status: "running",
+      startedAt: new Date(),
+    });
+
+    // Email thread session
+    await createTestEmailThreadSession({
+      userId,
+      composeId,
+      agentSessionId: session.id,
+      replyToToken: uniqueId("reply"),
+    });
+
+    // Storage with s3Prefix
+    await insertTestStorage({ userId, orgId, name: "e2e-volume" });
+
+    // Secret + model provider
+    await createTestSecret("E2E_KEY", "e2e-value");
+    await insertOrgDefaultModelProvider(orgId, "anthropic");
+
+    // Connector
+    await context.createConnector(orgId, { userId, type: "github" });
+
+    // Variable
+    await createTestVariable("E2E_VAR", "e2e-value");
+
+    // Export job with s3Key
+    await insertTestExportJob(orgId, {
+      userId,
+      status: "completed",
+      s3Key: "exports/e2e.zip",
+    });
+
+    // Zero agent
+    await createTestZeroAgent(orgId, "e2e-zero-agent", {
+      displayName: "E2E",
+    });
+
+    // Usage daily
+    await insertTestUsageDaily({ userId, orgId, date: "2026-01-01" });
+
+    // Storage version
+    const storage2 = await insertTestStorage({
+      userId,
+      orgId,
+      name: "e2e-volume-2",
+    });
+    await insertTestStorageVersion({
+      storageId: storage2.id,
+      createdBy: userId,
+    });
+
+    // Slack installation + connection
+    const workspaceId = uniqueId("ws");
+    await insertTestSlackOrgInstallation({
+      slackWorkspaceId: workspaceId,
+      slackWorkspaceName: "E2E Workspace",
+      orgId,
+      installedByUserId: userId,
+    });
+    const connection = await insertTestSlackOrgConnection({
+      slackUserId: uniqueId("slack-user"),
+      slackWorkspaceId: workspaceId,
+      vm0UserId: userId,
+    });
+    await insertTestSlackOrgPendingQuestion({
+      connectionId: connection.id,
+      composeId,
+      sessionId: session.id,
+      runId: uniqueId("run"),
+      slackWorkspaceId: workspaceId,
+    });
+
+    // Membership + org identity
+    await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
+    await insertOrgMembersEntry({ orgId, userId });
+
+    // --- External service setup ---
+
+    // Stripe subscription
+    const subId = uniqueId("sub");
+    await updateOrgStripeSubscription(orgId, subId, "active");
+
+    // Telegram installation (needs compose linked to org)
+    const compose2 = await context.createAgentCompose(userId, {
+      name: uniqueId("tg-compose"),
+    });
+    await updateAgentComposeOrg(compose2.id, orgId);
+    const botToken = "e2e-bot-token";
+    await createTelegramInstallationForCompose(compose2.id, userId, botToken);
+
+    const telegramHandler = http.post(
+      `https://api.telegram.org/bot${botToken}/deleteWebhook`,
+      () => HttpResponse.json({ ok: true, result: true }),
+    );
+    server.use(telegramHandler.handler);
+
+    // --- Send webhook ---
+    mockVerifyWebhook.mockResolvedValue({
+      type: "organization.deleted",
+      data: { object: "organization", id: orgId, deleted: true },
+    });
+
+    const response = await POST(createWebhookRequest());
+    expect(response.status).toBe(200);
+
+    await context.mocks.flushAfter();
+
+    // --- Verify ALL org-scoped tables are empty ---
+    const tables = [
+      "agent_runs",
+      "agent_run_queue",
+      "agent_composes",
+      "storages",
+      "secrets",
+      "model_providers",
+      "connectors",
+      "variables",
+      "usage_daily",
+      "export_jobs",
+      "zero_agents",
+      "credit_usage",
+      "agent_sessions",
+      "email_thread_sessions",
+      "slack_org_installations",
+      "org_members_cache",
+      "org_members_metadata",
+      "org_cache",
+      "org_metadata",
+    ] as const;
+
+    for (const table of tables) {
+      expect(
+        await countOrgRows(table, orgId),
+        `Expected 0 rows in ${table}`,
+      ).toBe(0);
+    }
+
+    // --- Verify external service cleanup ---
+    expect(stripeMocks.subscriptionsCancel).toHaveBeenCalledWith(subId);
+    expect(telegramHandler.mocked).toHaveBeenCalledTimes(1);
+    expect(context.mocks.s3.listS3Objects).toHaveBeenCalled();
   });
 });

@@ -69,11 +69,23 @@ const logEntrySchema = z.object({
 });
 
 /**
+ * Available filter values returned by the list endpoint
+ */
+const logsFiltersSchema = z.object({
+  statuses: z.array(logStatusSchema),
+  sources: z.array(triggerSourceSchema),
+  agents: z.array(z.string()),
+});
+
+export type LogsFilters = z.infer<typeof logsFiltersSchema>;
+
+/**
  * Logs list response schema with pagination
  */
 const logsListResponseSchema = z.object({
   data: z.array(logEntrySchema),
   pagination: paginationSchema,
+  filters: logsFiltersSchema,
 });
 
 /**
@@ -119,6 +131,7 @@ export const logsListContract = c.router({
       name: z.string().optional(),
       org: z.string().optional(),
       status: logStatusSchema.optional(),
+      triggerSource: triggerSourceSchema.optional(),
     }),
     responses: {
       200: logsListResponseSchema,

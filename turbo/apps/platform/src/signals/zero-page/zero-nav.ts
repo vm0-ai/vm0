@@ -13,7 +13,6 @@ function isValidTab(tab: string): tab is ZeroNavId {
     tab === "activity" ||
     tab === "works" ||
     tab === "usage" ||
-    tab === "settings" ||
     tab === "preferences" ||
     tab === "queue"
   );
@@ -96,7 +95,7 @@ export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
 
 /**
  * Whether the talk agent has been resolved from the URL.
- * Set to true after setupZeroPage$ processes the /talk/:name route.
+ * Set to true after setupTalkPage$ processes the /talk/:name route.
  */
 const internalTalkAgentResolved$ = state(false);
 export const zeroTalkAgentResolved$ = computed((get) =>
@@ -119,7 +118,7 @@ export const setZeroChatAgent$ = command(
  *
  * Always performs a full route navigation so that `loadRoute$` fires and
  * the correct page setup runs (e.g. when navigating from /team).
- * `setupZeroPage$` guards heavy work behind `initialDataLoaded$`, so
+ * `loadInitialData$` guards heavy work behind `initialDataLoaded$`, so
  * re-entry from an already-loaded zero page is cheap.
  */
 export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {

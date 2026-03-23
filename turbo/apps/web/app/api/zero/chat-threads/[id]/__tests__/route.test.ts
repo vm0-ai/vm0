@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
-import { POST } from "../../route";
+import { GET as listThreads, POST } from "../../route";
 import { POST as POST_RUN } from "../runs/route";
 import {
   createTestRequest,
@@ -14,6 +14,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { appendChatMessages } from "../../../../../../src/lib/agent-session/agent-session-service";
+import { updateChatThreadTitle } from "../../../../../../src/lib/chat-thread";
 
 const context = testContext();
 
@@ -184,5 +185,68 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const response = await GET(request);
 
     expect(response.status).toBe(404);
+  });
+
+  it("should reflect updated title after updateChatThreadTitle", async () => {
+    // Create a thread with initial title
+    const createRequest = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          title: "Original title",
+        }),
+      },
+    );
+    const createResponse = await POST(createRequest);
+    const { id: threadId } = await createResponse.json();
+
+    // Update title via service (simulates what the complete webhook does)
+    await updateChatThreadTitle(threadId, "AI-Generated Title");
+
+    // Fetch thread detail and verify title was updated
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.title).toBe("AI-Generated Title");
+  });
+
+  it("should reflect updated title in thread list", async () => {
+    // Create a thread with initial title
+    const createRequest = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentComposeId: testComposeId,
+          title: "Before update",
+        }),
+      },
+    );
+    const createResponse = await POST(createRequest);
+    const { id: threadId } = await createResponse.json();
+
+    // Update title
+    await updateChatThreadTitle(threadId, "After AI update");
+
+    // List threads and verify title is reflected
+    const listResponse = await listThreads(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentComposeId=${testComposeId}`,
+      ),
+    );
+    const listData = await listResponse.json();
+
+    expect(listResponse.status).toBe(200);
+    expect(listData.threads).toHaveLength(1);
+    expect(listData.threads[0].title).toBe("After AI update");
   });
 });

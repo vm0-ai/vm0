@@ -27,7 +27,6 @@ import {
   IconDatabaseExport,
   IconCrown,
   IconPin,
-  IconSettings,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -173,7 +172,6 @@ export type ZeroNavId =
   | "activity"
   | "works"
   | "usage"
-  | "settings"
   | "preferences"
   | "queue"
   | "not-found";
@@ -207,13 +205,6 @@ const FOOTER_NAV = [
     icon: IconChartBar as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.Usage,
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    icon: IconSettings as NavIcon,
-    iconImg: undefined,
-    featureGate: undefined,
   },
 ] as const satisfies readonly FooterNavItem[];
 

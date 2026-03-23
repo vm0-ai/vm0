@@ -8,6 +8,8 @@ logs
 !**/app/api/app/logs/
 # Exception for logs search API folder
 !**/app/api/logs/
+# Exception for zero logs API folder
+!**/app/api/zero/logs/
 # Exception for CLI logs command
 !**/commands/logs/
 *.log

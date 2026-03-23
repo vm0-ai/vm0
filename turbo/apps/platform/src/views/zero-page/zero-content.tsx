@@ -63,9 +63,6 @@ export function ZeroContent({
   if (sectionId === "schedule") {
     return <ZeroSchedulePage />;
   }
-  if (sectionId === "settings") {
-    return <ZeroSettingsPage />;
-  }
   return <ZeroNotFoundPage />;
 }
 
