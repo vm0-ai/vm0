@@ -1,1 +1,0 @@
-ALTER TABLE "org_cache" ADD COLUMN "name" text DEFAULT '' NOT NULL;

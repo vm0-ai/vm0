@@ -27,6 +27,7 @@ import {
   IconDatabaseExport,
   IconCrown,
   IconPin,
+  IconSettings,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -192,7 +193,7 @@ interface FooterNavItem {
   featureGate: FeatureSwitchKey | undefined;
 }
 
-const FOOTER_NAV: readonly FooterNavItem[] = [
+const FOOTER_NAV = [
   {
     id: "works",
     label: "Where Zero works",
@@ -214,7 +215,7 @@ const FOOTER_NAV: readonly FooterNavItem[] = [
     iconImg: undefined,
     featureGate: undefined,
   },
-] as const;
+] as const satisfies readonly FooterNavItem[];
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
 
