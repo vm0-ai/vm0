@@ -11,7 +11,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { and, eq, inArray, desc, gte, lte } from "drizzle-orm";
-import { startRun, type RunDispatchError } from "../../../../src/lib/run";
+import { startCliRun, type RunDispatchError } from "../../../../src/lib/run";
 import {
   requireAuth,
   isAuthError,
@@ -211,9 +211,9 @@ const router = tsr.router(runsMainContract, {
       `Creating run - mode: ${body.checkpointId ? "checkpoint" : body.sessionId ? "session" : "new"}`,
     );
 
-    // Delegate all resolution, validation, and dispatch to startRun()
+    // Delegate all resolution, validation, and dispatch to startCliRun()
     try {
-      const result = await startRun({
+      const result = await startCliRun({
         userId,
         prompt: body.prompt,
         appendSystemPrompt: body.appendSystemPrompt,

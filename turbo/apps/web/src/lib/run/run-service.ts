@@ -442,7 +442,7 @@ export interface CreateRunParams {
 }
 
 /**
- * High-level run params — callers provide a compose identifier and startRun()
+ * High-level run params — callers provide a compose identifier and startCliRun()
  * resolves version + org internally.
  *
  * Compose resolution modes (mutually exclusive):
@@ -451,7 +451,7 @@ export interface CreateRunParams {
  * - checkpointId: resume from checkpoint (resolves version from checkpoint)
  * - sessionId: continue session (resolves version from session's compose)
  */
-export interface StartRunParams {
+export interface StartCliRunParams {
   userId: string;
   prompt: string;
 
@@ -462,7 +462,7 @@ export interface StartRunParams {
   sessionId?: string;
 
   // --- Caller-validated org (optional, for API routes with org membership) ---
-  // When provided, startRun() verifies the compose belongs to this org
+  // When provided, startCliRun() verifies the compose belongs to this org
   // and uses it for authorization. When omitted, org is auto-resolved
   // from the compose (used by integration callers that verify access upstream).
   callerOrgId?: string;
@@ -931,7 +931,7 @@ export async function resolveByComposeId(
 }
 
 /**
- * Resolve compose version + org ID from StartRunParams.
+ * Resolve compose version + org ID from StartCliRunParams.
  *
  * Handles 4 mutually exclusive resolution modes:
  * 1. checkpointId → validate checkpoint → get version, then look up compose
@@ -940,7 +940,7 @@ export async function resolveByComposeId(
  * 4. composeId → load compose → use headVersionId
  */
 async function resolveStartRunCompose(
-  params: StartRunParams,
+  params: StartCliRunParams,
 ): Promise<ResolvedStartRunCompose> {
   // Validate mutual exclusivity before resolution
   if (params.checkpointId && params.sessionId) {
@@ -1009,8 +1009,8 @@ async function resolveStartRunCompose(
  * @throws ForbiddenError - user cannot access compose
  * @throws Error - dispatch failure
  */
-export async function startRun(
-  params: StartRunParams,
+export async function startCliRun(
+  params: StartCliRunParams,
 ): Promise<CreateRunResult> {
   // 1. Resolve compose version
   const resolved = await resolveStartRunCompose(params);
@@ -1064,7 +1064,7 @@ export async function startRun(
  * Low-level run creation pipeline (requires pre-resolved version + org).
  *
  * Validates, creates, and dispatches a run in a single call.
- * Prefer startRun() unless you need checkpoint/session resume or custom params.
+ * Prefer startCliRun() unless you need checkpoint/session resume or custom params.
  *
  * Pipeline:
  * 1. Load compose version content + compose metadata

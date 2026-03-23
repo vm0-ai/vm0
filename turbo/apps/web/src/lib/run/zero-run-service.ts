@@ -8,7 +8,7 @@ import type { CreateRunResult } from "./run-service";
 /**
  * Params for non-CLI callers (platform UI + integrations).
  *
- * Key differences from StartRunParams:
+ * Key differences from StartCliRunParams:
  * - composeId is always required (all non-CLI callers know the compose)
  * - Only supports composeId + sessionId resolution (no checkpointId, agentComposeVersionId)
  * - No callerOrgId cross-org check (non-CLI callers are already org-scoped)
@@ -44,7 +44,7 @@ export interface StartZeroRunParams {
 /**
  * Run entry point for platform UI and integrations (non-CLI callers).
  *
- * Simpler than startRun(): only supports composeId + sessionId resolution,
+ * Simpler than startCliRun(): only supports composeId + sessionId resolution,
  * no cross-org check. Resolves compose version + org context internally,
  * injects agent identity, then delegates to createRun().
  *

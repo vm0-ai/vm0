@@ -90,7 +90,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Hello");
       const run = await getTestRun(data.runId);
 
-      // CLI path (startRun) does not inject agent identity — that's done by startZeroRun
+      // CLI path (startCliRun) does not inject agent identity — that's done by startZeroRun
       expect(run.appendSystemPrompt).toBeNull();
     });
 

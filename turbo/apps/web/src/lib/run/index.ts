@@ -6,10 +6,10 @@
 export {
   validateCheckpoint,
   validateAgentSession,
-  startRun,
+  startCliRun,
   isRunDispatchError,
   type RunDispatchError,
-  type StartRunParams,
+  type StartCliRunParams,
 } from "./run-service";
 
 export { startZeroRun, type StartZeroRunParams } from "./zero-run-service";

@@ -48,12 +48,12 @@ interface RunAgentResult {
 /**
  * Execute an agent run for org-aware Slack integration.
  *
- * Uses the unified startRun() entry point which handles compose/org resolution.
+ * Uses the unified startZeroRun() entry point which handles compose/org resolution.
  * This function only handles Slack-specific concerns: prompt construction and callbacks.
  *
  * Context (integration header, thread history, user metadata) is passed via
  * appendSystemPrompt so Claude sees it as system-level instructions rather than
- * user input. startRun() prepends agent identity to appendSystemPrompt.
+ * user input. startZeroRun() prepends agent identity to appendSystemPrompt.
  */
 export async function runAgentForSlackOrg(
   params: RunAgentParams,
@@ -71,7 +71,7 @@ export async function runAgentForSlackOrg(
   } = params;
 
   try {
-    // Build system prompt from context parts (agent identity is prepended by startRun)
+    // Build system prompt from context parts (agent identity is prepended by startZeroRun)
     const contextParts = [
       buildIntegrationContext("Slack", { botUserId }),
       threadContext,

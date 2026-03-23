@@ -430,7 +430,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
 
   const vm0UserId = userLink.vm0UserId;
 
-  // 3. Resolve agent compose (version + org resolved by startRun)
+  // 3. Resolve agent compose (version + org resolved by startZeroRun)
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
