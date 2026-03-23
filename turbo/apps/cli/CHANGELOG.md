@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.77.0](https://github.com/vm0-ai/vm0/compare/cli-v9.76.0...cli-v9.77.0) (2026-03-23)
+
+
+### Features
+
+* **cli:** add vm0 zero schedule commands ([#6220](https://github.com/vm0-ai/vm0/issues/6220)) ([68f9276](https://github.com/vm0-ai/vm0/commit/68f9276369e7cf0e129c2bda92c68058028aa207))
+* **cli:** add vm0 zero secret and variable commands — user-level ([#6213](https://github.com/vm0-ai/vm0/issues/6213)) ([2a9e5eb](https://github.com/vm0-ai/vm0/commit/2a9e5eb821fd5cf85a6d57ddc917dbb29f7eed44))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.99.0
+
 ## [9.76.0](https://github.com/vm0-ai/vm0/compare/cli-v9.75.2...cli-v9.76.0) (2026-03-23)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.99.0](https://github.com/vm0-ai/vm0/compare/core-v8.98.1...core-v8.99.0) (2026-03-23)
+
+
+### Features
+
+* bundle vercel firewall into @vm0/core ([#6207](https://github.com/vm0-ai/vm0/issues/6207)) ([b79bda5](https://github.com/vm0-ai/vm0/commit/b79bda56eb9acd426ab94241296856181fe5523a))
+* switch zero schedule contracts to use zero agent id ([#6172](https://github.com/vm0-ai/vm0/issues/6172)) ([9b74977](https://github.com/vm0-ai/vm0/commit/9b749779d4c79795d8c982fb684fbc5ab1dbe624))
+
 ## [8.98.1](https://github.com/vm0-ai/vm0/compare/core-v8.98.0...core-v8.98.1) (2026-03-23)
 
 
