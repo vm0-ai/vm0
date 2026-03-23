@@ -7,8 +7,9 @@
 //! JSON line matching the format used by the mitmproxy addon.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -38,61 +39,42 @@ pub fn spawn(ip_log_map: IpLogMap) -> JoinHandle<()> {
     })
 }
 
-/// Blocking loop that reads `/dev/kmsg` message by message.
+/// Blocking loop that reads kernel log messages via `sudo dmesg -w`.
 ///
-/// Uses `/dev/kmsg` instead of `/proc/kmsg` because `/dev/kmsg` supports
-/// multiple concurrent readers (each gets an independent seek position),
-/// while `/proc/kmsg` is consumptive — reading removes messages for all
-/// other readers (e.g. systemd-journald).
+/// Reading `/dev/kmsg` directly requires `CAP_SYSLOG` when
+/// `dmesg_restrict=1` (the default on hardened systems). Using `sudo dmesg -w`
+/// avoids this while following new messages in real-time. The runner already
+/// uses sudo for iptables and other privileged operations.
 ///
-/// `/dev/kmsg` is a special device where each `read()` returns exactly one
-/// message. We must NOT use `BufReader` as it would buffer across message
-/// boundaries. The format is: `priority,sequence,timestamp;message\n`.
+/// `dmesg -w` outputs lines like:
+/// ```text
+/// [12345.678901] VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64 ...
+/// ```
 fn run_blocking(ip_log_map: &IpLogMap) -> std::io::Result<()> {
-    use std::io::{Seek, SeekFrom};
+    let mut child = Command::new("sudo")
+        .args(["dmesg", "-w"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
 
-    let mut file = std::fs::File::open("/dev/kmsg")?;
-    // Seek to end so we only process new messages, not the full ring buffer.
-    file.seek(SeekFrom::End(0))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("failed to capture dmesg stdout"))?;
 
-    // Each read() on /dev/kmsg returns one complete message.
-    // Max kernel log line is 8192 bytes (PRINTK_MESSAGE_MAX).
-    let mut buf = [0u8; 8192];
-
-    loop {
-        let n = match file.read(&mut buf) {
-            Ok(0) => continue,
-            Ok(n) => n,
-            Err(e) if e.raw_os_error() == Some(32) => {
-                // EPIPE (errno 32): a message was overwritten in the kernel
-                // ring buffer before we read it. Skip and continue.
-                continue;
-            }
-            Err(e) if e.raw_os_error() == Some(11) => {
-                // EAGAIN (errno 11): non-blocking read with no data.
-                // Shouldn't happen in blocking mode but handle gracefully.
-                continue;
-            }
-            Err(e) => return Err(e),
-        };
-
-        let raw = match buf.get(..n).and_then(|b| std::str::from_utf8(b).ok()) {
-            Some(s) => s.trim_end(),
-            None => continue,
-        };
-
-        // /dev/kmsg format: "priority,sequence,timestamp;message"
-        let message = match raw.find(';') {
-            Some(pos) => &raw[pos + 1..],
-            None => continue,
+    let reader = BufReader::new(stdout);
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
         };
 
         // Fast check before acquiring lock.
-        if !message.contains(LOG_PREFIX) {
+        if !line.contains(LOG_PREFIX) {
             continue;
         }
 
-        if let Some(entry) = parse_log_message(message) {
+        if let Some(entry) = parse_log_message(&line) {
             let log_path = {
                 let map = ip_log_map.blocking_lock();
                 map.get(&entry.source_ip).cloned()
@@ -102,6 +84,10 @@ fn run_blocking(ip_log_map: &IpLogMap) -> std::io::Result<()> {
             }
         }
     }
+
+    // If dmesg exits, log the exit status.
+    let status = child.wait()?;
+    Err(std::io::Error::other(format!("dmesg exited: {status}")))
 }
 
 /// Parsed fields from a single iptables LOG line.
