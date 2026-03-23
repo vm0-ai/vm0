@@ -105,7 +105,7 @@ teardown_file() {
     fi
 
     # Run claude --version inside the sandbox to confirm which binary is installed
-    run timeout 60 $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         "Run 'claude --version' with the Bash tool and include the exact output"
@@ -122,7 +122,7 @@ teardown_file() {
         skip "ANTHROPIC_API_KEY not set"
     fi
 
-    run timeout 120 $CLI_COMMAND run "$AGENT_NAME" \
+    run $CLI_COMMAND run "$AGENT_NAME" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
@@ -144,7 +144,7 @@ teardown_file() {
 
     # "--" separates variadic --disallowed-tools from the prompt
     # (Commander.js <tools...> would otherwise swallow subsequent args)
-    run timeout 120 $CLI_COMMAND run "${AGENT_NAME}-flags" \
+    run $CLI_COMMAND run "${AGENT_NAME}-flags" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
@@ -172,7 +172,7 @@ teardown_file() {
     # Claude will read this file to prove the hook fired inside the sandbox.
     local settings='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo SETTINGS_HOOK_OK > /tmp/hook_sentinel.txt"}]}]}}'
 
-    run timeout 120 $CLI_COMMAND run "${AGENT_NAME}-settings" \
+    run $CLI_COMMAND run "${AGENT_NAME}-settings" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         --settings "$settings" \
