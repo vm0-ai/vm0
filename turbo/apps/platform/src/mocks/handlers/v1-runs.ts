@@ -89,6 +89,7 @@ export const appLogsHandlers = [
         nextCursor,
         totalPages,
       },
+      filters: { statuses: [], sources: [], agents: [] },
     };
 
     return HttpResponse.json(response);

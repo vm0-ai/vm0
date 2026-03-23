@@ -18,6 +18,7 @@ import {
 import {
   TRIGGER_SOURCE_LABELS,
   type LogEntry,
+  type LogStatus,
 } from "../../signals/zero-page/log-types.ts";
 import { StatusBadge } from "./components/logs/status-badge.tsx";
 import { Pagination } from "../components/pagination.tsx";
@@ -25,7 +26,6 @@ import {
   zeroActivityAgentFilter$,
   zeroActivityStatusFilter$,
   zeroActivitySourceFilter$,
-  zeroActivityOrgAgents$,
   setZeroActivityFilter$,
   zeroActivityData$,
   zeroActivityLimit$,
@@ -38,27 +38,23 @@ import {
   setZeroActivityRowsPerPage$,
   formatLogTime,
   formatDuration,
+  zeroActivityAvailableStatuses$,
+  zeroActivityAvailableSources$,
+  zeroActivityAvailableAgents$,
 } from "../../signals/activity-page/activity-signals.ts";
 import { Link } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
 import emptyActivityImg from "./assets/empty-activity.png";
 
-const STATUS_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
-  { value: "all", label: "All status" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "running", label: "Running" },
-  { value: "timeout", label: "Timeout" },
-  { value: "cancelled", label: "Cancelled" },
-];
-
-const SOURCE_OPTIONS: readonly Readonly<{ value: string; label: string }>[] = [
-  { value: "all", label: "All sources" },
-  ...Object.entries(TRIGGER_SOURCE_LABELS).map(([value, label]) => ({
-    value,
-    label,
-  })),
-];
+const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
+  queued: "Queued",
+  pending: "Pending",
+  running: "Running",
+  completed: "Completed",
+  failed: "Failed",
+  timeout: "Timeout",
+  cancelled: "Cancelled",
+};
 
 const ROW_GRID =
   "grid grid-cols-[1fr_5rem_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
@@ -135,7 +131,9 @@ export function ZeroActivityPage() {
   const statusFilter = useGet(zeroActivityStatusFilter$);
   const sourceFilter = useGet(zeroActivitySourceFilter$);
   const setFilter = useSet(setZeroActivityFilter$);
-  const orgAgents = useGet(zeroActivityOrgAgents$);
+  const availableStatusesLoadable = useLoadable(zeroActivityAvailableStatuses$);
+  const availableSourcesLoadable = useLoadable(zeroActivityAvailableSources$);
+  const availableAgentsLoadable = useLoadable(zeroActivityAvailableAgents$);
 
   const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
   const hasNext =
@@ -146,10 +144,35 @@ export function ZeroActivityPage() {
       : undefined;
   const isLoading = dataLoadable.state === "loading";
 
-  // Agent filter options: show display names, map back to compose name
+  // Agent filter options: only agents with activity records
   const agentOptions = [
     { value: "all", label: "All agents" },
-    ...orgAgents.map((a) => ({ value: a.name, label: a.displayName })),
+    ...(availableAgentsLoadable.state === "hasData"
+      ? availableAgentsLoadable.data.map((a) => ({
+          value: a.name,
+          label: a.displayName,
+        }))
+      : []),
+  ];
+
+  const statusOptions = [
+    { value: "all", label: "All status" },
+    ...(availableStatusesLoadable.state === "hasData"
+      ? availableStatusesLoadable.data.map((s) => ({
+          value: s,
+          label: STATUS_LABELS[s],
+        }))
+      : []),
+  ];
+
+  const sourceOptions = [
+    { value: "all", label: "All sources" },
+    ...(availableSourcesLoadable.state === "hasData"
+      ? availableSourcesLoadable.data.map((s) => ({
+          value: s,
+          label: TRIGGER_SOURCE_LABELS[s],
+        }))
+      : []),
   ];
 
   return (
@@ -192,7 +215,7 @@ export function ZeroActivityPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((opt) => (
+                  {statusOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
@@ -212,7 +235,7 @@ export function ZeroActivityPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SOURCE_OPTIONS.map((opt) => (
+                  {sourceOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>

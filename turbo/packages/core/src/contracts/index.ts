@@ -387,6 +387,7 @@ export {
   type Artifact,
   type LogDetail,
   type TriggerSource,
+  type LogsFilters,
 } from "./logs";
 
 export {

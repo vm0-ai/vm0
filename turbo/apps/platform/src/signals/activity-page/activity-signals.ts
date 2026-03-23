@@ -46,10 +46,8 @@ interface AgentOption {
 
 const internalOrgAgents$ = state<AgentOption[]>([]);
 
-/** All agents in the current org with display names. */
-export const zeroActivityOrgAgents$ = computed((get) =>
-  get(internalOrgAgents$),
-);
+/** All agents in the current org with display names (used internally for display name mapping). */
+const orgAgents$ = computed((get) => get(internalOrgAgents$));
 
 const fetchOrgAgents$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
@@ -138,6 +136,33 @@ export const {
     }
     return result;
   },
+});
+
+/** Available status values from the server (only statuses that exist in the data). */
+export const zeroActivityAvailableStatuses$ = computed(async (get) => {
+  const response = await get(zeroActivityData$);
+  return response.filters.statuses;
+});
+
+/** Available source values from the server (only sources that exist in the data). */
+export const zeroActivityAvailableSources$ = computed(async (get) => {
+  const response = await get(zeroActivityData$);
+  return response.filters.sources;
+});
+
+/** Available agent names from the server (only agents that have activity). */
+export const zeroActivityAvailableAgents$ = computed(async (get) => {
+  const response = await get(zeroActivityData$);
+  const orgAgents = get(orgAgents$);
+  // Map agent names to display names using org agents data
+  return response.filters.agents.map((name) => {
+    const agent = orgAgents.find((a) => a.name === name);
+    return {
+      name,
+      displayName:
+        agent?.displayName ?? name.charAt(0).toUpperCase() + name.slice(1),
+    };
+  });
 });
 
 /** All filter keys and their corresponding signals. */
