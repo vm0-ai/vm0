@@ -9,6 +9,7 @@ const log = logger("service:user-s3-cleanup");
 /**
  * Delete all S3 objects belonging to a user.
  * Must be called BEFORE database deletion — reads s3Prefix/s3Key from DB.
+ * All operations are best-effort: individual failures are logged but do not stop other steps.
  * Idempotent: deleting non-existent S3 objects is a no-op.
  */
 export async function deleteUserS3Data(userId: string): Promise<void> {
@@ -22,15 +23,23 @@ export async function deleteUserS3Data(userId: string): Promise<void> {
     .where(eq(storages.userId, userId));
 
   for (const storage of userStorages) {
-    const objects = await listS3Objects(bucket, storage.s3Prefix);
-    if (objects.length > 0) {
-      await deleteS3Objects(
-        bucket,
-        objects.map((o) => o.key),
-      );
-      log.debug("deleted storage objects", {
+    try {
+      const objects = await listS3Objects(bucket, storage.s3Prefix);
+      if (objects.length > 0) {
+        await deleteS3Objects(
+          bucket,
+          objects.map((o) => o.key),
+        );
+        log.debug("deleted storage objects", {
+          prefix: storage.s3Prefix,
+          count: objects.length,
+        });
+      }
+    } catch (error) {
+      log.error("failed to delete storage objects (best-effort)", {
+        userId,
         prefix: storage.s3Prefix,
-        count: objects.length,
+        error,
       });
     }
   }
@@ -46,8 +55,16 @@ export async function deleteUserS3Data(userId: string): Promise<void> {
     .filter((k): k is string => k !== null);
 
   if (exportKeys.length > 0) {
-    await deleteS3Objects(bucket, exportKeys);
-    log.debug("deleted export objects", { count: exportKeys.length });
+    try {
+      await deleteS3Objects(bucket, exportKeys);
+      log.debug("deleted export objects", { count: exportKeys.length });
+    } catch (error) {
+      log.error("failed to delete export objects (best-effort)", {
+        userId,
+        count: exportKeys.length,
+        error,
+      });
+    }
   }
 
   log.info("user S3 data deleted", {
