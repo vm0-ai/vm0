@@ -100,7 +100,7 @@ build_output() {
           number,
           title,
           pending: ([.labels[].name] | any(. == "pending")),
-          linked_prs: (.closedByPullRequestsReferences | length)
+          linked_prs: [.closedByPullRequestsReferences[].number]
         })
       | sort_by(.number)
     ' "$dir/issues_assignee.json" "$dir/issues_author.json")

@@ -167,15 +167,39 @@ fi
 echo ""
 echo "📋 Lane Status"
 
-jq -r '
+# Build merge queue PR number set for [Queued] markers
+MQ_NUMBERS=$(jq '[.merge_queue[].number]' "$WORK_DIR/pipeline.json")
+
+jq -r --argjson mq "$MQ_NUMBERS" '
   .[] |
   "\n\(.lane)" as $header |
   if (.issue_count + .pr_count) == 0 then
     "\($header)\n  -- idle"
   else
+    # Collect all PR numbers linked to any issue
+    ([.issues[].linked_prs[]?]) as $linked |
+    # Index PRs by number for title lookup
+    ([.prs[] | {(.number | tostring): .}] | add // {}) as $pr_map |
     [ $header ] +
-    [ .issues[] | "  - \(if .pending then "[Pending] " else "" end)Issue #\(.number) — \(.title)" ] +
-    [ .prs[] | "  - \(if .pending then "[Pending] " else "" end)PR #\(.number) — \(.title)" ] |
+    [
+      .issues[] |
+      # [Queued] if any linked PR is in merge queue
+      (if ([.linked_prs[]?] | any(. as $p | $mq | any(. == $p))) then "[Queued] "
+       elif .pending then "[Pending] "
+       else "" end) as $marker |
+      "- \($marker)Issue #\(.number) — \(.title)",
+      # Show linked PRs indented under their issue
+      (.linked_prs[]? as $pr_num |
+        ($pr_map[$pr_num | tostring].title // null) as $pr_title |
+        if $pr_title then
+          "  - PR #\($pr_num) — \($pr_title)"
+        else
+          "  - PR #\($pr_num)"
+        end)
+    ] +
+    # Standalone PRs (not linked to any issue)
+    [ .prs[] | select(.number as $n | $linked | any(. == $n) | not) |
+      "- \(if .pending then "[Pending] " else "" end)PR #\(.number) — \(.title)" ] |
     join("\n")
   end
 ' "$WORK_DIR/lanes.json"
