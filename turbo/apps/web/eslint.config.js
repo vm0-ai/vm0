@@ -55,7 +55,6 @@ export default [
     rules: {
       // Check for duplicate migration prefixes (runs once per lint process)
       "web/no-duplicate-migration-prefix": "error",
-      "web/no-self-api-call": "error",
     },
   },
   {
