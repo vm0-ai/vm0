@@ -22,19 +22,46 @@ FIRST_LANE=$(printf "vm%02d" 1)
 LAST_LANE=$(printf "vm%02d" "$MAX_WORKERS")
 
 "$SCRIPT_DIR/pipeline-status.sh" > "$WORK_DIR/pipeline.json" &
+PID_PIPELINE=$!
 
 "$SCRIPT_DIR/lane-status.sh" "${FIRST_LANE}-${LAST_LANE}" --user "$ME" > "$WORK_DIR/lanes.json" &
+PID_LANES=$!
 
 # Merged PRs across all lanes (per-lane files to avoid interleaved writes)
+MERGED_PIDS=()
 for i in $(seq 1 "$MAX_WORKERS"); do
   LANE=$(printf "vm%02d" "$i")
   gh pr list --repo "$REPO" --label "$LANE" --state merged \
     --json number,title,mergedAt,labels --limit 20 \
     --jq ".[] | {number, title, mergedAt, lane: \"$LANE\"}" \
-    > "$WORK_DIR/merged_${LANE}.jsonl" &
+    > "$WORK_DIR/merged_${LANE}.jsonl" 2>"$WORK_DIR/merged_${LANE}.err" &
+  MERGED_PIDS+=($!)
 done
 
-wait
+# Wait for critical jobs and check exit status
+ERRORS=()
+wait "$PID_PIPELINE" || ERRORS+=("pipeline-status.sh failed")
+wait "$PID_LANES" || ERRORS+=("lane-status.sh failed")
+for pid in "${MERGED_PIDS[@]}"; do
+  wait "$pid" || ERRORS+=("merged PR fetch (pid $pid) failed")
+done
+
+if [[ ${#ERRORS[@]} -gt 0 ]]; then
+  echo "Warning: some background jobs failed:" >&2
+  for err in "${ERRORS[@]}"; do
+    echo "  - $err" >&2
+  done
+fi
+
+# Validate critical JSON files before rendering
+if [[ ! -s "$WORK_DIR/pipeline.json" ]] || ! jq empty "$WORK_DIR/pipeline.json" 2>/dev/null; then
+  echo "Error: failed to fetch pipeline data" >&2
+  exit 1
+fi
+if [[ ! -s "$WORK_DIR/lanes.json" ]] || ! jq empty "$WORK_DIR/lanes.json" 2>/dev/null; then
+  echo "Error: failed to fetch lane data" >&2
+  exit 1
+fi
 
 # Combine per-lane merged PR files
 cat "$WORK_DIR"/merged_vm*.jsonl > "$WORK_DIR/merged_raw.jsonl" 2>/dev/null || true
