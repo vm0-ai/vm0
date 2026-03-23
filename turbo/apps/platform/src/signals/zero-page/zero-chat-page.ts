@@ -1,10 +1,12 @@
 import { command, computed, state } from "ccstate";
+import { onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Demo / landing page local UI state for ZeroChatPage
 // ---------------------------------------------------------------------------
 
 const INITIAL_TAGLINE_INDEX = Math.floor(Math.random() * 18);
+const STREAM_DELAY_MS = 1400;
 
 const internalInput$ = state("");
 export const chatPageInput$ = computed((get) => get(internalInput$));
@@ -34,12 +36,39 @@ export const setChatPageConversationEndEl$ = command(
   },
 );
 
-const internalSubAgentListEl$ = state<HTMLDivElement | null>(null);
-export const setChatPageSubAgentListEl$ = command(
-  ({ set }, el: HTMLDivElement | null) => {
-    set(internalSubAgentListEl$, el);
+const internalStreamTimeoutId$ = state<number | null>(null);
+
+/** Start (or continue) the demo stream tick loop. */
+export const scheduleStreamTick$ = command(({ get, set }) => {
+  const active = get(internalConversationActive$);
+  const count = get(internalStreamedCount$);
+  if (!active || count >= 6) {
+    return;
+  }
+  const id = window.setTimeout(() => {
+    set(internalStreamTimeoutId$, null);
+    set(internalStreamedCount$, Math.min(count + 1, 6));
+    const el = get(internalConversationEndEl$);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+    set(scheduleStreamTick$);
+  }, STREAM_DELAY_MS);
+  set(internalStreamTimeoutId$, id);
+});
+
+/** Attach to a DOM element to clean up the stream timer on unmount. */
+const streamCleanupCommand$ = command(
+  ({ get }, _el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      const id = get(internalStreamTimeoutId$);
+      if (id !== null) {
+        window.clearTimeout(id);
+      }
+    });
   },
 );
+export const streamCleanupRef$ = onRef(streamCleanupCommand$);
 
 const internalApproveDone$ = state(false);
 export const chatPageApproveDone$ = computed((get) =>
@@ -96,6 +125,8 @@ const internalTaglineIndex$ = state(INITIAL_TAGLINE_INDEX);
 export const chatPageTaglineIndex$ = computed((get) =>
   get(internalTaglineIndex$),
 );
+
+const internalSubAgentListEl$ = state<HTMLElement | null>(null);
 
 /** Toggle sub-agent list visibility with auto-scroll when opening. */
 export const toggleChatPageSubAgentList$ = command(({ get, set }) => {

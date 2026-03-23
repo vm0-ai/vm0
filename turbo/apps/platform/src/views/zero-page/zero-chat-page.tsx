@@ -1,5 +1,5 @@
 import { Component, useState } from "react";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { user$ } from "../../signals/auth.ts";
 import {
   IconPlug,
@@ -10,10 +10,23 @@ import {
   IconArrowUpRight,
   IconChartLine,
   IconCalendar,
+  IconPin,
 } from "@tabler/icons-react";
-import { Button, cn } from "@vm0/ui";
-import { ZERO_TEAM_JOBS } from "./zero-mock-data";
+import {
+  Button,
+  cn,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  pinnedAgentIds$,
+  updatePinnedAgentIds$,
+} from "../../signals/zero-page/zero-pinned-agents.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
 import {
@@ -23,7 +36,6 @@ import {
   setChatPageConversationActive$,
   chatPageStreamedCount$,
   setChatPageConversationEndEl$,
-  setChatPageSubAgentListEl$,
   chatPageApproveDone$,
   setChatPageApproveDone$,
   chatPageSelectedOption$,
@@ -37,6 +49,8 @@ import {
   chatPageShowSubAgentList$,
   chatPageTaglineIndex$,
   toggleChatPageSubAgentList$,
+  scheduleStreamTick$,
+  streamCleanupRef$,
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { ZeroIdeationPage, getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -755,7 +769,6 @@ export function ZeroChatPage({
   const setConversationActive = useSet(setChatPageConversationActive$);
   const streamedCount = useGet(chatPageStreamedCount$);
   const setConversationEndEl = useSet(setChatPageConversationEndEl$);
-  const setSubAgentListEl = useSet(setChatPageSubAgentListEl$);
   const approveDone = useGet(chatPageApproveDone$);
   const setApproveDone = useSet(setChatPageApproveDone$);
   const selectedOption = useGet(chatPageSelectedOption$);
@@ -766,15 +779,37 @@ export function ZeroChatPage({
   const setConnectorConnected = useSet(setChatPageConnectorConnected$);
   const commandAllowed = useGet(chatPageCommandAllowed$);
   const setCommandAllowed = useSet(setChatPageCommandAllowed$);
-  const showSubAgentList = useGet(chatPageShowSubAgentList$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(agentName, userName, taglineIndex);
   const [showIdeation, setShowIdeation] = useState(false);
   const [suggestedPrompts] = useState(() => getRandomPrompts(3));
   const toggleSubAgentList = useSet(toggleChatPageSubAgentList$);
+  const scheduleStreamTick = useSet(scheduleStreamTick$);
+  const streamCleanupRef = useSet(streamCleanupRef$);
+
+  // Pin pill
+  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
+  const pinnedIds =
+    pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
+  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const showPinPill =
+    currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
+  const handlePin = () => {
+    if (currentChatAgentId) {
+      detach(
+        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        Reason.DomCallback,
+      );
+    }
+  };
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
     setInput("");
+    if (!conversationActive) {
+      setConversationActive(true);
+      scheduleStreamTick();
+    }
     onSendMessage?.(text, opts);
   };
 
@@ -804,7 +839,10 @@ export function ZeroChatPage({
   if (showConversation && scenariosToShow.length > 0) {
     const isScenarioFromSidebar = initialScenarioId !== undefined;
     return (
-      <div className="flex flex-1 flex-col min-h-0 bg-transparent">
+      <div
+        ref={streamCleanupRef}
+        className="flex flex-1 flex-col min-h-0 bg-transparent"
+      >
         <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button
@@ -820,34 +858,50 @@ export function ZeroChatPage({
             >
               <IconArrowLeft size={20} stroke={1.5} />
             </Button>
-            <button
-              type="button"
-              aria-label="View agent profile"
-              className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
-              onClick={onAvatarClick}
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-8 w-8 rounded-full object-cover object-top"
-              />
-            </button>
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="View agent profile"
+                className="h-8 w-8 shrink-0 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
+                onClick={onAvatarClick}
+              >
+                <img
+                  src={zeroAvatarSrc}
+                  alt=""
+                  role="presentation"
+                  className="h-8 w-8 rounded-full object-cover object-top"
+                />
+              </button>
+              {showPinPill && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handlePin}
+                        className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                        aria-label="Pin to sidebar"
+                      >
+                        <IconPin size={10} stroke={2} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Pin to sidebar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
             <span className="font-semibold text-foreground">{agentName}</span>
           </div>
           <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 text-muted-foreground hover:text-foreground",
-                showSubAgentList && "bg-muted/60 text-foreground",
-              )}
-              onClick={() => toggleSubAgentList()}
-              aria-label={`${ZERO_TEAM_JOBS.length} sub-agents`}
+            <Link
+              pathname="/team"
+              className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+              aria-label="Sub-agents"
             >
               <IconUsers size={18} stroke={1.5} />
-            </Button>
+            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -887,88 +941,11 @@ export function ZeroChatPage({
                 />
               ),
             )}
-            {showSubAgentList && (
-              <div
-                ref={setSubAgentListEl}
-                className="grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3 items-start animate-in fade-in slide-in-from-bottom-2 duration-300"
-              >
-                <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
-                  <img
-                    src={zeroAvatarSrc}
-                    alt=""
-                    role="presentation"
-                    className="h-9 w-9 rounded-full object-cover object-top"
-                  />
-                </div>
-                <div className="zero-chat-bubble-assistant rounded-xl overflow-hidden min-w-0 flex flex-col">
-                  <div className="px-4 pt-4 pb-2">
-                    <p className="text-sm text-foreground leading-relaxed">
-                      You have {ZERO_TEAM_JOBS.length} sub-agents with different
-                      expertise. Assign tasks as needed—I’ll route them and
-                      return the results.
-                    </p>
-                  </div>
-                  <div className="px-4 py-2.5 border-t border-border/50">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Sub-agents ({ZERO_TEAM_JOBS.length})
-                    </span>
-                  </div>
-                  <ul role="list">
-                    {ZERO_TEAM_JOBS.map((job) => (
-                      <li
-                        key={job.id}
-                        className="hover:bg-muted/20 transition-colors"
-                      >
-                        <div className="min-w-0 py-3 mx-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm text-muted-foreground">
-                              {job.agentName}
-                            </span>
-                            <span className="text-muted-foreground/60">·</span>
-                            <span className="text-sm font-medium text-foreground">
-                              {job.title}
-                            </span>
-                            <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-0.5 text-xs font-medium">
-                              {job.scope === "team" ? (
-                                <IconUsers
-                                  size={12}
-                                  stroke={1.5}
-                                  className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
-                                />
-                              ) : (
-                                <IconUser
-                                  size={12}
-                                  stroke={1.5}
-                                  className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400"
-                                />
-                              )}
-                              {job.scope === "team" ? "Team" : "Personal"}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                            {job.description}
-                          </p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="border-t border-border/50 px-4 py-3">
-                    <Link
-                      pathname="/team"
-                      className="zero-btn-morandi inline-flex items-center w-fit rounded-lg h-8 px-3 text-sm font-medium border"
-                    >
-                      Manage in {agentName}&apos;s team
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={setConversationEndEl} />
           </div>
         </main>
         <footer className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-8">
-          <div className="mx-auto max-w-[900px] grid grid-cols-[36px_1fr] sm:grid-cols-[48px_1fr] gap-3">
-            <div className="w-9 shrink-0" />
+          <div className="mx-auto max-w-[900px]">
             <ZeroChatComposer
               className="w-full min-w-0"
               input={input}
@@ -994,19 +971,40 @@ export function ZeroChatPage({
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
-            <button
-              type="button"
-              aria-label="View agent profile"
-              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
-              onClick={onAvatarClick}
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-              />
-            </button>
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="View agent profile"
+                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
+                onClick={onAvatarClick}
+              >
+                <img
+                  src={zeroAvatarSrc}
+                  alt=""
+                  role="presentation"
+                  className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                />
+              </button>
+              {showPinPill && (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handlePin}
+                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                        aria-label="Pin to sidebar"
+                      >
+                        <IconPin size={12} stroke={2} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Pin to sidebar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
               <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
                 <TypewriterText text={tagline} />

@@ -27,6 +27,7 @@ import {
   IconDatabaseExport,
   IconCrown,
   IconPin,
+  IconSettings,
 } from "@tabler/icons-react";
 import {
   DndContext,
@@ -896,36 +897,24 @@ function TalkToSection({
   currentChatAgentId,
   selectedRecentId,
   displayName,
-  talkToLabel,
   defaultAgentRawName,
   zeroAvatarSrc,
   pinnedAgents,
-  onManagePinned,
 }: {
   activeId: ZeroNavId | "chat";
   currentChatAgentId: string | null;
   selectedRecentId: string | null;
   displayName: string;
-  talkToLabel: string;
   defaultAgentRawName?: string | null;
   zeroAvatarSrc: string;
   pinnedAgents: SubagentInfo[];
-  onManagePinned: () => void;
 }) {
   return (
     <div className="shrink-0 mt-4">
       <div className="h-7 flex items-center pl-2">
         <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate flex-1">
-          Talk to {talkToLabel}
+          Pinned
         </span>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          aria-label="Manage pinned agents"
-          onClick={onManagePinned}
-        >
-          <IconPin size={14} />
-        </button>
       </div>
       <div className="flex flex-col gap-0.5 max-h-[170px] overflow-y-auto">
         <Link
@@ -1061,8 +1050,6 @@ export function ZeroSidebar() {
   };
   const managePinnedOpen = useGet(managePinnedDialogOpen$);
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
-  const initDraftPinnedIds = useSet(setDraftPinnedIds$);
-
   // Billing
   const features = useLastResolved(featureSwitch$);
   const showPricing = features?.[FeatureSwitchKey.Pricing] ?? false;
@@ -1228,14 +1215,9 @@ export function ZeroSidebar() {
             currentChatAgentId={currentChatAgentId}
             selectedRecentId={selectedRecentId}
             displayName={displayName}
-            talkToLabel={talkToLabel}
             defaultAgentRawName={defaultAgentRawName}
             zeroAvatarSrc={zeroAvatarSrc}
             pinnedAgents={pinnedAgents}
-            onManagePinned={() => {
-              initDraftPinnedIds(pinnedIds);
-              setManagePinnedOpen(true);
-            }}
           />
 
           {/* Recent chat sessions */}

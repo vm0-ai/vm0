@@ -11,6 +11,7 @@ import {
   IconChevronDown,
   IconCopy,
   IconCheck,
+  IconPin,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -29,6 +30,11 @@ import {
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  pinnedAgentIds$,
+  updatePinnedAgentIds$,
+} from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   zeroChatMessages$,
   zeroChatSending$,
@@ -96,6 +102,24 @@ export function ZeroSessionChatPage({
   const queuedMessage = useGet(zeroChatQueuedMessage$);
   const queueMessage = useSet(queueZeroChatMessage$);
   const withdraw = useSet(withdrawQueuedMessage$);
+
+  // Pin pill
+  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
+  const pinnedIds =
+    pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
+  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const showPinPill =
+    currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
+  const handlePin = () => {
+    if (currentChatAgentId) {
+      detach(
+        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        Reason.DomCallback,
+      );
+    }
+  };
+
   // Auto-scroll when messages change — ref callback runs at commit time
   const scrollAnchorRef = (el: HTMLDivElement | null) => {
     if (el && messages.length > 0) {
@@ -126,19 +150,40 @@ export function ZeroSessionChatPage({
           >
             <IconArrowLeft size={20} stroke={1.5} />
           </Button>
-          <button
-            type="button"
-            onClick={onAvatarClick}
-            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="View agent profile"
-          >
-            <img
-              src={zeroAvatarSrc}
-              alt=""
-              role="presentation"
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
-          </button>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={onAvatarClick}
+              className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="View agent profile"
+            >
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-8 w-8 rounded-full object-cover object-top"
+              />
+            </button>
+            {showPinPill && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handlePin}
+                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                      aria-label="Pin to sidebar"
+                    >
+                      <IconPin size={10} stroke={2} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Pin to sidebar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
           <span className="font-semibold text-foreground">{agentName}</span>
         </div>
         <div className="flex items-center gap-0.5">
@@ -197,8 +242,7 @@ export function ZeroSessionChatPage({
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
         <footer className="relative sticky bottom-0 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
           <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-          <div className="mx-auto max-w-[900px] grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
-            <div className="w-9 shrink-0" />
+          <div className="mx-auto max-w-[900px]">
             <ZeroChatComposer
               className="w-full min-w-0"
               input={input}
