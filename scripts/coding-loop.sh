@@ -190,18 +190,18 @@ if [ "$PR_COUNT" -gt 0 ]; then
     conflict)
       output_action
       cat <<EOF
-开一个 subagent，解决 PR #${PR_NUMBER} (branch: ${BRANCH}) 的合并冲突。
+Spawn a subagent to resolve merge conflicts on PR #${PR_NUMBER} (branch: ${BRANCH}).
 
-操作步骤：
+Steps:
 1. gh pr merge --disable-auto ${PR_NUMBER}
 2. git checkout ${BRANCH}
 3. git fetch origin main && git merge origin/main
-4. 解决冲突 — 通常是 additive 的，保留双方内容，按字母序排列
+4. Resolve conflicts — typically additive, keep both sides, sort alphabetically
 5. git add <resolved files> && git commit -m "chore: resolve merge conflict with main"
 6. git push
 7. git checkout main && git pull
 
-注意：推完后不要在同一轮 merge，等下一轮 CI 跑完再处理。
+Note: Do not merge in the same iteration after pushing. Wait for CI to pass in the next iteration.
 EOF
       exit 0
       ;;
@@ -211,17 +211,17 @@ EOF
       download_pr_content "$PR_NUMBER" || true
       output_action
       cat <<EOF
-开一个 subagent，解决 PR #${PR_NUMBER} (branch: ${BRANCH}) 的 CI 失败问题。
+Spawn a subagent to fix CI failures on PR #${PR_NUMBER} (branch: ${BRANCH}).
 
-失败的 jobs: ${FAILED_JOBS}
-PR 详情见: ${CONTENT_DIR}/prs/${PR_NUMBER}.md
+Failed jobs: ${FAILED_JOBS}
+PR details: ${CONTENT_DIR}/prs/${PR_NUMBER}.md
 
-处理规则：
-- 如果是 runner/e2e 失败：用 Slack MCP (slack_send_message, channelId: C0ALXC1SHHN) 发消息，附上失败 job URL。不要 @ 任何人。
-- 如果是 flaky test（和 PR 改动无关的测试失败）：用 Slack MCP 报告到 channelId C0ALXC1SHHN（附 test name, failure message, job URL, PR number），然后执行 gh run rerun <RUN_ID> --failed。不要尝试修复 flaky test。
-- 如果是 lint/type/build 失败：git checkout ${BRANCH}，修复代码，push。
+Rules:
+- If runner/e2e failure: Use Slack MCP (slack_send_message, channelId: C0ALXC1SHHN) to post the failed job URL. Do not @ anyone.
+- If flaky test (failure unrelated to PR changes): Report via Slack MCP to channelId C0ALXC1SHHN (include test name, failure message, job URL, PR number), then run gh run rerun <RUN_ID> --failed. Do not attempt to fix flaky tests.
+- If lint/type/build failure: git checkout ${BRANCH}, fix the code, push.
 
-完成后回到 main: git checkout main && git pull
+When done: git checkout main && git pull
 EOF
       exit 0
       ;;
@@ -235,11 +235,11 @@ EOF
 
       output_action
       cat <<EOF
-开一个 subagent，/pr-review ${PR_NUMBER}
+Spawn a subagent: /pr-review ${PR_NUMBER}
 
-审查完成后：
-- 如果有 P0/P1 问题：git checkout ${BRANCH}，修复所有 P0/P1 问题，push，然后 git checkout main && git pull
-- 如果没有 P0/P1 问题：执行 gh pr merge ${PR_NUMBER} --merge --auto --delete-branch，然后 git checkout main && git pull
+After review:
+- If P0/P1 issues found: git checkout ${BRANCH}, fix all P0/P1 issues, push, then git checkout main && git pull
+- If no P0/P1 issues: run gh pr merge ${PR_NUMBER} --merge --auto --delete-branch, then git checkout main && git pull
 EOF
       exit 0
       ;;
@@ -268,17 +268,22 @@ if [ -n "$NEXT_ISSUE_JSON" ]; then
   if download_issue_content "$ISSUE_NUMBER"; then
     output_action
     cat <<EOF
-开一个 subagent，对 issue #${ISSUE_NUMBER} 进行开发。
+Spawn a subagent to work on issue #${ISSUE_NUMBER}.
 
-issue 标题: ${ISSUE_TITLE}
-issue 内容见: ${CONTENT_DIR}/issues/${ISSUE_NUMBER}.md
+Issue title: ${ISSUE_TITLE}
+Issue content: ${CONTENT_DIR}/issues/${ISSUE_NUMBER}.md
 
-开发流程：
-1. 检查 /tmp/deep-dive/ 下是否有这个 issue 的 artifacts (research.md, innovate.md, plan.md)
-2. 如果没有，先运行 /issue-plan
-3. 然后运行 /issue-action
-4. PR 创建后，添加 label: gh pr edit <PR_NUMBER> --add-label "${LABEL}"
-5. 完成后回到 main: git checkout main && git pull
+Check if the issue already has a plan (a comment starting with "# Plan:").
+
+If a plan exists:
+1. Run /issue-action
+2. After PR is created, add label: gh pr edit <PR_NUMBER> --add-label "${LABEL}"
+3. When done: git checkout main && git pull
+
+If no plan exists:
+1. Run /issue-plan
+2. When done: git checkout main && git pull
+3. Do NOT run /issue-action in this iteration. Implementation will happen in the next iteration.
 EOF
     exit 0
   fi
