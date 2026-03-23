@@ -17,6 +17,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
 use crate::host;
 use crate::http::HttpClient;
+use crate::kmsg_log;
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
@@ -166,6 +167,10 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
 
     let registry_handle = mitm.registry_handle();
 
+    // Start background kmsg monitor for non-TCP traffic logging.
+    let ip_log_map = kmsg_log::new_ip_log_map();
+    let _kmsg_handle = kmsg_log::spawn(ip_log_map.clone());
+
     // Resource budget from host resources + config.
     let config::SandboxConfig {
         max_concurrent,
@@ -252,6 +257,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         registry: registry_handle,
         http,
         log_paths,
+        ip_log_map,
     });
 
     let config = RunConfig {

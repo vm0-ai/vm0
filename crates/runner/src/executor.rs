@@ -17,6 +17,7 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::kmsg_log;
 use crate::network_logs;
 use crate::paths::{LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
@@ -29,6 +30,7 @@ pub struct ExecutorConfig {
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
     pub log_paths: LogPaths,
+    pub ip_log_map: kmsg_log::IpLogMap,
 }
 
 /// Per-job VM parameters resolved from the profile config.
@@ -129,6 +131,12 @@ async fn execute_inner(
     if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
+    // Register source IP in kmsg log map so non-TCP traffic is logged.
+    config
+        .ip_log_map
+        .lock()
+        .await
+        .insert(source_ip.clone(), network_log_path.clone());
 
     if let Err(e) = sandbox.start().await {
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
@@ -136,6 +144,7 @@ async fn execute_inner(
         if let Err(e) = config.registry.unregister_vm(&source_ip).await {
             warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
         }
+        config.ip_log_map.lock().await.remove(&source_ip);
         factory.destroy(sandbox).await;
         return Err(e.into());
     }
@@ -155,11 +164,12 @@ async fn execute_inner(
     // Copy guest logs to host log directory (best-effort).
     copy_guest_logs(sandbox.as_ref(), context, &config.log_paths).await;
 
-    // Unregister VM from proxy + upload network logs before cleanup timer.
-    // Unregister first ensures the addon writes no more log entries.
+    // Unregister VM from proxy + kmsg map + upload network logs before cleanup timer.
+    // Unregister first ensures no more log entries are written.
     if let Err(e) = config.registry.unregister_vm(&source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
+    config.ip_log_map.lock().await.remove(&source_ip);
     network_logs::upload_network_logs(
         &config.http,
         context.run_id,
