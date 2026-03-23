@@ -14,6 +14,7 @@ import type { SendMode } from "@vm0/core";
  *
  * - "enter": Enter sends, Shift+Enter inserts newline
  * - "cmd-enter": Cmd/Ctrl+Enter sends, Enter inserts newline
+ * - Cmd/Ctrl+Enter always sends regardless of mode
  *
  * Uses component-scoped composition state because on Chrome macOS the
  * `compositionend` event fires *before* the confirming `keydown`, making
@@ -36,10 +37,8 @@ export function useSendKeyHandler(onSend: () => void) {
     if (e.key !== "Enter") {
       return;
     }
-    const shouldSend =
-      mode === "enter"
-        ? !e.shiftKey && !e.metaKey && !e.ctrlKey
-        : e.metaKey || e.ctrlKey;
+    const hasModifier = e.metaKey || e.ctrlKey;
+    const shouldSend = hasModifier || (mode === "enter" && !e.shiftKey);
     if (shouldSend) {
       e.preventDefault();
       onSend();

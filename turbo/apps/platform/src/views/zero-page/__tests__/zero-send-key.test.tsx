@@ -65,6 +65,29 @@ describe("send-key behavior — enter mode", () => {
     expect(preventDefault).toHaveBeenCalledWith();
   });
 
+  it("should send when Cmd+Enter is pressed", async () => {
+    await renderChatPage("enter");
+
+    const textarea = await getTextarea();
+    fireEvent.change(textarea, { target: { value: "Hello" } });
+
+    const preventDefault = vi.fn();
+    act(() => {
+      textarea.dispatchEvent(
+        Object.assign(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            metaKey: true,
+            bubbles: true,
+          }),
+          { preventDefault },
+        ),
+      );
+    });
+
+    expect(preventDefault).toHaveBeenCalledWith();
+  });
+
   it("should not send when Shift+Enter is pressed", async () => {
     await renderChatPage("enter");
 
