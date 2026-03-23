@@ -8,6 +8,9 @@ import { inviteCommand } from "./invite";
 import { removeCommand } from "./remove";
 import { leaveCommand } from "./leave";
 import { deleteCommand } from "./delete";
+import { zeroOrgSecretCommand } from "./secret";
+import { zeroOrgVariableCommand } from "./variable";
+import { zeroOrgModelProviderCommand } from "./model-provider";
 
 export const zeroOrgCommand = new Command()
   .name("org")
@@ -20,4 +23,7 @@ export const zeroOrgCommand = new Command()
   .addCommand(inviteCommand)
   .addCommand(removeCommand)
   .addCommand(leaveCommand)
-  .addCommand(deleteCommand);
+  .addCommand(deleteCommand)
+  .addCommand(zeroOrgSecretCommand)
+  .addCommand(zeroOrgVariableCommand)
+  .addCommand(zeroOrgModelProviderCommand);

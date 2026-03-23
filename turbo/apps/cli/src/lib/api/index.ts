@@ -124,3 +124,26 @@ export {
   leaveZeroOrg,
   deleteZeroOrg,
 } from "./domains/zero-orgs";
+
+// Domain modules - Zero Org Secrets
+export {
+  listZeroOrgSecrets,
+  setZeroOrgSecret,
+  deleteZeroOrgSecret,
+} from "./domains/zero-org-secrets";
+
+// Domain modules - Zero Org Variables
+export {
+  listZeroOrgVariables,
+  setZeroOrgVariable,
+  deleteZeroOrgVariable,
+} from "./domains/zero-org-variables";
+
+// Domain modules - Zero Org Model Providers
+export {
+  listZeroOrgModelProviders,
+  upsertZeroOrgModelProvider,
+  deleteZeroOrgModelProvider,
+  setZeroOrgModelProviderDefault,
+  updateZeroOrgModelProviderModel,
+} from "./domains/zero-org-model-providers";
