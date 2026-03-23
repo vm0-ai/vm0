@@ -151,3 +151,9 @@ export const zeroBillingAutoRechargeContract = c.router({
 
 export type ZeroBillingAutoRechargeContract =
   typeof zeroBillingAutoRechargeContract;
+
+// Inferred types from Zod schemas
+export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
+export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
+export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
+export type PortalResponse = z.infer<typeof portalResponseSchema>;
