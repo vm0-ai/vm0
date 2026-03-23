@@ -7,6 +7,7 @@ import {
 import {
   createTestCompose,
   createTestSchedule,
+  createTestZeroAgent,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestRunnerJobEntry,
@@ -67,6 +68,52 @@ describe("createZeroRun()", () => {
       expect(job).toBeDefined();
       expect(job!.executionContext.storageManifest).not.toBeNull();
       expect(job!.executionContext.storageManifest!.memory).not.toBeNull();
+    });
+
+    it("should inject agent identity into appendSystemPrompt", async () => {
+      const agentName = uniqueId("identity-agent");
+      const compose = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "My Agent",
+        description: "A helpful assistant",
+        sound: "friendly",
+      });
+
+      const result = await createZeroRun(
+        baseParams({ composeId: compose.composeId }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain("My Agent");
+      expect(run!.appendSystemPrompt).toContain("A helpful assistant");
+    });
+
+    it("should prepend identity before existing appendSystemPrompt", async () => {
+      const agentName = uniqueId("prepend-agent");
+      const compose = await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "Bot",
+      });
+
+      const result = await createZeroRun(
+        baseParams({
+          composeId: compose.composeId,
+          appendSystemPrompt: "Custom instructions",
+        }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toMatch(/Bot[\s\S]*Custom instructions/);
+    });
+
+    it("should not inject identity when no metadata exists", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toBeNull();
     });
 
     it("should inject disallowedTools with cron tools", async () => {

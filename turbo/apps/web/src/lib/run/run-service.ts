@@ -22,7 +22,6 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { modelProviders } from "../../db/schema/model-provider";
 import { enqueueRun, drainOrgQueue } from "./run-queue-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import { buildAgentIdentityPrompt } from "../agent-identity";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
@@ -1030,23 +1029,12 @@ export async function startRun(
   const orgData = await getOrgData(authOrgId);
   const orgTier = orgTierSchema.parse(orgData.tier);
 
-  // 4. Inject agent identity metadata into appendSystemPrompt
-  let { appendSystemPrompt } = params;
-  if (resolved.composeId) {
-    const identity = await buildAgentIdentityPrompt(resolved.composeId);
-    if (identity) {
-      appendSystemPrompt = appendSystemPrompt
-        ? `${identity}\n\n${appendSystemPrompt}`
-        : identity;
-    }
-  }
-
-  // 5. Delegate to createRun with fully resolved params
+  // 4. Delegate to createRun with fully resolved params
   return createRun({
     userId: params.userId,
     agentComposeVersionId: resolved.agentComposeVersionId,
     prompt: params.prompt,
-    appendSystemPrompt,
+    appendSystemPrompt: params.appendSystemPrompt,
     disallowedTools: params.disallowedTools,
     tools: params.tools,
     settings: params.settings,
