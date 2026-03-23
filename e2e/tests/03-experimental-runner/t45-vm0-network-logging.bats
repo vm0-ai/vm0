@@ -74,11 +74,11 @@ EOF
     create_agent
 
     # Run a command that triggers both DNS (UDP) and HTTP (TCP) traffic.
-    # dig forces a UDP DNS query; curl makes an HTTP request.
+    # nslookup forces a UDP DNS query; curl makes an HTTP request.
     # Both should appear in the same network log file.
     run $CLI_COMMAND run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "dig +short example.com && curl -s -o /dev/null -w 'HTTP=%{http_code}' https://example.com"
+        "nslookup example.com > /dev/null && curl -s -o /dev/null -w 'HTTP=%{http_code}' https://example.com"
     assert_success
     assert_output --partial "HTTP=200"
 
