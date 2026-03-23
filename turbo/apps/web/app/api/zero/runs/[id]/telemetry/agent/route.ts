@@ -3,22 +3,46 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../../../src/lib/ts-rest-handler";
-import { zeroRunAgentEventsContract, runAgentEventsContract } from "@vm0/core";
+import { zeroRunAgentEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import {
-  createInfraClient,
-  forwardInfra,
-} from "../../../../../../../src/lib/infra-client";
+  requireAuth,
+  isAuthError,
+} from "../../../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../../../src/lib/org/resolve-org";
+import { getRunAgentEvents } from "../../../../../../../src/lib/run/run-telemetry-service";
+import { isNotFound } from "../../../../../../../src/lib/errors";
 
 const router = tsr.router(zeroRunAgentEventsContract, {
-  getAgentEvents: async ({ params, query, headers }) => {
+  getAgentEvents: async ({ params, query, headers }, { request }) => {
     initServices();
-    const client = createInfraClient(
-      runAgentEventsContract,
-      headers.authorization,
-    );
-    const result = await client.getAgentEvents({ params, query });
-    return forwardInfra(result);
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+
+    try {
+      const result = await getRunAgentEvents(
+        params.id,
+        userId,
+        org.orgId,
+        query,
+      );
+      return { status: 200 as const, body: result };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent run not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      throw error;
+    }
   },
 });
 
