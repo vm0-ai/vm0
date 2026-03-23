@@ -14,15 +14,6 @@ export const setOrgManageDialogOpen$ = command(({ set }, open: boolean) => {
   set(internalOrgManageDialogOpen$, open);
 });
 
-const SETTINGS_TAB_MAP: Record<string, OrgManageTab> = {
-  providers: "providers",
-  general: "general",
-  members: "members",
-  billing: "billing",
-  credits: "credits",
-  invoices: "invoices",
-};
-
 /**
  * Check URL for `?settings=<tab>` param and auto-open the org manage dialog
  * on the specified tab. Strips the param from the URL after consuming it.
@@ -34,7 +25,15 @@ export const checkSettingsParam$ = command(({ get, set }) => {
     return;
   }
 
-  const tab = SETTINGS_TAB_MAP[settingsValue];
+  const settingsTabMap: Record<string, OrgManageTab> = {
+    providers: "providers",
+    general: "general",
+    members: "members",
+    billing: "billing",
+    credits: "credits",
+    invoices: "invoices",
+  };
+  const tab = settingsTabMap[settingsValue];
   if (tab) {
     set(setActiveTab$, tab);
     set(internalOrgManageDialogOpen$, true);

@@ -19,10 +19,10 @@ describe("checkSettingsParam$", () => {
 
     store.set(checkSettingsParam$);
 
-    expect(store.get(orgManageDialogOpen$)).toBe(true);
+    expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     expect(store.get(activeTab$)).toBe("providers");
     // The param should be stripped from the URL
-    expect(store.get(searchParams$).has("settings")).toBe(false);
+    expect(store.get(searchParams$).has("settings")).toBeFalsy();
   });
 
   it("should open dialog on billing tab when ?settings=billing is present", () => {
@@ -32,7 +32,7 @@ describe("checkSettingsParam$", () => {
 
     store.set(checkSettingsParam$);
 
-    expect(store.get(orgManageDialogOpen$)).toBe(true);
+    expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     expect(store.get(activeTab$)).toBe("billing");
   });
 
@@ -43,7 +43,7 @@ describe("checkSettingsParam$", () => {
 
     store.set(checkSettingsParam$);
 
-    expect(store.get(orgManageDialogOpen$)).toBe(false);
+    expect(store.get(orgManageDialogOpen$)).toBeFalsy();
   });
 
   it("should not open dialog for unknown settings value", () => {
@@ -53,9 +53,9 @@ describe("checkSettingsParam$", () => {
 
     store.set(checkSettingsParam$);
 
-    expect(store.get(orgManageDialogOpen$)).toBe(false);
+    expect(store.get(orgManageDialogOpen$)).toBeFalsy();
     // The param should still be stripped
-    expect(store.get(searchParams$).has("settings")).toBe(false);
+    expect(store.get(searchParams$).has("settings")).toBeFalsy();
   });
 
   it("should preserve other search params when stripping settings", () => {
@@ -68,9 +68,9 @@ describe("checkSettingsParam$", () => {
 
     store.set(checkSettingsParam$);
 
-    expect(store.get(orgManageDialogOpen$)).toBe(true);
+    expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     const params = store.get(searchParams$);
-    expect(params.has("settings")).toBe(false);
+    expect(params.has("settings")).toBeFalsy();
     expect(params.get("other")).toBe("keep");
   });
 });

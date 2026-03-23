@@ -86,7 +86,6 @@ export async function extractRunOutput(
     return {
       result: null,
       askUserDenials: [],
-
       connectorIssue: false,
       error: error ?? null,
     };
@@ -113,7 +112,6 @@ export async function extractAllRunOutputs(
       {
         result: null,
         askUserDenials: [],
-
         connectorIssue: false,
         error: error ?? null,
       },
