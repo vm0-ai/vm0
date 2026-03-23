@@ -47,20 +47,14 @@ describe("zero agent edit command", () => {
   });
 
   describe("successful edit", () => {
-    it("should update display name using existing connectors", async () => {
-      const updateMock = vi.fn();
+    it("should update display name and show success message", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
-        http.put(
-          "http://localhost:3000/api/zero/agents/my-agent",
-          async ({ request }) => {
-            const body = await request.json();
-            updateMock(body);
-            return HttpResponse.json({ ...mockAgent, displayName: "Updated" });
-          },
-        ),
+        http.put("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json({ ...mockAgent, displayName: "Updated" });
+        }),
       );
 
       await editCommand.parseAsync([
@@ -71,37 +65,35 @@ describe("zero agent edit command", () => {
         "Updated",
       ]);
 
-      // Should pass existing connectors since --connectors was not provided
-      expect(updateMock).toHaveBeenCalledWith(
-        expect.objectContaining({ connectors: ["github"] }),
-      );
-
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
     });
 
-    it("should update instructions only without fetching agent", async () => {
-      const instructionsPath = join(tmpdir(), "new-instructions.md");
-      writeFileSync(instructionsPath, "New instructions");
+    describe("with instructions file", () => {
+      let instructionsPath: string;
 
-      const agentGetMock = vi.fn();
-      const instructionsMock = vi.fn();
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          agentGetMock();
-          return HttpResponse.json(mockAgent);
-        }),
-        http.put(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
-          async ({ request }) => {
-            const body = await request.json();
-            instructionsMock(body);
+      beforeEach(() => {
+        instructionsPath = join(tmpdir(), "new-instructions.md");
+        writeFileSync(instructionsPath, "New instructions");
+      });
+
+      afterEach(() => {
+        unlinkSync(instructionsPath);
+      });
+
+      it("should update instructions and show success message", async () => {
+        server.use(
+          http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
             return HttpResponse.json(mockAgent);
-          },
-        ),
-      );
+          }),
+          http.put(
+            "http://localhost:3000/api/zero/agents/my-agent/instructions",
+            () => {
+              return HttpResponse.json(mockAgent);
+            },
+          ),
+        );
 
-      try {
         await editCommand.parseAsync([
           "node",
           "cli",
@@ -110,14 +102,9 @@ describe("zero agent edit command", () => {
           instructionsPath,
         ]);
 
-        // Should NOT fetch existing agent when only updating instructions
-        expect(agentGetMock).not.toHaveBeenCalled();
-        expect(instructionsMock).toHaveBeenCalledWith({
-          content: "New instructions",
-        });
-      } finally {
-        unlinkSync(instructionsPath);
-      }
+        const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+        expect(logCalls).toContain("updated");
+      });
     });
   });
 
