@@ -13,7 +13,7 @@ import * as blobSchema from "./schema/blob";
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
-import * as agentScheduleSchema from "./schema/agent-schedule";
+import * as zeroAgentScheduleSchema from "./schema/zero-agent-schedule";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as variableSchema from "./schema/variable";
@@ -63,7 +63,7 @@ export const schema = {
   ...sandboxTelemetrySchema,
   ...runnerSchema,
   ...agentRunQueueSchema,
-  ...agentScheduleSchema,
+  ...zeroAgentScheduleSchema,
   ...secretSchema,
   ...modelProviderSchema,
   ...slackOrgInstallationSchema,

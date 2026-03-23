@@ -1,6 +1,6 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
-import { agentSchedules } from "../../db/schema/agent-schedule";
+import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { decryptSecretsMap } from "../crypto";
@@ -114,7 +114,7 @@ function calculateNextRun(
  * Convert schedule row to API response format
  */
 function toResponse(
-  schedule: typeof agentSchedules.$inferSelect,
+  schedule: typeof zeroAgentSchedules.$inferSelect,
   composeName: string,
   orgSlug: string,
 ): ScheduleResponse {
@@ -198,19 +198,19 @@ async function verifyScheduleOwnership(
   composeId: string,
   name: string,
 ): Promise<{
-  schedule: typeof agentSchedules.$inferSelect;
+  schedule: typeof zeroAgentSchedules.$inferSelect;
   compose: typeof agentComposes.$inferSelect;
   orgSlug: string;
 }> {
   const [schedule] = await globalThis.services.db
     .select()
-    .from(agentSchedules)
+    .from(zeroAgentSchedules)
     .where(
       and(
-        eq(agentSchedules.composeId, composeId),
-        eq(agentSchedules.name, name),
-        eq(agentSchedules.orgId, orgId),
-        eq(agentSchedules.userId, userId),
+        eq(zeroAgentSchedules.composeId, composeId),
+        eq(zeroAgentSchedules.name, name),
+        eq(zeroAgentSchedules.orgId, orgId),
+        eq(zeroAgentSchedules.userId, userId),
       ),
     )
     .limit(1);
@@ -271,9 +271,9 @@ async function updateExistingSchedule(
   request: DeployScheduleRequest,
   triggerType: "cron" | "once" | "loop",
   nextRunAt: Date | null,
-): Promise<typeof agentSchedules.$inferSelect> {
+): Promise<typeof zeroAgentSchedules.$inferSelect> {
   const [updated] = await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set({
       triggerType,
       cronExpression: request.cronExpression ?? null,
@@ -298,7 +298,7 @@ async function updateExistingSchedule(
       consecutiveFailures: 0,
       updatedAt: new Date(),
     })
-    .where(eq(agentSchedules.id, existingId))
+    .where(eq(zeroAgentSchedules.id, existingId))
     .returning();
 
   if (!updated) {
@@ -316,10 +316,10 @@ async function insertNewSchedule(
   request: DeployScheduleRequest,
   triggerType: "cron" | "once" | "loop",
   nextRunAt: Date | null,
-): Promise<typeof agentSchedules.$inferSelect> {
+): Promise<typeof zeroAgentSchedules.$inferSelect> {
   const now = new Date();
   const [created] = await globalThis.services.db
-    .insert(agentSchedules)
+    .insert(zeroAgentSchedules)
     .values({
       composeId: request.composeId,
       userId,
@@ -436,13 +436,13 @@ export async function deploySchedule(
   // Check for existing schedule with same name for this user on this compose
   const [existing] = await globalThis.services.db
     .select()
-    .from(agentSchedules)
+    .from(zeroAgentSchedules)
     .where(
       and(
-        eq(agentSchedules.composeId, request.composeId),
-        eq(agentSchedules.name, request.name),
-        eq(agentSchedules.orgId, orgId),
-        eq(agentSchedules.userId, userId),
+        eq(zeroAgentSchedules.composeId, request.composeId),
+        eq(zeroAgentSchedules.name, request.name),
+        eq(zeroAgentSchedules.orgId, orgId),
+        eq(zeroAgentSchedules.userId, userId),
       ),
     )
     .limit(1);
@@ -489,14 +489,14 @@ export async function listSchedules(
   );
 
   // Query schedules by userId, optionally filtered by orgId
-  const conditions = [eq(agentSchedules.userId, userId)];
+  const conditions = [eq(zeroAgentSchedules.userId, userId)];
   if (orgId) {
-    conditions.push(eq(agentSchedules.orgId, orgId));
+    conditions.push(eq(zeroAgentSchedules.orgId, orgId));
   }
 
   const userSchedules = await globalThis.services.db
     .select()
-    .from(agentSchedules)
+    .from(zeroAgentSchedules)
     .where(and(...conditions));
 
   if (userSchedules.length === 0) {
@@ -615,8 +615,8 @@ export async function deleteSchedule(
   );
 
   await globalThis.services.db
-    .delete(agentSchedules)
-    .where(eq(agentSchedules.id, schedule.id));
+    .delete(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.id, schedule.id));
 
   log.debug(`Deleted schedule ${name}`);
 }
@@ -659,7 +659,7 @@ export async function enableSchedule(
   }
 
   const [updated] = await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set({
       enabled: true,
       nextRunAt,
@@ -667,7 +667,7 @@ export async function enableSchedule(
       consecutiveFailures: 0, // Reset failure counter on enable
       updatedAt: new Date(),
     })
-    .where(eq(agentSchedules.id, schedule.id))
+    .where(eq(zeroAgentSchedules.id, schedule.id))
     .returning();
 
   if (!updated) {
@@ -698,13 +698,13 @@ export async function disableSchedule(
   );
 
   const [updated] = await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set({
       enabled: false,
       retryStartedAt: null, // Clear retry state
       updatedAt: new Date(),
     })
-    .where(eq(agentSchedules.id, schedule.id))
+    .where(eq(zeroAgentSchedules.id, schedule.id))
     .returning();
 
   if (!updated) {
@@ -730,9 +730,12 @@ export async function executeDueSchedules(): Promise<{
   // Find enabled schedules where nextRunAt <= now
   const dueSchedules = await globalThis.services.db
     .select()
-    .from(agentSchedules)
+    .from(zeroAgentSchedules)
     .where(
-      and(eq(agentSchedules.enabled, true), lte(agentSchedules.nextRunAt, now)),
+      and(
+        eq(zeroAgentSchedules.enabled, true),
+        lte(zeroAgentSchedules.nextRunAt, now),
+      ),
     )
     .limit(10); // Process in batches
 
@@ -781,39 +784,39 @@ export async function executeDueSchedules(): Promise<{
  * by the completion callback, which provides completion-based timing.
  */
 async function advanceScheduleState(
-  schedule: typeof agentSchedules.$inferSelect,
+  schedule: typeof zeroAgentSchedules.$inferSelect,
   lastRunId?: string,
 ): Promise<void> {
   const now = new Date();
   if (schedule.triggerType === "loop") {
     // Loop: don't advance nextRunAt here — the loop callback handles it on completion
     await globalThis.services.db
-      .update(agentSchedules)
+      .update(zeroAgentSchedules)
       .set({
         ...(lastRunId !== undefined && { lastRunId }),
         lastRunAt: now,
         retryStartedAt: null,
         nextRunAt: null, // Will be set by loop callback on run completion
       })
-      .where(eq(agentSchedules.id, schedule.id));
+      .where(eq(zeroAgentSchedules.id, schedule.id));
   } else if (schedule.cronExpression) {
     const nextRunAt = calculateNextRun(
       schedule.cronExpression,
       schedule.timezone,
     );
     await globalThis.services.db
-      .update(agentSchedules)
+      .update(zeroAgentSchedules)
       .set({
         ...(lastRunId !== undefined && { lastRunId }),
         lastRunAt: now,
         retryStartedAt: null,
         nextRunAt,
       })
-      .where(eq(agentSchedules.id, schedule.id));
+      .where(eq(zeroAgentSchedules.id, schedule.id));
   } else {
     // One-time: disable after execution
     await globalThis.services.db
-      .update(agentSchedules)
+      .update(zeroAgentSchedules)
       .set({
         enabled: false,
         ...(lastRunId !== undefined && { lastRunId }),
@@ -821,7 +824,7 @@ async function advanceScheduleState(
         retryStartedAt: null,
         nextRunAt: null,
       })
-      .where(eq(agentSchedules.id, schedule.id));
+      .where(eq(zeroAgentSchedules.id, schedule.id));
   }
 }
 
@@ -829,7 +832,7 @@ async function advanceScheduleState(
  * Execute a single schedule
  */
 async function executeSchedule(
-  schedule: typeof agentSchedules.$inferSelect,
+  schedule: typeof zeroAgentSchedules.$inferSelect,
 ): Promise<void> {
   log.debug(`Executing schedule ${schedule.name} (${schedule.id})`);
 
@@ -846,9 +849,9 @@ async function executeSchedule(
     );
     // Disable schedule if compose is deleted
     await globalThis.services.db
-      .update(agentSchedules)
+      .update(zeroAgentSchedules)
       .set({ enabled: false })
-      .where(eq(agentSchedules.id, schedule.id));
+      .where(eq(zeroAgentSchedules.id, schedule.id));
     return;
   }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
-import { agentSchedules } from "../../../../../../src/db/schema/agent-schedule";
+import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
 import type { ScheduleLoopCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -54,8 +54,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Load schedule
   const [schedule] = await globalThis.services.db
     .select()
-    .from(agentSchedules)
-    .where(eq(agentSchedules.id, scheduleId))
+    .from(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.id, scheduleId))
     .limit(1);
 
   if (!schedule) {
@@ -79,14 +79,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     : new Date(now.getTime() + intervalSeconds * 1000);
 
   await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set({
       consecutiveFailures: newFailureCount,
       ...(shouldDisable && { enabled: false }),
       nextRunAt,
       updatedAt: now,
     })
-    .where(eq(agentSchedules.id, scheduleId));
+    .where(eq(zeroAgentSchedules.id, scheduleId));
 
   if (shouldDisable) {
     log.warn("Loop schedule auto-disabled after consecutive failures", {

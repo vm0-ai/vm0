@@ -33,7 +33,7 @@ import { githubIssueSessions } from "../db/schema/github-issue-session";
 import { emailThreadSessions } from "../db/schema/email-thread-session";
 import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentRunQueue } from "../db/schema/agent-run-queue";
-import { agentSchedules } from "../db/schema/agent-schedule";
+import { zeroAgentSchedules } from "../db/schema/zero-agent-schedule";
 import { emailOutbox } from "../db/schema/email-outbox";
 import type { EmailTemplate, PostSendAction } from "../lib/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
@@ -2351,9 +2351,9 @@ export async function updateTestScheduleState(
   },
 ): Promise<void> {
   await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set(state)
-    .where(eq(agentSchedules.id, scheduleId));
+    .where(eq(zeroAgentSchedules.id, scheduleId));
 }
 
 /**
@@ -2366,8 +2366,8 @@ export async function updateTestScheduleState(
 export async function findTestScheduleById(scheduleId: string) {
   const [row] = await globalThis.services.db
     .select()
-    .from(agentSchedules)
-    .where(eq(agentSchedules.id, scheduleId))
+    .from(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.id, scheduleId))
     .limit(1);
   return row;
 }
@@ -3223,9 +3223,9 @@ export async function findTestRunnerJobEntry(runId: string) {
  */
 export async function disableAllSchedules(): Promise<void> {
   await globalThis.services.db
-    .update(agentSchedules)
+    .update(zeroAgentSchedules)
     .set({ enabled: false })
-    .where(eq(agentSchedules.enabled, true));
+    .where(eq(zeroAgentSchedules.enabled, true));
 }
 
 /**
