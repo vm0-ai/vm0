@@ -88,7 +88,7 @@
     # Phase 4: Health check
     # ========================================
     - name: Verify runner health
-      command: "{{ bin_dir }}/runner doctor"
+      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
 
     # ========================================
     # Phase 5: Drain old runners + Cleanup
@@ -115,4 +115,4 @@
     # Phase 6: Final health check
     # ========================================
     - name: Verify runner health after cleanup
-      command: "{{ bin_dir }}/runner doctor"
+      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
