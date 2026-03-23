@@ -1199,7 +1199,10 @@ describe("zero-chat signals", () => {
     function useUploadHandler(options?: { delayMs?: number }) {
       const delayMs = options?.delayMs ?? 0;
       server.use(
-        http.post("*/api/zero/uploads", async () => {
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/agent/uploads", async () => {
           if (delayMs > 0) {
             await delay(delayMs);
           }
@@ -1273,7 +1276,10 @@ describe("zero-chat signals", () => {
     it("should cancel one upload without affecting others", async () => {
       let requestCount = 0;
       server.use(
-        http.post("*/api/zero/uploads", async () => {
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/agent/uploads", async () => {
           requestCount++;
           const currentCount = requestCount;
           await delay(300);
