@@ -42,10 +42,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
-import avatar1Img from "./assets/avatar-1.webp";
-import avatar2Img from "./assets/avatar-2.webp";
-import avatar3Img from "./assets/avatar-3.webp";
-import avatar4Img from "./assets/avatar-4.webp";
 import zeroAvatarImg from "./assets/zero-avatar.webp";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -717,11 +713,11 @@ function TalkToSection({
             currentChatAgentId === agent.id;
           const isFromChat = selectedAgentIdFromChat === agent.id;
           return (
-            <div key={agent.id} className="flex items-center group">
+            <div key={agent.id} className="group relative">
               <Link
                 pathname="/talk/:name"
                 options={{ pathParams: { name: agent.name } }}
-                className={`flex flex-1 min-w-0 h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+                className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 pr-8 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   isPrimarySelected
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
                     : isFromChat
@@ -738,7 +734,7 @@ function TalkToSection({
                   {agent.displayName ?? agent.name}
                 </span>
               </Link>
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+              <div className="absolute right-1 top-0 flex h-8 items-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
