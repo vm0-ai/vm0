@@ -36,7 +36,7 @@ pub struct ExecutionContext {
     // Agent compose version ID (full SHA-256 content hash)
     #[serde(default)]
     pub agent_compose_version_id: Option<String>,
-    // Not yet used by runner — vars are expanded into environment at compose time
+    // Deserialized but not yet consumed by runner — vars are expanded at compose time
     #[allow(dead_code)]
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
@@ -84,15 +84,13 @@ pub struct ExecutionContext {
     pub experimental_firewalls: Option<Vec<Firewall>>,
     #[serde(default)]
     pub experimental_capabilities: Option<Vec<String>>,
-    #[allow(dead_code)]
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
-    #[allow(dead_code)]
     #[serde(default)]
     pub tools: Option<Vec<String>>,
-    #[allow(dead_code)]
     #[serde(default)]
     pub settings: Option<String>,
+    // Deserialized but not yet consumed by runner — profile selection is handled by api provider
     #[allow(dead_code)]
     #[serde(default)]
     pub experimental_profile: Option<String>,
