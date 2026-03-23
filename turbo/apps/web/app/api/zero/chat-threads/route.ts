@@ -9,10 +9,13 @@ import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import {
   createChatThread,
   listChatThreads,
+  updateChatThreadTitle,
 } from "../../../../src/lib/chat-thread";
 import { resolveCallerOrgId } from "../../../../src/lib/org/resolve-org";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
+import { generateChatTitle } from "../../../../src/lib/ai/lightweight-model";
+import { logger } from "../../../../src/lib/logger";
 
 const router = tsr.router(chatThreadsContract, {
   create: async ({ body, headers }, { request }) => {
@@ -59,6 +62,23 @@ const router = tsr.router(chatThreadsContract, {
       body.agentComposeId,
       body.title,
     );
+
+    // Asynchronously generate a better title using lightweight model
+    if (body.title) {
+      const log = logger("zero-chat-threads");
+      generateChatTitle(body.title)
+        .then(async (aiTitle) => {
+          if (aiTitle) {
+            await updateChatThreadTitle(thread.id, aiTitle);
+          }
+        })
+        .catch((err: unknown) => {
+          log.warn("Failed to generate AI chat title", {
+            threadId: thread.id,
+            error: err,
+          });
+        });
+    }
 
     return {
       status: 201 as const,
