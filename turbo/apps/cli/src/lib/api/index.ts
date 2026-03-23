@@ -147,3 +147,14 @@ export {
   setZeroOrgModelProviderDefault,
   updateZeroOrgModelProviderModel,
 } from "./domains/zero-org-model-providers";
+
+// Domain modules - Zero Agents
+export {
+  createZeroAgent,
+  listZeroAgents,
+  getZeroAgent,
+  updateZeroAgent,
+  deleteZeroAgent,
+  getZeroAgentInstructions,
+  updateZeroAgentInstructions,
+} from "./domains/zero-agents";
