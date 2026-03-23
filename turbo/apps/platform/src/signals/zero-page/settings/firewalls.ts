@@ -57,8 +57,22 @@ export const saveFirewallPolicies$ = command(
     });
 
     if (!resp.ok) {
-      const body = await resp.text().catch(() => resp.statusText);
-      throw new Error(`Save failed: ${body}`);
+      const parsed: unknown = await resp.json().catch(() => null);
+      let detail = resp.statusText;
+      if (
+        parsed !== null &&
+        parsed !== undefined &&
+        typeof parsed === "object" &&
+        "error" in parsed &&
+        parsed.error !== null &&
+        parsed.error !== undefined &&
+        typeof parsed.error === "object" &&
+        "message" in parsed.error &&
+        typeof parsed.error.message === "string"
+      ) {
+        detail = parsed.error.message;
+      }
+      throw new Error(`Save failed: ${detail}`);
     }
 
     const data = (await resp.json()) as {

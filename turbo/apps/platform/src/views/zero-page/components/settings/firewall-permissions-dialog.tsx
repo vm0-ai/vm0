@@ -25,7 +25,6 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 interface FirewallPermission {
   name: string;
   description?: string;
-  ruleCount: number;
 }
 
 interface FirewallPermissionsDrawerProps {
@@ -43,14 +42,10 @@ function extractPermissions(config: FirewallConfig): FirewallPermission[] {
       continue;
     }
     for (const p of api.permissions) {
-      const existing = seen.get(p.name);
-      if (existing) {
-        existing.ruleCount += p.rules.length;
-      } else {
+      if (!seen.has(p.name)) {
         seen.set(p.name, {
           name: p.name,
           description: p.description,
-          ruleCount: p.rules.length,
         });
       }
     }
