@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { pathname$, navigateInReact$ } from "../route.ts";
-import { prepareSessionSwitch$, zeroChatThreadId$ } from "./zero-chat.ts";
 import type {
   ZeroNavId,
   ZeroAccountAction,
@@ -123,17 +122,9 @@ export const setZeroChatAgent$ = command(
  * `setupZeroPage$` guards heavy work behind `initialDataLoaded$`, so
  * re-entry from an already-loaded zero page is cheap.
  */
-export const navigateToZeroSession$ = command(
-  ({ get, set }, sessionId: string) => {
-    // Show skeleton immediately when switching to a different thread.
-    // Skip when navigating to the thread we already have loaded (e.g. after
-    // creating a new thread from /talk) to avoid clearing in-flight messages.
-    if (get(zeroChatThreadId$) !== sessionId) {
-      set(prepareSessionSwitch$);
-    }
-    set(navigateInReact$, "/chat/:sessionId", { pathParams: { sessionId } });
-  },
-);
+export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
+  set(navigateInReact$, "/chat/:sessionId", { pathParams: { sessionId } });
+});
 
 /**
  * Navigate back from a chat session to the previous route in browser history.
