@@ -17,7 +17,6 @@ import {
   navigateToZeroSession$,
   zeroChatAgentId$,
   setZeroChatAgent$,
-  zeroInChat$,
   zeroSessionId$,
 } from "./zero-nav.ts";
 import { navigateTo$ } from "../route.ts";
@@ -1032,9 +1031,7 @@ async function ensureChatThread(
     ...prev,
   ]);
   // Navigate immediately so URL updates
-  if (get(zeroInChat$)) {
-    set(navigateToZeroSession$, thread.id);
-  }
+  set(navigateToZeroSession$, thread.id);
 
   return thread.id;
 }

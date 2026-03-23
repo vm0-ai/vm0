@@ -41,7 +41,7 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
  */
 export const zeroInChat$ = computed((get): boolean => {
   const path = get(pathname$);
-  return /^\/chat(\/|$)/.test(path);
+  return /^\/chat(\/|$)/.test(path) || /^\/talk(\/|$)/.test(path);
 });
 
 /**
