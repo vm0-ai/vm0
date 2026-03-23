@@ -581,7 +581,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
     if (!message.content) {
       return;
     }
-    copyMessage(message.id, message.content);
+    detach(copyMessage(message.id, message.content), Reason.DomCallback);
   };
 
   const logButton = message.runId ? (

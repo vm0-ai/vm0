@@ -74,8 +74,14 @@ export const copiedMessageIdValue$ = computed((get) => get(copiedMessageId$));
 
 export const copyMessageContent$ = command(
   ({ set }, messageId: string, content: string) => {
-    navigator.clipboard.writeText(content).catch(() => {});
-    set(copiedMessageId$, messageId);
-    window.setTimeout(() => set(copiedMessageId$, null), 2000);
+    return navigator.clipboard
+      .writeText(content)
+      .then(() => {
+        set(copiedMessageId$, messageId);
+        window.setTimeout(() => set(copiedMessageId$, null), 2000);
+      })
+      .catch(() => {
+        /* clipboard unavailable – no feedback shown */
+      });
   },
 );
