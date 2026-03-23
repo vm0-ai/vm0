@@ -7,6 +7,7 @@
     "check-types": "tsc --noEmit",
     "generate": "tsx src/index.ts",
     "generate:confluence": "tsx src/index.ts confluence",
+    "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",
     "generate:gmail": "tsx src/index.ts gmail",
     "generate:google-calendar": "tsx src/index.ts google-calendar",
@@ -20,7 +21,8 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@vm0/typescript-config": "workspace:*",
+    "tsx": "^4.19.4",
     "typescript": "5.9.3",
-    "tsx": "^4.19.4"
+    "yaml": "^2.8.3"
   }
 }

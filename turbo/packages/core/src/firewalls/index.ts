@@ -8,6 +8,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 import { confluenceFirewall } from "./confluence.generated";
+import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
 import { gmailFirewall } from "./gmail.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
@@ -20,6 +21,7 @@ import { slackFirewall } from "./slack.generated";
 
 export const builtinFirewalls: Record<string, FirewallConfig> = {
   confluence: confluenceFirewall,
+  figma: figmaFirewall,
   github: githubFirewall,
   gmail: gmailFirewall,
   "google-calendar": googleCalendarFirewall,
