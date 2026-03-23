@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.74.3](https://github.com/vm0-ai/vm0/compare/cli-v9.74.2...cli-v9.74.3) (2026-03-23)
+
+
+### Refactoring
+
+* remove unused vm0 dashboard cli command ([#6079](https://github.com/vm0-ai/vm0/issues/6079)) ([#6082](https://github.com/vm0-ai/vm0/issues/6082)) ([f4f1825](https://github.com/vm0-ai/vm0/commit/f4f1825f43700325416dc3a38798e2764ed5eaa9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.94.0
+
 ## [9.74.2](https://github.com/vm0-ai/vm0/compare/cli-v9.74.1...cli-v9.74.2) (2026-03-23)
 
 
