@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.135.0](https://github.com/vm0-ai/vm0/compare/app-v0.134.2...app-v0.135.0) (2026-03-23)
+
+
+### Features
+
+* **platform:** add org management dialog with billing, members, and invoices tabs ([#5605](https://github.com/vm0-ai/vm0/issues/5605)) ([a7b3e28](https://github.com/vm0-ai/vm0/commit/a7b3e28c9bd1dbc61d79ee0d8d1155faea14915c))
+
+
+### Bug Fixes
+
+* **platform:** onboarding chat redirect and disable duplicate clicks ([#6005](https://github.com/vm0-ai/vm0/issues/6005)) ([5b800a5](https://github.com/vm0-ai/vm0/commit/5b800a518261754b10cb494fc2441ed8038c8d19))
+* prevent stale activity detail from flashing during navigation ([#6008](https://github.com/vm0-ai/vm0/issues/6008)) ([a639b8d](https://github.com/vm0-ai/vm0/commit/a639b8de402e6765f3afd4fae88e5fc85c44afd8))
+
+
+### Refactoring
+
+* migrate /talk/:name route to dedicated setup function ([#6007](https://github.com/vm0-ai/vm0/issues/6007)) ([5710366](https://github.com/vm0-ai/vm0/commit/5710366a15bbcb1d11dc00f218aeda97d9781269))
+* remove ccstate-react/experimental from scope-review-modal ([#6021](https://github.com/vm0-ai/vm0/issues/6021)) ([e623d25](https://github.com/vm0-ai/vm0/commit/e623d25d7a3c311f5b2f8722027c2e70ec067c9e)), closes [#5804](https://github.com/vm0-ai/vm0/issues/5804)
+* standardize project artifacts to english ([#6000](https://github.com/vm0-ai/vm0/issues/6000)) ([eccdaec](https://github.com/vm0-ai/vm0/commit/eccdaece6826b5e6edae7575b74771eda25643cd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.92.0
+
 ## [0.134.2](https://github.com/vm0-ai/vm0/compare/app-v0.134.1...app-v0.134.2) (2026-03-22)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.92.0](https://github.com/vm0-ai/vm0/compare/core-v8.91.0...core-v8.92.0) (2026-03-23)
+
+
+### Features
+
+* **platform:** add org management dialog with billing, members, and invoices tabs ([#5605](https://github.com/vm0-ai/vm0/issues/5605)) ([a7b3e28](https://github.com/vm0-ai/vm0/commit/a7b3e28c9bd1dbc61d79ee0d8d1155faea14915c))
+
+
+### Bug Fixes
+
+* return chat message summaries on page refresh ([#6003](https://github.com/vm0-ai/vm0/issues/6003)) ([51aa74f](https://github.com/vm0-ai/vm0/commit/51aa74f9e4b6d0ac7bf44b8776064b78a22ce49b))
+
+
+### Refactoring
+
+* add zero model-providers update-model endpoint and cleanup orphans ([#5759](https://github.com/vm0-ai/vm0/issues/5759)) ([298a384](https://github.com/vm0-ai/vm0/commit/298a384ad2c95de4af1a685875ebf25a552e64b3))
+
 ## [8.91.0](https://github.com/vm0-ai/vm0/compare/core-v8.90.0...core-v8.91.0) (2026-03-22)
 
 

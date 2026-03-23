@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.142.0](https://github.com/vm0-ai/vm0/compare/web-v12.141.1...web-v12.142.0) (2026-03-23)
+
+
+### Features
+
+* add clerk webhook endpoint with svix verification ([#5983](https://github.com/vm0-ai/vm0/issues/5983)) ([c2467d0](https://github.com/vm0-ai/vm0/commit/c2467d02132ae38e192bc9cc2f13031f6241b39b)), closes [#5977](https://github.com/vm0-ai/vm0/issues/5977)
+* add no-self-api-call eslint rule ([#6001](https://github.com/vm0-ai/vm0/issues/6001)) ([0d2b26f](https://github.com/vm0-ai/vm0/commit/0d2b26f0df6bf2661561a34539f9ae32e897e449))
+* add org external service cleanup function ([#5987](https://github.com/vm0-ai/vm0/issues/5987)) ([5acfc43](https://github.com/vm0-ai/vm0/commit/5acfc430c834f7488e7844a1edf19eef1864aca5))
+* add org s3 data cleanup service for org deletion ([#5984](https://github.com/vm0-ai/vm0/issues/5984)) ([1981651](https://github.com/vm0-ai/vm0/commit/1981651631fcc2e9fbbd772fec01818d9fd50b55)), closes [#5979](https://github.com/vm0-ai/vm0/issues/5979)
+* **platform:** add org management dialog with billing, members, and invoices tabs ([#5605](https://github.com/vm0-ai/vm0/issues/5605)) ([a7b3e28](https://github.com/vm0-ai/vm0/commit/a7b3e28c9bd1dbc61d79ee0d8d1155faea14915c))
+
+
+### Bug Fixes
+
+* return chat message summaries on page refresh ([#6003](https://github.com/vm0-ai/vm0/issues/6003)) ([51aa74f](https://github.com/vm0-ai/vm0/commit/51aa74f9e4b6d0ac7bf44b8776064b78a22ce49b))
+
+
+### Refactoring
+
+* add zero model-providers update-model endpoint and cleanup orphans ([#5759](https://github.com/vm0-ai/vm0/issues/5759)) ([298a384](https://github.com/vm0-ai/vm0/commit/298a384ad2c95de4af1a685875ebf25a552e64b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.92.0
+
 ## [12.141.1](https://github.com/vm0-ai/vm0/compare/web-v12.141.0...web-v12.141.1) (2026-03-22)
 
 

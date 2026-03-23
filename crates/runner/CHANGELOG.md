@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.44.0...runner-rs-v0.44.1) (2026-03-23)
+
+
+### Refactoring
+
+* **runner:** move `runner submit` under `runner local` subcommand ([#5990](https://github.com/vm0-ai/vm0/issues/5990)) ([568fb4c](https://github.com/vm0-ai/vm0/commit/568fb4ce73fa05f6dd0eee05c47c76ffe21e5c5e))
+
 ## [0.44.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.43.0...runner-rs-v0.44.0) (2026-03-22)
 
 
