@@ -805,6 +805,7 @@ jobs:
           has_warnings=false
           for host in $(echo "$AWS_METAL_RUNNER_HOSTS" | tr ',' ' '); do
             [ -z "$host" ] && continue
+            # shellcheck disable=SC2029 -- RUNNER_BIN is intentionally expanded locally
             if ! ssh "${AWS_METAL_RUNNER_USER}@${host}" "${RUNNER_BIN} doctor" 2>&1; then
               has_warnings=true
             fi
