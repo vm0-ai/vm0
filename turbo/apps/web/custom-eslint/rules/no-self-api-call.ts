@@ -45,15 +45,17 @@ export default createRule({
           return;
         }
 
-        const flaggedNames = node.specifiers
-          .filter(
-            (specifier): specifier is TSESTree.ImportSpecifier =>
-              specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-              specifier.imported.type === AST_NODE_TYPES.Identifier &&
-              (specifier.imported.name === "createInfraClient" ||
-                specifier.imported.name === "proxyToInfra"),
-          )
-          .map((specifier) => (specifier.imported as TSESTree.Identifier).name);
+        const flaggedNames: string[] = [];
+        for (const specifier of node.specifiers) {
+          if (
+            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+            specifier.imported.type === AST_NODE_TYPES.Identifier &&
+            (specifier.imported.name === "createInfraClient" ||
+              specifier.imported.name === "proxyToInfra")
+          ) {
+            flaggedNames.push(specifier.imported.name);
+          }
+        }
 
         if (flaggedNames.length > 0) {
           context.report({
