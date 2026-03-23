@@ -2,6 +2,7 @@
   "bash.lang.security.ifs-tampering.ifs-tampering": 1,
   "generic.secrets.security.detected-generic-api-key.detected-generic-api-key": 1,
   "generic.secrets.security.detected-github-token.detected-github-token": 1,
+  "generic.secrets.security.detected-google-oauth-access-token.detected-google-oauth-access-token": 6,
   "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp": 5,
   "javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key": 6,
   "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal": 43,
