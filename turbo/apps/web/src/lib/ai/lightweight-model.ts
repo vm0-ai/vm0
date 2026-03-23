@@ -1,8 +1,8 @@
 import "server-only";
 import { env } from "../../env";
 
-const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "google/gemini-3.1-flash-lite-preview";
+const BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MODEL = "google/gemini-3.1-flash-lite-preview";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -26,23 +26,20 @@ interface OpenRouterResponse {
  * Throws on HTTP errors or empty responses — callers handle errors.
  */
 async function generateText(messages: ChatMessage[]): Promise<string | null> {
-  const { OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_BASE_URL } = env();
+  const { OPENROUTER_API_KEY } = env();
 
   if (!OPENROUTER_API_KEY) {
     return null;
   }
 
-  const model = OPENROUTER_MODEL ?? DEFAULT_MODEL;
-  const baseUrl = OPENROUTER_BASE_URL ?? DEFAULT_BASE_URL;
-
-  const response = await fetch(baseUrl, {
+  const response = await fetch(BASE_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model,
+      model: MODEL,
       messages,
       max_tokens: 30,
       temperature: 0.3,
