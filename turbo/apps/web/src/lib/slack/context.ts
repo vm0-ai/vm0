@@ -20,28 +20,8 @@ function isValidSlackDownloadUrl(url: string): boolean {
   }
 }
 
-/**
- * Check if a buffer starts with known image magic bytes.
- */
-function hasImageMagicBytes(buffer: Buffer): boolean {
-  const isPng = buffer[0] === 0x89 && buffer[1] === 0x50;
-  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8;
-  const isGif = buffer[0] === 0x47 && buffer[1] === 0x49;
-  const isWebp = buffer[0] === 0x52 && buffer[1] === 0x49;
-  return isPng || isJpeg || isGif || isWebp;
-}
-
-/** Maximum file size to download and upload (10MB) */
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-
-/** Image MIME types that can be uploaded for agent access */
-const SUPPORTED_IMAGE_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/gif",
-  "image/webp",
-];
+/** Maximum file size to download and upload (100MB) */
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
 export interface SlackFile {
   id?: string;
@@ -154,14 +134,6 @@ export async function fetchChannelContext(
 
   // Reverse to get chronological order (oldest first)
   return ((result.messages ?? []) as SlackMessage[]).reverse();
-}
-
-/**
- * Check if a file is a supported image type
- */
-function isSupportedImageType(file: SlackFile): boolean {
-  const mimetype = file.mimetype?.toLowerCase();
-  return mimetype !== undefined && SUPPORTED_IMAGE_TYPES.includes(mimetype);
 }
 
 /**
@@ -332,32 +304,13 @@ async function downloadAndUploadSlackFile(
       return null;
     }
 
-    // Verify the response content type is an image
-    const responseContentType = response.headers.get("content-type");
-    if (!responseContentType || !responseContentType.startsWith("image/")) {
-      log.debug("Slack returned non-image content", {
-        fileId: file.id,
-        contentType: responseContentType,
-      });
-      return null;
-    }
-
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Verify the content is actually an image (check magic bytes)
-    if (!hasImageMagicBytes(buffer)) {
-      log.debug("Downloaded content is not a valid image", {
-        fileId: file.id,
-        firstBytes: buffer.slice(0, 10).toString("hex"),
-      });
-      return null;
-    }
-
     // Upload to R2 temporary storage with correct MIME type
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
-    const filename = file.name || file.id || "image";
-    const s3Key = `slack-images/${sessionId}/${file.id || Date.now()}-${filename}`;
+    const filename = file.name || file.id || "file";
+    const s3Key = `slack-files/${sessionId}/${file.id || Date.now()}-${filename}`;
     const contentType = file.mimetype || "application/octet-stream";
 
     await uploadS3Buffer(bucketName, s3Key, buffer, contentType);
@@ -365,7 +318,7 @@ async function downloadAndUploadSlackFile(
     // Generate presigned URL (valid for 1 hour)
     const presignedUrl = await generatePresignedUrl(bucketName, s3Key, 3600);
 
-    log.debug("Uploaded Slack image to R2", {
+    log.debug("Uploaded Slack file to R2", {
       fileId: file.id,
       name: filename,
       size: buffer.length,
@@ -407,10 +360,10 @@ function formatFileInfo(file: SlackFile): string {
 }
 
 /**
- * Format file information for context with image upload to R2
- * Uploads supported image types to R2 and provides presigned URLs
+ * Format file information for context with file upload to R2
+ * Uploads files to R2 and provides presigned URLs for agent access
  */
-async function formatFileInfoWithImage(
+async function formatFileInfoWithUpload(
   file: SlackFile,
   botToken: string | undefined,
   sessionId: string,
@@ -425,18 +378,16 @@ async function formatFileInfoWithImage(
     parts.push(`   Dimensions: ${file.original_w}x${file.original_h}`);
   }
 
-  // Try to upload image to R2 and get presigned URL
-  if (botToken && isSupportedImageType(file)) {
+  // Try to upload file to R2 and get presigned URL
+  if (botToken) {
     const presignedUrl = await downloadAndUploadSlackFile(
       file,
       botToken,
       sessionId,
     );
     if (presignedUrl) {
-      const filename = `${file.id || "image"}.${file.filetype || "png"}`;
-      parts.push(
-        `   View: curl -sS -o /tmp/${filename} "${presignedUrl}" && read /tmp/${filename}`,
-      );
+      const filename = `${file.id || "file"}.${file.filetype || "bin"}`;
+      parts.push(`   Download: curl -sS -o /tmp/${filename} "${presignedUrl}"`);
       return parts.join("\n");
     }
   }
@@ -619,7 +570,7 @@ export async function formatContextForAgentWithImages(
       // Format files with image upload
       if (msg.files && msg.files.length > 0) {
         for (const file of msg.files) {
-          const fileInfo = await formatFileInfoWithImage(
+          const fileInfo = await formatFileInfoWithUpload(
             file,
             botToken,
             sessionId,
@@ -672,7 +623,7 @@ export async function formatCurrentMessageFiles(
 ): Promise<string> {
   const parts: string[] = [];
   for (const file of files) {
-    const fileInfo = await formatFileInfoWithImage(file, botToken, sessionId);
+    const fileInfo = await formatFileInfoWithUpload(file, botToken, sessionId);
     parts.push(fileInfo);
   }
   return parts.join("\n");
