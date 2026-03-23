@@ -72,10 +72,19 @@ const router = tsr.router(zeroRunsMainContract, {
         .where(eq(agentComposes.id, composeId))
         .limit(1);
 
+      if (!agent) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Agent not found", code: "NOT_FOUND" as const },
+          },
+        };
+      }
+
       const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: body.prompt,
-        zeroAgentId: agent?.id ?? "",
+        zeroAgentId: agent.id,
         sessionId: body.sessionId,
         appendSystemPrompt: body.appendSystemPrompt,
         modelProvider: body.modelProvider,

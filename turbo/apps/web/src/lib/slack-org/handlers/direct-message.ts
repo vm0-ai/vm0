@@ -177,7 +177,7 @@ export async function handleOrgDirectMessage(
 
   const { status, response, runId, errorCode } = await runAgentForSlackOrg({
     composeId,
-    zeroAgentId: agent.zeroAgentId!,
+    zeroAgentId: agent.zeroAgentId,
     agentName,
     sessionId: existingSessionId,
     prompt: messageContent,

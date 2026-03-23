@@ -3933,6 +3933,13 @@ export async function seedTestCompose(opts: {
   if (!row) {
     throw new Error("Failed to seed agent compose");
   }
+
+  // Ensure a matching zero_agents row exists so handlers can resolve zeroAgentId
+  await globalThis.services.db
+    .insert(zeroAgents)
+    .values({ orgId: opts.orgId, name: opts.name })
+    .onConflictDoNothing();
+
   return { composeId: row.id };
 }
 

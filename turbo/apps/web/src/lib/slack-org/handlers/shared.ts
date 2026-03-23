@@ -332,7 +332,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       id: string;
       name: string;
       displayName: string | null;
-      zeroAgentId: string | null;
+      zeroAgentId: string;
     }
   | undefined
 > {
@@ -363,11 +363,13 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     )
     .limit(1);
 
+  if (!agent) return undefined;
+
   return {
     id: compose.id,
     name: compose.name,
-    displayName: agent?.displayName ?? null,
-    zeroAgentId: agent?.zeroAgentId ?? null,
+    displayName: agent.displayName,
+    zeroAgentId: agent.zeroAgentId,
   };
 }
 

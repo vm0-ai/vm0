@@ -260,9 +260,7 @@ export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
  */
 export async function getWorkspaceAgent(
   composeId: string,
-): Promise<
-  { id: string; name: string; zeroAgentId: string | null } | undefined
-> {
+): Promise<{ id: string; name: string; zeroAgentId: string } | undefined> {
   const db = globalThis.services.db;
   const [compose] = await db
     .select({
@@ -287,10 +285,12 @@ export async function getWorkspaceAgent(
     )
     .limit(1);
 
+  if (!agent) return undefined;
+
   return {
     id: compose.id,
     name: compose.name,
-    zeroAgentId: agent?.zeroAgentId ?? null,
+    zeroAgentId: agent.zeroAgentId,
   };
 }
 

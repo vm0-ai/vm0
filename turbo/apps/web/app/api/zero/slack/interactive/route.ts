@@ -557,9 +557,22 @@ async function finishSubmit(
     existingSessionId: claimed.sessionId ?? undefined,
   };
 
+  if (!agentInfo) {
+    log.error("Zero agent not found for compose", {
+      composeId: claimed.composeId,
+    });
+    await updateCardWithError(
+      claimed.slackChannelId,
+      claimed.slackMessageTs,
+      claimed.slackWorkspaceId,
+      "The agent could not be found. Please contact your org admin.",
+    );
+    return;
+  }
+
   await runAgentForSlackOrg({
     composeId: claimed.composeId,
-    zeroAgentId: agentInfo?.zeroAgentId ?? "",
+    zeroAgentId: agentInfo.zeroAgentId,
     agentName: claimed.agentName,
     sessionId: claimed.sessionId ?? undefined,
     prompt: answerPrompt,
