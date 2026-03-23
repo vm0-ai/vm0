@@ -1,4 +1,12 @@
-import { command, computed, state, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Computed,
+  type Getter,
+  type Setter,
+} from "ccstate";
+import { timeout } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort, detach, Reason } from "../utils.ts";
@@ -946,6 +954,59 @@ function prepareMessages(
   return { fullPrompt };
 }
 
+/**
+ * Ensure a chat thread exists for the current conversation.
+ * Creates one if needed and updates sidebar + URL. Returns the thread ID,
+ * or null if creation failed (caller should abort).
+ */
+async function ensureChatThread(
+  get: Getter,
+  set: Setter,
+  fetchFn: typeof fetch,
+  composeId: string,
+  prompt: string,
+): Promise<string | null> {
+  const threadId = get(internalChatThreadId$);
+  if (threadId) {
+    return threadId;
+  }
+
+  const title = prompt.trim().slice(0, 100);
+  const thread = await createChatThread(fetchFn, composeId, title);
+  if (!thread) {
+    set(internalMessages$, (prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1] = {
+        ...updated[updated.length - 1],
+        error: "Failed to create chat thread",
+      };
+      return updated;
+    });
+    return null;
+  }
+
+  set(internalChatThreadId$, thread.id);
+
+  // Add the new thread to the session list so the sidebar updates immediately
+  const now = new Date().toISOString();
+  set(internalSessionList$, (prev) => [
+    {
+      id: thread.id,
+      title: thread.title ?? title,
+      preview: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+    ...prev,
+  ]);
+  // Navigate immediately so URL updates
+  if (get(zeroInChat$)) {
+    set(navigateToZeroSession$, thread.id);
+  }
+
+  return thread.id;
+}
+
 export const sendZeroChatMessage$ = command(
   async (
     { get, set },
@@ -970,43 +1031,17 @@ export const sendZeroChatMessage$ = command(
     try {
       const fetchFn = get(fetch$);
       const sessionId = get(internalSessionId$);
-      let threadId = get(internalChatThreadId$);
 
-      // Create a chat thread if this is a new conversation
+      const threadId = await ensureChatThread(
+        get,
+        set,
+        fetchFn,
+        composeId,
+        prompt,
+      );
       if (!threadId) {
-        const title = prompt.trim().slice(0, 100);
-        const thread = await createChatThread(fetchFn, composeId, title);
-        if (!thread) {
-          set(internalMessages$, (prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              error: "Failed to create chat thread",
-            };
-            return updated;
-          });
-          set(internalSending$, false);
-          return;
-        }
-        threadId = thread.id;
-        set(internalChatThreadId$, threadId);
-
-        // Add the new thread to the session list so the sidebar updates immediately
-        const now = new Date().toISOString();
-        set(internalSessionList$, (prev) => [
-          {
-            id: thread.id,
-            title: thread.title ?? title,
-            preview: null,
-            createdAt: now,
-            updatedAt: now,
-          },
-          ...prev,
-        ]);
-        // Navigate immediately so URL updates
-        if (get(zeroInChat$)) {
-          set(navigateToZeroSession$, threadId);
-        }
+        set(internalSending$, false);
+        return;
       }
 
       const modelProvider =
@@ -1204,12 +1239,12 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
     });
 
     // Refresh again shortly so the AI-generated title lands
-    setTimeout(() => {
+    timeout(() => {
       set(fetchZeroSessionList$).catch((error: unknown) => {
         throwIfAbort(error);
         L.error("Failed to refresh session list (delayed):", error);
       });
-    }, 1_000);
+    }, 1000);
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to extract run result:", error);
