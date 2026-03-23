@@ -24,6 +24,7 @@ import { connectorCommand } from "./commands/connector";
 import { preferenceCommand } from "./commands/preference";
 import { upgradeCommand } from "./commands/upgrade";
 import { whoamiCommand } from "./commands/whoami";
+import { zeroCommand } from "./commands/zero";
 
 const program = new Command();
 
@@ -55,6 +56,7 @@ program.addCommand(connectorCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(whoamiCommand);
+program.addCommand(zeroCommand);
 
 export { program };
 
