@@ -13,6 +13,7 @@
     "generate:google-docs": "tsx src/index.ts google-docs",
     "generate:google-drive": "tsx src/index.ts google-drive",
     "generate:google-sheets": "tsx src/index.ts google-sheets",
+    "generate:jira": "tsx src/index.ts jira",
     "generate:slack": "tsx src/index.ts slack"
   },
   "devDependencies": {
