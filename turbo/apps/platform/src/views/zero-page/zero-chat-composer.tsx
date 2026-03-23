@@ -48,7 +48,6 @@ import {
   AddConnectionDialog,
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
-import { skills$ } from "../../data/skills.ts";
 import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
@@ -103,22 +102,18 @@ function buildModelOpts(model: string): { modelProvider: string } | undefined {
 interface ComposerConnectorItem {
   type: string;
   label: string;
-  iconUrl?: string;
   connected: boolean;
 }
 
 function buildConnectorItem(
   name: string,
-  skillMap: Map<string, { label: string; icon?: string }>,
   connectorMap: Map<ConnectorType, { label: string; connected: boolean }>,
   optimistic: Set<string>,
 ): ComposerConnectorItem {
-  const skill = skillMap.get(name);
   const connector = connectorMap.get(name as ConnectorType);
   return {
     type: name,
-    label: skill?.label ?? connector?.label ?? name,
-    iconUrl: skill?.icon,
+    label: connector?.label ?? name,
     connected: optimistic.has(name) ? true : (connector?.connected ?? false),
   };
 }
@@ -141,14 +136,9 @@ function maybeClearOptimistic(
 
 function resolveConnectorLabel(
   type: string,
-  skillMap: Map<string, { label: string }>,
   connectorMap: Map<ConnectorType, { label: string }>,
 ): string {
-  return (
-    skillMap.get(type)?.label ??
-    connectorMap.get(type as ConnectorType)?.label ??
-    type
-  );
+  return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
 function startConnectorFlow(
@@ -204,11 +194,7 @@ function ConnectorTriggerIcons({
               className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background"
               style={{ border: "0.7px solid hsl(var(--gray-400))" }}
             >
-              {c.iconUrl ? (
-                <img src={c.iconUrl} alt="" className="h-4 w-4" />
-              ) : (
-                <ConnectorIcon type={c.type as ConnectorType} size={16} />
-              )}
+              <ConnectorIcon type={c.type as ConnectorType} size={16} />
             </span>
             {showDisconnectDot && (
               <span className="pointer-events-none absolute right-0 top-0 z-10 h-2 w-2 rounded-full bg-red-500" />
@@ -242,11 +228,7 @@ function ConnectorRow({
         : {})}
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        {item.iconUrl ? (
-          <img src={item.iconUrl} alt="" className="h-4 w-4" />
-        ) : (
-          <ConnectorIcon type={item.type as ConnectorType} size={16} />
-        )}
+        <ConnectorIcon type={item.type as ConnectorType} size={16} />
       </span>
       <span
         className={cn(
@@ -456,10 +438,6 @@ export function ZeroChatComposer({
   const addDialogOpen = useGet(composerAddDialogOpen$);
   const setAddDialogOpen = useSet(setComposerAddDialogOpen$);
 
-  // Skills
-  const allSkills = useGet(skills$);
-  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
-
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
@@ -473,12 +451,12 @@ export function ZeroChatComposer({
   const agentConnectors: ComposerConnectorItem[] = addedConnectors
     .filter((name) => connectorMap.has(name as ConnectorType))
     .map((name) =>
-      buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
+      buildConnectorItem(name, connectorMap, optimisticConnected),
     )
     .sort((a, b) => Number(a.connected) - Number(b.connected));
 
   const handleConnectSuccess = (type: string) => {
-    const label = resolveConnectorLabel(type, skillMap, connectorMap);
+    const label = resolveConnectorLabel(type, connectorMap);
     detach(
       (async () => {
         await addConnector(type);
