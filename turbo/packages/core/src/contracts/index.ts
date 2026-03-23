@@ -547,6 +547,7 @@ export {
   zeroAgentInstructionsContract,
   zeroAgentResponseSchema,
   zeroAgentRequestSchema,
+  zeroAgentMetadataRequestSchema,
   zeroAgentInstructionsResponseSchema,
   zeroAgentInstructionsRequestSchema,
   type ZeroAgentsMainContract,
@@ -554,6 +555,7 @@ export {
   type ZeroAgentInstructionsContract,
   type ZeroAgentResponse,
   type ZeroAgentRequest,
+  type ZeroAgentMetadataRequest,
   type ZeroAgentInstructionsResponse,
   type ZeroAgentInstructionsRequest,
 } from "./zero-agents";

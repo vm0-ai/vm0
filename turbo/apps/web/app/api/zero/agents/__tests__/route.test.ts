@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { gzipSync } from "node:zlib";
 import { POST, GET as listAgents } from "../route";
-import { GET, PUT, DELETE } from "../[name]/route";
+import { GET, PUT, PATCH, DELETE } from "../[name]/route";
 import {
   GET as getInstructions,
   PUT as putInstructions,
@@ -10,6 +10,7 @@ import {
   createTestRequest,
   createTestCliToken,
   seedTestSkill,
+  seedSeedSkills,
   clearSkillsData,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
@@ -64,6 +65,28 @@ function putAgent(
       `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
       {
         method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      },
+    ),
+  );
+}
+
+function patchAgent(
+  name: string,
+  body: Record<string, unknown>,
+  token: string,
+  orgSlug?: string,
+) {
+  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+  return PATCH(
+    createTestRequest(
+      `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
+      {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -136,6 +159,7 @@ describe("Zero Agents API", () => {
   beforeEach(async () => {
     context.setupMocks();
     await clearSkillsData();
+    await seedSeedSkills();
     const user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
     testOrgSlug = `org-${user.userId.slice(-8)}`;
@@ -571,6 +595,87 @@ describe("Zero Agents API", () => {
     it("should return 401 without auth", async () => {
       mockClerk({ userId: null });
       const response = await listAgentsReq("no-token");
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("PATCH /api/zero/agents/:name", () => {
+    it("should update metadata fields", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Original", sound: "professional" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const response = await patchAgent(
+        created.name,
+        { displayName: "Updated", description: "New desc", sound: "casual" },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Updated");
+      expect(data.description).toBe("New desc");
+      expect(data.sound).toBe("casual");
+      expect(data.name).toBe(created.name);
+      expect(data.agentComposeId).toBe(created.agentComposeId);
+      expect(data.connectors).toStrictEqual([]);
+    });
+
+    it("should preserve other fields on partial update", async () => {
+      const created = await (
+        await postAgent(
+          {
+            connectors: [],
+            displayName: "My Agent",
+            description: "A helpful agent",
+            sound: "professional",
+          },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      // Only update displayName
+      const response = await patchAgent(
+        created.name,
+        { displayName: "New Name" },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("New Name");
+      // Other fields preserved
+      expect(data.description).toBe("A helpful agent");
+      expect(data.sound).toBe("professional");
+    });
+
+    it("should return 404 for unknown agent", async () => {
+      const response = await patchAgent(
+        "nonexistent-agent",
+        { displayName: "X" },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return 401 without auth", async () => {
+      mockClerk({ userId: null });
+      const response = await patchAgent(
+        "some-agent",
+        { displayName: "X" },
+        "no-token",
+      );
       expect(response.status).toBe(401);
     });
   });

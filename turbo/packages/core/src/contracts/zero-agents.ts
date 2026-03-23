@@ -27,6 +27,15 @@ export const zeroAgentRequestSchema = z.object({
 });
 
 /**
+ * Partial metadata update request schema (for PATCH)
+ */
+export const zeroAgentMetadataRequestSchema = z.object({
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  sound: z.string().optional(),
+});
+
+/**
  * Zero agent instructions response schema
  */
 export const zeroAgentInstructionsResponseSchema = z.object({
@@ -71,7 +80,7 @@ export const zeroAgentsMainContract = c.router({
 });
 
 /**
- * Contract for GET/PUT/DELETE /api/zero/agents/:name
+ * Contract for GET/PUT/PATCH/DELETE /api/zero/agents/:name
  */
 export const zeroAgentsByNameContract = c.router({
   get: {
@@ -100,6 +109,19 @@ export const zeroAgentsByNameContract = c.router({
       422: apiErrorSchema,
     },
     summary: "Update zero agent",
+  },
+  updateMetadata: {
+    method: "PATCH",
+    path: "/api/zero/agents/:name",
+    headers: authHeadersSchema,
+    pathParams: z.object({ name: z.string() }),
+    body: zeroAgentMetadataRequestSchema,
+    responses: {
+      200: zeroAgentResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update zero agent metadata",
   },
   delete: {
     method: "DELETE",
@@ -151,6 +173,9 @@ export const zeroAgentInstructionsContract = c.router({
 // Export types
 export type ZeroAgentResponse = z.infer<typeof zeroAgentResponseSchema>;
 export type ZeroAgentRequest = z.infer<typeof zeroAgentRequestSchema>;
+export type ZeroAgentMetadataRequest = z.infer<
+  typeof zeroAgentMetadataRequestSchema
+>;
 export type ZeroAgentInstructionsResponse = z.infer<
   typeof zeroAgentInstructionsResponseSchema
 >;

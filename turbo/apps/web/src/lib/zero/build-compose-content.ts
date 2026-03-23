@@ -6,18 +6,21 @@ import {
   DEFAULT_SKILLS_REPO,
   DEFAULT_SKILLS_BRANCH,
 } from "@vm0/core";
+import { SEED_SKILLS } from "./seed-skills";
 
 /**
  * Build compose content from connector short names.
  *
- * Maps connector short names to GitHub skill URLs and produces
- * compose content with hardcoded defaults per issue #5548.
+ * Merges SEED_SKILLS with user connectors (deduplicated) and maps
+ * to GitHub skill URLs. Produces compose content with hardcoded
+ * defaults per issue #5548.
  */
 export function buildComposeContent(
   agentName: string,
   connectors: string[],
 ): Record<string, unknown> {
-  const skills = connectors.map((c) => resolveSkillRef(c));
+  const merged = [...new Set([...SEED_SKILLS, ...connectors])];
+  const skills = merged.map((c) => resolveSkillRef(c));
 
   const agentDef: Record<string, unknown> = {
     framework: "claude-code",
@@ -59,7 +62,8 @@ export function extractConnectors(content: unknown): string[] {
   const skills = (agent?.skills ?? []) as string[];
 
   const prefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
-  return skills.map((url) =>
-    url.startsWith(prefix) ? url.slice(prefix.length) : url,
-  );
+  const seedSet = new Set<string>(SEED_SKILLS);
+  return skills
+    .map((url) => (url.startsWith(prefix) ? url.slice(prefix.length) : url))
+    .filter((name) => !seedSet.has(name));
 }

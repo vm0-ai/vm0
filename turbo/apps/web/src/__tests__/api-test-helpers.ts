@@ -3424,6 +3424,32 @@ export async function seedTestSkill(
 }
 
 /**
+ * Seed all SEED_SKILLS into the skills table so that server-side compose
+ * succeeds when buildComposeContent injects them.
+ */
+export async function seedSeedSkills(): Promise<void> {
+  const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
+  initServices();
+  const values = SEED_SKILLS.map((name) => ({
+    url: `https://github.com/vm0-ai/vm0-skills/tree/main/${name}`,
+    name,
+    fullPath: `vm0-ai/vm0-skills/tree/main/${name}`,
+    versionHash:
+      "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+    frontmatter: {
+      name,
+      description: `${name} skill`,
+      vm0_secrets: [] as string[],
+      vm0_vars: [] as string[],
+    },
+  }));
+  await globalThis.services.db
+    .insert(skills)
+    .values(values)
+    .onConflictDoNothing();
+}
+
+/**
  * Delete all skills and system storages.
  * Used for test isolation in cron/sync-skills tests.
  */
