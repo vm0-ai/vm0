@@ -239,7 +239,7 @@ Spawn a subagent: /pr-review ${PR_NUMBER}
 
 After review:
 - If P0/P1 issues found: git checkout ${BRANCH}, fix all P0/P1 issues, push, then git checkout main && git pull
-- If no P0/P1 issues: run gh pr merge ${PR_NUMBER} --merge --auto --delete-branch, then git checkout main && git pull
+- If no P0/P1 issues: run gh pr merge ${PR_NUMBER} --merge --auto, then git checkout main && git pull
 EOF
       exit 0
       ;;
@@ -250,7 +250,7 @@ EOF
 
     ci_passed)
       # Enable auto-merge directly — no subagent needed
-      gh pr merge "$PR_NUMBER" --repo "$REPO" --merge --auto --delete-branch 2>/dev/null || true
+      gh pr merge "$PR_NUMBER" --repo "$REPO" --merge --auto 2>/dev/null || true
       # Fall through to Phase B
       ;;
   esac
