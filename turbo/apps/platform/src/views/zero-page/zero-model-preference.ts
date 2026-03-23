@@ -10,7 +10,7 @@ import {
 /**
  * Hook for managing model selection state.
  * State lives in the signals layer; the view only reads/writes.
- * Agent-change reset is handled by syncModelPreference$ in setupZeroPage$.
+ * Agent-change reset is handled by syncModelPreference$ in each route's setup function.
  */
 export function useModelSelection() {
   const modelProvidersLoadable = useLastLoadable(orgModelProviders$);

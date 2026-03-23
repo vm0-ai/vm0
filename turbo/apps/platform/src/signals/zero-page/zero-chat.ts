@@ -543,7 +543,7 @@ export const zeroSessionSwitching$ = computed((get) =>
 /**
  * Mark session as switching immediately so the UI shows a skeleton
  * instead of flashing "Send a message" while the page setup runs.
- * Called from setupZeroPage$ before heavy data loads when a session URL is detected.
+ * Called from setupChatSessionPage$ before heavy data loads when a session URL is detected.
  */
 export const prepareSessionSwitch$ = command(({ set }) => {
   set(internalSessionSwitching$, true);
@@ -1237,7 +1237,7 @@ export const sendFromZeroDemo$ = command(
 
 /**
  * Sync URL session ID to the chat signal.
- * Called from setupZeroPage$ on each route entry for /chat/:sessionId routes.
+ * Called from setupChatSessionPage$ on each route entry for /chat/:sessionId routes.
  */
 export const syncUrlSession$ = command(async ({ get, set }) => {
   const urlSessionId = get(zeroSessionId$);

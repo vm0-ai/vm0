@@ -225,7 +225,7 @@ describe("route", () => {
               calledSignal = signal;
             }),
           },
-          { path: "/settings", setup: command(() => void 0) },
+          { path: "/profile", setup: command(() => void 0) },
         ],
         signal,
       );
@@ -234,7 +234,7 @@ describe("route", () => {
       expect(calledSignal).toBeInstanceOf(AbortSignal);
       expect(calledSignal?.aborted).toBeFalsy();
 
-      mockLocation({ pathname: "/settings", search: "" }, signal);
+      mockLocation({ pathname: "/profile", search: "" }, signal);
       window.dispatchEvent(new PopStateEvent("popstate"));
 
       expect(calledSignal?.aborted).toBeTruthy();
@@ -295,7 +295,7 @@ describe("route", () => {
     it("should handle popstate events", async () => {
       const { store, signal } = context;
       const traceDashboard = vi.fn();
-      const traceSettings = vi.fn();
+      const traceProfile = vi.fn();
 
       mockLocation({ pathname: "/dashboard", search: "" }, signal);
 
@@ -311,9 +311,9 @@ describe("route", () => {
             }),
           },
           {
-            path: "/settings",
+            path: "/profile",
             setup: command(() => {
-              traceSettings();
+              traceProfile();
               return Promise.resolve();
             }),
           },
@@ -322,14 +322,14 @@ describe("route", () => {
       );
 
       expect(traceDashboard).toHaveBeenCalledTimes(1);
-      expect(traceSettings).toHaveBeenCalledTimes(0);
+      expect(traceProfile).toHaveBeenCalledTimes(0);
 
       // Simulate browser history navigation
-      mockLocation({ pathname: "/settings", search: "" }, signal);
+      mockLocation({ pathname: "/profile", search: "" }, signal);
       window.dispatchEvent(new PopStateEvent("popstate"));
 
       await vi.waitFor(() => {
-        expect(traceSettings).toHaveBeenCalledTimes(1);
+        expect(traceProfile).toHaveBeenCalledTimes(1);
       });
     });
   });
