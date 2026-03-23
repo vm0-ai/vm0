@@ -64,6 +64,7 @@ export default [
     },
     rules: {
       "web/no-request-json-as": "error",
+      "web/no-self-api-call": "error",
     },
   },
   {
