@@ -58,6 +58,7 @@ import {
   setZeroJobFirewallPolicies$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
+import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { navigateTo$ } from "../../signals/route.ts";
@@ -246,9 +247,25 @@ function JobScheduleTab({ agentName }: { agentName: string }) {
   const saveSchedule = useSet(saveZeroJobSchedule$);
   const deleteSchedule = useSet(deleteZeroJobSchedule$);
   const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
+  const detail = useGet(zeroJobDetail$);
+  const runScheduleNow = useSet(runScheduleNow$);
+  const nav = useSet(navigateTo$);
 
   const entries: ScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+
+  const handleRunNow = detail?.agentComposeId
+    ? async (entry: ScheduleEntry) => {
+        await runScheduleNow({
+          composeId: detail.agentComposeId,
+          prompt: entry.prompt,
+        });
+      }
+    : undefined;
+
+  const handleOpenDetails = (entry: ScheduleEntry) => {
+    nav("/schedule/:scheduleId", { pathParams: { scheduleId: entry.id } });
+  };
 
   return (
     <ZeroScheduleTab
@@ -258,6 +275,8 @@ function JobScheduleTab({ agentName }: { agentName: string }) {
       onSave={saveSchedule}
       onDelete={deleteSchedule}
       onToggleEnabled={toggleEnabled}
+      onRunNow={handleRunNow}
+      onOpenDetails={handleOpenDetails}
     />
   );
 }

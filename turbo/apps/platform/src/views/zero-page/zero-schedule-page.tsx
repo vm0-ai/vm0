@@ -1,17 +1,6 @@
 import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import {
-  IconPencil,
-  IconList,
-  IconLayoutGrid,
-  IconTrash,
-  IconPlus,
-  IconChevronLeft,
-  IconChevronRight,
-  IconPlayerPlay,
-  IconDotsVertical,
-} from "@tabler/icons-react";
-import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
   Card,
   CardContent,
@@ -25,18 +14,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  cn,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -45,16 +24,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import {
-  getEntriesInCell,
-  buildCalendarTimeSlots,
-  WEEKDAY_LABELS,
-  type ScheduleEntry,
-} from "./zero-schedule-card";
+import { WEEKDAY_LABELS, type ScheduleEntry } from "./zero-schedule-card";
 import {
   ScheduleFormDialog,
   type ScheduleFormValues,
 } from "./schedule-dialog.tsx";
+import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
+import { ScheduleListView } from "./schedule-list-view.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
 import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
@@ -69,7 +45,6 @@ import {
   type OrgScheduleEntry,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
-import emptyScheduleImg from "./assets/empty-schedule.webp";
 import { navigateTo$ } from "../../signals/route.ts";
 
 export type CombinedEntry = ScheduleEntry & {
@@ -108,310 +83,6 @@ export function buildCombinedSchedule(
     nextRunAt: e.nextRunAt,
     lastRunAt: e.lastRunAt,
   }));
-}
-
-const AGENT_CELL_CLASSES = [
-  "bg-blue-700/15 border-blue-700/40 text-blue-800 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25",
-  "bg-emerald-700/15 border-emerald-700/40 text-emerald-800 dark:text-emerald-200 dark:border-emerald-600/40 dark:bg-emerald-900/25",
-  "bg-amber-700/15 border-amber-700/40 text-amber-800 dark:text-amber-200 dark:border-amber-600/40 dark:bg-amber-900/25",
-  "bg-violet-700/15 border-violet-700/40 text-violet-800 dark:text-violet-200 dark:border-violet-600/40 dark:bg-violet-900/25",
-  "bg-teal-700/15 border-teal-700/40 text-teal-800 dark:text-teal-200 dark:border-teal-600/40 dark:bg-teal-900/25",
-] as const;
-
-function getAgentCellClasses(
-  agentLabel: string,
-  agentOrder: readonly string[],
-): string {
-  const i = agentOrder.indexOf(agentLabel);
-  return AGENT_CELL_CLASSES[i !== -1 ? i % AGENT_CELL_CLASSES.length : 0];
-}
-
-// ---------------------------------------------------------------------------
-// Calendar entry popover (hover to show, double-click to edit)
-// ---------------------------------------------------------------------------
-
-function CalendarEntryPopover({
-  entry,
-  agentOrder,
-  onEdit,
-}: {
-  entry: CombinedEntry;
-  agentOrder: readonly string[];
-  onEdit: (entry: CombinedEntry) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
-          onDoubleClick={() => onEdit(entry)}
-          className={cn(
-            "w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            getAgentCellClasses(entry.agentLabel, agentOrder),
-          )}
-          aria-label={`${entry.agentLabel}: ${entry.prompt}`}
-        >
-          {entry.prompt}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={0}
-        className="w-80 p-3 flex flex-col gap-3"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-      >
-        <div className="relative flex flex-col gap-1.5 pr-8">
-          <div className="absolute top-0 right-0">
-            <button
-              type="button"
-              onClick={() => onEdit(entry)}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label={`Edit ${entry.time}`}
-            >
-              <IconPencil size={14} stroke={1.5} />
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground font-medium">
-            {entry.agentLabel}
-          </p>
-          <p className="text-xs text-muted-foreground">{entry.time}</p>
-          <p className="text-sm text-foreground leading-snug">{entry.prompt}</p>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Calendar view
-// ---------------------------------------------------------------------------
-
-function ScheduleCalendarView({
-  combinedSchedule,
-  agentOrder,
-  onEdit,
-}: {
-  combinedSchedule: CombinedEntry[];
-  agentOrder: readonly string[];
-  onEdit: (entry: CombinedEntry) => void;
-}) {
-  const enabledEntries = combinedSchedule.filter((e) => e.enabled !== false);
-  const calendarSlots = buildCalendarTimeSlots(enabledEntries);
-  const [selectedDay, setSelectedDay] = useState(
-    new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
-  );
-
-  const loopEntries = enabledEntries.filter((e) =>
-    e.time.match(/Every \d+ (minutes?|seconds?)/),
-  );
-  const onceEntries = enabledEntries.filter((e) =>
-    e.time.startsWith("Once on"),
-  );
-  const monthlyEntries = enabledEntries.filter((e) =>
-    e.time.startsWith("Every month"),
-  );
-
-  const sections: { title: string; entries: CombinedEntry[] }[] = [
-    { title: "Loop", entries: loopEntries },
-    { title: "Monthly", entries: monthlyEntries },
-    { title: "Once", entries: onceEntries },
-  ];
-
-  return (
-    <section className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Week view
-        </h3>
-        <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
-          {/* Mobile: single-day view */}
-          <div className="md:hidden">
-            <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60">
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDay(
-                    (selectedDay - 1 + WEEKDAY_LABELS.length) %
-                      WEEKDAY_LABELS.length,
-                  )
-                }
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Previous day"
-              >
-                <IconChevronLeft size={16} stroke={1.5} />
-              </button>
-              <span className="text-sm font-medium text-muted-foreground">
-                {WEEKDAY_LABELS[selectedDay]}
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDay((selectedDay + 1) % WEEKDAY_LABELS.length)
-                }
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Next day"
-              >
-                <IconChevronRight size={16} stroke={1.5} />
-              </button>
-            </div>
-            {calendarSlots.map((timeLabel, timeIndex) => {
-              const cellEntries = getEntriesInCell(
-                enabledEntries,
-                selectedDay,
-                timeLabel,
-              ) as CombinedEntry[];
-              const isEmpty = cellEntries.length === 0;
-              const isLastRow = timeIndex === calendarSlots.length - 1;
-              return (
-                <div
-                  key={timeLabel}
-                  className={cn(
-                    "flex",
-                    !isLastRow && "border-b border-border/60",
-                  )}
-                >
-                  <div className="w-16 shrink-0 bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center">
-                    {timeLabel}
-                  </div>
-                  <div
-                    className={cn(
-                      "flex-1 min-h-[52px] p-1.5 flex items-center justify-center",
-                      isEmpty && "bg-background/50",
-                    )}
-                  >
-                    {isEmpty ? (
-                      <span className="text-muted-foreground/40 text-xs">
-                        —
-                      </span>
-                    ) : (
-                      <div className="w-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                        {cellEntries.map((entry) => (
-                          <CalendarEntryPopover
-                            key={entry.id}
-                            entry={entry}
-                            agentOrder={agentOrder}
-                            onEdit={onEdit}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {/* Desktop: full week grid */}
-          <div className="hidden md:block">
-            <div className="grid grid-cols-8 text-sm">
-              <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
-              {WEEKDAY_LABELS.map((d, dayIndex) => (
-                <div
-                  key={d}
-                  className={cn(
-                    "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
-                    dayIndex < WEEKDAY_LABELS.length - 1 &&
-                      "border-r border-border/60",
-                  )}
-                >
-                  {d}
-                </div>
-              ))}
-              {calendarSlots.map((timeLabel, timeIndex) => (
-                <div key={timeLabel} className="contents">
-                  <div
-                    className={cn(
-                      "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
-                      timeIndex < calendarSlots.length - 1 &&
-                        "border-b border-border/60",
-                    )}
-                  >
-                    {timeLabel}
-                  </div>
-                  {WEEKDAY_LABELS.map((_, dayIndex) => {
-                    const cellEntries = getEntriesInCell(
-                      enabledEntries,
-                      dayIndex,
-                      timeLabel,
-                    ) as CombinedEntry[];
-                    const isEmpty = cellEntries.length === 0;
-                    const isLastRow = timeIndex === calendarSlots.length - 1;
-                    const isLastCol = dayIndex === WEEKDAY_LABELS.length - 1;
-                    return (
-                      <div
-                        key={`${timeLabel}-${dayIndex}`}
-                        className={cn(
-                          "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
-                          !isLastCol && "border-r border-border/60",
-                          !isLastRow && "border-b border-border/60",
-                          isEmpty && "bg-background/50",
-                        )}
-                      >
-                        {isEmpty ? (
-                          <span className="text-muted-foreground/40 text-xs">
-                            —
-                          </span>
-                        ) : (
-                          <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                            {cellEntries.map((entry) => (
-                              <CalendarEntryPopover
-                                key={entry.id}
-                                entry={entry}
-                                agentOrder={agentOrder}
-                                onEdit={onEdit}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-      {sections.some((s) => s.entries.length > 0) && (
-        <div className="flex flex-col gap-8">
-          {sections.map((section) =>
-            section.entries.length > 0 ? (
-              <div key={section.title} className="flex flex-col gap-1.5">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {section.title}
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {section.entries.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm w-fit"
-                    >
-                      <span className="shrink-0 text-muted-foreground text-xs">
-                        {entry.agentLabel}
-                      </span>
-                      <span className="text-foreground">{entry.time}</span>
-                      <button
-                        type="button"
-                        onClick={() => onEdit(entry)}
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        aria-label={`Edit ${entry.time}`}
-                      >
-                        <IconPencil size={12} stroke={1.5} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null,
-          )}
-        </div>
-      )}
-    </section>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -724,226 +395,6 @@ function ScheduleCalendarSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// List view
-// ---------------------------------------------------------------------------
-
-function ScheduleListAgentCell({ agentLabel }: { agentLabel: string }) {
-  return (
-    <span className="block min-w-0 truncate text-sm font-medium text-foreground">
-      {agentLabel}
-    </span>
-  );
-}
-
-function ScheduleListView({
-  combinedSchedule,
-  togglingIds,
-  runningIds,
-  onEdit,
-  onToggle,
-  onDelete,
-  onNew,
-  onRunNow,
-  onOpenDetails,
-}: {
-  combinedSchedule: CombinedEntry[];
-  togglingIds: Set<string>;
-  runningIds: Set<string>;
-  onEdit: (entry: CombinedEntry) => void;
-  onToggle: (entry: CombinedEntry, enabled: boolean) => Promise<void>;
-  onDelete: (entry: CombinedEntry) => void;
-  onNew?: () => void;
-  onRunNow: (entry: CombinedEntry) => Promise<void>;
-  onOpenDetails: (entry: CombinedEntry) => void;
-}) {
-  if (combinedSchedule.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <img
-          src={emptyScheduleImg}
-          alt="No schedules"
-          className="h-20 w-20 object-contain opacity-80"
-        />
-        <div className="text-center">
-          <p className="text-sm font-medium text-foreground">
-            Nothing on the calendar
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Set up a schedule and your agents will handle the rest.
-          </p>
-        </div>
-        {onNew && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi mt-2 h-9 gap-2 rounded-lg border"
-            onClick={onNew}
-          >
-            <IconPlus size={14} stroke={2} />
-            Add schedule
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full overflow-x-auto -mx-1">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="border-b border-border/40 bg-card text-left text-sm text-muted-foreground">
-            <th
-              className="py-3 pr-2 w-[5rem] align-middle font-medium"
-              scope="col"
-            >
-              Agent
-            </th>
-            <th
-              className="py-3 pr-4 min-w-0 align-middle font-medium"
-              scope="col"
-            >
-              Instruction
-            </th>
-            <th
-              className="py-3 px-2 min-w-[6.5rem] max-w-[9rem] align-middle font-medium"
-              scope="col"
-            >
-              Schedule at
-            </th>
-            <th
-              className="py-3 px-3 w-16 text-center align-middle font-medium"
-              scope="col"
-            >
-              Status
-            </th>
-            <th className="w-10 py-3 pl-2 align-middle" scope="col">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {combinedSchedule.map((entry) => {
-            const toggling = togglingIds.has(entry.id);
-            const running = runningIds.has(entry.id);
-            const dimmed = entry.enabled === false;
-            return (
-              <tr
-                key={entry.id}
-                className={cn(
-                  "border-b border-border/50 last:border-0 transition-colors hover:bg-muted/25 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
-                  dimmed && "opacity-75",
-                )}
-                role="link"
-                tabIndex={0}
-                aria-label={`Open schedule ${entry.prompt}`}
-                onClick={() => onOpenDetails(entry)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpenDetails(entry);
-                  }
-                }}
-              >
-                <td className="py-2.5 pr-2 align-middle w-[5rem]">
-                  <ScheduleListAgentCell agentLabel={entry.agentLabel} />
-                </td>
-                <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
-                  <span
-                    className={cn(
-                      "text-sm text-foreground leading-snug block truncate whitespace-nowrap",
-                      dimmed && "text-muted-foreground",
-                    )}
-                  >
-                    {entry.prompt}
-                  </span>
-                </td>
-                <td
-                  className={cn(
-                    "py-2.5 px-2 align-middle text-sm text-muted-foreground min-w-[6.5rem] max-w-[9rem] overflow-hidden",
-                    dimmed && "text-muted-foreground/80",
-                  )}
-                >
-                  <span className="block min-w-0 truncate whitespace-nowrap leading-snug tabular-nums">
-                    {entry.time}
-                    <span className="text-muted-foreground/70">
-                      {" "}
-                      · {entry.timezone.replace(/_/g, " ")}
-                    </span>
-                  </span>
-                </td>
-                <td
-                  className="py-2.5 px-3 align-middle w-16"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex justify-center">
-                    <LoadingSwitch
-                      checked={entry.enabled !== false}
-                      loading={toggling}
-                      onCheckedChange={(checked) => {
-                        onToggle(entry, checked).catch(() => {});
-                      }}
-                      ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-                    />
-                  </div>
-                </td>
-                <td
-                  className="py-2.5 pl-2 align-middle text-right w-10"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="inline-flex justify-end">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                          aria-label={`More actions for ${entry.time}`}
-                        >
-                          <IconDotsVertical size={14} stroke={1.5} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuItem
-                          disabled={running || !entry.prompt.trim()}
-                          className="gap-2"
-                          onClick={() => {
-                            onRunNow(entry).catch(() => {});
-                          }}
-                        >
-                          <IconPlayerPlay size={14} stroke={1.5} />
-                          {running ? "Starting…" : "Run now"}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="gap-2"
-                          onClick={() => onEdit(entry)}
-                        >
-                          <IconPencil size={14} stroke={1.5} />
-                          Edit
-                        </DropdownMenuItem>
-                        {entry.name !== undefined && (
-                          <DropdownMenuItem
-                            className="gap-2 text-destructive focus:text-destructive"
-                            onClick={() => onDelete(entry)}
-                          >
-                            <IconTrash size={14} stroke={1.5} />
-                            Delete
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -1148,7 +599,7 @@ export function ZeroSchedulePage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
           <Card className="zero-card">
-            <CardContent className="pb-5 flex flex-col gap-6">
+            <CardContent className="py-5 flex flex-col gap-6">
               {isInitialLoading ? (
                 scheduleViewMode === "calendar" ? (
                   <ScheduleCalendarSkeleton />
@@ -1157,20 +608,26 @@ export function ZeroSchedulePage() {
                 )
               ) : scheduleViewMode === "list" ? (
                 <ScheduleListView
-                  combinedSchedule={combinedSchedule}
+                  entries={combinedSchedule}
                   togglingIds={togglingIds}
                   runningIds={runningIds}
+                  getAgentLabel={(e) => e.agentLabel}
                   onEdit={openScheduleDetail}
-                  onToggle={handleToggle}
+                  onToggle={(entry, enabled) => {
+                    handleToggle(entry, enabled).catch(() => {});
+                  }}
                   onDelete={handleDelete}
                   onNew={() => setCreateOpen(true)}
-                  onRunNow={handleRunNow}
+                  onRunNow={(entry) => {
+                    handleRunNow(entry).catch(() => {});
+                  }}
                   onOpenDetails={openScheduleDetail}
                 />
               ) : (
                 <ScheduleCalendarView
-                  combinedSchedule={combinedSchedule}
+                  entries={combinedSchedule}
                   agentOrder={agentOrder}
+                  getAgentLabel={(e) => e.agentLabel}
                   onEdit={openScheduleDetail}
                 />
               )}

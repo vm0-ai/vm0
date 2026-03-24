@@ -57,8 +57,3 @@ export const { get$: saveError$, set$: setSaveError$ } = cell<string | null>(
 export const { get$: togglingIds$, set$: setTogglingIds$ } = cell<Set<string>>(
   new Set(),
 );
-
-export const {
-  get$: calendarPopoverEntryId$,
-  set$: setCalendarPopoverEntryId$,
-} = cell<string | null>(null);

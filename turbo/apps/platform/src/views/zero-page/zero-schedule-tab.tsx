@@ -18,6 +18,8 @@ interface ZeroScheduleTabProps {
     name: string;
     enabled: boolean;
   }) => Promise<void>;
+  onRunNow?: (entry: ScheduleEntry) => Promise<void>;
+  onOpenDetails?: (entry: ScheduleEntry) => void;
 }
 
 export function ZeroScheduleTab({
@@ -27,6 +29,8 @@ export function ZeroScheduleTab({
   onSave,
   onDelete,
   onToggleEnabled,
+  onRunNow,
+  onOpenDetails,
 }: ZeroScheduleTabProps) {
   const prefsLoadable = useLoadable(notificationPreferences$);
   const userTimezone =
@@ -64,6 +68,8 @@ export function ZeroScheduleTab({
         onSave={handleSave}
         onDelete={onDelete}
         onToggleEnabled={onToggleEnabled}
+        onRunNow={onRunNow}
+        onOpenDetails={onOpenDetails}
         saving={saving}
         defaultTimezone={userTimezone ?? undefined}
       />
