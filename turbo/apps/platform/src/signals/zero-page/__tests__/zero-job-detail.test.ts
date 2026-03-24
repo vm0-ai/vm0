@@ -39,7 +39,7 @@ const context = testContext();
 function mockAgentResponse() {
   return {
     name: "my-agent",
-    agentComposeId: "compose-1",
+    agentId: "compose-1",
     description: null,
     displayName: null,
     sound: null,
@@ -728,7 +728,7 @@ describe("zero-job-detail signals", () => {
             capturedBody = (await request.json()) as { content: string };
             return HttpResponse.json({
               name: "my-agent",
-              agentComposeId: "compose-1",
+              agentId: "compose-1",
               description: null,
               displayName: null,
               sound: null,
@@ -802,7 +802,7 @@ describe("zero-job-detail signals", () => {
             apiCalled = true;
             return HttpResponse.json({
               name: "my-agent",
-              agentComposeId: "compose-1",
+              agentId: "compose-1",
               description: null,
               displayName: null,
               sound: null,
@@ -850,7 +850,7 @@ describe("zero-job-detail signals", () => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
               name: "my-agent",
-              agentComposeId: "compose-1",
+              agentId: "compose-1",
               displayName: "New Name",
               description: null,
               sound: "friendly",
@@ -886,7 +886,7 @@ describe("zero-job-detail signals", () => {
           patchCalled = true;
           return HttpResponse.json({
             name: "my-agent",
-            agentComposeId: "compose-1",
+            agentId: "compose-1",
             displayName: null,
             description: null,
             sound: null,
@@ -998,7 +998,7 @@ describe("zero-job-detail signals", () => {
             capturedBody = (await request.json()) as { connectors: string[] };
             return HttpResponse.json({
               name: "my-agent",
-              agentComposeId: "compose-1",
+              agentId: "compose-1",
               description: null,
               displayName: null,
               sound: null,

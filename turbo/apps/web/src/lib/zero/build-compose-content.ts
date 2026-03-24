@@ -26,7 +26,9 @@ export function buildComposeContent(
     framework: "claude-code",
     instructions: getInstructionsFilename("claude-code"),
     experimental_capabilities: [...VALID_CAPABILITIES],
-    environment: {},
+    environment: {
+      ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
+    },
     volumes: [],
   };
 

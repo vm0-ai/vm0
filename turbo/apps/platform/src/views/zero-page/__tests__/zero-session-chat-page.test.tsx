@@ -14,7 +14,7 @@ describe("userMessage line break rendering", () => {
         return HttpResponse.json({
           id: "thread-multiline",
           title: null,
-          agentComposeId: "mock-compose-id",
+          agentId: "mock-compose-id",
           chatMessages: [
             {
               role: "user",
@@ -53,7 +53,7 @@ describe("userMessage line break rendering", () => {
         return HttpResponse.json({
           id: "thread-singleline",
           title: null,
-          agentComposeId: "mock-compose-id",
+          agentId: "mock-compose-id",
           chatMessages: [
             {
               role: "user",
@@ -90,7 +90,7 @@ describe("provider incompatibility error", () => {
         return HttpResponse.json({
           id: "thread-provider-error",
           title: null,
-          agentComposeId: "mock-compose-id",
+          agentId: "mock-compose-id",
           chatMessages: [],
           latestSessionId: null,
           unsavedRuns: [
@@ -125,7 +125,7 @@ describe("provider incompatibility error", () => {
         return HttpResponse.json({
           id: "thread-signature-error",
           title: null,
-          agentComposeId: "mock-compose-id",
+          agentId: "mock-compose-id",
           chatMessages: [],
           latestSessionId: null,
           unsavedRuns: [

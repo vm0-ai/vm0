@@ -21,14 +21,14 @@ export const listCommand = new Command()
         return;
       }
 
-      const nameWidth = Math.max(4, ...agents.map((a) => a.name.length));
+      const idWidth = Math.max(8, ...agents.map((a) => a.agentId.length));
       const displayWidth = Math.max(
         12,
         ...agents.map((a) => (a.displayName ?? "").length),
       );
 
       const header = [
-        "NAME".padEnd(nameWidth),
+        "AGENT ID".padEnd(idWidth),
         "DISPLAY NAME".padEnd(displayWidth),
         "CONNECTORS",
       ].join("  ");
@@ -36,7 +36,7 @@ export const listCommand = new Command()
 
       for (const agent of agents) {
         const row = [
-          agent.name.padEnd(nameWidth),
+          agent.agentId.padEnd(idWidth),
           (agent.displayName ?? "-").padEnd(displayWidth),
           agent.connectors.join(", ") || "-",
         ].join("  ");

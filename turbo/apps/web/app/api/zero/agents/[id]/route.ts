@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroAgentsByNameContract } from "@vm0/core";
+import { zeroAgentsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -23,9 +23,9 @@ import {
 } from "../../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../../src/lib/logger";
 
-const log = logger("api:zero-agents:name");
+const log = logger("api:zero-agents:id");
 
-const router = tsr.router(zeroAgentsByNameContract, {
+const router = tsr.router(zeroAgentsByIdContract, {
   get: async ({ params, headers }, { request }) => {
     initServices();
 
@@ -37,7 +37,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Look up compose by name + org
+    // Look up compose by ID
     const [compose] = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -52,7 +52,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, params.name),
+          eq(agentComposes.id, params.id),
         ),
       )
       .limit(1);
@@ -62,7 +62,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${params.name}`,
+            message: `Agent not found: ${params.id}`,
             code: "NOT_FOUND",
           },
         },
@@ -74,7 +74,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
       .select()
       .from(zeroAgents)
       .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, params.name)),
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
       )
       .limit(1);
 
@@ -84,8 +84,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
     return {
       status: 200 as const,
       body: {
-        name: compose.name,
-        agentComposeId: compose.id,
+        agentId: compose.id,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
@@ -107,14 +106,14 @@ const router = tsr.router(zeroAgentsByNameContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Verify agent exists
+    // Verify agent exists by compose ID
     const [existing] = await globalThis.services.db
-      .select({ id: agentComposes.id })
+      .select({ id: agentComposes.id, name: agentComposes.name })
       .from(agentComposes)
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, params.name),
+          eq(agentComposes.id, params.id),
         ),
       )
       .limit(1);
@@ -124,7 +123,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${params.name}`,
+            message: `Agent not found: ${params.id}`,
             code: "NOT_FOUND",
           },
         },
@@ -132,7 +131,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
     }
 
     // Build compose content from connectors
-    const content = buildComposeContent(params.name, body.connectors);
+    const content = buildComposeContent(existing.name, body.connectors);
 
     // Run synchronous compose
     const result = await serverSideCompose({
@@ -197,8 +196,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
     return {
       status: 200 as const,
       body: {
-        name: result.composeName,
-        agentComposeId: result.composeId,
+        agentId: result.composeId,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
@@ -219,7 +217,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Look up compose by name + org
+    // Look up compose by ID
     const [compose] = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -234,7 +232,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, params.name),
+          eq(agentComposes.id, params.id),
         ),
       )
       .limit(1);
@@ -244,7 +242,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${params.name}`,
+            message: `Agent not found: ${params.id}`,
             code: "NOT_FOUND",
           },
         },
@@ -257,7 +255,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
       .insert(zeroAgents)
       .values({
         orgId: org.orgId,
-        name: params.name,
+        name: compose.name,
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
@@ -276,22 +274,21 @@ const router = tsr.router(zeroAgentsByNameContract, {
         },
       });
 
-    log.info(`Updated zero agent metadata: ${params.name}`);
+    log.info(`Updated zero agent metadata: ${compose.name}`);
 
     // Re-query to return actual persisted state
     const [agent] = await globalThis.services.db
       .select()
       .from(zeroAgents)
       .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, params.name)),
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
       )
       .limit(1);
 
     return {
       status: 200 as const,
       body: {
-        name: compose.name,
-        agentComposeId: compose.id,
+        agentId: compose.id,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
@@ -312,14 +309,14 @@ const router = tsr.router(zeroAgentsByNameContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Find compose by (orgId, name)
+    // Find compose by ID
     const [compose] = await globalThis.services.db
-      .select({ id: agentComposes.id })
+      .select({ id: agentComposes.id, name: agentComposes.name })
       .from(agentComposes)
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, params.name),
+          eq(agentComposes.id, params.id),
         ),
       )
       .limit(1);
@@ -329,7 +326,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${params.name}`,
+            message: `Agent not found: ${params.id}`,
             code: "NOT_FOUND",
           },
         },
@@ -347,19 +344,19 @@ const router = tsr.router(zeroAgentsByNameContract, {
         .where(
           and(
             eq(zeroAgents.orgId, org.orgId),
-            eq(zeroAgents.name, params.name),
+            eq(zeroAgents.name, compose.name),
           ),
         );
     });
 
-    log.info(`Deleted zero agent: ${params.name}`);
+    log.info(`Deleted zero agent: ${compose.name}`);
 
     return { status: 204 as const, body: undefined };
   },
 });
 
-const handler = createHandler(zeroAgentsByNameContract, router, {
-  errorHandler: createSafeErrorHandler("zero-agents:name"),
+const handler = createHandler(zeroAgentsByIdContract, router, {
+  errorHandler: createSafeErrorHandler("zero-agents:id"),
 });
 
 export { handler as GET, handler as PUT, handler as PATCH, handler as DELETE };

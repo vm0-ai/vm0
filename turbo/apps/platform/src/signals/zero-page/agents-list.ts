@@ -8,7 +8,7 @@ const L = logger("AgentsList");
 
 interface Schedule {
   name: string;
-  agentName: string;
+  agentId: string;
   enabled: boolean;
   cronExpression?: string;
   atTime?: string;

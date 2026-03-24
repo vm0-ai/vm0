@@ -19,8 +19,8 @@ import { apiBase$ } from "./fetch.ts";
  * @example
  * ```ts
  * const createClient = get(zeroClient$);
- * const client = createClient(zeroAgentsByNameContract);
- * const result = await client.get({ params: { name: "my-agent" } });
+ * const client = createClient(zeroAgentsByIdContract);
+ * const result = await client.get({ params: { id: "my-agent-id" } });
  * if (result.status === 200) {
  *   console.log(result.body.displayName);
  * }

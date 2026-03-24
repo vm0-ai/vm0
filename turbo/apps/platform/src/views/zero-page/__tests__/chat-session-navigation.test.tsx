@@ -14,7 +14,7 @@ function mockChatSessionAPIs() {
       return HttpResponse.json({
         id: "session-thread-1",
         title: "Session navigation test",
-        agentComposeId: "mock-compose-id",
+        agentId: "mock-compose-id",
         chatMessages: [
           {
             role: "user",

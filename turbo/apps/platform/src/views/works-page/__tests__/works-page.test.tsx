@@ -15,7 +15,7 @@ function mockSlackAPI(overrides: Record<string, unknown> = {}) {
     isAdmin: true,
     installUrl: "/api/zero/integrations/slack/install",
     connectUrl: "/api/zero/integrations/slack/connect",
-    defaultAgentName: "zero",
+    defaultAgentId: "zero",
     agentOrgSlug: "test-org",
     environment: {
       requiredSecrets: [],

@@ -84,9 +84,9 @@ export function ZeroSessionChatPage({
   chatAgentName,
 }: ZeroSessionChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
-  const defaultAgentName =
+  const defaultAgentId =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const agentName = chatAgentName ?? defaultAgentName;
+  const agentName = chatAgentName ?? defaultAgentId;
   const messages = useGet(zeroChatMessages$);
   const sending = useGet(zeroChatSending$);
   const sessionError = useGet(zeroSessionError$);

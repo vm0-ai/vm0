@@ -36,10 +36,10 @@ export function buildScheduleGuidance(): string {
     "# Scheduling Tasks",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
     "For recurring or scheduled tasks, use the vm0 schedule CLI:",
-    "- Create: vm0 schedule setup $VM0_AGENT_NAME",
+    "- Create: vm0 schedule setup $ZERO_AGENT_ID",
     "- List: vm0 schedule list",
-    "- Delete: vm0 schedule delete $VM0_AGENT_NAME --name <schedule-name>",
-    "- Enable/Disable: vm0 schedule enable/disable $VM0_AGENT_NAME --name <schedule-name>",
+    "- Delete: vm0 schedule delete $ZERO_AGENT_ID --name <schedule-name>",
+    "- Enable/Disable: vm0 schedule enable/disable $ZERO_AGENT_ID --name <schedule-name>",
     'Choose a short, descriptive schedule name based on the task (e.g., "deploy-check", "daily-report").',
   ].join("\n");
 }

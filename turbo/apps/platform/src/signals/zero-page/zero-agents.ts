@@ -18,9 +18,8 @@ export { agentsLoading$, agentsError$, fetchAgentsList$ };
 export const zeroSubagents$ = computed(async (get) => {
   const agents = await get(agentsList$);
   const status = await get(zeroOnboardingStatus$);
-  const defaultName = status.defaultAgentName;
-  const defaultId = status.defaultAgentComposeId;
-  return agents.filter((a) => a.name !== defaultName && a.id !== defaultId);
+  const defaultId = status.defaultAgentId;
+  return agents.filter((a) => a.id !== defaultId);
 });
 
 /**

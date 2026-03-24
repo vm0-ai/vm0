@@ -258,7 +258,7 @@ describe("zero chat page - connector label casing", () => {
         }
         return HttpResponse.json({
           name: params.name,
-          agentComposeId: "mock-compose-id",
+          agentId: "mock-compose-id",
           description: null,
           displayName: null,
           sound: null,

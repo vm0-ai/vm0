@@ -98,5 +98,6 @@ export async function createZeroRun(
     memoryName: "memory",
     artifactName: "artifact",
     disallowedTools: [...DISALLOWED_CRON_TOOLS],
+    vars: agent.composeId ? { ZERO_AGENT_ID: agent.composeId } : undefined,
   });
 }

@@ -5,9 +5,9 @@ import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
  * Raw default agent name from onboarding status (lowercase identifier, e.g. "zero").
  * Returns null if no default agent is set.
  */
-export const defaultAgentName$ = computed(async (get) => {
+export const defaultAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
-  return status.defaultAgentName;
+  return status.defaultAgentId;
 });
 
 /**
@@ -28,7 +28,7 @@ export const agentDisplayName$ = computed(async (get) => {
   if (metadata?.displayName) {
     return metadata.displayName;
   }
-  const raw = await get(defaultAgentName$);
+  const raw = await get(defaultAgentId$);
   const name = raw || "zero";
   return name.charAt(0).toUpperCase() + name.slice(1);
 });

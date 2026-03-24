@@ -475,7 +475,7 @@ export {
 } from "./required-env";
 export {
   zeroAgentsMainContract,
-  zeroAgentsByNameContract,
+  zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
   zeroAgentFirewallPoliciesContract,
   zeroAgentResponseSchema,
@@ -485,7 +485,7 @@ export {
   zeroAgentInstructionsRequestSchema,
   zeroAgentFirewallPoliciesRequestSchema,
   type ZeroAgentsMainContract,
-  type ZeroAgentsByNameContract,
+  type ZeroAgentsByIdContract,
   type ZeroAgentInstructionsContract,
   type ZeroAgentFirewallPoliciesContract,
   type ZeroAgentResponse,

@@ -32,7 +32,7 @@ const router = tsr.router(chatThreadsContract, {
     const [compose] = await globalThis.services.db
       .select({ orgId: agentComposes.orgId })
       .from(agentComposes)
-      .where(eq(agentComposes.id, body.agentComposeId))
+      .where(eq(agentComposes.id, body.agentId))
       .limit(1);
 
     if (!compose) {
@@ -54,11 +54,7 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const thread = await createChatThread(
-      userId,
-      body.agentComposeId,
-      body.title,
-    );
+    const thread = await createChatThread(userId, body.agentId, body.title);
 
     return {
       status: 201 as const,
@@ -87,7 +83,7 @@ const router = tsr.router(chatThreadsContract, {
     const [compose] = await globalThis.services.db
       .select({ orgId: agentComposes.orgId })
       .from(agentComposes)
-      .where(eq(agentComposes.id, query.agentComposeId))
+      .where(eq(agentComposes.id, query.agentId))
       .limit(1);
 
     if (!compose) {
@@ -109,7 +105,7 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const threads = await listChatThreads(userId, query.agentComposeId);
+    const threads = await listChatThreads(userId, query.agentId);
 
     return {
       status: 200 as const,
@@ -118,7 +114,7 @@ const router = tsr.router(chatThreadsContract, {
           id: t.id,
           title: t.title,
           preview: t.preview,
-          agentComposeId: query.agentComposeId,
+          agentId: query.agentId,
           createdAt: t.createdAt.toISOString(),
           updatedAt: t.updatedAt.toISOString(),
         })),

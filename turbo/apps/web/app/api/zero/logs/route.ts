@@ -269,6 +269,7 @@ const router = tsr.router(logsListContract, {
         triggerSource: agentRuns.triggerSource,
         scheduleId: agentRuns.scheduleId,
         continuedFromSessionId: agentRuns.continuedFromSessionId,
+        composeId: agentComposes.id,
         composeName: agentComposes.name,
         orgId: agentComposes.orgId,
         sessionId: conversations.cliAgentSessionId,
@@ -338,7 +339,7 @@ const router = tsr.router(logsListContract, {
         data: data.map((run) => ({
           id: run.id,
           sessionId: run.sessionId ?? null,
-          agentName: run.composeName ?? "unknown",
+          agentId: run.composeId ?? "unknown",
           displayName: run.displayName ?? null,
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),

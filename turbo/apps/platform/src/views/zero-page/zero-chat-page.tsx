@@ -148,9 +148,9 @@ export function ZeroChatPage({
   onAvatarClick,
 }: ZeroChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
-  const defaultAgentName =
+  const defaultAgentId =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const agentName = chatAgentName ?? defaultAgentName;
+  const agentName = chatAgentName ?? defaultAgentId;
   const userName = useUserFirstName();
 
   const input = useGet(chatPageInput$);

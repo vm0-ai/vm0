@@ -15,7 +15,7 @@ function mockAPIs({
       id: "thread-1",
       title: "First chat",
       preview: "Hello world",
-      agentComposeId: "mock-compose-id",
+      agentId: "mock-compose-id",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
     },
@@ -23,7 +23,7 @@ function mockAPIs({
       id: "thread-2",
       title: "Second chat",
       preview: "Goodbye moon",
-      agentComposeId: "mock-compose-id",
+      agentId: "mock-compose-id",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
     },
@@ -33,7 +33,7 @@ function mockAPIs({
     id: string;
     title: string;
     preview: string;
-    agentComposeId: string;
+    agentId: string;
     createdAt: string;
     updatedAt: string;
   }[];
@@ -93,7 +93,7 @@ function mockAPIsWithSubagents() {
             id: "thread-main",
             title: "Main agent chat",
             preview: "Hello from main",
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           },
@@ -101,7 +101,7 @@ function mockAPIsWithSubagents() {
             id: "thread-sub",
             title: "Sub agent chat",
             preview: "Hello from sub",
-            agentComposeId: "sub-agent-id",
+            agentId: "sub-agent-id",
             createdAt: "2026-03-09T00:00:00Z",
             updatedAt: "2026-03-09T00:00:00Z",
           },

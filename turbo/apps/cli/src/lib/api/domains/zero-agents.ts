@@ -1,7 +1,7 @@
 import { initClient } from "@ts-rest/core";
 import {
   zeroAgentsMainContract,
-  zeroAgentsByNameContract,
+  zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
   type ZeroAgentResponse,
   type ZeroAgentRequest,
@@ -27,53 +27,53 @@ export async function listZeroAgents(): Promise<ZeroAgentResponse[]> {
   handleError(result, "Failed to list zero agents");
 }
 
-export async function getZeroAgent(name: string): Promise<ZeroAgentResponse> {
+export async function getZeroAgent(id: string): Promise<ZeroAgentResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsByNameContract, config);
-  const result = await client.get({ params: { name } });
+  const client = initClient(zeroAgentsByIdContract, config);
+  const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Zero agent "${name}" not found`);
+  handleError(result, `Zero agent "${id}" not found`);
 }
 
 export async function updateZeroAgent(
-  name: string,
+  id: string,
   body: ZeroAgentRequest,
 ): Promise<ZeroAgentResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsByNameContract, config);
-  const result = await client.update({ params: { name }, body });
+  const client = initClient(zeroAgentsByIdContract, config);
+  const result = await client.update({ params: { id }, body });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to update zero agent "${name}"`);
+  handleError(result, `Failed to update zero agent "${id}"`);
 }
 
-export async function deleteZeroAgent(name: string): Promise<void> {
+export async function deleteZeroAgent(id: string): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(zeroAgentsByNameContract, config);
-  const result = await client.delete({ params: { name } });
+  const client = initClient(zeroAgentsByIdContract, config);
+  const result = await client.delete({ params: { id } });
   if (result.status === 204) return;
-  handleError(result, `Zero agent "${name}" not found`);
+  handleError(result, `Zero agent "${id}" not found`);
 }
 
 export async function getZeroAgentInstructions(
-  name: string,
+  id: string,
 ): Promise<ZeroAgentInstructionsResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroAgentInstructionsContract, config);
-  const result = await client.get({ params: { name } });
+  const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to get instructions for zero agent "${name}"`);
+  handleError(result, `Failed to get instructions for zero agent "${id}"`);
 }
 
 export async function updateZeroAgentInstructions(
-  name: string,
+  id: string,
   content: string,
 ): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(zeroAgentInstructionsContract, config);
   const result = await client.update({
-    params: { name },
+    params: { id },
     body: { content },
   });
   if (result.status === 200) return;
-  handleError(result, `Failed to update instructions for zero agent "${name}"`);
+  handleError(result, `Failed to update instructions for zero agent "${id}"`);
 }

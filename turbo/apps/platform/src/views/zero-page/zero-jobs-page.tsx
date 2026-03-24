@@ -24,7 +24,7 @@ import {
 } from "../../signals/zero-page/zero-agents.ts";
 import {
   agentDisplayName$,
-  defaultAgentName$,
+  defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroAvatarIndex$ } from "../../signals/zero-page/zero-nav.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -50,7 +50,7 @@ export function ZeroJobsPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const rawNameLoadable = useLoadable(defaultAgentName$);
+  const rawNameLoadable = useLoadable(defaultAgentId$);
   const rawAgentName =
     rawNameLoadable.state === "hasData" ? rawNameLoadable.data : null;
   const agents = useLastResolved(zeroSubagents$);

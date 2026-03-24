@@ -1,6 +1,5 @@
 export interface AgentDetail {
-  name: string;
-  agentComposeId: string;
+  agentId: string;
   description: string | null;
   displayName: string | null;
   sound: string | null;

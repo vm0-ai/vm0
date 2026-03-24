@@ -17,7 +17,7 @@ function mockAgentApi(connectors: string[]) {
     http.get("*/api/zero/agents/:name", () => {
       return HttpResponse.json({
         name: "test-agent",
-        agentComposeId: "mock-compose-id",
+        agentId: "mock-compose-id",
         description: null,
         displayName: null,
         sound: null,
@@ -56,7 +56,7 @@ describe("zeroAddedConnectors$", () => {
       http.get("*/api/zero/agents/cycling-coach", () => {
         return HttpResponse.json({
           name: "cycling-coach",
-          agentComposeId: "sub-agent-compose-id",
+          agentId: "sub-agent-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -115,7 +115,7 @@ describe("addZeroConnector$", () => {
         capturedBody = (await request.json()) as { connectors: string[] };
         return HttpResponse.json({
           name: "test-agent",
-          agentComposeId: "mock-compose-id",
+          agentId: "mock-compose-id",
           description: null,
           displayName: null,
           sound: null,

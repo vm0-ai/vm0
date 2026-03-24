@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { POST as createAgentRoute } from "../agents/route";
-import { PUT as updateInstructionsRoute } from "../agents/[name]/instructions/route";
+import { PUT as updateInstructionsRoute } from "../agents/[id]/instructions/route";
 import { POST as upsertModelProviderRoute } from "../model-providers/route";
 import type { UserContext } from "../../../../src/__tests__/test-helpers";
 

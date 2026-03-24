@@ -17,7 +17,7 @@ function mockChatWithActivityLink() {
       return HttpResponse.json({
         id: "thread-with-activity",
         title: null,
-        agentComposeId: "mock-compose-id",
+        agentId: "mock-compose-id",
         chatMessages: [
           {
             role: "user",

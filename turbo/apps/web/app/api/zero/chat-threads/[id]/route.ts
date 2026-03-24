@@ -36,7 +36,7 @@ const router = tsr.router(chatThreadByIdContract, {
         body: {
           id: thread.id,
           title: thread.title,
-          agentComposeId: thread.agentComposeId,
+          agentId: thread.agentComposeId,
           chatMessages,
           latestSessionId,
           unsavedRuns,

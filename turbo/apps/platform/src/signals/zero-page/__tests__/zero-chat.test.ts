@@ -84,7 +84,7 @@ describe("zero-chat signals", () => {
                 id: "t1",
                 title: null,
                 preview: "Hello",
-                agentComposeId: "mock-compose-id",
+                agentId: "mock-compose-id",
                 createdAt: "2026-03-10T00:00:00Z",
                 updatedAt: "2026-03-10T00:00:00Z",
               },
@@ -92,7 +92,7 @@ describe("zero-chat signals", () => {
                 id: "t2",
                 title: null,
                 preview: "World",
-                agentComposeId: "mock-compose-id",
+                agentId: "mock-compose-id",
                 createdAt: "2026-03-10T01:00:00Z",
                 updatedAt: "2026-03-10T01:00:00Z",
               },
@@ -131,7 +131,7 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
     });
 
-    it("should pass agentComposeId as query parameter", async () => {
+    it("should pass agentId as query parameter", async () => {
       let capturedUrl = "";
       server.use(
         http.get("*/api/zero/chat-threads", ({ request }) => {
@@ -144,7 +144,7 @@ describe("zero-chat signals", () => {
       await context.store.set(fetchZeroSessionList$);
 
       const url = new URL(capturedUrl);
-      expect(url.searchParams.get("agentComposeId")).toBe("mock-compose-id");
+      expect(url.searchParams.get("agentId")).toBe("mock-compose-id");
     });
   });
 
@@ -155,7 +155,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "thread-abc",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [
               {
                 role: "user",
@@ -247,7 +247,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "new-thread",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [
               {
                 role: "user",
@@ -291,7 +291,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "thread-1",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [],
             latestSessionId: null,
             createdAt: "2026-03-10T00:00:00Z",
@@ -370,7 +370,7 @@ describe("zero-chat signals", () => {
         http.get("*/api/zero/chat-threads/:id", () => {
           return HttpResponse.json({
             id: "thread-1",
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [],
             latestSessionId: null,
             createdAt: "2026-03-10T00:00:00Z",
@@ -509,7 +509,7 @@ describe("zero-chat signals", () => {
       expect(runAssociated).toBeTruthy();
 
       expect(capturedRunBody).toBeTruthy();
-      expect(capturedRunBody!.agentComposeId).toBe("mock-compose-id");
+      expect(capturedRunBody!.agentId).toBe("mock-compose-id");
       expect(capturedRunBody!.prompt).toBe("What can you do?");
 
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
@@ -627,7 +627,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "thread-existing",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [],
             latestSessionId: "existing-session",
             createdAt: "2026-03-10T00:00:00Z",
@@ -697,7 +697,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "url-thread",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [
               {
                 role: "user",
@@ -749,7 +749,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "already-loaded",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [],
             latestSessionId: null,
             createdAt: "2026-03-10T00:00:00Z",
@@ -780,7 +780,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "already-loaded",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "mock-compose-id",
             chatMessages: [
               {
                 role: "user",

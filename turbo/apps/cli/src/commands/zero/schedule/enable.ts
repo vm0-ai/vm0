@@ -9,25 +9,22 @@ import { withErrorHandler } from "../../../lib/command";
 export const enableCommand = new Command()
   .name("enable")
   .description("Enable a zero schedule")
-  .argument("<agent-name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
   .action(
-    withErrorHandler(async (agentName: string, options: { name?: string }) => {
-      const resolved = await resolveZeroScheduleByAgent(
-        agentName,
-        options.name,
-      );
+    withErrorHandler(async (agentId: string, options: { name?: string }) => {
+      const resolved = await resolveZeroScheduleByAgent(agentId, options.name);
 
       await enableZeroSchedule({
         name: resolved.name,
-        zeroAgentId: resolved.zeroAgentId,
+        agentId: resolved.agentId,
       });
 
       console.log(
-        chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
+        chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentId)}`),
       );
     }),
   );

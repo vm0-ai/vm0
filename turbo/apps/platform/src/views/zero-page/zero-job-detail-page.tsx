@@ -196,7 +196,7 @@ function extractAgentFields(
     displayName:
       listItem?.displayName ??
       detail?.displayName ??
-      detail?.name ??
+      detail?.agentId ??
       fallbackName,
   };
 }
@@ -340,8 +340,8 @@ export function ZeroJobDetailPage({
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
-    (statusLoadable.data.defaultAgentName === agentName ||
-      statusLoadable.data.defaultAgentComposeId === detail?.agentComposeId);
+    (statusLoadable.data.defaultAgentId === agentName ||
+      statusLoadable.data.defaultAgentId === detail?.agentId);
 
   const handleDelete = async () => {
     await deleteAgent();

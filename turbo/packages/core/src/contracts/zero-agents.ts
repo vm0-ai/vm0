@@ -9,8 +9,7 @@ const c = initContract();
  * Zero agent response schema
  */
 export const zeroAgentResponseSchema = z.object({
-  name: z.string(),
-  agentComposeId: z.string(),
+  agentId: z.string(),
   description: z.string().nullable(),
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
@@ -82,26 +81,26 @@ export const zeroAgentsMainContract = c.router({
 });
 
 /**
- * Contract for GET/PUT/PATCH/DELETE /api/zero/agents/:name
+ * Contract for GET/PUT/PATCH/DELETE /api/zero/agents/:id
  */
-export const zeroAgentsByNameContract = c.router({
+export const zeroAgentsByIdContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/agents/:name",
+    path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ name: z.string() }),
+    pathParams: z.object({ id: z.string() }),
     responses: {
       200: zeroAgentResponseSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get zero agent by name",
+    summary: "Get zero agent by id",
   },
   update: {
     method: "PUT",
-    path: "/api/zero/agents/:name",
+    path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ name: z.string() }),
+    pathParams: z.object({ id: z.string() }),
     body: zeroAgentRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
@@ -114,9 +113,9 @@ export const zeroAgentsByNameContract = c.router({
   },
   updateMetadata: {
     method: "PATCH",
-    path: "/api/zero/agents/:name",
+    path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ name: z.string() }),
+    pathParams: z.object({ id: z.string() }),
     body: zeroAgentMetadataRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
@@ -127,16 +126,16 @@ export const zeroAgentsByNameContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/agents/:name",
+    path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ name: z.string() }),
+    pathParams: z.object({ id: z.string() }),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Delete zero agent by name",
+    summary: "Delete zero agent by id",
   },
 });
 
@@ -144,7 +143,7 @@ export const zeroAgentsByNameContract = c.router({
  * Update firewall policies request schema
  */
 export const zeroAgentFirewallPoliciesRequestSchema = z.object({
-  name: z.string(),
+  agentId: z.string(),
   policies: firewallPoliciesSchema,
 });
 
@@ -169,14 +168,14 @@ export const zeroAgentFirewallPoliciesContract = c.router({
 });
 
 /**
- * Contract for GET/PUT /api/zero/agents/:name/instructions
+ * Contract for GET/PUT /api/zero/agents/:id/instructions
  */
 export const zeroAgentInstructionsContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/agents/:name/instructions",
+    path: "/api/zero/agents/:id/instructions",
     headers: authHeadersSchema,
-    pathParams: z.object({ name: z.string() }),
+    pathParams: z.object({ id: z.string() }),
     responses: {
       200: zeroAgentInstructionsResponseSchema,
       401: apiErrorSchema,
@@ -186,9 +185,9 @@ export const zeroAgentInstructionsContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/agents/:name/instructions",
+    path: "/api/zero/agents/:id/instructions",
     headers: authHeadersSchema,
-    pathParams: z.object({ name: z.string() }),
+    pathParams: z.object({ id: z.string() }),
     body: zeroAgentInstructionsRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
@@ -217,7 +216,7 @@ export type ZeroAgentFirewallPoliciesRequest = z.infer<
 >;
 
 export type ZeroAgentsMainContract = typeof zeroAgentsMainContract;
-export type ZeroAgentsByNameContract = typeof zeroAgentsByNameContract;
+export type ZeroAgentsByIdContract = typeof zeroAgentsByIdContract;
 export type ZeroAgentInstructionsContract =
   typeof zeroAgentInstructionsContract;
 export type ZeroAgentFirewallPoliciesContract =

@@ -18,8 +18,7 @@ function mockOnboardingStatus(overrides: Record<string, unknown>) {
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: true,
-        defaultAgentName: "zero",
-        defaultAgentComposeId: "mock-compose-id",
+        defaultAgentId: "mock-compose-id",
         defaultAgentMetadata: null,
         defaultAgentSkills: [],
         ...overrides,
@@ -56,7 +55,7 @@ describe("defaultAgentMetadata$", () => {
 describe("agentDisplayName$", () => {
   it("should return metadata displayName when available", async () => {
     mockOnboardingStatus({
-      defaultAgentName: "abc-123",
+      defaultAgentId: "abc-123",
       defaultAgentMetadata: { displayName: "My Agent" },
     });
 
@@ -68,7 +67,7 @@ describe("agentDisplayName$", () => {
 
   it("should capitalize agent name when metadata has no displayName", async () => {
     mockOnboardingStatus({
-      defaultAgentName: "zero",
+      defaultAgentId: "zero",
       defaultAgentMetadata: null,
     });
 
@@ -80,7 +79,7 @@ describe("agentDisplayName$", () => {
 
   it("should fall back to 'Zero' when no agent name is set", async () => {
     mockOnboardingStatus({
-      defaultAgentName: null,
+      defaultAgentId: null,
       defaultAgentMetadata: null,
     });
 

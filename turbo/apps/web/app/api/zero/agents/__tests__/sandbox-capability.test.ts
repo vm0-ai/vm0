@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
-import { GET, PUT } from "../[name]/route";
+import { GET, PUT } from "../[id]/route";
 import {
   GET as getInstructions,
   PUT as putInstructions,
-} from "../[name]/instructions/route";
+} from "../[id]/instructions/route";
 import {
   createTestCliToken,
   createTestRequest,

@@ -34,6 +34,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub append_system_prompt: Option<String>,
     // Agent compose version ID (full SHA-256 content hash)
+    #[allow(dead_code)]
     #[serde(default)]
     pub agent_compose_version_id: Option<String>,
     // Deserialized but not yet consumed by runner — vars are expanded at compose time
@@ -67,12 +68,6 @@ pub struct ExecutionContext {
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
-    // Agent display name — injected as VM0_AGENT_NAME
-    #[serde(default)]
-    pub agent_name: Option<String>,
-    // Stable agent compose ID — injected as VM0_AGENT_COMPOSE_ID
-    #[serde(default)]
-    pub agent_compose_id: Option<String>,
     // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
     #[serde(default)]
     pub agent_org_slug: Option<String>,

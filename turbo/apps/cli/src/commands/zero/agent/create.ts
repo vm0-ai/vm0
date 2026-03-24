@@ -38,11 +38,11 @@ export const createCommand = new Command()
 
         if (options.instructionsFile) {
           const content = readFileSync(options.instructionsFile, "utf-8");
-          await updateZeroAgentInstructions(agent.name, content);
+          await updateZeroAgentInstructions(agent.agentId, content);
         }
 
-        console.log(chalk.green(`✓ Zero agent '${agent.name}' created`));
-        console.log(`  Compose ID:   ${agent.agentComposeId}`);
+        console.log(chalk.green(`✓ Zero agent created`));
+        console.log(`  Agent ID:     ${agent.agentId}`);
         console.log(`  Connectors:   ${agent.connectors.join(", ")}`);
         if (agent.displayName) {
           console.log(`  Display Name: ${agent.displayName}`);

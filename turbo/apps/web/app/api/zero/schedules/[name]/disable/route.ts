@@ -8,14 +8,9 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import { disableSchedule } from "../../../../../../src/lib/schedule";
 import { isNotFound } from "../../../../../../src/lib/errors";
 
-const bodySchema = z
-  .object({
-    zeroAgentId: z.string().optional(),
-    composeId: z.string().optional(),
-  })
-  .refine((data) => Boolean(data.zeroAgentId ?? data.composeId), {
-    message: "Either 'zeroAgentId' or 'composeId' must be provided",
-  });
+const bodySchema = z.object({
+  agentId: z.string(),
+});
 
 export async function POST(
   request: Request,
@@ -48,12 +43,10 @@ export async function POST(
   }
 
   try {
-    const resolvedAgentId = parsed.data.zeroAgentId ?? parsed.data.composeId;
-    if (!resolvedAgentId) throw new Error("Missing agent ID after validation");
     const schedule = await disableSchedule(
       userId,
       orgId,
-      resolvedAgentId,
+      parsed.data.agentId,
       name,
     );
 

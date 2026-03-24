@@ -11,7 +11,7 @@ interface SlackOrgData {
   isAdmin: boolean;
   installUrl?: string | null;
   connectUrl?: string | null;
-  defaultAgentName: string | null;
+  defaultAgentId: string | null;
   agentOrgSlug: string | null;
   environment: {
     requiredSecrets: string[];

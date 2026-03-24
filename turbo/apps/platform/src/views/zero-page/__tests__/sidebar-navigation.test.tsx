@@ -39,7 +39,7 @@ function mockSubagentAPIs() {
             id: "thread-sub-1",
             title: "Subagent thread",
             preview: "Hello from subagent",
-            agentComposeId: "subagent-compose-id",
+            agentId: "subagent-compose-id",
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           },
@@ -50,7 +50,7 @@ function mockSubagentAPIs() {
       return HttpResponse.json({
         id: "thread-sub-1",
         title: "Subagent thread",
-        agentComposeId: "subagent-compose-id",
+        agentId: "subagent-compose-id",
         chatMessages: [
           {
             role: "user",
@@ -199,7 +199,7 @@ describe("sidebar new chat navigation", () => {
         return HttpResponse.json({
           id: "new-thread-id",
           title: null,
-          agentComposeId: "mock-compose-id",
+          agentId: "mock-compose-id",
           chatMessages: [],
           latestSessionId: "session-new-1",
           createdAt: "2026-03-10T00:00:00Z",

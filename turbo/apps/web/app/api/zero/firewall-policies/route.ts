@@ -103,7 +103,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, body.name),
+          eq(agentComposes.id, body.agentId),
         ),
       )
       .limit(1);
@@ -113,7 +113,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${body.name}`,
+            message: `Agent not found: ${body.agentId}`,
             code: "NOT_FOUND",
           },
         },
@@ -126,7 +126,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       .insert(zeroAgents)
       .values({
         orgId: org.orgId,
-        name: body.name,
+        name: compose.name,
         firewallPolicies: body.policies,
       })
       .onConflictDoUpdate({
@@ -137,14 +137,14 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
         },
       });
 
-    log.info(`Updated firewall policies for agent: ${body.name}`);
+    log.info(`Updated firewall policies for agent: ${compose.name}`);
 
     // Re-query to return actual persisted state
     const [agent] = await globalThis.services.db
       .select()
       .from(zeroAgents)
       .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, body.name)),
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
       )
       .limit(1);
 
@@ -154,8 +154,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
     return {
       status: 200 as const,
       body: {
-        name: compose.name,
-        agentComposeId: compose.id,
+        agentId: compose.id,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,

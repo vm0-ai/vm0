@@ -5,7 +5,7 @@ import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroChatAgentName$ } from "./zero-nav.ts";
-import { defaultAgentName$ } from "./zero-agent-name.ts";
+import { defaultAgentId$ } from "./zero-agent-name.ts";
 import type { AgentDetail } from "./agent-types.ts";
 
 const L = logger("ZeroConnectors");
@@ -19,7 +19,7 @@ const zeroAgentName$ = computed(async (get) => {
   if (chatAgentName !== null) {
     return chatAgentName;
   }
-  return await get(defaultAgentName$);
+  return await get(defaultAgentId$);
 });
 
 const internalComposeReload$ = state(0);
@@ -109,7 +109,7 @@ const syncConnectorsToCompose$ = command(
     const fetchFn = get(fetch$);
 
     const resp = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(agent.name)}`,
+      `/api/zero/agents/${encodeURIComponent(agent.agentId)}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

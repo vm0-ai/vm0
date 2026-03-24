@@ -118,9 +118,7 @@ export const storedExecutionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Agent metadata for VM0_AGENT_NAME, VM0_AGENT_COMPOSE_ID, and VM0_AGENT_ORG env vars
-  agentName: z.string().optional(),
-  agentComposeId: z.string().optional(),
+  // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
   agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
@@ -168,9 +166,7 @@ export const executionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Agent metadata
-  agentName: z.string().optional(),
-  agentComposeId: z.string().optional(),
+  // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
   agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),

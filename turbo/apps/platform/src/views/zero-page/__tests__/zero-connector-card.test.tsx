@@ -53,7 +53,7 @@ async function renderTeamPage(connectors: string[]) {
     http.get("*/api/zero/agents/zero", () => {
       return HttpResponse.json({
         name: "zero",
-        agentComposeId: "compose-1",
+        agentId: "compose-1",
         description: null,
         displayName: null,
         sound: null,

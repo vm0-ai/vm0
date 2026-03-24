@@ -73,7 +73,7 @@ const internalAgentName$ = state<string | null>(null);
 
 export const initZeroActivityAgentName$ = command(async ({ get, set }) => {
   const status = await get(zeroOnboardingStatus$);
-  set(internalAgentName$, status.defaultAgentName);
+  set(internalAgentName$, status.defaultAgentId);
 });
 
 /** Initialize activity page: load agent name, org agents, and seed cursor history. */

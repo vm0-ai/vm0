@@ -42,7 +42,7 @@ describe("completeZeroOnboarding$", () => {
         capturedPayload = (await request.json()) as CreateAgentPayload;
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: capturedPayload.displayName ?? null,
           sound: capturedPayload.sound ?? null,
@@ -55,7 +55,7 @@ describe("completeZeroOnboarding$", () => {
           capturedInstructions = (await request.json()) as InstructionsPayload;
           return HttpResponse.json({
             name: "test-agent-uuid",
-            agentComposeId: "new-compose-id",
+            agentId: "new-compose-id",
             description: null,
             displayName: null,
             sound: null,
@@ -100,7 +100,7 @@ describe("completeZeroOnboarding$", () => {
         capturedPayload = (await request.json()) as CreateAgentPayload;
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -110,7 +110,7 @@ describe("completeZeroOnboarding$", () => {
       http.put("*/api/zero/agents/test-agent-uuid/instructions", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -146,7 +146,7 @@ describe("completeZeroOnboarding$", () => {
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -156,7 +156,7 @@ describe("completeZeroOnboarding$", () => {
       http.put("*/api/zero/agents/test-agent-uuid/instructions", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -174,7 +174,7 @@ describe("completeZeroOnboarding$", () => {
     await context.store.set(completeZeroOnboarding$, context.signal);
 
     expect(defaultAgentBody).toStrictEqual({
-      agentComposeId: "new-compose-id",
+      agentId: "new-compose-id",
     });
   });
 
@@ -189,7 +189,7 @@ describe("completeZeroOnboarding$", () => {
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -199,7 +199,7 @@ describe("completeZeroOnboarding$", () => {
       http.put("*/api/zero/agents/test-agent-uuid/instructions", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -284,7 +284,7 @@ describe("completeZeroOnboarding$", () => {
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -294,7 +294,7 @@ describe("completeZeroOnboarding$", () => {
       http.put("*/api/zero/agents/test-agent-uuid/instructions", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -333,7 +333,7 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,
@@ -343,7 +343,7 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
       http.put("*/api/zero/agents/test-agent-uuid/instructions", () => {
         return HttpResponse.json({
           name: "test-agent-uuid",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
           description: null,
           displayName: null,
           sound: null,

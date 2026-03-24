@@ -1,6 +1,6 @@
 import { command, state, type Getter, type Setter } from "ccstate";
 import { fetchAgentsList$, zeroSubagents$ } from "./zero-agents.ts";
-import { defaultAgentName$ } from "./zero-agent-name.ts";
+import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
@@ -50,7 +50,7 @@ export async function resolveAgentByName(
 ): Promise<void> {
   if (agentName) {
     const subagents = await get(zeroSubagents$);
-    const rawDefaultName = await get(defaultAgentName$);
+    const rawDefaultName = await get(defaultAgentId$);
     signal.throwIfAborted();
 
     if (agentName === rawDefaultName) {

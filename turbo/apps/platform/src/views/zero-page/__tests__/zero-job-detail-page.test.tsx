@@ -39,7 +39,7 @@ function mockAPIs() {
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         name: "my-agent",
-        agentComposeId: "agent-detail-id",
+        agentId: "agent-detail-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
@@ -180,7 +180,7 @@ function mockAPIsWithSchedules() {
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         name: "my-agent",
-        agentComposeId: "agent-detail-id",
+        agentId: "agent-detail-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,

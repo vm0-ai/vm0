@@ -58,7 +58,7 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import {
   agentDisplayName$,
-  defaultAgentName$,
+  defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import {
@@ -476,8 +476,8 @@ function RecentChatSection({
   // Filter sessions by current agent
   const subagentIds = new Set(subagents.map((a) => a.id));
   const agentSessions = currentChatAgentId
-    ? recentSessions.filter((s) => s.agentComposeId === currentChatAgentId)
-    : recentSessions.filter((s) => !subagentIds.has(s.agentComposeId));
+    ? recentSessions.filter((s) => s.agentId === currentChatAgentId)
+    : recentSessions.filter((s) => !subagentIds.has(s.agentId));
 
   const agentLabel = currentChatAgentId
     ? (subagents.find((a) => a.id === currentChatAgentId)?.displayName ??
@@ -813,10 +813,10 @@ export function ZeroSidebar() {
   const agentNameLoadable = useLastLoadable(agentDisplayName$);
   const agentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : null;
-  const defaultAgentNameLoadable = useLastLoadable(defaultAgentName$);
+  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
   const defaultAgentRawName =
-    defaultAgentNameLoadable.state === "hasData"
-      ? defaultAgentNameLoadable.data
+    defaultAgentIdLoadable.state === "hasData"
+      ? defaultAgentIdLoadable.data
       : null;
   const avatarIndex = useGet(zeroAvatarIndex$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
@@ -869,9 +869,7 @@ export function ZeroSidebar() {
         if (!thread) {
           return undefined;
         }
-        return subagentIds.has(thread.agentComposeId)
-          ? thread.agentComposeId
-          : null;
+        return subagentIds.has(thread.agentId) ? thread.agentId : null;
       })()
     : undefined;
 

@@ -41,7 +41,7 @@ function mockAPIs() {
       return HttpResponse.json({
         id: "thread-abc-123",
         title: "Test conversation",
-        agentComposeId: "mock-compose-id",
+        agentId: "mock-compose-id",
         chatMessages: [
           {
             role: "user",

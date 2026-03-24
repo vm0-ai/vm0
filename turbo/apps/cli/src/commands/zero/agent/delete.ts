@@ -8,18 +8,18 @@ export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
   .description("Delete a zero agent")
-  .argument("<name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option("-y, --yes", "Skip confirmation prompt")
   .action(
-    withErrorHandler(async (name: string, options: { yes?: boolean }) => {
-      await getZeroAgent(name);
+    withErrorHandler(async (agentId: string, options: { yes?: boolean }) => {
+      await getZeroAgent(agentId);
 
       if (!options.yes) {
         if (!isInteractive()) {
           throw new Error("--yes flag is required in non-interactive mode");
         }
         const confirmed = await promptConfirm(
-          `Delete zero agent '${name}'?`,
+          `Delete zero agent '${agentId}'?`,
           false,
         );
         if (!confirmed) {
@@ -28,7 +28,7 @@ export const deleteCommand = new Command()
         }
       }
 
-      await deleteZeroAgent(name);
-      console.log(chalk.green(`✓ Zero agent '${name}' deleted`));
+      await deleteZeroAgent(agentId);
+      console.log(chalk.green(`✓ Zero agent '${agentId}' deleted`));
     }),
   );

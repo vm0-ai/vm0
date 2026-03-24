@@ -14,7 +14,7 @@ interface MockSlackOrgData {
   isAdmin: boolean;
   installUrl?: string | null;
   connectUrl?: string | null;
-  defaultAgentName: string | null;
+  defaultAgentId: string | null;
   agentOrgSlug: string | null;
   environment: {
     requiredSecrets: string[];
@@ -29,7 +29,7 @@ let mockSlackOrgData: MockSlackOrgData = {
   isInstalled: true,
   workspaceName: "Test Org Workspace",
   isAdmin: true,
-  defaultAgentName: "default-agent",
+  defaultAgentId: "default-agent",
   agentOrgSlug: "test-org",
   environment: {
     requiredSecrets: [],
@@ -45,7 +45,7 @@ export function resetMockSlackOrgIntegration(): void {
     isInstalled: true,
     workspaceName: "Test Org Workspace",
     isAdmin: true,
-    defaultAgentName: "default-agent",
+    defaultAgentId: "default-agent",
     agentOrgSlug: "test-org",
     environment: {
       requiredSecrets: [],

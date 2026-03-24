@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { GET as getAgentRoute } from "../agents/[name]/route";
+import { GET as getAgentRoute } from "../agents/[id]/route";
 import { POST as createRunRoute } from "../runs/route";
 import { POST as claimJobRoute } from "../../runners/jobs/[id]/claim/route";
 import {

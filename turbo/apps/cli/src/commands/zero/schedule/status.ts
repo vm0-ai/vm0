@@ -43,7 +43,7 @@ function printRunConfiguration(schedule: ScheduleResponse): void {
   console.log(`${"Status:".padEnd(16)}${statusText}`);
 
   console.log(
-    `${"Agent:".padEnd(16)}${schedule.agentName} ${chalk.dim(`(${schedule.orgSlug})`)}`,
+    `${"Agent:".padEnd(16)}${schedule.agentId} ${chalk.dim(`(${schedule.orgSlug})`)}`,
   );
 
   const promptPreview =
@@ -105,20 +105,17 @@ function printTimeSchedule(schedule: ScheduleResponse): void {
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a zero schedule")
-  .argument("<agent-name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
   .action(
-    withErrorHandler(async (agentName: string, options: { name?: string }) => {
-      const schedule = await resolveZeroScheduleByAgent(
-        agentName,
-        options.name,
-      );
+    withErrorHandler(async (agentId: string, options: { name?: string }) => {
+      const schedule = await resolveZeroScheduleByAgent(agentId, options.name);
 
       console.log();
-      console.log(`Schedule for agent: ${chalk.cyan(agentName)}`);
+      console.log(`Schedule for agent: ${chalk.cyan(agentId)}`);
       console.log(chalk.dim("━".repeat(50)));
 
       printRunConfiguration(schedule);

@@ -104,8 +104,7 @@ describe("talk navigation", () => {
             isAdmin: true,
             hasOrg: true,
             hasDefaultAgent: true,
-            defaultAgentName: "zero",
-            defaultAgentComposeId: "new-compose-id",
+            defaultAgentId: "new-compose-id",
             defaultAgentMetadata: null,
             defaultAgentSkills: [],
           });
@@ -115,8 +114,7 @@ describe("talk navigation", () => {
           isAdmin: true,
           hasOrg: true,
           hasDefaultAgent: false,
-          defaultAgentName: null,
-          defaultAgentComposeId: null,
+          defaultAgentId: null,
           defaultAgentMetadata: null,
           defaultAgentSkills: [],
         });
@@ -126,7 +124,7 @@ describe("talk navigation", () => {
         onboardingComplete = true;
         return HttpResponse.json({
           name: "zero",
-          agentComposeId: "new-compose-id",
+          agentId: "new-compose-id",
         });
       }),
       // Instructions upload

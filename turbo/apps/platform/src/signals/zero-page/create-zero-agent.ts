@@ -42,7 +42,7 @@ export async function createZeroAgent(
 
   // Step 2: Upload seed instructions
   const instrResp = await fetchFn(
-    `/api/zero/agents/${encodeURIComponent(agent.name)}/instructions`,
+    `/api/zero/agents/${encodeURIComponent(agent.agentId)}/instructions`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

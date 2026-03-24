@@ -175,7 +175,6 @@ export async function prepareForExecution(
     profile,
     storageManifest,
     agentOrgInfo.orgSlug,
-    agentComposeInfo.composeId,
   );
 
   const timings: PrepareTimings = {
@@ -201,7 +200,6 @@ function toNullable<T>(value: T | undefined | null): T | null {
  */
 function extractMetadata(context: ExecutionContext) {
   return {
-    agentName: context.agentName || null,
     resumedFromCheckpointId: context.resumedFromCheckpointId || null,
     continuedFromSessionId: context.continuedFromSessionId || null,
     apiStartTime: context.apiStartTime ?? null,
@@ -220,7 +218,6 @@ function buildPreparedContext(
   profile: string | null,
   storageManifest: StorageManifest,
   agentOrgSlug: string | null,
-  agentComposeId: string,
 ): PreparedContext {
   const metadata = extractMetadata(context);
 
@@ -277,10 +274,11 @@ function buildPreparedContext(
     // Routing
     runnerGroup,
 
+    // Org slug for capabilities
+    agentOrgSlug,
+
     // Metadata
     ...metadata,
-    agentComposeId,
-    agentOrgSlug,
 
     // Debug flag
     debugNoMockClaude: context.debugNoMockClaude || false,

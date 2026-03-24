@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../../agents/route";
-import { GET } from "../../agents/[name]/route";
+import { GET } from "../../agents/[id]/route";
 import { PUT as putFirewallPolicies } from "../route";
 import {
   createTestRequest,

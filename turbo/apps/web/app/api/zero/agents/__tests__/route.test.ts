@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { gzipSync } from "node:zlib";
 import { POST, GET as listAgents } from "../route";
-import { GET, PUT, PATCH, DELETE } from "../[name]/route";
+import { GET, PUT, PATCH, DELETE } from "../[id]/route";
 import {
   GET as getInstructions,
   PUT as putInstructions,
-} from "../[name]/instructions/route";
+} from "../[id]/instructions/route";
 import {
   createTestRequest,
   createTestCliToken,

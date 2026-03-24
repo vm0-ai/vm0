@@ -16,7 +16,7 @@ import type {
  */
 export async function deployZeroSchedule(body: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
   cronExpression?: string;
   atTime?: string;
   intervalSeconds?: number;
@@ -64,14 +64,14 @@ export async function listZeroSchedules(): Promise<ScheduleListResponse> {
  */
 export async function deleteZeroSchedule(params: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
 }): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesByNameContract, config);
 
   const result = await client.delete({
     params: { name: params.name },
-    query: { zeroAgentId: params.zeroAgentId },
+    query: { agentId: params.agentId },
   });
 
   if (result.status === 204) {
@@ -86,14 +86,14 @@ export async function deleteZeroSchedule(params: {
  */
 export async function enableZeroSchedule(params: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesEnableContract, config);
 
   const result = await client.enable({
     params: { name: params.name },
-    body: { zeroAgentId: params.zeroAgentId },
+    body: { agentId: params.agentId },
   });
 
   if (result.status === 200) {
@@ -108,14 +108,14 @@ export async function enableZeroSchedule(params: {
  */
 export async function disableZeroSchedule(params: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesEnableContract, config);
 
   const result = await client.disable({
     params: { name: params.name },
-    body: { zeroAgentId: params.zeroAgentId },
+    body: { agentId: params.agentId },
   });
 
   if (result.status === 200) {
@@ -126,8 +126,8 @@ export async function disableZeroSchedule(params: {
 }
 
 /**
- * Resolve a zero schedule by agent name using the list API.
- * Searches across all user's schedules and finds by agentName.
+ * Resolve a zero schedule by agent ID using the list API.
+ * Searches across all user's schedules and finds by agentId.
  *
  * Returns the full ScheduleResponse so callers can access any field.
  * When an agent has multiple schedules, scheduleName is required for disambiguation.
@@ -136,15 +136,15 @@ export async function disableZeroSchedule(params: {
  * @throws Error if agent has no schedule or disambiguation is needed
  */
 export async function resolveZeroScheduleByAgent(
-  agentName: string,
+  agentId: string,
   scheduleName?: string,
 ): Promise<ScheduleResponse> {
   const { schedules } = await listZeroSchedules();
 
-  const agentSchedules = schedules.filter((s) => s.agentName === agentName);
+  const agentSchedules = schedules.filter((s) => s.agentId === agentId);
 
   if (agentSchedules.length === 0) {
-    throw new Error(`No schedule found for agent "${agentName}"`);
+    throw new Error(`No schedule found for agent "${agentId}"`);
   }
 
   if (scheduleName) {
@@ -152,7 +152,7 @@ export async function resolveZeroScheduleByAgent(
     if (!match) {
       const available = agentSchedules.map((s) => s.name).join(", ");
       throw new Error(
-        `Schedule "${scheduleName}" not found for agent "${agentName}". Available schedules: ${available}`,
+        `Schedule "${scheduleName}" not found for agent "${agentId}". Available schedules: ${available}`,
       );
     }
     return match;
@@ -164,6 +164,6 @@ export async function resolveZeroScheduleByAgent(
 
   const available = agentSchedules.map((s) => s.name).join(", ");
   throw new Error(
-    `Agent "${agentName}" has multiple schedules. Use --name to specify which one: ${available}`,
+    `Agent "${agentId}" has multiple schedules. Use --name to specify which one: ${available}`,
   );
 }

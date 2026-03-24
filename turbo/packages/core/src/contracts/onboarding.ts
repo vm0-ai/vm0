@@ -12,8 +12,7 @@ export const onboardingStatusResponseSchema = z.object({
   isAdmin: z.boolean(),
   hasOrg: z.boolean(),
   hasDefaultAgent: z.boolean(),
-  defaultAgentName: z.string().nullable(),
-  defaultAgentComposeId: z.string().nullable(),
+  defaultAgentId: z.string().nullable(),
   defaultAgentMetadata: z
     .object({
       displayName: z.string().optional(),

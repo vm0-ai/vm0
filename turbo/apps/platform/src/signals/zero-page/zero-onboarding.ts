@@ -192,7 +192,7 @@ export const completeZeroOnboarding$ = command(
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: agent.agentComposeId,
+          agentId: agent.agentId,
         }),
       });
       signal.throwIfAborted();
@@ -202,8 +202,7 @@ export const completeZeroOnboarding$ = command(
       }
 
       L.debug("Zero onboarding completed", {
-        agentName: agent.name,
-        composeId: agent.agentComposeId,
+        agentId: agent.agentId,
       });
 
       // Force JWT refresh so updated org metadata is available immediately
@@ -215,7 +214,7 @@ export const completeZeroOnboarding$ = command(
       // Reload status (caller dismisses via dismissZeroOnboarding$)
       set(internalReload$, (x) => x + 1);
 
-      return agent.agentComposeId;
+      return agent.agentId;
     } catch (error) {
       throwIfAbort(error);
       const message =

@@ -71,7 +71,7 @@ export const apiAgentsHandlers = [
 
     return HttpResponse.json({
       name: params.name,
-      agentComposeId: "mock-compose-id",
+      agentId: "mock-compose-id",
       description: null,
       displayName: null,
       sound: null,

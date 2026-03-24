@@ -8,7 +8,7 @@ const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   preview: z.string().nullable(),
-  agentComposeId: z.string(),
+  agentId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -32,7 +32,7 @@ const unsavedRunSchema = z.object({
 const chatThreadDetailSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
-  agentComposeId: z.string(),
+  agentId: z.string(),
   chatMessages: z.array(storedChatMessageSchema),
   latestSessionId: z.string().nullable(),
   unsavedRuns: z.array(unsavedRunSchema),
@@ -49,7 +49,7 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
     body: z.object({
-      agentComposeId: z.string().min(1),
+      agentId: z.string().min(1),
       title: z.string().optional(),
     }),
     responses: {
@@ -67,7 +67,7 @@ export const chatThreadsContract = c.router({
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
     query: z.object({
-      agentComposeId: z.string().min(1, "agentComposeId is required"),
+      agentId: z.string().min(1, "agentId is required"),
     }),
     responses: {
       200: z.object({ threads: z.array(chatThreadListItemSchema) }),

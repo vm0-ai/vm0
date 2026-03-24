@@ -51,7 +51,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Look up compose by name + org
+    // Look up compose by ID
     const [compose] = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -67,7 +67,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, params.name),
+          eq(agentComposes.id, params.id),
         ),
       )
       .limit(1);
@@ -77,7 +77,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${params.name}`,
+            message: `Agent not found: ${params.id}`,
             code: "NOT_FOUND",
           },
         },
@@ -192,7 +192,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Look up existing compose
+    // Look up existing compose by ID
     const [compose] = await globalThis.services.db
       .select({
         id: agentComposes.id,
@@ -207,7 +207,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.name, params.name),
+          eq(agentComposes.id, params.id),
         ),
       )
       .limit(1);
@@ -217,7 +217,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         status: 404 as const,
         body: {
           error: {
-            message: `Agent not found: ${params.name}`,
+            message: `Agent not found: ${params.id}`,
             code: "NOT_FOUND",
           },
         },
@@ -255,15 +255,14 @@ const router = tsr.router(zeroAgentInstructionsContract, {
       .select()
       .from(zeroAgents)
       .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, params.name)),
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
       )
       .limit(1);
 
     return {
       status: 200 as const,
       body: {
-        name: result.composeName,
-        agentComposeId: result.composeId,
+        agentId: result.composeId,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,

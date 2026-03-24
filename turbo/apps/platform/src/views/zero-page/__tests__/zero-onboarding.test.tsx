@@ -15,8 +15,7 @@ function mockOnboardingNeeded() {
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: false,
-        defaultAgentName: null,
-        defaultAgentComposeId: null,
+        defaultAgentId: null,
         defaultAgentMetadata: null,
         defaultAgentSkills: [],
       });
@@ -132,8 +131,7 @@ function mockMemberOnboardingNeeded() {
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
-        defaultAgentName: "zero",
-        defaultAgentComposeId: "mock-compose-id",
+        defaultAgentId: "mock-compose-id",
         defaultAgentMetadata: null,
         defaultAgentSkills: [],
       });

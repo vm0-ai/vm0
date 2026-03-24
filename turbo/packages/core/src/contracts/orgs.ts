@@ -69,11 +69,11 @@ export const orgDefaultAgentContract = c.router({
       org: z.string().optional(),
     }),
     body: z.object({
-      agentComposeId: z.uuid().nullable(),
+      agentId: z.uuid().nullable(),
     }),
     responses: {
       200: z.object({
-        agentComposeId: z.uuid().nullable(),
+        agentId: z.uuid().nullable(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

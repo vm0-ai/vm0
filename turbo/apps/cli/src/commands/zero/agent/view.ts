@@ -6,17 +6,17 @@ import { withErrorHandler } from "../../../lib/command";
 export const viewCommand = new Command()
   .name("view")
   .description("View a zero agent")
-  .argument("<name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option("--instructions", "Also show instructions content")
   .action(
     withErrorHandler(
-      async (name: string, options: { instructions?: boolean }) => {
-        const agent = await getZeroAgent(name);
+      async (agentId: string, options: { instructions?: boolean }) => {
+        const agent = await getZeroAgent(agentId);
 
-        console.log(chalk.bold(agent.name));
+        console.log(chalk.bold(agent.agentId));
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
         console.log();
-        console.log(`Compose ID:   ${agent.agentComposeId}`);
+        console.log(`Agent ID:     ${agent.agentId}`);
         console.log(`Connectors:   ${agent.connectors.join(", ") || "-"}`);
         if (agent.description)
           console.log(`Description:  ${agent.description}`);
@@ -24,7 +24,7 @@ export const viewCommand = new Command()
 
         if (options.instructions) {
           console.log();
-          const result = await getZeroAgentInstructions(name);
+          const result = await getZeroAgentInstructions(agentId);
           if (result.content) {
             console.log(chalk.dim("── Instructions ──"));
             console.log(result.content);

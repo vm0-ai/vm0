@@ -15,14 +15,14 @@ export const listCommand = new Command()
       if (result.schedules.length === 0) {
         console.log(chalk.dim("No schedules found"));
         console.log(
-          chalk.dim("  Create one with: vm0 zero schedule setup <agent-name>"),
+          chalk.dim("  Create one with: vm0 zero schedule setup <agent-id>"),
         );
         return;
       }
 
       const agentWidth = Math.max(
         5,
-        ...result.schedules.map((s) => s.agentName.length),
+        ...result.schedules.map((s) => s.agentId.length),
       );
       const scheduleWidth = Math.max(
         8,
@@ -60,7 +60,7 @@ export const listCommand = new Command()
           : "-";
 
         const row = [
-          schedule.agentName.padEnd(agentWidth),
+          schedule.agentId.padEnd(agentWidth),
           schedule.name.padEnd(scheduleWidth),
           trigger.padEnd(triggerWidth),
           status.padEnd(8 + (schedule.enabled ? 0 : 2)),

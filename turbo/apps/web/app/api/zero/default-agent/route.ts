@@ -39,7 +39,7 @@ const router = tsr.router(orgDefaultAgentContract, {
       };
     }
 
-    const { agentComposeId } = body;
+    const { agentId } = body;
 
     // Once a default agent is configured, prevent any further changes.
     const [orgRow] = await globalThis.services.db
@@ -73,14 +73,14 @@ const router = tsr.router(orgDefaultAgentContract, {
       }
     }
 
-    if (agentComposeId !== null) {
+    if (agentId !== null) {
       // Verify agent exists and belongs to this org
       const [compose] = await globalThis.services.db
         .select({ id: agentComposes.id })
         .from(agentComposes)
         .where(
           and(
-            eq(agentComposes.id, agentComposeId),
+            eq(agentComposes.id, agentId),
             eq(agentComposes.orgId, org.orgId),
           ),
         )
@@ -101,16 +101,16 @@ const router = tsr.router(orgDefaultAgentContract, {
 
     await globalThis.services.db
       .insert(orgTable)
-      .values({ orgId: org.orgId, defaultAgentComposeId: agentComposeId })
+      .values({ orgId: org.orgId, defaultAgentComposeId: agentId })
       .onConflictDoUpdate({
         target: orgTable.orgId,
-        set: { defaultAgentComposeId: agentComposeId, updatedAt: new Date() },
+        set: { defaultAgentComposeId: agentId, updatedAt: new Date() },
       });
 
     return {
       status: 200 as const,
       body: {
-        agentComposeId,
+        agentId,
       },
     };
   },

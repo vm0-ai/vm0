@@ -6,7 +6,7 @@ import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { logger } from "../log.ts";
-import { agentDisplayName$, defaultAgentName$ } from "./zero-agent-name.ts";
+import { agentDisplayName$, defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$, resolveAgentByName } from "./zero-page.ts";
@@ -33,7 +33,7 @@ export const setupTalkPage$ = command(
 
     // Update title with resolved agent display name
     if (agentName) {
-      const rawDefaultName = await get(defaultAgentName$);
+      const rawDefaultName = await get(defaultAgentId$);
       signal.throwIfAborted();
       if (agentName === rawDefaultName) {
         const displayName = await get(agentDisplayName$);

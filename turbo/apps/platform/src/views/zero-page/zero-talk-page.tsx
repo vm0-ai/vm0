@@ -9,7 +9,7 @@ import {
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import {
   agentDisplayName$,
-  defaultAgentName$,
+  defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { navigateTo$ } from "../../signals/route.ts";
 import {
@@ -42,10 +42,10 @@ export function ZeroTalkPage() {
     ? (selectedSubagent.displayName ?? selectedSubagent.name)
     : agentDisplayName;
 
-  const defaultAgentNameLoadable = useLastLoadable(defaultAgentName$);
+  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
   const defaultRawName =
-    defaultAgentNameLoadable.state === "hasData"
-      ? defaultAgentNameLoadable.data
+    defaultAgentIdLoadable.state === "hasData"
+      ? defaultAgentIdLoadable.data
       : null;
   const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
 

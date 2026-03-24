@@ -34,12 +34,9 @@ const router = tsr.router(zeroSchedulesMainContract, {
         org: { orgId },
       } = await resolveOrg(authCtx, orgSlug);
 
-      const resolvedAgentId = body.zeroAgentId ?? body.composeId;
-      if (!resolvedAgentId)
-        throw new Error("Missing agent ID after validation");
       const result = await deploySchedule(userId, orgId, {
         name: body.name,
-        zeroAgentId: resolvedAgentId,
+        zeroAgentId: body.agentId,
         cronExpression: body.cronExpression,
         atTime: body.atTime,
         intervalSeconds: body.intervalSeconds,

@@ -14,7 +14,7 @@ function mockChatThread() {
       return HttpResponse.json({
         id: "thread-1",
         title: null,
-        agentComposeId: "mock-compose-id",
+        agentId: "mock-compose-id",
         chatMessages: [
           {
             role: "user",

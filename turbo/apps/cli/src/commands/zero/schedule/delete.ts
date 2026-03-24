@@ -11,7 +11,7 @@ export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
   .description("Delete a zero schedule")
-  .argument("<agent-name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
@@ -19,9 +19,9 @@ export const deleteCommand = new Command()
   .option("-y, --yes", "Skip confirmation prompt")
   .action(
     withErrorHandler(
-      async (agentName: string, options: { name?: string; yes?: boolean }) => {
+      async (agentId: string, options: { name?: string; yes?: boolean }) => {
         const resolved = await resolveZeroScheduleByAgent(
-          agentName,
+          agentId,
           options.name,
         );
 
@@ -30,7 +30,7 @@ export const deleteCommand = new Command()
             throw new Error("--yes flag is required in non-interactive mode");
           }
           const confirmed = await promptConfirm(
-            `Delete schedule for agent ${chalk.cyan(agentName)}?`,
+            `Delete schedule for agent ${chalk.cyan(agentId)}?`,
             false,
           );
           if (!confirmed) {
@@ -41,11 +41,11 @@ export const deleteCommand = new Command()
 
         await deleteZeroSchedule({
           name: resolved.name,
-          zeroAgentId: resolved.zeroAgentId,
+          agentId: resolved.agentId,
         });
 
         console.log(
-          chalk.green(`✓ Deleted schedule for agent ${chalk.cyan(agentName)}`),
+          chalk.green(`✓ Deleted schedule for agent ${chalk.cyan(agentId)}`),
         );
       },
     ),
