@@ -22,6 +22,32 @@ CONTENT_DIR="/tmp/coding-loop"
 
 mkdir -p "$CONTENT_DIR/issues" "$CONTENT_DIR/prs"
 
+# --- Gist logging setup ---
+# Capture all stdout to a temp file, flush to real stdout + gist on exit.
+_LOG_OUTPUT="/tmp/coding-loop-output-${LABEL}"
+exec 3>&1           # save real stdout to fd 3
+exec 1>"$_LOG_OUTPUT" # redirect stdout to file
+
+_flush_and_update_gist() {
+  exec 1>&3  # restore real stdout
+  cat "$_LOG_OUTPUT"
+
+  local gist_name="coding-loop-log-${LABEL}"
+  local gist_id
+  gist_id=$(gh gist list --limit 100 2>/dev/null | awk -v name="$gist_name" '$0 ~ name {print $1; exit}' || true)
+
+  if [ -n "$gist_id" ]; then
+    jq -n --arg c "$(cat "$_LOG_OUTPUT")" --arg f "$gist_name" \
+      '{"files": {($f): {"content": $c}}}' | \
+      gh api --method PATCH "gists/$gist_id" --input - >/dev/null 2>&1 || true
+  else
+    gh gist create --filename "$gist_name" --desc "$gist_name" - < "$_LOG_OUTPUT" >/dev/null 2>&1 || true
+  fi
+  rm -f "$_LOG_OUTPUT"
+}
+
+trap _flush_and_update_gist EXIT
+
 # --- Helper functions ---
 
 output_action() {
