@@ -1,34 +1,24 @@
 #!/usr/bin/env tsx
 
 import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { eq, sql } from "drizzle-orm";
+import { VM0_MODEL_TO_PROVIDER, resolveSkillRef } from "@vm0/core";
+import { schema } from "../src/db/db";
+import { creditPricing } from "../src/db/schema/credit-pricing";
+import { vm0ApiKeys } from "../src/db/schema/vm0-api-key";
+import { skills } from "../src/db/schema/skill";
 import { SEED_SKILLS } from "../src/lib/zero/seed-skills";
 
 /**
- * Dev seed: populate credit_pricing and vm0_api_keys tables.
+ * Dev seed: populate credit_pricing, vm0_api_keys, and skills tables.
  *
  * Pricing convention: 1 USD = 1000 credits.
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
  *
- * API keys are read from environment variables:
- *   DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_MOONSHOT_KEY,
- *   DEV_MODEL_ZAI_KEY, DEV_MODEL_MINIMAX_KEY
+ * API keys are read from environment variables per vendor:
+ *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY)
  */
-
-interface ModelPricing {
-  model: string;
-  modelProvider: string;
-  inputTokenPrice: number;
-  outputTokenPrice: number;
-  cacheReadTokenPrice: number;
-  cacheCreationTokenPrice: number;
-}
-
-interface Vm0ApiKey {
-  vendor: string;
-  model: string;
-  apiKey: string;
-  label: string;
-}
 
 /** 1 USD = 1000 credits */
 const USD_TO_CREDITS = 1000;
@@ -37,8 +27,7 @@ function usd(amount: number): number {
   return Math.round(amount * USD_TO_CREDITS);
 }
 
-const MODEL_PRICING: ModelPricing[] = [
-  // Anthropic
+const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
   {
     model: "claude-sonnet-4.6",
     modelProvider: "vm0",
@@ -59,24 +48,27 @@ const MODEL_PRICING: ModelPricing[] = [
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Each vendor key is shared across all models of that vendor.
+ * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER
+ * so new models are automatically picked up.
  */
-function buildVm0ApiKeys(): Vm0ApiKey[] {
-  const vendorEnvMap: Record<string, { envVar: string; models: string[] }> = {
-    anthropic: {
-      envVar: "DEV_MODEL_ANTHROPIC_KEY",
-      models: ["claude-sonnet-4.6", "claude-opus-4.6"],
-    },
-  };
+function buildVm0ApiKeys(): (typeof vm0ApiKeys.$inferInsert)[] {
+  // Group models by vendor from the canonical mapping
+  const vendorModels = new Map<string, string[]>();
+  for (const [model, { vendor }] of Object.entries(VM0_MODEL_TO_PROVIDER)) {
+    const models = vendorModels.get(vendor) ?? [];
+    models.push(model);
+    vendorModels.set(vendor, models);
+  }
 
-  const keys: Vm0ApiKey[] = [];
-  for (const [vendor, config] of Object.entries(vendorEnvMap)) {
-    const apiKey = process.env[config.envVar];
+  const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
+  for (const [vendor, models] of vendorModels) {
+    const envVar = `DEV_MODEL_${vendor.toUpperCase()}_KEY`;
+    const apiKey = process.env[envVar];
     if (!apiKey) {
-      console.log(`  ⚠ ${config.envVar} not set, skipping ${vendor}`);
+      console.log(`  ⚠ ${envVar} not set, skipping ${vendor}`);
       continue;
     }
-    for (const model of config.models) {
+    for (const model of models) {
       keys.push({ vendor, model, apiKey, label: "dev-seed" });
     }
   }
@@ -88,77 +80,76 @@ async function devSeed() {
     throw new Error("DATABASE_URL environment variable is not set");
   }
 
-  const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+  const client = postgres(process.env.DATABASE_URL, { max: 1 });
+  const db = drizzle(client, { schema });
 
   try {
-    // --- credit_pricing ---
+    // --- credit_pricing (batch upsert) ---
     console.log("Seeding credit_pricing...");
     for (const p of MODEL_PRICING) {
-      await sql`
-        INSERT INTO credit_pricing (
-          model, model_provider,
-          input_token_price, output_token_price,
-          cache_read_token_price, cache_creation_token_price,
-          updated_at
-        ) VALUES (
-          ${p.model}, ${p.modelProvider},
-          ${p.inputTokenPrice}, ${p.outputTokenPrice},
-          ${p.cacheReadTokenPrice}, ${p.cacheCreationTokenPrice},
-          NOW()
-        )
-        ON CONFLICT (model, model_provider)
-        DO UPDATE SET
-          input_token_price = EXCLUDED.input_token_price,
-          output_token_price = EXCLUDED.output_token_price,
-          cache_read_token_price = EXCLUDED.cache_read_token_price,
-          cache_creation_token_price = EXCLUDED.cache_creation_token_price,
-          updated_at = NOW()
-      `;
+      await db
+        .insert(creditPricing)
+        .values(p)
+        .onConflictDoUpdate({
+          target: [creditPricing.model, creditPricing.modelProvider],
+          set: {
+            inputTokenPrice: sql`excluded.input_token_price`,
+            outputTokenPrice: sql`excluded.output_token_price`,
+            cacheReadTokenPrice: sql`excluded.cache_read_token_price`,
+            cacheCreationTokenPrice: sql`excluded.cache_creation_token_price`,
+            updatedAt: new Date(),
+          },
+        });
       console.log(
         `  ${p.modelProvider}/${p.model}: input=${p.inputTokenPrice} output=${p.outputTokenPrice}`,
       );
     }
     console.log(`✅ Seeded ${MODEL_PRICING.length} credit pricing entries`);
 
-    // --- vm0_api_keys ---
+    // --- vm0_api_keys (transactional replace) ---
     console.log("Seeding vm0_api_keys...");
     const apiKeys = buildVm0ApiKeys();
-    // Replace all dev-seed keys with fresh set
-    await sql`DELETE FROM vm0_api_keys WHERE label = 'dev-seed'`;
+    await db.transaction(async (tx) => {
+      await tx.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, "dev-seed"));
+      if (apiKeys.length > 0) {
+        await tx.insert(vm0ApiKeys).values(apiKeys);
+      }
+    });
     for (const k of apiKeys) {
-      await sql`
-        INSERT INTO vm0_api_keys (vendor, model, api_key, label, updated_at)
-        VALUES (${k.vendor}, ${k.model}, ${k.apiKey}, ${k.label}, NOW())
-      `;
       console.log(`  ${k.vendor}/${k.model}`);
     }
     console.log(`✅ Seeded ${apiKeys.length} vm0 API key entries`);
 
-    // --- skills (seed skills + common connectors) ---
+    // --- skills (seed skills + common connectors, batch insert) ---
     console.log("Seeding skills...");
     const skillNames = [...SEED_SKILLS, "github"];
-    let seededCount = 0;
-    for (const name of skillNames) {
-      const url = `https://github.com/vm0-ai/vm0-skills/tree/main/${name}`;
-      const fullPath = `vm0-ai/vm0-skills/tree/main/${name}`;
-      const frontmatter = JSON.stringify({
+    const skillValues = skillNames.map((name) => {
+      const url = resolveSkillRef(name);
+      const fullPath = url.replace("https://github.com/", "");
+      return {
+        url,
         name,
-        description: `${name} skill`,
-        vm0_secrets: [],
-        vm0_vars: [],
-      });
-      const result = await sql`
-        INSERT INTO skills (url, name, full_path, version_hash, frontmatter)
-        VALUES (${url}, ${name}, ${fullPath}, NULL, ${frontmatter}::jsonb)
-        ON CONFLICT (url) DO NOTHING
-      `;
-      if (result.count > 0) seededCount++;
-    }
+        fullPath,
+        versionHash: null,
+        frontmatter: {
+          name,
+          description: `${name} skill`,
+          vm0_secrets: [] as string[],
+          vm0_vars: [] as string[],
+        },
+      };
+    });
+    const inserted = await db
+      .insert(skills)
+      .values(skillValues)
+      .onConflictDoNothing()
+      .returning({ id: skills.id });
+    const seededCount = inserted.length;
     console.log(
       `✅ Seeded skills: ${seededCount} new, ${skillNames.length - seededCount} already existed`,
     );
   } finally {
-    await sql.end();
+    await client.end();
   }
 }
 
