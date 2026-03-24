@@ -9,6 +9,7 @@
 import { generate as generateAgentmail } from "./agentmail";
 import { generate as generateAhrefs } from "./ahrefs";
 import { generate as generateAirtable } from "./airtable";
+import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBraveSearch } from "./brave-search";
@@ -53,6 +54,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
   ahrefs: generateAhrefs,
   airtable: generateAirtable,
+  apify: generateApify,
   asana: generateAsana,
   axiom: generateAxiom,
   "brave-search": generateBraveSearch,

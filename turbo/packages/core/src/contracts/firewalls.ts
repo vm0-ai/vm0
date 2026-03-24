@@ -95,6 +95,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   agentmail: ["agentmail"],
   ahrefs: ["ahrefs"],
   airtable: ["airtable"],
+  apify: ["apify"],
   asana: ["asana"],
   axiom: ["axiom"],
   "brave-search": ["brave-search"],

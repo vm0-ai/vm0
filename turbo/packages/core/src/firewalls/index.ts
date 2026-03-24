@@ -10,6 +10,7 @@ import type { FirewallConfig } from "../contracts/firewalls";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
+import { apifyFirewall } from "./apify.generated";
 import { asanaFirewall } from "./asana.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
@@ -58,6 +59,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   agentmail: agentmailFirewall,
   ahrefs: ahrefsFirewall,
   airtable: airtableFirewall,
+  apify: apifyFirewall,
   asana: asanaFirewall,
   axiom: axiomFirewall,
   "brave-search": braveSearchFirewall,
