@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
@@ -22,6 +23,8 @@ import {
   COMMON_TIMEZONES,
   getTodayDateLocal,
 } from "../../signals/zero-page/cron.ts";
+import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
+import { slackChannels$ } from "../../signals/zero-page/slack-channels.ts";
 
 // ---------------------------------------------------------------------------
 // Constants (moved from zero-schedule-card.tsx)
@@ -103,6 +106,12 @@ export interface ScheduleFormValues {
   dayOfMonth: string;
   notifyEmail: boolean;
   notifySlack: boolean;
+  slackChannelId: string | null;
+}
+
+interface SlackChannelOption {
+  id: string;
+  name: string;
 }
 
 interface ScheduleFormDialogProps {
@@ -431,11 +440,19 @@ function ScheduleNotificationFields({
   setNotifyEmail,
   notifySlack,
   setNotifySlack,
+  slackHasBot,
+  slackChannels,
+  slackChannelId,
+  setSlackChannelId,
 }: {
   notifyEmail: boolean;
   setNotifyEmail: (v: boolean) => void;
   notifySlack: boolean;
   setNotifySlack: (v: boolean) => void;
+  slackHasBot: boolean;
+  slackChannels: SlackChannelOption[];
+  slackChannelId: string | null;
+  setSlackChannelId: (v: string | null) => void;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -448,8 +465,43 @@ function ScheduleNotificationFields({
       </div>
       <div className="flex items-center justify-between">
         <span className="text-sm text-foreground">Slack</span>
-        <Switch checked={notifySlack} onCheckedChange={setNotifySlack} />
+        <Switch
+          checked={notifySlack}
+          onCheckedChange={setNotifySlack}
+          disabled={!slackHasBot}
+        />
       </div>
+      {!slackHasBot && (
+        <p className="text-xs text-muted-foreground">
+          Connect a Slack workspace in Settings to enable Slack notifications.
+        </p>
+      )}
+      {notifySlack && slackHasBot && slackChannels.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="schedule-dialog-slack-channel"
+            className="text-xs text-muted-foreground"
+          >
+            Channel
+          </label>
+          <Select
+            value={slackChannelId ?? "__dm__"}
+            onValueChange={(v) => setSlackChannelId(v === "__dm__" ? null : v)}
+          >
+            <SelectTrigger id="schedule-dialog-slack-channel" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__dm__">Direct message</SelectItem>
+              {slackChannels.map((ch) => (
+                <SelectItem key={ch.id} value={ch.id}>
+                  #{ch.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   );
 }
@@ -476,6 +528,7 @@ function buildDefaults(
     dayOfMonth: "1",
     notifyEmail: false,
     notifySlack: false,
+    slackChannelId: null,
   };
   return { ...defaults, ...initialValues };
 }
@@ -502,6 +555,7 @@ function checkDirty(
     current.dayOfMonth !== init.dayOfMonth ||
     current.notifyEmail !== init.notifyEmail ||
     current.notifySlack !== init.notifySlack ||
+    current.slackChannelId !== init.slackChannelId ||
     (opts.hasAgents && current.composeId !== init.composeId)
   );
 }
@@ -526,6 +580,13 @@ function ScheduleFormDialogInner({
   agents,
   saveError,
 }: Omit<ScheduleFormDialogProps, "open">) {
+  const slackData = useLoadable(slackOrgData$);
+  const slackHasBot =
+    slackData.state === "hasData" && slackData.data?.isInstalled === true;
+  const slackChannelsLoadable = useLoadable(slackChannels$);
+  const slackChannels: SlackChannelOption[] =
+    slackChannelsLoadable.state === "hasData" ? slackChannelsLoadable.data : [];
+
   const init = buildDefaults(agents, initialValues);
 
   const [prompt, setPrompt] = useState(init.prompt);
@@ -541,6 +602,7 @@ function ScheduleFormDialogInner({
   const [dayOfMonth, setDayOfMonth] = useState(init.dayOfMonth);
   const [notifyEmail, setNotifyEmail] = useState(init.notifyEmail);
   const [notifySlack, setNotifySlack] = useState(init.notifySlack);
+  const [slackChannelId, setSlackChannelId] = useState(init.slackChannelId);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const current: ScheduleFormValues = {
@@ -557,6 +619,7 @@ function ScheduleFormDialogInner({
     dayOfMonth,
     notifyEmail,
     notifySlack,
+    slackChannelId,
   };
 
   const isDirty = checkDirty(current, init, mode, {
@@ -697,6 +760,10 @@ function ScheduleFormDialogInner({
             setNotifyEmail={setNotifyEmail}
             notifySlack={notifySlack}
             setNotifySlack={setNotifySlack}
+            slackHasBot={slackHasBot}
+            slackChannels={slackChannels}
+            slackChannelId={slackChannelId}
+            setSlackChannelId={setSlackChannelId}
           />
         </div>
 

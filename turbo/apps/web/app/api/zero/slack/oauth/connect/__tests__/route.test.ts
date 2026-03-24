@@ -114,8 +114,8 @@ describe("/api/zero/slack/oauth/connect", () => {
     expect(data.error).toBe("Slack integration is not configured");
   });
 
-  it("should use SLACK_REDIRECT_BASE_URL for redirect_uri when configured", async () => {
-    vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://tunnel.example.com");
+  it("should use VM0_API_URL for redirect_uri when configured", async () => {
+    vi.stubEnv("VM0_API_URL", "https://tunnel.example.com");
     reloadEnv();
 
     const orgId = uniqueId("org");

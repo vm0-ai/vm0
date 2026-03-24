@@ -22,10 +22,8 @@ import { listSecrets } from "../../../../../src/lib/secret/secret-service";
 import { listVariables } from "../../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../../src/lib/connector/connector-service";
 import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
-import {
-  createSlackClient,
-  getSlackRedirectBaseUrl,
-} from "../../../../../src/lib/slack";
+import { createSlackClient } from "../../../../../src/lib/slack";
+import { getApiUrl } from "../../../../../src/lib/callback";
 import { publishAppHome } from "../../../../../src/lib/slack/client";
 import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
 import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
@@ -91,9 +89,7 @@ export async function GET(request: Request) {
 
     const isAdmin = member.role === "admin";
     const { SLACK_CLIENT_ID } = env();
-    const baseUrl = SLACK_CLIENT_ID
-      ? getSlackRedirectBaseUrl(request.url)
-      : null;
+    const baseUrl = SLACK_CLIENT_ID ? getApiUrl() : null;
 
     // Build install URL for admins when no workspace is installed
     let installUrl: string | null = null;
@@ -299,6 +295,7 @@ async function getConnectedStatus(
 
   return NextResponse.json({
     isConnected: true,
+    isInstalled: true,
     workspaceName: installation?.slackWorkspaceName ?? null,
     isAdmin: member.role === "admin",
     defaultAgentName,

@@ -25,8 +25,8 @@ const context = testContext();
 
 interface OrgScheduleCallbackPayload {
   scheduleId: string;
-  composeId: string;
-  composeName: string;
+  zeroAgentId: string;
+  agentName: string;
   userId: string;
   orgId: string;
   slackChannelId?: string | null;
@@ -91,8 +91,8 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       url: "http://localhost/api/internal/callbacks/slack/org/schedule",
       payload: {
         scheduleId: schedule.id,
-        composeId,
-        composeName: "sched-agent",
+        zeroAgentId: composeId,
+        agentName: "sched-agent",
         userId: user.userId,
         // orgId intentionally missing
       },
@@ -104,8 +104,8 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
         status: "completed",
         payload: {
           scheduleId: schedule.id,
-          composeId,
-          composeName: "sched-agent",
+          zeroAgentId: composeId,
+          agentName: "sched-agent",
           userId: user.userId,
           orgId: undefined as unknown as string, // missing orgId
         },
@@ -129,8 +129,8 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
-      composeId,
-      composeName: "sched-agent",
+      zeroAgentId: composeId,
+      agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
       slackChannelId: "C-TARGET-CHANNEL",
@@ -177,8 +177,8 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
-      composeId,
-      composeName: "sched-agent",
+      zeroAgentId: composeId,
+      agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
       // slackChannelId not set — should fall back to DM
@@ -224,8 +224,8 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
-      composeId,
-      composeName: "sched-agent",
+      zeroAgentId: composeId,
+      agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
       slackChannelId: "C-FAIL-CHANNEL",

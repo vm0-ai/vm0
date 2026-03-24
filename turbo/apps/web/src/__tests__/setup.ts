@@ -40,7 +40,6 @@ const resetEnv = vi.hoisted(() => {
       "OFFICIAL_RUNNER_SECRET",
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     );
-    vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://test.example.com");
     // ngrok (for computer connector)
     vi.stubEnv("NGROK_API_KEY", "test-ngrok-api-key");
     vi.stubEnv("NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.test.vm0.io");

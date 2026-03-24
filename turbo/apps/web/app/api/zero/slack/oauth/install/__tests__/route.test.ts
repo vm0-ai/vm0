@@ -22,7 +22,7 @@ describe("/api/zero/slack/oauth/install", () => {
       "test-slack-client-id",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      "https://test.example.com/api/zero/slack/oauth/callback",
+      "http://localhost:3000/api/zero/slack/oauth/callback",
     );
   });
 
@@ -73,8 +73,8 @@ describe("/api/zero/slack/oauth/install", () => {
     expect(redirectUrl.searchParams.get("state")).toBeNull();
   });
 
-  it("should use SLACK_REDIRECT_BASE_URL for redirect_uri when configured", async () => {
-    vi.stubEnv("SLACK_REDIRECT_BASE_URL", "https://tunnel.example.com");
+  it("should use VM0_API_URL for redirect_uri when configured", async () => {
+    vi.stubEnv("VM0_API_URL", "https://tunnel.example.com");
     reloadEnv();
 
     const request = createTestRequest(

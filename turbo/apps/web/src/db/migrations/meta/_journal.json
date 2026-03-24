@@ -1352,6 +1352,13 @@
       "when": 1774656000000,
       "tag": "0192_email_thread_sessions_composeid_to_agentid",
       "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1774742400000,
+      "tag": "0193_add_slack_channel_id_to_schedules",
+      "breakpoints": true
     }
   ]
 }

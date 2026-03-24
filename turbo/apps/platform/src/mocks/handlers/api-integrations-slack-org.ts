@@ -67,4 +67,20 @@ export const apiIntegrationsSlackOrgHandlers = [
     mockSlackOrgData = { ...mockSlackOrgData, isConnected: false };
     return HttpResponse.json({ ok: true });
   }),
+
+  // GET /api/zero/slack/channels
+  http.get("*/api/zero/slack/channels", () => {
+    if (!mockSlackOrgData.isInstalled) {
+      return HttpResponse.json(
+        { error: { message: "No Slack installation", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json({
+      channels: [
+        { id: "C-GENERAL", name: "general" },
+        { id: "C-ALERTS", name: "alerts" },
+      ],
+    });
+  }),
 ];

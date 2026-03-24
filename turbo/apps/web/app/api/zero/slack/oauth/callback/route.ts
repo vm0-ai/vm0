@@ -5,8 +5,8 @@ import { env } from "../../../../../../src/env";
 import {
   exchangeOAuthCode,
   exchangeOAuthCodeForUser,
-  getSlackRedirectBaseUrl,
 } from "../../../../../../src/lib/slack";
+import { getApiUrl } from "../../../../../../src/lib/callback";
 import { encryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
-  const baseUrl = getSlackRedirectBaseUrl(request.url);
+  const baseUrl = getApiUrl();
   const appUrl = getAppUrl();
 
   if (error) {

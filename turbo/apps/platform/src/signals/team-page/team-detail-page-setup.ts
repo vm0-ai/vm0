@@ -10,6 +10,7 @@ import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
+import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 
 export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -20,6 +21,7 @@ export const setupTeamDetailPage$ = command(
     await Promise.all([
       set(fetchAgentsList$),
       set(initZeroOnboarding$, signal),
+      set(initSlackOrg$),
       agentName ? set(fetchZeroJobData$, agentName) : Promise.resolve(),
     ]);
     signal.throwIfAborted();

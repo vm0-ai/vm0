@@ -83,6 +83,7 @@ export interface ScheduleEntry {
   notifySlack?: boolean;
   /** IANA timezone from the server (not derivable from `time` alone). */
   timezone?: string;
+  slackChannelId?: string | null;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds?: number | null;
 }
@@ -475,6 +476,7 @@ interface ZeroScheduleCardProps {
     editName?: string;
     notifyEmail?: boolean;
     notifySlack?: boolean;
+    slackChannelId?: string | null;
   }) => Promise<void>;
   /** When provided, called to delete a schedule by name. */
   onDelete?: (name: string) => Promise<void>;
@@ -548,6 +550,7 @@ export function ZeroScheduleCard({
       dayOfMonth: parsed.dayOfMonth ?? "1",
       notifyEmail: entry.notifyEmail ?? false,
       notifySlack: entry.notifySlack ?? false,
+      slackChannelId: entry.slackChannelId ?? null,
     });
     setSaveError(null);
     setAddScheduleOpen(true);
@@ -576,6 +579,7 @@ export function ZeroScheduleCard({
           editName: editingEntry?.name,
           notifyEmail: values.notifyEmail,
           notifySlack: values.notifySlack,
+          slackChannelId: values.slackChannelId,
         })
           .then(() => {
             setEditingScheduleId(null);

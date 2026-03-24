@@ -39,15 +39,6 @@ echo -e "\033[0;32m[tunnel]\033[0m Tunnel URL: ${TUNNEL_URL}"
 echo -e "\033[0;32m[tunnel]\033[0m Webhooks: \033[1;33m${TUNNEL_URL}/api/webhooks/agent-events\033[0m"
 echo ""
 
-# Update SLACK_REDIRECT_BASE_URL in .env.local
-if [ -f "$ENV_LOCAL_FILE" ]; then
-  if grep -q "^SLACK_REDIRECT_BASE_URL=" "$ENV_LOCAL_FILE"; then
-    sed -i "s|^SLACK_REDIRECT_BASE_URL=.*|SLACK_REDIRECT_BASE_URL=${TUNNEL_URL}|" "$ENV_LOCAL_FILE"
-  else
-    echo "SLACK_REDIRECT_BASE_URL=${TUNNEL_URL}" >> "$ENV_LOCAL_FILE"
-  fi
-fi
-
 # Start Stripe CLI webhook forwarding
 STRIPE_KEY=$(grep "^STRIPE_SECRET_KEY=" "$ENV_LOCAL_FILE" | cut -d= -f2)
 if [[ -z "$STRIPE_KEY" ]]; then

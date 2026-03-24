@@ -77,6 +77,7 @@ function buildCombinedSchedule(
     enabled: e.enabled,
     notifyEmail: e.notifyEmail,
     notifySlack: e.notifySlack,
+    slackChannelId: e.slackChannelId,
     name: e.name,
     intervalSeconds: e.intervalSeconds,
     agentLabel:
@@ -667,6 +668,7 @@ export function ZeroSchedulePage() {
         agentId: values.composeId,
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
+        slackChannelId: values.slackChannelId,
       })
         .then(() => {
           setCreateOpen(false);
@@ -704,6 +706,7 @@ export function ZeroSchedulePage() {
         agentId: editingEntry.agentId,
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
+        slackChannelId: values.slackChannelId,
       })
         .then(() => {
           setEditingEntry(null);
@@ -858,6 +861,7 @@ export function ZeroSchedulePage() {
                 dayOfMonth: parsed.dayOfMonth ?? "1",
                 notifyEmail: editingEntry.notifyEmail ?? false,
                 notifySlack: editingEntry.notifySlack ?? false,
+                slackChannelId: editingEntry.slackChannelId ?? null,
               }}
             />
           );
