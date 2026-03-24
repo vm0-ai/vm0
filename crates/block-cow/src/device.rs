@@ -94,12 +94,17 @@ impl CowDevice {
     }
 
     /// Tear down: remove dm targets, detach loop devices, delete COW file.
-    pub fn destroy(mut self) -> Result<()> {
+    ///
+    /// Takes `&mut self` so the caller can retry on failure. On success the
+    /// device is marked inactive and [`Drop`] becomes a no-op.
+    pub fn destroy(&mut self) -> Result<()> {
         self.teardown(true)
     }
 
     /// Tear down but keep the COW file for snapshot preservation.
-    pub fn destroy_keep_cow(mut self) -> Result<()> {
+    ///
+    /// Takes `&mut self` so the caller can retry on failure.
+    pub fn destroy_keep_cow(&mut self) -> Result<()> {
         self.teardown(false)
     }
 
@@ -206,13 +211,34 @@ impl CowDevice {
         if !self.active {
             return Err(BlockCowError::NotActive(self.id.clone()));
         }
-        self.active = false;
 
         let cow_name = format!("cow-{}", self.id);
         let origin_name = format!("origin-{}", self.id);
 
-        // Best-effort teardown in reverse order. Record the first error
-        // but continue cleaning up remaining resources.
+        // Teardown respects the dependency chain:
+        //   snapshot → origin → (cow_loop, base_loop) → cow_file
+        //
+        // If snapshot removal fails (device busy), the origin and loop
+        // devices are still in use — attempting to remove them would also
+        // fail. So we bail early and let the caller retry later.
+
+        // Step 1: remove the snapshot target (depends on origin + cow_loop).
+        if let Err(e) = dmsetup::remove(&cow_name) {
+            warn!(name = cow_name, error = %e, "failed to remove snapshot target — device may be in use");
+            return Err(e);
+        }
+
+        // Step 2: remove the origin target (depends on base_loop).
+        if let Err(e) = dmsetup::remove(&origin_name) {
+            warn!(name = origin_name, error = %e, "failed to remove origin target");
+            return Err(e);
+        }
+
+        // dm targets are gone — mark inactive so Drop doesn't retry dm
+        // operations. Loop/file cleanup below is independent and safe to
+        // best-effort.
+        self.active = false;
+
         let mut first_error: Option<BlockCowError> = None;
         let mut record = |result: Result<()>, context: &str| {
             if let Err(e) = result {
@@ -223,8 +249,6 @@ impl CowDevice {
             }
         };
 
-        record(dmsetup::remove(&cow_name), "remove snapshot target");
-        record(dmsetup::remove(&origin_name), "remove origin target");
         record(losetup::detach(&self.cow_loop), "detach COW loop");
         record(losetup::detach(&self.base_loop), "detach base loop");
 

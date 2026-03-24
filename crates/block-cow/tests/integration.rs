@@ -56,17 +56,15 @@ fn create_and_destroy() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
 
-    let device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&config).expect("create");
     let dev_path = device.device_path().to_owned();
     let cow_file = device.cow_file().to_owned();
 
-    // Device should exist.
     assert!(dev_path.exists(), "device path should exist: {dev_path:?}");
     assert!(cow_file.exists(), "COW file should exist: {cow_file:?}");
 
     device.destroy().expect("destroy");
 
-    // Device and COW file should be gone.
     assert!(!dev_path.exists(), "device path should be removed");
     assert!(!cow_file.exists(), "COW file should be removed");
 }
@@ -79,15 +77,13 @@ fn destroy_keep_cow_preserves_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
 
-    let device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&config).expect("create");
     let cow_file = device.cow_file().to_owned();
     let dev_path = device.device_path().to_owned();
 
     device.destroy_keep_cow().expect("destroy_keep_cow");
 
-    // Device mapper target should be gone.
     assert!(!dev_path.exists(), "device path should be removed");
-    // But the COW file should still exist.
     assert!(cow_file.exists(), "COW file should be preserved");
 }
 
@@ -99,11 +95,9 @@ fn cow_file_is_sparse() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
 
-    let device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&config).expect("create");
     let cow_file = device.cow_file().to_owned();
 
-    // COW file should be sparse: logical size = 64 MiB but actual disk
-    // usage should be very small (just metadata).
     let meta = fs::metadata(&cow_file).expect("metadata");
     let logical_size = meta.len();
     let actual_bytes = meta.blocks() * 512;
@@ -129,13 +123,10 @@ fn multiple_devices_from_same_base() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
 
-    let device1 = CowDevice::create(&config).expect("create device 1");
-    let device2 = CowDevice::create(&config).expect("create device 2");
+    let mut device1 = CowDevice::create(&config).expect("create device 1");
+    let mut device2 = CowDevice::create(&config).expect("create device 2");
 
-    // Both should have different device paths.
     assert_ne!(device1.device_path(), device2.device_path());
-
-    // Both should be accessible.
     assert!(device1.device_path().exists());
     assert!(device2.device_path().exists());
 
@@ -151,8 +142,7 @@ fn restore_from_existing_cow() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
 
-    // Create first device and write some data via the block device.
-    let device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&config).expect("create");
     let cow_file = device.cow_file().to_owned();
     let dev_path = device.device_path().to_owned();
 
@@ -160,12 +150,11 @@ fn restore_from_existing_cow() {
     let marker = b"BLOCK_COW_TEST_MARKER";
     fs::write(&dev_path, marker).expect("write marker to device");
 
-    // Tear down but keep the COW file.
     device.destroy_keep_cow().expect("destroy_keep_cow");
     assert!(cow_file.exists(), "COW file should be preserved");
 
     // Restore from the saved COW file.
-    let restored = CowDevice::restore(&config, cow_file.clone()).expect("restore");
+    let mut restored = CowDevice::restore(&config, cow_file.clone()).expect("restore");
     let restored_path = restored.device_path().to_owned();
 
     // Read back the marker from the restored device.
@@ -187,7 +176,7 @@ fn device_path_format() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
 
-    let device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&config).expect("create");
     let path_str = device.device_path().to_string_lossy();
 
     assert!(
