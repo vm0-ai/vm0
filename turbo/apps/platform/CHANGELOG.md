@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.142.1](https://github.com/vm0-ai/vm0/compare/app-v0.142.0...app-v0.142.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* navigate to chat session from /talk route after sending message ([#6223](https://github.com/vm0-ai/vm0/issues/6223)) ([aece5d2](https://github.com/vm0-ai/vm0/commit/aece5d2ee9c73692991cd43f07df78293f63eeb1))
+
 ## [0.142.0](https://github.com/vm0-ai/vm0/compare/app-v0.141.1...app-v0.142.0) (2026-03-23)
 
 
