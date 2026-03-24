@@ -51,7 +51,7 @@ export function UsagePage() {
             </p>
           ) : (
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Per-member token consumption in the current billing period.
+              Per-member credit consumption in the current billing period.
             </p>
           )}
         </div>

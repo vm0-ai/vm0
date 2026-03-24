@@ -85,7 +85,7 @@ export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => x + 1);
 });
 
-export const openBillingDialog$ = command(async ({ get, set }) => {
+const openBillingDialog$ = command(async ({ get, set }) => {
   const status = await get(billingStatusAsync$);
   const currentTier = toBillingTier(status.tier);
   set(setSelectedPlanTier$, currentTier);

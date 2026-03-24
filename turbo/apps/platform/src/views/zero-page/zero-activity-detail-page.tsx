@@ -128,7 +128,7 @@ function ActivityNotFound() {
         <h2 className="text-lg font-semibold text-foreground">Log not found</h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
           This log doesn&apos;t exist or you don&apos;t have permission to view
-          it in the current organization.
+          it in the current workspace.
         </p>
         <Link
           pathname="/activity"

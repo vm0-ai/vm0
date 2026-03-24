@@ -81,7 +81,7 @@ export function OrgAddProviderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
         <DialogHeader>
-          <DialogTitle>Add organization model provider</DialogTitle>
+          <DialogTitle>Add workspace model provider</DialogTitle>
         </DialogHeader>
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="pt-4 pb-6 pr-6">

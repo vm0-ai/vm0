@@ -121,7 +121,7 @@ export const orgConfiguredProviders$ = computed(async (get) => {
   );
 });
 
-export const orgDefaultProvider$ = computed(async (get) => {
+const orgDefaultProvider$ = computed(async (get) => {
   const providers = await get(orgConfiguredProviders$);
   return providers.find((p) => p.isDefault) ?? null;
 });
@@ -394,7 +394,7 @@ export const orgConfirmDelete$ = command(
 // Commands: set default provider
 // ---------------------------------------------------------------------------
 
-export const orgSetDefaultProvider$ = command(
+const orgSetDefaultProvider$ = command(
   async ({ set }, type: ModelProviderType, signal: AbortSignal) => {
     const providerLabel = MODEL_PROVIDER_TYPES[type]?.label ?? type;
 

@@ -34,11 +34,11 @@ export function OrgDeleteProviderDialog() {
       <DialogContent className="max-w-2xl gap-6">
         <DialogHeader>
           <DialogTitle className="font-normal leading-7">
-            Are you sure you want to delete this organization model provider?
+            Are you sure you want to delete this workspace model provider?
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-secondary-foreground">
-          This will remove the organization provider and its settings, including
+          This will remove the workspace provider and its settings, including
           keys and tokens. If it&apos;s the default provider, VM0 will switch to
           another one and all members&apos; agents may be affected. You can
           always add it back later and set it up again.

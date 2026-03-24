@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
-import { Dialog, DialogContent, cn } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  cn,
+} from "@vm0/ui";
 import {
   IconBuilding,
   IconCpu,
@@ -14,13 +20,14 @@ import { OrgGeneralTab } from "./org-general-tab.tsx";
 import { OrgProvidersTab } from "./org-providers-tab.tsx";
 import { OrgMembersTab } from "./org-members-tab.tsx";
 import { OrgBillingTab } from "./org-billing-tab.tsx";
-import { OrgCreditsTab } from "./org-credits-tab.tsx";
+import { OrgUsageTab } from "./org-usage-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   activeTab$,
   setActiveTab$,
+  billingSubPage$,
   type OrgManageTab,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
@@ -34,23 +41,25 @@ interface OrgManageDialogProps {
 const TAB_META = {
   general: {
     title: "General",
-    description: "Manage your organization profile and settings.",
+    description: "Manage your workspace profile and settings.",
   },
   providers: {
     title: "Model Providers",
-    description: "Configure AI model providers for your organization.",
+    description:
+      "Use your own model provider instead of credits. Add your API keys below.",
   },
   members: {
     title: "Members",
-    description: "Manage who has access to this organization.",
+    description: "Manage who has access to this workspace.",
   },
   billing: {
     title: "Billing",
     description: "Manage your plan and payment method.",
   },
-  credits: {
-    title: "Credits",
-    description: "Track your credit usage and remaining balance.",
+  usage: {
+    title: "Usage",
+    description:
+      "Credit balance and per-member credit consumption this billing period.",
   },
   invoices: {
     title: "Invoices",
@@ -64,10 +73,10 @@ interface SidebarGroup {
 }
 
 const BILLING_GROUP = {
-  label: "Access & billing",
+  label: "Billing & pricing",
   items: [
     { id: "billing", label: "Billing", icon: IconCreditCard as NavIcon },
-    { id: "credits", label: "Credits", icon: IconCoins as NavIcon },
+    { id: "usage", label: "Usage", icon: IconCoins as NavIcon },
     { id: "invoices", label: "Invoices", icon: IconFileInvoice as NavIcon },
   ],
 } as const satisfies SidebarGroup;
@@ -85,7 +94,7 @@ const CONFIGURATION_GROUP = {
 
 const BASE_SIDEBAR_GROUPS = [
   {
-    label: "Organization",
+    label: "Workspace",
     items: [{ id: "general", label: "General", icon: IconBuilding as NavIcon }],
   },
   {
@@ -99,7 +108,7 @@ const TAB_COMPONENTS = {
   providers: () => <OrgProvidersTab />,
   members: () => <OrgMembersTab />,
   billing: () => <OrgBillingTab />,
-  credits: () => <OrgCreditsTab />,
+  usage: () => <OrgUsageTab />,
   invoices: () => <OrgInvoicesTab />,
 } as const satisfies Record<OrgManageTab, () => ReactNode>;
 
@@ -127,6 +136,8 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   ];
 
   const meta = TAB_META[activeTab];
+  const isBillingSubPage = useGet(billingSubPage$);
+  const hideHeader = activeTab === "billing" && isBillingSubPage;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -137,9 +148,11 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
           borderRadius: "0.75rem",
           backgroundColor: "hsl(var(--card))",
         }}
-        aria-describedby={undefined}
       >
-        <div className="sr-only">Organization settings</div>
+        <DialogTitle className="sr-only">Workspace settings</DialogTitle>
+        <DialogDescription className="sr-only">
+          Manage your workspace profile, members, integrations, and billing.
+        </DialogDescription>
 
         <div className="flex h-full">
           {/* Sidebar nav — mirrors zero-sidebar.tsx styling */}
@@ -199,15 +212,22 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
             className="flex-1 min-w-0 flex flex-col overflow-hidden"
             style={{ backgroundColor: "rgb(254, 254, 254)" }}
           >
-            <header className="shrink-0 px-10 pt-8 pb-1">
-              <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                {meta.title}
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                {meta.description}
-              </p>
-            </header>
-            <div className="flex-1 overflow-y-auto px-10 pt-6 pb-10 [scrollbar-gutter:stable]">
+            {!hideHeader && (
+              <header className="shrink-0 px-10 pt-8 pb-1">
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                  {meta.title}
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {meta.description}
+                </p>
+              </header>
+            )}
+            <div
+              className={cn(
+                "flex-1 overflow-y-auto px-10 pb-10 [scrollbar-gutter:stable]",
+                hideHeader ? "pt-8" : "pt-6",
+              )}
+            >
               <TabContent tab={activeTab} />
             </div>
           </div>

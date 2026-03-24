@@ -1,19 +1,53 @@
-import { useGet, useSet } from "ccstate-react";
-import { IconExternalLink, IconCrown } from "@tabler/icons-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
-  billingIsPro$,
-  setBillingIsPro$,
-  billingPricingOpen$,
-  setBillingPricingOpen$,
-} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { Button, Dialog, DialogContent, Switch } from "@vm0/ui";
+  IconExternalLink,
+  IconCrown,
+  IconArrowLeft,
+  IconChevronRight,
+  IconCoins,
+} from "@tabler/icons-react";
+import {
+  billingStatusAsync$,
+  reloadBillingStatus$,
+  startCheckout$,
+  startDowngrade$,
+  billingDialogLoading$,
+  type BillingTier,
+} from "../../../../signals/zero-page/billing.ts";
+import { Button } from "@vm0/ui";
 import planFreeImg from "./assets/plan-free.webp";
 import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
+import { detach, Reason } from "../../../../signals/utils.ts";
+import { AutoRechargeSection } from "../../billing-dialog.tsx";
+import {
+  billingSubPage$,
+  setBillingSubPage$,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
-const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
+const sectionCardStyle = {
+  border: "0.7px solid hsl(var(--gray-400))",
+} as const;
+
+function tierRank(t: BillingTier): number {
+  if (t === "free") {
+    return 0;
+  }
+  if (t === "pro") {
+    return 1;
+  }
+  return 2;
+}
+
+function apiTierToBillingTier(tier: string | undefined): BillingTier {
+  if (tier === "free" || tier === "pro" || tier === "team") {
+    return tier;
+  }
+  return "free";
+}
 
 interface PlanConfig {
+  tier: BillingTier;
   name: string;
   price: string;
   period: string;
@@ -27,6 +61,7 @@ interface PlanConfig {
 
 const PLANS = [
   {
+    tier: "free" as const,
     name: "Free",
     price: "$0",
     period: "/month",
@@ -42,6 +77,7 @@ const PLANS = [
     ],
   },
   {
+    tier: "pro" as const,
     name: "Pro",
     price: "$40",
     period: "/month",
@@ -60,6 +96,7 @@ const PLANS = [
     ],
   },
   {
+    tier: "team" as const,
     name: "Team",
     price: "$200",
     period: "/month",
@@ -75,16 +112,37 @@ const PLANS = [
       "Priority support",
     ],
   },
-] as const;
+] as const satisfies readonly PlanConfig[];
+
+function planButtonLabel(
+  plan: (typeof PLANS)[number],
+  currentTier: BillingTier,
+): string {
+  if (plan.tier === currentTier) {
+    return "Current plan";
+  }
+  if (plan.tier === "free") {
+    return "Manage subscription";
+  }
+  if (tierRank(plan.tier) > tierRank(currentTier)) {
+    return plan.cta;
+  }
+  return "Manage subscription";
+}
 
 function PlanCard({
   plan,
-  onClose,
+  currentTier,
+  loading,
+  onAction,
 }: {
-  plan: Readonly<PlanConfig>;
-  onClose: () => void;
+  plan: (typeof PLANS)[number];
+  currentTier: BillingTier;
+  loading: boolean;
+  onAction: (planTier: BillingTier) => void;
 }) {
-  const isCurrentPlan = plan.cta === "Current plan";
+  const isCurrent = plan.tier === currentTier;
+  const label = planButtonLabel(plan, currentTier);
 
   return (
     <div
@@ -161,226 +219,251 @@ function PlanCard({
       </ul>
 
       <div className="mt-auto">
-        {isCurrentPlan ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full rounded-lg h-9 text-xs"
-            style={cardBorder}
-            disabled
-          >
-            Current plan
-          </Button>
-        ) : plan.primary ? (
-          <Button
-            size="sm"
-            className="w-full rounded-lg h-9 text-xs"
-            onClick={() => onClose()}
-          >
-            {plan.cta}
-          </Button>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full rounded-lg h-9 text-xs"
-            style={cardBorder}
-            onClick={() => onClose()}
-          >
-            {plan.cta}
-          </Button>
-        )}
+        <Button
+          variant={isCurrent ? "outline" : plan.primary ? "default" : "outline"}
+          size="sm"
+          className="w-full rounded-lg h-9 text-xs"
+          style={!plan.primary && !isCurrent ? sectionCardStyle : undefined}
+          disabled={loading || isCurrent}
+          onClick={() => onAction(plan.tier)}
+        >
+          {isCurrent ? "Current plan" : label}
+        </Button>
       </div>
     </div>
   );
 }
 
-function PricingDialog({
-  open,
-  onOpenChange,
+function PricingPage({
+  currentTier,
+  onBack,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  currentTier: BillingTier;
+  onBack: () => void;
 }) {
+  const loading = useGet(billingDialogLoading$);
+  const checkout = useSet(startCheckout$);
+  const portal = useSet(startDowngrade$);
+
+  const handlePlanAction = (planTier: BillingTier) => {
+    if (planTier === currentTier) {
+      return;
+    }
+    if (planTier === "free" || tierRank(planTier) < tierRank(currentTier)) {
+      detach(portal(), Reason.DomCallback);
+      return;
+    }
+    detach(checkout(planTier as "pro" | "team"), Reason.DomCallback);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-[820px] p-0 gap-0 overflow-hidden"
-        style={{
-          border: "0.7px solid hsl(var(--gray-400))",
-          borderRadius: "0.75rem",
-          backgroundColor: "hsl(var(--card))",
-        }}
-      >
-        <div className="px-6 pt-6 pb-1">
-          <h2 className="text-lg font-semibold text-foreground">
-            Choose your plan
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Start free and scale when you&apos;re ready. Upgrade or downgrade
-            anytime.
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          aria-label="Back"
+        >
+          <IconArrowLeft size={16} stroke={1.8} />
+        </button>
+        <div>
+          <h3 className="text-sm font-medium text-foreground">Compare plans</h3>
+          <p className="text-[13px] text-muted-foreground">
+            Upgrade or downgrade anytime.
           </p>
         </div>
+      </div>
 
-        <div className="grid grid-cols-3 gap-4 px-6 py-5">
-          {PLANS.map((plan) => (
-            <PlanCard
-              key={plan.name}
-              plan={plan}
-              onClose={() => onOpenChange(false)}
-            />
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
+      <div className="grid grid-cols-3 gap-4">
+        {PLANS.map((plan) => (
+          <PlanCard
+            key={plan.tier}
+            plan={plan}
+            currentTier={currentTier}
+            loading={loading}
+            onAction={handlePlanAction}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
+function formatTierLabel(tier: BillingTier): string {
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
+
 export function OrgBillingTab() {
-  const isPro = useGet(billingIsPro$);
-  const setIsPro = useSet(setBillingIsPro$);
-  const pricingOpen = useGet(billingPricingOpen$);
-  const setPricingOpen = useSet(setBillingPricingOpen$);
+  const pricingOpen = useGet(billingSubPage$);
+  const setBillingSubPage = useSet(setBillingSubPage$);
+  const setPricingOpen = (v: boolean) => setBillingSubPage(v);
+  const reloadBilling = useSet(reloadBillingStatus$);
+  const portal = useSet(startDowngrade$);
+  const statusLoadable = useLoadable(billingStatusAsync$);
+  const loading = useGet(billingDialogLoading$);
+
+  const status =
+    statusLoadable.state === "hasData" ? statusLoadable.data : null;
+  const statusLoading = statusLoadable.state === "loading";
+  const statusError = statusLoadable.state === "error";
+
+  const currentTier = apiTierToBillingTier(status?.tier);
+  const isPaid = currentTier !== "free";
+  const periodEnd = status?.currentPeriodEnd;
+  const periodLabel =
+    periodEnd !== undefined && periodEnd !== null && periodEnd !== ""
+      ? `Renews ${new Date(periodEnd).toLocaleDateString()}`
+      : null;
+
+  const openPortal = () => {
+    detach(portal(), Reason.DomCallback);
+  };
+
+  if (pricingOpen) {
+    return (
+      <PricingPage
+        currentTier={currentTier}
+        onBack={() => setPricingOpen(false)}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground">Plan</h3>
-          <div className="flex items-center gap-2">
-            <label
-              htmlFor="plan-toggle"
-              className="text-xs text-muted-foreground cursor-pointer"
-            >
-              Preview Pro
-            </label>
-            <Switch
-              id="plan-toggle"
-              checked={isPro}
-              onCheckedChange={setIsPro}
-              className="scale-75"
-            />
-          </div>
-        </div>
-        <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                {isPro ? "Pro plan" : "Free plan"}
-              </span>
-              <span className="text-[13px] text-muted-foreground">
-                Your current plan
-              </span>
+        <h3 className="text-sm font-medium text-foreground">Plan</h3>
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={sectionCardStyle}
+        >
+          {statusLoading && !status ? (
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <div className="h-4 w-28 rounded bg-muted/50 animate-pulse" />
+                <div className="h-3 w-48 rounded bg-muted/30 animate-pulse mt-1.5" />
+              </div>
+              <div className="h-8 w-24 shrink-0 rounded-lg bg-muted/30 animate-pulse" />
             </div>
-            {isPro ? (
+          ) : statusError ? (
+            <div className="px-5 py-6 text-center">
+              <p className="text-sm text-muted-foreground mb-3">
+                Could not load billing status.
+              </p>
               <Button
+                size="sm"
                 variant="outline"
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
-                style={cardBorder}
+                className="rounded-lg"
+                style={sectionCardStyle}
+                onClick={() => reloadBilling()}
               >
-                Downgrade
+                Retry
               </Button>
-            ) : (
-              <Button
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {formatTierLabel(currentTier)} plan
+                  </p>
+                  <p className="text-[13px] text-muted-foreground mt-0.5">
+                    {periodLabel ?? "No active subscription"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isPaid && currentTier !== "team" && (
+                    <Button
+                      size="sm"
+                      className="rounded-lg h-8 text-xs"
+                      disabled={loading}
+                      onClick={() => setPricingOpen(true)}
+                    >
+                      Upgrade
+                    </Button>
+                  )}
+                  {!isPaid && (
+                    <Button
+                      size="sm"
+                      className="rounded-lg h-8 text-xs"
+                      disabled={loading}
+                      onClick={() => setPricingOpen(true)}
+                    >
+                      Upgrade
+                    </Button>
+                  )}
+                  {isPaid && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-lg h-8 text-xs"
+                      style={sectionCardStyle}
+                      disabled={loading}
+                      onClick={openPortal}
+                    >
+                      Downgrade
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {isPaid && (
+                <>
+                  <div className="h-px bg-border/40 mx-5" />
+                  <div className="flex items-center justify-between gap-4 px-5 py-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        Manage billing
+                      </p>
+                      <p className="text-[13px] text-muted-foreground mt-0.5">
+                        Subscription, payment method, and invoices in Stripe.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
+                      style={sectionCardStyle}
+                      disabled={loading}
+                      onClick={openPortal}
+                    >
+                      Manage
+                      <IconExternalLink size={13} stroke={1.5} />
+                    </Button>
+                  </div>
+                </>
+              )}
+              <div className="h-px bg-border/40" />
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-muted/35"
                 onClick={() => setPricingOpen(true)}
               >
-                Upgrade
-              </Button>
-            )}
-          </div>
-          {isPro && (
-            <>
-              <div className="h-px bg-border/40 mx-5" />
-              <div className="flex items-center justify-between gap-4 px-5 py-4">
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-medium text-foreground">
-                    Manage billing
-                  </span>
-                  <span className="text-[13px] text-muted-foreground">
-                    Manage your subscription, payment method, and download
-                    invoices on Stripe.
-                  </span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
-                  style={cardBorder}
-                  asChild
-                >
-                  <a href="#" target="_blank" rel="noopener noreferrer">
-                    Manage
-                    <IconExternalLink size={13} stroke={1.5} />
-                  </a>
-                </Button>
-              </div>
+                <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+                  Compare all plans
+                  <IconCoins
+                    size={14}
+                    stroke={1.5}
+                    className="text-foreground/40"
+                  />
+                </span>
+                <IconChevronRight
+                  size={14}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground/50"
+                />
+              </button>
             </>
           )}
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Add-ons</h3>
-        <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-sm font-medium text-foreground">
-                Active agent
-              </span>
-              <span className="text-[13px] text-muted-foreground">
-                1 concurrent agent · $20/mo, prorated for the current billing
-                cycle
-              </span>
-            </div>
-            {isPro ? (
-              <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
-                Add
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
-                style={cardBorder}
-                onClick={() => setPricingOpen(true)}
-              >
-                Upgrade
-              </Button>
-            )}
-          </div>
-          <div className="h-px bg-border/40 mx-5" />
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-sm font-medium text-foreground">
-                Credits
-              </span>
-              <span className="text-[13px] text-muted-foreground">
-                1,000 credits · $20/mo, prorated for the current billing cycle
-              </span>
-            </div>
-            {isPro ? (
-              <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
-                Add
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
-                style={cardBorder}
-                onClick={() => setPricingOpen(true)}
-              >
-                Upgrade
-              </Button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
+      {status && (
+        <AutoRechargeSection
+          currentTier={currentTier}
+          loading={loading}
+          variant="settings"
+        />
+      )}
     </div>
   );
 }

@@ -10,7 +10,7 @@ export type OrgManageTab =
   | "providers"
   | "members"
   | "billing"
-  | "credits"
+  | "usage"
   | "invoices";
 
 const internalActiveTab$ = state<OrgManageTab>("general");
@@ -19,26 +19,6 @@ export const activeTab$ = computed((get) => get(internalActiveTab$));
 
 export const setActiveTab$ = command(({ set }, tab: OrgManageTab) => {
   set(internalActiveTab$, tab);
-});
-
-// ---------------------------------------------------------------------------
-// org-billing-tab
-// ---------------------------------------------------------------------------
-
-const internalIsPro$ = state(false);
-
-export const billingIsPro$ = computed((get) => get(internalIsPro$));
-
-export const setBillingIsPro$ = command(({ set }, value: boolean) => {
-  set(internalIsPro$, value);
-});
-
-const internalPricingOpen$ = state(false);
-
-export const billingPricingOpen$ = computed((get) => get(internalPricingOpen$));
-
-export const setBillingPricingOpen$ = command(({ set }, value: boolean) => {
-  set(internalPricingOpen$, value);
 });
 
 // ---------------------------------------------------------------------------
@@ -140,6 +120,18 @@ export const deleteConfirm$ = computed((get) => get(internalDeleteConfirm$));
 
 export const setDeleteConfirm$ = command(({ set }, value: string) => {
   set(internalDeleteConfirm$, value);
+});
+
+// ---------------------------------------------------------------------------
+// org-billing-tab: sub-page
+// ---------------------------------------------------------------------------
+
+const internalBillingSubPage$ = state(false);
+
+export const billingSubPage$ = computed((get) => get(internalBillingSubPage$));
+
+export const setBillingSubPage$ = command(({ set }, value: boolean) => {
+  set(internalBillingSubPage$, value);
 });
 
 // ---------------------------------------------------------------------------
