@@ -126,7 +126,7 @@ export async function disableZeroSchedule(params: {
 }
 
 /**
- * Resolve a zero schedule by agent ID using the list API.
+ * Resolve a zero schedule by agent name using the list API.
  * Searches across all user's schedules and finds by agentId.
  *
  * Returns the full ScheduleResponse so callers can access any field.
@@ -136,15 +136,15 @@ export async function disableZeroSchedule(params: {
  * @throws Error if agent has no schedule or disambiguation is needed
  */
 export async function resolveZeroScheduleByAgent(
-  agentId: string,
+  agentName: string,
   scheduleName?: string,
 ): Promise<ScheduleResponse> {
   const { schedules } = await listZeroSchedules();
 
-  const agentSchedules = schedules.filter((s) => s.agentId === agentId);
+  const agentSchedules = schedules.filter((s) => s.agentId === agentName);
 
   if (agentSchedules.length === 0) {
-    throw new Error(`No schedule found for agent "${agentId}"`);
+    throw new Error(`No schedule found for agent "${agentName}"`);
   }
 
   if (scheduleName) {
@@ -152,7 +152,7 @@ export async function resolveZeroScheduleByAgent(
     if (!match) {
       const available = agentSchedules.map((s) => s.name).join(", ");
       throw new Error(
-        `Schedule "${scheduleName}" not found for agent "${agentId}". Available schedules: ${available}`,
+        `Schedule "${scheduleName}" not found for agent "${agentName}". Available schedules: ${available}`,
       );
     }
     return match;
@@ -164,6 +164,6 @@ export async function resolveZeroScheduleByAgent(
 
   const available = agentSchedules.map((s) => s.name).join(", ");
   throw new Error(
-    `Agent "${agentId}" has multiple schedules. Use --name to specify which one: ${available}`,
+    `Agent "${agentName}" has multiple schedules. Use --name to specify which one: ${available}`,
   );
 }

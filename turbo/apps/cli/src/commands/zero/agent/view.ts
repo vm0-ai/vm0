@@ -6,12 +6,12 @@ import { withErrorHandler } from "../../../lib/command";
 export const viewCommand = new Command()
   .name("view")
   .description("View a zero agent")
-  .argument("<agent-id>", "Agent ID")
+  .argument("<name>", "Agent name")
   .option("--instructions", "Also show instructions content")
   .action(
     withErrorHandler(
-      async (agentId: string, options: { instructions?: boolean }) => {
-        const agent = await getZeroAgent(agentId);
+      async (name: string, options: { instructions?: boolean }) => {
+        const agent = await getZeroAgent(name);
 
         console.log(chalk.bold(agent.agentId));
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
@@ -24,7 +24,7 @@ export const viewCommand = new Command()
 
         if (options.instructions) {
           console.log();
-          const result = await getZeroAgentInstructions(agentId);
+          const result = await getZeroAgentInstructions(name);
           if (result.content) {
             console.log(chalk.dim("── Instructions ──"));
             console.log(result.content);

@@ -57,7 +57,10 @@ describe("whoami command", () => {
   describe("sandbox mode (VM0_RUN_ID set)", () => {
     it("should show full agent info when all agent env vars are present", async () => {
       vi.stubEnv("VM0_RUN_ID", "run-123");
-      vi.stubEnv("ZERO_AGENT_ID", "compose-456");
+      vi.stubEnv("VM0_AGENT_NAME", "my-agent");
+      vi.stubEnv("VM0_AGENT_VERSION", "1.2.3");
+      vi.stubEnv("VM0_AGENT_COMPOSE_ID", "compose-456");
+      vi.stubEnv("VM0_AGENT_ORG_SLUG", "my-org");
       vi.stubEnv("CLI_AGENT_TYPE", "claude");
       vi.stubEnv("VM0_ACTIVE_ORG", "active-org");
       vi.stubEnv("VM0_API_URL", "https://api.vm0.ai");
@@ -66,7 +69,10 @@ describe("whoami command", () => {
 
       const output = getAllOutput();
       expect(output.some((line) => line.includes("Agent:"))).toBe(true);
+      expect(output.some((line) => line.includes("my-agent"))).toBe(true);
+      expect(output.some((line) => line.includes("1.2.3"))).toBe(true);
       expect(output.some((line) => line.includes("compose-456"))).toBe(true);
+      expect(output.some((line) => line.includes("my-org"))).toBe(true);
       expect(output.some((line) => line.includes("claude"))).toBe(true);
       expect(output.some((line) => line.includes("Run:"))).toBe(true);
       expect(output.some((line) => line.includes("run-123"))).toBe(true);
@@ -87,17 +93,17 @@ describe("whoami command", () => {
       expect(output.some((line) => line.includes("run-789"))).toBe(true);
     });
 
-    it("should show agent section with only ZERO_AGENT_ID set", async () => {
+    it("should show agent section with only partial info when only VM0_AGENT_NAME is set", async () => {
       vi.stubEnv("VM0_RUN_ID", "run-partial");
-      vi.stubEnv("ZERO_AGENT_ID", "partial-agent-id");
+      vi.stubEnv("VM0_AGENT_NAME", "partial-agent");
 
       await runWhoami();
 
       const output = getAllOutput();
       expect(output.some((line) => line.includes("Agent:"))).toBe(true);
-      expect(output.some((line) => line.includes("partial-agent-id"))).toBe(
-        true,
-      );
+      expect(output.some((line) => line.includes("partial-agent"))).toBe(true);
+      expect(output.some((line) => line.includes("Version:"))).toBe(false);
+      expect(output.some((line) => line.includes("Compose ID:"))).toBe(false);
       expect(output.some((line) => line.includes("Run:"))).toBe(true);
     });
   });

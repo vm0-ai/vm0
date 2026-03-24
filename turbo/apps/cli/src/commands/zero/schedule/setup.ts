@@ -485,12 +485,12 @@ async function gatherTiming(
 }
 
 async function findExistingSchedule(
-  agentId: string,
+  agentName: string,
   scheduleName: string,
 ): Promise<ScheduleListItem | undefined> {
   const { schedules } = await listZeroSchedules();
   return schedules.find(
-    (s) => s.agentId === agentId && s.name === scheduleName,
+    (s) => s.agentId === agentName && s.name === scheduleName,
   );
 }
 
@@ -509,6 +509,7 @@ interface DeployResult {
 async function buildAndDeploy(params: {
   scheduleName: string;
   agentId: string;
+  agentName: string;
   frequency: ScheduleFrequency;
   time: string | undefined;
   day: number | undefined;
@@ -536,7 +537,7 @@ async function buildAndDeploy(params: {
   }
 
   console.log(
-    `\nDeploying schedule for agent ${chalk.cyan(params.agentId)}...`,
+    `\nDeploying schedule for agent ${chalk.cyan(params.agentName)}...`,
   );
 
   const deployResult = await deployZeroSchedule({
@@ -560,16 +561,16 @@ async function buildAndDeploy(params: {
 }
 
 function displayDeployResult(
-  agentId: string,
+  agentName: string,
   deployResult: DeployResult,
 ): void {
   if (deployResult.created) {
     console.log(
-      chalk.green(`✓ Created schedule for agent ${chalk.cyan(agentId)}`),
+      chalk.green(`✓ Created schedule for agent ${chalk.cyan(agentName)}`),
     );
   } else {
     console.log(
-      chalk.green(`✓ Updated schedule for agent ${chalk.cyan(agentId)}`),
+      chalk.green(`✓ Updated schedule for agent ${chalk.cyan(agentName)}`),
     );
   }
 
@@ -605,11 +606,12 @@ function displayDeployResult(
 async function tryEnableSchedule(
   scheduleName: string,
   agentId: string,
+  agentName: string,
 ): Promise<void> {
   try {
     await enableZeroSchedule({ name: scheduleName, agentId });
     console.log(
-      chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentId)}`),
+      chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
     );
   } catch (error) {
     console.error(chalk.yellow("⚠ Failed to enable schedule"));
@@ -623,50 +625,52 @@ async function tryEnableSchedule(
       console.error(chalk.dim(`  ${error.message}`));
     }
     console.log(
-      `  To enable manually: ${chalk.cyan(`vm0 zero schedule enable ${agentId}`)}`,
+      `  To enable manually: ${chalk.cyan(`vm0 zero schedule enable ${agentName}`)}`,
     );
   }
 }
 
-function showEnableHint(agentId: string): void {
+function showEnableHint(agentName: string): void {
   console.log();
   console.log(
-    `  To enable: ${chalk.cyan(`vm0 zero schedule enable ${agentId}`)}`,
+    `  To enable: ${chalk.cyan(`vm0 zero schedule enable ${agentName}`)}`,
   );
 }
 
 async function handleScheduleEnabling(params: {
   scheduleName: string;
   agentId: string;
+  agentName: string;
   enableFlag: boolean;
   shouldPromptEnable: boolean;
 }): Promise<void> {
-  const { scheduleName, agentId, enableFlag, shouldPromptEnable } = params;
+  const { scheduleName, agentId, agentName, enableFlag, shouldPromptEnable } =
+    params;
 
   if (enableFlag) {
-    await tryEnableSchedule(scheduleName, agentId);
+    await tryEnableSchedule(scheduleName, agentId, agentName);
     return;
   }
 
   if (shouldPromptEnable && isInteractive()) {
     const enableNow = await promptConfirm("Enable this schedule?", true);
     if (enableNow) {
-      await tryEnableSchedule(scheduleName, agentId);
+      await tryEnableSchedule(scheduleName, agentId, agentName);
     } else {
-      showEnableHint(agentId);
+      showEnableHint(agentName);
     }
     return;
   }
 
   if (shouldPromptEnable) {
-    showEnableHint(agentId);
+    showEnableHint(agentName);
   }
 }
 
 export const setupCommand = new Command()
   .name("setup")
   .description("Create or edit a schedule for a zero agent")
-  .argument("<agent-id>", "Agent ID to configure schedule for")
+  .argument("<agent-name>", "Agent name to configure schedule for")
   .option("-n, --name <schedule-name>", 'Schedule name (default: "default")')
   .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once|loop")
   .option("-t, --time <HH:MM>", "Time to run (24-hour format)")
@@ -681,22 +685,23 @@ export const setupCommand = new Command()
   .option("--notify-slack", "Enable Slack notifications (default: true)")
   .option("--no-notify-slack", "Disable Slack notifications")
   .action(
-    withErrorHandler(async (agentId: string, options: SetupOptions) => {
+    withErrorHandler(async (agentName: string, options: SetupOptions) => {
       // 1. Validate agent exists
-      await getZeroAgent(agentId);
+      const agent = await getZeroAgent(agentName);
+      const agentId = agent.agentId;
       const scheduleName = options.name || "default";
 
       // 2. Check for existing schedule
       const existingSchedule = await findExistingSchedule(
-        agentId,
+        agentName,
         scheduleName,
       );
 
       console.log(
         chalk.dim(
           existingSchedule
-            ? `Editing existing schedule for agent ${agentId}`
-            : `Creating new schedule for agent ${agentId}`,
+            ? `Editing existing schedule for agent ${agentName}`
+            : `Creating new schedule for agent ${agentName}`,
         ),
       );
 
@@ -751,6 +756,7 @@ export const setupCommand = new Command()
       const deployResult = await buildAndDeploy({
         scheduleName,
         agentId,
+        agentName,
         frequency,
         time,
         day,
@@ -764,7 +770,7 @@ export const setupCommand = new Command()
       });
 
       // 9. Display deployment result
-      displayDeployResult(agentId, deployResult);
+      displayDeployResult(agentName, deployResult);
 
       // 10. Handle schedule enabling
       const shouldPromptEnable =
@@ -774,6 +780,7 @@ export const setupCommand = new Command()
       await handleScheduleEnabling({
         scheduleName,
         agentId,
+        agentName,
         enableFlag: options.enable ?? false,
         shouldPromptEnable,
       });

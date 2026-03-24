@@ -11,7 +11,7 @@ import { withErrorHandler } from "../../../lib/command";
 export const editCommand = new Command()
   .name("edit")
   .description("Edit a zero agent")
-  .argument("<agent-id>", "Agent ID")
+  .argument("<name>", "Agent name")
   .option(
     "--connectors <items>",
     "Comma-separated connector short names (e.g. github,linear)",
@@ -26,7 +26,7 @@ export const editCommand = new Command()
   .action(
     withErrorHandler(
       async (
-        agentId: string,
+        name: string,
         options: {
           connectors?: string;
           displayName?: string;
@@ -48,12 +48,12 @@ export const editCommand = new Command()
         }
 
         if (hasAgentUpdate) {
-          const current = await getZeroAgent(agentId);
+          const current = await getZeroAgent(name);
           const connectors = options.connectors
             ? options.connectors.split(",").map((s) => s.trim())
             : current.connectors;
 
-          await updateZeroAgent(agentId, {
+          await updateZeroAgent(name, {
             connectors,
             displayName:
               options.displayName !== undefined
@@ -72,10 +72,10 @@ export const editCommand = new Command()
 
         if (options.instructionsFile) {
           const content = readFileSync(options.instructionsFile, "utf-8");
-          await updateZeroAgentInstructions(agentId, content);
+          await updateZeroAgentInstructions(name, content);
         }
 
-        console.log(chalk.green(`✓ Zero agent '${agentId}' updated`));
+        console.log(chalk.green(`✓ Zero agent '${name}' updated`));
       },
     ),
   );

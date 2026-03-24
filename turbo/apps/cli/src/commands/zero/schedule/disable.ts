@@ -9,14 +9,17 @@ import { withErrorHandler } from "../../../lib/command";
 export const disableCommand = new Command()
   .name("disable")
   .description("Disable a zero schedule")
-  .argument("<agent-id>", "Agent ID")
+  .argument("<agent-name>", "Agent name")
   .option(
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
   .action(
-    withErrorHandler(async (agentId: string, options: { name?: string }) => {
-      const resolved = await resolveZeroScheduleByAgent(agentId, options.name);
+    withErrorHandler(async (agentName: string, options: { name?: string }) => {
+      const resolved = await resolveZeroScheduleByAgent(
+        agentName,
+        options.name,
+      );
 
       await disableZeroSchedule({
         name: resolved.name,
@@ -24,7 +27,7 @@ export const disableCommand = new Command()
       });
 
       console.log(
-        chalk.green(`✓ Disabled schedule for agent ${chalk.cyan(agentId)}`),
+        chalk.green(`✓ Disabled schedule for agent ${chalk.cyan(agentName)}`),
       );
     }),
   );
