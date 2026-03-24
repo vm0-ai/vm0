@@ -321,10 +321,10 @@ const router = tsr.router(zeroAgentsByNameContract, {
 
     // Delete compose and metadata atomically
     await globalThis.services.db.transaction(async (tx) => {
-      // Delete compose (cascades to zero_agent_schedules via composeId FK)
+      // Delete compose
       await tx.delete(agentComposes).where(eq(agentComposes.id, compose.id));
 
-      // Delete zero_agents metadata record
+      // Delete zero_agents metadata (cascades to zero_agent_schedules via agentId FK)
       await tx
         .delete(zeroAgents)
         .where(
