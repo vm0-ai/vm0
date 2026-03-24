@@ -189,4 +189,45 @@ describe("sidebar new chat navigation", () => {
     // Should not have navigated
     expect(pathname()).toBe(initialPath);
   }, 15_000);
+
+  it("should show new chat entry in sidebar and focus textarea after creating new chat", async () => {
+    mockSubagentAPIs();
+
+    // Override GET chat-threads/:id to return empty messages so autoFocus kicks in
+    server.use(
+      http.get("*/api/zero/chat-threads/:id", () => {
+        return HttpResponse.json({
+          id: "new-thread-id",
+          title: null,
+          agentComposeId: "mock-compose-id",
+          chatMessages: [],
+          latestSessionId: "session-new-1",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/team" });
+
+    const newChatButton = await waitFor(
+      () => screen.getByLabelText("New chat with Zero"),
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(newChatButton);
+
+    // 1. Verify navigation (URL-based selection confirmation)
+    await waitFor(() => {
+      expect(pathname()).toBe("/chat/new-thread-id");
+    });
+
+    // 2. Verify sidebar shows "New chat" entry
+    expect(screen.getByText("New chat")).toBeInTheDocument();
+
+    // 3. Verify textarea has focus (autoFocus triggers because chatMessages is empty)
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveFocus();
+    });
+  }, 15_000);
 });
