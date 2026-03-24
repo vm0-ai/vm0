@@ -1,10 +1,7 @@
 import crypto from "crypto";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { orgMetadata } from "../../../db/schema/org-metadata";
-import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
+import { resolveDefaultAgentId } from "../../zero/resolve-default-agent";
 import { env } from "../../../env";
 import { getAppUrl } from "../../url";
 import { getApiUrl } from "../../callback/dispatcher";
@@ -131,71 +128,15 @@ export function computeReplyRecipients(opts: {
 // Agent Resolution
 // ============================================================================
 
-interface ResolvedDefaultAgent {
-  agentId: string;
-  userId: string;
-  orgId: string;
-  headVersionId: string;
-}
-
 /**
- * Resolve the org's default agent.
- * Looks up default_agent_compose_id from org_metadata, falls back to VM0_DEFAULT_AGENT env var.
+ * Resolve the org's default agent ID (zero layer).
+ * Delegates to resolveDefaultAgentId which handles both the org_metadata
+ * primary path and the VM0_DEFAULT_AGENT env var fallback.
  */
 export async function resolveDefaultAgent(
   orgId: string,
-): Promise<ResolvedDefaultAgent | null> {
-  // 1. Look up default compose ID from org_metadata
-  const [orgRow] = await globalThis.services.db
-    .select({ defaultAgentComposeId: orgMetadata.defaultAgentComposeId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  let composeId = orgRow?.defaultAgentComposeId ?? null;
-
-  // 2. Fallback to VM0_DEFAULT_AGENT env var
-  if (!composeId) {
-    composeId = await resolveDefaultAgentComposeId();
-  }
-
-  if (!composeId) return null;
-
-  // 3. Look up compose details
-  const [compose] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      userId: agentComposes.userId,
-      orgId: agentComposes.orgId,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose || !compose.headVersionId) return null;
-
-  // 3. Resolve agentId by (orgId, name)
-  const [agent] = await globalThis.services.db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, compose.orgId),
-        eq(zeroAgents.name, compose.name),
-      ),
-    )
-    .limit(1);
-
-  if (!agent) return null;
-
-  return {
-    agentId: agent.id,
-    userId: compose.userId,
-    orgId: compose.orgId,
-    headVersionId: compose.headVersionId,
-  };
+): Promise<string | null> {
+  return resolveDefaultAgentId(orgId);
 }
 
 // ============================================================================

@@ -92,8 +92,8 @@ async function resolveTrigger(
   }
 
   // 5. Resolve default agent
-  const agent = await resolveDefaultAgent(orgData.orgId);
-  if (!agent) {
+  const agentId = await resolveDefaultAgent(orgData.orgId);
+  if (!agentId) {
     log.debug("No default agent configured", { orgId: orgData.orgId });
     return {
       ok: false,
@@ -105,7 +105,7 @@ async function resolveTrigger(
     orgId: orgData.orgId,
     orgSlug,
     userId,
-    agentId: agent.agentId,
+    agentId,
   };
 }
 
