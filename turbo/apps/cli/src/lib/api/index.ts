@@ -112,6 +112,17 @@ export {
   updateZeroAgentInstructions,
 } from "./domains/zero-agents";
 
+// Domain modules - Zero Connectors
+export {
+  listZeroConnectors,
+  getZeroConnector,
+  deleteZeroConnector,
+  createZeroConnectorSession,
+  getZeroConnectorSession,
+  createZeroComputerConnector,
+  deleteZeroComputerConnector,
+} from "./domains/zero-connectors";
+
 // Domain modules - Zero Schedules
 export {
   deployZeroSchedule,
