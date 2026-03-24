@@ -6,9 +6,9 @@ import {
   getScopeDiff,
   hasRequiredScopes,
 } from "@vm0/core";
-import { getConnector } from "../../lib/api";
-import { formatDateTime } from "../../lib/domain/schedule-utils";
-import { withErrorHandler } from "../../lib/command";
+import { getZeroConnector } from "../../../lib/api";
+import { formatDateTime } from "../../../lib/domain/schedule-utils";
+import { withErrorHandler } from "../../../lib/command";
 
 const LABEL_WIDTH = 16;
 
@@ -26,7 +26,7 @@ export const statusCommand = new Command()
         });
       }
 
-      const connector = await getConnector(parseResult.data);
+      const connector = await getZeroConnector(parseResult.data);
 
       console.log(`Connector: ${chalk.cyan(type)}`);
       console.log();
@@ -80,14 +80,14 @@ export const statusCommand = new Command()
 
         console.log();
         console.log(chalk.dim("To disconnect:"));
-        console.log(chalk.dim(`  vm0 connector disconnect ${type}`));
+        console.log(chalk.dim(`  vm0 zero connector disconnect ${type}`));
       } else {
         console.log(
           `${"Status:".padEnd(LABEL_WIDTH)}${chalk.dim("not connected")}`,
         );
         console.log();
         console.log(chalk.dim("To connect:"));
-        console.log(chalk.dim(`  vm0 connector connect ${type}`));
+        console.log(chalk.dim(`  vm0 zero connector connect ${type}`));
       }
     }),
   );

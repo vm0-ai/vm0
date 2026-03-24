@@ -204,6 +204,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-cow"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

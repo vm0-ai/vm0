@@ -36,7 +36,7 @@ const router = tsr.router(zeroSchedulesMainContract, {
 
       const result = await deploySchedule(userId, orgId, {
         name: body.name,
-        zeroAgentId: body.agentId,
+        agentId: body.agentId,
         cronExpression: body.cronExpression,
         atTime: body.atTime,
         intervalSeconds: body.intervalSeconds,

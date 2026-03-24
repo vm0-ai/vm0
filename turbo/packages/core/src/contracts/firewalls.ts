@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ConnectorType } from "./connectors";
 
 /**
  * Proxy-side firewall configuration for token replacement.
@@ -83,6 +84,34 @@ export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
 export type Firewall = z.infer<typeof firewallSchema>;
 export type ExperimentalFirewalls = z.infer<typeof experimentalFirewallsSchema>;
+
+/**
+ * Maps connector types (skill short names) to their builtin firewall ref(s).
+ * Only includes connectors that have builtin firewall configs.
+ */
+const CONNECTOR_FIREWALL_REFS: Readonly<
+  Partial<Record<ConnectorType, readonly string[]>>
+> = {
+  github: ["github"],
+  slack: ["slack"],
+  gmail: ["gmail"],
+  "google-sheets": ["google-sheets"],
+  "google-docs": ["google-docs"],
+  "google-drive": ["google-drive"],
+  "google-calendar": ["google-calendar"],
+  atlassian: ["jira", "confluence"],
+  jira: ["jira"],
+  figma: ["figma"],
+  notion: ["notion"],
+  vercel: ["vercel"],
+};
+
+/** Get the firewall ref names for a connector type. Returns empty array if none. */
+export function getFirewallRefsForConnector(
+  connector: ConnectorType,
+): string[] {
+  return [...(CONNECTOR_FIREWALL_REFS[connector] ?? [])];
+}
 
 /**
  * Regex pattern matching `${{ secrets.XXX }}` references in auth header templates.

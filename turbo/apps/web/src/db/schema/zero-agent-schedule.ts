@@ -33,7 +33,7 @@ export const zeroAgentSchedules = pgTable(
   "zero_agent_schedules",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    zeroAgentId: uuid("zero_agent_id")
+    agentId: uuid("agent_id")
       .notNull()
       .references(() => zeroAgents.id, { onDelete: "cascade" }),
     userId: text("user_id").notNull(),
@@ -86,10 +86,10 @@ export const zeroAgentSchedules = pgTable(
   },
   (table) => [
     // Index for finding schedules by agent
-    index("idx_zero_agent_schedules_zero_agent").on(table.zeroAgentId),
+    index("idx_zero_agent_schedules_zero_agent").on(table.agentId),
     index("idx_zero_agent_schedules_org").on(table.orgId),
     uniqueIndex("idx_zero_agent_schedules_agent_name_org_user").on(
-      table.zeroAgentId,
+      table.agentId,
       table.name,
       table.orgId,
       table.userId,

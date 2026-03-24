@@ -1,47 +1,28 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { initClient } from "@ts-rest/core";
 import {
   CONNECTOR_TYPES,
-  connectorSessionsContract,
-  connectorSessionByIdContract,
   connectorTypeSchema,
-  computerConnectorContract,
   isFeatureEnabled,
-  type ApiErrorResponse,
-  type ComputerConnectorCreateResponse,
   type ConnectorType,
 } from "@vm0/core";
-import { getApiUrl, getActiveToken } from "../../lib/api/config";
-import { deleteConnector, setZeroSecret } from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+import {
+  createZeroConnectorSession,
+  getZeroConnectorSession,
+  createZeroComputerConnector,
+  deleteZeroComputerConnector,
+  setZeroSecret,
+} from "../../../lib/api";
+import { getBaseUrl } from "../../../lib/api/core/client-factory";
+import { withErrorHandler } from "../../../lib/command";
 import {
   checkComputerDependencies,
   startComputerServices,
-} from "./lib/computer/start-services";
-import { promptSelect, promptPassword } from "../../lib/utils/prompt-utils";
+} from "../../../lib/computer/start-services";
+import { promptSelect, promptPassword } from "../../../lib/utils/prompt-utils";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function getHeaders(): Promise<Record<string, string>> {
-  const token = await getActiveToken();
-  if (!token) {
-    throw new Error("Not authenticated. Run: vm0 auth login");
-  }
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-  };
-
-  // Add Vercel bypass secret if available (for CI/preview deployments)
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (bypassSecret) {
-    headers["x-vercel-protection-bypass"] = bypassSecret;
-  }
-
-  return headers;
 }
 
 /**
@@ -119,35 +100,16 @@ async function connectViaApiToken(
 /**
  * Handle computer connector flow
  */
-async function connectComputer(
-  apiUrl: string,
-  headers: Record<string, string>,
-): Promise<void> {
+async function connectComputer(): Promise<void> {
   await checkComputerDependencies();
   console.log(chalk.cyan("Setting up computer connector..."));
 
-  const computerClient = initClient(computerConnectorContract, {
-    baseUrl: apiUrl,
-    baseHeaders: headers,
-    jsonQuery: false,
-  });
-
-  const createResult = await computerClient.create({
-    body: {},
-  });
-
-  if (createResult.status !== 200) {
-    const errorBody = createResult.body as ApiErrorResponse;
-    throw new Error(`Failed to create connector: ${errorBody.error?.message}`);
-  }
-
-  const credentials = createResult.body as ComputerConnectorCreateResponse;
+  const credentials = await createZeroComputerConnector();
   await startComputerServices(credentials);
 
   console.log(chalk.cyan("Disconnecting computer connector..."));
-  await deleteConnector("computer");
+  await deleteZeroComputerConnector();
   console.log(chalk.green("✓ Disconnected computer"));
-  process.exit(0);
 }
 
 /**
@@ -201,30 +163,11 @@ async function resolveAuthMethod(
 /**
  * Handle OAuth device flow
  */
-async function connectViaOAuth(
-  connectorType: ConnectorType,
-  apiUrl: string,
-  headers: Record<string, string>,
-): Promise<void> {
+async function connectViaOAuth(connectorType: ConnectorType): Promise<void> {
   console.log(`Connecting ${chalk.cyan(connectorType)}...`);
 
-  const sessionsClient = initClient(connectorSessionsContract, {
-    baseUrl: apiUrl,
-    baseHeaders: headers,
-    jsonQuery: false,
-  });
-
-  const createResult = await sessionsClient.create({
-    params: { type: connectorType },
-    body: {},
-  });
-
-  if (createResult.status !== 200) {
-    const errorBody = createResult.body as ApiErrorResponse;
-    throw new Error(`Failed to create session: ${errorBody.error?.message}`);
-  }
-
-  const session = createResult.body;
+  const session = await createZeroConnectorSession(connectorType);
+  const apiUrl = await getBaseUrl();
   const verificationUrl = `${apiUrl}${session.verificationUrl}`;
 
   console.log(chalk.green("\nSession created"));
@@ -233,12 +176,6 @@ async function connectViaOAuth(
     `\nThe session expires in ${Math.floor(session.expiresIn / 60)} minutes.`,
   );
   console.log("\nWaiting for authorization...");
-
-  const sessionClient = initClient(connectorSessionByIdContract, {
-    baseUrl: apiUrl,
-    baseHeaders: headers,
-    jsonQuery: false,
-  });
 
   const startTime = Date.now();
   const maxWaitTime = session.expiresIn * 1000;
@@ -251,16 +188,7 @@ async function connectViaOAuth(
     }
     isFirstPoll = false;
 
-    const statusResult = await sessionClient.get({
-      params: { type: connectorType, sessionId: session.id },
-    });
-
-    if (statusResult.status !== 200) {
-      const errorBody = statusResult.body as ApiErrorResponse;
-      throw new Error(`Failed to check status: ${errorBody.error?.message}`);
-    }
-
-    const status = statusResult.body;
+    const status = await getZeroConnectorSession(connectorType, session.id);
 
     switch (status.status) {
       case "complete":
@@ -292,17 +220,16 @@ export const connectCommand = new Command()
     withErrorHandler(async (type: string, options: { token?: string }) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
+        const available = Object.keys(CONNECTOR_TYPES).join(", ");
         throw new Error(`Unknown connector type: ${type}`, {
-          cause: new Error("Available connectors: github"),
+          cause: new Error(`Available connectors: ${available}`),
         });
       }
 
       const connectorType = parseResult.data;
-      const apiUrl = await getApiUrl();
-      const headers = await getHeaders();
 
       if (connectorType === "computer") {
-        await connectComputer(apiUrl, headers);
+        await connectComputer();
         return;
       }
 
@@ -313,6 +240,6 @@ export const connectCommand = new Command()
         return;
       }
 
-      await connectViaOAuth(connectorType, apiUrl, headers);
+      await connectViaOAuth(connectorType);
     }),
   );

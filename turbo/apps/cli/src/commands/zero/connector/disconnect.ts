@@ -1,8 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { CONNECTOR_TYPES, connectorTypeSchema } from "@vm0/core";
-import { deleteConnector } from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+import { deleteZeroConnector } from "../../../lib/api";
+import { withErrorHandler } from "../../../lib/command";
 
 export const disconnectCommand = new Command()
   .name("disconnect")
@@ -19,7 +19,7 @@ export const disconnectCommand = new Command()
       }
 
       const connectorType = parseResult.data;
-      await deleteConnector(connectorType);
+      await deleteZeroConnector(connectorType);
       console.log(chalk.green(`✓ Disconnected ${type}`));
     }),
   );

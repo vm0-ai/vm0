@@ -141,6 +141,8 @@ interface ZeroScheduleEntry {
   name: string;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds: number | null;
+  /** IANA timezone identifier */
+  timezone: string;
 }
 
 export const zeroScheduleEntries$ = computed((get) => {
@@ -158,6 +160,7 @@ export const zeroScheduleEntries$ = computed((get) => {
         notifySlack: s.notifySlack,
         name: s.name,
         intervalSeconds: s.intervalSeconds,
+        timezone: s.timezone,
       }),
     );
 });
@@ -392,6 +395,8 @@ export interface OrgScheduleEntry {
   name: string;
   intervalSeconds: number | null;
   agentId: string;
+  /** IANA timezone identifier */
+  timezone: string;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -418,6 +423,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         name: s.name,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
+        timezone: s.timezone,
       }),
     );
 });

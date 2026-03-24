@@ -413,6 +413,7 @@ export {
   type ExperimentalFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
+  getFirewallRefsForConnector,
 } from "./firewalls";
 
 export {
@@ -468,11 +469,6 @@ export {
   skillFrontmatterSchema,
   type SkillsResolveContract,
 } from "./skills";
-export {
-  requiredEnvContract,
-  agentRequiredEnvSchema,
-  type RequiredEnvContract,
-} from "./required-env";
 export {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,

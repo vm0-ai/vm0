@@ -572,7 +572,7 @@ async function finishSubmit(
 
   await runAgentForSlackOrg({
     composeId: claimed.composeId,
-    zeroAgentId: agentInfo.zeroAgentId,
+    agentId: agentInfo.agentId,
     agentName: claimed.agentName,
     sessionId: claimed.sessionId ?? undefined,
     prompt: answerPrompt,

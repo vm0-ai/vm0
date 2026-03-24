@@ -83,7 +83,7 @@ export async function givenGitHubInstallation(
     })
     .returning();
 
-  // Create zero agent so handler can resolve zeroAgentId
+  // Create zero agent so handler can resolve agentId
   await globalThis.services.db
     .insert(zeroAgents)
     .values({ orgId, name: compose!.name })

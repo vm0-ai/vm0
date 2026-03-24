@@ -9,11 +9,11 @@ import {
   createTestZeroAgent,
   getTestZeroAgentId,
 } from "../../../__tests__/api-test-helpers";
-import { resolveComposeByZeroAgentId } from "../schedule-service";
+import { resolveComposeByAgentId } from "../schedule-service";
 
 const context = testContext();
 
-describe("resolveComposeByZeroAgentId", () => {
+describe("resolveComposeByAgentId", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -21,13 +21,13 @@ describe("resolveComposeByZeroAgentId", () => {
     user = await context.setupUser();
   });
 
-  it("should resolve compose from a valid zeroAgentId", async () => {
+  it("should resolve compose from a valid agentId", async () => {
     const agentName = uniqueId("resolve-ok");
     await createTestCompose(agentName);
     await createTestZeroAgent(user.orgId, agentName, {});
-    const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+    const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-    const compose = await resolveComposeByZeroAgentId(zeroAgentId);
+    const compose = await resolveComposeByAgentId(agentId);
 
     expect(compose).not.toBeNull();
     expect(compose!.name).toBe(agentName);
@@ -37,7 +37,7 @@ describe("resolveComposeByZeroAgentId", () => {
   it("should return null when agent does not exist", async () => {
     const nonExistentId = "00000000-0000-0000-0000-000000000000";
 
-    const compose = await resolveComposeByZeroAgentId(nonExistentId);
+    const compose = await resolveComposeByAgentId(nonExistentId);
 
     expect(compose).toBeNull();
   });
@@ -46,9 +46,9 @@ describe("resolveComposeByZeroAgentId", () => {
     const agentName = uniqueId("no-compose");
     // Create zero agent without a matching compose
     await createTestZeroAgent(user.orgId, agentName, {});
-    const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+    const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-    const compose = await resolveComposeByZeroAgentId(zeroAgentId);
+    const compose = await resolveComposeByAgentId(agentId);
 
     expect(compose).toBeNull();
   });

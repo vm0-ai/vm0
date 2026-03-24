@@ -867,6 +867,100 @@ describe("zero schedule page - schedule dialog fields", () => {
   });
 });
 
+describe("zero schedule page - timezone preservation", () => {
+  it("should show stored timezone in edit dialog", async () => {
+    const schedules = [{ ...createMockSchedules()[0], timezone: "Asia/Tokyo" }];
+    mockScheduleAPI(schedules);
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    // The timezone selector trigger should show the stored timezone value
+    const tzTrigger = document.getElementById("schedule-dialog-tz");
+    expect(tzTrigger).toBeInTheDocument();
+    expect(tzTrigger?.textContent).toContain("Asia/Tokyo");
+  });
+
+  it("should show non-preset timezone in edit dialog", async () => {
+    const schedules = [
+      { ...createMockSchedules()[0], timezone: "Africa/Nairobi" },
+    ];
+    mockScheduleAPI(schedules);
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    // The timezone selector trigger should show the non-preset timezone value
+    const tzTrigger = document.getElementById("schedule-dialog-tz");
+    expect(tzTrigger).toBeInTheDocument();
+    expect(tzTrigger?.textContent).toContain("Africa/Nairobi");
+  });
+
+  it("should preserve timezone when saving edited schedule", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [{ ...createMockSchedules()[0], timezone: "Asia/Tokyo" }],
+        });
+      }),
+      http.post("*/api/zero/schedules", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ success: true });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    // Change only the prompt, do NOT change timezone
+    const promptInput = screen.getByLabelText("Prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "Updated prompt text" },
+    });
+
+    // Click Save
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody).toHaveProperty("timezone", "Asia/Tokyo");
+  });
+});
+
 describe("zero schedule page - view modes", () => {
   it("should render list and calendar view tabs", async () => {
     mockScheduleAPI();

@@ -36,12 +36,11 @@ let createdOrgs: Array<{
   creatorUserId: string;
 }> = [];
 
-// Module-level tracking of org mutations (slug updates, metadata updates).
+// Module-level tracking of org slug mutations.
 // Persists across mockClerk() calls so that route handlers that mutate
-// org data (e.g. updateOrganization, updateOrganizationMetadata) are
-// reflected in subsequent getOrganization calls.
+// org data (e.g. updateOrganization) are reflected in subsequent
+// getOrganization calls.
 let orgSlugOverrides = new Map<string, string>();
-let orgMetadataOverrides = new Map<string, Record<string, unknown>>();
 
 // Module-level tracking of all userIds configured via mockClerk().
 // Used by testContext afterEach to scope user_cache cleanup to rows created
@@ -246,14 +245,13 @@ export function mockClerk(options: {
               (err as unknown as { code: string }).code = "NOT_FOUND";
               return Promise.reject(err);
             }
-            // Apply slug and metadata overrides
+            // Apply slug overrides
             const slug = orgSlugOverrides.get(org.id) ?? org.slug;
-            const metadata = orgMetadataOverrides.get(org.id) ?? {};
             return Promise.resolve({
               id: org.id,
               slug,
               name: org.name,
-              publicMetadata: metadata,
+              publicMetadata: {},
             });
           },
         ),
@@ -265,23 +263,7 @@ export function mockClerk(options: {
           }
           return Promise.resolve({});
         }),
-      updateOrganizationMetadata: vi
-        .fn()
-        .mockImplementation(
-          (
-            orgId: string,
-            data: { publicMetadata?: Record<string, unknown> },
-          ) => {
-            if (data.publicMetadata) {
-              const existing = orgMetadataOverrides.get(orgId) ?? {};
-              orgMetadataOverrides.set(orgId, {
-                ...existing,
-                ...data.publicMetadata,
-              });
-            }
-            return Promise.resolve({});
-          },
-        ),
+      updateOrganizationMetadata: vi.fn().mockResolvedValue({}),
       updateOrganizationMembershipMetadata: vi.fn().mockResolvedValue({}),
     },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
@@ -298,7 +280,6 @@ export function clearClerkMock(): string[] {
   mockClerkClient.mockClear();
   createdOrgs = [];
   orgSlugOverrides = new Map();
-  orgMetadataOverrides = new Map();
   mockUserIds = [];
   return userIds;
 }

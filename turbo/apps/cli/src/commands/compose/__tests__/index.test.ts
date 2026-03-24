@@ -1700,10 +1700,11 @@ agents:
           variablesCalled = true;
           return HttpResponse.json({ variables: [] });
         }),
-        http.get("http://localhost:3000/api/connectors", () => {
+        http.get("http://localhost:3000/api/zero/connectors", () => {
           connectorsCalled = true;
           return HttpResponse.json({
             connectors: [],
+            configuredTypes: [],
             connectorProvidedSecretNames: [],
           });
         }),

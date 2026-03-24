@@ -11,6 +11,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_common.sh
 source "$SCRIPT_DIR/_common.sh"
 
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
 MAX_WORKERS="${1:-4}"
 ME=$(gh api user --jq '.login')
 WORK_DIR=$(mktemp -d)
@@ -170,7 +174,7 @@ echo "📋 Lane Status"
 # Build merge queue PR number set for [Queued] markers
 MQ_NUMBERS=$(jq '[.merge_queue[].number]' "$WORK_DIR/pipeline.json")
 
-jq -r --argjson mq "$MQ_NUMBERS" '
+jq -r --argjson mq "$MQ_NUMBERS" --arg green "$GREEN" --arg yellow "$YELLOW" --arg nc "$NC" '
   .[] |
   # Format gist updated_at as relative time suffix
   (if .gist.updated_at then
@@ -200,8 +204,8 @@ jq -r --argjson mq "$MQ_NUMBERS" '
     [
       .issues[] |
       # [Queued] if any linked PR is in merge queue
-      (if ([.linked_prs[]?] | any(. as $p | $mq | any(. == $p))) then "[Queued] "
-       elif .pending then "[Pending] "
+      (if ([.linked_prs[]?] | any(. as $p | $mq | any(. == $p))) then "\($green)[Queued]\($nc) "
+       elif .pending then "\($yellow)[Pending]\($nc) "
        else "" end) as $marker |
       "- \($marker)Issue #\(.number) — \(.title)",
       # Show linked PRs indented under their issue
@@ -215,7 +219,7 @@ jq -r --argjson mq "$MQ_NUMBERS" '
     ] +
     # Standalone PRs (not linked to any issue)
     [ .prs[] | select(.number as $n | $linked | any(. == $n) | not) |
-      "- \(if .pending then "[Pending] " else "" end)PR #\(.number) — \(.title)" ] |
+      "- \(if .pending then "\($yellow)[Pending]\($nc) " else "" end)PR #\(.number) — \(.title)" ] |
     join("\n")
   end
 ' "$WORK_DIR/lanes.json"

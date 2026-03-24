@@ -459,6 +459,51 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(newExpiry).toBeGreaterThan(expectedMin);
     });
 
+    it("should refresh when template references mapped env var name", async () => {
+      const expiredAt = new Date(Date.now() - 60 * 1000);
+      await setupNotionConnector({ tokenExpiresAt: expiredAt });
+
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () =>
+          HttpResponse.json({
+            access_token: "fresh-mapped-token",
+            expires_in: 3600,
+          }),
+        ),
+      );
+
+      // Secrets contain both raw and mapped names (as build-context produces)
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "old-notion-token",
+        NOTION_TOKEN: "old-notion-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            // Template references the MAPPED env var name
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.NOTION_TOKEN }}",
+            },
+            // secretConnectorMap includes both raw and mapped keys
+            secretConnectorMap: {
+              NOTION_ACCESS_TOKEN: "notion",
+              NOTION_TOKEN: "notion",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // The mapped env var should have the refreshed token
+      expect(data.headers.Authorization).toBe("Bearer fresh-mapped-token");
+      expect(data.expiresAt).toBeTypeOf("number");
+    });
+
     it("should use existing token when refresh fails", async () => {
       const expiredAt = new Date(Date.now() - 60 * 1000);
       await setupNotionConnector({ tokenExpiresAt: expiredAt });

@@ -60,6 +60,7 @@ import emptyScheduleImg from "./assets/empty-schedule.webp";
 type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
   agentId: string;
+  timezone: string;
 };
 
 function buildCombinedSchedule(
@@ -83,6 +84,7 @@ function buildCombinedSchedule(
         ? agentName
         : (nameToDisplay.get(e.agentId) ?? e.agentId),
     agentId: e.agentId,
+    timezone: e.timezone,
   }));
 }
 
@@ -849,7 +851,7 @@ export function ZeroSchedulePage() {
                 date: parsed.date,
                 hour: parsed.hour,
                 minute: parsed.minute,
-                timezone: parsed.timezone,
+                timezone: editingEntry.timezone ?? parsed.timezone,
                 loopMinutes: parsed.loopMinutes,
                 dayOfWeek: parsed.dayOfWeek ?? "1",
                 dayOfMonth: parsed.dayOfMonth ?? "1",

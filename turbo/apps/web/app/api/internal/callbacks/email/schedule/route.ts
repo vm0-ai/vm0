@@ -4,7 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
-import { resolveComposeByZeroAgentId } from "../../../../../../src/lib/schedule/schedule-service";
+import { resolveComposeByAgentId } from "../../../../../../src/lib/schedule/schedule-service";
 import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
@@ -17,6 +17,7 @@ import {
 } from "../../../../../../src/lib/email/handlers/shared";
 import { isUserUnsubscribed } from "../../../../../../src/lib/email/unsubscribe-service";
 import { env } from "../../../../../../src/env";
+import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import type { EmailScheduleCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -27,7 +28,7 @@ function parsePayload(payload: unknown): EmailScheduleCallbackPayload | null {
   const p = payload as Record<string, unknown>;
   if (
     typeof p.scheduleId !== "string" ||
-    typeof p.zeroAgentId !== "string" ||
+    typeof p.agentId !== "string" ||
     typeof p.agentName !== "string" ||
     typeof p.userId !== "string"
   ) {
@@ -38,6 +39,18 @@ function parsePayload(payload: unknown): EmailScheduleCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
+}
+
+function extractAgentSessionId(result: unknown): string | undefined {
+  if (
+    result &&
+    typeof result === "object" &&
+    "agentSessionId" in result &&
+    typeof result.agentSessionId === "string"
+  ) {
+    return result.agentSessionId;
+  }
+  return undefined;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -87,6 +100,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const unsubscribeUrl = buildUnsubscribeUrl(userId);
   const unsubscribeHeaders = buildUnsubscribeHeaders(unsubscribeUrl);
 
+  // Resolve compose and org slug for from address
+  const compose = await resolveComposeByAgentId(payload.agentId);
+  if (!compose) {
+    return errorResponse("Compose not found for zero agent", 404);
+  }
+  const org = await getOrgData(compose.orgId);
+
   if (status === "completed") {
     // Get agent output
     const output = await getRunOutputText(runId);
@@ -103,14 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .where(eq(agentRuns.id, runId))
       .limit(1);
 
-    const runResult = run?.result;
-    const agentSessionId =
-      runResult &&
-      typeof runResult === "object" &&
-      "agentSessionId" in runResult &&
-      typeof runResult.agentSessionId === "string"
-        ? runResult.agentSessionId
-        : undefined;
+    const agentSessionId = extractAgentSessionId(run?.result);
 
     // Generate reply token and send email
     const sessionPlaceholderId = crypto.randomUUID();
@@ -118,7 +131,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const replyToAddress = buildReplyToAddress(replyToken);
 
     await enqueueEmail({
-      from: buildFromAddress(agentName),
+      from: buildFromAddress(org.slug),
       to: userEmail,
       subject: `VM0 - Scheduled run for "${agentName}" completed`,
       template: {
@@ -133,25 +146,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       replyTo: replyToAddress,
       headers: unsubscribeHeaders,
       threadAction: agentSessionId
-        ? await (async () => {
-            const compose = await resolveComposeByZeroAgentId(
-              payload.zeroAgentId,
-            );
-            if (!compose) return undefined;
-            return {
-              action: "save_thread_session" as const,
-              userId,
-              composeId: compose.id,
-              agentSessionId,
-              replyToToken: replyToken,
-            };
-          })()
+        ? {
+            action: "save_thread_session" as const,
+            userId,
+            composeId: compose.id,
+            agentSessionId,
+            replyToToken: replyToken,
+          }
         : undefined,
     });
   } else {
     // Failed run
     await enqueueEmail({
-      from: buildFromAddress(agentName),
+      from: buildFromAddress(org.slug),
       to: userEmail,
       subject: `VM0 - Scheduled run for "${agentName}" failed`,
       template: {

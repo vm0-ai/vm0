@@ -56,14 +56,14 @@ export interface EmailReplyCallbackPayload {
 
 export interface EmailScheduleCallbackPayload {
   scheduleId: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   userId: string;
 }
 
 export interface SlackScheduleCallbackPayload {
   scheduleId: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   userId: string;
   orgId: string;

@@ -14,6 +14,7 @@ import {
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/email/handlers/shared";
 import { env } from "../../../../../../src/env";
+import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import type { EmailTriggerCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Get compose name
   const [compose] = await globalThis.services.db
-    .select({ name: agentComposes.name })
+    .select({ name: agentComposes.name, orgId: agentComposes.orgId })
     .from(agentComposes)
     .where(eq(agentComposes.id, composeId))
     .limit(1);
@@ -138,6 +139,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!compose) {
     return errorResponse("Compose not found", 404);
   }
+
+  // Resolve org slug for from address
+  const orgId = payload.runtimeOrgId ?? compose.orgId;
+  const org = await getOrgData(orgId);
 
   // Get run output and session ID
   const logsUrl = buildLogsUrl(runId);
@@ -178,7 +183,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       : undefined;
 
   await enqueueEmail({
-    from: buildFromAddress(payload.triggerLocalPart ?? compose.name),
+    from: buildFromAddress(org.slug),
     to: emailTo,
     subject: buildSubject(payload.subject, compose.name),
     template: {

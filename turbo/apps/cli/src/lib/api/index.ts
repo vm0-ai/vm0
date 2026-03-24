@@ -34,13 +34,6 @@ export {
   listStorages,
 } from "./domains/storages";
 
-// Domain modules - Connectors
-export {
-  listConnectors,
-  deleteConnector,
-  getConnector,
-} from "./domains/connectors";
-
 // Domain modules - User Preferences
 export {
   getUserPreferences,
@@ -109,6 +102,17 @@ export {
   getZeroAgentInstructions,
   updateZeroAgentInstructions,
 } from "./domains/zero-agents";
+
+// Domain modules - Zero Connectors
+export {
+  listZeroConnectors,
+  getZeroConnector,
+  deleteZeroConnector,
+  createZeroConnectorSession,
+  getZeroConnectorSession,
+  createZeroComputerConnector,
+  deleteZeroComputerConnector,
+} from "./domains/zero-connectors";
 
 // Domain modules - Zero Schedules
 export {

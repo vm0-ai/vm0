@@ -4,9 +4,9 @@ import { listCommand } from "./list";
 import { statusCommand } from "./status";
 import { disconnectCommand } from "./disconnect";
 
-export const connectorCommand = new Command()
+export const zeroConnectorCommand = new Command()
   .name("connector")
-  .description("Manage third-party service connections")
+  .description("Manage third-party service connections (zero)")
   .addCommand(listCommand)
   .addCommand(statusCommand)
   .addCommand(connectCommand)

@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.153.0](https://github.com/vm0-ai/vm0/compare/web-v12.152.0...web-v12.153.0) (2026-03-24)
+
+
+### Features
+
+* add zero connector routes for sessions and computer ([#6298](https://github.com/vm0-ai/vm0/issues/6298)) ([82a4a38](https://github.com/vm0-ai/vm0/commit/82a4a38782a1d57a4535d6d70ad33d9bd25fca44)), closes [#6293](https://github.com/vm0-ai/vm0/issues/6293)
+* apply firewall policies when running zero agents ([#6288](https://github.com/vm0-ai/vm0/issues/6288)) ([f7a3f59](https://github.com/vm0-ai/vm0/commit/f7a3f594a5cf5a0eb8ace683da643d0e7276c4ab))
+
+
+### Refactoring
+
+* store connectors directly in zero_agents table ([#6301](https://github.com/vm0-ai/vm0/issues/6301)) ([0e8ba67](https://github.com/vm0-ai/vm0/commit/0e8ba67c5fe354f9698f412c149d9dd0b85b886c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.102.0
+
 ## [12.152.0](https://github.com/vm0-ai/vm0/compare/web-v12.151.0...web-v12.152.0) (2026-03-24)
 
 

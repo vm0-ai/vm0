@@ -15,7 +15,6 @@ import { logsCommand } from "./commands/logs";
 
 import { initCommand } from "./commands/init";
 
-import { connectorCommand } from "./commands/connector";
 import { preferenceCommand } from "./commands/preference";
 import { upgradeCommand } from "./commands/upgrade";
 import { whoamiCommand } from "./commands/whoami";
@@ -42,7 +41,6 @@ program.addCommand(cookCommand);
 program.addCommand(logsCommand);
 
 program.addCommand(initCommand);
-program.addCommand(connectorCommand);
 program.addCommand(preferenceCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(whoamiCommand);

@@ -1,5 +1,4 @@
 import { eq, and } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { badRequest } from "../errors";
 import { logger } from "../logger";
@@ -51,10 +50,6 @@ const DEFAULTS: UserPreferences = {
 /**
  * Get user preferences from org_members table.
  * Returns defaults if no row exists (new member).
- *
- * // TODO(#5514): remove this fallback after full backfill
- * Falls back to Clerk membership publicMetadata if no DB row,
- * and lazy-migrates the value to DB on first access.
  */
 export async function getUserPreferences(
   orgId: string,
@@ -81,62 +76,6 @@ export async function getUserPreferences(
       pinnedAgentIds: toStringArray(row.pinnedAgentIds),
       sendMode: parseSendMode(row.sendMode),
     };
-  }
-
-  // TODO(#5514): remove this fallback after full backfill
-  const client = await clerkClient();
-  const { data: memberships } =
-    await client.organizations.getOrganizationMembershipList({
-      organizationId: orgId,
-    });
-
-  const membership = memberships.find(
-    (m) => m.publicUserData?.userId === userId,
-  );
-  const meta = membership?.publicMetadata as
-    | Record<string, unknown>
-    | undefined;
-
-  if (meta && Object.keys(meta).length > 0) {
-    const prefs: UserPreferences = {
-      timezone: typeof meta.timezone === "string" ? meta.timezone : null,
-      notifyEmail: meta.notify_email === true,
-      notifySlack: meta.notify_slack !== false,
-      pinnedAgentIds: toStringArray(meta.pinned_agent_ids),
-      sendMode: parseSendMode(meta.send_mode),
-    };
-
-    const onboardingDone = meta.onboarding_done === true;
-
-    log.info("lazy migration: org_members preferences from Clerk", {
-      orgId,
-      userId,
-    });
-    const now = new Date();
-    await db
-      .insert(orgMembersMetadata)
-      .values({
-        orgId,
-        userId,
-        timezone: prefs.timezone,
-        notifyEmail: prefs.notifyEmail,
-        notifySlack: prefs.notifySlack,
-        pinnedAgentIds: prefs.pinnedAgentIds,
-        sendMode: prefs.sendMode,
-        onboardingDone,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing()
-      .catch((err: unknown) =>
-        log.warn("lazy migration: org_members write failed", {
-          orgId,
-          userId,
-          err,
-        }),
-      );
-
-    return prefs;
   }
 
   return { ...DEFAULTS };

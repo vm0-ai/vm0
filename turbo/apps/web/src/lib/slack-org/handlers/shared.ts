@@ -1,5 +1,4 @@
 import { eq, and } from "drizzle-orm";
-import { clerkClient } from "@clerk/nextjs/server";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
@@ -70,9 +69,7 @@ export async function resolveConnectionFromSlackUser(
 
 /**
  * Resolve default agent compose ID from org table.
- * Falls back to Clerk publicMetadata, then VM0_DEFAULT_AGENT env var.
- *
- * // TODO(#5514): remove Clerk fallback after full backfill
+ * Falls back to VM0_DEFAULT_AGENT env var.
  */
 export async function resolveDefaultComposeId(
   orgId: string,
@@ -87,34 +84,6 @@ export async function resolveDefaultComposeId(
     return orgRow.defaultAgentComposeId;
   }
 
-  // TODO(#5514): remove this fallback after full backfill
-  const client = await clerkClient();
-  const clerkOrg = await client.organizations.getOrganization({
-    organizationId: orgId,
-  });
-  const clerkComposeId = (
-    clerkOrg.publicMetadata as Record<string, unknown> | undefined
-  )?.default_agent_compose_id;
-
-  if (typeof clerkComposeId === "string" && clerkComposeId) {
-    log.info("lazy migration: default_agent_compose_id from Clerk", { orgId });
-    await globalThis.services.db
-      .insert(orgTable)
-      .values({ orgId, defaultAgentComposeId: clerkComposeId })
-      .onConflictDoUpdate({
-        target: orgTable.orgId,
-        set: { defaultAgentComposeId: clerkComposeId, updatedAt: new Date() },
-      })
-      .catch((err: unknown) =>
-        log.warn("lazy migration: default_agent_compose_id write failed", {
-          orgId,
-          err,
-        }),
-      );
-    return clerkComposeId;
-  }
-
-  // Fallback: resolve from VM0_DEFAULT_AGENT env var
   return resolveDefaultAgentComposeId();
 }
 
@@ -332,7 +301,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       id: string;
       name: string;
       displayName: string | null;
-      zeroAgentId: string;
+      agentId: string;
     }
   | undefined
 > {
@@ -351,7 +320,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
 
   const [agent] = await db
     .select({
-      zeroAgentId: zeroAgents.id,
+      agentId: zeroAgents.id,
       displayName: zeroAgents.displayName,
     })
     .from(zeroAgents)
@@ -369,7 +338,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     id: compose.id,
     name: compose.name,
     displayName: agent.displayName,
-    zeroAgentId: agent.zeroAgentId,
+    agentId: agent.agentId,
   };
 }
 

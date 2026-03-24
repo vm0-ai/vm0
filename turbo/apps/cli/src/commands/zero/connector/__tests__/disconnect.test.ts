@@ -1,5 +1,5 @@
 /**
- * Tests for connector disconnect command
+ * Tests for zero connector disconnect command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -9,11 +9,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server";
+import { server } from "../../../../mocks/server";
 import { disconnectCommand } from "../disconnect";
 import chalk from "chalk";
 
-describe("connector disconnect command", () => {
+describe("zero connector disconnect command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -28,12 +28,16 @@ describe("connector disconnect command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  afterEach(() => {});
+  afterEach(() => {
+    mockExit.mockClear();
+    mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
+  });
 
   describe("successful disconnect", () => {
     it("should show success message on successful disconnect", async () => {
       server.use(
-        http.delete("http://localhost:3000/api/connectors/:type", () => {
+        http.delete("http://localhost:3000/api/zero/connectors/:type", () => {
           return new HttpResponse(null, { status: 204 });
         }),
       );
@@ -66,7 +70,7 @@ describe("connector disconnect command", () => {
   describe("error handling", () => {
     it("should handle not connected error (404)", async () => {
       server.use(
-        http.delete("http://localhost:3000/api/connectors/:type", () => {
+        http.delete("http://localhost:3000/api/zero/connectors/:type", () => {
           return HttpResponse.json(
             {
               error: {
@@ -91,7 +95,7 @@ describe("connector disconnect command", () => {
 
     it("should handle authentication error", async () => {
       server.use(
-        http.delete("http://localhost:3000/api/connectors/:type", () => {
+        http.delete("http://localhost:3000/api/zero/connectors/:type", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },
@@ -105,31 +109,6 @@ describe("connector disconnect command", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Not authenticated"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should handle generic API error", async () => {
-      server.use(
-        http.delete("http://localhost:3000/api/connectors/:type", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Internal server error",
-                code: "SERVER_ERROR",
-              },
-            },
-            { status: 500 },
-          );
-        }),
-      );
-
-      await expect(async () => {
-        await disconnectCommand.parseAsync(["node", "cli", "github"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Internal server error"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

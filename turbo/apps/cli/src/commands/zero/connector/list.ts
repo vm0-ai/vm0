@@ -6,8 +6,8 @@ import {
   isFeatureEnabled,
   type ConnectorType,
 } from "@vm0/core";
-import { listConnectors } from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+import { listZeroConnectors } from "../../../lib/api";
+import { withErrorHandler } from "../../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
@@ -15,7 +15,7 @@ export const listCommand = new Command()
   .description("List all connectors and their status")
   .action(
     withErrorHandler(async () => {
-      const result = await listConnectors();
+      const result = await listZeroConnectors();
       const connectedMap = new Map(result.connectors.map((c) => [c.type, c]));
 
       const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
@@ -71,6 +71,6 @@ export const listCommand = new Command()
       // Always show connect hint
       console.log();
       console.log(chalk.dim("To connect a service:"));
-      console.log(chalk.dim("  vm0 connector connect <type>"));
+      console.log(chalk.dim("  vm0 zero connector connect <type>"));
     }),
   );

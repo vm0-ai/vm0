@@ -252,7 +252,7 @@ export function computeReplyRecipients(opts: {
 
 interface ResolvedAgent {
   composeId: string;
-  zeroAgentId: string;
+  agentId: string;
   userId: string;
   orgId: string;
   orgSlug: string;
@@ -293,7 +293,7 @@ export async function resolveAgentByAddress(
   // Compose must have a published version to be triggerable
   if (!compose.headVersionId) return null;
 
-  // 3. Resolve zeroAgentId by (orgId, name)
+  // 3. Resolve agentId by (orgId, name)
   const [agent] = await globalThis.services.db
     .select({ id: zeroAgents.id })
     .from(zeroAgents)
@@ -306,7 +306,7 @@ export async function resolveAgentByAddress(
 
   return {
     composeId: compose.id,
-    zeroAgentId: agent.id,
+    agentId: agent.id,
     userId: compose.userId,
     orgId: compose.orgId,
     orgSlug,

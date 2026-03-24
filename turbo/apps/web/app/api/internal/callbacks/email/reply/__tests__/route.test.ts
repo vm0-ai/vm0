@@ -164,6 +164,8 @@ describe("POST /api/internal/callbacks/email/reply", () => {
         headers: Record<string, string>;
       };
       expect(sendArgs.to).toBe("test@example.com");
+      // From address uses org slug instead of agent name
+      expect(sendArgs.from).toMatch(/^org-[a-f0-9]+ from VM0/);
       expect(sendArgs.replyTo).toContain("reply+");
       expect(sendArgs.headers["In-Reply-To"]).toBe(
         "<user-reply@mail.example.com>",
