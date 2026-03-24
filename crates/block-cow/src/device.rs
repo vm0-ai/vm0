@@ -122,6 +122,10 @@ impl CowDevice {
     /// given up and will rely on GC to clean up the orphaned dm targets.
     /// Prevents [`Drop`] from logging a redundant warning.
     pub fn abandon(&mut self) {
+        warn!(
+            id = self.id,
+            "COW device abandoned — relying on GC for cleanup"
+        );
         self.active = false;
     }
 
