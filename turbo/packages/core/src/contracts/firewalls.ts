@@ -103,6 +103,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "bright-data": ["bright-data"],
   browserbase: ["browserbase"],
   browserless: ["browserless"],
+  "cal-com": ["cal-com"],
   calendly: ["calendly"],
   clickup: ["clickup"],
   close: ["close"],
