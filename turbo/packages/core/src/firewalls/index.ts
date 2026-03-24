@@ -47,6 +47,7 @@ import { posthogFirewall } from "./posthog.generated";
 import { resendFirewall } from "./resend.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
+import { shortioFirewall } from "./shortio.generated";
 import { slackFirewall } from "./slack.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
@@ -100,6 +101,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   resend: resendFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
+  shortio: shortioFirewall,
   slack: slackFirewall,
   stripe: stripeFirewall,
   supabase: supabaseFirewall,

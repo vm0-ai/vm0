@@ -132,6 +132,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   resend: ["resend"],
   sentry: ["sentry"],
   serpapi: ["serpapi"],
+  shortio: ["shortio"],
   stripe: ["stripe"],
   supabase: ["supabase"],
   tavily: ["tavily"],
