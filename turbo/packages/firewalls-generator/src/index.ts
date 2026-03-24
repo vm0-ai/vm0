@@ -15,6 +15,7 @@ import { generate as generateJira } from "./jira";
 import { generate as generateNotion } from "./notion";
 import { generate as generateSlack } from "./slack";
 import { generate as generateVercel } from "./vercel";
+import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZeptomail } from "./zeptomail";
 import { createGoogleGenerator, googleServiceNames } from "./google";
@@ -29,6 +30,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   notion: generateNotion,
   slack: generateSlack,
   vercel: generateVercel,
+  zapier: generateZapier,
   zapsign: generateZapsign,
   zeptomail: generateZeptomail,
   ...Object.fromEntries(
