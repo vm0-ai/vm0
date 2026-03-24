@@ -104,6 +104,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   figma: ["figma"],
   notion: ["notion"],
   vercel: ["vercel"],
+  zeptomail: ["zeptomail"],
 };
 
 /** Get the firewall ref names for a connector type. Returns empty array if none. */
