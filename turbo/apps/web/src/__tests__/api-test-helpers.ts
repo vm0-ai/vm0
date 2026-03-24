@@ -364,7 +364,12 @@ export async function createTestOrg(
 export async function createTestCompose(
   agentName: string,
   options?: ComposeConfigOptions | Partial<AgentComposeYaml["agents"][string]>,
-): Promise<{ composeId: string; versionId: string; name: string }> {
+): Promise<{
+  composeId: string;
+  versionId: string;
+  name: string;
+  agentId: string;
+}> {
   const config = createDefaultComposeConfig(agentName, options);
   const request = createTestRequest(
     "http://localhost:3000/api/agent/composes",
@@ -398,7 +403,19 @@ export async function createTestCompose(
       .onConflictDoNothing();
   }
 
-  return result;
+  // Resolve the agentId from zero_agents
+  const [agentRow] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, compose!.orgId),
+        eq(zeroAgents.name, result.name),
+      ),
+    )
+    .limit(1);
+
+  return { ...result, agentId: agentRow!.id };
 }
 
 /**
@@ -2087,7 +2104,7 @@ export async function linkRunToSchedule(
  */
 export async function createTestEmailThreadSession(params: {
   userId: string;
-  composeId: string;
+  agentId: string;
   agentSessionId: string;
   replyToToken: string;
   lastEmailMessageId?: string | null;
@@ -2096,7 +2113,7 @@ export async function createTestEmailThreadSession(params: {
     .insert(emailThreadSessions)
     .values({
       userId: params.userId,
-      composeId: params.composeId,
+      agentId: params.agentId,
       agentSessionId: params.agentSessionId,
       replyToToken: params.replyToToken,
       lastEmailMessageId: params.lastEmailMessageId ?? null,

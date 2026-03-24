@@ -251,17 +251,15 @@ export function computeReplyRecipients(opts: {
 // ============================================================================
 
 interface ResolvedAgent {
-  composeId: string;
   agentId: string;
   userId: string;
   orgId: string;
   orgSlug: string;
-  headVersionId: string;
 }
 
 /**
- * Resolve an agent compose by org slug and agent name.
- * Returns compose details if found, null otherwise.
+ * Resolve an agent by org slug and agent name.
+ * Returns agent details if found, null otherwise.
  */
 export async function resolveAgentByAddress(
   orgSlug: string,
@@ -305,12 +303,10 @@ export async function resolveAgentByAddress(
   if (!agent) return null;
 
   return {
-    composeId: compose.id,
     agentId: agent.id,
     userId: compose.userId,
     orgId: compose.orgId,
     orgSlug,
-    headVersionId: compose.headVersionId,
   };
 }
 
@@ -517,7 +513,7 @@ export async function lookupEmailThreadSession(replyToToken: string) {
  */
 export async function saveEmailThreadSession(opts: {
   userId: string;
-  composeId: string;
+  agentId: string;
   agentSessionId: string;
   lastEmailMessageId: string | null;
   replyToToken: string;
@@ -525,7 +521,7 @@ export async function saveEmailThreadSession(opts: {
 }): Promise<void> {
   await globalThis.services.db.insert(emailThreadSessions).values({
     userId: opts.userId,
-    composeId: opts.composeId,
+    agentId: opts.agentId,
     agentSessionId: opts.agentSessionId,
     lastEmailMessageId: opts.lastEmailMessageId,
     replyToToken: opts.replyToToken,

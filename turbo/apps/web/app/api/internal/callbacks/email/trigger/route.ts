@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
@@ -25,7 +25,7 @@ function parsePayload(payload: unknown): EmailTriggerCallbackPayload | null {
   const p = payload as Record<string, unknown>;
   if (
     typeof p.senderEmail !== "string" ||
-    typeof p.composeId !== "string" ||
+    typeof p.agentId !== "string" ||
     typeof p.userId !== "string" ||
     typeof p.inboundEmailId !== "string" ||
     typeof p.replyToken !== "string"
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { senderEmail, composeId, userId, replyToken } = payload;
+  const { senderEmail, agentId, userId, replyToken } = payload;
 
   log.debug("Processing email trigger callback", { runId, status });
 
@@ -129,19 +129,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  // Get compose name
-  const [compose] = await globalThis.services.db
-    .select({ name: agentComposes.name, orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
+  // Get agent name and org
+  const [agent] = await globalThis.services.db
+    .select({ name: zeroAgents.name, orgId: zeroAgents.orgId })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
     .limit(1);
 
-  if (!compose) {
-    return errorResponse("Compose not found", 404);
+  if (!agent) {
+    return errorResponse("Agent not found", 404);
   }
 
   // Resolve org slug for from address
-  const orgId = payload.runtimeOrgId ?? compose.orgId;
+  const orgId = payload.runtimeOrgId ?? agent.orgId;
   const org = await getOrgData(orgId);
 
   // Get run output and session ID
@@ -185,10 +185,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   await enqueueEmail({
     from: buildFromAddress(org.slug),
     to: emailTo,
-    subject: buildSubject(payload.subject, compose.name),
+    subject: buildSubject(payload.subject, agent.name),
     template: {
       template: "agent-reply",
-      props: { agentName: compose.name, output, logsUrl, unsubscribeUrl },
+      props: { agentName: agent.name, output, logsUrl, unsubscribeUrl },
     },
     cc: emailCc,
     replyTo: replyToAddress,
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? {
           action: "save_thread_session",
           userId,
-          composeId,
+          agentId,
           agentSessionId,
           replyToToken: replyToken,
           orgId: payload.runtimeOrgId,
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   log.info("Sent email trigger response", {
     runId,
     status,
-    agentName: compose.name,
+    agentName: agent.name,
   });
 
   return NextResponse.json({ success: true });

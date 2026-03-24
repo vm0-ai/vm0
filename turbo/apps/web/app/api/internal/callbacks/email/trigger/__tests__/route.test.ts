@@ -24,7 +24,7 @@ const mockResend = vi.mocked(new Resend(""), true);
 
 interface TriggerCallbackPayload {
   senderEmail: string;
-  composeId: string;
+  agentId: string;
   userId: string;
   inboundEmailId: string;
   replyToken: string;
@@ -79,13 +79,15 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
     it("should reject request with invalid signature", async () => {
       const user = await context.setupUser({ prefix: "trigger-sig" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("trigger-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("trigger-agent"),
+      );
       const { runId } = await createTestRun(composeId, "Test prompt");
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-123",
         replyToken,
@@ -110,13 +112,15 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
     it("should reject request with expired timestamp", async () => {
       const user = await context.setupUser({ prefix: "trigger-exp" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("trigger-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("trigger-agent"),
+      );
       const { runId } = await createTestRun(composeId, "Test prompt");
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-123",
         replyToken,
@@ -144,7 +148,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const user = await context.setupUser({ prefix: "trigger-ok" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("trigger-agent");
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
@@ -153,7 +157,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const triggerLocalPart = `my-org+${agentName}`;
       const payload: TriggerCallbackPayload = {
         senderEmail,
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-123",
         replyToken,
@@ -201,14 +205,14 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const user = await context.setupUser({ prefix: "trigger-re" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("re-agent");
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-456",
         replyToken,
@@ -244,14 +248,14 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const user = await context.setupUser({ prefix: "trigger-replyall" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("replyall-agent");
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "user-a@example.com",
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-replyall",
         replyToken,
@@ -288,7 +292,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const user = await context.setupUser({ prefix: "trigger-fallback" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("fallback-agent");
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
@@ -296,7 +300,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const senderEmail = "sender@example.com";
       const payload: TriggerCallbackPayload = {
         senderEmail,
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-fallback",
         replyToken,
@@ -330,14 +334,14 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const user = await context.setupUser({ prefix: "trigger-fail" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("fail-agent");
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
       const payload: TriggerCallbackPayload = {
         senderEmail,
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-123",
         replyToken,
@@ -370,13 +374,13 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const user = await context.setupUser({ prefix: "trigger-progress" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("progress-agent");
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const payload: TriggerCallbackPayload = {
         senderEmail: "sender@example.com",
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-progress",
         replyToken,
@@ -408,7 +412,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const user = await context.setupUser({ prefix: "trigger-session" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("session-agent");
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const { runId } = await createTestRun(composeId, "Test prompt");
       await completeTestRun(user.userId, runId);
 
@@ -416,7 +420,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const senderEmail = "sender@example.com";
       const payload: TriggerCallbackPayload = {
         senderEmail,
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "email-123",
         replyToken,
@@ -440,7 +444,7 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
       const session = await findTestEmailThreadSession(replyToken);
       expect(session).toBeDefined();
       expect(session!.userId).toBe(user.userId);
-      expect(session!.composeId).toBe(composeId);
+      expect(session!.agentId).toBe(agentId);
       expect(session!.replyToToken).toBe(replyToken);
     });
   });

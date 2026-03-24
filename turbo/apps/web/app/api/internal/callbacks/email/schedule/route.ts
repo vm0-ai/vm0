@@ -4,7 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
-import { resolveComposeByAgentId } from "../../../../../../src/lib/schedule/schedule-service";
+import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
@@ -100,12 +100,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const unsubscribeUrl = buildUnsubscribeUrl(userId);
   const unsubscribeHeaders = buildUnsubscribeHeaders(unsubscribeUrl);
 
-  // Resolve compose and org slug for from address
-  const compose = await resolveComposeByAgentId(payload.agentId);
-  if (!compose) {
-    return errorResponse("Compose not found for zero agent", 404);
+  // Resolve agent and org slug for from address
+  const [agent] = await globalThis.services.db
+    .select({ orgId: zeroAgents.orgId })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, payload.agentId))
+    .limit(1);
+
+  if (!agent) {
+    return errorResponse("Agent not found", 404);
   }
-  const org = await getOrgData(compose.orgId);
+  const org = await getOrgData(agent.orgId);
 
   if (status === "completed") {
     // Get agent output
@@ -149,7 +154,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ? {
             action: "save_thread_session" as const,
             userId,
-            composeId: compose.id,
+            agentId: payload.agentId,
             agentSessionId,
             replyToToken: replyToken,
           }

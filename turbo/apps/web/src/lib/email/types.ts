@@ -63,7 +63,7 @@ export type EmailTemplate =
 interface SaveThreadSessionAction {
   action: "save_thread_session";
   userId: string;
-  composeId: string;
+  agentId: string;
   agentSessionId: string;
   replyToToken: string;
   orgId?: string;

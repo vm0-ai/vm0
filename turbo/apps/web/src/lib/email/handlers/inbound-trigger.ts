@@ -15,7 +15,6 @@ import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
 import { resolveOrgOrNull } from "../../org/resolve-org";
-import { canAccessCompose } from "../../agent/compose-access";
 import { logger } from "../../logger";
 
 const log = logger("email:inbound-trigger");
@@ -170,17 +169,13 @@ export async function handleInboundEmailTrigger(
     };
   }
 
-  // 4. Check permission
-  const hasAccess = canAccessCompose(userId, runtimeOrgId, {
-    id: compose.composeId,
-    userId: compose.userId,
-    orgId: compose.orgId,
-  });
+  // 4. Check permission (org-based access check)
+  const hasAccess = compose.orgId === runtimeOrgId;
 
   if (!hasAccess) {
     log.debug("User does not have access to agent", {
       userId,
-      composeId: compose.composeId,
+      agentId: compose.agentId,
     });
     return {
       ok: false,
@@ -259,7 +254,7 @@ export async function handleInboundEmailTrigger(
       secret: generateCallbackSecret(),
       payload: {
         senderEmail,
-        composeId: compose.composeId,
+        agentId: compose.agentId,
         userId,
         inboundEmailId: emailId,
         replyToken,

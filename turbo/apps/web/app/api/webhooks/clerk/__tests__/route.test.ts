@@ -316,7 +316,7 @@ describe("organization.deleted e2e cleanup", () => {
     // --- Populate org with data across all table types ---
 
     // Composes + sessions + runs
-    const { composeId } = await createTestCompose("e2e-org-test");
+    const { composeId, agentId } = await createTestCompose("e2e-org-test");
     const session = await createTestAgentSession(userId, composeId);
     await createTestRunInDb(userId, composeId, {
       status: "running",
@@ -326,7 +326,7 @@ describe("organization.deleted e2e cleanup", () => {
     // Email thread session
     await createTestEmailThreadSession({
       userId,
-      composeId,
+      agentId,
       agentSessionId: session.id,
       replyToToken: uniqueId("reply"),
     });
@@ -483,7 +483,7 @@ describe("user.deleted e2e cleanup", () => {
     // --- Populate user data across all table types ---
 
     // Composes + sessions + runs
-    const { composeId } = await createTestCompose("e2e-user-test");
+    const { composeId, agentId } = await createTestCompose("e2e-user-test");
     const session = await createTestAgentSession(userId, composeId);
     await createTestRunInDb(userId, composeId, {
       status: "running",
@@ -493,7 +493,7 @@ describe("user.deleted e2e cleanup", () => {
     // Email thread session
     await createTestEmailThreadSession({
       userId,
-      composeId,
+      agentId,
       agentSessionId: session.id,
       replyToToken: uniqueId("reply"),
     });

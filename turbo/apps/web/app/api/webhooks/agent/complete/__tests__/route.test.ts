@@ -1256,7 +1256,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Set up an email reply callback
       const emailUser = await context.setupUser({ prefix: "email-cb" });
       mockClerk({ userId: emailUser.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(
         emailUser.userId,
         composeId,
@@ -1265,7 +1267,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       const emailSession = await createTestEmailThreadSession({
         userId: emailUser.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
         lastEmailMessageId: "<original-msg-id@vm7.bot>",

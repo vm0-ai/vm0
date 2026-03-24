@@ -1345,6 +1345,13 @@
       "when": 1774569600000,
       "tag": "0191_rename_zero_agent_id_to_agent_id",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1774656000000,
+      "tag": "0192_email_thread_sessions_composeid_to_agentid",
+      "breakpoints": true
     }
   ]
 }
