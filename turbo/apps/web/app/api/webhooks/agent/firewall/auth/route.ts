@@ -74,6 +74,15 @@ async function refreshExpiredTokens(
     );
   });
 
+  // Build reverse map: connectorType → [envVarNames that reference its token]
+  // so we can sync mapped env var values after refresh.
+  const envVarsByConnector = new Map<string, string[]>();
+  for (const [envVar, ct] of refreshable) {
+    const arr = envVarsByConnector.get(ct) ?? [];
+    arr.push(envVar);
+    envVarsByConnector.set(ct, arr);
+  }
+
   const results = await Promise.all(
     toRefresh.map(async (connectorType) => {
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
@@ -87,8 +96,15 @@ async function refreshExpiredTokens(
         log.warn(
           `[${auth.runId}] Failed to refresh ${connectorType} token, using existing`,
         );
+        return false;
       }
-      return !!freshToken;
+      // refreshConnectorAccessToken updates secrets[rawSecretName] but the
+      // template may reference a mapped env var name.  Sync all mapped keys
+      // so resolveTemplates picks up the fresh token.
+      for (const envVar of envVarsByConnector.get(connectorType) ?? []) {
+        secrets[envVar] = freshToken;
+      }
+      return true;
     }),
   );
   const refreshed = results.some(Boolean);

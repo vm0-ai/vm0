@@ -506,14 +506,25 @@ async function resolveConnectorSecrets(
   }
 
   // Build secretConnectorMap for refresh-capable OAuth connectors.
-  // Maps access token secret name → connector type so the auth endpoint
-  // can refresh expired tokens at runtime.
+  // Maps secret/env-var name → connector type so the auth endpoint can refresh
+  // expired tokens at runtime.  Both the raw secret name (e.g.
+  // GOOGLE_CALENDAR_ACCESS_TOKEN) and the mapped env var name (e.g.
+  // GOOGLE_CALENDAR_TOKEN) are included because firewall templates may
+  // reference either form.
   const secretConnectorMap: Record<string, string> = {};
   for (const { type } of validConnectors) {
     if (!(type in PROVIDER_HANDLERS)) continue;
     const handler = PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
-    if (handler.refreshToken) {
-      secretConnectorMap[handler.getSecretName()] = type;
+    if (!handler.refreshToken) continue;
+
+    const secretName = handler.getSecretName();
+    secretConnectorMap[secretName] = type;
+
+    const mapping = getConnectorEnvironmentMapping(type);
+    for (const [envVar, valueRef] of Object.entries(mapping)) {
+      if (valueRef === `$secrets.${secretName}`) {
+        secretConnectorMap[envVar] = type;
+      }
     }
   }
 
