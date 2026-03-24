@@ -35,6 +35,7 @@
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:jira": "tsx src/index.ts jira",
     "generate:linear": "tsx src/index.ts linear",
+    "generate:loops": "tsx src/index.ts loops",
     "generate:monday": "tsx src/index.ts monday",
     "generate:neon": "tsx src/index.ts neon",
     "generate:notion": "tsx src/index.ts notion",

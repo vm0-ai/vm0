@@ -119,6 +119,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   intercom: ["intercom"],
   atlassian: ["jira", "confluence"],
   linear: ["linear"],
+  loops: ["loops"],
   monday: ["monday"],
   neon: ["neon"],
   figma: ["figma"],

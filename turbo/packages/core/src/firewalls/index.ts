@@ -36,6 +36,7 @@ import { hubspotFirewall } from "./hubspot.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { jiraFirewall } from "./jira.generated";
 import { linearFirewall } from "./linear.generated";
+import { loopsFirewall } from "./loops.generated";
 import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
@@ -87,6 +88,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   intercom: intercomFirewall,
   jira: jiraFirewall,
   linear: linearFirewall,
+  loops: loopsFirewall,
   monday: mondayFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
