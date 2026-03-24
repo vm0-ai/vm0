@@ -29,7 +29,8 @@ const router = tsr.router(zeroSchedulesByNameContract, {
         org: { orgId },
       } = await resolveOrg(authCtx, orgSlug);
 
-      await deleteSchedule(userId, orgId, query.zeroAgentId, params.name);
+      const resolvedAgentId = (query.zeroAgentId ?? query.composeId)!;
+      await deleteSchedule(userId, orgId, resolvedAgentId, params.name);
 
       return {
         status: 204 as const,

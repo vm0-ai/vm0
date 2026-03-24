@@ -91,6 +91,29 @@ describe("POST /api/zero/schedules/:name/enable", () => {
     expect(data.error.code).toBe("NOT_FOUND");
   });
 
+  it("should enable schedule with composeId fallback", async () => {
+    await createTestSchedule(testComposeId, "enable-compose", {
+      cronExpression: "0 9 * * *",
+      prompt: "Enable via composeId",
+    });
+
+    const response = await POST(
+      createTestRequest(
+        `http://localhost:3000/api/zero/schedules/enable-compose/enable?org=${slug}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ composeId: testComposeId }),
+        },
+      ),
+      { params: Promise.resolve({ name: "enable-compose" }) },
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.enabled).toBe(true);
+  });
+
   it("should return 400 for invalid body", async () => {
     const response = await POST(
       createTestRequest(

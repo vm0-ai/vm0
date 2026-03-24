@@ -8,7 +8,14 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import { enableSchedule } from "../../../../../../src/lib/schedule";
 import { isNotFound, isSchedulePast } from "../../../../../../src/lib/errors";
 
-const bodySchema = z.object({ zeroAgentId: z.string() });
+const bodySchema = z
+  .object({
+    zeroAgentId: z.string().optional(),
+    composeId: z.string().optional(),
+  })
+  .refine((data) => Boolean(data.zeroAgentId ?? data.composeId), {
+    message: "Either 'zeroAgentId' or 'composeId' must be provided",
+  });
 
 export async function POST(
   request: Request,
@@ -41,12 +48,8 @@ export async function POST(
   }
 
   try {
-    const schedule = await enableSchedule(
-      userId,
-      orgId,
-      parsed.data.zeroAgentId,
-      name,
-    );
+    const resolvedAgentId = (parsed.data.zeroAgentId ?? parsed.data.composeId)!;
+    const schedule = await enableSchedule(userId, orgId, resolvedAgentId, name);
 
     return Response.json(schedule, { status: 200 });
   } catch (error) {

@@ -123,6 +123,30 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.error.code).toBe("NOT_FOUND");
   });
 
+  it("should create schedule with composeId fallback", async () => {
+    const response = await POST(
+      createTestRequest(
+        `http://localhost:3000/api/zero/schedules?org=${slug}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            composeId: testComposeId,
+            name: "compose-fallback",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+            prompt: "Run via composeId",
+          }),
+        },
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.created).toBe(true);
+    expect(data.schedule.name).toBe("compose-fallback");
+  });
+
   it("should reject unauthenticated request", async () => {
     mockClerk({ userId: null });
 

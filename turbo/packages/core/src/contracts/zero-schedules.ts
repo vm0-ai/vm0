@@ -48,7 +48,8 @@ export const deployScheduleResponseSchema = z.object({
 });
 
 /**
- * Zero deploy schedule request — uses zeroAgentId instead of composeId
+ * Zero deploy schedule request — accepts zeroAgentId or composeId (at least one required).
+ * The backend resolves composeId to zeroAgentId via loadZeroAgent() fallback.
  */
 const zeroDeployScheduleRequestSchema = z
   .object({
@@ -63,11 +64,14 @@ const zeroDeployScheduleRequestSchema = z
     artifactName: z.string().optional(),
     artifactVersion: z.string().optional(),
     volumeVersions: z.record(z.string(), z.string()).optional(),
-    // Resolved zero agent ID (platform resolves org/name → zeroAgentId)
-    zeroAgentId: z.string().uuid("Invalid agent ID"),
+    zeroAgentId: z.string().uuid("Invalid agent ID").optional(),
+    composeId: z.string().uuid("Invalid compose ID").optional(),
     enabled: z.boolean().optional(),
     notifyEmail: z.boolean().optional(),
     notifySlack: z.boolean().optional(),
+  })
+  .refine((data) => Boolean(data.zeroAgentId ?? data.composeId), {
+    message: "Either 'zeroAgentId' or 'composeId' must be provided",
   })
   .refine(
     (data) => {
@@ -127,9 +131,14 @@ export const zeroSchedulesByNameContract = c.router({
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
-    query: z.object({
-      zeroAgentId: z.string().uuid("Agent ID required"),
-    }),
+    query: z
+      .object({
+        zeroAgentId: z.string().uuid("Invalid agent ID").optional(),
+        composeId: z.string().uuid("Invalid compose ID").optional(),
+      })
+      .refine((data) => Boolean(data.zeroAgentId ?? data.composeId), {
+        message: "Either 'zeroAgentId' or 'composeId' must be provided",
+      }),
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
@@ -151,9 +160,14 @@ export const zeroSchedulesEnableContract = c.router({
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
-    body: z.object({
-      zeroAgentId: z.string().uuid("Agent ID required"),
-    }),
+    body: z
+      .object({
+        zeroAgentId: z.string().uuid("Invalid agent ID").optional(),
+        composeId: z.string().uuid("Invalid compose ID").optional(),
+      })
+      .refine((data) => Boolean(data.zeroAgentId ?? data.composeId), {
+        message: "Either 'zeroAgentId' or 'composeId' must be provided",
+      }),
     responses: {
       200: scheduleResponseSchema,
       400: apiErrorSchema,
@@ -170,9 +184,14 @@ export const zeroSchedulesEnableContract = c.router({
     pathParams: z.object({
       name: z.string().min(1, "Schedule name required"),
     }),
-    body: z.object({
-      zeroAgentId: z.string().uuid("Agent ID required"),
-    }),
+    body: z
+      .object({
+        zeroAgentId: z.string().uuid("Invalid agent ID").optional(),
+        composeId: z.string().uuid("Invalid compose ID").optional(),
+      })
+      .refine((data) => Boolean(data.zeroAgentId ?? data.composeId), {
+        message: "Either 'zeroAgentId' or 'composeId' must be provided",
+      }),
     responses: {
       200: scheduleResponseSchema,
       400: apiErrorSchema,
