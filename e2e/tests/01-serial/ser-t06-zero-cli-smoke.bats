@@ -12,7 +12,7 @@ load '../../helpers/setup'
     assert_output --partial "org"
 }
 
-@test "zero --help does not show compose, run, volume commands" {
+@test "zero --help does not show compose, volume, artifact commands" {
     run zero --help
     assert_success
     refute_output --partial "compose"
