@@ -72,7 +72,9 @@ export const zeroAgentSchedules = pgTable(
     enabled: boolean("enabled").default(true).notNull(),
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),
-    lastRunId: uuid("last_run_id").references(() => agentRuns.id),
+    lastRunId: uuid("last_run_id").references(() => agentRuns.id, {
+      onDelete: "set null",
+    }),
     // Tracks when retry cycle started for concurrency failures (null = not retrying)
     retryStartedAt: timestamp("retry_started_at"),
     // Tracks consecutive failures for loop schedules (auto-disable after 3)

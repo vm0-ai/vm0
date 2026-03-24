@@ -1324,6 +1324,13 @@
       "when": 1774322025620,
       "tag": "0188_fresh_matthew_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1774396800000,
+      "tag": "0189_amazing_yellowjacket",
+      "breakpoints": true
     }
   ]
 }
