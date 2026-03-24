@@ -22,12 +22,7 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Maximum attempts to destroy a COW device after killing Firecracker.
-/// The inner FC process (via `sudo -u` in netns) may still be exiting.
-const DESTROY_RETRIES: u32 = 5;
-
-/// Delay between COW device destroy retries during snapshot teardown.
-const DESTROY_RETRY_DELAY: Duration = Duration::from_millis(500);
+use crate::factory::{DESTROY_RETRIES, DESTROY_RETRY_DELAY};
 
 /// Configuration for creating a snapshot.
 #[derive(Debug, Clone)]

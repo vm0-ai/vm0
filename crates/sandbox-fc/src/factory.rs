@@ -8,11 +8,12 @@ use block_cow::{BaseHandle, BaseImagePool, CowDevice, CowDeviceConfig};
 use crate::config::FirecrackerConfig;
 
 /// Maximum attempts to destroy a COW device after killing Firecracker.
-/// The inner process may still be releasing file descriptors.
-const DESTROY_RETRIES: u32 = 5;
+/// The inner process (inside netns via `sudo -u`) may still be releasing
+/// file descriptors after the outer `sudo` exits.
+pub(crate) const DESTROY_RETRIES: u32 = 5;
 
 /// Delay between COW device destroy retries.
-const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
+pub(crate) const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
