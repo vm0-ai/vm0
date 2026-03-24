@@ -117,7 +117,7 @@ describe("POST /api/zero/slack/events", () => {
 
     it("does not post error when run was created (callback handles it)", async () => {
       const compose = await createTestCompose(uniqueId("agent"));
-      await updateOrgDefaultAgent(user.orgId, compose.composeId);
+      await updateOrgDefaultAgent(user.orgId, compose.agentId);
       const { workspaceId, slackUserId } = await setupWorkspace(user.orgId);
 
       const request = createSlackEventRequest({
@@ -150,12 +150,12 @@ describe("POST /api/zero/slack/events", () => {
 
     it("posts error when run was not created (no callback)", async () => {
       // Set up a compose WITHOUT a version → startRun fails before creating the run
-      const { composeId } = await seedTestCompose({
+      const { agentId } = await seedTestCompose({
         userId: user.userId,
         name: uniqueId("agent"),
         orgId: user.orgId,
       });
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      await updateOrgDefaultAgent(user.orgId, agentId);
       const { workspaceId, slackUserId } = await setupWorkspace(user.orgId);
 
       const request = createSlackEventRequest({
@@ -202,7 +202,7 @@ describe("POST /api/zero/slack/events", () => {
 
     it("does not post error when run was created (callback handles it)", async () => {
       const compose = await createTestCompose(uniqueId("agent"));
-      await updateOrgDefaultAgent(user.orgId, compose.composeId);
+      await updateOrgDefaultAgent(user.orgId, compose.agentId);
       const { workspaceId, slackUserId } = await setupWorkspace(user.orgId);
 
       const request = createSlackEventRequest({
@@ -232,12 +232,12 @@ describe("POST /api/zero/slack/events", () => {
     });
 
     it("posts error when run was not created (no callback)", async () => {
-      const { composeId } = await seedTestCompose({
+      const { agentId } = await seedTestCompose({
         userId: user.userId,
         name: uniqueId("agent"),
         orgId: user.orgId,
       });
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      await updateOrgDefaultAgent(user.orgId, agentId);
       const { workspaceId, slackUserId } = await setupWorkspace(user.orgId);
 
       const request = createSlackEventRequest({

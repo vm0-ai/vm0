@@ -30,6 +30,9 @@ import postgres from "postgres";
 import { orgMetadata } from "../../../src/db/schema/org-metadata";
 import { orgMembersMetadata } from "../../../src/db/schema/org-members-metadata";
 import { users } from "../../../src/db/schema/user";
+import { agentComposes } from "../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../src/db/schema/zero-agent";
+import { eq, and } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -149,21 +152,41 @@ export async function backfillOrgMetadata(
           continue;
         }
 
+        // Resolve Clerk's compose UUID → zero agent UUID
+        let zeroAgentId: string | null = null;
+        if (clerkComposeId) {
+          const [row] = await db
+            .select({
+              agentId: zeroAgents.id,
+            })
+            .from(agentComposes)
+            .innerJoin(
+              zeroAgents,
+              and(
+                eq(zeroAgents.orgId, agentComposes.orgId),
+                eq(zeroAgents.name, agentComposes.name),
+              ),
+            )
+            .where(eq(agentComposes.id, clerkComposeId))
+            .limit(1);
+          zeroAgentId = row?.agentId ?? null;
+        }
+
         if (!dryRun) {
           await db
             .insert(orgMetadata)
             .values({
               orgId: org.id,
               tier: clerkTier,
-              defaultAgentComposeId: clerkComposeId,
+              defaultAgentId: zeroAgentId,
             })
             .onConflictDoUpdate({
               target: orgMetadata.orgId,
               set: {
                 // Only update tier if DB still has default "free"
                 tier: sql`CASE WHEN ${orgMetadata.tier} = 'free' THEN EXCLUDED.tier ELSE ${orgMetadata.tier} END`,
-                // Only update defaultAgentComposeId if DB is null
-                defaultAgentComposeId: sql`COALESCE(${orgMetadata.defaultAgentComposeId}, EXCLUDED.default_agent_compose_id)`,
+                // Only update defaultAgentId if DB is null
+                defaultAgentId: sql`COALESCE(${orgMetadata.defaultAgentId}, EXCLUDED.default_agent_id)`,
                 updatedAt: sql`NOW()`,
               },
             });
@@ -171,7 +194,7 @@ export async function backfillOrgMetadata(
 
         stats.orgs.upserted++;
         console.log(
-          `  org ${org.id}: tier=${clerkTier}, composeId=${clerkComposeId ?? "null"}${dryRun ? " (dry-run)" : ""}`,
+          `  org ${org.id}: tier=${clerkTier}, agentId=${zeroAgentId ?? "null"}${dryRun ? " (dry-run)" : ""}`,
         );
       } catch (err) {
         stats.errors.push({ type: "org", id: org.id, error: String(err) });

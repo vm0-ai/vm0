@@ -2976,29 +2976,29 @@ export async function updateOrgTier(
 }
 
 /**
- * Read the default agent compose ID for an org from the `org` table.
+ * Read the default agent ID (zero agent UUID) for an org from org_metadata.
  */
 export async function getOrgDefaultAgent(
   orgId: string,
 ): Promise<string | null> {
   const [row] = await globalThis.services.db
-    .select({ defaultAgentComposeId: orgMetadata.defaultAgentComposeId })
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
-  return row?.defaultAgentComposeId ?? null;
+  return row?.defaultAgentId ?? null;
 }
 
 /**
- * Update the default_agent_compose_id for an org in the `org` table.
+ * Update the default_agent_id (zero agent UUID) for an org in org_metadata.
  */
 export async function updateOrgDefaultAgent(
   orgId: string,
-  composeId: string,
+  agentId: string,
 ): Promise<void> {
   await globalThis.services.db
     .update(orgMetadata)
-    .set({ defaultAgentComposeId: composeId, updatedAt: new Date() })
+    .set({ defaultAgentId: agentId, updatedAt: new Date() })
     .where(eq(orgMetadata.orgId, orgId));
 }
 
@@ -3755,14 +3755,30 @@ export async function findTestCreditUsagesByRunId(runId: string): Promise<
 }
 
 /**
- * Delete a compose from the database.
+ * Delete a compose and its matching zero agent from the database.
  * Used to simulate a user deleting an agent compose.
  */
 export async function deleteTestCompose(composeId: string): Promise<void> {
   initServices();
+  // Resolve the compose's (orgId, name) to also delete the matching zero agent
+  const [compose] = await globalThis.services.db
+    .select({ orgId: agentComposes.orgId, name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
   await globalThis.services.db
     .delete(agentComposes)
     .where(eq(agentComposes.id, composeId));
+  if (compose) {
+    await globalThis.services.db
+      .delete(zeroAgents)
+      .where(
+        and(
+          eq(zeroAgents.orgId, compose.orgId),
+          eq(zeroAgents.name, compose.name),
+        ),
+      );
+  }
 }
 
 /**
@@ -3843,7 +3859,7 @@ export async function seedTestCompose(opts: {
   userId: string;
   name: string;
   orgId: string;
-}): Promise<{ composeId: string }> {
+}): Promise<{ composeId: string; agentId: string }> {
   initServices();
   const [row] = await globalThis.services.db
     .insert(agentComposes)
@@ -3858,12 +3874,28 @@ export async function seedTestCompose(opts: {
   }
 
   // Ensure a matching zero_agents row exists so handlers can resolve agentId
-  await globalThis.services.db
+  const [agentRow] = await globalThis.services.db
     .insert(zeroAgents)
     .values({ orgId: opts.orgId, name: opts.name })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: zeroAgents.id });
 
-  return { composeId: row.id };
+  // If onConflictDoNothing didn't return (row already existed), fetch it
+  let agentId: string;
+  if (agentRow) {
+    agentId = agentRow.id;
+  } else {
+    const [existing] = await globalThis.services.db
+      .select({ id: zeroAgents.id })
+      .from(zeroAgents)
+      .where(
+        and(eq(zeroAgents.orgId, opts.orgId), eq(zeroAgents.name, opts.name)),
+      )
+      .limit(1);
+    agentId = existing!.id;
+  }
+
+  return { composeId: row.id, agentId };
 }
 
 /**

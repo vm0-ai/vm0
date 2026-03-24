@@ -533,8 +533,8 @@ describe("POST /api/zero/email/inbound", () => {
       const agentName = uniqueId("trigger-agent");
 
       // Create compose and set it as the org's default agent
-      const { composeId, agentId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       // Mock Clerk to return the user when looking up by email
       const senderEmail = "sender@example.com";
@@ -740,8 +740,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("dmarc-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dmarc-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       const senderEmail = "spoofed@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -795,8 +795,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("dkim-pass-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dkim-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       const senderEmail = "user@nodmarc.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -848,8 +848,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("no-auth-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noauth-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       const senderEmail = "user@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -898,8 +898,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("all-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("allfail-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       const senderEmail = "user@misconfigured.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -951,8 +951,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("empty-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("empty-body-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -999,8 +999,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("html-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("html-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1112,8 +1112,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("att-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("att-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, composeId);
+      const { agentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, agentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1208,9 +1208,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("att-oversize-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("oversize-agent");
-      const { composeId: oversizeComposeId } =
-        await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, oversizeComposeId);
+      const { agentId: oversizeAgentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, oversizeAgentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1271,8 +1270,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("att-dl-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dlfail-agent");
-      const { composeId: dlfailComposeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, dlfailComposeId);
+      const { agentId: dlfailAgentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, dlfailAgentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1341,8 +1340,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("att-mixed-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("mixed-agent");
-      const { composeId: mixedComposeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, mixedComposeId);
+      const { agentId: mixedAgentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, mixedAgentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1448,8 +1447,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("inline-img-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("inline-agent");
-      const { composeId: inlineComposeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, inlineComposeId);
+      const { agentId: inlineAgentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, inlineAgentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1532,8 +1531,8 @@ describe("POST /api/zero/email/inbound", () => {
       const suffix = user.userId.slice("inline-noalt-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noalt-agent");
-      const { composeId: noaltComposeId } = await createTestCompose(agentName);
-      await updateOrgDefaultAgent(user.orgId, noaltComposeId);
+      const { agentId: noaltAgentId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, noaltAgentId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1802,8 +1801,8 @@ describe("POST /api/zero/email/inbound", () => {
     const suffix = user.userId.slice("crash-user-".length);
     const orgSlug = `org-${suffix}`;
     const agentName = uniqueId("crash-agent");
-    const { composeId: crashComposeId } = await createTestCompose(agentName);
-    await updateOrgDefaultAgent(user.orgId, crashComposeId);
+    const { agentId: crashAgentId } = await createTestCompose(agentName);
+    await updateOrgDefaultAgent(user.orgId, crashAgentId);
 
     // Mock Clerk to return the user when looking up by email
     const senderEmail = "crash-sender@example.com";

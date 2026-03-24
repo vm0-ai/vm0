@@ -13,6 +13,7 @@ import {
   insertUserRow,
   deleteUserRow,
   getTestDb,
+  seedTestCompose,
 } from "./api-test-helpers";
 import {
   backfillOrgMetadata,
@@ -157,13 +158,23 @@ describe("backfill-clerk-metadata", () => {
       const orgId = uniqueId("bf-org");
       trackOrg(orgId);
 
+      // Create org row + compose + agent so backfill can resolve compose UUID → agent UUID
+      await ensureOrgRow(orgId);
+      const userId = uniqueId("bf-user");
+      const agentName = uniqueId("bf-agent");
+      const { composeId, agentId } = await seedTestCompose({
+        userId,
+        name: agentName,
+        orgId,
+      });
+
       const clerk = mockClerkClient({
         orgs: [
           {
             id: orgId,
             publicMetadata: {
               tier: "pro",
-              default_agent_compose_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+              default_agent_compose_id: composeId,
             },
           },
         ],
@@ -174,9 +185,8 @@ describe("backfill-clerk-metadata", () => {
       const row = await getOrgRow(orgId);
       expect(row).toBeDefined();
       expect(row!.tier).toBe("pro");
-      expect(row!.defaultAgentComposeId).toBe(
-        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-      );
+      // Backfill resolves compose UUID → zero agent UUID
+      expect(row!.defaultAgentId).toBe(agentId);
       expect(stats.orgs.processed).toBe(1);
       expect(stats.orgs.upserted).toBe(1);
       expect(stats.orgs.skipped).toBe(0);
@@ -230,20 +240,33 @@ describe("backfill-clerk-metadata", () => {
       expect(row!.tier).toBe("pro"); // Updated from "free" to "pro"
     });
 
-    it("preserves existing defaultAgentComposeId when not null", async () => {
+    it("preserves existing defaultAgentId when not null", async () => {
       const orgId = uniqueId("bf-org-cid");
       trackOrg(orgId);
-      const existingId = "11111111-2222-3333-4444-555555555555";
-      const clerkId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
       await ensureOrgRow(orgId);
-      await updateOrgDefaultAgent(orgId, existingId);
+
+      // Create a real agent so FK is satisfied
+      const userId = uniqueId("bf-user-cid");
+      const { agentId: existingAgentId, composeId: existingComposeId } =
+        await seedTestCompose({ userId, name: uniqueId("bf-existing"), orgId });
+      await updateOrgDefaultAgent(orgId, existingAgentId);
+
+      // Clerk has a different compose UUID for the same org
+      const { composeId: clerkComposeId } = await seedTestCompose({
+        userId,
+        name: uniqueId("bf-clerk"),
+        orgId,
+      });
 
       const clerk = mockClerkClient({
         orgs: [
           {
             id: orgId,
-            publicMetadata: { tier: "pro", default_agent_compose_id: clerkId },
+            publicMetadata: {
+              tier: "pro",
+              default_agent_compose_id: clerkComposeId,
+            },
           },
         ],
       });
@@ -251,7 +274,7 @@ describe("backfill-clerk-metadata", () => {
       await backfillOrgMetadata(clerk, db(), stats, false);
 
       const row = await getOrgRow(orgId);
-      expect(row!.defaultAgentComposeId).toBe(existingId); // Not overwritten
+      expect(row!.defaultAgentId).toBe(existingAgentId); // Not overwritten
     });
 
     it("does not write in dry-run mode", async () => {

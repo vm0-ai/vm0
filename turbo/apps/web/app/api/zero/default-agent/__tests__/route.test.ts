@@ -92,9 +92,9 @@ describe("PUT /api/zero/default-agent", () => {
 
     await putDefaultAgent(undefined, compose.composeId);
 
-    // Verify the value was persisted to the org table
+    // Verify the value was persisted to the org table (stored as zero agent UUID)
     const storedId = await getOrgDefaultAgent(orgId);
-    expect(storedId).toBe(compose.composeId);
+    expect(storedId).toBe(compose.agentId);
   });
 
   it("should not update org table when 409 conflict prevents unsetting", async () => {
@@ -107,9 +107,9 @@ describe("PUT /api/zero/default-agent", () => {
     const response = await putDefaultAgent(undefined, null);
     expect(response.status).toBe(409);
 
-    // org table should still have the original value
+    // org table should still have the original value (stored as zero agent UUID)
     const storedId = await getOrgDefaultAgent(orgId);
-    expect(storedId).toBe(compose.composeId);
+    expect(storedId).toBe(compose.agentId);
   });
 
   it("should return 409 when setting default agent twice", async () => {
@@ -174,8 +174,8 @@ describe("PUT /api/zero/default-agent", () => {
     const data = await response.json();
     expect(data.agentId).toBe(compose.composeId);
 
-    // Verify the value was persisted to the org table
+    // Verify the value was persisted to the org table (stored as zero agent UUID)
     const storedId = await getOrgDefaultAgent(orgId);
-    expect(storedId).toBe(compose.composeId);
+    expect(storedId).toBe(compose.agentId);
   });
 });

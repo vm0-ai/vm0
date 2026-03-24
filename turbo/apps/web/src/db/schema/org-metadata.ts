@@ -8,6 +8,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { zeroAgents } from "./zero-agent";
 
 /**
  * org_metadata — stores per-org data that is owned by the platform (not Clerk).
@@ -22,7 +23,9 @@ export const orgMetadata = pgTable(
     // current balance (migration 0180 only changed the column DEFAULT, not rows).
     credits: bigint("credits", { mode: "number" }).notNull().default(10_000),
     tier: text("tier").notNull().default("free"),
-    defaultAgentComposeId: uuid("default_agent_compose_id"),
+    defaultAgentId: uuid("default_agent_id").references(() => zeroAgents.id, {
+      onDelete: "set null",
+    }),
     // Stripe billing fields
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubscriptionId: text("stripe_subscription_id"),

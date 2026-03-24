@@ -126,19 +126,35 @@ const router = tsr.router(onboardingStatusContract, {
       resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";
 
-      // Read default agent compose ID from org table
+      // Read default agent ID (zero agent UUID) from org table
       const [orgRow] = await globalThis.services.db
-        .select({ defaultAgentComposeId: orgTable.defaultAgentComposeId })
+        .select({ defaultAgentId: orgTable.defaultAgentId })
         .from(orgTable)
         .where(eq(orgTable.orgId, resolvedOrg.orgId))
         .limit(1);
-      const defaultAgentComposeId = orgRow?.defaultAgentComposeId ?? null;
+      const defaultAgentId = orgRow?.defaultAgentId ?? null;
 
-      if (defaultAgentComposeId) {
-        defaultAgent = await resolveDefaultAgent(
-          resolvedOrg.orgId,
-          defaultAgentComposeId,
-        );
+      if (defaultAgentId) {
+        // Resolve zero agent UUID → compose UUID for backward-compatible response
+        const [agentRow] = await globalThis.services.db
+          .select({ composeId: agentComposes.id })
+          .from(zeroAgents)
+          .innerJoin(
+            agentComposes,
+            and(
+              eq(agentComposes.orgId, zeroAgents.orgId),
+              eq(agentComposes.name, zeroAgents.name),
+            ),
+          )
+          .where(eq(zeroAgents.id, defaultAgentId))
+          .limit(1);
+
+        if (agentRow) {
+          defaultAgent = await resolveDefaultAgent(
+            resolvedOrg.orgId,
+            agentRow.composeId,
+          );
+        }
       }
     } catch (error) {
       if (!isNotFound(error) && !isBadRequest(error)) {

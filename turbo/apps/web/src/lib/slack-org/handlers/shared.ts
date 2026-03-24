@@ -69,19 +69,34 @@ export async function resolveConnectionFromSlackUser(
 
 /**
  * Resolve default agent compose ID from org table.
+ * Reads the zero agent UUID from org_metadata.defaultAgentId, then resolves
+ * back to the compose UUID via zero_agents → agent_composes JOIN.
  * Falls back to VM0_DEFAULT_AGENT env var.
  */
 export async function resolveDefaultComposeId(
   orgId: string,
 ): Promise<string | null> {
   const [orgRow] = await globalThis.services.db
-    .select({ defaultAgentComposeId: orgTable.defaultAgentComposeId })
+    .select({ defaultAgentId: orgTable.defaultAgentId })
     .from(orgTable)
     .where(eq(orgTable.orgId, orgId))
     .limit(1);
 
-  if (orgRow?.defaultAgentComposeId) {
-    return orgRow.defaultAgentComposeId;
+  if (orgRow?.defaultAgentId) {
+    // Reverse-resolve: zero agent UUID → compose UUID
+    const [row] = await globalThis.services.db
+      .select({ composeId: agentComposes.id })
+      .from(zeroAgents)
+      .innerJoin(
+        agentComposes,
+        and(
+          eq(agentComposes.orgId, zeroAgents.orgId),
+          eq(agentComposes.name, zeroAgents.name),
+        ),
+      )
+      .where(eq(zeroAgents.id, orgRow.defaultAgentId))
+      .limit(1);
+    if (row) return row.composeId;
   }
 
   return resolveDefaultAgentComposeId();
