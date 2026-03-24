@@ -25,6 +25,7 @@
     "generate:confluence": "tsx src/index.ts confluence",
     "generate:customer-io": "tsx src/index.ts customer-io",
     "generate:deepseek": "tsx src/index.ts deepseek",
+    "generate:deel": "tsx src/index.ts deel",
     "generate:devto": "tsx src/index.ts devto",
     "generate:discord": "tsx src/index.ts discord",
     "generate:dropbox": "tsx src/index.ts dropbox",

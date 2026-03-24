@@ -25,6 +25,7 @@ import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
+import { generate as generateDeel } from "./deel";
 import { generate as generateDevto } from "./devto";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateDropbox } from "./dropbox";
@@ -94,6 +95,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   confluence: generateConfluence,
   "customer-io": generateCustomerIo,
   deepseek: generateDeepseek,
+  deel: generateDeel,
   devto: generateDevto,
   discord: generateDiscord,
   dropbox: generateDropbox,

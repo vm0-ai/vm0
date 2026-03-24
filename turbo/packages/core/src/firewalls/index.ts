@@ -26,6 +26,7 @@ import { cloudflareFirewall } from "./cloudflare.generated";
 import { confluenceFirewall } from "./confluence.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
+import { deelFirewall } from "./deel.generated";
 import { devtoFirewall } from "./devto.generated";
 import { discordFirewall } from "./discord.generated";
 import { dropboxFirewall } from "./dropbox.generated";
@@ -99,6 +100,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   confluence: confluenceFirewall,
   "customer-io": customerIoFirewall,
   deepseek: deepseekFirewall,
+  deel: deelFirewall,
   devto: devtoFirewall,
   discord: discordFirewall,
   dropbox: dropboxFirewall,
