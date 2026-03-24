@@ -321,7 +321,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject sandbox token without agent-run:write", async () => {
+    it("should accept sandbox token with any capability", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
         "agent-run:read",
@@ -336,7 +336,8 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       );
       const response = await POST(request);
 
-      expect(response.status).toBe(403);
+      // Should pass auth (not 403) — returns 404 because sandbox token's runId doesn't exist
+      expect(response.status).not.toBe(403);
     });
   });
 });
