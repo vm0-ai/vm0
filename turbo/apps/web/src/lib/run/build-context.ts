@@ -416,7 +416,7 @@ interface ConnectorSecretResult {
   injectedEnvVars: Record<string, string> | undefined;
   /** Maps secret names to connector types for refresh-capable OAuth connectors */
   secretConnectorMap: Record<string, string> | undefined;
-  /** Validated connector types for the user */
+  /** Validated connector types for the user (used for firewall resolution) */
   connectorTypes: ConnectorType[];
 }
 
@@ -710,7 +710,7 @@ async function resolveSecretsAndEnvironment(
   resolvedModelProvider: ModelProviderType | undefined;
   modelProviderFirewall: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
-  connectorTypes: ConnectorType[];
+  connectorFirewalls: ExpandedFirewallConfig[];
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -787,13 +787,31 @@ async function resolveSecretsAndEnvironment(
   // Expand environment variables from compose config.
   // Model provider env vars are passed as additionalEnvironment so they go through
   // the same servicePlaceholders logic (secret-derived values use ${{ secrets.X }} templates).
+  // Build connector firewall configs for placeholder injection.
+  // builtinFirewalls configs carry `placeholders` (custom placeholder values),
+  // which expandEnvironmentFromCompose needs to replace secrets with placeholders.
+  const connectorFirewallConfigs = connectorResult.connectorTypes.flatMap(
+    (type) =>
+      getFirewallRefsForConnector(type)
+        .map((ref) => {
+          const config = builtinFirewalls[ref];
+          return config ? { ...config, ref } : undefined;
+        })
+        .filter(
+          (config): config is ExpandedFirewallConfig => config !== undefined,
+        ),
+  );
+
   const { environment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
     secrets,
     checkEnv,
     modelProviderResult.injectedEnvironment,
-    modelProviderFirewall ? [modelProviderFirewall] : undefined,
+    [
+      ...(modelProviderFirewall ? [modelProviderFirewall] : []),
+      ...connectorFirewallConfigs,
+    ],
   );
 
   return {
@@ -803,7 +821,7 @@ async function resolveSecretsAndEnvironment(
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
     modelProviderFirewall,
     selectedModel: modelProviderResult.selectedModel,
-    connectorTypes: connectorResult.connectorTypes,
+    connectorFirewalls: connectorFirewallConfigs,
   };
 }
 
@@ -959,12 +977,15 @@ export function deduplicateAutoFirewalls<
 function mergeFirewalls(
   agentCompose: unknown,
   modelProviderFirewall: ExperimentalFirewalls[number] | null | undefined,
-  connectors: ConnectorType[],
+  connectorFirewalls: ExpandedFirewallConfig[],
   firewallPolicies?: FirewallPolicies,
 ): ExperimentalFirewalls | undefined {
   const composeFirewalls = buildExperimentalFirewalls(agentCompose);
   const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
-  const policyFirewalls = buildConnectorFirewalls(connectors, firewallPolicies);
+  const policyFirewalls = applyConnectorPolicies(
+    connectorFirewalls,
+    firewallPolicies,
+  );
   const allFirewalls = [
     ...(composeFirewalls ?? []),
     ...deduplicateAutoFirewalls(autoFirewalls, composeFirewalls ?? []),
@@ -1011,60 +1032,52 @@ const UNRESTRICTED_PERMISSION = {
 };
 
 /**
- * Build firewall entries for agent connectors based on builtinFirewalls.
+ * Apply firewall policies to connector firewall configs.
  *
- * For each connector, resolves its firewall ref(s) and builds a firewall entry:
+ * For each connector firewall:
  * - If the ref has explicit policies, only "allow" permissions are included.
  * - If the ref has no policies (or firewallPolicies is null), an "unrestricted"
  *   permission is added to allow all endpoints through the proxy.
+ * - If all permissions are denied, the entry is excluded entirely.
  */
-function buildConnectorFirewalls(
-  connectors: ConnectorType[],
+function applyConnectorPolicies(
+  connectorFirewalls: ExpandedFirewallConfig[],
   policies?: FirewallPolicies,
 ): ExperimentalFirewalls {
   const result: ExperimentalFirewalls = [];
-  const seen = new Set<string>();
 
-  for (const connector of connectors) {
-    for (const ref of getFirewallRefsForConnector(connector)) {
-      if (seen.has(ref)) continue;
-      seen.add(ref);
+  for (const fw of connectorFirewalls) {
+    const refPolicies = policies?.[fw.ref];
 
-      const config = builtinFirewalls[ref];
-      if (!config) continue;
-
-      const refPolicies = policies?.[ref];
-
-      const apis = config.apis.map((api) => {
-        if (!refPolicies) {
-          // No policies configured → unrestricted access
-          return {
-            base: api.base,
-            auth: api.auth,
-            permissions: [UNRESTRICTED_PERMISSION],
-          };
-        }
-
-        const allowed = api.permissions?.filter(
-          (perm) => refPolicies[perm.name] === "allow",
-        );
-
-        if (!allowed || allowed.length === 0) return null;
-
+    const apis = fw.apis.map((api) => {
+      if (!refPolicies) {
+        // No policies configured → unrestricted access
         return {
           base: api.base,
           auth: api.auth,
-          permissions: allowed,
+          permissions: [UNRESTRICTED_PERMISSION],
         };
-      });
+      }
 
-      const validApis = apis.filter(
-        (api): api is NonNullable<typeof api> => api !== null,
+      const allowed = api.permissions?.filter(
+        (perm) => refPolicies[perm.name] === "allow",
       );
-      if (validApis.length === 0) continue;
 
-      result.push({ name: config.name, ref, apis: validApis });
-    }
+      if (!allowed || allowed.length === 0) return null;
+
+      return {
+        base: api.base,
+        auth: api.auth,
+        permissions: allowed,
+      };
+    });
+
+    const validApis = apis.filter(
+      (api): api is NonNullable<typeof api> => api !== null,
+    );
+    if (validApis.length === 0) continue;
+
+    result.push({ name: fw.name, ref: fw.ref, apis: validApis });
   }
 
   return result;
@@ -1197,7 +1210,7 @@ export async function buildExecutionContext(
     resolvedModelProvider,
     modelProviderFirewall,
     selectedModel,
-    connectorTypes,
+    connectorFirewalls,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
@@ -1225,7 +1238,7 @@ export async function buildExecutionContext(
   const experimentalFirewalls = mergeFirewalls(
     agentCompose,
     modelProviderFirewall,
-    connectorTypes,
+    connectorFirewalls,
     params.firewallPolicies,
   );
 
