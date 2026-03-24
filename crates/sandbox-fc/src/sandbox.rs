@@ -195,16 +195,16 @@ impl FirecrackerSandbox {
         // Use `exec` to replace the bash process with firecracker, keeping all
         // descendants in the same process group so `kill_process_group` can
         // reach them (same pattern as start_from_snapshot and snapshot.rs).
-        let inner_cmd = r#"chmod 666 "$1" && exec ip netns exec "$2" sudo -u "$3" "$4" --config-file "$5" --api-sock "$6""#;
+        let inner_cmd =
+            r#"exec ip netns exec "$1" sudo -u "$2" "$3" --config-file "$4" --api-sock "$5""#;
 
         let mut child = tokio::process::Command::new("sudo")
             .args(["bash", "-c", inner_cmd, "_"])
-            .arg(self.cow_device.device_path()) // $1
-            .arg(&self.network.name) // $2
-            .arg(&username) // $3
-            .arg(&self.factory_config.binary_path) // $4
-            .arg(self.sandbox_paths.config()) // $5
-            .arg(&api_sock) // $6
+            .arg(&self.network.name) // $1
+            .arg(&username) // $2
+            .arg(&self.factory_config.binary_path) // $3
+            .arg(self.sandbox_paths.config()) // $4
+            .arg(&api_sock) // $5
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -292,11 +292,21 @@ impl FirecrackerSandbox {
         // Use positional args ($1..$8) to avoid shell injection from paths.
         //
         // Bind mount targets ($2, $4) are snapshot-level paths shared by all
-        // sandboxes. The script cleans up stale mounts (left by crashed
-        // snapshot creation) and recreates bind mount targets atomically
-        // inside the unshare --mount namespace, avoiding races between
-        // concurrent sandbox starts.
-        let inner_cmd = r#"umount "$4" 2>/dev/null; rm -f "$4"; touch "$4" && mount --bind "$1" "$2" && mount --bind "$3" "$4" && chmod 666 "$3" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
+        // sandboxes.  Each sandbox runs inside `unshare --mount`, so bind
+        // mounts are per-namespace and don't conflict.
+        //
+        // IMPORTANT: we must NOT `rm -f` the bind mount target.  The target
+        // file is shared across all mount namespaces via the underlying
+        // filesystem.  Deleting it would orphan bind mounts in other
+        // namespaces (their mount is on the old dentry, but the directory
+        // now points to a new dentry from `touch`), causing Firecracker to
+        // see an empty file instead of the dm device → Permission denied.
+        //
+        // `umount` clears any stale mount inherited from the parent
+        // namespace (e.g. from a crashed snapshot creation).
+        // `test -e || touch` creates the file only if missing (first use
+        // or after manual cleanup), never deleting an existing one.
+        let inner_cmd = r#"umount "$4" 2>/dev/null; test -e "$4" || touch "$4"; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
 
         let mut child = tokio::process::Command::new("sudo")
             .args(["unshare", "--mount", "bash", "-c", inner_cmd, "_"])

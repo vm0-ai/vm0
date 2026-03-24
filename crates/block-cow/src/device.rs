@@ -221,15 +221,15 @@ impl CowDevice {
             }
         };
 
-        // 6. Make the device accessible to non-root users (best-effort).
+        // 6. Make the device accessible to the runner user.
         //
-        // dm devices default to root:disk 0660.  The runner process and
-        // Firecracker run as a regular user.  chmod 666 here is a
-        // best-effort first pass; the spawn scripts in sandbox.rs and
-        // snapshot.rs do a second chmod right before exec'ing Firecracker
-        // as the definitive fix (immune to udev races).
+        // dm devices default to root:disk 0660; the runner process and
+        // Firecracker run as a regular user.  `dmsetup create` synchronises
+        // with udev (via DM_UDEV_COOKIE), so by the time we get here udev
+        // has finished processing and the chown will persist.
         let device_str = device_path.to_string_lossy();
-        if let Err(e) = command::run("chmod", &["666", &device_str]) {
+        let owner = format!("{}:{}", nix::unistd::getuid(), nix::unistd::getgid());
+        if let Err(e) = command::run("chown", &[&owner, &device_str]) {
             let _ = dmsetup::remove(&cow_name);
             let _ = dmsetup::remove(&origin_name);
             let _ = losetup::detach(&cow_loop);

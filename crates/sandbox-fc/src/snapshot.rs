@@ -332,13 +332,6 @@ async fn run_with_firecracker(
     .await
     .map_err(|e| SnapshotError::Setup(format!("bind mount COW device: {e}")))?;
 
-    // Ensure the dm device is accessible to Firecracker (runs as non-root).
-    // Done here rather than relying solely on CowDevice::setup because udev
-    // may reset permissions after the initial chmod in setup.
-    command::exec("chmod", &["666", &cow_device_str], command::Privilege::Sudo)
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("chmod COW device: {e}")))?;
-
     // 6. Configure VM via API (6 parallel PUT calls).
     let inv = InvariantConfig::new();
     let kernel_path = config.kernel_path.display().to_string();
