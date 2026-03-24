@@ -25,6 +25,7 @@ export function buildComposeContent(
     experimental_capabilities: [...VALID_CAPABILITIES],
     environment: {
       ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
+      ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
     },
     volumes: [],
   };

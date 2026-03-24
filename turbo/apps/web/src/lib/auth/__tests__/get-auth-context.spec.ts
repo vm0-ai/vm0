@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auth } from "@clerk/nextjs/server";
 import { getAuthContext, getUserId } from "../get-auth-context";
-import { generateSandboxToken } from "../sandbox-token";
+import { generateSandboxToken, generateZeroToken } from "../sandbox-token";
 
 describe("getUserId", () => {
   const mockAuth = vi.mocked(auth);
@@ -278,5 +278,103 @@ describe("getAuthContext auth() call optimization", () => {
   it("should call auth() for unknown Bearer token", async () => {
     await getAuthContext("Bearer unknown_token_format");
     expect(mockAuth).toHaveBeenCalled();
+  });
+
+  it("should not call auth() when zero token is provided", async () => {
+    const token = await generateZeroToken("user-1", "run-1", "org-1");
+    await getAuthContext(`Bearer ${token}`, {
+      requiredCapability: "agent:read",
+    });
+    expect(mockAuth).not.toHaveBeenCalled();
+  });
+});
+
+describe("getAuthContext with zero token and requiredCapability", () => {
+  const mockAuth = vi.mocked(auth);
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({
+      userId: null,
+    } as Awaited<ReturnType<typeof auth>>);
+  });
+
+  it("should accept zero token with matching capability", async () => {
+    const token = await generateZeroToken("user-123", "run-456", "org-789");
+    const result = await getAuthContext(`Bearer ${token}`, {
+      requiredCapability: "agent:read",
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("user-123");
+    expect(result?.runId).toBe("run-456");
+    expect(result?.orgId).toBe("org-789");
+    expect(result?.capabilities).toContain("agent:read");
+  });
+
+  it("should reject zero token with missing capability", async () => {
+    const token = await generateZeroToken("user-123", "run-456", "org-789");
+    const result = await getAuthContext(`Bearer ${token}`, {
+      requiredCapability: "integration-slack:write",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("should reject zero token without requiredCapability opt-in", async () => {
+    const token = await generateZeroToken("user-123", "run-456", "org-789");
+    const result = await getAuthContext(`Bearer ${token}`);
+
+    expect(result).toBeNull();
+  });
+
+  it("should populate orgId from zero token", async () => {
+    const token = await generateZeroToken("user-123", "run-456", "org-789");
+    const result = await getAuthContext(`Bearer ${token}`, {
+      requiredCapability: "agent:read",
+    });
+
+    expect(result?.orgId).toBe("org-789");
+  });
+});
+
+describe("getAuthContext with zero token and acceptAnySandboxCapability", () => {
+  const mockAuth = vi.mocked(auth);
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({
+      userId: null,
+    } as Awaited<ReturnType<typeof auth>>);
+  });
+
+  it("should accept zero token on infra routes", async () => {
+    const token = await generateZeroToken("user-123", "run-456", "org-789");
+    const result = await getAuthContext(`Bearer ${token}`, {
+      acceptAnySandboxCapability: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("user-123");
+    expect(result?.runId).toBe("run-456");
+    expect(result?.orgId).toBe("org-789");
+    expect(result?.capabilities).toContain("agent:read");
+  });
+
+  it("should include all zero capabilities", async () => {
+    const token = await generateZeroToken("user-123", "run-456", "org-789");
+    const result = await getAuthContext(`Bearer ${token}`, {
+      acceptAnySandboxCapability: true,
+    });
+
+    expect(result?.capabilities).toEqual(
+      expect.arrayContaining([
+        "agent:read",
+        "agent:write",
+        "agent-run:read",
+        "agent-run:write",
+        "schedule:read",
+        "schedule:write",
+        "slack:write",
+      ]),
+    );
   });
 });

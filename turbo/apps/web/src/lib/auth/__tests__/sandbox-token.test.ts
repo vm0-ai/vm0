@@ -5,6 +5,8 @@ import {
   isSandboxToken,
   generateComposeJobToken,
   verifyComposeJobToken,
+  generateZeroToken,
+  verifyZeroToken,
   SANDBOX_TOKEN_PREFIX,
 } from "../sandbox-token";
 
@@ -268,6 +270,83 @@ describe("sandbox-token", () => {
     });
   });
 
+  describe("zero tokens", () => {
+    it("should generate a prefixed zero token", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+
+      expect(token.startsWith(SANDBOX_TOKEN_PREFIX)).toBe(true);
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      expect(jwt.split(".")).toHaveLength(3);
+    });
+
+    it("should generate different tokens for different runs", async () => {
+      const token1 = await generateZeroToken("user-123", "run-1", "org-789");
+      const token2 = await generateZeroToken("user-123", "run-2", "org-789");
+
+      expect(token1).not.toBe(token2);
+    });
+
+    it("should verify a valid zero token", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth).not.toBeNull();
+      expect(auth?.userId).toBe("user-123");
+      expect(auth?.runId).toBe("run-456");
+      expect(auth?.orgId).toBe("org-789");
+    });
+
+    it("should include all ZERO_CAPABILITIES", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth?.capabilities).toEqual([
+        "agent:read",
+        "agent:write",
+        "agent-run:read",
+        "agent-run:write",
+        "schedule:read",
+        "schedule:write",
+        "slack:write",
+      ]);
+    });
+
+    it("should return null for expired zero token", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+
+      const realDateNow = Date.now;
+      Date.now = () => realDateNow() + 3 * 60 * 60 * 1000;
+
+      try {
+        const auth = verifyZeroToken(token);
+        expect(auth).toBeNull();
+      } finally {
+        Date.now = realDateNow;
+      }
+    });
+
+    it("should return null for tampered zero token", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      const parts = jwt.split(".");
+      parts[1] = parts[1] + "tampered";
+      const tamperedToken = SANDBOX_TOKEN_PREFIX + parts.join(".");
+
+      const auth = verifyZeroToken(tamperedToken);
+
+      expect(auth).toBeNull();
+    });
+
+    it("should return null for token without prefix", () => {
+      expect(verifyZeroToken("header.payload.signature")).toBeNull();
+    });
+
+    it("should identify zero tokens with isSandboxToken", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      expect(isSandboxToken(token)).toBe(true);
+    });
+  });
+
   describe("cross-scope rejection", () => {
     it("should reject sandbox token with verifyComposeJobToken", async () => {
       const token = await generateSandboxToken("user-123", "run-456");
@@ -283,12 +362,39 @@ describe("sandbox-token", () => {
       expect(auth).toBeNull();
     });
 
-    it("should identify both token types with isSandboxToken", async () => {
+    it("should reject zero token with verifySandboxToken", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifySandboxToken(token);
+
+      expect(auth).toBeNull();
+    });
+
+    it("should reject sandbox token with verifyZeroToken", async () => {
+      const token = await generateSandboxToken("user-123", "run-456");
+      const auth = verifyZeroToken(token);
+
+      expect(auth).toBeNull();
+    });
+
+    it("should reject compose job token with verifyZeroToken", async () => {
+      const token = await generateComposeJobToken("user-123", "job-456");
+      const auth = verifyZeroToken(token);
+
+      expect(auth).toBeNull();
+    });
+
+    it("should identify all token types with isSandboxToken", async () => {
       const sandboxToken = await generateSandboxToken("user-123", "run-456");
       const composeToken = await generateComposeJobToken("user-123", "job-456");
+      const zeroToken = await generateZeroToken(
+        "user-123",
+        "run-456",
+        "org-789",
+      );
 
       expect(isSandboxToken(sandboxToken)).toBe(true);
       expect(isSandboxToken(composeToken)).toBe(true);
+      expect(isSandboxToken(zeroToken)).toBe(true);
     });
   });
 });

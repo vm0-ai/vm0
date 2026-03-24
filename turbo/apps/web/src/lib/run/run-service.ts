@@ -35,7 +35,7 @@ import {
   buildExecutionContext as buildContext,
   MODEL_PROVIDER_ENV_VARS,
 } from "./build-context";
-import { generateSandboxToken } from "../auth/sandbox-token";
+import { generateSandboxToken, generateZeroToken } from "../auth/sandbox-token";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
@@ -474,6 +474,8 @@ export interface CreateRunParams {
   orgTier?: OrgTier;
   // Per-permission firewall policies from zero agent configuration.
   firewallPolicies?: FirewallPolicies;
+  // When true, generate a ZERO_TOKEN JWT and inject into secrets.
+  injectZeroToken?: boolean;
 }
 
 /**
@@ -521,6 +523,7 @@ export interface StartRunParams {
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   firewallPolicies?: FirewallPolicies;
+  injectZeroToken?: boolean;
 }
 
 export interface CreateRunResult {
@@ -770,6 +773,14 @@ async function buildAndDispatchRun(opts: {
         : null,
       generateSandboxToken(userId, runId, capabilities),
     ]);
+
+    // Generate ZERO_TOKEN for zero agent runs
+    let augmentedSecrets = params.secrets;
+    if (params.injectZeroToken) {
+      const zeroToken = await generateZeroToken(userId, runId, orgId);
+      augmentedSecrets = { ...params.secrets, ZERO_TOKEN: zeroToken };
+    }
+
     const tokenTime = Date.now();
 
     // Build execution context
@@ -788,7 +799,7 @@ async function buildAndDispatchRun(opts: {
       artifactVersion: params.artifactVersion,
       memoryName: params.memoryName,
       vars: params.vars,
-      secrets: params.secrets,
+      secrets: augmentedSecrets,
       volumeVersions: params.volumeVersions,
       agentCompose: composeContent,
       prompt,
@@ -1089,6 +1100,7 @@ export async function startRun(
     debugNoMockClaude: params.debugNoMockClaude,
     checkEnv: params.checkEnv,
     firewallPolicies: params.firewallPolicies,
+    injectZeroToken: params.injectZeroToken,
     orgSlug: orgData.slug,
     orgId: authOrgId,
     orgTier,

@@ -1,11 +1,13 @@
 import { eq, and, gt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
-import type { VALID_CAPABILITIES, OrgRole } from "@vm0/core";
+import type { OrgRole } from "@vm0/core";
 import { cliTokens } from "../../db/schema/cli-tokens";
-import { isSandboxToken, verifySandboxToken } from "./sandbox-token";
+import {
+  isSandboxToken,
+  verifySandboxToken,
+  verifyZeroToken,
+} from "./sandbox-token";
 import { logger } from "../logger";
-
-type Capability = (typeof VALID_CAPABILITIES)[number];
 
 const log = logger("auth:user");
 
@@ -17,7 +19,7 @@ export type AuthContext = {
   orgId?: string;
   orgRole?: OrgRole;
   sessionClaims?: Record<string, unknown>;
-  capabilities?: readonly Capability[];
+  capabilities?: readonly string[];
   runId?: string;
 };
 
@@ -32,7 +34,7 @@ export type AuthContext = {
 export async function getAuthContext(
   authHeader?: string,
   options?: {
-    requiredCapability?: Capability;
+    requiredCapability?: string;
     acceptAnySandboxCapability?: boolean;
   },
 ): Promise<AuthContext | null> {
@@ -41,56 +43,7 @@ export async function getAuthContext(
     const token = authHeader.substring(7); // Remove "Bearer "
 
     if (isSandboxToken(token)) {
-      // Without any sandbox opt-in, reject sandbox tokens (existing behavior)
-      if (
-        !options?.requiredCapability &&
-        !options?.acceptAnySandboxCapability
-      ) {
-        log.debug("Rejected sandbox JWT token on normal API endpoint");
-        return null;
-      }
-
-      // Verify sandbox token signature and expiry
-      const sandboxAuth = verifySandboxToken(token);
-      if (!sandboxAuth) {
-        log.debug("Invalid or expired sandbox token");
-        return null;
-      }
-
-      // acceptAnySandboxCapability: accept if token has any capability
-      if (options?.acceptAnySandboxCapability) {
-        if (
-          !sandboxAuth.capabilities ||
-          sandboxAuth.capabilities.length === 0
-        ) {
-          log.debug("Sandbox token has no capabilities");
-          return null;
-        }
-        return {
-          userId: sandboxAuth.userId,
-          runId: sandboxAuth.runId,
-          capabilities: [...sandboxAuth.capabilities],
-        };
-      }
-
-      // requiredCapability: check specific capability
-      const hasCap = sandboxAuth.capabilities?.some(
-        (cap) => cap === options.requiredCapability,
-      );
-      if (!hasCap) {
-        log.debug(
-          `Sandbox token missing required capability: ${options.requiredCapability}`,
-        );
-        return null;
-      }
-
-      return {
-        userId: sandboxAuth.userId,
-        runId: sandboxAuth.runId,
-        capabilities: sandboxAuth.capabilities
-          ? [...sandboxAuth.capabilities]
-          : undefined,
-      };
+      return authenticateSandboxToken(token, options);
     }
 
     // Check for CLI token format (vm0_live_)
@@ -124,6 +77,117 @@ export async function getAuthContext(
   return getClerkSessionAuth();
 }
 
+/** Authenticate a sandbox-prefixed token (sandbox or zero scope). */
+function authenticateSandboxToken(
+  token: string,
+  options?: {
+    requiredCapability?: string;
+    acceptAnySandboxCapability?: boolean;
+  },
+): AuthContext | null {
+  // Without any sandbox opt-in, reject sandbox tokens (existing behavior)
+  if (!options?.requiredCapability && !options?.acceptAnySandboxCapability) {
+    log.debug("Rejected sandbox JWT token on normal API endpoint");
+    return null;
+  }
+
+  // Try sandbox token first
+  const sandboxAuth = verifySandboxToken(token);
+  if (sandboxAuth) {
+    return resolveSandboxAuth(sandboxAuth, options);
+  }
+
+  // Try zero token (scope: "zero")
+  const zeroAuth = verifyZeroToken(token);
+  if (zeroAuth) {
+    return resolveZeroAuth(zeroAuth, options);
+  }
+
+  log.debug("Invalid or expired sandbox/zero token");
+  return null;
+}
+
+function resolveSandboxAuth(
+  sandboxAuth: {
+    userId: string;
+    runId: string;
+    capabilities?: readonly string[];
+  },
+  options: {
+    requiredCapability?: string;
+    acceptAnySandboxCapability?: boolean;
+  },
+): AuthContext | null {
+  if (options.acceptAnySandboxCapability) {
+    if (!sandboxAuth.capabilities || sandboxAuth.capabilities.length === 0) {
+      log.debug("Sandbox token has no capabilities");
+      return null;
+    }
+    return {
+      userId: sandboxAuth.userId,
+      runId: sandboxAuth.runId,
+      capabilities: [...sandboxAuth.capabilities],
+    };
+  }
+
+  const hasCap = sandboxAuth.capabilities?.some(
+    (cap) => cap === options.requiredCapability,
+  );
+  if (!hasCap) {
+    log.debug(
+      `Sandbox token missing required capability: ${options.requiredCapability}`,
+    );
+    return null;
+  }
+
+  return {
+    userId: sandboxAuth.userId,
+    runId: sandboxAuth.runId,
+    capabilities: sandboxAuth.capabilities
+      ? [...sandboxAuth.capabilities]
+      : undefined,
+  };
+}
+
+function resolveZeroAuth(
+  zeroAuth: {
+    userId: string;
+    runId: string;
+    orgId: string;
+    capabilities: readonly string[];
+  },
+  options: {
+    requiredCapability?: string;
+    acceptAnySandboxCapability?: boolean;
+  },
+): AuthContext | null {
+  if (options.acceptAnySandboxCapability) {
+    return {
+      userId: zeroAuth.userId,
+      runId: zeroAuth.runId,
+      orgId: zeroAuth.orgId,
+      capabilities: [...zeroAuth.capabilities],
+    };
+  }
+
+  const hasCap = zeroAuth.capabilities.some(
+    (cap) => cap === options.requiredCapability,
+  );
+  if (!hasCap) {
+    log.debug(
+      `Zero token missing required capability: ${options.requiredCapability}`,
+    );
+    return null;
+  }
+
+  return {
+    userId: zeroAuth.userId,
+    runId: zeroAuth.runId,
+    orgId: zeroAuth.orgId,
+    capabilities: [...zeroAuth.capabilities],
+  };
+}
+
 /** Extract AuthContext from Clerk session, or null if not authenticated. */
 async function getClerkSessionAuth(): Promise<AuthContext | null> {
   const authResult = await auth();
@@ -150,7 +214,7 @@ async function getClerkSessionAuth(): Promise<AuthContext | null> {
 export async function getUserId(
   authHeader?: string,
   options?: {
-    requiredCapability?: Capability;
+    requiredCapability?: string;
     acceptAnySandboxCapability?: boolean;
   },
 ): Promise<string | null> {

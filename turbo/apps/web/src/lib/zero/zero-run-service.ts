@@ -103,5 +103,6 @@ export async function createZeroRun(
     disallowedTools: [...DISALLOWED_CRON_TOOLS],
     vars: agent.composeId ? { ZERO_AGENT_ID: agent.composeId } : undefined,
     firewallPolicies: agent.firewallPolicies ?? undefined,
+    injectZeroToken: true,
   });
 }

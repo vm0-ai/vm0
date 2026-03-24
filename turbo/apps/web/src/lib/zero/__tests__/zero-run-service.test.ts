@@ -15,6 +15,8 @@ import {
   findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
 import { createZeroRun } from "../zero-run-service";
+import { verifyZeroToken } from "../../auth/sandbox-token";
+import { decryptSecretsMap } from "../../crypto/secrets-encryption";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core";
 
@@ -117,6 +119,33 @@ describe("createZeroRun()", () => {
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
       expect(run!.appendSystemPrompt).toBeNull();
+    });
+
+    it("should inject ZERO_TOKEN into execution context secrets", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      const encrypted = job!.executionContext.encryptedSecrets;
+      expect(encrypted).not.toBeNull();
+
+      // Decrypt and verify the ZERO_TOKEN
+      const secrets = decryptSecretsMap(
+        encrypted,
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+      expect(secrets).not.toBeNull();
+      expect(secrets!.ZERO_TOKEN).toBeDefined();
+
+      // Verify the token is a valid zero token
+      const auth = verifyZeroToken(secrets!.ZERO_TOKEN!);
+      expect(auth).not.toBeNull();
+      expect(auth!.userId).toBe(user.userId);
+      expect(auth!.runId).toBe(result.runId);
+      expect(auth!.orgId).toBe(user.orgId);
+      expect(auth!.capabilities).toEqual(
+        expect.arrayContaining(["agent:read", "agent:write"]),
+      );
     });
 
     it("should inject disallowedTools with cron tools", async () => {

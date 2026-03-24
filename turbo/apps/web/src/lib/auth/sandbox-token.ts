@@ -1,9 +1,10 @@
 import { createHmac, hkdfSync } from "crypto";
-import { VALID_CAPABILITIES } from "@vm0/core";
+import { VALID_CAPABILITIES, ZERO_CAPABILITIES } from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../logger";
 
 type Capability = (typeof VALID_CAPABILITIES)[number];
+type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
 
 const log = logger("auth:sandbox");
 
@@ -38,12 +39,35 @@ interface ComposeJobTokenPayload {
 }
 
 /**
+ * JWT payload for zero tokens (zero agent runs)
+ */
+interface ZeroTokenPayload {
+  userId: string;
+  runId: string;
+  orgId: string;
+  scope: "zero";
+  capabilities: readonly ZeroCapability[];
+  iat: number;
+  exp: number;
+}
+
+/**
  * Result of verifying a sandbox token
  */
 export interface SandboxAuth {
   userId: string;
   runId: string;
   capabilities?: readonly Capability[];
+}
+
+/**
+ * Result of verifying a zero token
+ */
+export interface ZeroAuth {
+  userId: string;
+  runId: string;
+  orgId: string;
+  capabilities: readonly ZeroCapability[];
 }
 
 /**
@@ -93,7 +117,10 @@ function getJwtKey(): Buffer {
 /**
  * Union of all self-signed JWT payload types
  */
-type JwtPayload = SandboxTokenPayload | ComposeJobTokenPayload;
+type JwtPayload =
+  | SandboxTokenPayload
+  | ComposeJobTokenPayload
+  | ZeroTokenPayload;
 
 /**
  * Create a JWT token with HMAC-SHA256 signature
@@ -246,11 +273,85 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
 }
 
 /**
- * Check if a token is a self-signed JWT (sandbox or compose-job)
+ * Check if a token is a self-signed JWT (sandbox, compose-job, or zero)
  * by checking for the vm0_sandbox_ prefix.
  */
 export function isSandboxToken(token: string): boolean {
   return token.startsWith(SANDBOX_TOKEN_PREFIX);
+}
+
+// ============================================================================
+// Zero Token Functions
+// ============================================================================
+
+/**
+ * Generate a JWT token for zero agent authentication.
+ * Token is valid for 2 hours and carries all ZERO_CAPABILITIES plus orgId.
+ */
+export async function generateZeroToken(
+  userId: string,
+  runId: string,
+  orgId: string,
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresIn = 2 * 60 * 60; // 2 hours
+
+  const payload: ZeroTokenPayload = {
+    userId,
+    runId,
+    orgId,
+    scope: "zero",
+    capabilities: [...ZERO_CAPABILITIES],
+    iat: now,
+    exp: now + expiresIn,
+  };
+
+  const jwt = createJwt(payload);
+  log.debug(`Generated zero JWT for run ${runId}`);
+  return SANDBOX_TOKEN_PREFIX + jwt;
+}
+
+/**
+ * Verify a zero JWT token and extract auth info.
+ * Returns null if token is invalid, expired, or not a zero token.
+ *
+ * @param token - The full prefixed token (without "Bearer " prefix)
+ */
+export function verifyZeroToken(token: string): ZeroAuth | null {
+  if (!token.startsWith(SANDBOX_TOKEN_PREFIX)) {
+    return null;
+  }
+
+  const rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+  const payload = verifyJwtPayload(rawJwt);
+  if (!payload) {
+    return null;
+  }
+
+  if (payload.scope !== "zero") {
+    return null;
+  }
+  if (!("runId" in payload) || !("orgId" in payload)) {
+    return null;
+  }
+
+  const p = payload as ZeroTokenPayload;
+  if (!Array.isArray(p.capabilities)) {
+    return null;
+  }
+  const validSet = new Set<string>(ZERO_CAPABILITIES);
+  for (const cap of p.capabilities) {
+    if (typeof cap !== "string" || !validSet.has(cap)) {
+      return null;
+    }
+  }
+
+  return {
+    userId: p.userId,
+    runId: p.runId,
+    orgId: p.orgId,
+    capabilities: p.capabilities,
+  };
 }
 
 // ============================================================================
