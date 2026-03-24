@@ -27,7 +27,7 @@ function baseEmail(
   overrides?: Partial<EnqueueEmailOptions>,
 ): EnqueueEmailOptions {
   return {
-    from: "test-agent from VM0 <test-agent@vm7.bot>",
+    from: "Zero <test-org@vm7.bot>",
     to: "user@example.com",
     subject: "Test email",
     template: {
