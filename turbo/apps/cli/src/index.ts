@@ -13,7 +13,6 @@ import { memoryCommand } from "./commands/memory";
 import { cookCommand } from "./commands/cook";
 import { logsCommand } from "./commands/logs";
 
-import { agentCommand } from "./commands/agent";
 import { initCommand } from "./commands/init";
 
 import { connectorCommand } from "./commands/connector";
@@ -42,7 +41,6 @@ program.addCommand(memoryCommand);
 program.addCommand(cookCommand);
 program.addCommand(logsCommand);
 
-program.addCommand(agentCommand);
 program.addCommand(initCommand);
 program.addCommand(connectorCommand);
 program.addCommand(preferenceCommand);

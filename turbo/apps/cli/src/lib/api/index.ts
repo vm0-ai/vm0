@@ -1,11 +1,10 @@
 // Core types (only export what's actually used)
-export type { ApiError, RunResult } from "./core/types";
+export type { RunResult } from "./core/types";
 
 // Custom error class
 export { ApiRequestError } from "./core/client-factory";
 
 // HTTP utilities (only export what's actually used)
-export { httpGet } from "./core/http";
 
 // Domain modules - Composes
 export {
@@ -13,7 +12,6 @@ export {
   getComposeById,
   getComposeVersion,
   createOrUpdateCompose,
-  deleteCompose,
 } from "./domains/composes";
 
 // Domain modules - Runs

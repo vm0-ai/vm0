@@ -5,12 +5,10 @@ import type {
   SessionResponse,
   CheckpointResponse,
   ComposeResponse,
-  ApiErrorResponse,
 } from "@vm0/core";
 
 // Re-export types with CLI naming conventions for backward compatibility
 export type RunResult = CoreRunResult;
-export type ApiError = ApiErrorResponse;
 export type GetSessionResponse = SessionResponse;
 export type GetCheckpointResponse = CheckpointResponse;
 export type GetComposeResponse = ComposeResponse;
