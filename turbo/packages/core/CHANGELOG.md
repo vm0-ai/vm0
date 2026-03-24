@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.108.0](https://github.com/vm0-ai/vm0/compare/core-v8.107.0...core-v8.108.0) (2026-03-24)
+
+
+### Features
+
+* add brave-search firewall config ([#6530](https://github.com/vm0-ai/vm0/issues/6530)) ([4de222c](https://github.com/vm0-ai/vm0/commit/4de222c606582003033e6443816488cd9430ea59))
+* add clickup firewall config ([#6544](https://github.com/vm0-ai/vm0/issues/6544)) ([42176ee](https://github.com/vm0-ai/vm0/commit/42176ee72e18c1f97ea891e42806fb1cdee0167e))
+* add fal firewall config ([#6539](https://github.com/vm0-ai/vm0/issues/6539)) ([08ffd95](https://github.com/vm0-ai/vm0/commit/08ffd953522aa43e7992cb074ba6434a8c211104))
+* add neon firewall config ([#6535](https://github.com/vm0-ai/vm0/issues/6535)) ([d913266](https://github.com/vm0-ai/vm0/commit/d91326620b79ffed981c3804650ec3ab8db9c726))
+* add perplexity firewall config ([#6528](https://github.com/vm0-ai/vm0/issues/6528)) ([df5d0aa](https://github.com/vm0-ai/vm0/commit/df5d0aab2a0cdb87a56b2a946c3edf1dc1d80ef6))
+* add serpapi firewall config ([#6537](https://github.com/vm0-ai/vm0/issues/6537)) ([fd48c2d](https://github.com/vm0-ai/vm0/commit/fd48c2d79269efeadab717c92f1a203e4314892d))
+* add tavily firewall config ([#6532](https://github.com/vm0-ai/vm0/issues/6532)) ([d34552d](https://github.com/vm0-ai/vm0/commit/d34552d7406518e7072b096232c0da781e43d7b3))
+
+
+### Bug Fixes
+
+* add upload and resumable upload base urls for gmail and google-drive ([#6524](https://github.com/vm0-ai/vm0/issues/6524)) ([f0273a5](https://github.com/vm0-ai/vm0/commit/f0273a5ba1671b209b6027a29d9daf01a4073518))
+
 ## [8.107.0](https://github.com/vm0-ai/vm0/compare/core-v8.106.0...core-v8.107.0) (2026-03-24)
 
 

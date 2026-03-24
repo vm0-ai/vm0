@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.146.3](https://github.com/vm0-ai/vm0/compare/app-v0.146.2...app-v0.146.3) (2026-03-24)
+
+
+### Performance Improvements
+
+* add inline skeleton shell to index.html for faster fcp ([#6526](https://github.com/vm0-ai/vm0/issues/6526)) ([02e4539](https://github.com/vm0-ai/vm0/commit/02e453969851516145dd8621ec99423ccb8652e2)), closes [#6484](https://github.com/vm0-ai/vm0/issues/6484)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.108.0
+
 ## [0.146.2](https://github.com/vm0-ai/vm0/compare/app-v0.146.1...app-v0.146.2) (2026-03-24)
 
 

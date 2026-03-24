@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.155.0](https://github.com/vm0-ai/vm0/compare/web-v12.154.2...web-v12.155.0) (2026-03-24)
+
+
+### Features
+
+* **web:** add zero token generation, secrets injection, and auth ([#6534](https://github.com/vm0-ai/vm0/issues/6534)) ([e7daeab](https://github.com/vm0-ai/vm0/commit/e7daeabb49f6cafad2b775cd6eca770b0e843ff2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.108.0
+
 ## [12.154.2](https://github.com/vm0-ai/vm0/compare/web-v12.154.1...web-v12.154.2) (2026-03-24)
 
 
