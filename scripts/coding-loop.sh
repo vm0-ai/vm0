@@ -26,9 +26,12 @@ mkdir -p "$CONTENT_DIR/issues" "$CONTENT_DIR/prs"
 # Mirror stdout and stderr to a log file via tee so the caller still sees
 # output in real-time while we capture everything for gist upload.
 _LOG_OUTPUT="/tmp/coding-loop-output-${LABEL}.$$"
-
-# Use a FIFO so we can reliably wait for tee to drain before uploading.
 _LOG_FIFO="/tmp/coding-loop-fifo-${LABEL}.$$"
+_TEE_PID=""
+
+# Timeout (seconds) for gist upload to prevent hanging the autonomous loop.
+_GIST_TIMEOUT=30
+
 mkfifo "$_LOG_FIFO"
 tee "$_LOG_OUTPUT" < "$_LOG_FIFO" &
 _TEE_PID=$!
@@ -38,23 +41,36 @@ exec 3>&2
 exec > "$_LOG_FIFO" 2>&1
 
 _update_gist() {
+  # Disable errexit inside trap to ensure full cleanup on any failure.
+  set +e
+
   # Close the FIFO so tee receives EOF, then wait for it to flush.
   exec >/dev/null 2>&1
-  wait "$_TEE_PID" 2>/dev/null || true
+  if [ -n "$_TEE_PID" ]; then
+    wait "$_TEE_PID" 2>/dev/null
+  fi
   rm -f "$_LOG_FIFO"
+
+  # Only attempt upload if the log file exists and is non-empty.
+  if [ ! -s "$_LOG_OUTPUT" ]; then
+    exec 3>&-
+    rm -f "$_LOG_OUTPUT"
+    return
+  fi
 
   local gist_name="coding-loop-log-${LABEL}"
   local gist_id
-  gist_id=$(gh gist list --limit 100 | awk -v name="$gist_name" '$2 == name {print $1; exit}' || true)
+  gist_id=$(timeout "$_GIST_TIMEOUT" gh gist list --limit 100 2>/dev/null \
+    | awk -v name="$gist_name" '$2 == name {print $1; exit}') || true
 
   if [ -n "$gist_id" ]; then
-    if ! gh api --method PATCH "gists/$gist_id" \
+    if ! timeout "$_GIST_TIMEOUT" gh api --method PATCH "gists/$gist_id" \
       --input <(jq -Rs --arg f "$gist_name" '{"files": {($f): {"content": .}}}' "$_LOG_OUTPUT") \
-      >/dev/null; then
+      >/dev/null 2>&1; then
       echo "warning: failed to update gist $gist_id" >&3
     fi
   else
-    if ! gh gist create --filename "$gist_name" --desc "$gist_name" - < "$_LOG_OUTPUT" >/dev/null; then
+    if ! timeout "$_GIST_TIMEOUT" gh gist create --filename "$gist_name" --desc "$gist_name" - < "$_LOG_OUTPUT" >/dev/null 2>&1; then
       echo "warning: failed to create gist for $gist_name" >&3
     fi
   fi
