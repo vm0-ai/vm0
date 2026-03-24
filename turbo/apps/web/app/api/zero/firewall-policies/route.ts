@@ -15,12 +15,8 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
-import { extractConnectors } from "../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:zero:firewall-policies");
@@ -93,13 +89,8 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       .select({
         id: agentComposes.id,
         name: agentComposes.name,
-        content: agentComposeVersions.content,
       })
       .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
@@ -148,9 +139,6 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       )
       .limit(1);
 
-    const content = (compose.content ?? {}) as Record<string, unknown>;
-    const connectors = extractConnectors(content);
-
     return {
       status: 200 as const,
       body: {
@@ -159,7 +147,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
-        connectors,
+        connectors: agent?.connectors ?? [],
         firewallPolicies: agent?.firewallPolicies ?? null,
       },
     };

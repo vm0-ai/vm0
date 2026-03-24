@@ -12,15 +12,9 @@ import {
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { serverSideCompose } from "../../../../../src/lib/compose/server-side-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
-import {
-  buildComposeContent,
-  extractConnectors,
-} from "../../../../../src/lib/zero/build-compose-content";
+import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:name");
@@ -42,13 +36,8 @@ const router = tsr.router(zeroAgentsByNameContract, {
       .select({
         id: agentComposes.id,
         name: agentComposes.name,
-        content: agentComposeVersions.content,
       })
       .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
@@ -78,9 +67,6 @@ const router = tsr.router(zeroAgentsByNameContract, {
       )
       .limit(1);
 
-    // Extract connector short names from compose content
-    const connectors = extractConnectors(compose.content);
-
     return {
       status: 200 as const,
       body: {
@@ -89,7 +75,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
-        connectors,
+        connectors: agent?.connectors ?? [],
         firewallPolicies: agent?.firewallPolicies ?? null,
       },
     };
@@ -165,11 +151,13 @@ const router = tsr.router(zeroAgentsByNameContract, {
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
+        connectors: body.connectors,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
         set: {
           updatedAt: now,
+          connectors: body.connectors,
           ...(body.displayName !== undefined && {
             displayName: body.displayName,
           }),
@@ -202,7 +190,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
-        connectors: extractConnectors(content),
+        connectors: body.connectors,
         firewallPolicies: agent?.firewallPolicies ?? null,
       },
     };
@@ -224,13 +212,8 @@ const router = tsr.router(zeroAgentsByNameContract, {
       .select({
         id: agentComposes.id,
         name: agentComposes.name,
-        content: agentComposeVersions.content,
       })
       .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
@@ -295,7 +278,7 @@ const router = tsr.router(zeroAgentsByNameContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
-        connectors: extractConnectors(compose.content),
+        connectors: agent?.connectors ?? [],
         firewallPolicies: agent?.firewallPolicies ?? null,
       },
     };

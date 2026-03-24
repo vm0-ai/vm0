@@ -2,9 +2,6 @@ import {
   resolveSkillRef,
   getInstructionsFilename,
   VALID_CAPABILITIES,
-  DEFAULT_SKILLS_OWNER,
-  DEFAULT_SKILLS_REPO,
-  DEFAULT_SKILLS_BRANCH,
 } from "@vm0/core";
 import { SEED_SKILLS } from "./seed-skills";
 
@@ -40,30 +37,4 @@ export function buildComposeContent(
       [agentName]: agentDef,
     },
   };
-}
-
-/**
- * Extract connector short names from compose content skills.
- *
- * Reverses the skill URL mapping: extracts the bare name from
- * GitHub URLs matching the vm0-skills pattern.
- */
-export function extractConnectors(content: unknown): string[] {
-  const obj = typeof content === "object" && content !== null ? content : {};
-  const agents = (obj as Record<string, unknown>).agents as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  if (!agents) return [];
-
-  const agentKey = Object.keys(agents)[0];
-  if (!agentKey) return [];
-
-  const agent = agents[agentKey];
-  const skills = (agent?.skills ?? []) as string[];
-
-  const prefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
-  const seedSet = new Set<string>(SEED_SKILLS);
-  return skills
-    .map((url) => (url.startsWith(prefix) ? url.slice(prefix.length) : url))
-    .filter((name) => !seedSet.has(name));
 }

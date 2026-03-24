@@ -12,15 +12,9 @@ import {
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/compose/server-side-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "../../../../src/db/schema/agent-compose";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, and, desc } from "drizzle-orm";
-import {
-  buildComposeContent,
-  extractConnectors,
-} from "../../../../src/lib/zero/build-compose-content";
+import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:zero-agents");
@@ -74,6 +68,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
+        connectors: body.connectors,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
@@ -81,6 +76,7 @@ const router = tsr.router(zeroAgentsMainContract, {
           displayName: body.displayName ?? null,
           description: body.description ?? null,
           sound: body.sound ?? null,
+          connectors: body.connectors,
           updatedAt: new Date(),
         },
       });
@@ -95,7 +91,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         description: body.description ?? null,
         displayName: body.displayName ?? null,
         sound: body.sound ?? null,
-        connectors: extractConnectors(content),
+        connectors: body.connectors,
         firewallPolicies: null,
       },
     };
@@ -119,7 +115,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
         sound: zeroAgents.sound,
-        content: agentComposeVersions.content,
+        connectors: zeroAgents.connectors,
         firewallPolicies: zeroAgents.firewallPolicies,
       })
       .from(zeroAgents)
@@ -129,10 +125,6 @@ const router = tsr.router(zeroAgentsMainContract, {
           eq(zeroAgents.orgId, agentComposes.orgId),
           eq(zeroAgents.name, agentComposes.name),
         ),
-      )
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
       .where(eq(zeroAgents.orgId, org.orgId))
       .orderBy(desc(zeroAgents.updatedAt));
@@ -145,7 +137,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: row.displayName ?? null,
         description: row.description ?? null,
         sound: row.sound ?? null,
-        connectors: extractConnectors(row.content),
+        connectors: row.connectors,
         firewallPolicies: row.firewallPolicies ?? null,
       })),
     };

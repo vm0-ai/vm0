@@ -34,7 +34,6 @@ import {
 } from "../../../../../../src/lib/s3/s3-client";
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 import { env } from "../../../../../../src/env";
-import { extractConnectors } from "../../../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:instructions");
@@ -267,7 +266,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
-        connectors: extractConnectors(existingContent),
+        connectors: agent?.connectors ?? [],
         firewallPolicies: agent?.firewallPolicies ?? null,
       },
     };
