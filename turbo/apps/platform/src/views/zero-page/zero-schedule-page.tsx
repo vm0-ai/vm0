@@ -615,7 +615,7 @@ export function ZeroSchedulePage() {
   const agentsLoadable = useLoadable(agentsList$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const nameToDisplay = new Map(
-    agents.filter((a) => a.displayName).map((a) => [a.name, a.displayName!]),
+    agents.filter((a) => a.displayName).map((a) => [a.id, a.displayName!]),
   );
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;

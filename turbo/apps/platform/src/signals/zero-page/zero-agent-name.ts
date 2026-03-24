@@ -2,7 +2,7 @@ import { computed } from "ccstate";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 
 /**
- * Raw default agent name from onboarding status (lowercase identifier, e.g. "zero").
+ * Default agent compose ID from onboarding status.
  * Returns null if no default agent is set.
  */
 export const defaultAgentId$ = computed(async (get) => {
