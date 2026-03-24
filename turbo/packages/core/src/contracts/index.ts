@@ -469,11 +469,6 @@ export {
   type SkillsResolveContract,
 } from "./skills";
 export {
-  requiredEnvContract,
-  agentRequiredEnvSchema,
-  type RequiredEnvContract,
-} from "./required-env";
-export {
   zeroAgentsMainContract,
   zeroAgentsByNameContract,
   zeroAgentInstructionsContract,
