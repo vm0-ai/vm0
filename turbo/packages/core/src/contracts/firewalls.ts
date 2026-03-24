@@ -101,6 +101,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "brave-search": ["brave-search"],
   brevo: ["brevo"],
   "bright-data": ["bright-data"],
+  browserbase: ["browserbase"],
   clickup: ["clickup"],
   close: ["close"],
   cloudflare: ["cloudflare"],
