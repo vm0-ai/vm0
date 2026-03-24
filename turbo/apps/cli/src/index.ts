@@ -62,14 +62,3 @@ if (
   configureGlobalProxyFromEnv();
   program.parse();
 }
-// test comment Thu Feb 18 2026 v2
-// test comment Thu Feb 18 2026 v3
-// test comment Thu Feb 18 2026 v4
-// test comment Thu Feb 18 2026 v5
-// test comment Thu Feb 18 2026 v6
-// test comment Thu Feb 18 2026 v7
-// test comment Thu Feb 18 2026 v8
-// test comment Thu Feb 19 2026 v9
-// test comment Thu Feb 19 2026 v10
-// test comment Thu Feb 20 2026 v11
-// test comment Sat Feb 22 2026 v12
