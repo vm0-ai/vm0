@@ -32,6 +32,7 @@ import { linearFirewall } from "./linear.generated";
 import { mondayFirewall } from "./monday.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
+import { perplexityFirewall } from "./perplexity.generated";
 import { posthogFirewall } from "./posthog.generated";
 import { resendFirewall } from "./resend.generated";
 import { sentryFirewall } from "./sentry.generated";
@@ -72,6 +73,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   monday: mondayFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
+  perplexity: perplexityFirewall,
   posthog: posthogFirewall,
   resend: resendFirewall,
   sentry: sentryFirewall,

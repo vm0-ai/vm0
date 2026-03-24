@@ -31,6 +31,7 @@
     "generate:monday": "tsx src/index.ts monday",
     "generate:notion": "tsx src/index.ts notion",
     "generate:openai": "tsx src/index.ts openai",
+    "generate:perplexity": "tsx src/index.ts perplexity",
     "generate:posthog": "tsx src/index.ts posthog",
     "generate:resend": "tsx src/index.ts resend",
     "generate:sentry": "tsx src/index.ts sentry",
