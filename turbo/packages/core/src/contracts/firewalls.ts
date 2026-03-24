@@ -127,6 +127,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "hugging-face": ["hugging-face"],
   intercom: ["intercom"],
   atlassian: ["jira", "confluence"],
+  jotform: ["jotform"],
   linear: ["linear"],
   loops: ["loops"],
   monday: ["monday"],

@@ -44,6 +44,7 @@ import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { jiraFirewall } from "./jira.generated";
+import { jotformFirewall } from "./jotform.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
 import { mondayFirewall } from "./monday.generated";
@@ -111,6 +112,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "hugging-face": huggingFaceFirewall,
   intercom: intercomFirewall,
   jira: jiraFirewall,
+  jotform: jotformFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
   monday: mondayFirewall,

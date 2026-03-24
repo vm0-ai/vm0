@@ -43,6 +43,7 @@
     "generate:hugging-face": "tsx src/index.ts hugging-face",
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:jira": "tsx src/index.ts jira",
+    "generate:jotform": "tsx src/index.ts jotform",
     "generate:linear": "tsx src/index.ts linear",
     "generate:loops": "tsx src/index.ts loops",
     "generate:monday": "tsx src/index.ts monday",
