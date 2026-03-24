@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { GET } from "../route";
-import { GET as getConnector } from "../../route";
-import { GET as getSessionStatus } from "../../sessions/[sessionId]/route";
+import { GET as getConnector } from "../../../../zero/connectors/[type]/route";
+import { GET as getSessionStatus } from "../../../../zero/connectors/[type]/sessions/[sessionId]/route";
 import { handlers, http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
 import { reloadEnv } from "../../../../../../src/env";
@@ -1188,7 +1188,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/github",
+        "http://localhost:3000/api/zero/connectors/github",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -1249,7 +1249,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify session was marked complete via API
       const statusRequest = createTestRequest(
-        `http://localhost:3000/api/connectors/github/sessions/${session.id}`,
+        `http://localhost:3000/api/zero/connectors/github/sessions/${session.id}`,
       );
       const statusResponse = await getSessionStatus(statusRequest);
       const sessionData = await statusResponse.json();
@@ -1285,7 +1285,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify session was marked as error via API
       const statusRequest = createTestRequest(
-        `http://localhost:3000/api/connectors/github/sessions/${session.id}`,
+        `http://localhost:3000/api/zero/connectors/github/sessions/${session.id}`,
       );
       const statusResponse = await getSessionStatus(statusRequest);
       const sessionData = await statusResponse.json();
@@ -1327,7 +1327,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/slack",
+        "http://localhost:3000/api/zero/connectors/slack",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -1446,7 +1446,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/notion",
+        "http://localhost:3000/api/zero/connectors/notion",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -1612,7 +1612,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/gmail",
+        "http://localhost:3000/api/zero/connectors/gmail",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -1766,7 +1766,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Sheets+User");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/google-sheets",
+        "http://localhost:3000/api/zero/connectors/google-sheets",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -1919,7 +1919,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Docs+User");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/google-docs",
+        "http://localhost:3000/api/zero/connectors/google-docs",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -2038,7 +2038,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Drive+User");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/google-drive",
+        "http://localhost:3000/api/zero/connectors/google-drive",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -2157,7 +2157,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Calendar+User");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/google-calendar",
+        "http://localhost:3000/api/zero/connectors/google-calendar",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -2276,7 +2276,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/linear",
+        "http://localhost:3000/api/zero/connectors/linear",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -2431,7 +2431,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/docusign",
+        "http://localhost:3000/api/zero/connectors/docusign",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -2584,7 +2584,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=figmauser");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/figma",
+        "http://localhost:3000/api/zero/connectors/figma",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -2736,7 +2736,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Strava+Runner");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/strava",
+        "http://localhost:3000/api/zero/connectors/strava",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -2888,7 +2888,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Garmin+User");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/garmin-connect",
+        "http://localhost:3000/api/zero/connectors/garmin-connect",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -3040,7 +3040,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/deel",
+        "http://localhost:3000/api/zero/connectors/deel",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -3193,7 +3193,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Verify connector was stored via API
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/mercury",
+        "http://localhost:3000/api/zero/connectors/mercury",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -3347,7 +3347,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Neon+Dev");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/neon",
+        "http://localhost:3000/api/zero/connectors/neon",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -3498,7 +3498,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=reddituser");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/reddit",
+        "http://localhost:3000/api/zero/connectors/reddit",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -3650,7 +3650,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=xuser");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/x",
+        "http://localhost:3000/api/zero/connectors/x",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -3802,7 +3802,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=verceluser");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/vercel",
+        "http://localhost:3000/api/zero/connectors/vercel",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -3891,7 +3891,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Sentry+User");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/sentry",
+        "http://localhost:3000/api/zero/connectors/sentry",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -4052,7 +4052,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Test+Athlete");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/intervals-icu",
+        "http://localhost:3000/api/zero/connectors/intervals-icu",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();
@@ -4146,7 +4146,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       expect(location).toContain("username=Xero+User");
 
       const getRequest = createTestRequest(
-        "http://localhost:3000/api/connectors/xero",
+        "http://localhost:3000/api/zero/connectors/xero",
       );
       const getResponse = await getConnector(getRequest);
       const connector = await getResponse.json();

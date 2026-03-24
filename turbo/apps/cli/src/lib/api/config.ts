@@ -43,7 +43,10 @@ export async function saveConfig(config: CliConfig): Promise<void> {
 }
 
 export async function getToken(): Promise<string | undefined> {
-  // Check environment variable first
+  // Check environment variables first (ZERO_TOKEN takes priority)
+  if (process.env.ZERO_TOKEN) {
+    return process.env.ZERO_TOKEN;
+  }
   if (process.env.VM0_TOKEN) {
     return process.env.VM0_TOKEN;
   }
@@ -54,15 +57,10 @@ export async function getToken(): Promise<string | undefined> {
 
 /**
  * Get the active token for API requests.
- * Priority: VM0_TOKEN env var > user token from config
+ * Priority: ZERO_TOKEN env var > VM0_TOKEN env var > user token from config
  */
 export async function getActiveToken(): Promise<string | undefined> {
-  if (process.env.VM0_TOKEN) {
-    return process.env.VM0_TOKEN;
-  }
-
-  const config = await loadConfig();
-  return config.token;
+  return getToken();
 }
 
 export async function getApiUrl(): Promise<string> {

@@ -9,7 +9,7 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
 const isWatchMode = process.argv.includes("--watch");
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/zero.ts"],
   format: ["esm"],
   // Skip DTS generation in watch mode to avoid memory issues
   // DTS files are still generated during production builds

@@ -12,12 +12,14 @@ import { generate as generateAirtable } from "./airtable";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateConfluence } from "./confluence";
+import { generate as generateDiscord } from "./discord";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateFigma } from "./figma";
 import { generate as generateGitHub } from "./github";
 import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
 import { generate as generateNotion } from "./notion";
+import { generate as generateOpenai } from "./openai";
 import { generate as generateSlack } from "./slack";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateX } from "./x";
@@ -34,12 +36,14 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   asana: generateAsana,
   axiom: generateAxiom,
   confluence: generateConfluence,
+  discord: generateDiscord,
   elevenlabs: generateElevenlabs,
   figma: generateFigma,
   github: generateGitHub,
   jira: generateJira,
   linear: generateLinear,
   notion: generateNotion,
+  openai: generateOpenai,
   slack: generateSlack,
   vercel: generateVercel,
   x: generateX,

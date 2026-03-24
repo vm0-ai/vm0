@@ -1,9 +1,5 @@
 import { z } from "zod";
-import { authHeadersSchema, initContract } from "./base";
-import { apiErrorSchema } from "./errors";
 import { FeatureSwitchKey } from "../feature-switch-key";
-
-const c = initContract();
 
 /**
  * Secret field configuration for connector auth methods
@@ -3694,64 +3690,7 @@ export const connectorListResponseSchema = z.object({
 export type ConnectorListResponse = z.infer<typeof connectorListResponseSchema>;
 
 /**
- * Connectors main contract for /api/connectors
- */
-export const connectorsMainContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/connectors",
-    headers: authHeadersSchema,
-    responses: {
-      200: connectorListResponseSchema,
-      401: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "List all connectors for the authenticated user",
-  },
-});
-
-export type ConnectorsMainContract = typeof connectorsMainContract;
-
-/**
- * Connector by type contract for /api/connectors/[type]
- */
-export const connectorsByTypeContract = c.router({
-  get: {
-    method: "GET",
-    path: "/api/connectors/:type",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      type: connectorTypeSchema,
-    }),
-    responses: {
-      200: connectorResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Get connector status by type",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/api/connectors/:type",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      type: connectorTypeSchema,
-    }),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Disconnect a connector",
-  },
-});
-
-export type ConnectorsByTypeContract = typeof connectorsByTypeContract;
-
-/**
- * Scope diff response schema for /api/connectors/:type/scope-diff
+ * Scope diff response schema
  */
 export const scopeDiffResponseSchema = z.object({
   addedScopes: z.array(z.string()),
@@ -3761,27 +3700,6 @@ export const scopeDiffResponseSchema = z.object({
 });
 
 export type ScopeDiffResponse = z.infer<typeof scopeDiffResponseSchema>;
-
-/**
- * Connector scope diff contract for /api/connectors/[type]/scope-diff
- */
-export const connectorScopeDiffContract = c.router({
-  getScopeDiff: {
-    method: "GET",
-    path: "/api/connectors/:type/scope-diff",
-    headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
-    responses: {
-      200: scopeDiffResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Get scope diff for a connector",
-  },
-});
-
-export type ConnectorScopeDiffContract = typeof connectorScopeDiffContract;
 
 /**
  * Connector session status enum
@@ -3828,65 +3746,6 @@ export type ConnectorSessionStatusResponse = z.infer<
 >;
 
 /**
- * Connector sessions contract for /api/connectors/[type]/sessions
- * Used for CLI device flow - initiate OAuth from CLI
- */
-export const connectorSessionsContract = c.router({
-  /**
-   * POST /api/connectors/:type/sessions
-   * Create a new connector session for CLI device flow
-   */
-  create: {
-    method: "POST",
-    path: "/api/connectors/:type/sessions",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      type: connectorTypeSchema,
-    }),
-    body: z.object({}).optional(),
-    responses: {
-      200: connectorSessionResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Create connector session for CLI device flow",
-  },
-});
-
-export type ConnectorSessionsContract = typeof connectorSessionsContract;
-
-/**
- * Connector session by ID contract for /api/connectors/[type]/sessions/[id]
- * Used for CLI polling to check session status
- */
-export const connectorSessionByIdContract = c.router({
-  /**
-   * GET /api/connectors/:type/sessions/:sessionId
-   * Get connector session status (for CLI polling)
-   */
-  get: {
-    method: "GET",
-    path: "/api/connectors/:type/sessions/:sessionId",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      type: connectorTypeSchema,
-      sessionId: z.uuid(),
-    }),
-    responses: {
-      200: connectorSessionStatusResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Get connector session status",
-  },
-});
-
-export type ConnectorSessionByIdContract = typeof connectorSessionByIdContract;
-
-/**
  * Computer connector create response
  */
 export const computerConnectorCreateResponseSchema = z.object({
@@ -3900,49 +3759,3 @@ export const computerConnectorCreateResponseSchema = z.object({
 export type ComputerConnectorCreateResponse = z.infer<
   typeof computerConnectorCreateResponseSchema
 >;
-
-/**
- * Computer connector contract for /api/connectors/computer
- * Server-provisioned ngrok tunnel credentials (no OAuth flow)
- */
-export const computerConnectorContract = c.router({
-  create: {
-    method: "POST",
-    path: "/api/connectors/computer",
-    headers: authHeadersSchema,
-    body: z.object({}).optional(),
-    responses: {
-      200: computerConnectorCreateResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      409: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Create computer connector with ngrok tunnel credentials",
-  },
-  get: {
-    method: "GET",
-    path: "/api/connectors/computer",
-    headers: authHeadersSchema,
-    responses: {
-      200: connectorResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get computer connector status",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/api/connectors/computer",
-    headers: authHeadersSchema,
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Delete computer connector and revoke ngrok credentials",
-  },
-});
-
-export type ComputerConnectorContract = typeof computerConnectorContract;

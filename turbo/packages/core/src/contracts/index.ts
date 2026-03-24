@@ -345,10 +345,6 @@ export {
 } from "./logs";
 
 export {
-  connectorsMainContract,
-  connectorsByTypeContract,
-  connectorSessionsContract,
-  connectorSessionByIdContract,
   connectorTypeSchema,
   connectorSessionStatusSchema,
   connectorResponseSchema,
@@ -369,17 +365,11 @@ export {
   hasRequiredScopes,
   getScopeDiff,
   scopeDiffResponseSchema,
-  connectorScopeDiffContract,
   type ScopeDiff,
   type ScopeDiffResponse,
-  type ConnectorScopeDiffContract,
   getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
-  type ConnectorsMainContract,
-  type ConnectorsByTypeContract,
-  type ConnectorSessionsContract,
-  type ConnectorSessionByIdContract,
   type ConnectorType,
   type ConnectorSessionStatus,
   type ConnectorResponse,
@@ -390,10 +380,7 @@ export {
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorOAuthConfig,
-  // Computer connector
-  computerConnectorContract,
   computerConnectorCreateResponseSchema,
-  type ComputerConnectorContract,
   type ComputerConnectorCreateResponse,
 } from "./connectors";
 
