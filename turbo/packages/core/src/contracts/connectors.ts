@@ -1377,7 +1377,7 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
       scopes: ["tweet.read", "users.read", "follows.read", "offline.access"],
       environmentMapping: {
-        X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
+        X_TOKEN: "$secrets.X_ACCESS_TOKEN",
       },
     } as ConnectorOAuthConfig,
   },

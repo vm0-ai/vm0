@@ -10,14 +10,14 @@ export const neonFirewall: FirewallConfig = {
   name: "neon",
   description: "Neon API",
   placeholders: {
-    NEON_ACCESS_TOKEN: "Vm0PlaceHolder00000000000000000a",
+    NEON_TOKEN: "Vm0PlaceHolder00000000000000000a",
   },
   apis: [
     {
       base: "https://console.neon.tech/api/v2",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.NEON_ACCESS_TOKEN }}",
+          Authorization: "Bearer ${{ secrets.NEON_TOKEN }}",
         },
       },
       permissions: [

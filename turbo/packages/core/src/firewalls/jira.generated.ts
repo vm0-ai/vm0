@@ -10,7 +10,7 @@ export const jiraFirewall: FirewallConfig = {
   name: "jira",
   description: "Jira Cloud API",
   placeholders: {
-    JIRA_TOKEN:
+    ATLASSIAN_TOKEN:
       "ATATT3xVm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
   },
   apis: [
@@ -18,7 +18,7 @@ export const jiraFirewall: FirewallConfig = {
       base: "https://api.atlassian.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.JIRA_TOKEN }}",
+          Authorization: "Bearer ${{ secrets.ATLASSIAN_TOKEN }}",
         },
       },
       permissions: [

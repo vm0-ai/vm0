@@ -113,7 +113,6 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   fal: ["fal"],
   hubspot: ["hubspot"],
   atlassian: ["jira", "confluence"],
-  jira: ["jira"],
   linear: ["linear"],
   monday: ["monday"],
   neon: ["neon"],

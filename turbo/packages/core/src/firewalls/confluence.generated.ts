@@ -10,7 +10,7 @@ export const confluenceFirewall: FirewallConfig = {
   name: "confluence",
   description: "Confluence Cloud API",
   placeholders: {
-    CONFLUENCE_TOKEN:
+    ATLASSIAN_TOKEN:
       "ATATT3xVm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
   },
   apis: [
@@ -18,7 +18,7 @@ export const confluenceFirewall: FirewallConfig = {
       base: "https://api.atlassian.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.CONFLUENCE_TOKEN }}",
+          Authorization: "Bearer ${{ secrets.ATLASSIAN_TOKEN }}",
         },
       },
       permissions: [
