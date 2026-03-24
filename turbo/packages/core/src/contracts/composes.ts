@@ -80,6 +80,48 @@ export const CAPABILITY_META: Record<ValidCapability, CapabilityMeta> = {
 };
 
 /**
+ * Capabilities for the zero-layer capability system (ZERO_TOKEN).
+ * These protect /api/zero/* routes only.
+ */
+export const ZERO_CAPABILITIES = [
+  "agent:read",
+  "agent:write",
+  "agent-run:read",
+  "agent-run:write",
+  "schedule:read",
+  "schedule:write",
+  "slack:write",
+] as const;
+
+/** Inferred union type of all zero capability strings. */
+export type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
+
+/** Metadata for a single zero capability — group label and human-readable label. */
+export interface ZeroCapabilityMeta {
+  group: string;
+  label: string;
+}
+
+/**
+ * Exhaustive mapping from every zero capability to its UI group and label.
+ * Adding a new capability to ZERO_CAPABILITIES without updating this record
+ * will produce a TypeScript compile error.
+ */
+export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
+  {
+    "agent:read": { group: "Agent", label: "Read agents" },
+    "agent:write": { group: "Agent", label: "Create, update & delete agents" },
+    "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
+    "agent-run:write": { group: "Agent Runs", label: "Cancel runs" },
+    "schedule:read": { group: "Schedules", label: "View schedules" },
+    "schedule:write": {
+      group: "Schedules",
+      label: "Create & delete schedules",
+    },
+    "slack:write": { group: "Integrations", label: "Send Slack messages" },
+  };
+
+/**
  * Agent name validation schema
  * - Must be 3-64 characters
  * - Letters, numbers, and hyphens only

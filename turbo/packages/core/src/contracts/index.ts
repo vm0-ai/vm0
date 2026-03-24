@@ -47,6 +47,10 @@ export {
   CAPABILITY_META,
   type ValidCapability,
   type CapabilityMeta,
+  ZERO_CAPABILITIES,
+  ZERO_CAPABILITY_META,
+  type ZeroCapability,
+  type ZeroCapabilityMeta,
   // Inferred types
   type ComposeResponse,
   type ComposeListItem,
