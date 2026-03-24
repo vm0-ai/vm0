@@ -1,0 +1,201 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { navigateTo$ } from "../../../signals/route.ts";
+
+const context = testContext();
+
+describe("chat session switch", () => {
+  it("should show running state when switching to a session with an active run", async () => {
+    server.use(
+      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
+        const id = params.id as string;
+        if (id === "thread-completed") {
+          return HttpResponse.json({
+            id: "thread-completed",
+            title: null,
+            agentComposeId: "mock-compose-id",
+            chatMessages: [
+              {
+                role: "user",
+                content: "Done task",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                role: "assistant",
+                content: "All done!",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            latestSessionId: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }
+        // thread-running
+        return HttpResponse.json({
+          id: "thread-running",
+          title: null,
+          agentComposeId: "mock-compose-id",
+          chatMessages: [
+            {
+              role: "user",
+              content: "Active task prompt",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+          latestSessionId: null,
+          unsavedRuns: [
+            {
+              runId: "run-active",
+              status: "running",
+              prompt: "Active task prompt",
+              error: null,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () =>
+        HttpResponse.json({ threads: [] }),
+      ),
+      http.get("*/api/zero/logs/:id", () =>
+        HttpResponse.json({
+          id: "run-active",
+          sessionId: "session-1",
+          agentName: "zero",
+          displayName: null,
+          framework: "claude-code",
+          modelProvider: null,
+          triggerSource: "web",
+          status: "running",
+          prompt: "Active task prompt",
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          startedAt: "2026-03-10T00:00:01Z",
+          completedAt: null,
+          artifact: { name: null, version: null },
+        }),
+      ),
+      http.get("*/api/zero/runs/:id/telemetry/agent", () =>
+        HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        }),
+      ),
+      http.get("*/api/zero/queue-position", () =>
+        HttpResponse.json({ position: 0 }),
+      ),
+    );
+
+    // Start on a completed thread (no active polling)
+    await setupPage({ context, path: "/chat/thread-completed" });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("All done!")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // No Stop button should be present
+    expect(screen.queryByLabelText("Stop")).toBeNull();
+
+    // Navigate to the running thread
+    context.store.set(navigateTo$, "/chat/:sessionId", {
+      pathParams: { sessionId: "thread-running" },
+    });
+
+    // The running thread should show the thinking/shimmer state
+    await waitFor(
+      () => {
+        const shimmer = document.querySelector(".zero-shimmer-text");
+        expect(shimmer).toBeInTheDocument();
+      },
+      { timeout: 10_000 },
+    );
+
+    // Stop button should appear for the active run
+    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+  }, 30_000);
+
+  it("should load different messages when switching between completed sessions", async () => {
+    server.use(
+      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
+        const id = params.id as string;
+        return HttpResponse.json({
+          id,
+          title: null,
+          agentComposeId: "mock-compose-id",
+          chatMessages: [
+            {
+              role: "user",
+              content: `Question for ${id}`,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              role: "assistant",
+              content: `Answer for ${id}`,
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+          latestSessionId: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () =>
+        HttpResponse.json({ threads: [] }),
+      ),
+    );
+
+    await setupPage({ context, path: "/chat/session-alpha" });
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText("Answer for session-alpha"),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // Switch to session-beta
+    context.store.set(navigateTo$, "/chat/:sessionId", {
+      pathParams: { sessionId: "session-beta" },
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Answer for session-beta")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // Previous session content should be gone
+    expect(screen.queryByText("Answer for session-alpha")).toBeNull();
+
+    // Switch to session-gamma
+    context.store.set(navigateTo$, "/chat/:sessionId", {
+      pathParams: { sessionId: "session-gamma" },
+    });
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText("Answer for session-gamma"),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // Only current session content visible
+    expect(screen.queryByText("Answer for session-beta")).toBeNull();
+  }, 30_000);
+});
