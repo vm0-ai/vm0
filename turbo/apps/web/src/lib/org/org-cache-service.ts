@@ -23,47 +23,15 @@ interface OrgData {
 /**
  * Read tier from the org table (source of truth).
  * Returns "free" if the org row does not exist.
- *
- * // TODO(#5514): remove clerkMetadata fallback after full backfill
- * When clerkMetadata is provided and DB tier is "free", falls back to
- * Clerk publicMetadata and lazy-migrates the value to DB.
  */
-async function readTier(
-  orgId: string,
-  clerkMetadata?: Record<string, unknown>,
-): Promise<string> {
+async function readTier(orgId: string): Promise<string> {
   const db = globalThis.services.db;
   const [orgRow] = await db
     .select({ tier: orgMetadata.tier })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
-  const dbTier = orgRow?.tier ?? "free";
-
-  if (dbTier !== "free") {
-    return dbTier;
-  }
-
-  // TODO(#5514): remove this fallback after full backfill
-  if (clerkMetadata) {
-    const clerkTier = clerkMetadata.tier;
-    if (typeof clerkTier === "string" && clerkTier !== "free") {
-      log.info("lazy migration: tier from Clerk", { orgId, clerkTier });
-      void db
-        .insert(orgMetadata)
-        .values({ orgId, tier: clerkTier })
-        .onConflictDoUpdate({
-          target: orgMetadata.orgId,
-          set: { tier: clerkTier, updatedAt: new Date() },
-        })
-        .catch((err: unknown) =>
-          log.warn("lazy migration: tier write failed", { orgId, err }),
-        );
-      return clerkTier;
-    }
-  }
-
-  return "free";
+  return orgRow?.tier ?? "free";
 }
 
 /**
@@ -83,7 +51,6 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    // Cache hit — no Clerk metadata available for tier fallback
     const tier = await readTier(orgId);
     return { orgId, slug: cached.slug, name: cached.name, tier };
   }
@@ -100,11 +67,7 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
   const slug = clerkOrg.slug;
   const name = clerkOrg.name;
 
-  // Read tier with Clerk metadata fallback (lazy migration)
-  const tier = await readTier(
-    orgId,
-    clerkOrg.publicMetadata as Record<string, unknown> | undefined,
-  );
+  const tier = await readTier(orgId);
 
   // Upsert slug cache
   const now = new Date();
@@ -150,7 +113,6 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    // Cache hit — no Clerk metadata available for tier fallback
     const tier = await readTier(cached.orgId);
     return { orgId: cached.orgId, slug: cached.slug, name: cached.name, tier };
   }
@@ -169,11 +131,7 @@ export async function getOrgBySlug(slug: string): Promise<OrgData | null> {
     return null;
   }
 
-  // Read tier with Clerk metadata fallback (lazy migration)
-  const tier = await readTier(
-    clerkOrg.id,
-    clerkOrg.publicMetadata as Record<string, unknown> | undefined,
-  );
+  const tier = await readTier(clerkOrg.id);
 
   // Upsert slug cache
   const now = new Date();

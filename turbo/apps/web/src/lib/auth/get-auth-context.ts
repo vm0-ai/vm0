@@ -16,7 +16,7 @@ export type AuthContext = {
   userId: string;
   orgId?: string;
   orgRole?: OrgRole;
-  sessionClaims?: CustomJwtSessionClaims;
+  sessionClaims?: Record<string, unknown>;
   capabilities?: readonly Capability[];
   runId?: string;
 };
@@ -138,7 +138,7 @@ async function getClerkSessionAuth(): Promise<AuthContext | null> {
         : "member"
       : undefined,
     sessionClaims: authResult.sessionClaims as
-      | CustomJwtSessionClaims
+      | Record<string, unknown>
       | undefined,
   };
 }

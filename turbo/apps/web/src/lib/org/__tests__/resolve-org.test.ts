@@ -31,7 +31,7 @@ function authCtx(opts: {
   userId: string;
   orgId?: string | null;
   orgRole?: "admin" | "member";
-  sessionClaims?: CustomJwtSessionClaims;
+  sessionClaims?: Record<string, unknown>;
 }): AuthContext {
   return {
     userId: opts.userId,
