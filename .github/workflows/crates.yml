@@ -68,6 +68,9 @@ jobs:
       guest-download-changed: ${{ steps.detect.outputs.guest-download-changed }}
       guest-agent-changed: ${{ steps.detect.outputs.guest-agent-changed }}
       guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
+      block-cow-changed: ${{ steps.detect.outputs.block-cow-changed }}
+      metal-host: ${{ steps.host.outputs.host }}
+      metal-job-ref: ${{ steps.host.outputs.job-ref }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -110,6 +113,7 @@ jobs:
           check_crate guest-download
           check_crate guest-agent
           check_crate guest-mock-claude
+          check_crate block-cow
 
           # Aggregate: true if any crate or CI config changed
           if grep -q "=true" "$GITHUB_OUTPUT"; then
@@ -117,6 +121,41 @@ jobs:
           else
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Select metal host
+        id: host
+        env:
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            JOB_REF="pr-${PR_NUMBER}-test"
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            MQ_PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
+            if [ -n "$MQ_PR_NUM" ]; then
+              JOB_REF="pr-${MQ_PR_NUM}-test"
+            else
+              echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_HEAD_REF"
+              exit 1
+            fi
+          else
+            JOB_REF="staging-test"
+          fi
+
+          HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep . || true)
+          NUM_HOSTS=$(echo "$HOSTS" | grep -c . || true)
+          if [ "$NUM_HOSTS" -lt 1 ]; then
+            echo "No metal hosts configured, skipping host selection"
+            exit 0
+          fi
+          HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
+          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
+          HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
+          echo "host=${HOST}" >> "$GITHUB_OUTPUT"
+          echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
+          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS}, job-ref: ${JOB_REF})"
 
   check:
     runs-on: ubuntu-latest
@@ -193,6 +232,64 @@ jobs:
           pip install ".[test]"
           python -m pytest tests/ -v
 
+  block-cow-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.block-cow-changed == 'true'
+    timeout-minutes: 5
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
+      TARGET_TRIPLE: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install mold linker
+        env:
+          MOLD_VERSION: "2.40.4"
+        run: |
+          curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" \
+            | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-x86_64-linux/bin/mold"
+          ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold
+          ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: aarch64-musl-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile block-cow tests for ARM64
+        run: |
+          cd crates
+          cargo test --no-run --release --target "$TARGET_TRIPLE" -p block-cow
+          # Find the integration test binary
+          TEST_BIN=$(find "target/$TARGET_TRIPLE/release/deps" -name "integration-*" -executable -type f | head -1)
+          cp "$TEST_BIN" "target/block-cow-integration-test"
+          echo "TEST_BIN=crates/target/block-cow-integration-test" >> "$GITHUB_ENV"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Run block-cow integration tests on metal
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ needs.detect.outputs.metal-host }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          REMOTE_BIN="/tmp/block-cow-test-${JOB_REF}"
+          scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo ${REMOTE_BIN} --ignored --test-threads=1"
+
   runner-build:
     runs-on: ubuntu-latest
     container:
@@ -211,8 +308,8 @@ jobs:
       CARGO_PROFILE: ci
       TARGET_TRIPLE: aarch64-unknown-linux-musl
     outputs:
-      host: ${{ steps.host.outputs.host }}
-      job-ref: ${{ steps.host.outputs.job-ref }}
+      host: ${{ needs.detect.outputs.metal-host }}
+      job-ref: ${{ needs.detect.outputs.metal-job-ref }}
       default-rootfs-hash: ${{ steps.build.outputs.default-rootfs-hash }}
       default-snapshot-hash: ${{ steps.build.outputs.default-snapshot-hash }}
     steps:
@@ -264,47 +361,12 @@ jobs:
           grafana-cloud-prometheus-user: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
 
-      - name: Select metal host
-        id: host
-        env:
-          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          MQ_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-        run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            JOB_REF="pr-${PR_NUMBER}-test"
-          elif [ "$EVENT_NAME" = "merge_group" ]; then
-            MQ_PR_NUM=$(echo "$MQ_HEAD_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
-            if [ -n "$MQ_PR_NUM" ]; then
-              JOB_REF="pr-${MQ_PR_NUM}-test"
-            else
-              echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_HEAD_REF"
-              exit 1
-            fi
-          else
-            JOB_REF="staging-test"
-          fi
-
-          HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep .)
-          NUM_HOSTS=$(echo "$HOSTS" | grep -c .)
-          if [ "$NUM_HOSTS" -lt 1 ]; then
-            echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
-            exit 1
-          fi
-          HASH=$(echo -n "$JOB_REF" | md5sum | cut -c1-8)
-          HOST_INDEX=$(( 0x$HASH % NUM_HOSTS ))
-          HOST=$(echo "$HOSTS" | sed -n "$((HOST_INDEX + 1))p")
-          echo "host=${HOST}" >> "$GITHUB_OUTPUT"
-          echo "job-ref=${JOB_REF}" >> "$GITHUB_OUTPUT"
-          echo "Selected metal host: ${HOST} (index ${HOST_INDEX}/${NUM_HOSTS}, job-ref: ${JOB_REF})"
-
       - name: Deploy and build on metal host
         id: build
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          HOST: ${{ steps.host.outputs.host }}
-          JOB_REF: ${{ steps.host.outputs.job-ref }}
+          HOST: ${{ needs.detect.outputs.metal-host }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -908,6 +970,7 @@ jobs:
       - detect
       - check
       - mitm-addon-test
+      - block-cow-test
       - runner-build
       - runner-benchmark
       - runner-exec
@@ -952,6 +1015,7 @@ jobs:
           # May-skip: only run when relevant crates change
           check_result "check" "${{ needs.check.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
+          check_result "block-cow-test" "${{ needs.block-cow-test.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"

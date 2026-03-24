@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.145.0](https://github.com/vm0-ai/vm0/compare/app-v0.144.0...app-v0.145.0) (2026-03-24)
+
+
+### Features
+
+* add static skeleton background behind onboarding modal ([#6261](https://github.com/vm0-ai/vm0/issues/6261)) ([755aa23](https://github.com/vm0-ai/vm0/commit/755aa234b46997154197c76f8d7a73586e2f6287)), closes [#6245](https://github.com/vm0-ai/vm0/issues/6245)
+
+
+### Bug Fixes
+
+* **platform:** preserve schedule timezone when editing ([#6188](https://github.com/vm0-ai/vm0/issues/6188)) ([809292c](https://github.com/vm0-ai/vm0/commit/809292ce6db0a9a443a28d76b01f7ecbc7f83fb2))
+
+
+### Refactoring
+
+* **db:** rename zeroAgentId to agentId across codebase ([#6272](https://github.com/vm0-ai/vm0/issues/6272)) ([4d3b01d](https://github.com/vm0-ai/vm0/commit/4d3b01de976b2a200117f3b0deed8bb841f24a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.103.0
+
 ## [0.144.0](https://github.com/vm0-ai/vm0/compare/app-v0.143.1...app-v0.144.0) (2026-03-24)
 
 

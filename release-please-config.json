@@ -32,6 +32,9 @@
         "crates/ably-subscriber": {
             "release-type": "rust"
         },
+        "crates/block-cow": {
+            "release-type": "rust"
+        },
         "crates/guest-agent": {
             "release-type": "rust"
         },

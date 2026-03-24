@@ -140,10 +140,10 @@ interface ZeroScheduleEntry {
   notifySlack: boolean;
   /** Original schedule name for API operations */
   name: string;
+  /** IANA timezone stored on the server */
+  timezone: string;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds: number | null;
-  /** IANA timezone identifier */
-  timezone: string;
 }
 
 export const zeroScheduleEntries$ = computed((get) => {
@@ -160,8 +160,8 @@ export const zeroScheduleEntries$ = computed((get) => {
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
         name: s.name,
-        intervalSeconds: s.intervalSeconds,
         timezone: s.timezone,
+        intervalSeconds: s.intervalSeconds,
       }),
     );
 });
@@ -394,11 +394,11 @@ export interface OrgScheduleEntry {
   notifyEmail: boolean;
   notifySlack: boolean;
   name: string;
+  /** IANA timezone stored on the server */
+  timezone: string;
   intervalSeconds: number | null;
   agentId: string;
   agentName: string;
-  /** IANA timezone identifier */
-  timezone: string;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -423,10 +423,10 @@ export const allOrgScheduleEntries$ = computed((get) => {
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
         name: s.name,
+        timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
         agentName: s.agentName,
-        timezone: s.timezone,
       }),
     );
 });

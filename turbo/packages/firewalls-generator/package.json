@@ -6,6 +6,9 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "generate": "tsx src/index.ts",
+    "generate:agentmail": "tsx src/index.ts agentmail",
+    "generate:ahrefs": "tsx src/index.ts ahrefs",
+    "generate:airtable": "tsx src/index.ts airtable",
     "generate:confluence": "tsx src/index.ts confluence",
     "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",
@@ -17,7 +20,9 @@
     "generate:jira": "tsx src/index.ts jira",
     "generate:notion": "tsx src/index.ts notion",
     "generate:slack": "tsx src/index.ts slack",
-    "generate:vercel": "tsx src/index.ts vercel"
+    "generate:vercel": "tsx src/index.ts vercel",
+    "generate:zapsign": "tsx src/index.ts zapsign",
+    "generate:zeptomail": "tsx src/index.ts zeptomail"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

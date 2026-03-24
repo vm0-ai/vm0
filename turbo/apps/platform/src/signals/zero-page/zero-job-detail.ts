@@ -563,6 +563,7 @@ export const zeroJobScheduleEntries$ = computed((get) => {
         description: s.description,
         enabled: s.enabled,
         name: s.name,
+        timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
       }),
     );
