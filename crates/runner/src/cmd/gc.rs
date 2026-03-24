@@ -480,13 +480,18 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     let mut removed: u32 = 0;
 
     // Pass 1: remove orphaned snapshot targets (cow-<uuid>).
-    // On success, also remove the paired origin target (origin-<uuid>).
+    //
+    // Backward compat: dm-snapshot-v1 paired each snapshot with an
+    // origin-<uuid> dm-linear target. dm-snapshot-v2 removed dm-linear
+    // (snapshots reference the shared base loop device directly). We
+    // still attempt to remove the origin target here so GC cleans up
+    // leftovers from v1 machines. This can be removed once all machines
+    // have been migrated to v2.
     for name in parse_dm_targets(&dmsetup_ls("snapshot"), "cow-") {
         let origin_name = format!("origin-{}", &name["cow-".len()..]);
 
         if dry_run {
             info!(dm_target = %name, "would remove orphaned dm-snapshot target");
-            info!(dm_target = %origin_name, "would remove orphaned dm-linear target");
             removed += 1;
             continue;
         }
@@ -497,19 +502,18 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
         }
         info!(dm_target = %name, "removed orphaned dm-snapshot target");
 
-        // Snapshot removed — now remove the paired origin target (best-effort).
+        // Best-effort: remove paired v1 origin target if it exists.
         if dmsetup_remove(&origin_name) {
-            info!(dm_target = %origin_name, "removed orphaned dm-linear target");
-        } else {
-            warn!(dm_target = %origin_name, "failed to remove orphaned dm-linear target");
+            info!(dm_target = %origin_name, "removed orphaned dm-linear target (v1 leftover)");
         }
 
         removed += 1;
     }
 
-    // Pass 2: remove orphaned origin targets whose snapshot was already gone
-    // (e.g., pass 1 removed the snapshot in a previous GC run but the origin
-    // removal failed at that time).
+    // Pass 2: remove orphaned origin targets whose snapshot was already gone.
+    // This handles v1 leftovers where the snapshot was removed but the origin
+    // wasn't (e.g., previous GC removed the snapshot but origin removal failed).
+    // Can be removed once all machines are migrated to dm-snapshot-v2.
     for name in parse_dm_targets(&dmsetup_ls("linear"), "origin-") {
         if dry_run {
             info!(dm_target = %name, "would remove orphaned dm-linear target");

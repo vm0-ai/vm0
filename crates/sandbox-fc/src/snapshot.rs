@@ -24,11 +24,9 @@ const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Maximum attempts to destroy a COW device after killing Firecracker.
 /// The inner FC process (via `sudo -u` in netns) may still be exiting.
-const DESTROY_RETRIES: usize = 5;
+const DESTROY_RETRIES: u32 = 5;
 
 /// Delay between COW device destroy retries during snapshot teardown.
-/// Longer than factory destroy (500ms vs 200ms) because snapshot teardown
-/// also umounts the bind mount, adding another dependency.
 const DESTROY_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 /// Configuration for creating a snapshot.
