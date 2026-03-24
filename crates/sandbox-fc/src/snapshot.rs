@@ -250,11 +250,34 @@ async fn run_snapshot_workflow(
     // Tear down dm-snapshot AFTER Firecracker is dead (dmsetup remove fails
     // with EBUSY if any fd is open to the device). Preserve the COW file
     // and move it to the output dir.
+    //
+    // Retry: kill_process_group + child.wait() only waits for the outer sudo
+    // process. The inner Firecracker (inside netns via sudo -u) may still be
+    // exiting, holding the dm device fd open. Retry a few times to allow it
+    // to fully terminate.
     if result.is_ok() {
         let cow_file = cow_device.cow_file().to_owned();
-        cow_device
-            .destroy_keep_cow()
-            .map_err(|e| SnapshotError::Setup(format!("destroy_keep_cow: {e}")))?;
+        let mut last_err = None;
+        for attempt in 0..5 {
+            match cow_device.destroy_keep_cow() {
+                Ok(()) => {
+                    last_err = None;
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        attempt,
+                        error = %e,
+                        "destroy_keep_cow failed, retrying"
+                    );
+                    last_err = Some(e);
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+            }
+        }
+        if let Some(e) = last_err {
+            return Err(SnapshotError::Setup(format!("destroy_keep_cow: {e}")));
+        }
         tokio::fs::rename(&cow_file, &output.cow()).await?;
     }
     // On error, cow_device is dropped → Drop calls destroy() (best-effort).
