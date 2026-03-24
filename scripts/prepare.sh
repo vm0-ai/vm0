@@ -118,18 +118,6 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 6. Check SSL certificates (optional but recommended)
-# -----------------------------------------------------------------------------
-echo "6. Checking SSL certificates..."
-CERTS_DIR="$PROJECT_ROOT/.certs"
-if [ -f "$CERTS_DIR/rootCA.pem" ]; then
-  echo -e "${GREEN}   SSL certificates found in .certs/${NC}"
-else
-  echo -e "${YELLOW}   No SSL certificates found${NC}"
-  echo "   Optional: Run 'scripts/generate-certs.sh' on host machine for HTTPS"
-fi
-
-# -----------------------------------------------------------------------------
 # 7. Install dependencies
 # -----------------------------------------------------------------------------
 echo "7. Installing dependencies..."

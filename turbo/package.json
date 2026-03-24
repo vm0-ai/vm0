@@ -14,8 +14,6 @@
     "knip": "knip",
     "knip:fix": "knip --fix --allow-remove-files",
     "knip:production": "knip --production --strict",
-    "generate-certs": "bash ../scripts/generate-certs.sh",
-    "check-certs": "node packages/proxy/scripts/check-certs.js",
     "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
     "dev:status": "bash scripts/dev-server-check.sh",
     "runner": "bash ../scripts/dev-runner.sh deploy",

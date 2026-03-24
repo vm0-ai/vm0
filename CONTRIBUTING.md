@@ -10,7 +10,6 @@ This project uses [Dev Containers](https://containers.dev/) for development. The
 
 - [Docker](https://www.docker.com/) (or [OrbStack](https://orbstack.dev/) for macOS, recommended)
 - [VS Code](https://code.visualstudio.com/) with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-- [mkcert](https://github.com/FiloSottile/mkcert) for local SSL certificates
 
 ### External Services
 
@@ -24,30 +23,6 @@ You need to register the following services and obtain API keys:
 | [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` |
 
 All other environment variables (OAuth connectors, Slack, Axiom, etc.) can be left empty.
-
-### SSL Certificates
-
-Before opening the project in a dev container, generate SSL certificates on your **host machine**:
-
-**Install mkcert:**
-
-```bash
-# macOS
-brew install mkcert
-
-# Debian/Ubuntu
-sudo apt install mkcert
-
-# Arch Linux
-sudo pacman -S mkcert
-```
-
-**Generate certificates:**
-
-```bash
-cd /path/to/vm0
-bash scripts/generate-certs.sh
-```
 
 ### Getting Started
 

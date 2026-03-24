@@ -28,7 +28,7 @@ Scan the current conversation for traces of the following 7 dev server operation
 | Health check | `pnpm dev:status`, curl to `https://www.vm7.ai:8443` / `app.vm7.ai:8443` / `docs.vm7.ai:8443` |
 | Database migration | `pnpm db:migrate` (Drizzle ORM + PostgreSQL), connection failures, migration errors |
 | Log viewing | `TaskOutput` reads, `/dev-logs` invocations, runtime errors in output |
-| SSL certificates | `scripts/generate-certs.sh` (mkcert), `check-certs.js`, cert generation failures |
+| SSL certificates | Caddy auto-provisions via Let's Encrypt DNS-01 challenge, requires `CF_DNS_API_TOKEN` |
 | Chrome/VNC | `scripts/start-vnc.sh` (Xvfb + openbox + x11vnc + noVNC + Chrome CDP:9222), crashes, CDP unreachable |
 | Agent-Browser | `agent-browser open/snapshot/click`, `agent-browser.json` config, CDP connection failures, timeouts |
 

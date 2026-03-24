@@ -1,17 +1,18 @@
 # @vm0/proxy
 
-Caddy reverse proxy for local HTTPS development.
+Caddy reverse proxy for local HTTPS development with automatic Let's Encrypt certificates.
 
 ## Overview
 
-This package provides a Caddy-based reverse proxy that enables HTTPS for local development using mkcert-generated certificates.
+This package provides a Caddy-based reverse proxy that enables HTTPS for local development. Certificates are automatically provisioned via Let's Encrypt using DNS-01 challenge against Cloudflare.
 
 ## Features
 
-- **HTTPS support** for all local development servers
-- **Multiple domains**: www.vm7.ai, docs.vm7.ai
+- **Automatic HTTPS** via Let's Encrypt (no manual certificate management)
+- **Multiple domains**: www.vm7.ai, docs.vm7.ai, app.vm7.ai
 - **Automatic HTTP to HTTPS redirect**
 - **WebSocket support** for hot module replacement
+- **Shared certificate cache** across devcontainers via Docker volume
 
 ## Architecture
 
@@ -19,40 +20,22 @@ This package provides a Caddy-based reverse proxy that enables HTTPS for local d
 Browser
   ↓
 Caddy Proxy (HTTPS: 8443, HTTP: 8080)
-  ↓
-┌──────────────┬──────────────┐
-│              │              │
-Web App        Docs App
-(port 3000)    (port 3001)
+  ↓                ↓              ↓
+Web App        Docs App       App
+(port 3000)    (port 3001)    (port 3002)
 ```
 
 ## Quick Start
 
-### 1. Generate Certificates
-
-First time setup:
+### 1. Sync Environment (requires 1Password)
 
 ```bash
-cd turbo
-pnpm generate-certs
+scripts/sync-env.sh
 ```
 
-This will:
+This provisions `CF_DNS_API_TOKEN` needed for Let's Encrypt DNS-01 challenge.
 
-- Install mkcert CA to your system trust store
-- Generate SSL certificates for:
-  - vm7.ai
-  - www.vm7.ai
-  - docs.vm7.ai
-
-### 2. Verify Certificates
-
-```bash
-cd turbo
-pnpm check-certs
-```
-
-### 3. Start Development Servers
+### 2. Start Development Servers
 
 **Terminal 1 - Start applications:**
 
@@ -68,17 +51,19 @@ cd turbo/packages/proxy
 pnpm dev
 ```
 
-### 4. Access Applications
+On first start, Caddy will automatically obtain a Let's Encrypt certificate (~30s). Subsequent starts use the cached certificate.
 
-With HTTPS (via Caddy):
+### 3. Access Applications
 
 - Web: https://www.vm7.ai:8443
 - Docs: https://docs.vm7.ai:8443
+- App: https://app.vm7.ai:8443
 
 Direct access (HTTP only):
 
 - Web: http://localhost:3000
 - Docs: http://localhost:3001
+- App: http://localhost:3002
 
 ## Configuration
 
@@ -87,8 +72,8 @@ Direct access (HTTP only):
 The `Caddyfile` defines:
 
 - Port configuration (8080 for HTTP, 8443 for HTTPS)
-- Domain routing
-- TLS certificate paths
+- Domain routing with automatic TLS via Cloudflare DNS challenge
+- Certificate storage at `~/.local/certs/caddy`
 - HTTP to HTTPS redirects
 
 ### Domain Mapping
@@ -97,69 +82,33 @@ The `Caddyfile` defines:
 | ---------------- | ---- | ----------------------------- |
 | www.vm7.ai:8443  | 8443 | localhost:3000 (Next.js web)  |
 | docs.vm7.ai:8443 | 8443 | localhost:3001 (Next.js docs) |
+| app.vm7.ai:8443  | 8443 | localhost:3002 (Vite app)     |
 | vm7.ai:8443      | 8443 | Redirect to www.vm7.ai:8443   |
 
 ## Scripts
 
 - `pnpm dev` - Start Caddy proxy server
-- `pnpm check-certs` - Verify certificates exist
-- `pnpm generate-certs` - Generate SSL certificates
-
-## DevContainer Integration
-
-The DevContainer automatically:
-
-- Adds vm7.ai domains to `/etc/hosts`
-- Installs mkcert CA to system trust store
-- Installs CA to NSS database (for Chrome/Firefox)
-- Persists mkcert state across container rebuilds
 
 ## Troubleshooting
 
-### Certificates not found
+### Caddy won't start — missing CF_DNS_API_TOKEN
+
+Run `scripts/sync-env.sh` to provision the Cloudflare DNS token from 1Password.
+
+### Caddy won't start — port conflict
 
 ```bash
-# Generate certificates
-cd turbo
-pnpm generate-certs
+lsof -i :8080
+lsof -i :8443
+pkill -f caddy
 ```
-
-### Caddy won't start
-
-1. Check if certificates exist:
-
-   ```bash
-   ls -la ../../.certs/
-   ```
-
-2. Check if ports are available:
-
-   ```bash
-   lsof -i :8080
-   lsof -i :8443
-   ```
-
-3. Kill existing Caddy instances:
-   ```bash
-   pkill -f caddy
-   ```
-
-### Browser shows "Not Secure"
-
-The mkcert CA may not be installed. Run:
-
-```bash
-mkcert -install
-```
-
-Then restart your browser.
 
 ### /etc/hosts not configured
 
 In DevContainer, this should be automatic. If not:
 
 ```bash
-echo "127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai" | sudo tee -a /etc/hosts
+echo "127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai app.vm7.ai" | sudo tee -a /etc/hosts
 ```
 
 ## File Structure
@@ -169,35 +118,9 @@ packages/proxy/
 ├── Caddyfile              # Caddy configuration
 ├── package.json           # Package scripts
 ├── scripts/
-│   ├── check-certs.js    # Certificate validation
 │   └── start-caddy.js    # Caddy startup script
 └── README.md             # This file
 ```
-
-## Related Files
-
-- `/scripts/generate-certs.sh` - Certificate generation script
-- `/.certs/` - Generated certificates (gitignored)
-- `/.devcontainer/setup.sh` - DevContainer initialization
-- `/.devcontainer/devcontainer.json` - DevContainer config with mkcert mounts
-
-## Why HTTPS for Local Development?
-
-1. **Production parity** - Match production environment
-2. **Service Workers** - Required for PWA testing
-3. **Secure cookies** - Test secure flag behavior
-4. **HTTPS APIs** - Test with real SSL/TLS
-5. **No browser warnings** - Clean development experience
-
-## Comparison with HTTP-only Development
-
-| Feature          | With Proxy (HTTPS) | Direct (HTTP)    |
-| ---------------- | ------------------ | ---------------- |
-| SSL/TLS          | ✅ Yes             | ❌ No            |
-| Multiple domains | ✅ Yes             | ❌ No            |
-| Production-like  | ✅ Yes             | ⚠️ Partial       |
-| Setup complexity | ⚠️ Medium          | ✅ Simple        |
-| Browser warnings | ✅ None            | ⚠️ Mixed content |
 
 ## License
 

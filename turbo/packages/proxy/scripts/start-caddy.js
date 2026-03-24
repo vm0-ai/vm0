@@ -1,19 +1,33 @@
 #!/usr/bin/env node
 
 const { execFileSync, spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 const CADDYFILE = path.join(__dirname, "../Caddyfile");
 
 console.log("🚀 Starting Caddy reverse proxy...\n");
 
-// Check if certificates exist
-try {
-  execFileSync(process.execPath, [path.join(__dirname, "check-certs.js")], {
-    stdio: "inherit",
-  });
-} catch (error) {
-  console.error("\n❌ Cannot start Caddy without certificates.");
+// Ensure CF_DNS_API_TOKEN is available (needed for Let's Encrypt DNS-01 challenge)
+if (!process.env.CF_DNS_API_TOKEN) {
+  // Try loading from scripts/.env.local
+  const envLocalPath = path.join(__dirname, "../../../../scripts/.env.local");
+  if (fs.existsSync(envLocalPath)) {
+    const content = fs.readFileSync(envLocalPath, "utf-8");
+    const match = content.match(/^CF_DNS_API_TOKEN=(.+)$/m);
+    if (match) {
+      process.env.CF_DNS_API_TOKEN = match[1].trim();
+      console.log("✓ Loaded CF_DNS_API_TOKEN from scripts/.env.local\n");
+    }
+  }
+}
+
+if (!process.env.CF_DNS_API_TOKEN) {
+  console.error("❌ CF_DNS_API_TOKEN is not set.");
+  console.error(
+    "\nThis token is required for automatic Let's Encrypt certificate provisioning.",
+  );
+  console.error("Run 'scripts/sync-env.sh' to sync it from 1Password.\n");
   process.exit(1);
 }
 
@@ -25,13 +39,14 @@ try {
   // Ignore errors if no Caddy is running
 }
 
-console.log("\n🌐 Starting Caddy with HTTPS support...");
+console.log("\n🌐 Starting Caddy with automatic HTTPS (Let's Encrypt)...");
 console.log(`   Using Caddyfile: ${CADDYFILE}\n`);
 
 // Start Caddy
 const caddy = spawn("caddy", ["run", "--config", CADDYFILE], {
   stdio: "inherit",
   cwd: path.join(__dirname, ".."),
+  env: process.env,
 });
 
 caddy.on("error", (error) => {
@@ -61,7 +76,11 @@ setTimeout(() => {
   console.log("   Web:       pnpm --filter web dev (port 3000)");
   console.log("   Docs:      pnpm --filter docs dev (port 3001)");
   console.log("   App:       pnpm --filter @vm0/app dev (port 3002)");
-  console.log("\n🛑 Press Ctrl+C to stop Caddy\n");
+  console.log(
+    "\n🔐 Certificates are provisioned automatically via Let's Encrypt.",
+  );
+  console.log("   First start may take ~30s for certificate issuance.\n");
+  console.log("🛑 Press Ctrl+C to stop Caddy\n");
 }, 1000);
 
 // Handle graceful shutdown

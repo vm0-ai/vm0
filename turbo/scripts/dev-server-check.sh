@@ -7,16 +7,6 @@ if [ -z "$PROJECT_ROOT" ]; then
   exit 1
 fi
 
-CERT_DIR="$PROJECT_ROOT/.certs"
-
-# --- Certificate check (silent, auto-regenerate if missing) ---
-if [ ! -f "$CERT_DIR/www.vm7.ai.pem" ] || \
-   [ ! -f "$CERT_DIR/app.vm7.ai.pem" ] || \
-   [ ! -f "$CERT_DIR/docs.vm7.ai.pem" ] || \
-   [ ! -f "$CERT_DIR/vm7.ai.pem" ]; then
-  bash "$PROJECT_ROOT/scripts/generate-certs.sh" >&2
-fi
-
 # --- Port check ---
 check_port() {
   local label="$1"

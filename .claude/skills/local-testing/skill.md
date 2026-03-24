@@ -284,13 +284,13 @@ scripts/sync-env.sh
 
 > **Note**: This script can only be executed by the user directly as it requires interactive 1Password authentication.
 
-### Problem: SSL Certificate Errors (e.g., "app.vm7.ai.pem - MISSING")
+### Problem: SSL Certificate Errors
 
-**Cause**: SSL certificates not generated for local development
+**Cause**: `CF_DNS_API_TOKEN` not set. Caddy needs this to provision Let's Encrypt certificates via DNS-01 challenge.
 
 **Solution**:
 ```bash
-scripts/generate-certs.sh
+scripts/sync-env.sh
 ```
 
 ### Problem: "parallel: command not found" When Running Parallel E2E Tests

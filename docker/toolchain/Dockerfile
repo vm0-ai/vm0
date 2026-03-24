@@ -69,17 +69,9 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install mkcert for local SSL certificates
+# Install libnss3-tools (needed by Chromium NSS database)
 RUN apt-get update && apt-get install -y \
     libnss3-tools \
-    && ARCH=$(dpkg --print-architecture) \
-    && if [ "$ARCH" = "arm64" ]; then \
-        curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/arm64"; \
-    else \
-        curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64"; \
-    fi \
-    && chmod +x mkcert-v*-linux-* \
-    && mv mkcert-v*-linux-* /usr/local/bin/mkcert \
     && rm -rf /var/lib/apt/lists/*
 
 # Install 1Password CLI
@@ -138,13 +130,18 @@ RUN groupadd -f --gid 1000 vscode \
 # Install rust-src for rust-analyzer (IDE support for standard library)
 RUN rustup component add rust-src
 
-# Install Caddy web server (matches devcontainers-extra/features/caddy)
-RUN ARCH=$(dpkg --print-architecture) \
-    && CADDY_VERSION=$(curl -s https://api.github.com/repos/caddyserver/caddy/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
-    && curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${ARCH}.tar.gz" -o /tmp/caddy.tar.gz \
-    && tar -xzf /tmp/caddy.tar.gz -C /usr/local/bin caddy \
+# Install Caddy web server with Cloudflare DNS module for automatic Let's Encrypt certificates
+# Uses xcaddy to build a custom Caddy binary with the caddy-dns/cloudflare plugin
+RUN GOLANG_VERSION=1.24.4 \
+    && ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://go.dev/dl/go${GOLANG_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && export PATH="/usr/local/go/bin:$PATH" \
+    && export GOPATH="/tmp/gopath" \
+    && go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest \
+    && "$GOPATH/bin/xcaddy" build --with github.com/caddy-dns/cloudflare --output /usr/local/bin/caddy \
     && chmod +x /usr/local/bin/caddy \
-    && rm /tmp/caddy.tar.gz
+    && rm -rf /tmp/go.tar.gz /tmp/gopath /usr/local/go
 
 # Install Cloudflared tunnel client via apt (matches joedmck/devcontainer-features/cloudflared)
 RUN mkdir -p /usr/share/keyrings \
