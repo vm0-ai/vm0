@@ -188,7 +188,6 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.agentId).toBeTruthy();
-      expect(data.agentId).toBeTruthy();
       expect(data.connectors).toStrictEqual([]);
       expect(data.description).toBeNull();
       expect(data.displayName).toBeNull();
@@ -284,7 +283,6 @@ describe("Zero Agents API", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.agentId).toBe(created.agentId);
       expect(data.agentId).toBe(created.agentId);
       expect(data.displayName).toBe("Test Agent");
       expect(data.description).toBe("Test description");
@@ -428,7 +426,6 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.agentId).toBe(created.agentId);
-      expect(data.agentId).toBeTruthy();
     });
 
     it("should return 404 for unknown agent", async () => {
@@ -613,7 +610,6 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.agentId).toBe(created.agentId);
-      expect(data.agentId).toBe(created.agentId);
       expect(data.displayName).toBe("Sandbox Access Agent");
       expect(data.description).toBe("Agent accessible via sandbox token");
       expect(data.sound).toBe("professional");
@@ -682,7 +678,6 @@ describe("Zero Agents API", () => {
       expect(data.displayName).toBe("Updated");
       expect(data.description).toBe("New desc");
       expect(data.sound).toBe("casual");
-      expect(data.agentId).toBe(created.agentId);
       expect(data.agentId).toBe(created.agentId);
       expect(data.connectors).toStrictEqual([]);
     });

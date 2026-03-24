@@ -20,15 +20,12 @@ export const defaultAgentMetadata$ = computed(async (get) => {
 
 /**
  * Display name for the default agent.
- * Reads metadata.displayName if available, otherwise capitalizes the agent name.
- * Falls back to "Zero" when no agent is set.
+ * Reads metadata.displayName if available, otherwise falls back to "Zero".
  */
 export const agentDisplayName$ = computed(async (get) => {
   const metadata = await get(defaultAgentMetadata$);
   if (metadata?.displayName) {
     return metadata.displayName;
   }
-  const raw = await get(defaultAgentId$);
-  const name = raw || "zero";
-  return name.charAt(0).toUpperCase() + name.slice(1);
+  return "Zero";
 });

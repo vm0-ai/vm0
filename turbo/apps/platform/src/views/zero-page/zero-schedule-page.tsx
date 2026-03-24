@@ -90,7 +90,7 @@ function buildCombinedSchedule(
     agentLabel:
       e.agentId === defaultComposeId
         ? agentName
-        : (nameToDisplay.get(e.agentId) ?? e.agentId),
+        : (nameToDisplay.get(e.agentId) ?? "Unknown agent"),
     agentId: e.agentId,
     timezone: e.timezone,
   }));
