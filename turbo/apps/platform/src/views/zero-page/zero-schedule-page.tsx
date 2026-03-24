@@ -51,6 +51,10 @@ import {
   WEEKDAY_LABELS,
   type ScheduleEntry,
 } from "./zero-schedule-card";
+import {
+  ScheduleFormDialog,
+  type ScheduleFormValues,
+} from "./schedule-dialog.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
 import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
@@ -63,13 +67,8 @@ import {
   deleteOrgSchedule$,
   runScheduleNow$,
   type OrgScheduleEntry,
-  type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
-import {
-  agentsError$,
-  agentsLoading$,
-} from "../../signals/zero-page/zero-agents.ts";
 import emptyScheduleImg from "./assets/empty-schedule.webp";
 import { navigateTo$ } from "../../signals/route.ts";
 
@@ -615,169 +614,6 @@ export function ScheduleEditFields({
 }
 
 // ---------------------------------------------------------------------------
-// Create dialog
-// ---------------------------------------------------------------------------
-
-interface ScheduleCreateDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onSave: (params: ZeroScheduleSaveParams & { agentId: string }) => void;
-  saving: boolean;
-  agents: { id: string; name: string; displayName?: string | null }[];
-  defaultComposeId: string | null;
-  agentsLoading: boolean;
-  agentsError: string | null;
-}
-
-function ScheduleCreateDialogInner({
-  onClose,
-  onSave,
-  saving,
-  agents,
-  defaultComposeId,
-  agentsLoading,
-  agentsError,
-}: Omit<ScheduleCreateDialogProps, "open">) {
-  const [prompt, setPrompt] = useState("");
-  const [agentId, setAgentId] = useState(
-    defaultComposeId ?? agents[0]?.id ?? "",
-  );
-  const [freq, setFreq] = useState("every_day");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [hour, setHour] = useState(9);
-  const [minute, setMinute] = useState(0);
-  const [timezone, setTimezone] = useState(
-    new Intl.DateTimeFormat().resolvedOptions().timeZone,
-  );
-  const [loopMinutes, setLoopMinutes] = useState(15);
-
-  const handleSave = () => {
-    if (!prompt.trim() || !agentId || agents.length === 0) {
-      return;
-    }
-    onSave({
-      prompt: prompt.trim(),
-      freq,
-      date,
-      hour,
-      minute,
-      timezone,
-      intervalSeconds: loopMinutes * 60,
-      agentId,
-    });
-  };
-
-  const canPickAgent = !agentsLoading && agents.length > 0 && !agentsError;
-  const createDisabled = !prompt.trim() || !agentId || !canPickAgent || saving;
-
-  return (
-    <DialogContent className="sm:max-w-lg gap-6">
-      <DialogHeader>
-        <DialogTitle>New schedule</DialogTitle>
-        <DialogDescription>
-          Choose an agent, describe the task, and set when it should run.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-agent"
-            className="text-sm font-medium text-foreground"
-          >
-            Agent
-          </label>
-          {agentsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading agents…</p>
-          ) : agentsError ? (
-            <p className="text-sm text-destructive">{agentsError}</p>
-          ) : agents.length === 0 ? (
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              No agents in this workspace yet. Create an agent from Team before
-              adding a schedule.
-            </p>
-          ) : (
-            <Select value={agentId} onValueChange={setAgentId}>
-              <SelectTrigger id="schedule-create-agent" className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.displayName ?? a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-prompt"
-            className="text-sm font-medium text-foreground"
-          >
-            Prompt
-          </label>
-          <textarea
-            id="schedule-create-prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe your task and instruction"
-            rows={5}
-            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
-          />
-        </div>
-        <ScheduleEditFields
-          freq={freq}
-          setFreq={setFreq}
-          loopMinutes={loopMinutes}
-          setLoopMinutes={setLoopMinutes}
-          date={date}
-          setDate={setDate}
-          hour={hour}
-          setHour={setHour}
-          minute={minute}
-          setMinute={setMinute}
-          timezone={timezone}
-          setTimezone={setTimezone}
-        />
-      </div>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          className="zero-btn-morandi"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
-        <Button type="button" onClick={handleSave} disabled={createDisabled}>
-          {saving ? "Creating\u2026" : "Create"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function ScheduleCreateDialog({
-  open,
-  onClose,
-  ...rest
-}: ScheduleCreateDialogProps) {
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) {
-          onClose();
-        }
-      }}
-    >
-      {open && <ScheduleCreateDialogInner onClose={onClose} {...rest} />}
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Skeleton
 // ---------------------------------------------------------------------------
 
@@ -1128,8 +964,6 @@ export function ZeroSchedulePage() {
 
   const agentsLoadable = useLoadable(agentsList$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const agentsLoading = useGet(agentsLoading$);
-  const agentsError = useGet(agentsError$);
   const nameToDisplay = new Map(
     agents.filter((a) => a.displayName).map((a) => [a.id, a.displayName!]),
   );
@@ -1170,12 +1004,29 @@ export function ZeroSchedulePage() {
     });
   };
 
-  const handleCreateSave = (
-    params: ZeroScheduleSaveParams & { agentId: string },
-  ) => {
+  const handleCreateSave = (values: ScheduleFormValues) => {
     setSaving(true);
     detach(
-      saveSchedule(params)
+      saveSchedule({
+        prompt: values.prompt.trim(),
+        description: values.description.trim() || undefined,
+        freq: values.freq,
+        date: values.date,
+        hour: values.hour,
+        minute: values.minute,
+        timezone: values.timezone,
+        intervalSeconds: values.loopMinutes * 60,
+        agentId: values.composeId,
+        notifyEmail: values.notifyEmail,
+        notifySlack: values.notifySlack,
+        slackChannelId: values.slackChannelId,
+        ...(values.freq === "every_week"
+          ? { dayOfWeek: values.dayOfWeek }
+          : {}),
+        ...(values.freq === "every_month"
+          ? { dayOfMonth: values.dayOfMonth }
+          : {}),
+      })
         .then(() => {
           setCreateOpen(false);
         })
@@ -1328,15 +1179,16 @@ export function ZeroSchedulePage() {
         </div>
       </main>
 
-      <ScheduleCreateDialog
+      <ScheduleFormDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onSave={handleCreateSave}
         saving={saving}
+        mode="create"
         agents={agents}
-        defaultComposeId={defaultComposeId}
-        agentsLoading={agentsLoading}
-        agentsError={agentsError}
+        initialValues={{
+          composeId: defaultComposeId ?? agents[0]?.id ?? "",
+        }}
       />
       <Dialog
         open={pendingDelete !== null}
