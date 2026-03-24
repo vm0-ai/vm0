@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 
 import postgres from "postgres";
+import { SEED_SKILLS } from "../src/lib/zero/seed-skills";
 
 /**
  * Dev seed: populate credit_pricing and vm0_api_keys tables.
@@ -135,43 +136,7 @@ async function devSeed() {
 
     // --- skills (seed skills + common connectors) ---
     console.log("Seeding skills...");
-    const skillNames = [
-      "vm0",
-      "deep-dive",
-      "account-reconciliation",
-      "analysis-qa",
-      "audit-readiness",
-      "brand-guidelines",
-      "campaign-strategy",
-      "competitor-matrix",
-      "contract-redline",
-      "copywriting",
-      "customer-intel",
-      "customer-reply",
-      "data-profiling",
-      "escalation-brief",
-      "flux-analysis",
-      "gaap-reporting",
-      "issue-triage",
-      "journal-entries",
-      "kb-authoring",
-      "legal-briefing",
-      "legal-risk-scoring",
-      "marketing-analytics",
-      "nda-screening",
-      "period-close",
-      "prd-writing",
-      "privacy-compliance",
-      "product-metrics",
-      "reply-templates",
-      "research-synthesis",
-      "roadmap-planning",
-      "sql-cookbook",
-      "stats-methods",
-      "status-updates",
-      // Common connectors used in E2E tests
-      "github",
-    ];
+    const skillNames = [...SEED_SKILLS, "github"];
     let seededCount = 0;
     for (const name of skillNames) {
       const url = `https://github.com/vm0-ai/vm0-skills/tree/main/${name}`;
