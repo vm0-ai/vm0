@@ -172,15 +172,24 @@ MQ_NUMBERS=$(jq '[.merge_queue[].number]' "$WORK_DIR/pipeline.json")
 
 jq -r --argjson mq "$MQ_NUMBERS" '
   .[] |
-  "\n\(.lane)" as $header |
+  # Format gist updated_at as relative time suffix
+  (if .gist.updated_at then
+    "  (log updated: \(.gist.updated_at | split("T") | .[0] + " " + (.[1] | split(".")[0] | split("Z")[0])))"
+  else "" end) as $gist_time |
+  # Truncate gist content to last few lines for brevity
+  (if .gist.content then
+    (.gist.content | split("\n") | map(select(. != "")) | .[-5:] | map("  │ \(.)") | join("\n"))
+  else null end) as $gist_lines |
+  "\n\(.lane)\($gist_time)" as $header |
   if (.issue_count + .pr_count) == 0 then
-    "\($header)\n  -- idle"
+    ([$header, "  -- idle"] + (if $gist_lines then [$gist_lines] else [] end) | join("\n"))
   else
     # Collect all PR numbers linked to any issue
     ([.issues[].linked_prs[]?]) as $linked |
     # Index PRs by number for title lookup
     ([.prs[] | {(.number | tostring): .}] | add // {}) as $pr_map |
     [ $header ] +
+    (if $gist_lines then [$gist_lines] else [] end) +
     [
       .issues[] |
       # [Queued] if any linked PR is in merge queue

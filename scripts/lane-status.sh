@@ -73,6 +73,17 @@ query_lane() {
     --json number,title,labels,mergeable,headRefOid,headRefName --limit 50 \
     > "$dir/prs.json" &
 
+  # Gist log for this lane
+  local gist_name="coding-loop-log-${lane}"
+  (
+    gist_id=$(gh gist list --limit 100 2>/dev/null | awk -v name="$gist_name" '$0 ~ name {print $1; exit}' || true)
+    if [ -n "$gist_id" ]; then
+      gh api "gists/$gist_id" --jq '{content: .files[].content, updated_at: .updated_at}' > "$dir/gist.json" 2>/dev/null || echo '{}' > "$dir/gist.json"
+    else
+      echo '{}' > "$dir/gist.json"
+    fi
+  ) &
+
   wait
 }
 
@@ -123,19 +134,24 @@ build_output() {
     issue_count=$(echo "$issues" | jq 'length')
     pr_count=$(echo "$prs" | jq 'length')
 
+    local gist
+    gist=$(cat "$dir/gist.json")
+
     jq -n \
       --arg lane "$lane" \
       --argjson issues "$issues" \
       --argjson prs "$prs" \
       --argjson issue_count "$issue_count" \
       --argjson pr_count "$pr_count" \
+      --argjson gist "$gist" \
       '{
         lane: $lane,
         issues: $issues,
         prs: $prs,
         issue_count: $issue_count,
         pr_count: $pr_count,
-        total: ($issue_count + $pr_count)
+        total: ($issue_count + $pr_count),
+        gist: $gist
       }'
   done
   echo "]"
