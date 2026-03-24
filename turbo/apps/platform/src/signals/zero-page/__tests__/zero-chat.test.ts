@@ -1050,15 +1050,10 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
 
-    it("should auto-send queued message after run cancellation (cancelActiveRun$)", async () => {
-      let runCount = 0;
-      let latestPrompt = "";
+    it("should auto-withdraw queued message back to input after run cancellation (cancelActiveRun$)", async () => {
       server.use(
-        http.post("*/api/zero/runs", async ({ request }) => {
-          runCount++;
-          const body = (await request.json()) as Record<string, string>;
-          latestPrompt = body.prompt;
-          return HttpResponse.json({ runId: `run-cancel-${runCount}` });
+        http.post("*/api/zero/runs", () => {
+          return HttpResponse.json({ runId: "run-cancel-1" });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -1068,23 +1063,11 @@ describe("zero-chat signals", () => {
           });
         }),
         http.get("*/api/zero/logs/:runId", () => {
-          // First run stays "running" until cancelled; second run completes immediately
-          if (runCount >= 2) {
-            return HttpResponse.json({
-              id: `run-cancel-${runCount}`,
-              status: "completed",
-              error: null,
-              prompt: latestPrompt,
-              createdAt: "2026-03-10T00:00:00Z",
-              startedAt: "2026-03-10T00:00:01Z",
-              completedAt: "2026-03-10T00:00:02Z",
-            });
-          }
           return HttpResponse.json({
-            id: `run-cancel-${runCount}`,
+            id: "run-cancel-1",
             status: "running",
             error: null,
-            prompt: latestPrompt,
+            prompt: "first message",
             createdAt: "2026-03-10T00:00:00Z",
             startedAt: "2026-03-10T00:00:01Z",
             completedAt: null,
@@ -1092,11 +1075,6 @@ describe("zero-chat signals", () => {
         }),
         http.post("*/api/zero/runs/:runId/cancel", () => {
           return new HttpResponse(null, { status: 204 });
-        }),
-        http.get("*/api/zero/runs/:runId", () => {
-          return HttpResponse.json({
-            result: { agentSessionId: "session-cancel" },
-          });
         }),
       );
       useChatThreadHandlers();
@@ -1114,23 +1092,14 @@ describe("zero-chat signals", () => {
       context.store.set(queueZeroChatMessage$, "after cancel");
       expect(context.store.get(zeroChatQueuedMessage$)).toBeTruthy();
 
-      // Cancel the active run — this aborts polling, which causes
-      // sendZeroChatMessage$ to hit its finally block and auto-send
+      // Cancel the active run — aborts the send signal, pending message
+      // is auto-withdrawn back to input (not auto-sent)
       await context.store.set(cancelActiveRun$);
       await sendPromise;
 
-      // Poll until the detached auto-send completes (runCount reaches 2 and sending is false)
-      for (let i = 0; i < 50; i++) {
-        if (runCount >= 2 && !context.store.get(zeroChatSending$)) {
-          break;
-        }
-        await delay(50);
-      }
-
+      // The queued message should be withdrawn back to input
       expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
-      // The queued message should have triggered a second run
-      expect(runCount).toBe(2);
-      expect(latestPrompt).toBe("after cancel");
+      expect(context.store.get(zeroChatInput$)).toBe("after cancel");
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
   });

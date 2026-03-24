@@ -9,7 +9,7 @@ import {
 import { timeout } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort, detach, Reason } from "../utils.ts";
+import { throwIfAbort, resetSignal, detach, Reason } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
@@ -24,46 +24,6 @@ import { agentsList$ } from "./agents-list.ts";
 import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
-
-// ---------------------------------------------------------------------------
-// Summaries local cache (survives page refresh until server-side persists)
-// ---------------------------------------------------------------------------
-
-const SUMMARIES_CACHE_KEY = "zero-chat-summaries";
-const SUMMARIES_CACHE_MAX = 100;
-
-function cacheSummaries(runId: string, summaries: string[]): void {
-  try {
-    const raw = localStorage.getItem(SUMMARIES_CACHE_KEY);
-    const cache: Record<string, string[]> = raw ? JSON.parse(raw) : {};
-    cache[runId] = summaries;
-    const keys = Object.keys(cache);
-    if (keys.length > SUMMARIES_CACHE_MAX) {
-      for (const k of keys.slice(0, keys.length - SUMMARIES_CACHE_MAX)) {
-        delete cache[k];
-      }
-    }
-    localStorage.setItem(SUMMARIES_CACHE_KEY, JSON.stringify(cache));
-  } catch (error) {
-    throwIfAbort(error);
-    L.warn("Failed to cache summaries:", error);
-  }
-}
-
-function getCachedSummaries(runId: string): string[] | undefined {
-  try {
-    const raw = localStorage.getItem(SUMMARIES_CACHE_KEY);
-    if (!raw) {
-      return undefined;
-    }
-    const cache: Record<string, string[]> = JSON.parse(raw);
-    return cache[runId];
-  } catch (error) {
-    throwIfAbort(error);
-    L.warn("Failed to read cached summaries:", error);
-    return undefined;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -256,8 +216,10 @@ const internalRunStatus$ = state<LogStatus | null>(null);
 const internalRunError$ = state<string | null>(null);
 const internalRunEvents$ = state<Computed<Promise<PageResult>>[]>([]);
 
-const internalSending$ = state(false);
-export const zeroChatSending$ = computed((get) => get(internalSending$));
+/** Whether the agent is currently busy (derived from loop promise). */
+export const zeroChatSending$ = computed(
+  (get) => get(internalLoopPromise$) !== null,
+);
 
 /** Current run status (queued, pending, running, etc.) */
 export const zeroChatRunStatus$ = computed((get) => get(internalRunStatus$));
@@ -269,34 +231,9 @@ export const cancelActiveRun$ = command(async ({ get, set }) => {
     return;
   }
 
-  // Abort the polling loop so the UI stops waiting
-  const controller = get(pollingAbortController$);
-  if (controller) {
-    controller.abort();
-    set(pollingAbortController$, null);
-  }
-
-  // Try to extract any partial result content from telemetry events so far
-  const pages = get(internalRunEvents$);
-  const { result: partialContent } = await extractResultFromEvents(pages, get);
-
-  set(internalMessages$, (prev) => {
-    if (prev.length === 0) {
-      return prev;
-    }
-    const updated = [...prev];
-    updated[updated.length - 1] = {
-      ...updated[updated.length - 1],
-      ...(partialContent
-        ? { content: partialContent, cancelled: true }
-        : { error: "Run cancelled." }),
-    };
-    return updated;
-  });
-
-  set(internalSending$, false);
-  set(internalActiveRunId$, null);
-  set(internalRunStatus$, null);
+  // Abort the send phase; the loop (on pageSignal) continues and discovers
+  // the `cancelled` status on the next poll (~3s).
+  set(resetSending$);
 
   const fetchFn = get(fetch$);
   await fetchFn(`/api/zero/runs/${runId}/cancel`, { method: "POST" });
@@ -325,7 +262,8 @@ export const zeroChatQueuedMessage$ = computed((get) =>
 /** Queue a message to be sent automatically once the current run completes. */
 export const queueZeroChatMessage$ = command(
   ({ get, set }, text: string, options?: { modelProvider?: string }) => {
-    if (!get(internalSending$)) {
+    // Only queue when there's an active loop (agent is busy)
+    if (!get(internalLoopPromise$)) {
       return;
     }
     if (get(internalQueuedMessage$)) {
@@ -478,51 +416,42 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
   return null;
 }
 
-const pollingAbortController$ = state<AbortController | null>(null);
+// ---------------------------------------------------------------------------
+// Cancellation via resetSignal (replaces manual pollingAbortController$)
+// ---------------------------------------------------------------------------
 
-/** Resume polling for an active run (used when switching to a session with an in-progress run). */
-function resumeRunPolling(
-  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
-  fetchFn: typeof fetch,
-  runId: string,
-) {
-  set(internalActiveRunId$, runId);
-  set(internalSending$, true);
+const resetSending$ = resetSignal();
 
-  const controller = new AbortController();
-  set(pollingAbortController$, controller);
+// ---------------------------------------------------------------------------
+// Promise signals — UI derives busy state from these via useLoadable
+// ---------------------------------------------------------------------------
 
-  set(setupPollingLoop$, {
-    runId,
-    signal: controller.signal,
-    state: {
-      get events$() {
-        return get(internalRunEvents$);
-      },
-      setEvents: (updater) => {
-        set(internalRunEvents$, updater);
-      },
-      setStatus: (s) => {
-        set(internalRunStatus$, s);
-        updateQueuePosition(s, fetchFn, runId, (pos) =>
-          set(internalQueuePosition$, pos),
-        );
-      },
-      setError: (e) => {
-        set(internalRunError$, e);
-      },
-    },
-    onTerminal: (completedRunId) => {
-      set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
-        throwIfAbort(error);
-        L.error("onRunComplete error:", error);
-      });
-    },
-  }).catch((error: unknown) => {
-    throwIfAbort(error);
-  });
-}
+const internalLoopPromise$ = state<Promise<void> | null>(null);
+
+// ---------------------------------------------------------------------------
+// Thinking messages (cycled during polling loop)
+// ---------------------------------------------------------------------------
+
+const THINKING_MESSAGES = [
+  "On it, grab a coffee",
+  "Thinking hard...",
+  "Cooking up something good...",
+  "Give me a sec...",
+  "Working my magic...",
+  "Hang tight...",
+  "Let me figure this out...",
+  "Brewing ideas...",
+  "Crunching the numbers...",
+  "Just a moment...",
+] as const;
+
+const internalThinkingIndex$ = state(
+  Math.floor(Math.random() * THINKING_MESSAGES.length),
+);
+
+export const zeroChatThinkingMessage$ = computed(
+  (get) => THINKING_MESSAGES[get(internalThinkingIndex$)]!,
+);
 
 // Chat thread ID (for URL routing — set before run starts)
 const internalChatThreadId$ = state<string | null>(null);
@@ -763,14 +692,79 @@ async function syncAgentForThread(
   }
 }
 
+// ---------------------------------------------------------------------------
+// startLoop$: independent polling entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Start polling for a run. Sets `internalLoopPromise$` so `lastMessageProcessing$`
+ * reflects the active loop. Can be called standalone (session resume) or from
+ * `sendZeroChatMessage$` (send flow).
+ *
+ * The loop uses `signal` for cancellation — typically composed from
+ * `resetSending$` + `pageSignal$` via `AbortSignal.any()`.
+ */
+const startLoop$ = command(
+  async (
+    { get, set },
+    config: { runId: string; signal: AbortSignal },
+  ): Promise<void> => {
+    const { runId, signal } = config;
+    const fetchFn = get(fetch$);
+
+    set(internalActiveRunId$, runId);
+
+    const loopPromise = (async () => {
+      await set(setupPollingLoop$, {
+        runId,
+        signal,
+        state: {
+          get events$() {
+            return get(internalRunEvents$);
+          },
+          setEvents: (updater) => {
+            set(internalRunEvents$, updater);
+          },
+          setStatus: (s) => {
+            set(internalRunStatus$, s);
+            updateQueuePosition(s, fetchFn, runId, (pos) =>
+              set(internalQueuePosition$, pos),
+            );
+            // Cycle thinking message on each status update
+            set(
+              internalThinkingIndex$,
+              (prev) => (prev + 1) % THINKING_MESSAGES.length,
+            );
+          },
+          setError: (e) => {
+            set(internalRunError$, e);
+          },
+        },
+        onTerminal: (completedRunId) => {
+          set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
+            throwIfAbort(error);
+            L.error("onRunComplete error:", error);
+          });
+        },
+      });
+    })();
+
+    set(internalLoopPromise$, loopPromise);
+    try {
+      await loopPromise;
+    } finally {
+      // Only clear if this is still the active loop (not replaced by a newer one)
+      if (get(internalLoopPromise$) === loopPromise) {
+        set(internalLoopPromise$, null);
+      }
+    }
+  },
+);
+
 export const switchZeroSession$ = command(
   async ({ get, set }, threadId: string) => {
-    // Abort any in-flight polling from the previous session
-    const prev = get(pollingAbortController$);
-    if (prev) {
-      prev.abort();
-    }
-    set(pollingAbortController$, null);
+    // Abort any in-flight send/polling from the previous session
+    set(resetSending$);
 
     // Set thread immediately so the UI switches without loading delay
     set(internalChatThreadId$, threadId);
@@ -781,7 +775,7 @@ export const switchZeroSession$ = command(
     set(internalRunStatus$, null);
     set(internalRunError$, null);
     set(internalQueuePosition$, 0);
-    set(internalSending$, false);
+    set(internalLoopPromise$, null);
     set(internalSessionError$, null);
     set(internalSessionSwitching$, true);
 
@@ -838,14 +832,12 @@ export const switchZeroSession$ = command(
       await syncAgentForThread(get, set, data.agentComposeId);
 
       const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map((m) => {
-        const serverSummaries =
+        const summaries =
           m.summaries && m.summaries.length > 0
             ? m.summaries.map((s) =>
                 TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s,
               )
             : undefined;
-        const cached = m.runId ? getCachedSummaries(m.runId) : undefined;
-        const summaries = serverSummaries ?? cached;
         return {
           id: crypto.randomUUID(),
           role: m.role,
@@ -897,7 +889,12 @@ export const switchZeroSession$ = command(
 
       // Resume polling for the latest active run
       if (activeRunToResume) {
-        resumeRunPolling(get, set, fetchFn, activeRunToResume);
+        const signal = set(resetSending$);
+        set(startLoop$, { runId: activeRunToResume, signal }).catch(
+          (error: unknown) => {
+            throwIfAbort(error);
+          },
+        );
       }
     } catch (error) {
       throwIfAbort(error);
@@ -911,13 +908,9 @@ export const switchZeroSession$ = command(
   },
 );
 
-export const startNewZeroSession$ = command(({ get, set }) => {
-  // Abort any in-flight polling from the previous session
-  const prev = get(pollingAbortController$);
-  if (prev) {
-    prev.abort();
-  }
-  set(pollingAbortController$, null);
+export const startNewZeroSession$ = command(({ set }) => {
+  // Abort any in-flight send/polling from the previous session
+  set(resetSending$);
 
   set(internalMessages$, []);
   set(internalSessionId$, null);
@@ -926,7 +919,7 @@ export const startNewZeroSession$ = command(({ get, set }) => {
   set(internalRunEvents$, []);
   set(internalRunStatus$, null);
   set(internalRunError$, null);
-  set(internalSending$, false);
+  set(internalLoopPromise$, null);
   set(internalChatInput$, "");
 });
 
@@ -1106,125 +1099,103 @@ export const sendZeroChatMessage$ = command(
       return;
     }
 
-    set(internalSending$, true);
-    set(internalRunEvents$, []);
-    set(internalRunStatus$, null);
-    set(internalRunError$, null);
-    set(internalQueuePosition$, 0);
-
-    const { fullPrompt } = prepareMessages(prompt, get, set);
+    const signal = set(resetSending$);
+    let currentPrompt = prompt;
+    let currentOptions = options;
 
     try {
-      const fetchFn = get(fetch$);
-      const sessionId = get(internalSessionId$);
+      // While loop replaces recursive detach() for queued messages
+      while (true) {
+        set(internalRunEvents$, []);
+        set(internalRunStatus$, null);
+        set(internalRunError$, null);
+        set(internalQueuePosition$, 0);
 
-      const threadId = await ensureChatThread(
-        get,
-        set,
-        fetchFn,
-        composeId,
-        prompt,
-      );
-      if (!threadId) {
-        set(internalSending$, false);
-        return;
-      }
+        const { fullPrompt } = prepareMessages(currentPrompt, get, set);
 
-      const modelProvider =
-        options?.modelProvider && options.modelProvider !== "default"
-          ? options.modelProvider
-          : undefined;
-      const runId = await startAgentRun(
-        fetchFn,
-        composeId,
-        fullPrompt,
-        sessionId,
-        modelProvider,
-      );
+        try {
+          const fetchFn = get(fetch$);
+          const sessionId = get(internalSessionId$);
 
-      // Associate run to thread (must complete before polling so refresh works)
-      await addRunToThread(fetchFn, threadId, runId);
+          const threadId = await ensureChatThread(
+            get,
+            set,
+            fetchFn,
+            composeId,
+            currentPrompt,
+          );
+          if (!threadId) {
+            return;
+          }
 
-      // Refresh sidebar after run is associated (has preview now)
-      set(fetchZeroSessionList$).catch((error: unknown) => {
-        throwIfAbort(error);
-        L.error("Failed to refresh chat list:", error);
-      });
+          signal.throwIfAborted();
 
-      set(internalMessages$, (prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          runId,
-        };
-        return updated;
-      });
+          const modelProvider =
+            currentOptions?.modelProvider &&
+            currentOptions.modelProvider !== "default"
+              ? currentOptions.modelProvider
+              : undefined;
+          const runId = await startAgentRun(
+            fetchFn,
+            composeId,
+            fullPrompt,
+            sessionId,
+            modelProvider,
+          );
 
-      set(internalActiveRunId$, runId);
+          signal.throwIfAborted();
 
-      // Abort any existing polling
-      const prev = get(pollingAbortController$);
-      if (prev) {
-        prev.abort();
-      }
-      const controller = new AbortController();
-      set(pollingAbortController$, controller);
+          // Associate run to thread (must complete before polling so refresh works)
+          await addRunToThread(fetchFn, threadId, runId);
 
-      await set(setupPollingLoop$, {
-        runId,
-        signal: controller.signal,
-        state: {
-          get events$() {
-            return get(internalRunEvents$);
-          },
-          setEvents: (updater) => {
-            set(internalRunEvents$, updater);
-          },
-          setStatus: (s) => {
-            set(internalRunStatus$, s);
-            updateQueuePosition(s, get(fetch$), runId, (pos) =>
-              set(internalQueuePosition$, pos),
-            );
-          },
-          setError: (e) => {
-            set(internalRunError$, e);
-          },
-        },
-        onTerminal: (completedRunId) => {
-          set(onZeroRunComplete$, completedRunId).catch((error: unknown) => {
+          // Refresh sidebar after run is associated (has preview now)
+          set(fetchZeroSessionList$).catch((error: unknown) => {
             throwIfAbort(error);
-            L.error("onRunComplete error:", error);
+            L.error("Failed to refresh chat list:", error);
           });
-        },
-      });
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Chat send error:", error);
-      set(internalMessages$, (prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          error: error instanceof Error ? error.message : "Unknown error",
-        };
-        return updated;
-      });
-    } finally {
-      set(internalSending$, false);
 
-      // Auto-send queued message if one was enqueued while the run was active
-      const queued = get(internalQueuedMessage$);
-      if (queued) {
+          set(internalMessages$, (prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              runId,
+            };
+            return updated;
+          });
+
+          // Loop phase: poll until terminal
+          await set(startLoop$, { runId, signal });
+        } catch (error) {
+          throwIfAbort(error);
+          L.error("Chat send error:", error);
+          set(internalMessages$, (prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+            return updated;
+          });
+          return;
+        }
+
+        // Check for pending (queued) message
+        const pending = get(internalQueuedMessage$);
+        if (!pending) {
+          break;
+        }
+        currentPrompt = pending.text;
+        currentOptions = pending.modelProvider
+          ? { modelProvider: pending.modelProvider }
+          : undefined;
         set(internalQueuedMessage$, null);
-        detach(
-          set(
-            sendZeroChatMessage$,
-            queued.text,
-            queued.modelProvider
-              ? { modelProvider: queued.modelProvider }
-              : undefined,
-          ),
-          Reason.DomCallback,
-        );
+      }
+    } finally {
+      // Auto-withdraw pending message back to input on abort/error
+      const pending = get(internalQueuedMessage$);
+      if (pending) {
+        set(internalChatInput$, pending.text);
+        set(internalQueuedMessage$, null);
       }
     }
   },
@@ -1312,10 +1283,6 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
         };
         return updated;
       });
-
-      if (summaries.length > 0) {
-        cacheSummaries(runId, summaries);
-      }
     }
 
     // Refresh session list (messages are persisted server-side via webhook)

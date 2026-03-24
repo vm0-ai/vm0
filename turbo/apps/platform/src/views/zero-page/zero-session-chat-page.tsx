@@ -51,14 +51,13 @@ import {
   zeroChatQueuedMessage$,
   queueZeroChatMessage$,
   withdrawQueuedMessage$,
+  zeroChatThinkingMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import {
-  thinkingMessage$,
-  cycleThinkingRef$,
   timelineExpandedIds$,
   toggleTimelineExpanded$,
   copiedMessageIdValue$,
@@ -420,12 +419,11 @@ function RunActivityLine() {
   const queuePosition = useGet(zeroChatQueuePosition$);
   const isQueued = runStatus === "queued";
 
-  const thinkingMsg = useGet(thinkingMessage$);
-  const cycleRef = useSet(cycleThinkingRef$);
+  const thinkingMsg = useGet(zeroChatThinkingMessage$);
 
   if (isQueued) {
     return (
-      <div ref={cycleRef} className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         <IconLoader2
           size={14}
           className="animate-spin text-muted-foreground shrink-0"
@@ -445,7 +443,7 @@ function RunActivityLine() {
 
   if (rawSummaries.length === 0) {
     return (
-      <div ref={cycleRef} className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         <IconLoader2
           size={14}
           className="animate-spin text-foreground/50 shrink-0"
