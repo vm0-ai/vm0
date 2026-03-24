@@ -18,7 +18,7 @@ describe("chat queue state", () => {
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(3);
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -51,7 +51,7 @@ describe("chat queue state", () => {
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(2);
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,

@@ -15,7 +15,7 @@ describe("chat completion", () => {
   it("should display final markdown content after completion", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -46,7 +46,7 @@ describe("chat completion", () => {
   it("should restore Send button and remove Stop button after completion", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -78,7 +78,7 @@ describe("chat completion", () => {
   it("should collapse activity steps into expandable timeline", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -127,7 +127,7 @@ describe("chat completion", () => {
   it("should update sidebar title after completion", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,

@@ -14,7 +14,7 @@ describe("chat failure and cancel", () => {
   it("should display error message and restore Send button on failure", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -47,7 +47,7 @@ describe("chat failure and cancel", () => {
   it("should send cancel request when Stop button is clicked", async () => {
     mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -82,7 +82,7 @@ describe("chat failure and cancel", () => {
   it("should show cancelled state after polling discovers cancellation", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -114,7 +114,7 @@ describe("chat failure and cancel", () => {
   it("should restore input after cancel", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
