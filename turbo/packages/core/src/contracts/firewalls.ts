@@ -123,6 +123,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   posthog: ["posthog"],
   resend: ["resend"],
   sentry: ["sentry"],
+  serpapi: ["serpapi"],
   stripe: ["stripe"],
   supabase: ["supabase"],
   todoist: ["todoist"],
