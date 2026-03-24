@@ -128,6 +128,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   perplexity: ["perplexity"],
   posthog: ["posthog"],
   resend: ["resend"],
+  runway: ["runway"],
   sentry: ["sentry"],
   serpapi: ["serpapi"],
   stripe: ["stripe"],

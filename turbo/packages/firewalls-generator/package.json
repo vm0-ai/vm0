@@ -42,6 +42,7 @@
     "generate:perplexity": "tsx src/index.ts perplexity",
     "generate:posthog": "tsx src/index.ts posthog",
     "generate:resend": "tsx src/index.ts resend",
+    "generate:runway": "tsx src/index.ts runway",
     "generate:sentry": "tsx src/index.ts sentry",
     "generate:serpapi": "tsx src/index.ts serpapi",
     "generate:slack": "tsx src/index.ts slack",

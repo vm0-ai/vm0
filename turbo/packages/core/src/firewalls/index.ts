@@ -43,6 +43,7 @@ import { openaiFirewall } from "./openai.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { posthogFirewall } from "./posthog.generated";
 import { resendFirewall } from "./resend.generated";
+import { runwayFirewall } from "./runway.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { slackFirewall } from "./slack.generated";
@@ -94,6 +95,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   perplexity: perplexityFirewall,
   posthog: posthogFirewall,
   resend: resendFirewall,
+  runway: runwayFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
   slack: slackFirewall,
