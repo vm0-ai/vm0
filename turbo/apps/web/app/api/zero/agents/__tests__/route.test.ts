@@ -9,16 +9,23 @@ import {
 import {
   createTestRequest,
   createTestCliToken,
+  createTestRun,
+  createTestOrgModelProvider,
+  createTestSandboxToken,
   seedTestSkill,
   seedSeedSkills,
   clearSkillsData,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { createSingleFileTar } from "../../../../../src/lib/tar";
 
 const context = testContext();
 
+let user: UserContext;
 let testCliToken: string;
 let testOrgSlug: string;
 
@@ -160,7 +167,7 @@ describe("Zero Agents API", () => {
     context.setupMocks();
     await clearSkillsData();
     await seedSeedSkills();
-    const user = await context.setupUser();
+    user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
     testOrgSlug = `org-${user.userId.slice(-8)}`;
   });
@@ -555,6 +562,51 @@ describe("Zero Agents API", () => {
       const fetched = await getRes.json();
 
       expect(fetched.content).toBe(instructionsContent);
+    });
+  });
+
+  describe("sandbox token (VM0_TOKEN) access", () => {
+    it("should allow GET /api/zero/agents/:name with sandbox token from a run", async () => {
+      // Given — create an agent via POST
+      const createResponse = await postAgent(
+        {
+          connectors: [],
+          displayName: "Sandbox Access Agent",
+          description: "Agent accessible via sandbox token",
+          sound: "professional",
+        },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      // When — create a run for this agent, then generate a sandbox token
+      // (VM0_TOKEN) with agent:read capability (simulating runner injection)
+      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+      const { runId } = await createTestRun(
+        created.agentComposeId,
+        "test prompt",
+      );
+
+      // Reset Clerk so sandbox token is the only auth path
+      mockClerk({ userId: null });
+
+      const sandboxToken = await createTestSandboxToken(user.userId, runId, [
+        "agent:read",
+      ]);
+
+      // Use the sandbox token (VM0_TOKEN) to GET the agent
+      const response = await getAgent(created.name, sandboxToken, testOrgSlug);
+
+      // Then — should return agent details
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.name).toBe(created.name);
+      expect(data.agentComposeId).toBe(created.agentComposeId);
+      expect(data.displayName).toBe("Sandbox Access Agent");
+      expect(data.description).toBe("Agent accessible via sandbox token");
+      expect(data.sound).toBe("professional");
     });
   });
 

@@ -2,7 +2,7 @@
  * Skeleton placeholder that approximates the app shell layout
  * (sidebar + content area). Used in two places:
  *  1. Router — while bootstrap is in progress and page$ is still undefined
- *  2. ZeroAppShell — while post-route data (onboarding, agent name) loads
+ *  2. SidebarLayout — while post-route data (agent name) loads
  */
 export function AppSkeleton({ visible = true }: { visible?: boolean }) {
   return (

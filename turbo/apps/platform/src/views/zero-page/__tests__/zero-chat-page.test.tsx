@@ -1,3 +1,4 @@
+import type { ConnectorType } from "@vm0/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   act,
@@ -11,6 +12,49 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
+
+/** Deterministic cards for tests (landing uses random prompts from ideation data). */
+vi.mock("../zero-ideation-page.tsx", async (importOriginal) => {
+  const mod =
+    await importOriginal<typeof import("../zero-ideation-page.tsx")>();
+  return {
+    ...mod,
+    getRandomPrompts: (count: number) => {
+      const prompts: {
+        title: string;
+        description: string;
+        prompt: string;
+        connectors: ConnectorType[];
+      }[] = [
+        {
+          title: "Daily standup report",
+          description:
+            "Pull GitHub, Sentry, Axiom, and Plausible data every morning, generate a pptx, and post to a Slack channel",
+          prompt:
+            "Set up a daily standup report that pulls data from GitHub, Sentry, Axiom, and Plausible every morning, generates a pptx, and posts it to #all-vm0",
+          connectors: ["github", "sentry", "axiom", "plausible", "slack"],
+        },
+        {
+          title: "Morning brief",
+          description:
+            "Pull updates from Gmail, Calendar, and Notion to give you a clear plan for the day",
+          prompt:
+            "Set up a morning brief that pulls updates from Gmail, Calendar, and Notion every morning and posts a daily plan to Slack",
+          connectors: ["gmail", "google-calendar", "notion", "slack"],
+        },
+        {
+          title: "Batch-create issues",
+          description:
+            "Give Zero multiple issue instructions at once \u2014 it creates and assigns them automatically",
+          prompt:
+            "Create the following GitHub issues and assign them to the right people: 1) ... 2) ... 3) ...",
+          connectors: ["github"],
+        },
+      ];
+      return prompts.slice(0, count);
+    },
+  };
+});
 
 const context = testContext();
 
@@ -199,6 +243,42 @@ describe("zero chat page - add connector dialog", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
+  });
+});
+
+describe("zero chat page - connector label casing", () => {
+  it("should display connector label from CONNECTOR_TYPES (e.g. 'Axiom') not the raw key ('axiom')", async () => {
+    server.use(
+      http.get("*/api/zero/agents/:name", ({ params }) => {
+        if (
+          params.name === "instructions" ||
+          (typeof params.name === "string" && params.name.includes("/"))
+        ) {
+          return;
+        }
+        return HttpResponse.json({
+          name: params.name,
+          agentComposeId: "mock-compose-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          connectors: ["axiom"],
+        });
+      }),
+    );
+    mockChatAPI();
+    await setupPage({ context, path: "/" });
+
+    const connectorsButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Connectors" }),
+    );
+
+    fireEvent.click(connectorsButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("axiom")).not.toBeInTheDocument();
   });
 });
 

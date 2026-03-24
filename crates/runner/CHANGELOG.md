@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.45.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.4...runner-rs-v0.45.5) (2026-03-23)
+
+
+### Bug Fixes
+
+* **runner:** skip proxy warning for stopped/draining runners in doctor ([#6233](https://github.com/vm0-ai/vm0/issues/6233)) ([7da7c00](https://github.com/vm0-ai/vm0/commit/7da7c00e5271e751dd37f8d3ee6d7da9a76407b8)), closes [#6198](https://github.com/vm0-ai/vm0/issues/6198)
+* **runner:** stop kmsg monitor on shutdown to prevent process hang ([#6206](https://github.com/vm0-ai/vm0/issues/6206)) ([f871fb1](https://github.com/vm0-ai/vm0/commit/f871fb1cda90e45773226896926f92911a123975)), closes [#6197](https://github.com/vm0-ai/vm0/issues/6197)
+
 ## [0.45.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.3...runner-rs-v0.45.4) (2026-03-23)
 
 ## [0.45.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.2...runner-rs-v0.45.3) (2026-03-23)

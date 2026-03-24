@@ -84,15 +84,15 @@
     0 16px 40px hsl(220 12% 20% / 0.05);
 }
 
-/* Search bar / text input */
+/* Search bar / text input (matches form inputs: white surface in light theme) */
 .zero-app .zero-search-input {
-  background-color: hsl(var(--gray-50));
+  background-color: hsl(var(--input));
   border-color: hsl(var(--border));
 }
 .zero-app .zero-search-input::placeholder {
   color: hsl(var(--muted-foreground));
 }
-.zero-app .zero-search-input:focus {
+.zero-app .zero-search-input:focus-within {
   border-color: hsl(var(--primary));
   outline: none;
 }
@@ -104,8 +104,9 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* Monochrome SVG icons (fill="currentColor" rendered as <img>): invert in dark mode */
-:where([data-theme="dark"]) .zero-app .zero-icon-mono {
+/* Monochrome SVG icons (e.g. connector marks as <img>): invert in dark mode.
+   Scoped to [data-theme="dark"] only—not .zero-app—so portaled popovers/dropdowns still match. */
+:where([data-theme="dark"]) .zero-icon-mono {
   filter: invert(1);
 }
 

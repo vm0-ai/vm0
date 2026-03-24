@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.150.0](https://github.com/vm0-ai/vm0/compare/web-v12.149.0...web-v12.150.0) (2026-03-23)
+
+
+### Features
+
+* switch zero schedule contracts to use zero agent id ([#6172](https://github.com/vm0-ai/vm0/issues/6172)) ([9b74977](https://github.com/vm0-ai/vm0/commit/9b749779d4c79795d8c982fb684fbc5ab1dbe624))
+* wire user deletion into clerk webhook handler ([#6171](https://github.com/vm0-ai/vm0/issues/6171)) ([#6211](https://github.com/vm0-ai/vm0/issues/6211)) ([bfcf53c](https://github.com/vm0-ai/vm0/commit/bfcf53c1e873783c7d2d7e11e561dc285ad66c2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.99.0
+
 ## [12.149.0](https://github.com/vm0-ai/vm0/compare/web-v12.148.0...web-v12.149.0) (2026-03-23)
 
 

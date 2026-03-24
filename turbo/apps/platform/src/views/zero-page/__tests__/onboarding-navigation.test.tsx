@@ -78,10 +78,34 @@ function mockOnboardingNeededMember() {
 }
 
 describe("onboarding navigation", () => {
-  it("should navigate to / after completing admin onboarding via web", async () => {
+  it("should redirect to /onboarding when admin needs onboarding", async () => {
     mockOnboardingNeededAdmin();
 
     await setupPage({ context, path: "/" });
+
+    // The / route should redirect to /onboarding
+    await waitFor(
+      () => {
+        expect(pathname()).toBe("/onboarding");
+      },
+      { timeout: 5000 },
+    );
+
+    // Onboarding dialog should be rendered
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Meet Zero, your new teammate/),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  }, 15_000);
+
+  it("should navigate to / after completing admin onboarding via web", async () => {
+    mockOnboardingNeededAdmin();
+
+    await setupPage({ context, path: "/onboarding" });
 
     // Step 1: Wait for welcome screen
     await waitFor(
@@ -109,16 +133,56 @@ describe("onboarding navigation", () => {
       ).toBeInTheDocument();
     });
 
+    // After completing onboarding, the API should report needsOnboarding: false
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentName: "zero",
+          defaultAgentComposeId: "new-compose-id",
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }),
+    );
+
     // Click "Chat with Zero" to trigger handleContinueWithWeb -> navigate("/")
     const chatWithZeroButton = screen.getByRole("button", {
       name: /Chat with Zero/,
     });
     fireEvent.click(chatWithZeroButton);
 
-    // Verify navigation to /
+    // Verify navigation to / (which then redirects to /talk/:name)
     await waitFor(
       () => {
-        expect(pathname()).toBe("/");
+        expect(pathname()).not.toBe("/onboarding");
+      },
+      { timeout: 5000 },
+    );
+  }, 15_000);
+
+  it("should redirect to /onboarding when member needs onboarding", async () => {
+    mockOnboardingNeededMember();
+
+    await setupPage({ context, path: "/" });
+
+    // The / route should redirect to /onboarding
+    await waitFor(
+      () => {
+        expect(pathname()).toBe("/onboarding");
+      },
+      { timeout: 5000 },
+    );
+
+    // Member welcome dialog should be rendered
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Meet .+, your new teammate/),
+        ).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
@@ -127,7 +191,7 @@ describe("onboarding navigation", () => {
   it("should navigate to / after completing member onboarding via web", async () => {
     mockOnboardingNeededMember();
 
-    await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/onboarding" });
 
     // Step 1: Wait for member welcome screen
     await waitFor(
@@ -148,16 +212,32 @@ describe("onboarding navigation", () => {
       ).toBeInTheDocument();
     });
 
+    // After completing onboarding, the API should report needsOnboarding: false
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: false,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentName: "zero",
+          defaultAgentComposeId: "mock-compose-id",
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }),
+    );
+
     // Click "Chat with zero" to trigger handleContinueWeb -> navigate("/")
     const chatButton = screen.getByRole("button", {
       name: /Chat with zero/i,
     });
     fireEvent.click(chatButton);
 
-    // Verify navigation to /
+    // Verify navigation away from /onboarding (/ redirects to /talk/:name)
     await waitFor(
       () => {
-        expect(pathname()).toBe("/");
+        expect(pathname()).not.toBe("/onboarding");
       },
       { timeout: 5000 },
     );

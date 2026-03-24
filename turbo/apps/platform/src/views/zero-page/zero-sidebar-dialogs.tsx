@@ -3,7 +3,8 @@ import { useGet, useSet } from "ccstate-react";
 import {
   IconSearch,
   IconX,
-  IconGripVertical,
+  IconArrowsMove,
+  IconPin,
   IconLoader2,
   IconCrown,
 } from "@tabler/icons-react";
@@ -60,30 +61,33 @@ function SortablePinnedAgent({
       style={style}
       className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors group"
     >
-      <button
-        type="button"
-        className="shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors touch-none"
-        {...attributes}
-        {...listeners}
-      >
-        <IconGripVertical size={14} />
-      </button>
       <AgentAvatarImg
         name={agent.name}
         alt={agent.displayName ?? agent.name}
         className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
       />
-      <span className="text-sm text-foreground flex-1 truncate">
+      <span className="text-sm text-foreground min-w-0 flex-1 truncate">
         {agent.displayName ?? agent.name}
       </span>
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors p-1"
-        onClick={onUnpin}
-        aria-label={`Unpin ${agent.displayName ?? agent.name}`}
-      >
-        <IconX size={14} />
-      </button>
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+        <button
+          type="button"
+          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg cursor-grab active:cursor-grabbing touch-none text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+          aria-label={`Reorder ${agent.displayName ?? agent.name}`}
+          {...attributes}
+          {...listeners}
+        >
+          <IconArrowsMove size={16} stroke={2} />
+        </button>
+        <button
+          type="button"
+          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+          onClick={onUnpin}
+          aria-label={`Unpin ${agent.displayName ?? agent.name}`}
+        >
+          <IconX size={16} stroke={2} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -228,7 +232,7 @@ export function ManagePinnedAgentsDialog({
               {unpinned.map((agent) => (
                 <div
                   key={agent.id}
-                  className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
+                  className="group flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
                 >
                   <AgentAvatarImg
                     name={agent.name}
@@ -238,13 +242,23 @@ export function ManagePinnedAgentsDialog({
                   <span className="text-sm text-muted-foreground flex-1 truncate">
                     {agent.displayName ?? agent.name}
                   </span>
-                  <button
-                    type="button"
-                    className="transition-colors px-2 py-0.5 rounded-md text-xs font-medium text-primary hover:text-primary/80 hover:bg-primary/10"
-                    onClick={() => togglePin(agent.id)}
-                  >
-                    Pin
-                  </button>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+                          onClick={() => togglePin(agent.id)}
+                          aria-label="Pin to sidebar"
+                        >
+                          <IconPin size={16} stroke={2} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p className="text-xs">Pin to sidebar</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               ))}
             </div>
@@ -361,7 +375,7 @@ export function ChatListDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px] p-0 gap-0">
+      <DialogContent className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] p-0 gap-0">
         <DialogHeader className="px-5 pt-5 pb-3">
           <DialogTitle className="text-base font-semibold">Talk to</DialogTitle>
           <p className="text-sm text-muted-foreground mt-1">
@@ -369,37 +383,37 @@ export function ChatListDialog({
           </p>
         </DialogHeader>
 
-        {/* Search */}
+        {/* Search — same pattern as zero-activity-detail-page (zero-search-input) */}
         <div className="px-5 pb-3">
-          <div
-            className="flex items-center gap-2 h-8 rounded-lg pl-2 pr-1 bg-sidebar-accent/60"
-            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-          >
-            <IconSearch
-              size={15}
-              stroke={2.5}
-              className="shrink-0 text-muted-foreground/50"
-            />
+          <div className="zero-search-input relative flex h-10 w-full items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+            <div className="pl-2.5 shrink-0">
+              <IconSearch
+                size={16}
+                stroke={2}
+                className="text-muted-foreground"
+              />
+            </div>
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search agents..."
-              className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent py-2 pl-2 pr-2 text-sm leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="shrink-0 flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 hover:text-foreground transition-colors"
+                className="mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Clear search"
               >
-                <IconX size={12} stroke={2} />
+                <IconX size={14} stroke={2} />
               </button>
             )}
           </div>
         </div>
 
-        <div className="max-h-[400px] overflow-y-auto">
+        <div className="max-h-[min(520px,65vh)] overflow-y-auto">
           {/* Lead agent */}
           {showLead && (
             <div className="px-5 pb-2">
@@ -490,10 +504,11 @@ export function ChatListDialog({
                         <TooltipTrigger asChild>
                           <button
                             type="button"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 px-2 py-0.5 rounded-md text-xs font-medium text-primary hover:text-primary/80 hover:bg-primary/10"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
                             onClick={() => togglePin(agent.id)}
+                            aria-label="Pin to sidebar"
                           >
-                            Pin to sidebar
+                            <IconPin size={16} stroke={2} />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent side="right">

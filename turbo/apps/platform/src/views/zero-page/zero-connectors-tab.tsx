@@ -90,7 +90,7 @@ export function ZeroConnectorsTab({
           className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group"
         >
           <div className="flex h-14 items-center gap-2.5 px-5">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center">
               <IconPlus
                 size={18}
                 stroke={2}
@@ -117,7 +117,7 @@ export function ZeroConnectorsTab({
                 className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
               >
                 <div className="flex h-14 items-center gap-2.5 px-5">
-                  <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50" />
+                  <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
                   <span className="h-4 w-24 rounded bg-muted/50" />
                 </div>
                 <div className="flex h-11 items-center border-t border-border/30 px-5">

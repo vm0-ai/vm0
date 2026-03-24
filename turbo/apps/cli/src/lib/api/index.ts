@@ -172,3 +172,13 @@ export {
   getZeroAgentInstructions,
   updateZeroAgentInstructions,
 } from "./domains/zero-agents";
+
+// Domain modules - Zero Schedules
+export {
+  deployZeroSchedule,
+  listZeroSchedules,
+  deleteZeroSchedule,
+  enableZeroSchedule,
+  disableZeroSchedule,
+  resolveZeroScheduleByAgent,
+} from "./domains/zero-schedules";

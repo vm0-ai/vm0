@@ -793,6 +793,27 @@ jobs:
             -e "runner_version=${RUNNER_VERSION}" \
             -v
 
+      - name: Global health check (non-blocking)
+        id: global-doctor
+        if: ${{ success() }}
+        env:
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          AWS_METAL_RUNNER_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
+        run: |
+          RUNNER_BIN="\$HOME/.vm0-runner/bin/v${RUNNER_VERSION}/runner"
+          has_warnings=false
+          for host in $(echo "$AWS_METAL_RUNNER_HOSTS" | tr ',' ' '); do
+            [ -z "$host" ] && continue
+            # RUNNER_BIN contains \$HOME (remote) + version (local), so mixed expansion is intentional
+            # shellcheck disable=SC2029
+            if ! ssh "${AWS_METAL_RUNNER_USER}@${host}" "${RUNNER_BIN} doctor" 2>&1; then
+              has_warnings=true
+            fi
+          done
+          echo "has_warnings=${has_warnings}" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
       - name: Calculate duration
         id: duration
         if: ${{ always() && steps.timer.outputs.start }}
@@ -805,7 +826,7 @@ jobs:
           echo "text=$text" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
+        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings != 'true' }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.update
@@ -819,6 +840,22 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Runner RS* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>"
+
+      - name: Notify Slack - Success with warnings
+        if: ${{ success() && steps.slack-start.outputs.ts && steps.global-doctor.outputs.has_warnings == 'true' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Runner RS* ⚠️ Deployed with warnings"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Runner RS* ⚠️ Deployed with warnings\n📦 Version: `${{ needs.release-please.outputs.runner_rs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/runner-rs-v${{ needs.release-please.outputs.runner_rs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}

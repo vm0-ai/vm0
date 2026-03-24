@@ -194,8 +194,9 @@ export function createDefaultComposeConfig(
 export async function createTestSandboxToken(
   userId: string,
   runId: string,
+  capabilities?: Parameters<typeof generateSandboxToken>[2],
 ): Promise<string> {
-  return generateSandboxToken(userId, runId);
+  return generateSandboxToken(userId, runId, capabilities);
 }
 
 // ============================================================================
@@ -3470,6 +3471,20 @@ export async function seedSeedSkills(): Promise<void> {
     .insert(skills)
     .values(values)
     .onConflictDoNothing();
+}
+
+/**
+ * Seed storage volumes for all SEED_SKILLS under SYSTEM_ORG_ID.
+ * Required for tests that dispatch runs with zero-agent composes,
+ * because skill volumes must exist at runtime for storage manifest resolution.
+ */
+export async function seedSeedSkillStorages(): Promise<void> {
+  const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
+  for (const name of SEED_SKILLS) {
+    const fullPath = `vm0-ai/vm0-skills/tree/main/${name}`;
+    const storageName = `agent-skills@${fullPath}`;
+    await createTestVolumeForOrg(SYSTEM_ORG_ID, storageName);
+  }
 }
 
 /**

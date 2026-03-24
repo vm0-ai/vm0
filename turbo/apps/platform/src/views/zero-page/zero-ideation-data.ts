@@ -599,12 +599,12 @@ const categories: readonly Category[] = [
         connectors: ["discord", "notion", "slack"],
       },
       {
-        title: "Reddit brand monitor",
+        title: "X brand monitor",
         description:
-          "Watch Reddit for brand mentions, save relevant threads to Notion, and alert the team",
+          "Watch X for brand mentions, save relevant posts to Notion, and alert the team",
         prompt:
-          "Set up a Reddit brand monitor that watches for mentions of our product, saves relevant threads to Notion, and sends Slack alerts for high-engagement posts",
-        connectors: ["reddit", "notion", "slack"],
+          "Set up an X brand monitor that watches for mentions of our product, saves relevant posts to Notion, and sends Slack alerts for high-engagement posts",
+        connectors: ["x", "notion", "slack"],
       },
       {
         title: "Mercury cash flow monitor",

@@ -1,46 +1,43 @@
 import { command } from "ccstate";
-import { createElement } from "react";
-import { ZeroAppShell } from "../../views/zero-page/zero-app-shell.tsx";
-import { updateDocumentTitle$ } from "../document-title.ts";
-import { updatePage$ } from "../react-router.ts";
-import { pathname$ } from "../route.ts";
-import { syncModelPreference$ } from "./zero-model-preference.ts";
+import { navigateTo$ } from "../route.ts";
 import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
 import { defaultAgentName$ } from "./zero-agent-name.ts";
-import { switchActiveAgent$ } from "./zero-chat.ts";
 import { loadInitialData$ } from "./zero-page.ts";
+import {
+  zeroNeedsOnboarding$,
+  zeroNeedsMemberOnboarding$,
+} from "./zero-onboarding.ts";
 
 const L = logger("ChatPage");
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroAppShell));
-    set(updateDocumentTitle$, "Chat");
-
     await set(loadInitialData$, signal);
 
     // Consume ?settings=<tab> param before redirecting
     set(checkSettingsParam$);
 
-    // Redirect bare / to /talk/:defaultAgent
-    const currentPath = get(pathname$);
-    L.info("chat root path:", currentPath);
-
-    if (/^\/?$/.test(currentPath)) {
-      const rawName = await get(defaultAgentName$);
-      signal.throwIfAborted();
-      if (rawName) {
-        window.history.replaceState(
-          {},
-          "",
-          `/talk/${encodeURIComponent(rawName)}`,
-        );
-      }
+    // Redirect to /onboarding when needed
+    const needsOnboarding = await get(zeroNeedsOnboarding$);
+    signal.throwIfAborted();
+    const needsMemberOnboarding = await get(zeroNeedsMemberOnboarding$);
+    signal.throwIfAborted();
+    if (needsOnboarding || needsMemberOnboarding) {
+      L.info("redirecting to /onboarding");
+      set(navigateTo$, "/onboarding", { replace: true });
+      return;
     }
 
-    // Switch to default agent
-    set(switchActiveAgent$, null);
-    set(syncModelPreference$);
+    // Redirect bare / to /talk/:defaultAgent
+    const rawName = await get(defaultAgentName$);
+    signal.throwIfAborted();
+    if (rawName) {
+      L.info("redirecting to /talk/", rawName);
+      set(navigateTo$, "/talk/:name", {
+        pathParams: { name: rawName },
+        replace: true,
+      });
+    }
   },
 );

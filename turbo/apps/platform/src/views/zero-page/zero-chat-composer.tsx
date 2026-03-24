@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconSend,
@@ -48,11 +48,6 @@ import {
   AddConnectionDialog,
   ConnectModal,
 } from "./components/settings/add-connection-dialog.tsx";
-import { skills$ } from "../../data/skills.ts";
-import {
-  zeroNeedsOnboarding$,
-  zeroNeedsMemberOnboarding$,
-} from "../../signals/zero-page/zero-onboarding.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -103,22 +98,18 @@ function buildModelOpts(model: string): { modelProvider: string } | undefined {
 interface ComposerConnectorItem {
   type: string;
   label: string;
-  iconUrl?: string;
   connected: boolean;
 }
 
 function buildConnectorItem(
   name: string,
-  skillMap: Map<string, { label: string; icon?: string }>,
   connectorMap: Map<ConnectorType, { label: string; connected: boolean }>,
   optimistic: Set<string>,
 ): ComposerConnectorItem {
-  const skill = skillMap.get(name);
   const connector = connectorMap.get(name as ConnectorType);
   return {
     type: name,
-    label: skill?.label ?? connector?.label ?? name,
-    iconUrl: skill?.icon,
+    label: connector?.label ?? name,
     connected: optimistic.has(name) ? true : (connector?.connected ?? false),
   };
 }
@@ -141,14 +132,9 @@ function maybeClearOptimistic(
 
 function resolveConnectorLabel(
   type: string,
-  skillMap: Map<string, { label: string }>,
   connectorMap: Map<ConnectorType, { label: string }>,
 ): string {
-  return (
-    skillMap.get(type)?.label ??
-    connectorMap.get(type as ConnectorType)?.label ??
-    type
-  );
+  return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
 function startConnectorFlow(
@@ -192,25 +178,26 @@ function ConnectorTriggerIcons({
   }
   return (
     <span className="flex items-center -space-x-1.5">
-      {connected.map((c, i) => (
-        <span
-          key={c.type}
-          className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-full bg-background",
-            i === connected.length - 1 && "relative",
-          )}
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-        >
-          {c.iconUrl ? (
-            <img src={c.iconUrl} alt="" className="h-4 w-4" />
-          ) : (
-            <ConnectorIcon type={c.type as ConnectorType} size={16} />
-          )}
-          {hasDisconnected && i === connected.length - 1 && (
-            <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 z-10" />
-          )}
-        </span>
-      ))}
+      {connected.map((c, i) => {
+        const isLast = i === connected.length - 1;
+        const showDisconnectDot = hasDisconnected && isLast;
+        return (
+          <span
+            key={c.type}
+            className={cn("relative shrink-0", showDisconnectDot && "z-10")}
+          >
+            <span
+              className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background"
+              style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+            >
+              <ConnectorIcon type={c.type as ConnectorType} size={16} />
+            </span>
+            {showDisconnectDot && (
+              <span className="pointer-events-none absolute right-0 top-0 z-10 h-2 w-2 rounded-full bg-red-500" />
+            )}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -224,14 +211,20 @@ function ConnectorRow({
   action?: { label: string; onClick: () => void };
   tooltip?: string;
 }) {
+  const [hoverTooltipOpen, setHoverTooltipOpen] = useState(false);
+
   const row = (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors">
+    <div
+      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors"
+      {...(tooltip
+        ? {
+            onPointerEnter: () => setHoverTooltipOpen(true),
+            onPointerLeave: () => setHoverTooltipOpen(false),
+          }
+        : {})}
+    >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        {item.iconUrl ? (
-          <img src={item.iconUrl} alt="" className="h-4 w-4" />
-        ) : (
-          <ConnectorIcon type={item.type as ConnectorType} size={16} />
-        )}
+        <ConnectorIcon type={item.type as ConnectorType} size={16} />
       </span>
       <span
         className={cn(
@@ -261,14 +254,21 @@ function ConnectorRow({
   }
 
   return (
-    <TooltipProvider delayDuration={400}>
-      <Tooltip>
-        <TooltipTrigger asChild>{row}</TooltipTrigger>
-        <TooltipContent side="right" className="max-w-[200px] text-xs">
-          {tooltip}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip
+      delayDuration={0}
+      disableHoverableContent
+      open={hoverTooltipOpen}
+      onOpenChange={(next) => {
+        if (!next) {
+          setHoverTooltipOpen(false);
+        }
+      }}
+    >
+      <TooltipTrigger asChild>{row}</TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[200px] text-xs">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -308,37 +308,39 @@ function ConnectorsPopoverButton({
       </TooltipProvider>
       <PopoverContent side="top" align="start" className="w-64 p-0 rounded-lg">
         {hasAgentConnectors && (
-          <div
-            className="max-h-[200px] overflow-y-auto py-1 pl-1"
-            style={{ scrollbarWidth: "thin" }}
-          >
-            <div className="px-2 pt-1 pb-1">
-              <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
-                Connectors used by {agentName}
-              </span>
+          <TooltipProvider delayDuration={400}>
+            <div
+              className="max-h-[200px] overflow-y-auto py-1 pl-1"
+              style={{ scrollbarWidth: "thin" }}
+            >
+              <div className="px-2 pt-1 pb-1">
+                <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                  Connectors used by {agentName}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                {agentConnectors.map((item) => (
+                  <ConnectorRow
+                    key={item.type}
+                    item={item}
+                    action={
+                      item.connected
+                        ? undefined
+                        : {
+                            label: "Connect",
+                            onClick: () => onConnect(item.type),
+                          }
+                    }
+                    tooltip={
+                      item.connected
+                        ? undefined
+                        : "This connector is used by the agent but not connected. Click Connect to set it up, or go to Manage connectors for bulk setup."
+                    }
+                  />
+                ))}
+              </div>
             </div>
-            <div className="flex flex-col">
-              {agentConnectors.map((item) => (
-                <ConnectorRow
-                  key={item.type}
-                  item={item}
-                  action={
-                    item.connected
-                      ? undefined
-                      : {
-                          label: "Connect",
-                          onClick: () => onConnect(item.type),
-                        }
-                  }
-                  tooltip={
-                    item.connected
-                      ? undefined
-                      : "This connector is used by the agent but not connected. Click Connect to set it up, or go to Manage connectors for bulk setup."
-                  }
-                />
-              ))}
-            </div>
-          </div>
+          </TooltipProvider>
         )}
         <div
           className={cn(
@@ -420,21 +422,12 @@ export function ZeroChatComposer({
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
   const setSelectedConnType = useSet(setSelectedConnectorType$);
-  const onboardingActive = useLastLoadable(zeroNeedsOnboarding$);
-  const memberOnboardingActive = useLastLoadable(zeroNeedsMemberOnboarding$);
-  const isOnboarding =
-    (onboardingActive.state === "hasData" && onboardingActive.data) ||
-    (memberOnboardingActive.state === "hasData" && memberOnboardingActive.data);
   const addConnector = useSet(addZeroConnector$);
   const saveConnectors = useSet(saveZeroConnectors$);
   const optimisticConnected = useGet(justConnectedTypes$);
   const clearOptimistic = useSet(clearJustConnectedTypes$);
   const addDialogOpen = useGet(composerAddDialogOpen$);
   const setAddDialogOpen = useSet(setComposerAddDialogOpen$);
-
-  // Skills
-  const allSkills = useGet(skills$);
-  const skillMap = new Map(allSkills.map((s) => [s.value, s]));
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
@@ -448,13 +441,11 @@ export function ZeroChatComposer({
 
   const agentConnectors: ComposerConnectorItem[] = addedConnectors
     .filter((name) => connectorMap.has(name as ConnectorType))
-    .map((name) =>
-      buildConnectorItem(name, skillMap, connectorMap, optimisticConnected),
-    )
+    .map((name) => buildConnectorItem(name, connectorMap, optimisticConnected))
     .sort((a, b) => Number(a.connected) - Number(b.connected));
 
   const handleConnectSuccess = (type: string) => {
-    const label = resolveConnectorLabel(type, skillMap, connectorMap);
+    const label = resolveConnectorLabel(type, connectorMap);
     detach(
       (async () => {
         await addConnector(type);
@@ -661,7 +652,7 @@ export function ZeroChatComposer({
         onAdd={handleConnectSuccess}
         agentName={agentName}
       />
-      {selectedConnType && !isOnboarding && (
+      {selectedConnType && (
         <ConnectModal
           onClose={() => setSelectedConnType(null)}
           onSuccess={() => {

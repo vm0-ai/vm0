@@ -3,6 +3,7 @@ class LocationOverrides {
   search: string | undefined = undefined;
   origin: string | undefined = undefined;
   pushState: typeof window.history.pushState | undefined = undefined;
+  replaceState: typeof window.history.replaceState | undefined = undefined;
 }
 
 const overrides = new LocationOverrides();
@@ -69,5 +70,27 @@ export function mockPushState(
   overrides.pushState = fn;
   signal.addEventListener("abort", () => {
     overrides.pushState = undefined;
+  });
+}
+
+export const replaceState = (
+  data: Parameters<typeof window.history.replaceState>[0],
+  unused: Parameters<typeof window.history.replaceState>[1],
+  url: Parameters<typeof window.history.replaceState>[2],
+) => {
+  if (overrides.replaceState) {
+    overrides.replaceState.call(window.history, data, unused, url);
+  } else {
+    window.history.replaceState(data, unused, url);
+  }
+};
+
+export function mockReplaceState(
+  fn: typeof window.history.replaceState | undefined,
+  signal: AbortSignal,
+) {
+  overrides.replaceState = fn;
+  signal.addEventListener("abort", () => {
+    overrides.replaceState = undefined;
   });
 }

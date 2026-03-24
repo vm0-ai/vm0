@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.142.0](https://github.com/vm0-ai/vm0/compare/app-v0.141.1...app-v0.142.0) (2026-03-23)
+
+
+### Features
+
+* **platform:** polish zero sidebar and talk-to dialog ([#6222](https://github.com/vm0-ai/vm0/issues/6222)) ([d74347f](https://github.com/vm0-ai/vm0/commit/d74347f6444259f782a4a39d209a437489b7e8c0))
+* replace reddit brand monitor example with x (twitter) ([#6221](https://github.com/vm0-ai/vm0/issues/6221)) ([08df896](https://github.com/vm0-ai/vm0/commit/08df896ed1a9b0bb4c517fbe070fec6b6fdca33d)), closes [#6214](https://github.com/vm0-ai/vm0/issues/6214)
+* **zero:** merge connector icon dark mode and sizing to main ([#6224](https://github.com/vm0-ai/vm0/issues/6224)) ([056ff0c](https://github.com/vm0-ai/vm0/commit/056ff0c40d001fe07eb71c1fef6bde6a7aa72ebc))
+
+
+### Bug Fixes
+
+* **platform:** remove skills$ from composer, use CONNECTOR_TYPES labels only ([#6230](https://github.com/vm0-ai/vm0/issues/6230)) ([173e366](https://github.com/vm0-ai/vm0/commit/173e366a65f1026ee216ea9613a809ba06fe4d64))
+
+
+### Refactoring
+
+* eliminate zero app shell, add /onboarding route ([#6237](https://github.com/vm0-ai/vm0/issues/6237)) ([d4b965e](https://github.com/vm0-ai/vm0/commit/d4b965eefdde3716efa06f6e89d2b17089e4c3be))
+
+
+### Performance Improvements
+
+* convert no-permission-illustration to webp and add lazy loading ([#6225](https://github.com/vm0-ai/vm0/issues/6225)) ([a6dc0c1](https://github.com/vm0-ai/vm0/commit/a6dc0c19547535b58b83d64a0e92ecc491546c93)), closes [#6089](https://github.com/vm0-ai/vm0/issues/6089)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.99.0
+
 ## [0.141.1](https://github.com/vm0-ai/vm0/compare/app-v0.141.0...app-v0.141.1) (2026-03-23)
 
 

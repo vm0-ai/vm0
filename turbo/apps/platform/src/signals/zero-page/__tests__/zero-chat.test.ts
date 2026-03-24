@@ -21,7 +21,6 @@ import {
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
-  sendFromZeroDemo$,
   syncUrlSession$,
   prepareSessionSwitch$,
   zeroChatQueuedMessage$,
@@ -688,67 +687,6 @@ describe("zero-chat signals", () => {
       expect(threadCreateCalled).toBeFalsy();
       expect(capturedRunBody).toBeTruthy();
       expect(capturedRunBody!.sessionId).toBe("existing-session");
-    });
-  });
-
-  describe("sendFromZeroDemo$", () => {
-    it("should reset session and start sending the message", async () => {
-      let runCreated = false;
-      server.use(
-        http.post("*/api/zero/chat-threads", () => {
-          return HttpResponse.json(
-            { id: "thread-demo", createdAt: "2026-03-10T00:00:00Z" },
-            { status: 201 },
-          );
-        }),
-        http.post("*/api/zero/chat-threads/:id/runs", () => {
-          return new HttpResponse(null, { status: 204 });
-        }),
-        http.get("*/api/zero/chat-threads", () => {
-          return HttpResponse.json({ threads: [] });
-        }),
-        http.post("*/api/zero/runs", () => {
-          runCreated = true;
-          return HttpResponse.json({ runId: "run-demo" });
-        }),
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          return HttpResponse.json({
-            id: "run-demo",
-            status: "completed",
-            error: null,
-            prompt: "Hello from demo",
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: "2026-03-10T00:00:02Z",
-          });
-        }),
-        http.get("*/api/zero/runs/:runId", () => {
-          return HttpResponse.json({
-            result: { agentSessionId: "demo-session" },
-          });
-        }),
-      );
-
-      await setup();
-
-      // Set up some existing state that should get reset
-      context.store.set(setZeroChatInput$, "old input");
-
-      context.store.set(sendFromZeroDemo$, "Hello from demo");
-
-      // Wait for the detached send to complete
-      await delay(100);
-
-      expect(runCreated).toBeTruthy();
-      // Session was reset before sending
-      expect(context.store.get(zeroChatInput$)).toBe("");
     });
   });
 

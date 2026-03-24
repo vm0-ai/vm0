@@ -37,7 +37,9 @@ export function ScopeReviewModal({
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <ConnectorIcon type={connectorType} size={28} />
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+              <ConnectorIcon type={connectorType} size={20} />
+            </div>
             <DialogTitle>{config.label} — Permissions Update</DialogTitle>
           </div>
         </DialogHeader>

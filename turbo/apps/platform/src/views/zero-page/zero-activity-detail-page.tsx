@@ -331,7 +331,7 @@ export function ZeroActivityDetailPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="zero-search-input relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10">
+                  <div className="zero-search-input relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
                     <div className="pl-2">
                       <IconSearch className="h-4 w-4 text-muted-foreground" />
                     </div>

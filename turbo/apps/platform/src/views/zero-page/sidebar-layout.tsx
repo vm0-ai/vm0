@@ -2,15 +2,9 @@ import type { ReactNode } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { Button } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import { ZeroOnboarding, MemberWelcome } from "./zero-onboarding.tsx";
 import { user$ } from "../../signals/auth.ts";
-import {
-  zeroNeedsOnboarding$,
-  zeroNeedsMemberOnboarding$,
-} from "../../signals/zero-page/zero-onboarding.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
-  zeroAvatarIndex$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
   zeroSidebarCollapsed$,
@@ -18,29 +12,13 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 
-import zeroAvatarImg from "./assets/zero-avatar.webp";
-import avatar1Img from "./assets/avatar-1.webp";
-import avatar2Img from "./assets/avatar-2.webp";
-import avatar3Img from "./assets/avatar-3.webp";
-import avatar4Img from "./assets/avatar-4.webp";
-
-const ZERO_AVATARS = [
-  zeroAvatarImg,
-  avatar1Img,
-  avatar2Img,
-  avatar3Img,
-  avatar4Img,
-] as const;
-
 function SidebarLayoutSkeleton() {
   const userLoadable = useLoadable(user$);
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
-  const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
-  const onboardingReady = onboardingLoadable.state === "hasData";
   const agentNameLoadable = useLastLoadable(agentDisplayName$);
   const agentNameReady = agentNameLoadable.state === "hasData";
-  const visible = isLoggedIn && !(onboardingReady && agentNameReady);
+  const visible = isLoggedIn && !agentNameReady;
 
   return (
     <div
@@ -150,26 +128,6 @@ export function SidebarLayout({ children }: { children: ReactNode }) {
   const isLoggedIn =
     userLoadable.state === "hasData" && userLoadable.data !== undefined;
 
-  const onboardingLoadable = useLastLoadable(zeroNeedsOnboarding$);
-  const needsOnboarding =
-    onboardingLoadable.state === "hasData" && onboardingLoadable.data === true;
-  const showOnboarding = isLoggedIn && needsOnboarding;
-
-  const memberOnboarding = useLastLoadable(zeroNeedsMemberOnboarding$);
-  const showMemberWelcome =
-    isLoggedIn &&
-    memberOnboarding.state === "hasData" &&
-    memberOnboarding.data === true;
-
-  const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
-  const agentDisplayName =
-    agentDisplayNameLoadable.state === "hasData"
-      ? agentDisplayNameLoadable.data
-      : "Zero";
-
-  const avatarIndex = useGet(zeroAvatarIndex$);
-  const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
-
   const showAboutPage = useGet(zeroShowAboutPage$);
   const setShowAboutPage = useSet(setZeroShowAboutPage$);
 
@@ -179,13 +137,6 @@ export function SidebarLayout({ children }: { children: ReactNode }) {
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
       <SidebarLayoutSkeleton />
-      {showOnboarding && <ZeroOnboarding zeroAvatarSrc={zeroAvatarSrc} />}
-      {showMemberWelcome && (
-        <MemberWelcome
-          agentName={agentDisplayName}
-          zeroAvatarSrc={zeroAvatarSrc}
-        />
-      )}
       <ZeroSidebar />
       {!sidebarCollapsed && (
         <div
