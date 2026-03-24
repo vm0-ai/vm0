@@ -139,6 +139,7 @@ interface ZeroScheduleEntry {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
+  slackChannelId: string | null;
   /** Original schedule name for API operations */
   name: string;
   /** IANA timezone stored on the server */
@@ -160,6 +161,7 @@ export const zeroScheduleEntries$ = computed((get) => {
         enabled: s.enabled,
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
+        slackChannelId: s.slackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,

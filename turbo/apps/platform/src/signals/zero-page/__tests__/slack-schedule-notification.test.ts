@@ -166,6 +166,139 @@ describe("slack schedule notification signals", () => {
     });
   });
 
+  describe("/schedule page — slack bot token present", () => {
+    it("should have slackOrgData$ installed and fetch channels on dialog open", async () => {
+      await setup("/schedule");
+
+      const data = context.store.get(slackOrgData$);
+      expect(data?.isInstalled).toBeTruthy();
+
+      context.store.set(setAddScheduleOpen$, true);
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels).toHaveLength(2);
+      expect(channels[0]).toStrictEqual({ id: "C-GENERAL", name: "general" });
+      expect(channels[1]).toStrictEqual({ id: "C-ALERTS", name: "alerts" });
+    });
+
+    it("should fetch channels when edit dialog opens", async () => {
+      await setup("/schedule");
+
+      context.store.set(setEditingScheduleId$, "sched-1");
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels).toHaveLength(2);
+    });
+  });
+
+  describe("/schedule page — no slack installation", () => {
+    it("should show not installed and return empty channels", async () => {
+      server.use(
+        http.get("*/api/zero/integrations/slack", () => {
+          return HttpResponse.json({
+            isConnected: false,
+            isInstalled: false,
+            workspaceName: null,
+            isAdmin: false,
+            defaultAgentName: null,
+            agentOrgSlug: null,
+            environment: {
+              requiredSecrets: [],
+              requiredVars: [],
+              missingSecrets: [],
+              missingVars: [],
+            },
+          });
+        }),
+        http.get("*/api/zero/slack/channels", () => {
+          return HttpResponse.json(
+            { error: { message: "No Slack installation", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await setup("/schedule");
+
+      const data = context.store.get(slackOrgData$);
+      expect(data?.isInstalled).toBeFalsy();
+
+      context.store.set(setAddScheduleOpen$, true);
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels).toHaveLength(0);
+    });
+  });
+
+  describe("/team/:name page — slack bot token present", () => {
+    it("should have slackOrgData$ installed and fetch channels on dialog open", async () => {
+      await setup("/team/zero");
+
+      const data = context.store.get(slackOrgData$);
+      expect(data?.isInstalled).toBeTruthy();
+
+      context.store.set(setAddScheduleOpen$, true);
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels).toHaveLength(2);
+      expect(channels[0]).toStrictEqual({ id: "C-GENERAL", name: "general" });
+    });
+
+    it("should fetch channels when edit dialog opens", async () => {
+      await setup("/team/zero");
+
+      context.store.set(setEditingScheduleId$, "sched-1");
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels).toHaveLength(2);
+    });
+  });
+
+  describe("/team/:name page — no slack installation", () => {
+    it("should show not installed and return empty channels", async () => {
+      server.use(
+        http.get("*/api/zero/integrations/slack", () => {
+          return HttpResponse.json({
+            isConnected: false,
+            isInstalled: false,
+            workspaceName: null,
+            isAdmin: false,
+            defaultAgentName: null,
+            agentOrgSlug: null,
+            environment: {
+              requiredSecrets: [],
+              requiredVars: [],
+              missingSecrets: [],
+              missingVars: [],
+            },
+          });
+        }),
+        http.get("*/api/zero/slack/channels", () => {
+          return HttpResponse.json(
+            { error: { message: "No Slack installation", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await setup("/team/zero");
+
+      const data = context.store.get(slackOrgData$);
+      expect(data?.isInstalled).toBeFalsy();
+
+      context.store.set(setAddScheduleOpen$, true);
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels).toHaveLength(0);
+    });
+  });
+
   describe("saveOrgSchedule$ with slackChannelId", () => {
     it("should send slackChannelId in POST body", async () => {
       const captured: { body: Record<string, unknown> | null } = {
