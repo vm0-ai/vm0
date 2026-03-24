@@ -31,6 +31,7 @@ import { mondayFirewall } from "./monday.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
 import { resendFirewall } from "./resend.generated";
+import { sentryFirewall } from "./sentry.generated";
 import { slackFirewall } from "./slack.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { todoistFirewall } from "./todoist.generated";
@@ -66,6 +67,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   notion: notionFirewall,
   openai: openaiFirewall,
   resend: resendFirewall,
+  sentry: sentryFirewall,
   slack: slackFirewall,
   stripe: stripeFirewall,
   todoist: todoistFirewall,

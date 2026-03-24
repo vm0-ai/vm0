@@ -30,6 +30,7 @@
     "generate:notion": "tsx src/index.ts notion",
     "generate:openai": "tsx src/index.ts openai",
     "generate:resend": "tsx src/index.ts resend",
+    "generate:sentry": "tsx src/index.ts sentry",
     "generate:slack": "tsx src/index.ts slack",
     "generate:stripe": "tsx src/index.ts stripe",
     "generate:todoist": "tsx src/index.ts todoist",

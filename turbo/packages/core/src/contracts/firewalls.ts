@@ -117,6 +117,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   notion: ["notion"],
   openai: ["openai"],
   resend: ["resend"],
+  sentry: ["sentry"],
   stripe: ["stripe"],
   todoist: ["todoist"],
   vercel: ["vercel"],
