@@ -73,12 +73,11 @@ export const RUN_ERROR_GUIDANCE: Record<
   NO_MODEL_PROVIDER: {
     title: "No model provider configured",
     guidance: "Configure a model provider to start running agents.",
-    cliHint: "vm0 org model-provider setup",
+    cliHint: "zero org model-provider setup",
   },
   INSUFFICIENT_CREDITS: {
     title: "Credits depleted",
     guidance: "Add credits or configure your own API key to continue.",
-    cliHint: "vm0 org billing",
   },
   PROVIDER_INCOMPATIBLE: {
     title: "Provider not compatible",
