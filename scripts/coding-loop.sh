@@ -23,24 +23,38 @@ CONTENT_DIR="/tmp/coding-loop"
 mkdir -p "$CONTENT_DIR/issues" "$CONTENT_DIR/prs"
 
 # --- Gist logging setup ---
-# Mirror stdout to a log file via tee so the caller still receives output in real-time.
+# Mirror stdout and stderr to a log file via tee so the caller still sees
+# output in real-time while we capture everything for gist upload.
 _LOG_OUTPUT="/tmp/coding-loop-output-${LABEL}.$$"
-exec > >(tee "$_LOG_OUTPUT")
+
+# Use a FIFO so we can reliably wait for tee to drain before uploading.
+_LOG_FIFO="/tmp/coding-loop-fifo-${LABEL}.$$"
+mkfifo "$_LOG_FIFO"
+tee "$_LOG_OUTPUT" < "$_LOG_FIFO" &
+_TEE_PID=$!
+# Redirect both stdout and stderr through the FIFO → tee.
+exec > "$_LOG_FIFO" 2>&1
 
 _update_gist() {
-  # Wait for tee to finish flushing
-  wait 2>/dev/null || true
+  # Close the FIFO so tee receives EOF, then wait for it to flush.
+  exec >/dev/null 2>&1
+  wait "$_TEE_PID" 2>/dev/null || true
+  rm -f "$_LOG_FIFO"
 
   local gist_name="coding-loop-log-${LABEL}"
   local gist_id
-  gist_id=$(gh gist list --limit 100 2>/dev/null | awk -v name="$gist_name" '$0 ~ name {print $1; exit}' || true)
+  gist_id=$(gh gist list --limit 100 | awk -v name="$gist_name" '$2 == name {print $1; exit}' || true)
 
   if [ -n "$gist_id" ]; then
-    gh api --method PATCH "gists/$gist_id" \
+    if ! gh api --method PATCH "gists/$gist_id" \
       --input <(jq -Rs --arg f "$gist_name" '{"files": {($f): {"content": .}}}' "$_LOG_OUTPUT") \
-      >/dev/null 2>&1 || true
+      >/dev/null; then
+      echo "warning: failed to update gist $gist_id" >&2
+    fi
   else
-    gh gist create --filename "$gist_name" --desc "$gist_name" - < "$_LOG_OUTPUT" >/dev/null 2>&1 || true
+    if ! gh gist create --filename "$gist_name" --desc "$gist_name" - < "$_LOG_OUTPUT" >/dev/null; then
+      echo "warning: failed to create gist for $gist_name" >&2
+    fi
   fi
   rm -f "$_LOG_OUTPUT"
 }
