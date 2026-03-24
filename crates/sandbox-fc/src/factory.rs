@@ -327,9 +327,26 @@ impl SandboxFactory for FirecrackerFactory {
         let workspace = sandbox.sandbox_paths.workspace().to_owned();
 
         // Destroy the COW device (removes dm targets, detaches loops, deletes COW file).
-        let cow_destroyed = sandbox.cow_device.destroy().is_ok();
-        if !cow_destroyed {
-            warn!(id = %sandbox_id, "failed to destroy COW device — skipping workspace cleanup (dm targets still reference files inside it)");
+        //
+        // The inner Firecracker process (inside netns via sudo -u) may still
+        // be exiting after kill_process_group + child.wait() — the outer sudo
+        // exits first while the inner process releases file descriptors.
+        // Retry a few times to let it finish.
+        let mut cow_destroyed = false;
+        for attempt in 0..5u32 {
+            match sandbox.cow_device.destroy() {
+                Ok(()) => {
+                    cow_destroyed = true;
+                    break;
+                }
+                Err(e) => {
+                    if attempt < 4 {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    } else {
+                        warn!(id = %sandbox_id, error = %e, "failed to destroy COW device after retries — skipping workspace cleanup");
+                    }
+                }
+            }
         }
         drop(sandbox);
 
