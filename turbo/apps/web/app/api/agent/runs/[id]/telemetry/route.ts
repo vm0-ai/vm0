@@ -31,7 +31,7 @@ const router = tsr.router(runTelemetryContract, {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization, {
-      requiredCapability: "agent-run:read",
+      acceptAnySandboxCapability: true,
     });
     if (!authCtx) {
       return {

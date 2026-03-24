@@ -1,51 +1,62 @@
 import * as Sentry from "@sentry/react";
 
-// Initialize Sentry immediately on import
-Sentry.init({
-  dsn: import.meta.env.VITE_SENTRY_DSN,
+// Defer Sentry initialization off the critical path to reduce TBT.
+// Sentry APIs (captureException, setUser, etc.) are safe no-ops before init.
+export function deferSentryInit(): void {
+  const init = () => {
+    Sentry.init({
+      dsn: import.meta.env.VITE_SENTRY_DSN,
 
-  // Only enable when DSN is configured
-  enabled: !!import.meta.env.VITE_SENTRY_DSN,
+      // Only enable when DSN is configured
+      enabled: !!import.meta.env.VITE_SENTRY_DSN,
 
-  // Set environment (Vercel provides VITE_VERCEL_ENV in builds)
-  environment: import.meta.env.VITE_VERCEL_ENV,
+      // Set environment (Vercel provides VITE_VERCEL_ENV in builds)
+      environment: import.meta.env.VITE_VERCEL_ENV,
 
-  // Set app tag to identify this app in Sentry
-  initialScope: {
-    tags: {
-      app: "platform",
-    },
-  },
+      // Set app tag to identify this app in Sentry
+      initialScope: {
+        tags: {
+          app: "platform",
+        },
+      },
 
-  // Disable tracing - only error tracking is needed
-  tracesSampleRate: 0,
+      // Disable tracing - only error tracking is needed
+      tracesSampleRate: 0,
 
-  // Filter out expected errors
-  beforeSend(event) {
-    // Filter out 4xx client errors that are expected
-    const statusCode = event.contexts?.response?.status_code;
-    if (
-      typeof statusCode === "number" &&
-      statusCode >= 400 &&
-      statusCode < 500
-    ) {
-      return null;
-    }
-    return event;
-  },
+      // Filter out expected errors
+      beforeSend(event) {
+        // Filter out 4xx client errors that are expected
+        const statusCode = event.contexts?.response?.status_code;
+        if (
+          typeof statusCode === "number" &&
+          statusCode >= 400 &&
+          statusCode < 500
+        ) {
+          return null;
+        }
+        return event;
+      },
 
-  // Ignore common client-side errors
-  ignoreErrors: [
-    // Network errors
-    "Failed to fetch",
-    "NetworkError",
-    "Load failed",
-    // User navigation
-    "AbortError",
-    // Browser extensions
-    "ResizeObserver loop",
-  ],
-});
+      // Ignore common client-side errors
+      ignoreErrors: [
+        // Network errors
+        "Failed to fetch",
+        "NetworkError",
+        "Load failed",
+        // User navigation
+        "AbortError",
+        // Browser extensions
+        "ResizeObserver loop",
+      ],
+    });
+  };
+
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(init, { timeout: 3000 });
+  } else {
+    window.setTimeout(init, 100);
+  }
+}
 
 export function setSentryUser(userId: string) {
   Sentry.setUser({ id: userId });

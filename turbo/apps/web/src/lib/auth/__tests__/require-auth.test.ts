@@ -18,7 +18,7 @@ describe("requireAuth", () => {
     } as Awaited<ReturnType<typeof auth>>);
 
     const result = await requireAuth(undefined, {
-      requiredCapability: "artifact:read",
+      requiredCapability: "agent:read",
     });
 
     expect(isAuthError(result)).toBe(false);
@@ -28,29 +28,25 @@ describe("requireAuth", () => {
   });
 
   it("should return AuthContext for sandbox token with matching capability", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", [
-      "artifact:read",
-    ]);
+    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
 
     const result = await requireAuth(`Bearer ${token}`, {
-      requiredCapability: "artifact:read",
+      requiredCapability: "agent:read",
     });
 
     expect(isAuthError(result)).toBe(false);
     if (!isAuthError(result)) {
       expect(result.userId).toBe("user-1");
       expect(result.runId).toBe("run-1");
-      expect(result.capabilities).toContain("artifact:read");
+      expect(result.capabilities).toContain("agent:read");
     }
   });
 
   it("should return 403 for sandbox token missing required capability", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", [
-      "artifact:read",
-    ]);
+    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
 
     const result = await requireAuth(`Bearer ${token}`, {
-      requiredCapability: "artifact:write",
+      requiredCapability: "agent:write",
     });
 
     expect(isAuthError(result)).toBe(true);
@@ -58,7 +54,7 @@ describe("requireAuth", () => {
       expect(result.status).toBe(403);
       expect(result.body.error.code).toBe("FORBIDDEN");
       expect(result.body.error.message).toBe(
-        "Missing required capability: artifact:write",
+        "Missing required capability: agent:write",
       );
     }
   });
@@ -67,7 +63,7 @@ describe("requireAuth", () => {
     const token = await generateSandboxToken("user-1", "run-1");
 
     const result = await requireAuth(`Bearer ${token}`, {
-      requiredCapability: "artifact:read",
+      requiredCapability: "agent:read",
     });
 
     expect(isAuthError(result)).toBe(true);
@@ -75,15 +71,13 @@ describe("requireAuth", () => {
       expect(result.status).toBe(403);
       expect(result.body.error.code).toBe("FORBIDDEN");
       expect(result.body.error.message).toBe(
-        "Missing required capability: artifact:read",
+        "Missing required capability: agent:read",
       );
     }
   });
 
   it("should return 403 for sandbox token on uncovered endpoint", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", [
-      "artifact:read",
-    ]);
+    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
 
     // No requiredCapability = uncovered endpoint
     const result = await requireAuth(`Bearer ${token}`);

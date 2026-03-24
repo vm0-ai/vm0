@@ -1091,6 +1091,31 @@ jobs:
         run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/cli
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build
+      - name: Verify CLI package contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd turbo/apps/cli/dist
+          # Ensure all imported chunks are present in the package
+          for f in index.js zero.js; do
+            chunks=$(grep -oP './chunk-[A-Z0-9]+\.js' "$f" 2>/dev/null || true)
+            for chunk in $chunks; do
+              chunk_file="${chunk#./}"
+              if [ ! -f "$chunk_file" ]; then
+                echo "ERROR: $f imports $chunk but file is missing from dist/"
+                exit 1
+              fi
+            done
+          done
+          # Verify npm pack includes all JS files
+          npm pack --dry-run 2>&1 | tee /tmp/pack-list.txt
+          for js in *.js; do
+            if ! grep -q "$js" /tmp/pack-list.txt; then
+              echo "ERROR: $js exists in dist/ but would not be included in npm package"
+              exit 1
+            fi
+          done
+          echo "CLI package verification passed"
       - name: Deploy CLI with production dependencies
         run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted /tmp/cli-deploy
       - name: Upload CLI artifact

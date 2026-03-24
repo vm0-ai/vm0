@@ -4,6 +4,8 @@ import {
   agentComposeApiContentSchema,
   VALID_CAPABILITIES,
   CAPABILITY_META,
+  ZERO_CAPABILITIES,
+  ZERO_CAPABILITY_META,
 } from "../composes";
 
 const baseAgent = {
@@ -20,7 +22,7 @@ function wrapInCompose(agentOverrides: Record<string, unknown>) {
 }
 
 describe("VALID_CAPABILITIES", () => {
-  it("contains 8 capabilities", () => {
+  it("contains 9 capabilities", () => {
     expect(VALID_CAPABILITIES).toHaveLength(9);
   });
 
@@ -45,7 +47,7 @@ describe("experimental_capabilities in agentDefinitionSchema", () => {
   it("accepts valid capabilities array", () => {
     const result = agentDefinitionSchema.safeParse({
       ...baseAgent,
-      experimental_capabilities: ["artifact:read", "artifact:write"],
+      experimental_capabilities: ["agent:read", "agent:write"],
     });
     expect(result.success).toBe(true);
   });
@@ -90,7 +92,7 @@ describe("experimental_capabilities in agentDefinitionSchema", () => {
   it("rejects duplicate capabilities", () => {
     const result = agentDefinitionSchema.safeParse({
       ...baseAgent,
-      experimental_capabilities: ["artifact:read", "artifact:read"],
+      experimental_capabilities: ["agent:read", "agent:read"],
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -107,7 +109,7 @@ describe("experimental_capabilities in agentComposeApiContentSchema", () => {
       wrapInCompose({
         experimental_capabilities: [
           "agent:read",
-          "artifact:write",
+          "agent:write",
           "agent-run:read",
         ],
       }),
@@ -127,5 +129,37 @@ describe("experimental_capabilities in agentComposeApiContentSchema", () => {
       }),
     );
     expect(result.success).toBe(false);
+  });
+});
+
+describe("ZERO_CAPABILITIES", () => {
+  it("should have exactly 7 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(7);
+  });
+
+  it("should follow {resource}:{action} naming pattern", () => {
+    for (const cap of ZERO_CAPABILITIES) {
+      expect(cap).toMatch(/^[a-z-]+:(read|write)$/);
+    }
+  });
+
+  it("should not include artifact capabilities", () => {
+    expect(ZERO_CAPABILITIES).not.toContain("artifact:read");
+    expect(ZERO_CAPABILITIES).not.toContain("artifact:write");
+  });
+
+  it("should use slack:write not integration-slack:write", () => {
+    expect(ZERO_CAPABILITIES).toContain("slack:write");
+    expect(ZERO_CAPABILITIES).not.toContain("integration-slack:write");
+  });
+});
+
+describe("ZERO_CAPABILITY_META", () => {
+  it("should have metadata for every ZERO_CAPABILITY", () => {
+    for (const cap of ZERO_CAPABILITIES) {
+      expect(ZERO_CAPABILITY_META[cap]).toBeDefined();
+      expect(ZERO_CAPABILITY_META[cap].group).toBeTruthy();
+      expect(ZERO_CAPABILITY_META[cap].label).toBeTruthy();
+    }
   });
 });

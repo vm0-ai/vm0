@@ -11,7 +11,7 @@
     />
     <script type="module" src="/src/main.ts" defer></script>
     <script>
-      (function () {
+      function __initPlausible() {
         var url = "%VITE_PLAUSIBLE_SCRIPT_URL%";
         if (url && url.indexOf("plausible") !== -1) {
           var s = document.createElement("script");
@@ -38,7 +38,12 @@
             },
           });
         }
-      })();
+      }
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(__initPlausible, { timeout: 3000 });
+      } else {
+        setTimeout(__initPlausible, 100);
+      }
     </script>
   </head>
   <body>

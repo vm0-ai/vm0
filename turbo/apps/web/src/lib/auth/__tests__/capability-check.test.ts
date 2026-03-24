@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  isSandboxAuth,
-  storageCapability,
-  missingCapabilityError,
-} from "../capability-check";
+import { isSandboxAuth, missingCapabilityError } from "../capability-check";
 
 describe("capability-check", () => {
   describe("isSandboxAuth", () => {
@@ -16,34 +12,12 @@ describe("capability-check", () => {
     });
   });
 
-  describe("storageCapability", () => {
-    it("should map volume to agent capability", () => {
-      expect(storageCapability("read", "volume")).toBe("agent:read");
-      expect(storageCapability("write", "volume")).toBe("agent:write");
-    });
-
-    it("should map artifact to artifact capability", () => {
-      expect(storageCapability("read", "artifact")).toBe("artifact:read");
-      expect(storageCapability("write", "artifact")).toBe("artifact:write");
-    });
-
-    it("should map memory to artifact capability", () => {
-      expect(storageCapability("read", "memory")).toBe("artifact:read");
-      expect(storageCapability("write", "memory")).toBe("artifact:write");
-    });
-
-    it("should default to artifact capability when no type provided", () => {
-      expect(storageCapability("read")).toBe("artifact:read");
-      expect(storageCapability("write")).toBe("artifact:write");
-    });
-  });
-
   describe("missingCapabilityError", () => {
     it("should return 403 error body with capability name", () => {
-      const error = missingCapabilityError("artifact:read");
+      const error = missingCapabilityError("agent:read");
 
       expect(error.error.message).toBe(
-        "Missing required capability: artifact:read",
+        "Missing required capability: agent:read",
       );
       expect(error.error.code).toBe("FORBIDDEN");
     });

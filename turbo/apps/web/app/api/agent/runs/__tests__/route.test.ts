@@ -1581,19 +1581,32 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject sandbox token without agent-run:read for list", async () => {
+    it("should accept sandbox token with any capability for list", async () => {
+      // Refresh org and member caches so sandbox token can resolve org
+      await insertOrgCacheEntry({
+        orgId: user.orgId,
+        slug: (await getOrgCacheEntry(user.orgId))!.slug,
+        cachedAt: new Date(Date.now()),
+      });
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        cachedAt: new Date(Date.now()),
+      });
+
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
-        "artifact:read",
+        "schedule:read",
       ]);
 
+      const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs?limit=10",
+        `http://localhost:3000/api/agent/runs?limit=10&org=${orgEntry!.slug}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       const response = await GET(request);
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
     });
 
     it("should accept sandbox token with agent-run:write for create", async () => {
@@ -1622,7 +1635,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(response.status).not.toBe(403);
     });
 
-    it("should reject sandbox token without agent-run:write for create", async () => {
+    it("should accept sandbox token with any capability for create", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
         "agent-run:read",
@@ -1644,7 +1657,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
       const response = await POST(request);
 
-      expect(response.status).toBe(403);
+      // Should pass auth (not 403) — downstream may fail for other reasons
+      expect(response.status).not.toBe(403);
     });
   });
 });

@@ -12,10 +12,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
-import {
-  storageCapability,
-  isSandboxAuth,
-} from "../../../../src/lib/auth/capability-check";
+import { isSandboxAuth } from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import {
@@ -34,11 +31,8 @@ const router = tsr.router(storagesCommitContract, {
 
     const { storageName, storageType, versionId, files, runId, message } = body;
 
-    const capability = storageCapability("write", storageType);
-
-    // Authenticate user (sandbox tokens accepted if they have the required capability)
     const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: capability,
+      acceptAnySandboxCapability: true,
     });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;

@@ -348,7 +348,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
         versionId,
         `${orgSlug}/default`,
         {
-          experimentalCapabilities: ["artifact:read", "artifact:write"],
+          experimentalCapabilities: ["agent:read", "agent:write"],
         },
       );
 
@@ -371,10 +371,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const data = await response.json();
       const sandboxAuth = verifySandboxToken(data.sandboxToken);
       expect(sandboxAuth).not.toBeNull();
-      expect(sandboxAuth!.capabilities).toEqual([
-        "artifact:read",
-        "artifact:write",
-      ]);
+      expect(sandboxAuth!.capabilities).toEqual(["agent:read", "agent:write"]);
     });
 
     it("should generate token without capabilities when not in stored context", async () => {

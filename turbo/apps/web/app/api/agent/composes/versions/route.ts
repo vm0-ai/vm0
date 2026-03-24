@@ -20,7 +20,7 @@ const router = tsr.router(composesVersionsContract, {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "agent:read",
+      acceptAnySandboxCapability: true,
     });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;

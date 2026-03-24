@@ -13,19 +13,25 @@ import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateConfluence } from "./confluence";
+import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateFigma } from "./figma";
+import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateHubspot } from "./hubspot";
 import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
+import { generate as generateMonday } from "./monday";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
+import { generate as generatePosthog } from "./posthog";
 import { generate as generateResend } from "./resend";
+import { generate as generateSentry } from "./sentry";
 import { generate as generateSlack } from "./slack";
 import { generate as generateStripe } from "./stripe";
+import { generate as generateTodoist } from "./todoist";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateX } from "./x";
 import { generate as generateYoutube } from "./youtube";
@@ -42,19 +48,25 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   axiom: generateAxiom,
   cloudflare: generateCloudflare,
   confluence: generateConfluence,
+  deepseek: generateDeepseek,
   discord: generateDiscord,
   elevenlabs: generateElevenlabs,
   figma: generateFigma,
+  firecrawl: generateFirecrawl,
   github: generateGitHub,
   gitlab: generateGitlab,
   hubspot: generateHubspot,
   jira: generateJira,
   linear: generateLinear,
+  monday: generateMonday,
   notion: generateNotion,
   openai: generateOpenai,
+  posthog: generatePosthog,
   resend: generateResend,
+  sentry: generateSentry,
   slack: generateSlack,
   stripe: generateStripe,
+  todoist: generateTodoist,
   vercel: generateVercel,
   x: generateX,
   youtube: generateYoutube,
