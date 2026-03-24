@@ -33,6 +33,7 @@ import { generate as generateSentry } from "./sentry";
 import { generate as generateSlack } from "./slack";
 import { generate as generateStripe } from "./stripe";
 import { generate as generateSupabase } from "./supabase";
+import { generate as generateTavily } from "./tavily";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateX } from "./x";
@@ -70,6 +71,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   slack: generateSlack,
   stripe: generateStripe,
   supabase: generateSupabase,
+  tavily: generateTavily,
   todoist: generateTodoist,
   vercel: generateVercel,
   x: generateX,

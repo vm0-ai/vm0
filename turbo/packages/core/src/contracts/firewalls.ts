@@ -124,6 +124,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   sentry: ["sentry"],
   stripe: ["stripe"],
   supabase: ["supabase"],
+  tavily: ["tavily"],
   todoist: ["todoist"],
   vercel: ["vercel"],
   x: ["x"],
