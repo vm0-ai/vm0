@@ -28,6 +28,7 @@ import {
   countOrgRows,
   insertTestOrgSentinelSecret,
   insertTestOrgSentinelVariable,
+  createTestSchedule,
 } from "../../../__tests__/api-test-helpers";
 import { deleteOrgData } from "../org-deletion-service";
 
@@ -240,11 +241,12 @@ describe("deleteOrgData", () => {
     await createTestSecret("FULL_TEST_KEY", "value");
     await insertOrgDefaultModelProvider(orgId, "anthropic");
 
-    // Variables, zero agents, usage, exports
+    // Variables, zero agents, schedules, usage, exports
     await createTestVariable("FULL_TEST_VAR", "value");
     await createTestZeroAgent(orgId, "full-org-test", {
       displayName: "Full Test",
     });
+    await createTestSchedule(composeId, "full-org-schedule");
     await insertTestUsageDaily({ userId, orgId, date: "2026-03-01" });
     await insertTestExportJob(orgId, { userId, status: "completed" });
 
@@ -297,6 +299,7 @@ describe("deleteOrgData", () => {
       "usage_daily",
       "export_jobs",
       "zero_agents",
+      "zero_agent_schedules",
       "credit_usage",
       "agent_sessions",
       "email_thread_sessions",

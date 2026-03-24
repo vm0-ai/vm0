@@ -89,6 +89,7 @@ const ORG_TABLES = [
   "usage_daily",
   "export_jobs",
   "zero_agents",
+  "zero_agent_schedules",
   "slack_org_installations",
   "org_members_cache",
   "org_members_metadata",
@@ -250,6 +251,10 @@ async function cleanupOrphanedOrg(
 
   // Step 2: Aggregate roots with CASCADE
   const escaped = orgId.replace(/'/g, "''");
+  // Schedules first: lastRunId FK (no CASCADE) blocks agent_runs deletion
+  await db.execute(
+    sql.raw(`DELETE FROM zero_agent_schedules WHERE org_id = '${escaped}'`),
+  );
   await db.execute(
     sql.raw(`DELETE FROM agent_runs WHERE org_id = '${escaped}'`),
   );

@@ -11,6 +11,7 @@ import { variables } from "../../db/schema/variable";
 import { usageDaily } from "../../db/schema/usage-daily";
 import { exportJobs } from "../../db/schema/export-job";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
@@ -71,9 +72,13 @@ export async function deleteOrgData(orgId: string): Promise<void> {
   }
 
   // Step 2: Aggregate roots with CASCADE (handles ~15 child tables)
-  // Delete runs first (references compose_versions with SET NULL)
+  // Schedules first: lastRunId FK (no CASCADE) blocks agent_runs deletion
+  await db
+    .delete(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.orgId, orgId));
+  // Delete runs (references compose_versions with SET NULL)
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
-  // Then composes (cascades: compose_versions, schedules, sessions, email_thread_sessions)
+  // Then composes (cascades: compose_versions, sessions, email_thread_sessions)
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
   // Storages (cascades: storage_versions, storage_version_lineage)
   await db.delete(storages).where(eq(storages.orgId, orgId));
