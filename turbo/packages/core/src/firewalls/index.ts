@@ -12,6 +12,7 @@ import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { asanaFirewall } from "./asana.generated";
 import { axiomFirewall } from "./axiom.generated";
+import { braveSearchFirewall } from "./brave-search.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { confluenceFirewall } from "./confluence.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -52,6 +53,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   airtable: airtableFirewall,
   asana: asanaFirewall,
   axiom: axiomFirewall,
+  "brave-search": braveSearchFirewall,
   cloudflare: cloudflareFirewall,
   confluence: confluenceFirewall,
   deepseek: deepseekFirewall,

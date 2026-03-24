@@ -11,6 +11,7 @@
     "generate:airtable": "tsx src/index.ts airtable",
     "generate:asana": "tsx src/index.ts asana",
     "generate:axiom": "tsx src/index.ts axiom",
+    "generate:brave-search": "tsx src/index.ts brave-search",
     "generate:cloudflare": "tsx src/index.ts cloudflare",
     "generate:confluence": "tsx src/index.ts confluence",
     "generate:deepseek": "tsx src/index.ts deepseek",

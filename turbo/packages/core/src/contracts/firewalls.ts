@@ -97,6 +97,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   airtable: ["airtable"],
   asana: ["asana"],
   axiom: ["axiom"],
+  "brave-search": ["brave-search"],
   cloudflare: ["cloudflare"],
   deepseek: ["deepseek"],
   discord: ["discord"],
