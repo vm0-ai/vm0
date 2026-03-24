@@ -17,18 +17,28 @@ source "$SCRIPT_DIR/_common.sh"
 LABEL="$1"
 ME=$(gh api user --jq '.login')
 
-# Find first actionable issue: not pending, not linked to PR, sorted by number
-ISSUE=$(gh issue list --repo "$REPO" --label "$LABEL" --assignee "$ME" --state open \
-  --json number,title,labels,closedByPullRequestsReferences --limit 50 \
-  --jq '
-    [.[]
+# Issues assigned to me
+ASSIGNED=$(gh issue list --repo "$REPO" --label "$LABEL" --assignee "$ME" --state open \
+  --json number,title,labels,closedByPullRequestsReferences --limit 50)
+
+# Issues authored by me with no assignee
+AUTHORED=$(gh issue list --repo "$REPO" --label "$LABEL" --author "$ME" --state open \
+  --json number,title,labels,closedByPullRequestsReferences,assignees --limit 50 \
+  --jq '[.[] | select(.assignees | length == 0) | del(.assignees)]')
+
+# Merge, dedup, filter, pick first actionable issue
+ISSUE=$(jq -n --argjson a "$ASSIGNED" --argjson b "$AUTHORED" '
+  [$a[], $b[]]
+  | group_by(.number)
+  | map(.[0])
+  | [.[]
       | select(([.labels[].name] | any(. == "pending")) | not)
       | select(.closedByPullRequestsReferences | length == 0)
     ]
-    | sort_by(.number)
-    | .[0]
-    // empty
-  ')
+  | sort_by(.number)
+  | .[0]
+  // empty
+')
 
 [[ -z "$ISSUE" ]] && exit 0
 

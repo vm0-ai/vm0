@@ -5,21 +5,8 @@ import { notificationPreferences$ } from "../../signals/zero-page/settings/notif
 import {
   scheduleTabSaving$,
   setScheduleTabSaving$,
+  type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
-
-interface ZeroScheduleSaveParams {
-  prompt: string;
-  description?: string;
-  freq: string;
-  date: string;
-  hour: number;
-  minute: number;
-  timezone: string;
-  intervalSeconds: number;
-  dayOfWeek?: string;
-  dayOfMonth?: string;
-  editName?: string;
-}
 
 interface ZeroScheduleTabProps {
   agentName: string;

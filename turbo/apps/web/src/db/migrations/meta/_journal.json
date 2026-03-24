@@ -1331,6 +1331,13 @@
       "when": 1774396800000,
       "tag": "0189_amazing_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1774483200000,
+      "tag": "0190_add_connectors_to_zero_agents",
+      "breakpoints": true
     }
   ]
 }

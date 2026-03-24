@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.143.1](https://github.com/vm0-ai/vm0/compare/app-v0.143.0...app-v0.143.1) (2026-03-24)
+
+
+### Refactoring
+
+* extract duplicated onboard guard into shared command ([#6284](https://github.com/vm0-ai/vm0/issues/6284)) ([b57b367](https://github.com/vm0-ai/vm0/commit/b57b3671dddab3d01afea9b3f36f9933d2f56403))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.101.0
+
 ## [0.143.0](https://github.com/vm0-ai/vm0/compare/app-v0.142.1...app-v0.143.0) (2026-03-24)
 
 

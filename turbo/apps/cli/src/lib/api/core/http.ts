@@ -49,20 +49,6 @@ async function getRawHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * Generic GET request
- */
-export async function httpGet(path: string): Promise<Response> {
-  const baseUrl = await getBaseUrl();
-  const headers = await getRawHeaders();
-  const orgPath = await appendOrgParam(path);
-
-  return fetch(`${baseUrl}${orgPath}`, {
-    method: "GET",
-    headers,
-  });
-}
-
-/**
  * Generic POST request
  */
 export async function httpPost(path: string, body: unknown): Promise<Response> {

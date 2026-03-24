@@ -26,7 +26,7 @@ describe("schedule page", () => {
           schedules: [
             {
               id: "sched-1",
-              zeroAgentId: "compose-1",
+              agentId: "compose-1",
               agentName: "Test Agent",
               orgSlug: "test",
               name: "test-schedule",

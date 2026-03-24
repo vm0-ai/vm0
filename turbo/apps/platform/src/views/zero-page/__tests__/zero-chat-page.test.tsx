@@ -319,12 +319,8 @@ describe("zero chat page - ideation page", () => {
 
     // Category tabs should be visible
     expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Automated Reports" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "GitHub Operations" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "GitHub" })).toBeInTheDocument();
   });
 
   async function navigateToIdeation() {
@@ -349,18 +345,18 @@ describe("zero chat page - ideation page", () => {
     await navigateToIdeation();
 
     // Click a specific category tab
-    fireEvent.click(screen.getByRole("button", { name: "GitHub Operations" }));
+    fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
 
     await waitFor(() => {
       // The selected category heading should be visible
       expect(
-        screen.getByRole("heading", { name: "GitHub Operations" }),
+        screen.getByRole("heading", { name: "GitHub" }),
       ).toBeInTheDocument();
     });
 
     // Other category headings should not be visible
     expect(
-      screen.queryByRole("heading", { name: "Automated Reports" }),
+      screen.queryByRole("heading", { name: "Reports" }),
     ).not.toBeInTheDocument();
   });
 

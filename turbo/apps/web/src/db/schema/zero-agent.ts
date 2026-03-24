@@ -25,6 +25,7 @@ export const zeroAgents = pgTable(
     description: text("description"),
     sound: varchar("sound", { length: 64 }),
     firewallPolicies: jsonb("firewall_policies").$type<FirewallPolicies>(),
+    connectors: jsonb("connectors").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

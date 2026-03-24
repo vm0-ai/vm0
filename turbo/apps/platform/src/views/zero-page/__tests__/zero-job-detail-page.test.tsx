@@ -195,7 +195,7 @@ function mockAPIsWithSchedules() {
         schedules: [
           {
             id: "sched-1",
-            zeroAgentId: "agent-detail-id",
+            agentId: "agent-detail-id",
             agentName: "my-agent",
             orgSlug: "test",
             name: "morning-briefing",

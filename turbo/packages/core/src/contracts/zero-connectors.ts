@@ -2,7 +2,11 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
+  computerConnectorCreateResponseSchema,
   connectorListResponseSchema,
+  connectorResponseSchema,
+  connectorSessionResponseSchema,
+  connectorSessionStatusResponseSchema,
   connectorTypeSchema,
   scopeDiffResponseSchema,
 } from "./connectors";
@@ -28,10 +32,22 @@ export const zeroConnectorsMainContract = c.router({
 });
 
 /**
- * Zero contract for DELETE /api/zero/connectors/:type
- * Proxies to DELETE /api/connectors/:type
+ * Zero contract for GET/DELETE /api/zero/connectors/:type
+ * Proxies to GET/DELETE /api/connectors/:type
  */
 export const zeroConnectorsByTypeContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/connectors/:type",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    responses: {
+      200: connectorResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get connector by type (zero proxy)",
+  },
   delete: {
     method: "DELETE",
     path: "/api/zero/connectors/:type",
@@ -100,8 +116,99 @@ export const zeroConnectorsSearchContract = c.router({
   },
 });
 
+/**
+ * Zero contract for POST /api/zero/connectors/:type/sessions
+ * Proxies to POST /api/connectors/:type/sessions (OAuth device flow)
+ */
+export const zeroConnectorSessionsContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/sessions",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    body: z.object({}).optional(),
+    responses: {
+      200: connectorSessionResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Create connector session for device flow (zero proxy)",
+  },
+});
+
+/**
+ * Zero contract for GET /api/zero/connectors/:type/sessions/:sessionId
+ * Proxies to GET /api/connectors/:type/sessions/:sessionId (poll session)
+ */
+export const zeroConnectorSessionByIdContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/connectors/:type/sessions/:sessionId",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: connectorTypeSchema,
+      sessionId: z.uuid(),
+    }),
+    responses: {
+      200: connectorSessionStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get connector session status (zero proxy)",
+  },
+});
+
+/**
+ * Zero contract for POST/GET/DELETE /api/zero/connectors/computer
+ * Proxies to /api/connectors/computer (computer connector CRUD)
+ */
+export const zeroComputerConnectorContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/connectors/computer",
+    headers: authHeadersSchema,
+    body: z.object({}).optional(),
+    responses: {
+      200: computerConnectorCreateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Create computer connector (zero proxy)",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/connectors/computer",
+    headers: authHeadersSchema,
+    responses: {
+      200: connectorResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get computer connector status (zero proxy)",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/connectors/computer",
+    headers: authHeadersSchema,
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete computer connector (zero proxy)",
+  },
+});
+
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
 export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;
+export type ZeroConnectorSessionsContract =
+  typeof zeroConnectorSessionsContract;
+export type ZeroConnectorSessionByIdContract =
+  typeof zeroConnectorSessionByIdContract;
+export type ZeroComputerConnectorContract =
+  typeof zeroComputerConnectorContract;

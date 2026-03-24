@@ -35,37 +35,6 @@ export const { get$: editingScheduleId$, set$: setEditingScheduleId$ } = cell<
   string | null
 >(null);
 
-export const { get$: newSchedulePrompt$, set$: setNewSchedulePrompt$ } =
-  cell("");
-
-export const { get$: scheduleFreq$, set$: setScheduleFreq$ } =
-  cell<string>("every_day");
-
-export const { get$: scheduleDate$, set$: setScheduleDate$ } = cell<string>(
-  new Date().toISOString().slice(0, 10),
-);
-
-export const { get$: scheduleHour$, set$: setScheduleHour$ } = cell(9);
-
-export const { get$: scheduleMinute$, set$: setScheduleMinute$ } = cell(0);
-
-export const { get$: scheduleTimezone$, set$: setScheduleTimezone$ } =
-  cell("UTC");
-
-export const { get$: scheduleIntervalStr$, set$: setScheduleIntervalStr$ } =
-  cell("300");
-
-export const { get$: scheduleDayOfWeek$, set$: setScheduleDayOfWeek$ } =
-  cell("1");
-
-export const { get$: scheduleDayOfMonth$, set$: setScheduleDayOfMonth$ } =
-  cell("1");
-
-export const {
-  get$: newScheduleDescription$,
-  set$: setNewScheduleDescription$,
-} = cell("");
-
 export const { get$: saveError$, set$: setSaveError$ } = cell<string | null>(
   null,
 );

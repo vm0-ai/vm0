@@ -17,16 +17,9 @@ import {
   TabsList,
   TabsTrigger,
   Button,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   cn,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Popover,
   PopoverContent,
@@ -44,16 +37,15 @@ import {
   buildCalendarTimeSlots,
   WEEKDAY_LABELS,
   parseScheduleTimeString,
-  SCHEDULE_FREQUENCY_OPTIONS,
-  SCHEDULE_LOOP_MINUTES,
-  HOUR_OPTIONS,
-  getMinuteOptions,
   type ScheduleEntry,
 } from "./zero-schedule-card";
+import {
+  ScheduleFormDialog,
+  type ScheduleFormValues,
+} from "./schedule-dialog.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
-import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, throwIfAbort, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -61,7 +53,6 @@ import {
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
   type OrgScheduleEntry,
-  type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import emptyScheduleImg from "./assets/empty-schedule.webp";
@@ -420,497 +411,6 @@ function ScheduleCalendarView({
 }
 
 // ---------------------------------------------------------------------------
-// Edit fields
-// ---------------------------------------------------------------------------
-
-function isCronFreq(f: string): boolean {
-  return (
-    f === "once" ||
-    f === "every_weekday" ||
-    f === "every_day" ||
-    f === "every_week" ||
-    f === "every_month"
-  );
-}
-
-function ScheduleEditFields({
-  freq,
-  setFreq,
-  loopMinutes,
-  setLoopMinutes,
-  date,
-  setDate,
-  hour,
-  setHour,
-  minute,
-  setMinute,
-  timezone,
-  setTimezone,
-}: {
-  freq: string;
-  setFreq: (v: string) => void;
-  loopMinutes: number;
-  setLoopMinutes: (v: number) => void;
-  date: string;
-  setDate: (v: string) => void;
-  hour: number;
-  setHour: (v: number) => void;
-  minute: number;
-  setMinute: (v: number) => void;
-  timezone: string;
-  setTimezone: (v: string) => void;
-}) {
-  return (
-    <>
-      <div className="flex flex-col gap-2">
-        <label
-          htmlFor="schedule-dialog-freq"
-          className="text-sm font-medium text-foreground"
-        >
-          Time
-        </label>
-        <Select value={freq} onValueChange={setFreq}>
-          <SelectTrigger id="schedule-dialog-freq" className="h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {freq === "every_n_minutes" && (
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-dialog-loop"
-            className="text-sm font-medium text-foreground"
-          >
-            Every
-          </label>
-          <Select
-            value={String(loopMinutes)}
-            onValueChange={(v) => setLoopMinutes(Number(v))}
-          >
-            <SelectTrigger id="schedule-dialog-loop" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SCHEDULE_LOOP_MINUTES.map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {m} minutes
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-      {freq === "once" && (
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-dialog-date"
-            className="text-sm font-medium text-foreground"
-          >
-            Date
-          </label>
-          <Input
-            id="schedule-dialog-date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="h-9"
-          />
-        </div>
-      )}
-      {freq !== "now" && freq !== "every_n_minutes" && (
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground">Time</label>
-          <div className="flex items-center gap-2">
-            <Select
-              value={String(hour)}
-              onValueChange={(v) => setHour(Number(v))}
-            >
-              <SelectTrigger className="h-9 w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {HOUR_OPTIONS.map((h) => (
-                  <SelectItem key={h} value={String(h)}>
-                    {h.toString().padStart(2, "0")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-muted-foreground">:</span>
-            <Select
-              value={String(minute)}
-              onValueChange={(v) => setMinute(Number(v))}
-            >
-              <SelectTrigger className="h-9 w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {getMinuteOptions(minute).map((m) => (
-                  <SelectItem key={m} value={String(m)}>
-                    {m.toString().padStart(2, "0")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      )}
-      {isCronFreq(freq) && (
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-dialog-tz"
-            className="text-sm font-medium text-foreground"
-          >
-            Timezone
-          </label>
-          <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger id="schedule-dialog-tz" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {COMMON_TIMEZONES.map((tz) => (
-                <SelectItem key={tz} value={tz}>
-                  {tz.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Edit dialog
-// ---------------------------------------------------------------------------
-
-interface ScheduleEditDialogProps {
-  entry: CombinedEntry | null;
-  onClose: () => void;
-  onSave: (params: ZeroScheduleSaveParams & { agentId: string }) => void;
-  saving: boolean;
-}
-
-function ScheduleEditDialogInner({
-  entry,
-  onClose,
-  onSave,
-  saving,
-}: ScheduleEditDialogProps & { entry: CombinedEntry }) {
-  const parsed = parseScheduleTimeString(entry.time);
-  const [prompt, setPrompt] = useState(entry.prompt);
-  const [description, setDescription] = useState(entry.description ?? "");
-  const [freq, setFreq] = useState(parsed.freq);
-  const [date, setDate] = useState(parsed.date);
-  const [hour, setHour] = useState(parsed.hour);
-  const [minute, setMinute] = useState(parsed.minute);
-  const [timezone, setTimezone] = useState(parsed.timezone);
-  const [loopMinutes, setLoopMinutes] = useState(parsed.loopMinutes);
-  const [notifyEmail, setNotifyEmail] = useState(entry.notifyEmail);
-  const [notifySlack, setNotifySlack] = useState(entry.notifySlack);
-
-  const handleSave = () => {
-    if (!prompt.trim()) {
-      return;
-    }
-    onSave({
-      prompt: prompt.trim(),
-      description: description.trim() || undefined,
-      freq,
-      date,
-      hour,
-      minute,
-      timezone,
-      intervalSeconds: loopMinutes * 60,
-      editName: entry.name,
-      agentId: entry.agentId,
-      notifyEmail,
-      notifySlack,
-    });
-  };
-
-  return (
-    <DialogContent className="sm:max-w-lg gap-6">
-      <DialogHeader>
-        <DialogTitle>Edit schedule</DialogTitle>
-      </DialogHeader>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-dialog-prompt"
-            className="text-sm font-medium text-foreground"
-          >
-            Prompt
-          </label>
-          <textarea
-            id="schedule-dialog-prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe your task and instruction"
-            rows={5}
-            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-edit-description"
-            className="text-sm font-medium text-foreground"
-          >
-            Description
-            <span className="text-muted-foreground font-normal ml-1">
-              (optional)
-            </span>
-          </label>
-          <Input
-            id="schedule-edit-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Leave blank to auto-generate"
-            className="h-9"
-          />
-        </div>
-        <ScheduleEditFields
-          freq={freq}
-          setFreq={setFreq}
-          loopMinutes={loopMinutes}
-          setLoopMinutes={setLoopMinutes}
-          date={date}
-          setDate={setDate}
-          hour={hour}
-          setHour={setHour}
-          minute={minute}
-          setMinute={setMinute}
-          timezone={timezone}
-          setTimezone={setTimezone}
-        />
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground">
-            Notifications
-          </label>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-foreground">Email</span>
-            <Switch checked={notifyEmail} onCheckedChange={setNotifyEmail} />
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-foreground">Slack</span>
-            <Switch checked={notifySlack} onCheckedChange={setNotifySlack} />
-          </div>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          className="zero-btn-morandi"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!prompt.trim() || saving}
-        >
-          {saving ? "Saving\u2026" : "Save"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function ScheduleEditDialog(props: ScheduleEditDialogProps) {
-  const { entry, onClose } = props;
-  return (
-    <Dialog
-      open={entry !== null}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      {entry && (
-        <ScheduleEditDialogInner key={entry.id} {...props} entry={entry} />
-      )}
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Create dialog
-// ---------------------------------------------------------------------------
-
-interface ScheduleCreateDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onSave: (params: ZeroScheduleSaveParams & { agentId: string }) => void;
-  saving: boolean;
-  agents: { id: string; name: string; displayName?: string | null }[];
-  defaultComposeId: string | null;
-}
-
-function ScheduleCreateDialogInner({
-  onClose,
-  onSave,
-  saving,
-  agents,
-  defaultComposeId,
-}: Omit<ScheduleCreateDialogProps, "open">) {
-  const [prompt, setPrompt] = useState("");
-  const [description, setDescription] = useState("");
-  const [selectedAgentId, setSelectedAgentId] = useState(
-    defaultComposeId ?? agents[0]?.id ?? "",
-  );
-  const [freq, setFreq] = useState("every_day");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [hour, setHour] = useState(9);
-  const [minute, setMinute] = useState(0);
-  const [timezone, setTimezone] = useState(
-    new Intl.DateTimeFormat().resolvedOptions().timeZone,
-  );
-  const [loopMinutes, setLoopMinutes] = useState(15);
-
-  const handleSave = () => {
-    if (!prompt.trim() || !selectedAgentId) {
-      return;
-    }
-    onSave({
-      prompt: prompt.trim(),
-      description: description.trim() || undefined,
-      freq,
-      date,
-      hour,
-      minute,
-      timezone,
-      intervalSeconds: loopMinutes * 60,
-      agentId: selectedAgentId,
-    });
-  };
-
-  return (
-    <DialogContent className="sm:max-w-lg gap-6">
-      <DialogHeader>
-        <DialogTitle>New schedule</DialogTitle>
-      </DialogHeader>
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-agent"
-            className="text-sm font-medium text-foreground"
-          >
-            Agent
-          </label>
-          <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-            <SelectTrigger id="schedule-create-agent" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.displayName ?? a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-prompt"
-            className="text-sm font-medium text-foreground"
-          >
-            Prompt
-          </label>
-          <textarea
-            id="schedule-create-prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe your task and instruction"
-            rows={5}
-            className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="schedule-create-description"
-            className="text-sm font-medium text-foreground"
-          >
-            Description
-            <span className="text-muted-foreground font-normal ml-1">
-              (optional)
-            </span>
-          </label>
-          <Input
-            id="schedule-create-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Leave blank to auto-generate"
-            className="h-9"
-          />
-        </div>
-        <ScheduleEditFields
-          freq={freq}
-          setFreq={setFreq}
-          loopMinutes={loopMinutes}
-          setLoopMinutes={setLoopMinutes}
-          date={date}
-          setDate={setDate}
-          hour={hour}
-          setHour={setHour}
-          minute={minute}
-          setMinute={setMinute}
-          timezone={timezone}
-          setTimezone={setTimezone}
-        />
-      </div>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          className="zero-btn-morandi"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!prompt.trim() || !selectedAgentId || saving}
-        >
-          {saving ? "Creating\u2026" : "Create"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function ScheduleCreateDialog({
-  open,
-  onClose,
-  ...rest
-}: ScheduleCreateDialogProps) {
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) {
-          onClose();
-        }
-      }}
-    >
-      {open && <ScheduleCreateDialogInner onClose={onClose} {...rest} />}
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Skeleton
 // ---------------------------------------------------------------------------
 
@@ -1127,6 +627,7 @@ export function ZeroSchedulePage() {
   );
   const [editingEntry, setEditingEntry] = useState<CombinedEntry | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<CombinedEntry | null>(
     null,
@@ -1147,14 +648,31 @@ export function ZeroSchedulePage() {
     setEditingEntry(entry);
   };
 
-  const handleCreateSave = (
-    params: ZeroScheduleSaveParams & { agentId: string },
-  ) => {
+  const handleCreateSave = (values: ScheduleFormValues) => {
     setSaving(true);
+    setSaveError(null);
     detach(
-      saveSchedule(params)
+      saveSchedule({
+        prompt: values.prompt.trim(),
+        description: values.description.trim() || undefined,
+        freq: values.freq,
+        date: values.date,
+        hour: values.hour,
+        minute: values.minute,
+        timezone: values.timezone,
+        intervalSeconds: values.loopMinutes * 60,
+        agentId: values.agentId,
+        notifyEmail: values.notifyEmail,
+        notifySlack: values.notifySlack,
+      })
         .then(() => {
           setCreateOpen(false);
+        })
+        .catch((error: unknown) => {
+          throwIfAbort(error);
+          setSaveError(
+            error instanceof Error ? error.message : "Failed to save schedule",
+          );
         })
         .finally(() => {
           setSaving(false);
@@ -1163,14 +681,35 @@ export function ZeroSchedulePage() {
     );
   };
 
-  const handleDialogSave = (
-    params: ZeroScheduleSaveParams & { agentId: string },
-  ) => {
+  const handleEditSave = (values: ScheduleFormValues) => {
+    if (!editingEntry) {
+      return;
+    }
     setSaving(true);
+    setSaveError(null);
     detach(
-      saveSchedule(params)
+      saveSchedule({
+        prompt: values.prompt.trim(),
+        description: values.description.trim() || undefined,
+        freq: values.freq,
+        date: values.date,
+        hour: values.hour,
+        minute: values.minute,
+        timezone: values.timezone,
+        intervalSeconds: values.loopMinutes * 60,
+        editName: editingEntry.name,
+        agentId: editingEntry.agentId,
+        notifyEmail: values.notifyEmail,
+        notifySlack: values.notifySlack,
+      })
         .then(() => {
           setEditingEntry(null);
+        })
+        .catch((error: unknown) => {
+          throwIfAbort(error);
+          setSaveError(
+            error instanceof Error ? error.message : "Failed to save schedule",
+          );
         })
         .finally(() => {
           setSaving(false);
@@ -1291,19 +830,46 @@ export function ZeroSchedulePage() {
         </div>
       </main>
 
-      <ScheduleEditDialog
-        entry={editingEntry}
-        onClose={() => setEditingEntry(null)}
-        onSave={handleDialogSave}
-        saving={saving}
-      />
-      <ScheduleCreateDialog
+      {editingEntry &&
+        (() => {
+          const parsed = parseScheduleTimeString(editingEntry.time);
+          return (
+            <ScheduleFormDialog
+              key={editingEntry.id}
+              open
+              mode="edit"
+              onClose={() => setEditingEntry(null)}
+              onSave={handleEditSave}
+              saving={saving}
+              saveError={saveError}
+              initialValues={{
+                prompt: editingEntry.prompt,
+                description: editingEntry.description ?? "",
+                freq: parsed.freq,
+                date: parsed.date,
+                hour: parsed.hour,
+                minute: parsed.minute,
+                timezone: parsed.timezone,
+                loopMinutes: parsed.loopMinutes,
+                dayOfWeek: parsed.dayOfWeek ?? "1",
+                dayOfMonth: parsed.dayOfMonth ?? "1",
+                notifyEmail: editingEntry.notifyEmail ?? false,
+                notifySlack: editingEntry.notifySlack ?? false,
+              }}
+            />
+          );
+        })()}
+      <ScheduleFormDialog
         open={createOpen}
+        mode="create"
         onClose={() => setCreateOpen(false)}
         onSave={handleCreateSave}
         saving={saving}
+        saveError={saveError}
         agents={agents}
-        defaultComposeId={defaultComposeId}
+        initialValues={{
+          agentId: defaultComposeId ?? agents[0]?.id ?? "",
+        }}
       />
       <Dialog
         open={pendingDelete !== null}

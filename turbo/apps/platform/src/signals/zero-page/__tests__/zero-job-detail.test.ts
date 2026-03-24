@@ -59,7 +59,7 @@ function mockSchedules() {
     schedules: [
       {
         id: "sched-1",
-        zeroAgentId: "compose-1",
+        agentId: "compose-1",
         agentName: "my-agent",
         name: "daily-run",
         enabled: true,
@@ -74,7 +74,7 @@ function mockSchedules() {
       },
       {
         id: "sched-2",
-        zeroAgentId: "compose-2",
+        agentId: "compose-2",
         agentName: "other-agent",
         name: "other-run",
         enabled: true,
@@ -316,7 +316,7 @@ describe("zero-job-detail signals", () => {
       await context.store.set(saveZeroJobSchedule$, params);
 
       expect(capturedBody).toMatchObject({
-        zeroAgentId: "compose-1",
+        agentId: "compose-1",
         timezone: "UTC",
         prompt: "Run daily task",
         enabled: true,
@@ -426,7 +426,7 @@ describe("zero-job-detail signals", () => {
       await context.store.set(saveZeroJobSchedule$, params);
 
       expect(capturedBody).toMatchObject({
-        zeroAgentId: "compose-1",
+        agentId: "compose-1",
         prompt: "Poll every 5 min",
         intervalSeconds: 300,
       });
@@ -501,7 +501,7 @@ describe("zero-job-detail signals", () => {
       await context.store.set(deleteZeroJobSchedule$, "daily-run");
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run");
-      expect(capturedUrl).toContain("zeroAgentId=compose-1");
+      expect(capturedUrl).toContain("agentId=compose-1");
 
       const entries = await context.store.get(zeroJobScheduleEntries$);
       expect(entries).toStrictEqual([]);
@@ -542,7 +542,7 @@ describe("zero-job-detail signals", () => {
   });
 
   describe("toggleZeroJobScheduleEnabled$", () => {
-    it("should send enable request with zeroAgentId in body", async () => {
+    it("should send enable request with agentId in body", async () => {
       let capturedUrl = "";
       let capturedBody: Record<string, unknown> | null = null;
 
@@ -585,7 +585,7 @@ describe("zero-job-detail signals", () => {
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run/enable");
       expect(capturedBody).not.toBeNull();
-      expect(capturedBody!["zeroAgentId"]).toBe("compose-1");
+      expect(capturedBody!["agentId"]).toBe("compose-1");
       expect(capturedBody).not.toHaveProperty("composeId");
     });
 
