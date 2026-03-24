@@ -120,6 +120,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   posthog: ["posthog"],
   resend: ["resend"],
   stripe: ["stripe"],
+  supabase: ["supabase"],
   todoist: ["todoist"],
   vercel: ["vercel"],
   x: ["x"],

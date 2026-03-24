@@ -35,6 +35,7 @@ import { posthogFirewall } from "./posthog.generated";
 import { resendFirewall } from "./resend.generated";
 import { slackFirewall } from "./slack.generated";
 import { stripeFirewall } from "./stripe.generated";
+import { supabaseFirewall } from "./supabase.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { xFirewall } from "./x.generated";
@@ -72,6 +73,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   resend: resendFirewall,
   slack: slackFirewall,
   stripe: stripeFirewall,
+  supabase: supabaseFirewall,
   todoist: todoistFirewall,
   vercel: vercelFirewall,
   x: xFirewall,
