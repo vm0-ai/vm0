@@ -273,8 +273,13 @@ function InviteDialog({
           setEmail("");
           setSending(false);
         },
-        () => {
+        (error: unknown) => {
           setSending(false);
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to send invitation";
+          toast.error(message);
         },
       ),
       Reason.DomCallback,
@@ -432,8 +437,11 @@ function SelfDemoteAction({
           setOpen(false);
           setLoading(false);
         },
-        () => {
+        (error: unknown) => {
           setLoading(false);
+          const message =
+            error instanceof Error ? error.message : "Failed to change role";
+          toast.error(message);
         },
       ),
       Reason.DomCallback,
@@ -514,8 +522,11 @@ function MemberActions({
           setOpen(false);
           setRemoving(false);
         },
-        () => {
+        (error: unknown) => {
           setRemoving(false);
+          const message =
+            error instanceof Error ? error.message : "Failed to remove member";
+          toast.error(message);
         },
       ),
       Reason.DomCallback,
