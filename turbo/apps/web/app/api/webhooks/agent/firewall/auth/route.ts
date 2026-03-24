@@ -26,7 +26,6 @@ const SECRET_TEMPLATE_RE = /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 /**
  * Refresh expired OAuth tokens referenced by auth templates.
  * Mutates `secrets` in place with fresh token values.
- * Returns the earliest expiry timestamp (epoch seconds) or null if all are non-expiring.
  */
 interface RefreshResult {
   expiresAt: number | null;
@@ -167,7 +166,7 @@ function resolveTemplates(
  *
  * Auth: Sandbox JWT
  * Body: { encryptedSecrets, authHeaders, secretConnectorMap? }
- * Response: { headers, expiresAt? }
+ * Response: { headers, expiresAt? } or 502 { error } when token refresh fails
  */
 export async function POST(request: Request) {
   initServices();
