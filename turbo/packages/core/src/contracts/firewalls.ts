@@ -109,6 +109,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   figma: ["figma"],
   notion: ["notion"],
   vercel: ["vercel"],
+  youtube: ["youtube"],
   zapier: ["zapier"],
   zapsign: ["zapsign"],
   zeptomail: ["zeptomail"],
