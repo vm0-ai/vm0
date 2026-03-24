@@ -17,7 +17,7 @@ import {
   type ScheduleFrequency,
 } from "../../../lib/domain/schedule-utils";
 import {
-  getZeroAgent,
+  getComposeByName,
   deployZeroSchedule,
   listZeroSchedules,
   enableZeroSchedule,
@@ -686,9 +686,12 @@ export const setupCommand = new Command()
   .option("--no-notify-slack", "Disable Slack notifications")
   .action(
     withErrorHandler(async (agentName: string, options: SetupOptions) => {
-      // 1. Validate agent exists
-      const agent = await getZeroAgent(agentName);
-      const agentId = agent.agentId;
+      // 1. Resolve agent name to compose ID
+      const compose = await getComposeByName(agentName);
+      if (!compose) {
+        throw new Error(`Agent not found: ${agentName}`);
+      }
+      const agentId = compose.id;
       const scheduleName = options.name || "default";
 
       // 2. Check for existing schedule
