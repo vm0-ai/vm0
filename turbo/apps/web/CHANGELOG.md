@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.154.1](https://github.com/vm0-ai/vm0/compare/web-v12.154.0...web-v12.154.1) (2026-03-24)
+
+
+### Refactoring
+
+* remove agent-composes dependency from email default agent resolver ([#6502](https://github.com/vm0-ai/vm0/issues/6502)) ([1539f8f](https://github.com/vm0-ai/vm0/commit/1539f8f4d7a28e4195ba264e1a56bf6b5b5cf0c3)), closes [#6497](https://github.com/vm0-ai/vm0/issues/6497)
+* **web:** remove capability checks from infra routes ([#6496](https://github.com/vm0-ai/vm0/issues/6496)) ([af72f21](https://github.com/vm0-ai/vm0/commit/af72f21c901b702689040e308cb3aa177c77f137))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.106.0
+
 ## [12.154.0](https://github.com/vm0-ai/vm0/compare/web-v12.153.2...web-v12.154.0) (2026-03-24)
 
 

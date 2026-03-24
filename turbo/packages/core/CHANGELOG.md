@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.106.0](https://github.com/vm0-ai/vm0/compare/core-v8.105.0...core-v8.106.0) (2026-03-24)
+
+
+### Features
+
+* add cloudflare firewall config ([#6498](https://github.com/vm0-ai/vm0/issues/6498)) ([e1d8580](https://github.com/vm0-ai/vm0/commit/e1d858086f3326f77e742b57cb858a46b0b1c21a)), closes [#6333](https://github.com/vm0-ai/vm0/issues/6333)
+* add deepseek firewall config ([#6507](https://github.com/vm0-ai/vm0/issues/6507)) ([500aae1](https://github.com/vm0-ai/vm0/commit/500aae19be402307cc2585953713be1723e6d63b)), closes [#6338](https://github.com/vm0-ai/vm0/issues/6338)
+* add hubspot firewall config ([#6493](https://github.com/vm0-ai/vm0/issues/6493)) ([d93bd6b](https://github.com/vm0-ai/vm0/commit/d93bd6b77a49b36d4f1ce04bec4f7a2d15798287)), closes [#6354](https://github.com/vm0-ai/vm0/issues/6354)
+* add monday firewall config ([#6501](https://github.com/vm0-ai/vm0/issues/6501)) ([b2616b8](https://github.com/vm0-ai/vm0/commit/b2616b8f077120b751fab20effc92185a2a827e8)), closes [#6377](https://github.com/vm0-ai/vm0/issues/6377)
+* add posthog firewall config ([#6506](https://github.com/vm0-ai/vm0/issues/6506)) ([a05515f](https://github.com/vm0-ai/vm0/commit/a05515f3eb42458197ecdff5ff62b0a871245894)), closes [#6389](https://github.com/vm0-ai/vm0/issues/6389)
+* add resend firewall config ([#6495](https://github.com/vm0-ai/vm0/issues/6495)) ([719af5e](https://github.com/vm0-ai/vm0/commit/719af5e734641315030378ca234b943c18efcf47))
+* add stripe firewall config ([#6482](https://github.com/vm0-ai/vm0/issues/6482)) ([c9a734f](https://github.com/vm0-ai/vm0/commit/c9a734fab05bcd4c427884211f938f2210074e39))
+* add todoist firewall config ([#6504](https://github.com/vm0-ai/vm0/issues/6504)) ([bd31d3e](https://github.com/vm0-ai/vm0/commit/bd31d3ed61877462635077de39cf0bdb751124d8)), closes [#6412](https://github.com/vm0-ai/vm0/issues/6412)
+* **core:** add zero capabilities constants for zero-layer capability system ([#6492](https://github.com/vm0-ai/vm0/issues/6492)) ([bed3414](https://github.com/vm0-ai/vm0/commit/bed3414badf03440b9d990777d4f73dd38b7f08c))
+
+
+### Refactoring
+
+* **web:** remove capability checks from infra routes ([#6496](https://github.com/vm0-ai/vm0/issues/6496)) ([af72f21](https://github.com/vm0-ai/vm0/commit/af72f21c901b702689040e308cb3aa177c77f137))
+
 ## [8.105.0](https://github.com/vm0-ai/vm0/compare/core-v8.104.0...core-v8.105.0) (2026-03-24)
 
 

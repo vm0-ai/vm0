@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.79.1](https://github.com/vm0-ai/vm0/compare/cli-v9.79.0...cli-v9.79.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **cli:** include chunk files in npm package files glob ([#6505](https://github.com/vm0-ai/vm0/issues/6505)) ([b842bf3](https://github.com/vm0-ai/vm0/commit/b842bf3ba8b528be65831f7fe59a95913460978d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.106.0
+
 ## [9.79.0](https://github.com/vm0-ai/vm0/compare/cli-v9.78.2...cli-v9.79.0) (2026-03-24)
 
 
