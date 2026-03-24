@@ -51,6 +51,7 @@
     "generate:perplexity": "tsx src/index.ts perplexity",
     "generate:plausible": "tsx src/index.ts plausible",
     "generate:posthog": "tsx src/index.ts posthog",
+    "generate:reddit": "tsx src/index.ts reddit",
     "generate:resend": "tsx src/index.ts resend",
     "generate:runway": "tsx src/index.ts runway",
     "generate:sentry": "tsx src/index.ts sentry",
