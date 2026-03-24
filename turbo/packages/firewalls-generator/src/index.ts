@@ -25,6 +25,7 @@ import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateHubspot } from "./hubspot";
+import { generate as generateIntercom } from "./intercom";
 import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
 import { generate as generateMonday } from "./monday";
@@ -69,6 +70,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   github: generateGitHub,
   gitlab: generateGitlab,
   hubspot: generateHubspot,
+  intercom: generateIntercom,
   jira: generateJira,
   linear: generateLinear,
   monday: generateMonday,

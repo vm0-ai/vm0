@@ -30,6 +30,7 @@
     "generate:google-drive": "tsx src/index.ts google-drive",
     "generate:google-sheets": "tsx src/index.ts google-sheets",
     "generate:hubspot": "tsx src/index.ts hubspot",
+    "generate:intercom": "tsx src/index.ts intercom",
     "generate:jira": "tsx src/index.ts jira",
     "generate:linear": "tsx src/index.ts linear",
     "generate:monday": "tsx src/index.ts monday",
