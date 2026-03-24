@@ -12,6 +12,7 @@ import {
   findTestRunsByUserAndPromptContaining,
   findTestCallbacksByRunId,
   insertOrgDefaultModelProvider,
+  updateOrgDefaultAgent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -516,32 +517,29 @@ describe("POST /api/webhooks/email/inbound", () => {
     expect(JSON.stringify(args?.react)).toContain("DMARC verification failed");
   });
 
-  describe("Email Trigger (org+agent@domain)", () => {
+  describe("Email Trigger (org@domain)", () => {
     it("should dispatch agent run for valid trigger email", async () => {
       // Given a user with an org and compose
-      // setupUser creates a user with userId = "trigger-user-{suffix}" and
-      // org slug = "org-{suffix}" using the same suffix
       const user = await context.setupUser({ prefix: "trigger-user" });
 
-      // Extract suffix from userId to derive org slug
-      // userId format: "{prefix}-{suffix}" where suffix is an 8-char UUID
       const suffix = user.userId.slice("trigger-user-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("trigger-agent");
 
-      // Create compose (automatically associates with user's org)
+      // Create compose and set it as the org's default agent
       const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       // Mock Clerk to return the user when looking up by email
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
-      // Build inbound email webhook payload with org+agent format
+      // Build inbound email webhook payload with org@domain format
       const payload = JSON.stringify({
         type: "email.received",
         data: {
           email_id: "trigger-email-123",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Test Subject",
           created_at: new Date().toISOString(),
@@ -583,7 +581,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         replyToken: expect.any(String),
         inboundMessageId: "<default-msg-id@example.com>",
         subject: "Test Subject",
-        triggerLocalPart: `${orgSlug}+${agentName}`,
+        triggerLocalPart: orgSlug,
       });
     });
 
@@ -593,12 +591,12 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Mock Clerk to return user only for registered email
       mockClerk({ userId: "some-user-id", email: "registered@example.com" });
 
-      // Send email from unregistered address
+      // Send email from unregistered address to org@domain
       const payload = JSON.stringify({
         type: "email.received",
         data: {
           email_id: "unreg-email",
-          to: ["someorg+someagent@vm7.bot"],
+          to: ["someorg@vm7.bot"],
           from: "unregistered@example.com",
           subject: "Test",
           created_at: new Date().toISOString(),
@@ -621,18 +619,18 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(args?.subject).toBe("Re: Test");
     });
 
-    it("should send error reply for trigger email to non-existent agent", async () => {
+    it("should send error reply for trigger email to non-existent org", async () => {
       mockResend.emails.receiving.get.mockClear();
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: "some-user-id", email: senderEmail });
 
-      // Send email to non-existent org/agent
+      // Send email to non-existent org
       const payload = JSON.stringify({
         type: "email.received",
         data: {
-          email_id: "no-agent-email",
-          to: ["nonexistent+fakeagent@vm7.bot"],
+          email_id: "no-org-email",
+          to: ["nonexistent@vm7.bot"],
           from: senderEmail,
           subject: "Test",
           created_at: new Date().toISOString(),
@@ -655,18 +653,15 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(args?.subject).toBe("Re: Test");
     });
 
-    it("should send error reply when user has no permission to access agent", async () => {
+    it("should send error reply when sender is not a member of the org", async () => {
       mockResend.emails.receiving.get.mockClear();
 
-      // Create a compose owned by user A
+      // Create a user with an org
       const ownerUser = await context.setupUser({ prefix: "perm-owner" });
       const suffix = ownerUser.userId.slice("perm-owner-".length);
       const orgSlug = `org-${suffix}`;
-      const agentName = uniqueId("perm-agent");
-      await createTestCompose(agentName);
 
-      // Mock Clerk to return a DIFFERENT user when looking up sender email.
-      // This user is not the compose owner, not in the org, and has no ACL entry.
+      // Mock Clerk to return a DIFFERENT user who is NOT a member of this org
       const senderEmail = "unauthorized@example.com";
       mockClerk({ userId: "unauthorized-user-id", email: senderEmail });
 
@@ -674,7 +669,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "no-perm-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Forbidden",
           created_at: new Date().toISOString(),
@@ -687,7 +682,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      // No email should have been fetched (early return after permission check)
+      // No email should have been fetched (early return after membership check)
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
 
       // Error reply should have been sent
@@ -697,12 +692,51 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(args?.subject).toBe("Re: Forbidden");
     });
 
+    it("should send error reply when org has no default agent configured", async () => {
+      mockResend.emails.receiving.get.mockClear();
+
+      // Create a user with an org but do NOT set a default agent
+      const user = await context.setupUser({ prefix: "no-default" });
+      const suffix = user.userId.slice("no-default-".length);
+      const orgSlug = `org-${suffix}`;
+
+      const senderEmail = "sender@example.com";
+      mockClerk({ userId: user.userId, email: senderEmail });
+
+      const payload = JSON.stringify({
+        type: "email.received",
+        data: {
+          email_id: "no-default-email",
+          to: [`${orgSlug}@vm7.bot`],
+          from: senderEmail,
+          subject: "No Agent",
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      const request = createWebhookRequest(payload);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // No email should have been fetched (early return — no default agent)
+      expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
+
+      // Error reply should have been sent
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const args = getErrorReplyArgs();
+      expect(args?.to).toBe(senderEmail);
+      expect(args?.subject).toBe("Re: No Agent");
+    });
+
     it("should send error reply when DMARC fails", async () => {
       const user = await context.setupUser({ prefix: "dmarc-fail" });
       const suffix = user.userId.slice("dmarc-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dmarc-agent");
-      await createTestCompose(agentName);
+      const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       const senderEmail = "spoofed@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -710,7 +744,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock to return dmarc=fail
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "Spoofed email",
         text: "I am pretending to be someone else",
         html: "<p>I am pretending to be someone else</p>",
@@ -724,7 +758,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "dmarc-fail-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Spoofed email",
           created_at: new Date().toISOString(),
@@ -756,7 +790,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("dkim-pass-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dkim-agent");
-      await createTestCompose(agentName);
+      const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       const senderEmail = "user@nodmarc.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -764,7 +799,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock: dmarc=none but dkim=pass — still rejected
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "DKIM Only",
         text: "My domain has no DMARC but DKIM is valid",
         html: "<p>My domain has no DMARC but DKIM is valid</p>",
@@ -778,7 +813,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "dkim-pass-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "DKIM Only",
           created_at: new Date().toISOString(),
@@ -808,7 +843,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("no-auth-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noauth-agent");
-      await createTestCompose(agentName);
+      const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       const senderEmail = "user@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -816,7 +852,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock: no authentication-results header
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "No Auth Headers",
         text: "Email without authentication results",
         html: "<p>Email without authentication results</p>",
@@ -827,7 +863,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "no-auth-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "No Auth Headers",
           created_at: new Date().toISOString(),
@@ -857,7 +893,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("all-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("allfail-agent");
-      await createTestCompose(agentName);
+      const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       const senderEmail = "user@misconfigured.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -865,7 +902,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock: all authentication methods fail
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "All Fail",
         text: "Everything failed",
         html: "<p>Everything failed</p>",
@@ -879,7 +916,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "all-fail-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "All Fail",
           created_at: new Date().toISOString(),
@@ -909,7 +946,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("empty-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("empty-body-agent");
-      await createTestCompose(agentName);
+      const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -917,7 +955,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Return an email with empty text and empty HTML, DMARC passes
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "",
         text: "",
         html: "",
@@ -931,7 +969,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "empty-body-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "",
           created_at: new Date().toISOString(),
@@ -956,7 +994,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("html-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("html-agent");
-      await createTestCompose(agentName);
+      const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -964,7 +1003,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Override Resend mock to return HTML-only content (empty text)
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "Newsletter",
         text: "",
         html: "<p>Rich content from newsletter</p>",
@@ -978,7 +1017,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "html-only-trigger",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Newsletter",
           created_at: new Date().toISOString(),
@@ -1066,7 +1105,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("att-trigger-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("att-agent");
-      await createTestCompose(agentName);
+      const { composeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, composeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1074,7 +1114,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       // Mock Resend to return email with attachment metadata
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "With Attachment",
         text: "Please review the attached file",
         html: "<p>Please review the attached file</p>",
@@ -1122,7 +1162,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "trigger-att-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "With Attachment",
           created_at: new Date().toISOString(),
@@ -1161,14 +1201,16 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("att-oversize-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("oversize-agent");
-      await createTestCompose(agentName);
+      const { composeId: oversizeComposeId } =
+        await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, oversizeComposeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "Big File",
         text: "See attached",
         html: "<p>See attached</p>",
@@ -1194,7 +1236,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "oversize-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Big File",
           created_at: new Date().toISOString(),
@@ -1222,14 +1264,15 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("att-dl-fail-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("dlfail-agent");
-      await createTestCompose(agentName);
+      const { composeId: dlfailComposeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, dlfailComposeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "Broken Attachment",
         text: "File attached",
         html: "<p>File attached</p>",
@@ -1263,7 +1306,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "dl-fail-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Broken Attachment",
           created_at: new Date().toISOString(),
@@ -1291,14 +1334,15 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("att-mixed-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("mixed-agent");
-      await createTestCompose(agentName);
+      const { composeId: mixedComposeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, mixedComposeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
 
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "Multiple Files",
         text: "Several attachments",
         html: "<p>Several attachments</p>",
@@ -1356,7 +1400,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "mixed-att-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Multiple Files",
           created_at: new Date().toISOString(),
@@ -1397,7 +1441,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("inline-img-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("inline-agent");
-      await createTestCompose(agentName);
+      const { composeId: inlineComposeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, inlineComposeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1406,7 +1451,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const fakeBase64 = "A".repeat(1000);
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "Check this photo",
         text: "",
         html: `<p>Can you see what I'm doing?</p><img src="data:image/jpeg;base64,${fakeBase64}" alt="photo.jpg">`,
@@ -1444,7 +1489,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "inline-img-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "Check this photo",
           created_at: new Date().toISOString(),
@@ -1480,7 +1525,8 @@ describe("POST /api/webhooks/email/inbound", () => {
       const suffix = user.userId.slice("inline-noalt-".length);
       const orgSlug = `org-${suffix}`;
       const agentName = uniqueId("noalt-agent");
-      await createTestCompose(agentName);
+      const { composeId: noaltComposeId } = await createTestCompose(agentName);
+      await updateOrgDefaultAgent(user.orgId, noaltComposeId);
 
       const senderEmail = "sender@example.com";
       mockClerk({ userId: user.userId, email: senderEmail });
@@ -1489,7 +1535,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const fakeBase64 = "B".repeat(500);
       mockReceivedEmailGet({
         from: senderEmail,
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         subject: "No Alt Image",
         text: "",
         html: `<p>Look at this</p><img src="data:image/png;base64,${fakeBase64}">`,
@@ -1524,7 +1570,7 @@ describe("POST /api/webhooks/email/inbound", () => {
         type: "email.received",
         data: {
           email_id: "noalt-img-email",
-          to: [`${orgSlug}+${agentName}@vm7.bot`],
+          to: [`${orgSlug}@vm7.bot`],
           from: senderEmail,
           subject: "No Alt Image",
           created_at: new Date().toISOString(),
@@ -1651,53 +1697,21 @@ describe("POST /api/webhooks/email/inbound", () => {
     });
   });
 
-  describe("Email Trigger (agent@domain, auto-detect org)", () => {
-    it("should send error reply for agent-only email without org context", async () => {
-      const user = await context.setupUser({ prefix: "auto-org" });
-      const agentName = uniqueId("auto-agent");
-      await createTestCompose(agentName);
+  describe("Email Trigger — old format rejection", () => {
+    it("should send error reply for old org+agent format", async () => {
+      mockResend.emails.receiving.get.mockClear();
 
       const senderEmail = "sender@example.com";
-      mockClerk({ userId: user.userId, email: senderEmail });
+      mockClerk({ userId: "some-user-id", email: senderEmail });
 
-      // Send to agentname@domain (no org, no plus sign) — no org context
+      // Old format: org+agent@domain — rejected by parseOrgEmailAddress
       const payload = JSON.stringify({
         type: "email.received",
         data: {
-          email_id: "auto-org-email",
-          to: [`${agentName}@vm7.bot`],
+          email_id: "old-format-email",
+          to: ["someorg+someagent@vm7.bot"],
           from: senderEmail,
-          subject: "Auto Org Test",
-          created_at: new Date().toISOString(),
-        },
-      });
-
-      const request = createWebhookRequest(payload);
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-      await context.mocks.flushAfter();
-
-      // Without org context, the handler sends an error reply
-      const runs = await findTestRunsByUserAndPromptContaining(
-        user.userId,
-        "Auto Org Test",
-      );
-      expect(runs).toHaveLength(0);
-    });
-
-    it("should send error reply for agent-only email from unregistered sender", async () => {
-      mockResend.emails.receiving.get.mockClear();
-      mockClerk({ userId: "some-user-id", email: "registered@example.com" });
-
-      const senderEmail = "unregistered@example.com";
-      const payload = JSON.stringify({
-        type: "email.received",
-        data: {
-          email_id: "unreg-auto-email",
-          to: ["someagent@vm7.bot"],
-          from: senderEmail,
-          subject: "Test",
+          subject: "Old Format",
           created_at: new Date().toISOString(),
         },
       });
@@ -1709,59 +1723,23 @@ describe("POST /api/webhooks/email/inbound", () => {
       await context.mocks.flushAfter();
 
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
-
-      // Error reply should have been sent
       expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
       expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
 
-    it("should send error reply for agent-only email when sender has no org", async () => {
+    it("should send error reply for old org/agent format", async () => {
       mockResend.emails.receiving.get.mockClear();
 
-      // Mock Clerk to return a userId that has no org in the database
-      const senderEmail = "noorguser@example.com";
-      mockClerk({ userId: "no-org-user-id", email: senderEmail });
-
-      const payload = JSON.stringify({
-        type: "email.received",
-        data: {
-          email_id: "no-org-email",
-          to: ["someagent@vm7.bot"],
-          from: senderEmail,
-          subject: "Test",
-          created_at: new Date().toISOString(),
-        },
-      });
-
-      const request = createWebhookRequest(payload);
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-      await context.mocks.flushAfter();
-
-      // No email fetch should have happened (early return after org lookup failed)
-      expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
-
-      // Error reply should have been sent
-      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
-      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
-    });
-
-    it("should send error reply for agent-only email to non-existent agent", async () => {
-      mockResend.emails.receiving.get.mockClear();
-
-      const user = await context.setupUser({ prefix: "no-agent" });
       const senderEmail = "sender@example.com";
-      mockClerk({ userId: user.userId, email: senderEmail });
+      mockClerk({ userId: "some-user-id", email: senderEmail });
 
-      // Send to an agent that doesn't exist in the sender's org
       const payload = JSON.stringify({
         type: "email.received",
         data: {
-          email_id: "no-agent-auto-email",
-          to: ["nonexistent@vm7.bot"],
+          email_id: "old-slash-email",
+          to: ["someorg/someagent@vm7.bot"],
           from: senderEmail,
-          subject: "Test",
+          subject: "Old Slash Format",
           created_at: new Date().toISOString(),
         },
       });
@@ -1773,58 +1751,6 @@ describe("POST /api/webhooks/email/inbound", () => {
       await context.mocks.flushAfter();
 
       expect(mockResend.emails.receiving.get).not.toHaveBeenCalled();
-
-      // Error reply should have been sent
-      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
-      expect(getErrorReplyArgs()?.to).toBe(senderEmail);
-    });
-
-    it("should send error reply for agent-only email when DMARC fails", async () => {
-      const user = await context.setupUser({ prefix: "auto-dmarc" });
-      const agentName = uniqueId("auto-dmarc-agent");
-      await createTestCompose(agentName);
-
-      const senderEmail = "spoofed@example.com";
-      mockClerk({ userId: user.userId, email: senderEmail });
-
-      // Override Resend mock to return dmarc=fail
-      mockReceivedEmailGet({
-        from: senderEmail,
-        to: [`${agentName}@vm7.bot`],
-        subject: "Spoofed auto-org",
-        text: "I am pretending to be someone else",
-        html: "<p>I am pretending to be someone else</p>",
-        headers: {
-          "authentication-results":
-            "mx.resend.com; dkim=fail; spf=fail; dmarc=fail",
-        },
-      });
-
-      const payload = JSON.stringify({
-        type: "email.received",
-        data: {
-          email_id: "auto-dmarc-fail-email",
-          to: [`${agentName}@vm7.bot`],
-          from: senderEmail,
-          subject: "Spoofed auto-org",
-          created_at: new Date().toISOString(),
-        },
-      });
-
-      const request = createWebhookRequest(payload);
-      const response = await POST(request);
-
-      expect(response.status).toBe(200);
-      await context.mocks.flushAfter();
-
-      // No run should have been created
-      const runs = await findTestRunsByUserAndPrompt(
-        user.userId,
-        "Spoofed auto-org\n\nI am pretending to be someone else",
-      );
-      expect(runs).toHaveLength(0);
-
-      // Error reply should have been sent
       expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
       expect(getErrorReplyArgs()?.to).toBe(senderEmail);
     });
@@ -1869,7 +1795,8 @@ describe("POST /api/webhooks/email/inbound", () => {
     const suffix = user.userId.slice("crash-user-".length);
     const orgSlug = `org-${suffix}`;
     const agentName = uniqueId("crash-agent");
-    await createTestCompose(agentName);
+    const { composeId: crashComposeId } = await createTestCompose(agentName);
+    await updateOrgDefaultAgent(user.orgId, crashComposeId);
 
     // Mock Clerk to return the user when looking up by email
     const senderEmail = "crash-sender@example.com";
@@ -1884,7 +1811,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       type: "email.received",
       data: {
         email_id: "crash-email-123",
-        to: [`${orgSlug}+${agentName}@vm7.bot`],
+        to: [`${orgSlug}@vm7.bot`],
         from: senderEmail,
         subject: "Test crash",
         created_at: new Date().toISOString(),

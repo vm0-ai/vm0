@@ -3,7 +3,8 @@ import { eq, and } from "drizzle-orm";
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { zeroAgents } from "../../../db/schema/zero-agent";
-import { getOrgBySlug } from "../../org/org-cache-service";
+import { orgMetadata } from "../../../db/schema/org-metadata";
+import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
 import { env } from "../../../env";
 import { getAppUrl } from "../../url";
 import { getApiUrl } from "../../callback/dispatcher";
@@ -19,137 +20,17 @@ export type HandlerResult = { ok: true } | { ok: false; errorMessage: string };
 // Email Address Parsing
 // ============================================================================
 
-interface EmailTriggerAddress {
-  org: string;
-  agent: string;
-}
-
 /**
- * Parse a trigger email address in the format: org+agent@domain
- * Returns null if the address doesn't match the expected format.
- *
- * Examples:
- * - "lancy+my-agent@vm0.bot" → { org: "lancy", agent: "my-agent" }
- * - "reply+token@vm0.bot" → null (reply address, not trigger)
- * - "invalid@vm0.bot" → null (no plus sign)
+ * Parse an org-level email address: org@domain
+ * Returns the org slug, or null if not a valid org address.
+ * Excludes reply+token addresses and old formats with + or /.
  */
-function parseEmailTriggerAddress(
-  toAddress: string,
-): EmailTriggerAddress | null {
-  // Match: org+agent@domain (case-insensitive)
-  // Org and agent must start with alphanumeric, can contain hyphens
-  const match = toAddress.match(
-    /^([a-z0-9][a-z0-9-]*)\+([a-z0-9][a-z0-9-]*)@/i,
-  );
-  if (!match || !match[1] || !match[2]) return null;
-
-  const org = match[1].toLowerCase();
-  const agent = match[2].toLowerCase();
-
-  // Exclude reply addresses (reply+token@domain)
-  if (org === "reply") return null;
-
-  return { org, agent };
-}
-
-/**
- * Parse an agent-only email address in the format: agent@domain
- * Returns the agent name if the address is a simple local-part (no plus sign),
- * or null if the address contains a plus sign or doesn't match.
- *
- * Examples:
- * - "my-agent@vm0.bot" → "my-agent"
- * - "org+agent@vm0.bot" → null (has plus sign, use parseEmailTriggerAddress)
- * - "reply+token@vm0.bot" → null (has plus sign)
- * - "@vm0.bot" → null (empty local part)
- */
-function parseAgentOnlyAddress(toAddress: string): string | null {
-  if (toAddress.includes("+")) return null;
-
+export function parseOrgEmailAddress(toAddress: string): string | null {
+  if (isReplyAddress(toAddress)) return null;
+  if (toAddress.includes("+") || toAddress.includes("/")) return null;
   const match = toAddress.match(/^([a-z0-9][a-z0-9-]*)@/i);
   if (!match?.[1]) return null;
-
   return match[1].toLowerCase();
-}
-
-/**
- * Parsed inbound email address with separate runtime org and agent org.
- *
- * - runtimeOrg: explicit runtime org slug, or null (resolve from user default)
- * - agentOrg: explicit agent org slug, or null (same as runtime org)
- * - agentName: the agent name
- */
-interface ParsedEmailAddress {
-  runtimeOrg: string | null;
-  agentOrg: string | null;
-  agentName: string;
-}
-
-// Slug segment: starts with alphanumeric, may contain hyphens
-const SLUG = "[a-z0-9][a-z0-9-]*";
-
-// runtimeorg+agentorg/agentname@domain
-const RE_FULL = new RegExp(`^(${SLUG})\\+(${SLUG})/(${SLUG})@`, "i");
-// agentorg/agentname@domain
-const RE_ORG_SLASH_AGENT = new RegExp(`^(${SLUG})/(${SLUG})@`, "i");
-
-/**
- * Unified inbound email address parser.
- *
- * Supports four formats (tried in order of specificity):
- * 1. runtimeorg+agentorg/agentname@domain  → explicit runtime + agent org
- * 2. agentorg/agentname@domain             → agent org explicit, runtime from user default
- * 3. org+agent@domain (legacy)             → agentOrg=org, runtime from user default
- * 4. agentname@domain                      → both orgs from user default
- *
- * Returns null for reply+token addresses and unrecognized formats.
- */
-export function parseInboundEmailAddress(
-  toAddress: string,
-): ParsedEmailAddress | null {
-  if (isReplyAddress(toAddress)) return null;
-
-  // 1. runtimeorg+agentorg/agentname@domain
-  const fullMatch = toAddress.match(RE_FULL);
-  if (fullMatch?.[1] && fullMatch[2] && fullMatch[3]) {
-    return {
-      runtimeOrg: fullMatch[1].toLowerCase(),
-      agentOrg: fullMatch[2].toLowerCase(),
-      agentName: fullMatch[3].toLowerCase(),
-    };
-  }
-
-  // 2. agentorg/agentname@domain
-  const slashMatch = toAddress.match(RE_ORG_SLASH_AGENT);
-  if (slashMatch?.[1] && slashMatch[2]) {
-    return {
-      runtimeOrg: null,
-      agentOrg: slashMatch[1].toLowerCase(),
-      agentName: slashMatch[2].toLowerCase(),
-    };
-  }
-
-  // 3. org+agent@domain (legacy)
-  const triggerAddr = parseEmailTriggerAddress(toAddress);
-  if (triggerAddr) {
-    return {
-      runtimeOrg: null,
-      agentOrg: triggerAddr.org,
-      agentName: triggerAddr.agent,
-    };
-  }
-
-  // 4. agentname@domain
-  const agentOnly = parseAgentOnlyAddress(toAddress);
-  if (agentOnly) {
-    return {
-      runtimeOrg: null,
-      agentOrg: null,
-      agentName: agentOnly,
-    };
-  }
-
-  return null;
 }
 
 /**
@@ -250,55 +131,61 @@ export function computeReplyRecipients(opts: {
 // Agent Resolution
 // ============================================================================
 
-interface ResolvedAgent {
+interface ResolvedDefaultAgent {
   composeId: string;
   agentId: string;
   userId: string;
   orgId: string;
-  orgSlug: string;
   headVersionId: string;
 }
 
 /**
- * Resolve an agent compose by org slug and agent name.
- * Returns compose details if found, null otherwise.
+ * Resolve the org's default agent.
+ * Looks up default_agent_compose_id from org_metadata, falls back to VM0_DEFAULT_AGENT env var.
  */
-export async function resolveAgentByAddress(
-  orgSlug: string,
-  agentName: string,
-): Promise<ResolvedAgent | null> {
-  // 1. Resolve org by slug via org cache
-  const orgData = await getOrgBySlug(orgSlug);
-  if (!orgData) return null;
+export async function resolveDefaultAgent(
+  orgId: string,
+): Promise<ResolvedDefaultAgent | null> {
+  // 1. Look up default compose ID from org_metadata
+  const [orgRow] = await globalThis.services.db
+    .select({ defaultAgentComposeId: orgMetadata.defaultAgentComposeId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
 
-  // 2. Find compose by orgId + name
+  let composeId = orgRow?.defaultAgentComposeId ?? null;
+
+  // 2. Fallback to VM0_DEFAULT_AGENT env var
+  if (!composeId) {
+    composeId = await resolveDefaultAgentComposeId();
+  }
+
+  if (!composeId) return null;
+
+  // 3. Look up compose details
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
       userId: agentComposes.userId,
       orgId: agentComposes.orgId,
+      name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, orgData.orgId),
-        eq(agentComposes.name, agentName),
-      ),
-    )
+    .where(eq(agentComposes.id, composeId))
     .limit(1);
 
-  if (!compose) return null;
-
-  // Compose must have a published version to be triggerable
-  if (!compose.headVersionId) return null;
+  if (!compose || !compose.headVersionId) return null;
 
   // 3. Resolve agentId by (orgId, name)
   const [agent] = await globalThis.services.db
     .select({ id: zeroAgents.id })
     .from(zeroAgents)
     .where(
-      and(eq(zeroAgents.orgId, orgData.orgId), eq(zeroAgents.name, agentName)),
+      and(
+        eq(zeroAgents.orgId, compose.orgId),
+        eq(zeroAgents.name, compose.name),
+      ),
     )
     .limit(1);
 
@@ -309,7 +196,6 @@ export async function resolveAgentByAddress(
     agentId: agent.id,
     userId: compose.userId,
     orgId: compose.orgId,
-    orgSlug,
     headVersionId: compose.headVersionId,
   };
 }
@@ -376,11 +262,10 @@ export function buildReplyToAddress(token: string): string {
 
 /**
  * Build the from address for outbound emails.
- * The localPart is used as both the display name prefix and the email local part,
- * so the response mirrors the address the user sent to.
+ * Display name is always "Zero"; localPart is the org slug used as the email local part.
  */
 export function buildFromAddress(localPart: string): string {
-  return `${localPart} from VM0 <${localPart}@${getFromDomain()}>`;
+  return `Zero <${localPart}@${getFromDomain()}>`;
 }
 
 /**
