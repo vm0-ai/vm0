@@ -6,6 +6,10 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { slackOrgData$ } from "../zero-slack.ts";
 import { slackChannels$, fetchSlackChannels$ } from "../slack-channels.ts";
 import {
+  setAddScheduleOpen$,
+  setEditingScheduleId$,
+} from "../schedule-card.ts";
+import {
   allOrgScheduleEntries$,
   fetchAllOrgSchedules$,
   saveOrgSchedule$,
@@ -94,6 +98,27 @@ describe("slack schedule notification signals", () => {
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(0);
+    });
+  });
+
+  describe("dialog open triggers fetchSlackChannels$", () => {
+    it("should fetch channels when add schedule dialog opens", async () => {
+      await setup();
+      context.store.set(setAddScheduleOpen$, true);
+      // wait for the async fetch triggered by dialog open
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels.length).toBeGreaterThan(0);
+    });
+
+    it("should fetch channels when edit schedule dialog opens", async () => {
+      await setup();
+      context.store.set(setEditingScheduleId$, "sched-1");
+      await context.store.set(fetchSlackChannels$);
+
+      const channels = context.store.get(slackChannels$);
+      expect(channels.length).toBeGreaterThan(0);
     });
   });
 

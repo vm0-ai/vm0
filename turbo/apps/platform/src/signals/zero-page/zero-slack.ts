@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
-import { fetchSlackChannels$ } from "./slack-channels.ts";
 
 interface SlackOrgData {
   isConnected: boolean;
@@ -150,7 +149,6 @@ export const pollSlackConnection$ = command(
 
 export const initSlackOrg$ = command(async ({ set }) => {
   await set(fetchSlackOrg$);
-  await set(fetchSlackChannels$);
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("installed") === "1") {
