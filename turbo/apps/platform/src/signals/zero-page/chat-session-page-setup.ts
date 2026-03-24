@@ -10,6 +10,7 @@ import {
   zeroSessionList$,
 } from "./zero-chat.ts";
 import { zeroSessionId$ } from "./zero-nav.ts";
+import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
 
@@ -29,6 +30,10 @@ export const setupChatSessionPage$ = command(
 
     await set(loadInitialData$, signal);
     signal.throwIfAborted();
+
+    if (await set(onboardGuard$, signal)) {
+      return;
+    }
 
     await set(syncUrlSession$);
     signal.throwIfAborted();

@@ -3,16 +3,13 @@ import { createElement } from "react";
 import { ZeroTalkPage } from "../../views/zero-page/zero-talk-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { navigateTo$, pathParams$ } from "../route.ts";
+import { pathParams$ } from "../route.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { logger } from "../log.ts";
 import { agentDisplayName$, defaultAgentName$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
+import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$, resolveAgentByName } from "./zero-page.ts";
-import {
-  zeroNeedsOnboarding$,
-  zeroNeedsMemberOnboarding$,
-} from "./zero-onboarding.ts";
 
 const L = logger("TalkPage");
 
@@ -23,13 +20,7 @@ export const setupTalkPage$ = command(
 
     await set(loadInitialData$, signal);
 
-    // Redirect to /onboarding when needed
-    const needsOnboarding = await get(zeroNeedsOnboarding$);
-    signal.throwIfAborted();
-    const needsMemberOnboarding = await get(zeroNeedsMemberOnboarding$);
-    signal.throwIfAborted();
-    if (needsOnboarding || needsMemberOnboarding) {
-      set(navigateTo$, "/onboarding", { replace: true });
+    if (await set(onboardGuard$, signal)) {
       return;
     }
 
