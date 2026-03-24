@@ -7,7 +7,12 @@ use crate::error::Result;
 /// (e.g. `/dev/loop0`).
 pub fn attach(file_path: &Path, read_only: bool) -> Result<PathBuf> {
     let file_str = file_path.to_string_lossy();
-    let mut args = vec!["--find", "--show"];
+    // --direct-io=on: bypass the loop device's page cache so reads/writes
+    // go straight to the backing file's page cache.  Without this, data is
+    // cached twice (loop block cache + file page cache), wasting memory and
+    // hurting throughput — Chromium launch (heavy random reads) was 3x
+    // slower without it.
+    let mut args = vec!["--find", "--show", "--direct-io=on"];
     if read_only {
         args.push("--read-only");
     }
