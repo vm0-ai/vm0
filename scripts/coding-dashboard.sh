@@ -178,7 +178,14 @@ jq -r --argjson mq "$MQ_NUMBERS" '
   else "" end) as $gist_time |
   # Truncate gist content to last few lines for brevity
   (if .gist.content then
-    (.gist.content | split("\n") | map(select(. != "")) | .[-5:] | map("  │ \(.)") | join("\n"))
+    (.gist.content | split("\n") |
+      . as $lines |
+      [to_entries[] | select(.value | test("^INTERVAL:"))] |
+      if length > 0 then
+        (last.key) as $idx | $lines[$idx:] | map(select(. != "")) | map("  │ \(.)") | join("\n")
+      else
+        $lines | map(select(. != "")) | .[-5:] | map("  │ \(.)") | join("\n")
+      end)
   else null end) as $gist_lines |
   "\n\(.lane)\($gist_time)" as $header |
   if (.issue_count + .pr_count) == 0 then
