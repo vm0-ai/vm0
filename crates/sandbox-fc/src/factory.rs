@@ -62,6 +62,10 @@ pub struct InvariantConfig {
     pub guest_cid: u32,
     pub balloon: BalloonConfig,
     pub prewarm_script: &'static str,
+    /// Drive layout identifier. Changing the number or type of drives
+    /// requires a new snapshot — bump this constant to invalidate the
+    /// config hash and force re-creation.
+    pub drive_layout: &'static str,
 }
 
 impl InvariantConfig {
@@ -79,6 +83,7 @@ impl InvariantConfig {
                 stats_polling_interval_s: 5,
             },
             prewarm_script: PREWARM_SCRIPT,
+            drive_layout: "dm-snapshot-v1",
         }
     }
 }
