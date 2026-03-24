@@ -31,6 +31,7 @@ import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
 import { slackFirewall } from "./slack.generated";
 import { stripeFirewall } from "./stripe.generated";
+import { todoistFirewall } from "./todoist.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { xFirewall } from "./x.generated";
 import { youtubeFirewall } from "./youtube.generated";
@@ -63,6 +64,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   openai: openaiFirewall,
   slack: slackFirewall,
   stripe: stripeFirewall,
+  todoist: todoistFirewall,
   vercel: vercelFirewall,
   x: xFirewall,
   youtube: youtubeFirewall,
