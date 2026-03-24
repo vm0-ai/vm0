@@ -12,7 +12,7 @@ Capabilities control what API endpoints a zero agent can access from within its 
 | `agent:read` | Read agent definitions | GET `/api/zero/agents/*` |
 | `agent:write` | Create, update, delete agents | POST/PUT/PATCH/DELETE `/api/zero/agents/*` |
 | `agent-run:read` | View runs and telemetry | GET `/api/zero/runs/*` |
-| `agent-run:write` | Cancel runs | POST `/api/zero/runs/*/cancel` |
+| `agent-run:write` | Create and cancel runs | POST `/api/zero/runs`, POST `/api/zero/runs/*/cancel` |
 | `schedule:read` | View schedules | GET `/api/zero/schedules/*` |
 | `schedule:write` | Create and delete schedules | POST/DELETE `/api/zero/schedules/*` |
 | `slack:write` | Send Slack messages | POST `/api/zero/integrations/slack/message` |
