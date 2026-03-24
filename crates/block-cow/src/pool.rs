@@ -43,6 +43,12 @@ impl BaseHandle {
 /// share a single read-only loop device, reducing kernel resource usage by
 /// half (no per-sandbox base loop or dm-linear origin).
 ///
+/// # Async usage
+///
+/// All methods call synchronous subprocess commands (`losetup`, `blockdev`).
+/// When used from an async context, wrap calls in `tokio::task::spawn_blocking`
+/// to avoid blocking the runtime.
+///
 /// # Lifecycle
 ///
 /// ```text

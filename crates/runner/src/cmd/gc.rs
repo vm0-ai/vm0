@@ -351,7 +351,7 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
         Err(_) => SystemTime::UNIX_EPOCH,
     };
 
-    let mut total_blocks = 0u64;
+    let mut total_bytes = 0u64;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
         let mut entries = match tokio::fs::read_dir(&current).await {
@@ -367,14 +367,14 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
                 continue;
             };
             const BYTES_PER_BLOCK: u64 = 512;
-            total_blocks += meta.blocks() * BYTES_PER_BLOCK;
+            total_bytes += meta.blocks() * BYTES_PER_BLOCK;
             if meta.is_dir() {
                 stack.push(entry.path());
             }
         }
     }
 
-    (total_blocks, mtime)
+    (total_bytes, mtime)
 }
 
 /// Check whether a directory name is a semver version string (`v<major>.<minor>.<patch>`).
