@@ -189,21 +189,62 @@ function toResponse(
 
 /**
  * Verify zero agent exists and return it.
+ *
+ * Resolution strategy:
+ * 1. Direct lookup by zero_agents.id (platform / zero API flow)
+ * 2. Fallback: treat the id as a composeId, resolve the compose's
+ *    (orgId, name), then find-or-create the zero_agents row.
+ *    This is required because the CLI receives agentComposeId from
+ *    GET /api/zero/agents/:name and sends it as zeroAgentId.
  */
 async function loadZeroAgent(
   zeroAgentId: string,
 ): Promise<typeof zeroAgents.$inferSelect> {
+  // 1. Direct zero_agents lookup
   const [agent] = await globalThis.services.db
     .select()
     .from(zeroAgents)
     .where(eq(zeroAgents.id, zeroAgentId))
     .limit(1);
 
-  if (!agent) {
-    throw notFound("Agent not found");
-  }
+  if (agent) return agent;
 
-  return agent;
+  // 2. Fallback: treat as composeId and resolve via compose
+  const [compose] = await globalThis.services.db
+    .select()
+    .from(agentComposes)
+    .where(eq(agentComposes.id, zeroAgentId))
+    .limit(1);
+
+  if (!compose) throw notFound("Agent not found");
+
+  // Find existing zero_agent by (orgId, name) or create one
+  const [existing] = await globalThis.services.db
+    .select()
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, compose.orgId),
+        eq(zeroAgents.name, compose.name),
+      ),
+    )
+    .limit(1);
+
+  if (existing) return existing;
+
+  // Auto-create zero_agents row for CLI-composed agents
+  const [created] = await globalThis.services.db
+    .insert(zeroAgents)
+    .values({
+      orgId: compose.orgId,
+      name: compose.name,
+    })
+    .returning();
+
+  if (!created) throw notFound("Agent not found");
+
+  log.debug(`Auto-created zero agent for compose ${compose.name}`);
+  return created;
 }
 
 /**
