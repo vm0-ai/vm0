@@ -32,7 +32,7 @@ No configuration needed. All zero agents receive all capabilities by default.
 
 ## Error Responses
 
-If a request lacks the required capability, the API returns a `403 Forbidden` response:
+If a request is made with a valid token that lacks the required capability, the API returns a `403 Forbidden` response:
 
 ```json
 {
@@ -42,6 +42,10 @@ If a request lacks the required capability, the API returns a `403 Forbidden` re
   }
 }
 ```
+
+<Callout type="info">
+Since zero agents receive all capabilities by default, this error typically occurs when calling the API directly with a custom or restricted token rather than through the `zero` CLI.
+</Callout>
 
 ## Token Priority
 
