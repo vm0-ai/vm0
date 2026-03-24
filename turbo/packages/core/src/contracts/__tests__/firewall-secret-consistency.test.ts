@@ -24,20 +24,25 @@ describe("firewall secret name consistency", () => {
     if (refs.length === 0) continue;
 
     it(`${connectorType} → firewall placeholder keys match connector secret names`, () => {
-      // Collect all secret/env var names the connector exposes
+      // Collect env var names the connector exposes.
+      // If environmentMapping exists (OAuth), use ONLY those keys —
+      // authMethods.secrets holds internal names that the firewall must NOT use.
       const connectorSecretNames = new Set<string>();
 
-      // From environmentMapping (OAuth path)
       const mapping = getConnectorEnvironmentMapping(connectorType);
-      for (const envVar of Object.keys(mapping)) {
-        connectorSecretNames.add(envVar);
-      }
+      const hasMapping = Object.keys(mapping).length > 0;
 
-      // From authMethods secrets (API-token path)
-      const authMethods = getConnectorAuthMethods(connectorType);
-      for (const method of Object.values(authMethods)) {
-        for (const name of Object.keys(method.secrets)) {
-          connectorSecretNames.add(name);
+      if (hasMapping) {
+        for (const envVar of Object.keys(mapping)) {
+          connectorSecretNames.add(envVar);
+        }
+      } else {
+        // API-token path: use authMethods secrets directly
+        const authMethods = getConnectorAuthMethods(connectorType);
+        for (const method of Object.values(authMethods)) {
+          for (const name of Object.keys(method.secrets)) {
+            connectorSecretNames.add(name);
+          }
         }
       }
 
