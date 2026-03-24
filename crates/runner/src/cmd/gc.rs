@@ -481,67 +481,47 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
 
     // Pass 1: remove orphaned snapshot targets (cow-<uuid>).
     // On success, also remove the paired origin target (origin-<uuid>).
-    if let Some(stdout) = dmsetup_ls("snapshot") {
-        for line in stdout.lines() {
-            // dmsetup ls output: "cow-<uuid>\t(<major>, <minor>)"
-            let Some(name) = line.split_whitespace().next() else {
-                continue;
-            };
-            if !name.starts_with("cow-") {
-                continue;
-            }
+    for name in parse_dm_targets(&dmsetup_ls("snapshot"), "cow-") {
+        let origin_name = format!("origin-{}", &name["cow-".len()..]);
 
-            let uuid_part = &name["cow-".len()..];
-            let origin_name = format!("origin-{uuid_part}");
-
-            if dry_run {
-                info!(dm_target = name, "would remove orphaned dm-snapshot target");
-                info!(dm_target = %origin_name, "would remove orphaned dm-linear target");
-                removed += 1;
-                continue;
-            }
-
-            // Try to remove the snapshot target. If busy, it's still in use — skip.
-            if !dmsetup_remove(name) {
-                continue;
-            }
-            info!(dm_target = name, "removed orphaned dm-snapshot target");
-
-            // Snapshot removed — now remove the paired origin target (best-effort).
-            if dmsetup_remove(&origin_name) {
-                info!(dm_target = %origin_name, "removed orphaned dm-linear target");
-            } else {
-                warn!(dm_target = %origin_name, "failed to remove orphaned dm-linear target");
-            }
-
+        if dry_run {
+            info!(dm_target = %name, "would remove orphaned dm-snapshot target");
+            info!(dm_target = %origin_name, "would remove orphaned dm-linear target");
             removed += 1;
+            continue;
         }
+
+        // Try to remove the snapshot target. If busy, it's still in use — skip.
+        if !dmsetup_remove(&name) {
+            continue;
+        }
+        info!(dm_target = %name, "removed orphaned dm-snapshot target");
+
+        // Snapshot removed — now remove the paired origin target (best-effort).
+        if dmsetup_remove(&origin_name) {
+            info!(dm_target = %origin_name, "removed orphaned dm-linear target");
+        } else {
+            warn!(dm_target = %origin_name, "failed to remove orphaned dm-linear target");
+        }
+
+        removed += 1;
     }
 
     // Pass 2: remove orphaned origin targets whose snapshot was already gone
     // (e.g., pass 1 removed the snapshot in a previous GC run but the origin
     // removal failed at that time).
-    if let Some(stdout) = dmsetup_ls("linear") {
-        for line in stdout.lines() {
-            let Some(name) = line.split_whitespace().next() else {
-                continue;
-            };
-            if !name.starts_with("origin-") {
-                continue;
-            }
-
-            if dry_run {
-                info!(dm_target = name, "would remove orphaned dm-linear target");
-                removed += 1;
-                continue;
-            }
-
-            if dmsetup_remove(name) {
-                info!(dm_target = name, "removed orphaned dm-linear target");
-                removed += 1;
-            }
-            // If busy, the corresponding snapshot still exists — skip silently.
+    for name in parse_dm_targets(&dmsetup_ls("linear"), "origin-") {
+        if dry_run {
+            info!(dm_target = %name, "would remove orphaned dm-linear target");
+            removed += 1;
+            continue;
         }
+
+        if dmsetup_remove(&name) {
+            info!(dm_target = %name, "removed orphaned dm-linear target");
+            removed += 1;
+        }
+        // If busy, the corresponding snapshot still exists — skip silently.
     }
 
     if removed > 0 {
@@ -551,22 +531,50 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     Ok(removed)
 }
 
-/// Run `dmsetup ls --target <target_type>`, return stdout if successful.
+/// Parse `dmsetup ls` output and return target names matching the given prefix.
+///
+/// Output format: `"name\t(major, minor)"` per line, or `"No devices found"`.
+fn parse_dm_targets(output: &Option<String>, prefix: &str) -> Vec<String> {
+    let Some(stdout) = output else {
+        return Vec::new();
+    };
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let name = line.split_whitespace().next()?;
+            if name.starts_with(prefix) {
+                Some(name.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Run `sudo dmsetup ls --target <target_type>`, return stdout if successful.
 fn dmsetup_ls(target_type: &str) -> Option<String> {
-    let output = std::process::Command::new("dmsetup")
-        .args(["ls", "--target", target_type])
+    let output = match std::process::Command::new("sudo")
+        .args(["dmsetup", "ls", "--target", target_type])
         .output()
-        .ok()?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            warn!(error = %e, "dmsetup not available — skipping dm-snapshot GC");
+            return None;
+        }
+    };
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        warn!(stderr = %stderr.trim(), "dmsetup ls failed — skipping dm-snapshot GC");
         return None;
     }
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// Run `dmsetup remove <name>`, return true if successful.
+/// Run `sudo dmsetup remove <name>`, return true if successful.
 fn dmsetup_remove(name: &str) -> bool {
-    std::process::Command::new("dmsetup")
-        .args(["remove", name])
+    std::process::Command::new("sudo")
+        .args(["dmsetup", "remove", name])
         .output()
         .is_ok_and(|o| o.status.success())
 }
@@ -1150,5 +1158,50 @@ mod tests {
 
         assert!(!old_dir.exists(), "old artifact should be deleted");
         assert!(freed > 0 || cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn parse_dm_targets_cow_names() {
+        let output = Some(
+            "cow-abc123\t(253, 0)\ncow-def456\t(253, 1)\nother-target\t(253, 2)\n".to_string(),
+        );
+        let names = parse_dm_targets(&output, "cow-");
+        assert_eq!(names, vec!["cow-abc123", "cow-def456"]);
+    }
+
+    #[test]
+    fn parse_dm_targets_origin_names() {
+        let output = Some(
+            "origin-abc123\t(253, 0)\nsome-linear\t(253, 1)\norigin-def456\t(253, 2)\n".to_string(),
+        );
+        let names = parse_dm_targets(&output, "origin-");
+        assert_eq!(names, vec!["origin-abc123", "origin-def456"]);
+    }
+
+    #[test]
+    fn parse_dm_targets_no_devices() {
+        let output = Some("No devices found\n".to_string());
+        let names = parse_dm_targets(&output, "cow-");
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn parse_dm_targets_empty_output() {
+        let output = Some(String::new());
+        let names = parse_dm_targets(&output, "cow-");
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn parse_dm_targets_none() {
+        let names = parse_dm_targets(&None, "cow-");
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn parse_dm_targets_malformed_lines() {
+        let output = Some("\n\t\n  \ncow-valid\t(253, 0)\n".to_string());
+        let names = parse_dm_targets(&output, "cow-");
+        assert_eq!(names, vec!["cow-valid"]);
     }
 }
