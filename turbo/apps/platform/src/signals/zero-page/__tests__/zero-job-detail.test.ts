@@ -69,6 +69,7 @@ function mockSchedules() {
         intervalSeconds: null,
         timezone: "UTC",
         prompt: "Run the daily digest",
+        description: "Daily digest summary",
         createdAt: "2024-06-01T00:00:00Z",
       },
       {
@@ -83,6 +84,7 @@ function mockSchedules() {
         intervalSeconds: null,
         timezone: "UTC",
         prompt: "Something else",
+        description: null,
         createdAt: "2024-06-01T00:00:00Z",
       },
     ],
@@ -135,6 +137,7 @@ describe("zero-job-detail signals", () => {
       expect(entries).toHaveLength(1);
       expect(entries[0]!.name).toBe("daily-run");
       expect(entries[0]!.time).toBe("Every day at 9:00 AM");
+      expect(entries[0]!.description).toBe("Daily digest summary");
       expect(scheduleError).toBeNull();
     });
 
@@ -319,6 +322,76 @@ describe("zero-job-detail signals", () => {
         enabled: true,
         cronExpression: "30 9 * * *",
       });
+    });
+
+    it("should include description in save request when provided", async () => {
+      let capturedBody: Record<string, unknown> = {};
+
+      await setupWithAgent();
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ id: "new-sched" });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      const params: ZeroJobScheduleSaveParams = {
+        prompt: "Run daily task",
+        description: "  A daily task description  ",
+        freq: "every_day",
+        date: "2030-01-01",
+        hour: 9,
+        minute: 30,
+        timezone: "UTC",
+        intervalSeconds: 0,
+      };
+
+      await context.store.set(saveZeroJobSchedule$, params);
+
+      expect(capturedBody).toMatchObject({
+        prompt: "Run daily task",
+        description: "A daily task description",
+      });
+    });
+
+    it("should omit description from save request when not provided", async () => {
+      let capturedBody: Record<string, unknown> = {};
+
+      await setupWithAgent();
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ id: "new-sched" });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      const params: ZeroJobScheduleSaveParams = {
+        prompt: "Run daily task",
+        freq: "every_day",
+        date: "2030-01-01",
+        hour: 9,
+        minute: 30,
+        timezone: "UTC",
+        intervalSeconds: 0,
+      };
+
+      await context.store.set(saveZeroJobSchedule$, params);
+
+      expect(capturedBody).not.toHaveProperty("description");
     });
 
     it("should save a loop schedule with intervalSeconds", async () => {
