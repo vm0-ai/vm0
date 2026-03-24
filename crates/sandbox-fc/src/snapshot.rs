@@ -246,29 +246,26 @@ async fn run_snapshot_workflow(
     kill_process_group(&child);
     let _ = child.wait().await;
 
-    // Clean up the drive bind mount (created in run_with_firecracker).
-    // Best-effort: the file may not have been bind-mounted if the workflow
-    // failed before that step.
-    let drive_bind_str = paths.cow_device_bind().display().to_string();
-    command::exec_ignore_errors(
-        "umount",
-        &[drive_bind_str.as_str()],
-        command::Privilege::Sudo,
-    )
-    .await;
-
-    // Tear down dm-snapshot AFTER Firecracker is dead (dmsetup remove fails
-    // with EBUSY if any fd is open to the device). Preserve the COW file
-    // and move it to the output dir.
+    // Tear down: umount bind mount, then remove dm-snapshot.
     //
-    // Retry: kill_process_group + child.wait() only waits for the outer sudo
-    // process. The inner Firecracker (inside netns via sudo -u) may still be
-    // exiting, holding the dm device fd open. Retry a few times to allow it
-    // to fully terminate.
+    // Both steps may fail transiently because kill_process_group + child.wait()
+    // only waits for the outer sudo — the inner Firecracker (inside netns via
+    // sudo -u) may still be exiting, holding the dm device fd and bind mount
+    // reference open. Retry both in a loop until Firecracker fully terminates.
+    let drive_bind_str = paths.cow_device_bind().display().to_string();
+
     if result.is_ok() {
         let cow_file = cow_device.cow_file().to_owned();
         let mut last_err = None;
         for attempt in 0..5 {
+            // Umount the bind mount first (may fail if FC still holds a ref).
+            command::exec_ignore_errors(
+                "umount",
+                &[drive_bind_str.as_str()],
+                command::Privilege::Sudo,
+            )
+            .await;
+
             match cow_device.destroy_keep_cow() {
                 Ok(()) => {
                     last_err = None;
@@ -281,7 +278,6 @@ async fn run_snapshot_workflow(
                         "destroy_keep_cow failed, retrying"
                     );
                     last_err = Some(e);
-                    // Don't sleep after the last attempt.
                     if attempt < 4 {
                         tokio::time::sleep(Duration::from_millis(500)).await;
                     }
@@ -292,6 +288,14 @@ async fn run_snapshot_workflow(
             return Err(SnapshotError::Setup(format!("destroy_keep_cow: {e}")));
         }
         tokio::fs::rename(&cow_file, &output.cow()).await?;
+    } else {
+        // Error path: best-effort umount before Drop cleans up the device.
+        command::exec_ignore_errors(
+            "umount",
+            &[drive_bind_str.as_str()],
+            command::Privilege::Sudo,
+        )
+        .await;
     }
     // On error, cow_device is dropped → Drop calls destroy() (best-effort).
 
