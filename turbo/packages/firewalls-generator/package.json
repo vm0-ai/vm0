@@ -16,6 +16,7 @@
     "generate:discord": "tsx src/index.ts discord",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:figma": "tsx src/index.ts figma",
+    "generate:firecrawl": "tsx src/index.ts firecrawl",
     "generate:github": "tsx src/index.ts github",
     "generate:gitlab": "tsx src/index.ts gitlab",
     "generate:gmail": "tsx src/index.ts gmail",

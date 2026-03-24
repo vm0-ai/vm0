@@ -17,6 +17,7 @@ import { confluenceFirewall } from "./confluence.generated";
 import { discordFirewall } from "./discord.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { figmaFirewall } from "./figma.generated";
+import { firecrawlFirewall } from "./firecrawl.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { gmailFirewall } from "./gmail.generated";
@@ -51,6 +52,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   discord: discordFirewall,
   elevenlabs: elevenlabsFirewall,
   figma: figmaFirewall,
+  firecrawl: firecrawlFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,

@@ -114,6 +114,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   linear: ["linear"],
   monday: ["monday"],
   figma: ["figma"],
+  firecrawl: ["firecrawl"],
   notion: ["notion"],
   openai: ["openai"],
   resend: ["resend"],
