@@ -14,7 +14,6 @@ function mockAPIs() {
         composes: [
           {
             id: "mock-compose-id",
-            name: "zero",
             displayName: null,
             description: null,
             headVersionId: "version_1",

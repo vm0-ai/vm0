@@ -11,7 +11,6 @@ function createMockTeamWithSubagents() {
   return [
     {
       id: "mock-compose-id",
-      name: "zero",
       displayName: null,
       description: null,
       headVersionId: "version_1",
@@ -20,7 +19,6 @@ function createMockTeamWithSubagents() {
     },
     {
       id: "agent-2",
-      name: "research-agent",
       displayName: "Research Agent",
       description: "Finds and summarizes information",
       headVersionId: "version_2",
@@ -41,7 +39,6 @@ function mockAPIs() {
     http.get("*/api/zero/composes", () => {
       return HttpResponse.json({
         id: "agent-2",
-        name: "research-agent",
         content: {
           agents: {
             "research-agent": {
@@ -73,7 +70,7 @@ describe("team page navigation", () => {
 
   it("should render agent detail at /team/:name", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team/research-agent" });
+    await setupPage({ context, path: "/team/agent-2" });
 
     await waitFor(() => {
       expect(
@@ -86,7 +83,7 @@ describe("team page navigation", () => {
     mockAPIs();
 
     // Start on the detail page
-    await setupPage({ context, path: "/team/research-agent" });
+    await setupPage({ context, path: "/team/agent-2" });
 
     await waitFor(() => {
       expect(

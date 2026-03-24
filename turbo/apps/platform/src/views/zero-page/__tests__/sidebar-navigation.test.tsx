@@ -15,7 +15,6 @@ function mockSubagentAPIs() {
         composes: [
           {
             id: "mock-compose-id",
-            name: "zero",
             displayName: null,
             headVersionId: "version_1",
             updatedAt: "2024-01-01T00:00:00Z",
@@ -23,7 +22,6 @@ function mockSubagentAPIs() {
           },
           {
             id: "subagent-compose-id",
-            name: "helper",
             displayName: "Helper Bot",
             headVersionId: "version_2",
             updatedAt: "2024-01-01T00:00:00Z",
@@ -103,7 +101,7 @@ describe("sidebar new chat navigation", () => {
   it("should create thread and navigate to /chat/:threadId when clicking new chat for a subagent", async () => {
     mockSubagentAPIs();
 
-    await setupPage({ context, path: "/talk/helper" });
+    await setupPage({ context, path: "/talk/subagent-compose-id" });
 
     // Wait for the subagent chat to load — find the new chat button for the subagent
     const newChatButton = await waitFor(

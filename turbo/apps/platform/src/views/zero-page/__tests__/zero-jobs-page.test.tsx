@@ -11,7 +11,6 @@ function createMockTeamWithSubagents() {
   return [
     {
       id: "mock-compose-id",
-      name: "zero",
       displayName: null,
       description: null,
       headVersionId: "version_1",
@@ -20,7 +19,6 @@ function createMockTeamWithSubagents() {
     },
     {
       id: "agent-2",
-      name: "research-agent",
       displayName: "Research Agent",
       description: "Finds and summarizes information",
       headVersionId: "version_2",
@@ -29,7 +27,6 @@ function createMockTeamWithSubagents() {
     },
     {
       id: "agent-3",
-      name: "writer",
       displayName: null,
       description: "Writes content based on research",
       headVersionId: "version_3",
@@ -83,15 +80,14 @@ describe("zero jobs page - team list", () => {
     expect(
       screen.getByText("Writes content based on research"),
     ).toBeInTheDocument();
-    // "writer" agent has displayName: null, so it should show the name "writer"
-    expect(screen.getByText("writer")).toBeInTheDocument();
+    // "writer" agent has displayName: null, so it should fall back to showing the id
+    expect(screen.getByText("agent-3")).toBeInTheDocument();
   });
 
   it("should show empty state when no sub-agents exist", async () => {
     mockTeamAPI([
       {
         id: "mock-compose-id",
-        name: "zero",
         displayName: null,
         description: null,
         headVersionId: "version_1",

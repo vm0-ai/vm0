@@ -44,7 +44,6 @@ function mockAPIs({
         composes: [
           {
             id: "mock-compose-id",
-            name: "zero",
             displayName: null,
             description: null,
             headVersionId: "version_1",
@@ -67,7 +66,6 @@ function mockAPIsWithSubagents() {
         composes: [
           {
             id: "mock-compose-id",
-            name: "zero",
             displayName: null,
             description: null,
             headVersionId: "version_1",
@@ -76,7 +74,6 @@ function mockAPIsWithSubagents() {
           },
           {
             id: "sub-agent-id",
-            name: "research-agent",
             displayName: "Research Agent",
             description: "Finds information",
             headVersionId: "version_2",
@@ -221,7 +218,7 @@ describe("zero sidebar", () => {
 
   it("should show sub-agent chats when navigating to /talk/:name", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/talk/research-agent" });
+    await setupPage({ context, path: "/talk/sub-agent-id" });
 
     // Wait for sub-agent chat to render
     await waitFor(() => {
