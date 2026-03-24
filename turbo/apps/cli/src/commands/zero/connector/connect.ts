@@ -18,7 +18,7 @@ import { withErrorHandler } from "../../../lib/command";
 import {
   checkComputerDependencies,
   startComputerServices,
-} from "../../connector/lib/computer/start-services";
+} from "../../../lib/computer/start-services";
 import { promptSelect, promptPassword } from "../../../lib/utils/prompt-utils";
 
 function delay(ms: number): Promise<void> {

@@ -16,7 +16,7 @@ import {
   getZeroOrg,
   listZeroSecrets,
   listZeroVariables,
-  listConnectors,
+  listZeroConnectors,
   resolveSkills,
 } from "../../lib/api";
 import { validateAgentCompose } from "../../lib/domain/yaml-validator";
@@ -392,7 +392,7 @@ async function checkAndPromptMissingItems(
     await Promise.all([
       requiredSecrets.size > 0 ? listZeroSecrets() : { secrets: [] },
       requiredVars.size > 0 ? listZeroVariables() : { variables: [] },
-      listConnectors(),
+      listZeroConnectors(),
     ]);
 
   const existingSecretNames = new Set(

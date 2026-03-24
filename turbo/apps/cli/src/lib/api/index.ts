@@ -34,13 +34,6 @@ export {
   listStorages,
 } from "./domains/storages";
 
-// Domain modules - Connectors
-export {
-  listConnectors,
-  deleteConnector,
-  getConnector,
-} from "./domains/connectors";
-
 // Domain modules - User Preferences
 export {
   getUserPreferences,
