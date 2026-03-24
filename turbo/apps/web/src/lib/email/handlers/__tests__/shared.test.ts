@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseInboundEmailAddress,
+  parseOrgEmailAddress,
   isReplyAddress,
   computeReplyRecipients,
   verifyUnsubscribeToken,
@@ -8,90 +8,41 @@ import {
   buildUnsubscribeHeaders,
 } from "../shared";
 
-describe("parseInboundEmailAddress", () => {
-  it("should parse runtimeorg+agentorg/agentname format", () => {
-    const result = parseInboundEmailAddress("alice+acme/support-bot@vm0.bot");
-    expect(result).toEqual({
-      runtimeOrg: "alice",
-      agentOrg: "acme",
-      agentName: "support-bot",
-    });
+describe("parseOrgEmailAddress", () => {
+  it("should parse org slug from email address", () => {
+    expect(parseOrgEmailAddress("acme@vm0.bot")).toBe("acme");
   });
 
-  it("should parse agentorg/agentname format", () => {
-    const result = parseInboundEmailAddress("acme/support-bot@vm0.bot");
-    expect(result).toEqual({
-      runtimeOrg: null,
-      agentOrg: "acme",
-      agentName: "support-bot",
-    });
+  it("should parse hyphenated org slug", () => {
+    expect(parseOrgEmailAddress("my-org@vm0.bot")).toBe("my-org");
   });
 
-  it("should parse legacy org+agent format", () => {
-    const result = parseInboundEmailAddress("lancy+my-agent@vm0.bot");
-    expect(result).toEqual({
-      runtimeOrg: null,
-      agentOrg: "lancy",
-      agentName: "my-agent",
-    });
-  });
-
-  it("should parse agent-only format", () => {
-    const result = parseInboundEmailAddress("support-bot@vm0.bot");
-    expect(result).toEqual({
-      runtimeOrg: null,
-      agentOrg: null,
-      agentName: "support-bot",
-    });
-  });
-
-  it("should return null for reply address", () => {
-    expect(parseInboundEmailAddress("reply+token123@vm0.bot")).toBeNull();
+  it("should parse org slug with numbers", () => {
+    expect(parseOrgEmailAddress("org123@vm0.bot")).toBe("org123");
   });
 
   it("should normalize to lowercase", () => {
-    const result = parseInboundEmailAddress("ALICE+ACME/SUPPORT-BOT@vm0.bot");
-    expect(result).toEqual({
-      runtimeOrg: "alice",
-      agentOrg: "acme",
-      agentName: "support-bot",
-    });
+    expect(parseOrgEmailAddress("ACME@vm0.bot")).toBe("acme");
   });
 
-  it("should handle numbers in all parts", () => {
-    const result = parseInboundEmailAddress("org1+org2/agent3@vm0.bot");
-    expect(result).toEqual({
-      runtimeOrg: "org1",
-      agentOrg: "org2",
-      agentName: "agent3",
-    });
+  it("should return null for reply address", () => {
+    expect(parseOrgEmailAddress("reply+token@vm0.bot")).toBeNull();
   });
 
-  it("should handle hyphens in all parts", () => {
-    const result = parseInboundEmailAddress(
-      "my-runtime+my-org/my-agent@vm0.bot",
-    );
-    expect(result).toEqual({
-      runtimeOrg: "my-runtime",
-      agentOrg: "my-org",
-      agentName: "my-agent",
-    });
+  it("should return null for plus sign address (old format)", () => {
+    expect(parseOrgEmailAddress("org+agent@vm0.bot")).toBeNull();
+  });
+
+  it("should return null for slash address (old format)", () => {
+    expect(parseOrgEmailAddress("org/agent@vm0.bot")).toBeNull();
+  });
+
+  it("should return null for empty local part", () => {
+    expect(parseOrgEmailAddress("@vm0.bot")).toBeNull();
   });
 
   it("should return null for empty string", () => {
-    expect(parseInboundEmailAddress("")).toBeNull();
-  });
-
-  it("should return null for address with only @domain", () => {
-    expect(parseInboundEmailAddress("@vm0.bot")).toBeNull();
-  });
-
-  it("should return null for slash without agent name", () => {
-    expect(parseInboundEmailAddress("org/@vm0.bot")).toBeNull();
-  });
-
-  it("should return null for slash without org name", () => {
-    expect(parseInboundEmailAddress("/agent@vm0.bot")).toBeNull();
+    expect(parseOrgEmailAddress("")).toBeNull();
   });
 });
 

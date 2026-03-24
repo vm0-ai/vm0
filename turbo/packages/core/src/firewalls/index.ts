@@ -7,6 +7,8 @@
  */
 
 import type { FirewallConfig } from "../contracts/firewalls";
+import { agentmailFirewall } from "./agentmail.generated";
+import { ahrefsFirewall } from "./ahrefs.generated";
 import { confluenceFirewall } from "./confluence.generated";
 import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
@@ -19,8 +21,11 @@ import { jiraFirewall } from "./jira.generated";
 import { notionFirewall } from "./notion.generated";
 import { slackFirewall } from "./slack.generated";
 import { vercelFirewall } from "./vercel.generated";
+import { zeptomailFirewall } from "./zeptomail.generated";
 
 export const builtinFirewalls: Record<string, FirewallConfig> = {
+  agentmail: agentmailFirewall,
+  ahrefs: ahrefsFirewall,
   confluence: confluenceFirewall,
   figma: figmaFirewall,
   github: githubFirewall,
@@ -33,4 +38,5 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   notion: notionFirewall,
   slack: slackFirewall,
   vercel: vercelFirewall,
+  zeptomail: zeptomailFirewall,
 };

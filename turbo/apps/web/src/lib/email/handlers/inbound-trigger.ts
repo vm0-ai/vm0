@@ -3,8 +3,8 @@ import { processEmailAttachments } from "../attachment";
 import { extractEmailBody } from "../content-extract";
 import { verifySenderAuthenticity } from "../sender-auth";
 import {
-  parseInboundEmailAddress,
-  resolveAgentByAddress,
+  parseOrgEmailAddress,
+  resolveDefaultAgent,
   generateReplyToken,
   computeReplyRecipients,
   getFromDomain,
@@ -14,8 +14,8 @@ import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
-import { resolveOrgOrNull } from "../../org/resolve-org";
-import { canAccessCompose } from "../../agent/compose-access";
+import { getOrgBySlug } from "../../org/org-cache-service";
+import { verifyMembershipCached } from "../../org/org-membership-cache";
 import { logger } from "../../logger";
 
 const log = logger("email:inbound-trigger");
@@ -32,44 +32,33 @@ interface InboundEmailEvent {
 }
 
 interface ResolvedTrigger {
-  agentOrg: string;
-  agentName: string;
-  runtimeOrgId: string;
-  runtimeOrgSlug: string;
-  triggerLocalPart: string;
+  orgId: string;
+  orgSlug: string;
   userId: string;
+  composeId: string;
+  agentId: string;
 }
 
 /**
- * Parse trigger address from recipients and resolve the sender's user ID.
- *
- * Supports four address formats:
- * - runtimeorg+agentorg/agentname@domain (explicit runtime + agent org)
- * - agentorg/agentname@domain            (agent org explicit, runtime from user default)
- * - org+agent@domain                     (legacy: agentOrg=org, runtime from user default)
- * - agent@domain                         (both from user default)
+ * Parse org address from recipients, resolve sender, org, membership, and default agent.
  */
 async function resolveTrigger(
   to: string[],
   senderEmail: string,
 ): Promise<ResolvedTrigger | HandlerResult> {
-  // 1. Parse inbound address from recipients
-  let parsed = null;
-  let matchedAddress = "";
+  // 1. Parse org slug from recipients
+  let orgSlug: string | null = null;
   for (const addr of to) {
-    parsed = parseInboundEmailAddress(addr);
-    if (parsed) {
-      matchedAddress = addr;
-      break;
-    }
+    orgSlug = parseOrgEmailAddress(addr);
+    if (orgSlug) break;
   }
 
-  if (!parsed) {
-    log.debug("No trigger address found in recipients", { to });
+  if (!orgSlug) {
+    log.debug("No org address found in recipients", { to });
     return {
       ok: false,
       errorMessage:
-        "The email address could not be recognized as a valid agent address.",
+        "The email address could not be recognized as a valid org address.",
     };
   }
 
@@ -83,42 +72,42 @@ async function resolveTrigger(
     };
   }
 
-  // 3. Resolve runtime org (explicit slug from address, or agent's org as fallback)
-  const runtimeOrg = await resolveOrgOrNull(
-    { userId },
-    parsed.runtimeOrg ?? parsed.agentOrg,
-  );
-  if (!runtimeOrg) {
-    const msg = parsed.runtimeOrg
-      ? `Workspace "${parsed.runtimeOrg}" was not found.`
-      : "Your account does not have a workspace configured.";
-    log.debug("Runtime org resolution failed", {
-      from: senderEmail,
-      userId,
-      explicitOrg: parsed.runtimeOrg,
-    });
-    return { ok: false, errorMessage: msg };
+  // 3. Resolve org by slug
+  const orgData = await getOrgBySlug(orgSlug);
+  if (!orgData) {
+    log.debug("Org not found", { orgSlug });
+    return {
+      ok: false,
+      errorMessage: `Workspace "${orgSlug}" was not found.`,
+    };
   }
-  const runtimeOrgId = runtimeOrg.orgId;
-  const runtimeOrgSlug = runtimeOrg.slug;
 
-  // 4. Resolve agent org (defaults to runtime org if not specified)
-  const agentOrg = parsed.agentOrg ?? runtimeOrgSlug;
+  // 4. Verify org membership
+  const membership = await verifyMembershipCached(orgData.orgId, userId);
+  if (!membership) {
+    log.debug("User is not a member of org", { userId, orgId: orgData.orgId });
+    return {
+      ok: false,
+      errorMessage: "You are not a member of this workspace.",
+    };
+  }
 
-  // 5. Extract trigger local part from the matched address for reply-from
-  const atIndex = matchedAddress.indexOf("@");
-  const triggerLocalPart =
-    atIndex > 0
-      ? matchedAddress.slice(0, atIndex).toLowerCase()
-      : parsed.agentName;
+  // 5. Resolve default agent
+  const agent = await resolveDefaultAgent(orgData.orgId);
+  if (!agent) {
+    log.debug("No default agent configured", { orgId: orgData.orgId });
+    return {
+      ok: false,
+      errorMessage: "This workspace does not have a default agent configured.",
+    };
+  }
 
   return {
-    agentOrg,
-    agentName: parsed.agentName,
-    runtimeOrgId,
-    runtimeOrgSlug,
-    triggerLocalPart,
+    orgId: orgData.orgId,
+    orgSlug,
     userId,
+    composeId: agent.composeId,
+    agentId: agent.agentId,
   };
 }
 
@@ -126,10 +115,10 @@ async function resolveTrigger(
  * Handle an inbound email that triggers an agent run.
  *
  * Flow:
- * 1. Parse trigger address from recipients (org+agent or agent-only)
- * 2. Look up sender email in Clerk to get user ID
- * 3. Resolve agent by org slug + agent name
- * 4. Check if user has permission to access the agent
+ * 1. Parse org address from recipients
+ * 2. Look up sender email to get user ID
+ * 3. Verify org membership
+ * 4. Resolve org's default agent
  * 5. Fetch full email and verify sender via DMARC
  * 6. Create agent run with callback for response delivery
  *
@@ -140,53 +129,16 @@ export async function handleInboundEmailTrigger(
 ): Promise<HandlerResult> {
   const { email_id: emailId, to, from: senderEmail, subject } = event.data;
 
-  // 1-2. Resolve trigger address and sender
+  // 1-4. Resolve trigger: address, sender, org, membership, default agent
   const resolved = await resolveTrigger(to, senderEmail);
   if ("ok" in resolved) return resolved;
 
-  const {
-    agentOrg,
-    agentName,
-    runtimeOrgId,
-    runtimeOrgSlug,
-    triggerLocalPart,
-    userId,
-  } = resolved;
+  const { orgId, orgSlug, userId, composeId, agentId } = resolved;
 
   log.debug("Processing email trigger", {
-    agentOrg,
-    agentName,
-    runtimeOrg: runtimeOrgSlug,
+    orgSlug,
     from: senderEmail,
   });
-
-  // 3. Resolve agent
-  const compose = await resolveAgentByAddress(agentOrg, agentName);
-  if (!compose) {
-    log.debug("Agent not found", { org: agentOrg, agent: agentName });
-    return {
-      ok: false,
-      errorMessage: `Agent "${agentName}" was not found in org "${agentOrg}".`,
-    };
-  }
-
-  // 4. Check permission
-  const hasAccess = canAccessCompose(userId, runtimeOrgId, {
-    id: compose.composeId,
-    userId: compose.userId,
-    orgId: compose.orgId,
-  });
-
-  if (!hasAccess) {
-    log.debug("User does not have access to agent", {
-      userId,
-      composeId: compose.composeId,
-    });
-    return {
-      ok: false,
-      errorMessage: "You do not have permission to access this agent.",
-    };
-  }
 
   // 5. Fetch full email
   const email = await getReceivedEmail(emailId);
@@ -259,15 +211,15 @@ export async function handleInboundEmailTrigger(
       secret: generateCallbackSecret(),
       payload: {
         senderEmail,
-        composeId: compose.composeId,
+        composeId,
         userId,
         inboundEmailId: emailId,
         replyToken,
         inboundMessageId,
         inboundReferences,
         subject,
-        triggerLocalPart,
-        runtimeOrgId,
+        triggerLocalPart: orgSlug,
+        runtimeOrgId: orgId,
         replyRecipientTo: replyRecipients.to,
         replyRecipientCc: replyRecipients.cc,
       },
@@ -280,7 +232,7 @@ export async function handleInboundEmailTrigger(
     userId,
     prompt,
     appendSystemPrompt,
-    agentId: compose.agentId,
+    agentId,
     triggerSource: "email",
     callbacks,
   });
@@ -288,9 +240,7 @@ export async function handleInboundEmailTrigger(
   log.info("Dispatched agent run from email trigger", {
     runId: result.runId,
     emailId,
-    agentOrg,
-    agentName,
-    runtimeOrg: runtimeOrgSlug,
+    orgSlug,
   });
 
   return { ok: true };

@@ -223,8 +223,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       };
       expect(sendArgs.to).toBe("test@example.com");
       expect(sendArgs.subject).toContain("completed");
-      // From address uses org slug instead of agent name
-      expect(sendArgs.from).toMatch(/^org-[a-f0-9]+ from VM0/);
+      expect(sendArgs.from).toMatch(/^Zero <org-[a-f0-9]+@/);
     });
 
     it("should send failure email for failed scheduled run", async () => {
