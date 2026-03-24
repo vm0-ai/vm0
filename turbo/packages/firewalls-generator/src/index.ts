@@ -11,6 +11,7 @@ import { generate as generateAhrefs } from "./ahrefs";
 import { generate as generateAirtable } from "./airtable";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
+import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateElevenlabs } from "./elevenlabs";
@@ -36,6 +37,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   airtable: generateAirtable,
   asana: generateAsana,
   axiom: generateAxiom,
+  cloudflare: generateCloudflare,
   confluence: generateConfluence,
   discord: generateDiscord,
   elevenlabs: generateElevenlabs,

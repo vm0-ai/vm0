@@ -97,6 +97,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   airtable: ["airtable"],
   asana: ["asana"],
   axiom: ["axiom"],
+  cloudflare: ["cloudflare"],
   discord: ["discord"],
   github: ["github"],
   gitlab: ["gitlab"],
