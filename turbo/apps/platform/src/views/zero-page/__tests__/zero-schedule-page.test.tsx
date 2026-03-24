@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -417,6 +417,39 @@ describe("zero schedule page - edit dialog confirm close", () => {
     ).toBeInTheDocument();
   });
 
+  it("should show confirm overlay when ESC key is pressed with unsaved changes", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    const promptInput = screen.getByLabelText("Prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "Changed prompt text" },
+    });
+
+    // Press ESC key on the dialog content
+    const dialogContent = screen
+      .getByText("Edit schedule")
+      .closest("[role=dialog]");
+    fireEvent.keyDown(dialogContent!, { key: "Escape" });
+
+    // Confirm overlay should appear
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+  });
+
   it("should close dialog directly when Cancel is clicked without changes", async () => {
     mockScheduleAPI();
     await renderSchedulePage();
@@ -734,13 +767,9 @@ describe("zero schedule page - schedule dialog fields", () => {
     });
 
     // Toggle email notification on
-    const emailSwitch = screen
-      .getByText("Email")
-      .closest("div")
-      ?.querySelector("[role=switch]");
-    if (emailSwitch) {
-      fireEvent.click(emailSwitch);
-    }
+    const emailRow = screen.getByText("Email").parentElement!;
+    const emailSwitch = within(emailRow).getByRole("switch");
+    fireEvent.click(emailSwitch);
 
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
