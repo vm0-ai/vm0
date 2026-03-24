@@ -17,8 +17,7 @@ import { createCommand } from "../create";
 import chalk from "chalk";
 
 const mockAgent = {
-  name: "new-agent",
-  agentComposeId: "comp_xyz789",
+  agentId: "comp_xyz789",
   displayName: "New Agent",
   description: null,
   sound: null,
@@ -64,7 +63,6 @@ describe("zero agent create command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("new-agent");
       expect(logCalls).toContain("comp_xyz789");
       expect(logCalls).toContain("github");
     });
@@ -88,7 +86,7 @@ describe("zero agent create command", () => {
             return HttpResponse.json(mockAgent, { status: 201 });
           }),
           http.put(
-            "http://localhost:3000/api/zero/agents/new-agent/instructions",
+            "http://localhost:3000/api/zero/agents/comp_xyz789/instructions",
             async ({ request }) => {
               const body = (await request.json()) as { content: string };
               capturedInstructionsContent = body.content;
@@ -108,7 +106,7 @@ describe("zero agent create command", () => {
 
         expect(capturedInstructionsContent).toBe("You are a helpful agent.");
         const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-        expect(logCalls).toContain("new-agent");
+        expect(logCalls).toContain("comp_xyz789");
         expect(logCalls).toContain("created");
       });
     });

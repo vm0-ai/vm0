@@ -15,8 +15,7 @@ import chalk from "chalk";
 
 const mockSchedule = {
   id: "sched-001",
-  zeroAgentId: "za-001",
-  agentName: "my-agent",
+  agentId: "my-agent",
   orgSlug: "my-org",
   userId: "user-001",
   name: "default",

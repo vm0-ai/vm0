@@ -14,8 +14,7 @@ import { setupCommand } from "../setup";
 import chalk from "chalk";
 
 const mockAgent = {
-  name: "my-agent",
-  agentComposeId: "comp_abc123",
+  agentId: "comp_abc123",
   displayName: "My Agent",
   description: null,
   sound: null,
@@ -26,8 +25,7 @@ const mockDeployResponse = {
   created: true,
   schedule: {
     id: "sched-001",
-    zeroAgentId: "za-001",
-    agentName: "my-agent",
+    agentId: "my-agent",
     orgSlug: "my-org",
     userId: "user-001",
     name: "default",

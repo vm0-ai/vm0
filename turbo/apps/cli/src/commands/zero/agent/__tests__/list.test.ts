@@ -14,8 +14,7 @@ import { listCommand } from "../list";
 import chalk from "chalk";
 
 const mockAgent = {
-  name: "my-agent",
-  agentComposeId: "comp_abc123",
+  agentId: "my-agent",
   displayName: "My Agent",
   description: null,
   sound: null,

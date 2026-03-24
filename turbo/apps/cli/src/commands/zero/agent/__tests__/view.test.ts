@@ -14,8 +14,7 @@ import { viewCommand } from "../view";
 import chalk from "chalk";
 
 const mockAgent = {
-  name: "my-agent",
-  agentComposeId: "comp_abc123",
+  agentId: "comp_abc123",
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
@@ -54,7 +53,6 @@ describe("zero agent view command", () => {
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("my-agent");
       expect(logCalls).toContain("comp_abc123");
       expect(logCalls).toContain("github");
       expect(logCalls).toContain("A test agent");
