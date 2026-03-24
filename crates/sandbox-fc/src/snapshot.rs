@@ -92,8 +92,18 @@ pub async fn create_snapshot(
     //    as bind-mount targets during restore, so they must be deterministic.
     //    Remove any stale work dir from a previous run (leftover sockets,
     //    root-owned files from an accidental sudo invocation, etc.).
+    //
+    //    Umount any stale bind mount first — a previous failed run may have
+    //    left a bind mount on cow-device-bind, causing rm -rf to fail with EBUSY.
     let work = output.work_dir();
     if work.exists() {
+        let stale_bind = SandboxPaths::new(work.clone())
+            .cow_device_bind()
+            .display()
+            .to_string();
+        command::exec_ignore_errors("umount", &[stale_bind.as_str()], command::Privilege::Sudo)
+            .await;
+
         let work_str = work.display().to_string();
         command::exec("rm", &["-rf", &work_str], command::Privilege::Sudo)
             .await
@@ -271,7 +281,10 @@ async fn run_snapshot_workflow(
                         "destroy_keep_cow failed, retrying"
                     );
                     last_err = Some(e);
-                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    // Don't sleep after the last attempt.
+                    if attempt < 4 {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
                 }
             }
         }

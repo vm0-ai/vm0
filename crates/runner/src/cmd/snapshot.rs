@@ -62,6 +62,16 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
     }
 
     // Clean up any partial output from a previous failed attempt.
+    // Umount any stale bind mount first — a previous failed run may have
+    // left a bind mount on cow-device-bind inside the work dir, causing
+    // remove_dir_all to fail with EBUSY.
+    let stale_bind = output.work_dir().join("cow-device-bind");
+    if stale_bind.exists() {
+        let _ = tokio::process::Command::new("sudo")
+            .args(["umount", &stale_bind.display().to_string()])
+            .output()
+            .await;
+    }
     match tokio::fs::remove_dir_all(&output_dir).await {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
