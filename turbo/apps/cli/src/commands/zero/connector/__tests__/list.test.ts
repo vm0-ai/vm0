@@ -125,7 +125,7 @@ describe("zero connector list command", () => {
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("vm0 zero connector connect <type>");
+      expect(logCalls).toContain("zero connector connect <type>");
     });
   });
 

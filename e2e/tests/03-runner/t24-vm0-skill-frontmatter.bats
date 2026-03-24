@@ -30,9 +30,9 @@ teardown() {
 setup_artifact() {
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test content" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 }
 
 # ============================================
@@ -53,7 +53,7 @@ agents:
 EOF
 
     echo "# Step 2: Compose with --yes flag"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
     assert_output --partial "Compose"
     assert_output --partial "skill"
@@ -72,7 +72,7 @@ agents:
 EOF
 
     echo "# Step 4: Compose with -y short flag"
-    run $CLI_COMMAND compose -y "$TEST_DIR/vm0-short.yaml"
+    run $VM0_CLI compose -y "$TEST_DIR/vm0-short.yaml"
     assert_success
     assert_output --partial "Compose"
 }
@@ -89,7 +89,7 @@ agents:
 EOF
 
     echo "# Step 2: Compose with --yes flag and piped input (non-TTY)"
-    run bash -c "echo '' | $CLI_COMMAND compose --yes '$TEST_DIR/vm0.yaml'"
+    run bash -c "echo '' | $VM0_CLI compose --yes '$TEST_DIR/vm0.yaml'"
     assert_success
 
     echo "# Step 3: Verify compose succeeded"
@@ -117,7 +117,7 @@ agents:
 EOF
 
     echo "# Step 2: Compose with --yes"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Step 3: Verify compose succeeded"
@@ -141,7 +141,7 @@ EOF
     setup_artifact
 
     echo "# Step 3: Compose the config"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Step 4: Verify skill was uploaded"
@@ -167,7 +167,7 @@ agents:
 EOF
 
     echo "# Step 2: Compose the config"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Step 3: Verify skill was downloaded or resolved from cache"
@@ -193,7 +193,7 @@ agents:
 EOF
 
     echo "# Step 2: Compose with --yes"
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Step 3: Verify both skills were uploaded"

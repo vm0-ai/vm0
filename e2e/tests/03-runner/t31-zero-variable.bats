@@ -13,11 +13,11 @@ setup() {
 
 teardown() {
     # Clean up test variable if it exists
-    $CLI_COMMAND zero variable delete -y "$TEST_VAR_NAME" 2>/dev/null || true
+    $ZERO_CLI variable delete -y "$TEST_VAR_NAME" 2>/dev/null || true
 }
 
-@test "vm0 zero variable --help shows command description" {
-    run $CLI_COMMAND zero variable --help
+@test "zero variable --help shows command description" {
+    run $ZERO_CLI variable --help
     assert_success
     assert_output --partial "Manage variables"
     assert_output --partial "list"
@@ -25,20 +25,20 @@ teardown() {
     assert_output --partial "delete"
 }
 
-@test "vm0 zero variable set creates a variable" {
-    run $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "test-variable-value"
+@test "zero variable set creates a variable" {
+    run $ZERO_CLI variable set "$TEST_VAR_NAME" "test-variable-value"
     assert_success
     assert_output --partial "Variable \"$TEST_VAR_NAME\" saved"
     assert_output --partial "Use in vm0.yaml"
     assert_output --partial "\${{ vars.$TEST_VAR_NAME }}"
 }
 
-@test "vm0 zero variable list shows created variable with value" {
+@test "zero variable list shows created variable with value" {
     # First create a variable
-    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "my-test-value" --description "E2E test"
+    $ZERO_CLI variable set "$TEST_VAR_NAME" "my-test-value" --description "E2E test"
 
     # Then list variables - should show the value (unlike secrets)
-    run $CLI_COMMAND zero variable list
+    run $ZERO_CLI variable list
     assert_success
     assert_output --partial "$TEST_VAR_NAME"
     assert_output --partial "my-test-value"
@@ -46,43 +46,43 @@ teardown() {
     assert_output --partial "variable(s)"
 }
 
-@test "vm0 zero variable ls works as alias for list" {
+@test "zero variable ls works as alias for list" {
     # First create a variable
-    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "alias-test-value"
+    $ZERO_CLI variable set "$TEST_VAR_NAME" "alias-test-value"
 
     # List using ls alias
-    run $CLI_COMMAND zero variable ls
+    run $ZERO_CLI variable ls
     assert_success
     assert_output --partial "$TEST_VAR_NAME"
     assert_output --partial "alias-test-value"
 }
 
-@test "vm0 zero variable set updates existing variable" {
+@test "zero variable set updates existing variable" {
     # Create initial variable
-    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "initial-value"
+    $ZERO_CLI variable set "$TEST_VAR_NAME" "initial-value"
 
     # Update it
-    run $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "updated-value" --description "Updated"
+    run $ZERO_CLI variable set "$TEST_VAR_NAME" "updated-value" --description "Updated"
     assert_success
     assert_output --partial "Variable \"$TEST_VAR_NAME\" saved"
 
     # Verify value and description were updated
-    run $CLI_COMMAND zero variable list
+    run $ZERO_CLI variable list
     assert_output --partial "updated-value"
     assert_output --partial "Updated"
 }
 
-@test "vm0 zero variable delete removes variable" {
+@test "zero variable delete removes variable" {
     # Create a variable
-    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "to-be-deleted"
+    $ZERO_CLI variable set "$TEST_VAR_NAME" "to-be-deleted"
 
     # Delete it (use -y to skip confirmation)
-    run $CLI_COMMAND zero variable delete -y "$TEST_VAR_NAME"
+    run $ZERO_CLI variable delete -y "$TEST_VAR_NAME"
     assert_success
     assert_output --partial "Variable \"$TEST_VAR_NAME\" deleted"
 
     # Verify it's gone
-    run $CLI_COMMAND zero variable list
+    run $ZERO_CLI variable list
     assert_success
     refute_output --partial "$TEST_VAR_NAME"
 }
@@ -109,7 +109,7 @@ teardown() {
     create_test_volume "e2e-vol-var-expand"
 
     # Step 1: Create a server-stored variable
-    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "$var_value"
+    $ZERO_CLI variable set "$TEST_VAR_NAME" "$var_value"
 
     # Step 2: Create config that uses the variable
     cat > "$test_config" <<EOF
@@ -132,17 +132,17 @@ EOF
     # Step 3: Create artifact
     mkdir -p "$test_artifact_dir/$artifact_name"
     cd "$test_artifact_dir/$artifact_name"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null 2>&1
     echo "test content" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 
     # Step 4: Build the compose
-    run $CLI_COMMAND compose "$test_config"
+    run $VM0_CLI compose "$test_config"
     assert_success
 
     # Step 5: Run agent that echoes the variable value
     echo "# Running agent that echoes variable value..."
-    run $CLI_COMMAND run "$agent_name" \
+    run $VM0_CLI run "$agent_name" \
         --artifact-name "$artifact_name" \
         "echo MY_VAR=\$MY_VAR"
 
@@ -178,7 +178,7 @@ EOF
     create_test_volume "e2e-vol-var-override"
 
     # Step 1: Create a server-stored variable
-    $CLI_COMMAND zero variable set "$TEST_VAR_NAME" "$server_value"
+    $ZERO_CLI variable set "$TEST_VAR_NAME" "$server_value"
 
     # Step 2: Create config that uses the variable
     cat > "$test_config" <<EOF
@@ -201,17 +201,17 @@ EOF
     # Step 3: Create artifact
     mkdir -p "$test_artifact_dir/$artifact_name"
     cd "$test_artifact_dir/$artifact_name"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null 2>&1
     echo "test content" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 
     # Step 4: Build the compose
-    run $CLI_COMMAND compose "$test_config"
+    run $VM0_CLI compose "$test_config"
     assert_success
 
     # Step 5: Run agent with CLI --vars to override server value
     echo "# Running agent with CLI var override..."
-    run $CLI_COMMAND run "$agent_name" \
+    run $VM0_CLI run "$agent_name" \
         --vars "$TEST_VAR_NAME=$cli_value" \
         --artifact-name "$artifact_name" \
         "echo MY_VAR=\$MY_VAR"

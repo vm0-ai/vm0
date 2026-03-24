@@ -19,7 +19,7 @@ teardown() {
 }
 
 @test "vm0 init --help shows command description" {
-    run $CLI_COMMAND init --help
+    run $VM0_CLI init --help
     assert_success
     assert_output --partial "Initialize a new VM0 project"
     assert_output --partial "--force"
@@ -28,7 +28,7 @@ teardown() {
 
 @test "vm0 init creates vm0.yaml and AGENTS.md with --name flag" {
     # Use --name flag for non-interactive mode (CI-friendly)
-    run $CLI_COMMAND init --name test-agent
+    run $VM0_CLI init --name test-agent
     assert_success
     assert_output --partial "Created vm0.yaml"
     assert_output --partial "Created AGENTS.md"
@@ -49,7 +49,7 @@ teardown() {
     echo "old vm0 content" > vm0.yaml
     echo "old agents content" > AGENTS.md
 
-    run $CLI_COMMAND init --name new-agent --force
+    run $VM0_CLI init --name new-agent --force
     assert_success
     assert_output --partial "Created vm0.yaml"
     assert_output --partial "(overwritten)"

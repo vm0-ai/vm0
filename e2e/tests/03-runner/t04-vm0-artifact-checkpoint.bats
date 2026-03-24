@@ -26,8 +26,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -47,7 +47,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -65,7 +65,7 @@ teardown_file() {
 }
 
 @test "t04-1: build agent configuration" {
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -78,18 +78,18 @@ teardown_file() {
     echo "# Creating initial artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
 
     # Initial content: counter at 100, no agent marker
     echo "100" > counter.txt
     echo "initial content" > state.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # --- Phase 2: Run agent to create checkpoint (~15s) ---
     # Agent will: create agent-marker.txt, modify counter.txt from 100 to 101
     echo "# Running agent to modify artifact..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$artifact_name" \
         "echo 'created by agent' > agent-marker.txt && echo 101 > counter.txt"
 
@@ -120,14 +120,14 @@ teardown_file() {
     echo "external marker" > external-marker.txt  # Add new file
     rm -f agent-marker.txt 2>/dev/null || true    # Remove agent's file
 
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
     echo "# New HEAD version pushed"
 
     # --- Phase 4: Resume from checkpoint and verify ---
     # Should get checkpoint version, not HEAD (~15s)
     echo "# Resuming from checkpoint: $checkpoint_id"
-    run $CLI_COMMAND run resume "$checkpoint_id" \
+    run $VM0_CLI run resume "$checkpoint_id" \
         --verbose \
         "ls && cat counter.txt"
 

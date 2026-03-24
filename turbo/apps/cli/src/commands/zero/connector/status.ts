@@ -80,14 +80,14 @@ export const statusCommand = new Command()
 
         console.log();
         console.log(chalk.dim("To disconnect:"));
-        console.log(chalk.dim(`  vm0 zero connector disconnect ${type}`));
+        console.log(chalk.dim(`  zero connector disconnect ${type}`));
       } else {
         console.log(
           `${"Status:".padEnd(LABEL_WIDTH)}${chalk.dim("not connected")}`,
         );
         console.log();
         console.log(chalk.dim("To connect:"));
-        console.log(chalk.dim(`  vm0 zero connector connect ${type}`));
+        console.log(chalk.dim(`  zero connector connect ${type}`));
       }
     }),
   );

@@ -13,11 +13,11 @@ setup() {
 
 teardown() {
     # Clean up test secret if it exists
-    $CLI_COMMAND zero secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
+    $ZERO_CLI secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
 }
 
-@test "vm0 zero secret --help shows command description" {
-    run $CLI_COMMAND zero secret --help
+@test "zero secret --help shows command description" {
+    run $ZERO_CLI secret --help
     assert_success
     assert_output --partial "Manage secrets"
     assert_output --partial "list"
@@ -25,61 +25,61 @@ teardown() {
     assert_output --partial "delete"
 }
 
-@test "vm0 zero secret set creates a secret" {
-    run $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "test-secret-value"
+@test "zero secret set creates a secret" {
+    run $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "test-secret-value"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
     assert_output --partial "Use in vm0.yaml"
     assert_output --partial "\${{ secrets.$TEST_SECRET_NAME }}"
 }
 
-@test "vm0 zero secret list shows created secret" {
+@test "zero secret list shows created secret" {
     # First create a secret
-    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "secret-value" --description "E2E test"
+    $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "secret-value" --description "E2E test"
 
     # Then list secrets
-    run $CLI_COMMAND zero secret list
+    run $ZERO_CLI secret list
     assert_success
     assert_output --partial "$TEST_SECRET_NAME"
     assert_output --partial "E2E test"
     assert_output --partial "secret(s)"
 }
 
-@test "vm0 zero secret ls works as alias for list" {
+@test "zero secret ls works as alias for list" {
     # First create a secret
-    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "secret-value"
+    $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "secret-value"
 
     # List using ls alias
-    run $CLI_COMMAND zero secret ls
+    run $ZERO_CLI secret ls
     assert_success
     assert_output --partial "$TEST_SECRET_NAME"
 }
 
-@test "vm0 zero secret set updates existing secret" {
+@test "zero secret set updates existing secret" {
     # Create initial secret
-    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "initial-value"
+    $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "initial-value"
 
     # Update it
-    run $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "updated-value" --description "Updated"
+    run $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "updated-value" --description "Updated"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
 
     # Verify description was updated
-    run $CLI_COMMAND zero secret list
+    run $ZERO_CLI secret list
     assert_output --partial "Updated"
 }
 
-@test "vm0 zero secret delete removes secret" {
+@test "zero secret delete removes secret" {
     # Create a secret
-    $CLI_COMMAND zero secret set "$TEST_SECRET_NAME" --body "to-be-deleted"
+    $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "to-be-deleted"
 
     # Delete it (use -y to skip confirmation)
-    run $CLI_COMMAND zero secret delete -y "$TEST_SECRET_NAME"
+    run $ZERO_CLI secret delete -y "$TEST_SECRET_NAME"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" deleted"
 
     # Verify it's gone
-    run $CLI_COMMAND zero secret list
+    run $ZERO_CLI secret list
     assert_success
     refute_output --partial "$TEST_SECRET_NAME"
 }
@@ -126,17 +126,17 @@ EOF
     # Step 2: Create artifact
     mkdir -p "$test_artifact_dir/$artifact_name"
     cd "$test_artifact_dir/$artifact_name"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null 2>&1
     echo "test content" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 
     # Step 3: Build the compose
-    run $CLI_COMMAND compose "$test_config"
+    run $VM0_CLI compose "$test_config"
     assert_success
 
     # Step 4: Run agent with secret provided via CLI
     echo "# Running agent that echoes secret value..."
-    run $CLI_COMMAND run "$agent_name" \
+    run $VM0_CLI run "$agent_name" \
         --secrets "MY_SECRET=${secret_value}" \
         --artifact-name "$artifact_name" \
         "echo SECRET=\$MY_SECRET"
@@ -195,17 +195,17 @@ EOF
     # Step 2: Create artifact
     mkdir -p "$test_artifact_dir/$artifact_name"
     cd "$test_artifact_dir/$artifact_name"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null 2>&1
     echo "test content" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 
     # Step 3: Build the compose
-    run $CLI_COMMAND compose "$test_config"
+    run $VM0_CLI compose "$test_config"
     assert_success
 
     # Step 4: Run agent with multiple CLI secrets
     echo "# Running agent with multiple CLI secrets..."
-    run $CLI_COMMAND run "$agent_name" \
+    run $VM0_CLI run "$agent_name" \
         --secrets "API_KEY=${secret1_value}" \
         --secrets "CLI_SECRET=${secret2_value}" \
         --artifact-name "$artifact_name" \

@@ -1621,8 +1621,8 @@ jobs:
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
       - name: Bootstrap test account
         run: |
-          vm0 zero org set "e2e-runner" --force
-          vm0 zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
+          zero org set "e2e-runner" --force
+          zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}

@@ -108,7 +108,7 @@ describe("zero preference command", () => {
       await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("vm0 zero preference --timezone");
+      expect(logCalls).toContain("zero preference --timezone");
     });
 
     it("should not show timezone hint when timezone is already set", async () => {
@@ -123,7 +123,7 @@ describe("zero preference command", () => {
       await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).not.toContain("vm0 zero preference --timezone");
+      expect(logCalls).not.toContain("zero preference --timezone");
     });
   });
 

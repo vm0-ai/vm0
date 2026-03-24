@@ -24,7 +24,7 @@ teardown() {
     echo "# Step 1: Init memory"
     mkdir -p "$TEST_DIR/$MEMORY_NAME"
     cd "$TEST_DIR/$MEMORY_NAME"
-    run $CLI_COMMAND memory init --name "$MEMORY_NAME"
+    run $VM0_CLI memory init --name "$MEMORY_NAME"
     assert_success
     assert_output --partial "Initialized memory"
     assert_output --partial "$MEMORY_NAME"
@@ -34,19 +34,19 @@ teardown() {
     echo "hello from memory" > hello.txt
     mkdir -p subdir
     echo "nested content" > subdir/nested.txt
-    run $CLI_COMMAND memory push
+    run $VM0_CLI memory push
     assert_success
     assert_output --partial "Pushing memory"
     assert_output --partial "Version:"
 
     echo "# Step 3: List memories"
-    run $CLI_COMMAND memory list
+    run $VM0_CLI memory list
     assert_success
     assert_output --partial "$MEMORY_NAME"
     assert_output --partial "NAME"
 
     echo "# Step 4: Check status"
-    run $CLI_COMMAND memory status
+    run $VM0_CLI memory status
     assert_success
     assert_output --partial "Found"
     assert_output --partial "Version:"
@@ -54,7 +54,7 @@ teardown() {
     echo "# Step 5: Clone to new directory"
     cd "$TEST_DIR"
     CLONE_DIR="${MEMORY_NAME}-clone"
-    run $CLI_COMMAND memory clone "$MEMORY_NAME" "$CLONE_DIR"
+    run $VM0_CLI memory clone "$MEMORY_NAME" "$CLONE_DIR"
     assert_success
     assert_output --partial "Successfully cloned"
 
@@ -75,13 +75,13 @@ teardown() {
     echo "# Step 1: Create and push empty memory"
     mkdir -p "$TEST_DIR/$MEMORY_NAME"
     cd "$TEST_DIR/$MEMORY_NAME"
-    $CLI_COMMAND memory init --name "$MEMORY_NAME" >/dev/null
-    $CLI_COMMAND memory push >/dev/null
+    $VM0_CLI memory init --name "$MEMORY_NAME" >/dev/null
+    $VM0_CLI memory push >/dev/null
 
     echo "# Step 2: Clone empty memory"
     cd "$TEST_DIR"
     CLONE_DIR="${MEMORY_NAME}-empty"
-    run $CLI_COMMAND memory clone "$MEMORY_NAME" "$CLONE_DIR"
+    run $VM0_CLI memory clone "$MEMORY_NAME" "$CLONE_DIR"
     assert_success
     assert_output --partial "empty"
 

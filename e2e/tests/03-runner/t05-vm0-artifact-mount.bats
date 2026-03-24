@@ -32,7 +32,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
+    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -56,7 +56,7 @@ teardown() {
 }
 
 @test "Build VM0 artifact mount test agent configuration" {
-    run $CLI_COMMAND compose "$SHARED_CONFIG"
+    run $VM0_CLI compose "$SHARED_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -65,19 +65,19 @@ teardown() {
     # Step 1: Create artifact with known content
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Create test files with known content
     echo "hello from artifact" > test-file.txt
     mkdir -p subdir
     echo "nested content" > subdir/nested.txt
 
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Step 2: Run agent with artifact, list files
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --verbose \
         "ls -la && cat test-file.txt && cat subdir/nested.txt"
@@ -102,13 +102,13 @@ teardown() {
 
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > data.txt
-    $CLI_COMMAND artifact push >/dev/null
+    $VM0_CLI artifact push >/dev/null
 
     # Simple run that should complete
     # Use extended timeout for CI environments which may be slower
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo done"
 

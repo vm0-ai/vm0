@@ -34,7 +34,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
+    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -58,7 +58,7 @@ teardown() {
 }
 
 @test "Build VM0 telemetry test agent configuration" {
-    run $CLI_COMMAND compose "$SHARED_CONFIG"
+    run $VM0_CLI compose "$SHARED_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -68,14 +68,14 @@ teardown() {
     echo "# Step 1: Creating initial artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test content" > test.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Step 2: Run agent with a simple command
     echo "# Step 2: Running agent to trigger telemetry collection..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello from agent'"
 
@@ -105,7 +105,7 @@ teardown() {
 
     # Step 4: Verify vm0 logs command (default: agent events)
     echo "# Step 4: Fetching agent events (default)..."
-    run $CLI_COMMAND logs "$RUN_ID"
+    run $VM0_CLI logs "$RUN_ID"
 
     assert_success
 
@@ -117,7 +117,7 @@ teardown() {
 
     # Step 5: Verify --agent option explicitly shows agent events
     echo "# Step 5: Testing --agent option..."
-    run $CLI_COMMAND logs "$RUN_ID" --agent
+    run $VM0_CLI logs "$RUN_ID" --agent
 
     assert_success
     assert_output --partial "▷ Claude Code Started"
@@ -125,7 +125,7 @@ teardown() {
 
     # Step 6: Verify --system option shows system logs
     echo "# Step 6: Testing --system option..."
-    run $CLI_COMMAND logs "$RUN_ID" --system --tail 100
+    run $VM0_CLI logs "$RUN_ID" --system --tail 100
 
     assert_success
     # System log should contain sandbox log entries with INFO level
@@ -136,7 +136,7 @@ teardown() {
 
     # Step 7: Verify --metrics option shows resource metrics
     echo "# Step 7: Testing --metrics option..."
-    run $CLI_COMMAND logs "$RUN_ID" --metrics --tail 100
+    run $VM0_CLI logs "$RUN_ID" --metrics --tail 100
 
     assert_success
     # Metrics may take time to collect, so check if either:
@@ -154,7 +154,7 @@ teardown() {
 
     # Step 8: Verify --tail option limits output
     echo "# Step 8: Testing --tail option..."
-    run $CLI_COMMAND logs "$RUN_ID" --tail 2
+    run $VM0_CLI logs "$RUN_ID" --tail 2
 
     assert_success
     # With tail=2, should see at most 2 events

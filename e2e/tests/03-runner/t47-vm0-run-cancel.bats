@@ -24,7 +24,7 @@ teardown() {
 }
 
 @test "vm0 run kill cancels a running job" {
-    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
+    if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated"
     fi
 
@@ -41,11 +41,11 @@ agents:
 EOF
 
     echo "# Step 1: Compose agent..."
-    run $CLI_COMMAND compose vm0.yaml
+    run $VM0_CLI compose vm0.yaml
     assert_success
 
     echo "# Step 2: Start run in background (sleep 300 keeps it alive)..."
-    $CLI_COMMAND run "$AGENT_NAME" --no-auto-update "sleep 300" > "$TEST_DIR/run_output.txt" 2>&1 &
+    $VM0_CLI run "$AGENT_NAME" --no-auto-update "sleep 300" > "$TEST_DIR/run_output.txt" 2>&1 &
     RUN_PID=$!
 
     echo "# Step 3: Extract Run ID from output..."
@@ -63,7 +63,7 @@ EOF
     echo "# Got Run ID: $RUN_ID"
 
     echo "# Step 4: Kill the run..."
-    run $CLI_COMMAND run kill "$RUN_ID"
+    run $VM0_CLI run kill "$RUN_ID"
     assert_success
     assert_output --partial "cancelled"
 

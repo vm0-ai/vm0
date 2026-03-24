@@ -5,7 +5,7 @@
 load '../../helpers/setup'
 
 @test "zero --help shows schedule, agent, org commands" {
-    run zero --help
+    run $ZERO_CLI --help
     assert_success
     assert_output --partial "schedule"
     assert_output --partial "agent"
@@ -13,7 +13,7 @@ load '../../helpers/setup'
 }
 
 @test "zero --help does not show compose, volume, artifact commands" {
-    run zero --help
+    run $ZERO_CLI --help
     assert_success
     refute_output --partial "compose"
     refute_output --partial "volume"
@@ -21,17 +21,17 @@ load '../../helpers/setup'
 }
 
 @test "zero --version outputs version" {
-    run zero --version
+    run $ZERO_CLI --version
     assert_success
     assert_output --regexp '^[0-9]+\.[0-9]+\.[0-9]+'
 }
 
 @test "zero agent list returns successfully" {
-    run zero agent list
+    run $ZERO_CLI agent list
     assert_success
 }
 
 @test "zero schedule list returns successfully" {
-    run zero schedule list
+    run $ZERO_CLI schedule list
     assert_success
 }

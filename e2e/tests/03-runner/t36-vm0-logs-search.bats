@@ -34,7 +34,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
+    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -58,7 +58,7 @@ teardown() {
 }
 
 @test "logs search --help shows command options" {
-    run $CLI_COMMAND logs search --help
+    run $VM0_CLI logs search --help
     assert_success
     assert_output --partial "Search agent events across runs"
     assert_output --partial "--after-context"
@@ -71,7 +71,7 @@ teardown() {
 }
 
 @test "Build logs search test agent configuration" {
-    run $CLI_COMMAND compose "$SHARED_CONFIG"
+    run $VM0_CLI compose "$SHARED_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -81,14 +81,14 @@ teardown() {
     echo "# Step 1: Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "search test content" > test.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Step 2: Run agent
     echo "# Step 2: Running agent..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello from agent'"
     assert_success
@@ -107,13 +107,13 @@ teardown() {
     # Step 4: Search for keyword scoped to this run
     echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
-    run $CLI_COMMAND logs search "hello from agent" --run "$RUN_ID" --since 1h
+    run $VM0_CLI logs search "hello from agent" --run "$RUN_ID" --since 1h
     assert_success
     assert_output --partial "$SHORT_ID"
 
     # Step 5: Search for non-matching keyword shows empty guidance
     echo "# Step 5: Testing empty results guidance..."
-    run $CLI_COMMAND logs search "xyznonexistent99999" --run "$RUN_ID" --since 1h
+    run $VM0_CLI logs search "xyznonexistent99999" --run "$RUN_ID" --since 1h
     assert_success
     assert_output --partial "No matches found"
 }

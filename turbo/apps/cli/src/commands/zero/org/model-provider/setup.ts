@@ -29,7 +29,7 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   if (!isInteractive()) {
     throw new Error("Interactive mode requires a TTY", {
       cause: new Error(
-        'Use non-interactive mode: vm0 zero org model-provider setup --type <type> --secret "<value>"',
+        'Use non-interactive mode: zero org model-provider setup --type <type> --secret "<value>"',
       ),
     });
   }
@@ -200,7 +200,7 @@ export const setupCommand = new Command()
             secret: secretArgs,
             authMethod: options.authMethod,
             model: options.model,
-            commandPrefix: "vm0 zero org model-provider setup",
+            commandPrefix: "zero org model-provider setup",
           });
         } else if (options.type || secretArgs.length > 0) {
           throw new Error("Both --type and --secret are required");

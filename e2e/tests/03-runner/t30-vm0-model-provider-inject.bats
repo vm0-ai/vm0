@@ -45,14 +45,14 @@ EOF
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 
     # Build and run
-    $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    $VM0_CLI compose "$TEST_DIR/vm0.yaml"
 
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo INJECTED=\$CLAUDE_CODE_OAUTH_TOKEN"
 

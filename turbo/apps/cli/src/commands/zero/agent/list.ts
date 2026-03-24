@@ -15,7 +15,7 @@ export const listCommand = new Command()
         console.log(chalk.dim("No zero agents found"));
         console.log(
           chalk.dim(
-            '  Create one with: vm0 zero agent create --connectors github --display-name "My Agent"',
+            '  Create one with: zero agent create --connectors github --display-name "My Agent"',
           ),
         );
         return;

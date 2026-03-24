@@ -72,7 +72,7 @@ describe("zero org variable list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No org variables found");
-      expect(logCalls).toContain("vm0 zero org variable set");
+      expect(logCalls).toContain("zero org variable set");
     });
 
     it("should truncate long values", async () => {

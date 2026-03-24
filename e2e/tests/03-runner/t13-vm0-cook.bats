@@ -20,7 +20,7 @@ teardown() {
 
 @test "cook command reads vm0.yaml and prepares agent with volume" {
     # Skip if not authenticated (requires VM0_TOKEN or logged in)
-    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
+    if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated - run 'vm0 auth login' first"
     fi
 
@@ -49,7 +49,7 @@ EOF
     echo "test data" > "$VOLUME_NAME/data.txt"
 
     echo "# Step 3: Run cook without prompt (preparation only)..."
-    run $CLI_COMMAND cook --no-auto-update
+    run $VM0_CLI cook --no-auto-update
     assert_success
 
     echo "# Step 4: Verify output..."
@@ -71,7 +71,7 @@ EOF
 
     echo "# Step 7: Run cook with prompt to test auto-pull..."
     # Use bash command for mock agent compatibility
-    run $CLI_COMMAND cook --no-auto-update "echo 'hello' > /home/user/workspace/result.txt"
+    run $VM0_CLI cook --no-auto-update "echo 'hello' > /home/user/workspace/result.txt"
     # Verify cook started the run
     assert_output --partial "Running agent"
     # Check for init event (Claude Code Started) which indicates agent started (replaces vm0_start)
@@ -92,7 +92,7 @@ EOF
 
 @test "cook command succeeds when variables are set via --env-file" {
     # Skip if not authenticated (requires VM0_TOKEN or logged in)
-    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
+    if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated - run 'vm0 auth login' first"
     fi
 
@@ -117,7 +117,7 @@ E2E_TEST_VAR=test-value-123
 EOF
 
     echo "# Step 3: Run cook with --env-file (should succeed)..."
-    run $CLI_COMMAND cook --no-auto-update --env-file .env
+    run $VM0_CLI cook --no-auto-update --env-file .env
     assert_success
 
     echo "# Step 4: Verify normal cook output..."
@@ -128,7 +128,7 @@ EOF
 
 @test "cook command with skills downloads and composes correctly" {
     # Skip if not authenticated (requires VM0_TOKEN or logged in)
-    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
+    if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated - run 'vm0 auth login' first"
     fi
 
@@ -147,7 +147,7 @@ agents:
 EOF
 
     echo "# Step 2: Run cook without prompt (preparation only)..."
-    run $CLI_COMMAND cook --no-auto-update --yes
+    run $VM0_CLI cook --no-auto-update --yes
     assert_success
 
     echo "# Step 3: Verify compose was called and skill was processed..."

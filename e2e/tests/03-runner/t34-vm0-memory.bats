@@ -31,8 +31,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -55,7 +55,7 @@ EOF
     export SYMLINK_PATH="/home/user/.claude/projects/-home-user-workspace/memory"
 
     # Compose agent once for all tests in this file
-    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
 
 }
 
@@ -67,7 +67,7 @@ teardown_file() {
 }
 
 @test "t34-1: build agent configuration" {
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -78,7 +78,7 @@ teardown_file() {
 
     # Step 1: Run agent with --memory, write marker file through symlink
     # Verifies: symlink exists, points to .vm0/memory, write-through works, visible at both paths
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
         "test -L $SYMLINK_PATH && readlink $SYMLINK_PATH | grep -q '.vm0/memory' && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt && cat /home/user/.vm0/memory/marker.txt"
 
@@ -101,7 +101,7 @@ teardown_file() {
 
     # Step 2: Continue from session, verify marker file is readable through symlink
     echo "# Continuing from session: $session_id (no --memory flag)..."
-    run $CLI_COMMAND run continue "$session_id" \
+    run $VM0_CLI run continue "$session_id" \
         --verbose \
         "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
 
@@ -115,7 +115,7 @@ teardown_file() {
     local memory_name="e2e-mem-t34-3-$(date +%s%3N)-$RANDOM"
 
     # Step 1: Run agent with --memory, write marker file through symlink
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
         "test -L $SYMLINK_PATH && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt"
 
@@ -138,7 +138,7 @@ teardown_file() {
 
     # Step 2: Resume from checkpoint, verify marker file is readable through symlink
     echo "# Resuming from checkpoint: $checkpoint_id (no --memory flag)..."
-    run $CLI_COMMAND run resume "$checkpoint_id" \
+    run $VM0_CLI run resume "$checkpoint_id" \
         --verbose \
         "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
 
@@ -152,7 +152,7 @@ teardown_file() {
     local memory_name="e2e-mem-t34-4-$(date +%s%3N)-$RANDOM"
 
     # Step 1: Run agent with --memory, write marker file through symlink
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
         "test -L $SYMLINK_PATH && echo 'memory-marker-t34' > $SYMLINK_PATH/marker.txt && cat $SYMLINK_PATH/marker.txt"
 
@@ -168,7 +168,7 @@ teardown_file() {
     # returns existing=true and the commit must use the correct
     # storageType ("memory", not "artifact").
     echo "# Running fresh agent with --memory $memory_name (dedup path)..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --memory "$memory_name" \
         "test -L $SYMLINK_PATH && cat $SYMLINK_PATH/marker.txt"
 

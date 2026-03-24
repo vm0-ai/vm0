@@ -41,7 +41,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying output contains org/name format..."
@@ -78,7 +78,7 @@ agents:
 EOF
 
     echo "# Step 2: Composing agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Extract org from compose output (format: "Compose created: org/agent-name")
@@ -95,12 +95,12 @@ EOF
     echo "# Step 3: Setting up artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
     echo "# Step 4: Running with org/name format..."
-    run $CLI_COMMAND run "$USER_ORG/$AGENT_NAME" \
+    run $VM0_CLI run "$USER_ORG/$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello from org test"
     assert_success
@@ -129,7 +129,7 @@ EOF
 
     echo "# Running vm0 compose without arguments from test directory..."
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose
+    run $VM0_CLI compose
     cd - >/dev/null
 
     assert_success

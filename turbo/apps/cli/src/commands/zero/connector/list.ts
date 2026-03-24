@@ -71,6 +71,6 @@ export const listCommand = new Command()
       // Always show connect hint
       console.log();
       console.log(chalk.dim("To connect a service:"));
-      console.log(chalk.dim("  vm0 zero connector connect <type>"));
+      console.log(chalk.dim("  zero connector connect <type>"));
     }),
   );

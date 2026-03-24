@@ -35,7 +35,7 @@ export const setCommand = new Command()
         } else {
           throw new Error("--body is required in non-interactive mode", {
             cause: new Error(
-              `Usage: vm0 zero org secret set ${name} --body "your-secret-value"`,
+              `Usage: zero org secret set ${name} --body "your-secret-value"`,
             ),
           });
         }

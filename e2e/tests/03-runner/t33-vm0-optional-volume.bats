@@ -20,8 +20,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Unique name for the optional volume that will NOT exist
@@ -47,7 +47,7 @@ volumes:
     name: $CLAUDE_VOLUME_NAME
     version: latest
 EOF
-    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
+    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -85,7 +85,7 @@ volumes:
     version: latest
 EOF
 
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -96,15 +96,15 @@ EOF
     # Create artifact (required for run)
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
     cd - >/dev/null
 
     # Run agent - should succeed even though optional volume doesn't exist
     # The optional volume mount point should simply not exist
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --verbose \
         "ls -la /home/user/optional-data 2>&1 || echo 'OPTIONAL_DIR_NOT_MOUNTED'"
@@ -120,8 +120,8 @@ EOF
     mkdir -p "$TEST_DIR/$REQUIRED_VOLUME_NAME"
     cd "$TEST_DIR/$REQUIRED_VOLUME_NAME"
     echo "required-data-content" > required.txt
-    $CLI_COMMAND volume init --name "$REQUIRED_VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$REQUIRED_VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create config with both required and optional volumes
@@ -149,21 +149,21 @@ volumes:
 EOF
 
     # Compose the agent
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
 
     # Create artifact
     export ARTIFACT_NAME_MIXED="e2e-art-mixed-${UNIQUE_ID}"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME_MIXED"
     cd "$TEST_DIR/$ARTIFACT_NAME_MIXED"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME_MIXED" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME_MIXED" >/dev/null
     echo "test" > marker.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
     cd - >/dev/null
 
     # Run agent - should succeed with required volume mounted, optional skipped
-    run $CLI_COMMAND run "${AGENT_NAME}-mixed" \
+    run $VM0_CLI run "${AGENT_NAME}-mixed" \
         --artifact-name "$ARTIFACT_NAME_MIXED" \
         --verbose \
         "cat /home/user/required-data/required.txt && (ls /home/user/optional-data 2>&1 || echo 'OPTIONAL_NOT_MOUNTED')"

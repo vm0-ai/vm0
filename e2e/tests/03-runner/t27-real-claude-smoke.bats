@@ -31,12 +31,12 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Set up model-provider once for all tests
-    $CLI_COMMAND zero org model-provider setup \
+    $ZERO_CLI org model-provider setup \
         --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY"
 
     # Compose agents separately (only one agent per compose is supported)
@@ -85,14 +85,14 @@ volumes:
     version: latest
 EOF
 
-    $CLI_COMMAND compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
-    $CLI_COMMAND compose "$TEST_DIR/vm0-flags.yaml" >/dev/null
-    $CLI_COMMAND compose "$TEST_DIR/vm0-settings.yaml" >/dev/null
+    $VM0_CLI compose "$TEST_DIR/vm0-basic.yaml" >/dev/null
+    $VM0_CLI compose "$TEST_DIR/vm0-flags.yaml" >/dev/null
+    $VM0_CLI compose "$TEST_DIR/vm0-settings.yaml" >/dev/null
 }
 
 teardown_file() {
     # Clean up model provider (best-effort)
-    $CLI_COMMAND zero org model-provider remove "anthropic-api-key" 2>/dev/null || true
+    $ZERO_CLI org model-provider remove "anthropic-api-key" 2>/dev/null || true
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
@@ -105,7 +105,7 @@ teardown_file() {
     fi
 
     # Run claude --version inside the sandbox to confirm which binary is installed
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         "Run 'claude --version' with the Bash tool and include the exact output"
@@ -122,7 +122,7 @@ teardown_file() {
         skip "ANTHROPIC_API_KEY not set"
     fi
 
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
@@ -144,7 +144,7 @@ teardown_file() {
 
     # "--" separates variadic --disallowed-tools from the prompt
     # (Commander.js <tools...> would otherwise swallow subsequent args)
-    run $CLI_COMMAND run "${AGENT_NAME}-flags" \
+    run $VM0_CLI run "${AGENT_NAME}-flags" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
@@ -172,7 +172,7 @@ teardown_file() {
     # Claude will read this file to prove the hook fired inside the sandbox.
     local settings='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo SETTINGS_HOOK_OK > /tmp/hook_sentinel.txt"}]}]}}'
 
-    run $CLI_COMMAND run "${AGENT_NAME}-settings" \
+    run $VM0_CLI run "${AGENT_NAME}-settings" \
         --model-provider "anthropic-api-key" \
         --debug-no-mock-claude \
         --settings "$settings" \

@@ -47,9 +47,9 @@ create_artifact() {
     local name="$1"
     mkdir -p "$TEST_DIR/$name"
     cd "$TEST_DIR/$name"
-    $CLI_COMMAND artifact init --name "$name" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$name" >/dev/null 2>&1
     echo "test" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 }
 
 # Helper to set up a test connector with a known token via API
@@ -103,11 +103,11 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-multi"
 
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify env vars from both firewall configs are set to placeholder values.
-    run $CLI_COMMAND run "${AGENT_NAME}-multi" \
+    run $VM0_CLI run "${AGENT_NAME}-multi" \
         --artifact-name "$ARTIFACT_NAME-multi" \
         "echo \"GITHUB_TOKEN=\$GITHUB_TOKEN\" && echo \"SLACK_TOKEN=\$SLACK_TOKEN\""
 
@@ -140,14 +140,14 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-perm"
 
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Three checks from inside the sandbox:
     # 1. GET /repos/vm0-ai/vm0 — matches repo-read → proxy replaces token → 200
     # 2. GET /search/code?q=vm0 — no matching permission → mitm_addon blocks → 403
     # This also verifies proxy token replacement (200 means the real token was used).
-    run $CLI_COMMAND run "${AGENT_NAME}-perm" \
+    run $VM0_CLI run "${AGENT_NAME}-perm" \
         --artifact-name "$ARTIFACT_NAME-perm" \
         "ALLOWED=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && BLOCKED=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/search/code?q=vm0) && echo \"ALLOWED_STATUS=\$ALLOWED\" && echo \"BLOCKED_STATUS=\$BLOCKED\""
 
@@ -165,7 +165,7 @@ EOF
         return 1
     }
 
-    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+    run $VM0_CLI logs "$RUN_ID" --network --tail 100
     assert_success
     # ALLOW: repos endpoint matches metadata:read
     assert_output --partial "GET    200"
@@ -192,12 +192,12 @@ EOF
 
     create_artifact "$ARTIFACT_NAME-auto"
 
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     # Verify GITHUB_TOKEN is replaced with placeholder (firewall auto-added)
     # and a GitHub API call succeeds through the proxy (token replacement works).
-    run $CLI_COMMAND run "${AGENT_NAME}-auto" \
+    run $VM0_CLI run "${AGENT_NAME}-auto" \
         --artifact-name "$ARTIFACT_NAME-auto" \
         "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\""
 

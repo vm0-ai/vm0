@@ -20,7 +20,7 @@ teardown() {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
 
-    run $CLI_COMMAND volume init --name "$VOLUME_NAME"
+    run $VM0_CLI volume init --name "$VOLUME_NAME"
     assert_success
     assert_output --partial "$VOLUME_NAME"
 
@@ -31,7 +31,7 @@ teardown() {
 @test "Initialize volume with --name flag using custom name" {
     mkdir -p "$TEST_VOLUME_DIR/my-dataset"
     cd "$TEST_VOLUME_DIR/my-dataset"
-    run $CLI_COMMAND volume init --name "my-dataset"
+    run $VM0_CLI volume init --name "my-dataset"
     assert_success
     assert_output --partial "my-dataset"
 }
@@ -39,10 +39,10 @@ teardown() {
 @test "Push empty volume to cloud succeeds" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
 
     # Push without any files (empty volume)
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
     assert_output --partial "No files found (empty volume)"
     assert_output --partial "Version:"
@@ -53,13 +53,13 @@ teardown() {
 @test "Push volume to cloud and returns versionId" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "Hello from E2E test" > test-file.txt
     mkdir -p data
     echo "42" > data/answer.txt
 
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
     assert_output --partial "Uploading"
     assert_output --partial "$VOLUME_NAME"
@@ -71,17 +71,17 @@ teardown() {
 @test "Multiple pushes create different versions" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
 
     # First push
     echo "version 1" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
 
     # Second push with different content
     echo "version 2" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
     VERSION2=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
 
@@ -93,18 +93,18 @@ teardown() {
     # First push multiple versions
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "version 1" > data.txt
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     echo "version 2" > data.txt
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     echo "version 3 - HEAD" > data.txt
     mkdir -p subdir
     echo "nested file" > subdir/nested.txt
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     # Pull in a different directory
     NEW_DIR="$(mktemp -d)"
@@ -114,7 +114,7 @@ teardown() {
 name: $VOLUME_NAME
 EOF
 
-    run $CLI_COMMAND volume pull
+    run $VM0_CLI volume pull
     assert_success
     assert_output --partial "Downloading"
 
@@ -131,22 +131,22 @@ EOF
     # Push multiple versions and capture their IDs
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
 
     # Push version 1
     echo "content from version 1" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
 
     # Push version 2
     echo "content from version 2" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
 
     # Push version 3 (HEAD)
     echo "content from version 3 - HEAD" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
 
     # Pull version 1 specifically (not HEAD)
@@ -157,7 +157,7 @@ EOF
 name: $VOLUME_NAME
 EOF
 
-    run $CLI_COMMAND volume pull "$VERSION1"
+    run $VM0_CLI volume pull "$VERSION1"
     assert_success
     assert_output --partial "version: $VERSION1"
 
@@ -172,14 +172,14 @@ EOF
 @test "volume status shows version info after push" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "# Step 1: Push volume..."
     echo "test content" > test-file.txt
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     echo "# Step 2: Check status..."
-    run $CLI_COMMAND volume status
+    run $VM0_CLI volume status
     assert_success
     assert_output --partial "Checking volume"
     assert_output --partial "Found"
@@ -192,13 +192,13 @@ EOF
 @test "volume status shows empty indicator for empty volume" {
     mkdir -p "$TEST_VOLUME_DIR/$VOLUME_NAME"
     cd "$TEST_VOLUME_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
 
     echo "# Step 1: Push empty volume..."
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     echo "# Step 2: Check status..."
-    run $CLI_COMMAND volume status
+    run $VM0_CLI volume status
     assert_success
     assert_output --partial "Checking volume"
     assert_output --partial "Found (empty)"

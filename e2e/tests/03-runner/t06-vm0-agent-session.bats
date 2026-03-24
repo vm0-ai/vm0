@@ -30,8 +30,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -51,7 +51,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -73,7 +73,7 @@ teardown_file() {
 # =============================================================================
 
 @test "t06-1: build agent configuration" {
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -92,16 +92,16 @@ teardown_file() {
     echo "# Creating initial artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
 
     echo "initial" > marker.txt
     echo "100" > counter.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # -- Step 2: Run agent to create session (was t06-2b) --
     echo "# Running agent to create session..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$artifact_name" \
         "echo 'agent-created' > agent.txt && echo 200 > counter.txt"
 
@@ -127,13 +127,13 @@ teardown_file() {
     echo "999" > counter.txt                 # Update counter
     rm -f agent.txt 2>/dev/null || true      # Remove agent's file
 
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
     echo "# New HEAD version pushed"
 
     # -- Step 4: Continue session and verify latest version (was t06-2d) --
     echo "# Continuing from session (should use latest artifact)..."
-    run $CLI_COMMAND run continue "$session_id" --verbose "ls && cat counter.txt"
+    run $VM0_CLI run continue "$session_id" --verbose "ls && cat counter.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -164,15 +164,15 @@ teardown_file() {
     echo "# Creating artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
 
     echo "initial-content" > testfile.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # -- Step 2: Run agent with templateVars (was t06-3b) --
     echo "# Running agent with --vars testKey=testValue..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --vars "testKey=testValue" \
         --artifact-name "$artifact_name" \
         --verbose \
@@ -196,12 +196,12 @@ teardown_file() {
     echo "# Updating artifact..."
     cd "$artifact_dir"
     echo "updated-content" > testfile.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # -- Step 4: Continue from session with templateVars (was t06-3d) --
     echo "# Continuing from session..."
-    run $CLI_COMMAND run continue "$session_id" --verbose "cat testfile.txt"
+    run $VM0_CLI run continue "$session_id" --verbose "cat testfile.txt"
 
     assert_success
     assert_output --partial "● Bash("
@@ -244,7 +244,7 @@ volumes:
 EOF
 
     echo "# Building config with secrets..."
-    run $CLI_COMMAND compose "$env_config"
+    run $VM0_CLI compose "$env_config"
     assert_success
     assert_output --partial "$env_agent_name"
 
@@ -252,14 +252,14 @@ EOF
     echo "# Creating artifact..."
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $CLI_COMMAND artifact init --name "$artifact_name" >/dev/null
+    $VM0_CLI artifact init --name "$artifact_name" >/dev/null
     echo "test-content" > testfile.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # -- Step 2: Run agent with secrets to create session (was t06-4b) --
     echo "# Running agent with secrets to create session..."
-    run $CLI_COMMAND run "$env_agent_name" \
+    run $VM0_CLI run "$env_agent_name" \
         --vars "testVar=myTestVar" \
         --secrets "TEST_SECRET=initial-secret-value" \
         --artifact-name "$artifact_name" \
@@ -280,7 +280,7 @@ EOF
     # -- Step 3: Continue and verify secrets loaded from env (was t06-4c) --
     echo "# Continuing with secret in environment variable..."
     export TEST_SECRET="env-secret-value"
-    run $CLI_COMMAND run continue "$session_id" "echo 'continue test'"
+    run $VM0_CLI run continue "$session_id" "echo 'continue test'"
 
     # Should succeed - the secret was loaded from environment variable
     assert_success

@@ -35,7 +35,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
+    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -48,7 +48,7 @@ teardown_file() {
 }
 
 @test "Build VM0 optional artifact test agent configuration" {
-    run $CLI_COMMAND compose "$SHARED_CONFIG"
+    run $VM0_CLI compose "$SHARED_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -58,7 +58,7 @@ teardown_file() {
     # The agent should run, execute tasks, and complete successfully
 
     echo "# Running agent without artifact..."
-    run $CLI_COMMAND run "$AGENT_NAME" --verbose "echo 'hello world' && pwd"
+    run $VM0_CLI run "$AGENT_NAME" --verbose "echo 'hello world' && pwd"
 
     assert_success
     assert_output --partial "● Bash("
@@ -77,7 +77,7 @@ teardown_file() {
 
     # Step 1: First run without artifact - creates new session
     echo "# Step 1: First run without artifact..."
-    run $CLI_COMMAND run "$AGENT_NAME" "echo 'first run'"
+    run $VM0_CLI run "$AGENT_NAME" "echo 'first run'"
 
     assert_success
     assert_output --partial "Session:"
@@ -93,7 +93,7 @@ teardown_file() {
     # Step 2: Second run without artifact with same config
     # Each run creates its own session (multi-session support)
     echo "# Step 2: Second run without artifact..."
-    run $CLI_COMMAND run "$AGENT_NAME" "echo 'second run'"
+    run $VM0_CLI run "$AGENT_NAME" "echo 'second run'"
 
     assert_success
     assert_output --partial "Session:"
@@ -123,7 +123,7 @@ teardown_file() {
 
     # Step 1: Initial run without artifact
     echo "# Step 1: Initial run without artifact..."
-    run $CLI_COMMAND run "$AGENT_NAME" "echo 'initial context'"
+    run $VM0_CLI run "$AGENT_NAME" "echo 'initial context'"
 
     assert_success
     assert_output --partial "Session:"
@@ -138,7 +138,7 @@ teardown_file() {
 
     # Step 2: Continue from session
     echo "# Step 2: Continuing from session..."
-    run $CLI_COMMAND run continue "$SESSION_ID" --verbose "echo 'continued from session'"
+    run $VM0_CLI run continue "$SESSION_ID" --verbose "echo 'continued from session'"
 
     assert_success
     assert_output --partial "● Bash("

@@ -81,7 +81,7 @@ describe("zero org model-provider list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No org-level model providers configured");
-      expect(logCalls).toContain("vm0 zero org model-provider setup");
+      expect(logCalls).toContain("zero org model-provider setup");
     });
   });
 

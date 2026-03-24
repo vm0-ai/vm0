@@ -7,7 +7,7 @@ load '../../helpers/setup'
 # turbo/apps/cli/src/commands/__tests__/cook.test.ts
 
 @test "cook subcommands help is available" {
-    run $CLI_COMMAND cook --help
+    run $VM0_CLI cook --help
     assert_success
     assert_output --partial "logs"
     assert_output --partial "continue"
@@ -18,7 +18,7 @@ load '../../helpers/setup'
 }
 
 @test "cook logs supports vm0 logs options" {
-    run $CLI_COMMAND cook logs --help
+    run $VM0_CLI cook logs --help
     assert_success
     assert_output --partial "--agent"
     assert_output --partial "--system"

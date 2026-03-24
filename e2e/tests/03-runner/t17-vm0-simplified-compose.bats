@@ -31,7 +31,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying compose succeeded..."
@@ -51,7 +51,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying compose succeeded..."
@@ -72,7 +72,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying compose succeeded (apps field silently ignored)..."
@@ -103,7 +103,7 @@ EOF
 
     echo "# Running vm0 compose..."
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
+    run $VM0_CLI compose vm0.yaml
     assert_success
 
     echo "# Verifying instructions upload..."
@@ -131,12 +131,12 @@ EOF
 
     echo "# First compose..."
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
+    run $VM0_CLI compose vm0.yaml
     assert_success
     assert_output --partial "Instructions"
 
     echo "# Second compose with same content..."
-    run $CLI_COMMAND compose vm0.yaml
+    run $VM0_CLI compose vm0.yaml
     assert_success
     # Should show unchanged indicator
     assert_output --partial "unchanged"
@@ -159,7 +159,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying skill was processed (downloaded or served from cache)..."
@@ -179,11 +179,11 @@ agents:
 EOF
 
     echo "# First compose..."
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Second compose with same skill..."
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
     # Should show unchanged or cached indicator for the skill
     assert_output --regexp "(unchanged|cached)"
@@ -215,7 +215,7 @@ EOF
 
     echo "# Running vm0 compose..."
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose --yes vm0.yaml
+    run $VM0_CLI compose --yes vm0.yaml
     assert_success
 
     echo "# Verifying both uploads..."
@@ -247,19 +247,19 @@ EOF
 
     echo "# Running vm0 compose..."
     cd "$TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
+    run $VM0_CLI compose vm0.yaml
     assert_success
 
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
     echo "# Running agent to verify instructions is mounted..."
     # The instructions is mounted at /home/user/.claude/CLAUDE.md
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "cat /home/user/.claude/CLAUDE.md"
     assert_success
@@ -282,20 +282,20 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose --yes "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose --yes "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
     echo "# Running agent to verify skill is mounted..."
     # The skill is mounted at /home/user/.claude/skills/github/
     # Provide mock GH_TOKEN since github skill requires it
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --secrets "GH_TOKEN=mock-token-for-test" \
         "ls /home/user/.claude/skills/github/"
@@ -316,18 +316,18 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
     echo "# Running agent to verify gh cli is installed in base image..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "gh --version"
     assert_success

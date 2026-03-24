@@ -15,7 +15,7 @@ export const listCommand = new Command()
       if (result.schedules.length === 0) {
         console.log(chalk.dim("No schedules found"));
         console.log(
-          chalk.dim("  Create one with: vm0 zero schedule setup <agent-name>"),
+          chalk.dim("  Create one with: zero schedule setup <agent-name>"),
         );
         return;
       }

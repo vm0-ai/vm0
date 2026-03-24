@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# E2E tests for vm0 zero schedule commands - Happy Path Only
+# E2E tests for zero schedule commands - Happy Path Only
 #
 # These tests verify the complete zero schedule integration works end-to-end.
 # Error cases, input variations, and edge cases are tested in:
@@ -36,7 +36,7 @@ agents:
 EOF
 
     cd "$TEST_DIR"
-    local COMPOSE_OUTPUT=$($CLI_COMMAND compose vm0.yaml --json)
+    local COMPOSE_OUTPUT=$($VM0_CLI compose vm0.yaml --json)
     local COMPOSE_ID=$(echo "$COMPOSE_OUTPUT" | jq -r '.composeId')
     echo "$COMPOSE_ID" > "$BATS_FILE_TMPDIR/compose_id"
 }
@@ -47,7 +47,7 @@ teardown_file() {
 
     # Clean up schedule and temp directory
     if [ -n "$AGENT_NAME" ]; then
-        $CLI_COMMAND zero schedule delete "$AGENT_NAME" --yes 2>/dev/null || true
+        $ZERO_CLI schedule delete "$AGENT_NAME" --yes 2>/dev/null || true
     fi
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -68,7 +68,7 @@ setup() {
 
 @test "t20-1: cron schedule lifecycle (setup, list, status, enable/disable, delete)" {
     # --- Setup (create) ---
-    run $CLI_COMMAND zero schedule setup "$AGENT_NAME" \
+    run $ZERO_CLI schedule setup "$AGENT_NAME" \
         --frequency daily \
         --time "09:00" \
         --timezone "UTC" \
@@ -78,13 +78,13 @@ setup() {
     assert_output --partial "$AGENT_NAME"
 
     # --- List ---
-    run $CLI_COMMAND zero schedule list
+    run $ZERO_CLI schedule list
     assert_success
     assert_output --partial "$COMPOSE_ID"
     assert_output --partial "disabled"
 
     # --- Status ---
-    run $CLI_COMMAND zero schedule status "$AGENT_NAME"
+    run $ZERO_CLI schedule status "$AGENT_NAME"
     assert_success
     assert_output --partial "Agent:"
     assert_output --partial "$COMPOSE_ID"
@@ -93,7 +93,7 @@ setup() {
     assert_output --partial "0 9 * * *"
 
     # --- Update (setup again) ---
-    run $CLI_COMMAND zero schedule setup "$AGENT_NAME" \
+    run $ZERO_CLI schedule setup "$AGENT_NAME" \
         --frequency daily \
         --time "10:00" \
         --timezone "America/New_York" \
@@ -102,27 +102,27 @@ setup() {
     assert_output --partial "Updated schedule"
 
     # Verify update via status
-    run $CLI_COMMAND zero schedule status "$AGENT_NAME"
+    run $ZERO_CLI schedule status "$AGENT_NAME"
     assert_success
     assert_output --partial "0 10 * * *"
 
     # --- Enable ---
-    run $CLI_COMMAND zero schedule enable "$AGENT_NAME"
+    run $ZERO_CLI schedule enable "$AGENT_NAME"
     assert_success
     assert_output --partial "Enabled"
 
     # Verify enabled in list
-    run $CLI_COMMAND zero schedule list
+    run $ZERO_CLI schedule list
     assert_success
     assert_output --partial "enabled"
 
     # --- Disable ---
-    run $CLI_COMMAND zero schedule disable "$AGENT_NAME"
+    run $ZERO_CLI schedule disable "$AGENT_NAME"
     assert_success
     assert_output --partial "Disabled"
 
     # --- Delete ---
-    run $CLI_COMMAND zero schedule delete "$AGENT_NAME" --yes
+    run $ZERO_CLI schedule delete "$AGENT_NAME" --yes
     assert_success
     assert_output --partial "Deleted"
 }
@@ -143,11 +143,11 @@ agents:
 EOF
 
     cd "$LOOP_TEST_DIR"
-    local LOOP_COMPOSE_OUTPUT=$($CLI_COMMAND compose vm0.yaml --json)
+    local LOOP_COMPOSE_OUTPUT=$($VM0_CLI compose vm0.yaml --json)
     local LOOP_COMPOSE_ID=$(echo "$LOOP_COMPOSE_OUTPUT" | jq -r '.composeId')
 
     # --- Setup loop schedule ---
-    run $CLI_COMMAND zero schedule setup "$LOOP_AGENT_NAME" \
+    run $ZERO_CLI schedule setup "$LOOP_AGENT_NAME" \
         --frequency loop \
         --interval 300 \
         --timezone "UTC" \
@@ -156,28 +156,28 @@ EOF
     assert_output --partial "Created schedule"
 
     # --- Status ---
-    run $CLI_COMMAND zero schedule status "$LOOP_AGENT_NAME"
+    run $ZERO_CLI schedule status "$LOOP_AGENT_NAME"
     assert_success
     assert_output --partial "Loop"
     assert_output --partial "300s"
 
     # --- List ---
-    run $CLI_COMMAND zero schedule list
+    run $ZERO_CLI schedule list
     assert_success
     assert_output --partial "$LOOP_COMPOSE_ID"
 
     # --- Enable ---
-    run $CLI_COMMAND zero schedule enable "$LOOP_AGENT_NAME"
+    run $ZERO_CLI schedule enable "$LOOP_AGENT_NAME"
     assert_success
     assert_output --partial "Enabled"
 
     # --- Disable ---
-    run $CLI_COMMAND zero schedule disable "$LOOP_AGENT_NAME"
+    run $ZERO_CLI schedule disable "$LOOP_AGENT_NAME"
     assert_success
     assert_output --partial "Disabled"
 
     # --- Delete ---
-    run $CLI_COMMAND zero schedule delete "$LOOP_AGENT_NAME" --yes
+    run $ZERO_CLI schedule delete "$LOOP_AGENT_NAME" --yes
     assert_success
     assert_output --partial "Deleted"
 

@@ -71,7 +71,7 @@ describe("zero secret list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No secrets found");
-      expect(logCalls).toContain("vm0 zero secret set");
+      expect(logCalls).toContain("zero secret set");
     });
   });
 

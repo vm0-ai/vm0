@@ -69,7 +69,7 @@ describe("zero org secret list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No org secrets found");
-      expect(logCalls).toContain("vm0 zero org secret set");
+      expect(logCalls).toContain("zero org secret set");
     });
   });
 

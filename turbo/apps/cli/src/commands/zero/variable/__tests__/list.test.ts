@@ -72,7 +72,7 @@ describe("zero variable list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No variables found");
-      expect(logCalls).toContain("vm0 zero variable set");
+      expect(logCalls).toContain("zero variable set");
     });
 
     it("should truncate long values", async () => {

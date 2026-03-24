@@ -15,7 +15,7 @@ export const listCommand = new Command()
         console.log(chalk.dim("No org-level model providers configured"));
         console.log();
         console.log("To add an org-level model provider:");
-        console.log(chalk.cyan("  vm0 zero org model-provider setup"));
+        console.log(chalk.cyan("  zero org model-provider setup"));
         return;
       }
 

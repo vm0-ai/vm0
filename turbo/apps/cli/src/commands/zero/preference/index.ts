@@ -180,7 +180,7 @@ async function interactiveSetup(prefs: {
 }
 
 /**
- * vm0 zero preference
+ * zero preference
  *
  * View or update user preferences (timezone, notifications).
  */
@@ -209,10 +209,10 @@ export const zeroPreferenceCommand = new Command()
       } else if (!prefs.timezone) {
         console.log();
         console.log(
-          `To set timezone: ${chalk.cyan("vm0 zero preference --timezone <timezone>")}`,
+          `To set timezone: ${chalk.cyan("zero preference --timezone <timezone>")}`,
         );
         console.log(
-          chalk.dim("Example: vm0 zero preference --timezone America/New_York"),
+          chalk.dim("Example: zero preference --timezone America/New_York"),
         );
       }
     }),

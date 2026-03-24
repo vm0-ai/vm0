@@ -25,8 +25,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -46,7 +46,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -64,7 +64,7 @@ teardown_file() {
 }
 
 @test "t08-1: build agent configuration" {
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -77,15 +77,15 @@ teardown_file() {
     echo "# Creating artifact..."
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "test-content" > file.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Step 2: Run agent (~15s)
     echo "# Running agent..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello world'"
 
@@ -118,16 +118,16 @@ teardown_file() {
     local artifact_dir="$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     mkdir -p "$artifact_dir"
     cd "$artifact_dir"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "v1" > version.txt
     echo "100" > counter.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Step 2: Run agent to create initial conversation (~15s)
     echo "# Running agent to create conversation..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'original run' && cat version.txt && echo 200 > counter.txt"
 
@@ -150,7 +150,7 @@ teardown_file() {
     echo "v2" > version.txt
     echo "999" > counter.txt
     echo "new-file" > new.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
     echo "# New artifact version pushed"
 
@@ -158,7 +158,7 @@ teardown_file() {
     # This is the key test: --conversation lets us continue conversation history
     # but with a different (newer) artifact version
     echo "# Forking from conversation with new artifact..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --conversation "$conversation_id" \
         --verbose \

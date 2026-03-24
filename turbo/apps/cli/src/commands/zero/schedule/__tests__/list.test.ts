@@ -92,7 +92,7 @@ describe("zero schedule list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No schedules found");
-      expect(logCalls).toContain("vm0 zero schedule setup");
+      expect(logCalls).toContain("zero schedule setup");
     });
   });
 

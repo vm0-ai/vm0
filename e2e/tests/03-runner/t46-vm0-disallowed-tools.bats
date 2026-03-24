@@ -26,8 +26,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name
@@ -47,7 +47,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -60,7 +60,7 @@ teardown_file() {
 @test "t46-1: run with --disallowed-tools succeeds" {
     # "--" separates variadic --disallowed-tools from the prompt
     # (Commander.js <tools...> would otherwise swallow the prompt)
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --disallowed-tools CronCreate CronList CronDelete \
         -- "echo hello"
 
@@ -72,7 +72,7 @@ teardown_file() {
 
 @test "t46-2: run with --tools succeeds" {
     # "--" separates variadic --tools from the prompt
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --tools Bash \
         -- "echo hello"
 

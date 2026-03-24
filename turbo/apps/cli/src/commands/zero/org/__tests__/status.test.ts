@@ -63,7 +63,7 @@ describe("zero org status command", () => {
       expect.stringContaining("No organization configured"),
     );
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("vm0 zero org set"),
+      expect.stringContaining("zero org set"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });

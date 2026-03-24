@@ -17,9 +17,7 @@ export const statusCommand = new Command()
       } catch (error) {
         if (error instanceof ApiRequestError && error.status === 404) {
           throw new Error("No organization configured", {
-            cause: new Error(
-              "Set your organization with: vm0 zero org set <slug>",
-            ),
+            cause: new Error("Set your organization with: zero org set <slug>"),
           });
         }
         throw error;

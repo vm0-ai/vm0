@@ -23,8 +23,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$CLAUDE_VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create the test-volume that will be used for all override tests
@@ -33,8 +33,8 @@ VOLEOF
     mkdir -p "$TEST_DIR/$TEST_VOLUME_NAME"
     cd "$TEST_DIR/$TEST_VOLUME_NAME"
     echo "initial-data" > data.txt
-    $CLI_COMMAND volume init --name "$TEST_VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$TEST_VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
     # Create inline config with unique agent name using real volume names
@@ -58,7 +58,7 @@ volumes:
 EOF
 
     # Compose agent once for all tests in this file
-    $CLI_COMMAND compose "$TEST_CONFIG" >/dev/null
+    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
 }
 
 setup() {
@@ -79,7 +79,7 @@ teardown_file() {
 }
 
 @test "t07-1: build agent configuration" {
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -94,7 +94,7 @@ teardown_file() {
 
     # Version 1: content = "version-1"
     echo "version-1" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version: \K[0-9a-f]+')
     echo "# Version 1 ID: $VERSION1"
@@ -102,12 +102,12 @@ teardown_file() {
 
     # Version 2: content = "version-2"
     echo "version-2" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
 
     # Version 3 (HEAD): content = "version-3-head"
     echo "version-3-head" > data.txt
-    run $CLI_COMMAND volume push
+    run $VM0_CLI volume push
     assert_success
     echo "# HEAD version pushed"
 
@@ -115,15 +115,15 @@ teardown_file() {
     echo "# Creating artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test" > marker.txt
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Step 3: Run agent WITH --volume-version to override to version 1 (~15s)
     # Note: --volume-version uses the volume ALIAS from config (test-volume), not the storage name
     echo "# Running agent with --volume-version override..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --volume-version "$VOLUME_ALIAS=$VERSION1" \
         --verbose \

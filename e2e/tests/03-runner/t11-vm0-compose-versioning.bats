@@ -35,7 +35,7 @@ agents:
 EOF
 
     echo "# Running vm0 compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Verifying output contains Version..."
@@ -57,7 +57,7 @@ agents:
 EOF
 
     echo "# First compose..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 1: $VERSION1"
@@ -74,7 +74,7 @@ agents:
 EOF
 
     echo "# Second compose with different content..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
     # Should indicate new version created
     assert_output --partial "Compose created"
@@ -110,7 +110,7 @@ agents:
 EOF
 
     echo "# Building version 1..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
     VERSION1=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 1: $VERSION1"
@@ -127,7 +127,7 @@ agents:
 EOF
 
     echo "# Building version 2..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
     VERSION2=$(echo "$output" | grep -oP 'Version:\s+\K[0-9a-f]+')
     echo "# Version 2: $VERSION2"
@@ -135,12 +135,12 @@ EOF
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
     echo "# Running with specific version (version 1)..."
-    run $CLI_COMMAND run "$AGENT_NAME:$VERSION1" \
+    run $VM0_CLI run "$AGENT_NAME:$VERSION1" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello"
     assert_success
@@ -161,18 +161,18 @@ agents:
 EOF
 
     echo "# Building agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
     echo "# Running with :latest tag..."
-    run $CLI_COMMAND run "$AGENT_NAME:latest" \
+    run $VM0_CLI run "$AGENT_NAME:latest" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello"
     assert_success
@@ -193,18 +193,18 @@ agents:
 EOF
 
     echo "# Building agent..."
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     echo "# Initializing artifact storage..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
     echo "# Running without version specifier (should use HEAD)..."
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo hello"
     assert_success

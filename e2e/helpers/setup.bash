@@ -7,8 +7,9 @@ TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 load "${TEST_ROOT}/test/libs/bats-support/load"
 load "${TEST_ROOT}/test/libs/bats-assert/load"
 
-# Path to the CLI (trace wrapper logs each invocation for timeout debugging)
-export CLI_COMMAND="${TEST_ROOT}/helpers/trace-cli.sh"
+# Path to CLI binaries (trace wrappers log each invocation for timeout debugging)
+export VM0_CLI="${TEST_ROOT}/helpers/trace-vm0.sh"
+export ZERO_CLI="${TEST_ROOT}/helpers/trace-zero.sh"
 
 # Show system logs when test fails
 # This hook is called by BATS before teardown() when a test fails
@@ -17,7 +18,7 @@ bats::on_failure() {
     run_id=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | tail -1)
     if [[ -n "$run_id" ]]; then
         echo "# === System logs for failed run ($run_id) ==="
-        $CLI_COMMAND logs "$run_id" --system
+        $VM0_CLI logs "$run_id" --system
     fi
 }
 
@@ -34,8 +35,8 @@ create_test_volume() {
     cat > CLAUDE.md << 'VOLEOF'
 This is a test file for the volume.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 }
 

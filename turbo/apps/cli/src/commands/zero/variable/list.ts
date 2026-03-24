@@ -25,7 +25,7 @@ export const listCommand = new Command()
         console.log(chalk.dim("No variables found"));
         console.log();
         console.log("To add a variable:");
-        console.log(chalk.cyan("  vm0 zero variable set MY_VAR <value>"));
+        console.log(chalk.cyan("  zero variable set MY_VAR <value>"));
         return;
       }
 

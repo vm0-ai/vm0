@@ -32,8 +32,8 @@ teardown() {
 # Organization Status Tests (requires network)
 # ============================================
 
-@test "vm0 zero org status shows organization info or setup instructions" {
-    run $CLI_COMMAND zero org status
+@test "zero org status shows organization info or setup instructions" {
+    run $ZERO_CLI org status
 
     # Either shows org info or tells user to set one up
     # Both are valid responses
@@ -44,7 +44,7 @@ teardown() {
     else
         # User has no organization configured
         assert_output --partial "No organization configured"
-        assert_output --partial "vm0 zero org set"
+        assert_output --partial "zero org set"
     fi
 }
 
@@ -63,7 +63,7 @@ agents:
 EOF
 
     # Should succeed - image is resolved server-side based on framework
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     rm -rf "$TEST_DIR"
@@ -73,45 +73,45 @@ EOF
 # Organization Creation and Update Tests (CI has isolated DB)
 # ============================================
 
-@test "vm0 zero org set creates new organization successfully" {
+@test "zero org set creates new organization successfully" {
     # First check if user already has an organization
-    run $CLI_COMMAND zero org status
+    run $ZERO_CLI org status
 
     if [[ $status -eq 0 ]]; then
         # User already has organization, need to update with --force
-        run $CLI_COMMAND zero org set "$TEST_SLUG" --force
+        run $ZERO_CLI org set "$TEST_SLUG" --force
     else
         # No organization yet, create new one
-        run $CLI_COMMAND zero org set "$TEST_SLUG"
+        run $ZERO_CLI org set "$TEST_SLUG"
     fi
 
     assert_success
     assert_output --partial "$TEST_SLUG"
 }
 
-@test "vm0 zero org status shows newly created organization" {
+@test "zero org status shows newly created organization" {
     # Ensure organization exists first
-    run $CLI_COMMAND zero org status
+    run $ZERO_CLI org status
     if [[ $status -ne 0 ]]; then
-        $CLI_COMMAND zero org set "$TEST_SLUG" >/dev/null 2>&1
+        $ZERO_CLI org set "$TEST_SLUG" >/dev/null 2>&1
     fi
 
-    run $CLI_COMMAND zero org status
+    run $ZERO_CLI org status
     assert_success
     assert_output --partial "Organization Information"
     assert_output --partial "Slug:"
 }
 
-@test "vm0 zero org set updates organization with --force flag" {
+@test "zero org set updates organization with --force flag" {
     # Ensure organization exists
-    run $CLI_COMMAND zero org status
+    run $ZERO_CLI org status
     if [[ $status -ne 0 ]]; then
-        $CLI_COMMAND zero org set "$TEST_SLUG" >/dev/null 2>&1
+        $ZERO_CLI org set "$TEST_SLUG" >/dev/null 2>&1
     fi
 
     # Update with --force
     NEW_SLUG="e2e-force-$(date +%s%3N)-$RANDOM"
-    run $CLI_COMMAND zero org set "$NEW_SLUG" --force
+    run $ZERO_CLI org set "$NEW_SLUG" --force
     assert_success
     assert_output --partial "$NEW_SLUG"
 }

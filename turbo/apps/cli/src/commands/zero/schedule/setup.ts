@@ -625,7 +625,7 @@ async function tryEnableSchedule(
       console.error(chalk.dim(`  ${error.message}`));
     }
     console.log(
-      `  To enable manually: ${chalk.cyan(`vm0 zero schedule enable ${agentName}`)}`,
+      `  To enable manually: ${chalk.cyan(`zero schedule enable ${agentName}`)}`,
     );
   }
 }
@@ -633,7 +633,7 @@ async function tryEnableSchedule(
 function showEnableHint(agentName: string): void {
   console.log();
   console.log(
-    `  To enable: ${chalk.cyan(`vm0 zero schedule enable ${agentName}`)}`,
+    `  To enable: ${chalk.cyan(`zero schedule enable ${agentName}`)}`,
   );
 }
 

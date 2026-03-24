@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# E2E tests for vm0 zero preference --timezone and TZ injection into sandbox
+# E2E tests for zero preference --timezone and TZ injection into sandbox
 #
 # These tests verify:
-# 1. The vm0 zero preference command can set user timezone preference
+# 1. The zero preference command can set user timezone preference
 # 2. The TZ environment variable is correctly injected into sandbox
 #
 # Test Structure:
@@ -31,8 +31,8 @@ setup_file() {
     cat > CLAUDE.md << 'VOLEOF'
 Test volume for timezone E2E tests.
 VOLEOF
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
     cd "$TEST_DIR"
 
     # Create agent config
@@ -53,7 +53,7 @@ volumes:
     version: latest
 EOF
 
-    $CLI_COMMAND compose vm0.yaml
+    $VM0_CLI compose vm0.yaml
 }
 
 teardown_file() {
@@ -77,35 +77,35 @@ setup() {
 # user-level timezone preference.  Two vm0 run calls (~15s each) + CLI
 # commands (~5s) ≈ 35s, well within the 60s timeout.
 
-@test "vm0 zero preference --timezone and TZ injection" {
+@test "zero preference --timezone and TZ injection" {
     # --- preference set and read ---
-    run $CLI_COMMAND zero preference --timezone "Asia/Shanghai"
+    run $ZERO_CLI preference --timezone "Asia/Shanghai"
     assert_success
     assert_output --partial "Timezone set to"
     assert_output --partial "Asia/Shanghai"
 
-    $CLI_COMMAND zero preference --timezone "America/New_York" >/dev/null
+    $ZERO_CLI preference --timezone "America/New_York" >/dev/null
 
-    run $CLI_COMMAND zero preference
+    run $ZERO_CLI preference
     assert_success
     assert_output --partial "America/New_York"
 
     # --- reject invalid timezone ---
-    run $CLI_COMMAND zero preference --timezone "Invalid/Timezone"
+    run $ZERO_CLI preference --timezone "Invalid/Timezone"
     assert_failure
     assert_output --partial "Invalid timezone"
 
     # --- TZ injection into sandbox ---
-    $CLI_COMMAND zero preference --timezone "Asia/Tokyo" >/dev/null
+    $ZERO_CLI preference --timezone "Asia/Tokyo" >/dev/null
 
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --verbose \
         "echo TZ=\$TZ"
     assert_success
     assert_output --partial "TZ=Asia/Tokyo"
 
     # --- explicit TZ overrides user preference ---
-    $CLI_COMMAND zero preference --timezone "Asia/Shanghai" >/dev/null
+    $ZERO_CLI preference --timezone "Asia/Shanghai" >/dev/null
 
     local OVERRIDE_AGENT_NAME="tz-override-${UNIQUE_ID}"
     cat > "$TEST_DIR/vm0-tz-override.yaml" <<EOF
@@ -127,9 +127,9 @@ volumes:
     version: latest
 EOF
 
-    $CLI_COMMAND compose "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
+    $VM0_CLI compose "$TEST_DIR/vm0-tz-override.yaml" >/dev/null
 
-    run $CLI_COMMAND run "$OVERRIDE_AGENT_NAME" \
+    run $VM0_CLI run "$OVERRIDE_AGENT_NAME" \
         --verbose \
         "echo TZ=\$TZ"
     assert_success

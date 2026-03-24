@@ -17,7 +17,6 @@ import { initCommand } from "./commands/init";
 
 import { upgradeCommand } from "./commands/upgrade";
 import { whoamiCommand } from "./commands/whoami";
-import { zeroCommand } from "./commands/zero";
 
 const program = new Command();
 
@@ -42,7 +41,6 @@ program.addCommand(logsCommand);
 program.addCommand(initCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(whoamiCommand);
-program.addCommand(zeroCommand);
 
 export { program };
 

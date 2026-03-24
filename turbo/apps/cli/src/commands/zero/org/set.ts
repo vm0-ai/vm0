@@ -21,9 +21,7 @@ export const setCommand = new Command()
           throw new Error(
             `You already have an organization: ${existingOrg.slug}`,
             {
-              cause: new Error(
-                `To change, use: vm0 zero org set ${slug} --force`,
-              ),
+              cause: new Error(`To change, use: zero org set ${slug} --force`),
             },
           );
         }

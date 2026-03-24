@@ -16,7 +16,7 @@ export const listCommand = new Command()
         console.log();
         console.log("To add an org secret:");
         console.log(
-          chalk.cyan("  vm0 zero org secret set MY_API_KEY --body <value>"),
+          chalk.cyan("  zero org secret set MY_API_KEY --body <value>"),
         );
         return;
       }

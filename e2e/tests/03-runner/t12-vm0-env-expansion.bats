@@ -57,9 +57,9 @@ setup_artifact() {
     create_env_expansion_config
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
     echo "test content" > test.txt
-    $CLI_COMMAND artifact push >/dev/null 2>&1
+    $VM0_CLI artifact push >/dev/null 2>&1
 }
 
 # Environment variable expansion tests with --secrets flag
@@ -69,11 +69,11 @@ setup_artifact() {
     setup_artifact
 
     echo "# Step 2: Build the compose"
-    run $CLI_COMMAND compose "$TEST_CONFIG"
+    run $VM0_CLI compose "$TEST_CONFIG"
     assert_success
 
     echo "# Step 3: Run with --vars and --secrets flags"
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --vars "testVar=${VAR_VALUE}" \
         --secrets "TEST_SECRET=${SECRET_VALUE}" \
         --artifact-name "$ARTIFACT_NAME" \

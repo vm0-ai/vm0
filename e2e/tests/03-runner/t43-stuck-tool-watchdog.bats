@@ -21,7 +21,7 @@ teardown() {
 }
 
 @test "stuck-tool watchdog kills agent when WebFetch hangs" {
-    if $CLI_COMMAND auth status 2>&1 | grep -q "Not authenticated"; then
+    if $VM0_CLI auth status 2>&1 | grep -q "Not authenticated"; then
         skip "Not authenticated"
     fi
 
@@ -40,13 +40,13 @@ agents:
 EOF
 
     echo "# Step 1: Compose agent..."
-    run $CLI_COMMAND compose vm0.yaml
+    run $VM0_CLI compose vm0.yaml
     assert_success
 
     echo "# Step 2: Run with @stuck-tool prompt and 3s timeout..."
     # VM0_STUCK_TOOL_TIMEOUT_SECS=3 makes the watchdog trigger in ~3-8s
     # instead of 60s, keeping the test fast.
-    run $CLI_COMMAND run "$AGENT_NAME" --no-auto-update "@stuck-tool"
+    run $VM0_CLI run "$AGENT_NAME" --no-auto-update "@stuck-tool"
 
     echo "# Step 3: Verify run failed..."
     assert_failure
@@ -61,7 +61,7 @@ EOF
     }
 
     echo "# Step 4: Verify system logs contain tool timeout error..."
-    run $CLI_COMMAND logs "$RUN_ID" --system
+    run $VM0_CLI logs "$RUN_ID" --system
     assert_success
     assert_output --partial "Tool timeout"
     assert_output --partial "WebFetch"

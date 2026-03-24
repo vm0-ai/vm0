@@ -35,7 +35,7 @@ volumes:
     name: $SHARED_VOLUME_NAME
     version: latest
 EOF
-    $CLI_COMMAND compose "$SHARED_CONFIG" >/dev/null
+    $VM0_CLI compose "$SHARED_CONFIG" >/dev/null
 }
 
 teardown_file() {
@@ -59,7 +59,7 @@ teardown() {
 }
 
 @test "Build VM0 empty artifact test agent configuration" {
-    run $CLI_COMMAND compose "$SHARED_CONFIG"
+    run $VM0_CLI compose "$SHARED_CONFIG"
     assert_success
     assert_output --partial "$AGENT_NAME"
 }
@@ -68,15 +68,15 @@ teardown() {
     # Create empty artifact (no files)
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     # Push empty artifact
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Run agent with operation that doesn't create any files
     # This tests the storage webhook handling of empty zip uploads
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo 'hello world'"
 
@@ -91,18 +91,18 @@ teardown() {
     # Create artifact with files
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "existing content" > data.txt
     mkdir -p subdir
     echo "nested file" > subdir/nested.txt
 
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Run agent that only reads files (no modifications)
     # The storage webhook should handle unchanged artifact content correctly
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --verbose \
         "cat data.txt && cat subdir/nested.txt"
@@ -120,18 +120,18 @@ teardown() {
     # Create artifact with files
     mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
     cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
 
     echo "file to be deleted" > delete-me.txt
     mkdir -p subdir
     echo "nested file to delete" > subdir/nested.txt
 
-    run $CLI_COMMAND artifact push
+    run $VM0_CLI artifact push
     assert_success
 
     # Run agent that deletes all files
     # This creates a checkpoint with empty artifact
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "rm -rf delete-me.txt subdir"
 
@@ -141,7 +141,7 @@ teardown() {
 
     # Now pull the empty artifact - this should succeed, not fail with TAR_BAD_ARCHIVE
     # Bug fix: empty archives created by archiver may not be valid tar format
-    run $CLI_COMMAND artifact pull
+    run $VM0_CLI artifact pull
     assert_success
 
     # Verify local directory is now empty (except .vm0)

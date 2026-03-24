@@ -5,7 +5,7 @@
 # This test covers org-level model provider CLI (vm0 org model-provider)
 #
 # Updated for org-level migration: user-level model-provider was removed,
-# all operations are now under `vm0 zero org model-provider`
+# all operations are now under `zero org model-provider`
 
 load '../../helpers/setup'
 
@@ -15,33 +15,33 @@ setup() {
 
 teardown() {
     # Clean up test provider created during tests
-    $CLI_COMMAND zero org model-provider remove "anthropic-api-key" 2>/dev/null || true
+    $ZERO_CLI org model-provider remove "anthropic-api-key" 2>/dev/null || true
 }
 
 # ============================================================================
 # Happy Path Tests
 # ============================================================================
 
-@test "vm0 zero org model-provider setup creates provider" {
-    run $CLI_COMMAND zero org model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
+@test "zero org model-provider setup creates provider" {
+    run $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
     assert_success
     assert_output --partial "anthropic-api-key"
     assert_output --partial "created"
 }
 
-@test "vm0 zero org model-provider ls shows created provider" {
-    $CLI_COMMAND zero org model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
+@test "zero org model-provider ls shows created provider" {
+    $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
 
-    run $CLI_COMMAND zero org model-provider ls
+    run $ZERO_CLI org model-provider ls
     assert_success
     assert_output --partial "anthropic-api-key"
     assert_output --partial "claude-code"
 }
 
-@test "vm0 zero org model-provider remove removes provider" {
-    $CLI_COMMAND zero org model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
+@test "zero org model-provider remove removes provider" {
+    $ZERO_CLI org model-provider setup --type "anthropic-api-key" --secret "$TEST_CREDENTIAL_VALUE"
 
-    run $CLI_COMMAND zero org model-provider remove "anthropic-api-key"
+    run $ZERO_CLI org model-provider remove "anthropic-api-key"
     assert_success
     assert_output --partial "removed"
 }

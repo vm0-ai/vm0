@@ -25,7 +25,7 @@ export const listCommand = new Command()
         console.log(chalk.dim("No org variables found"));
         console.log();
         console.log("To add an org variable:");
-        console.log(chalk.cyan("  vm0 zero org variable set MY_VAR <value>"));
+        console.log(chalk.cyan("  zero org variable set MY_VAR <value>"));
         return;
       }
 

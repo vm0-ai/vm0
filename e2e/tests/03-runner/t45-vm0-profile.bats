@@ -27,16 +27,16 @@ agents:
     experimental_profile: vm0/default
 EOF
 
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "claude --version && gh --version"
     assert_success
@@ -55,16 +55,16 @@ agents:
     experimental_profile: vm0/default
 EOF
 
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "agent-browser open https://github.com && agent-browser get title && agent-browser close"
     assert_success

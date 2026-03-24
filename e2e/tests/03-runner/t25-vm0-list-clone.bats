@@ -35,12 +35,12 @@ teardown() {
     echo "# Step 1: Create and push artifact"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "test content" > test.txt
-    $CLI_COMMAND artifact push >/dev/null
+    $VM0_CLI artifact push >/dev/null
 
     echo "# Step 2: List artifacts"
-    run $CLI_COMMAND artifact list
+    run $VM0_CLI artifact list
     assert_success
     assert_output --partial "$ARTIFACT_NAME"
     assert_output --partial "NAME"
@@ -57,12 +57,12 @@ teardown() {
     echo "# Step 1: Create and push volume"
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
     echo "test content" > test.txt
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     echo "# Step 2: List volumes"
-    run $CLI_COMMAND volume list
+    run $VM0_CLI volume list
     assert_success
     assert_output --partial "$VOLUME_NAME"
     assert_output --partial "NAME"
@@ -77,16 +77,16 @@ teardown() {
     echo "# Step 1: Create and push artifact"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
     echo "hello from artifact" > hello.txt
     mkdir -p subdir
     echo "nested file" > subdir/nested.txt
-    $CLI_COMMAND artifact push >/dev/null
+    $VM0_CLI artifact push >/dev/null
 
     echo "# Step 2: Clone artifact to new directory"
     cd "$TEST_DIR"
     CLONE_DIR="${ARTIFACT_NAME}-clone"
-    run $CLI_COMMAND artifact clone "$ARTIFACT_NAME" "$CLONE_DIR"
+    run $VM0_CLI artifact clone "$ARTIFACT_NAME" "$CLONE_DIR"
     assert_success
     assert_output --partial "Successfully cloned"
     assert_output --partial "$ARTIFACT_NAME"
@@ -109,14 +109,14 @@ teardown() {
     echo "# Step 1: Create and push volume"
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
     echo "hello from volume" > hello.txt
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     echo "# Step 2: Clone volume to new directory"
     cd "$TEST_DIR"
     CLONE_DIR="${VOLUME_NAME}-clone"
-    run $CLI_COMMAND volume clone "$VOLUME_NAME" "$CLONE_DIR"
+    run $VM0_CLI volume clone "$VOLUME_NAME" "$CLONE_DIR"
     assert_success
     assert_output --partial "Successfully cloned"
     assert_output --partial "$VOLUME_NAME"
@@ -138,13 +138,13 @@ teardown() {
     echo "# Step 1: Create and push empty artifact"
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    $CLI_COMMAND artifact push >/dev/null
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    $VM0_CLI artifact push >/dev/null
 
     echo "# Step 2: Clone empty artifact"
     cd "$TEST_DIR"
     CLONE_DIR="${ARTIFACT_NAME}-empty"
-    run $CLI_COMMAND artifact clone "$ARTIFACT_NAME" "$CLONE_DIR"
+    run $VM0_CLI artifact clone "$ARTIFACT_NAME" "$CLONE_DIR"
     assert_success
     assert_output --partial "empty"
 
@@ -157,13 +157,13 @@ teardown() {
     echo "# Step 1: Create and push empty volume"
     mkdir -p "$TEST_DIR/$VOLUME_NAME"
     cd "$TEST_DIR/$VOLUME_NAME"
-    $CLI_COMMAND volume init --name "$VOLUME_NAME" >/dev/null
-    $CLI_COMMAND volume push >/dev/null
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
 
     echo "# Step 2: Clone empty volume"
     cd "$TEST_DIR"
     CLONE_DIR="${VOLUME_NAME}-empty"
-    run $CLI_COMMAND volume clone "$VOLUME_NAME" "$CLONE_DIR"
+    run $VM0_CLI volume clone "$VOLUME_NAME" "$CLONE_DIR"
     assert_success
     assert_output --partial "empty"
 

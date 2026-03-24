@@ -30,13 +30,13 @@ agents:
     framework: claude-code
 EOF
 
-    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
-    $CLI_COMMAND artifact init --name "$ARTIFACT_NAME" >/dev/null
-    run $CLI_COMMAND artifact push
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null
+    run $VM0_CLI artifact push
     assert_success
 }
 
@@ -47,7 +47,7 @@ EOF
     # 1. github.com:22 — SSH on standard port, non-HTTP protocol
     # 2. ssh.github.com:443 — SSH on port 443 (previously intercepted as HTTPS)
     # Both must pass through mitmproxy as raw TCP without corruption.
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo PORT22=\$(timeout 5 bash -c 'head -1 < /dev/tcp/github.com/22') && echo PORT443=\$(timeout 5 bash -c 'head -1 < /dev/tcp/ssh.github.com/443')"
     assert_success
@@ -62,7 +62,7 @@ EOF
         return 1
     }
 
-    run $CLI_COMMAND logs "$RUN_ID" --network --tail 100
+    run $VM0_CLI logs "$RUN_ID" --network --tail 100
     assert_success
     # TCP connections show as IP:port (DNS resolved before TCP layer)
     assert_output --partial "TCP"
@@ -77,7 +77,7 @@ EOF
     # python3 sends a raw UDP DNS query to 8.8.8.8:53; curl makes an HTTP request.
     # Both should appear in the same network log file.
     # Note: dig/nslookup are not available in the sandbox image.
-    run $CLI_COMMAND run "$AGENT_NAME" \
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         "python3 -c \"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'\\x00\\x01\\x01\\x00\\x00\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x07example\\x03com\\x00\\x00\\x01\\x00\\x01',('8.8.8.8',53)); s.recv(512); s.close(); print('UDP_OK=true')\" && curl -s -o /dev/null -w 'HTTP=%{http_code}' https://example.com"
     assert_success
@@ -91,7 +91,7 @@ EOF
     }
 
     # Verify network logs contain the HTTP request (proves log pipeline works).
-    run $CLI_COMMAND logs "$RUN_ID" --network --all
+    run $VM0_CLI logs "$RUN_ID" --network --all
     assert_success
     assert_output --partial "example.com"
 
